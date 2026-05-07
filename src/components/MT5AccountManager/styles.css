@@ -1,0 +1,368 @@
+.mt5-account-manager {
+  background: #1a1d29;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 500px;
+  width: 100%;
+  color: #fff;
+}
+
+.mt5-manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.mt5-manager-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #fff;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #8b90a0;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* Status */
+.mt5-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.mt5-status.connected {
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.mt5-status.disconnected {
+  background: rgba(244, 67, 54, 0.15);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.connected .status-indicator {
+  background: #4caf50;
+  box-shadow: 0 0 8px #4caf50;
+}
+
+.disconnected .status-indicator {
+  background: #f44336;
+}
+
+.status-text {
+  flex: 1;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #4a9eff;
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+/* Error and Loading */
+.mt5-error {
+  background: rgba(244, 67, 54, 0.15);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  color: #f44336;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.mt5-loading {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.mt5-loading p {
+  color: #8b90a0;
+  margin-top: 16px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(74, 158, 255, 0.2);
+  border-top-color: #4a9eff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+.spinner-small {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Not Connected */
+.mt5-not-connected {
+  padding: 20px;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 6px;
+}
+
+.mt5-not-connected p {
+  margin-bottom: 12px;
+  color: #ffc107;
+}
+
+.mt5-not-connected ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #8b90a0;
+}
+
+.mt5-not-connected li {
+  margin-bottom: 6px;
+}
+
+/* Form */
+.mt5-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 13px;
+  color: #8b90a0;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group select {
+  padding: 10px 12px;
+  border: 1px solid #2d3347;
+  border-radius: 6px;
+  background: #252a3a;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: #4a9eff;
+}
+
+.form-group input::placeholder {
+  color: #5a6070;
+}
+
+.group-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+  width: fit-content;
+}
+
+.group-badge.recommended {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+
+.form-info {
+  padding: 12px;
+  background: rgba(74, 158, 255, 0.1);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.form-info p {
+  margin: 0;
+  color: #8b90a0;
+}
+
+/* Actions */
+.mt5-form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btn-primary,
+.btn-secondary {
+  flex: 1;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-primary {
+  background: #4a9eff;
+  border: none;
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #3d8be6;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid #2d3347;
+  color: #8b90a0;
+}
+
+.btn-secondary:hover {
+  border-color: #4a9eff;
+  color: #4a9eff;
+}
+
+/* Success State */
+.mt5-success-message {
+  text-align: center;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.success-icon {
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, #4caf50, #45a049);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  color: #fff;
+  margin: 0 auto 16px;
+}
+
+.mt5-success-message p {
+  color: #4caf50;
+  font-size: 16px;
+  margin: 0;
+}
+
+.mt5-credentials-box {
+  background: #252a3a;
+  border: 1px solid #2d3347;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.mt5-credentials-box h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #fff;
+  border-bottom: 1px solid #2d3347;
+  padding-bottom: 12px;
+}
+
+.credential-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #2d3347;
+}
+
+.credential-row:last-child {
+  border-bottom: none;
+}
+
+.credential-label {
+  color: #8b90a0;
+  font-size: 13px;
+}
+
+.credential-value {
+  color: #fff;
+  font-size: 14px;
+  font-family: monospace;
+  font-weight: 500;
+}
+
+.credential-value.highlight {
+  color: #4a9eff;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.mt5-warning-box {
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  color: #ffc107;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.mt5-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.mt5-actions button {
+  flex: 1;
+}

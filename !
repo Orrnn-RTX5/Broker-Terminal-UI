@@ -1,0 +1,55 @@
+
+> desktop@0.0.0 build
+> tsc -b && vite build 2
+
+src/components/Toolbox.tsx(392,34): error TS2322: Type '{ accountId: string; }' is not assignable to type 'IntrinsicAttributes'.
+  Property 'accountId' does not exist on type 'IntrinsicAttributes'.
+src/components/TradingChart.tsx(951,30): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/components/TradingChart.tsx(951,48): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/components/TradingChart.tsx(1336,108): error TS2339: Property 'default' does not exist on type 'typeof import("C:/Users/Yofor/Desktop/Flexy-TradingEngine/desktop/src/services/chartPrinter")'.
+src/components/ui/ContextMenu.tsx(176,27): error TS2554: Expected 1 arguments, but got 0.
+src/components/ui/ContextMenu.tsx(511,15): error TS2322: Type '(el: HTMLDivElement) => HTMLDivElement' is not assignable to type 'Ref<HTMLDivElement>'.
+  Type '(el: HTMLDivElement) => HTMLDivElement' is not assignable to type '(instance: HTMLDivElement) => void | (() => VoidOrUndefinedOnly)'.
+    Type 'HTMLDivElement' is not assignable to type 'void | (() => VoidOrUndefinedOnly)'.
+src/components/ui/FlashPrice.tsx(22,22): error TS2554: Expected 1 arguments, but got 0.
+src/components/ui/Tooltip.tsx(20,22): error TS2554: Expected 1 arguments, but got 0.
+src/components/UIShowcase.tsx(223,31): error TS2353: Object literal may only specify known properties, and 'onClick' does not exist in type 'ContextMenuItemConfig'.
+src/components/UIShowcase.tsx(224,32): error TS2353: Object literal may only specify known properties, and 'onClick' does not exist in type 'ContextMenuItemConfig'.
+src/components/UIShowcase.tsx(225,15): error TS2741: Property 'label' is missing in type '{ divider: true; }' but required in type 'ContextMenuItemConfig'.
+src/components/UIShowcase.tsx(226,37): error TS2353: Object literal may only specify known properties, and 'onClick' does not exist in type 'ContextMenuItemConfig'.
+src/components/WorkspaceManager.tsx(324,14): error TS2322: Type '{ children: string; jsx: true; }' is not assignable to type 'DetailedHTMLProps<StyleHTMLAttributes<HTMLStyleElement>, HTMLStyleElement>'.
+  Property 'jsx' does not exist on type 'DetailedHTMLProps<StyleHTMLAttributes<HTMLStyleElement>, HTMLStyleElement>'.
+src/examples/ChartIntegrationDemo.tsx(58,25): error TS2345: Argument of type '{ type: "TOGGLE_CROSSHAIR"; }' is not assignable to parameter of type 'Command'.
+  Property 'payload' is missing in type '{ type: "TOGGLE_CROSSHAIR"; }' but required in type '{ type: "TOGGLE_CROSSHAIR"; payload: Record<string, never>; }'.
+src/examples/ChartIntegrationDemo.tsx(63,25): error TS2345: Argument of type '{ type: "ZOOM_IN"; }' is not assignable to parameter of type 'Command'.
+  Property 'payload' is missing in type '{ type: "ZOOM_IN"; }' but required in type '{ type: "ZOOM_IN"; payload: Record<string, never>; }'.
+src/examples/ChartIntegrationDemo.tsx(67,25): error TS2345: Argument of type '{ type: "ZOOM_OUT"; }' is not assignable to parameter of type 'Command'.
+  Property 'payload' is missing in type '{ type: "ZOOM_OUT"; }' but required in type '{ type: "ZOOM_OUT"; payload: Record<string, never>; }'.
+src/examples/ChartIntegrationDemo.tsx(71,25): error TS2345: Argument of type '{ type: "FIT_CONTENT"; }' is not assignable to parameter of type 'Command'.
+  Property 'payload' is missing in type '{ type: "FIT_CONTENT"; }' but required in type '{ type: "FIT_CONTENT"; payload: Record<string, never>; }'.
+src/examples/ChartIntegrationDemo.tsx(76,27): error TS2322: Type '`SELECT_${string}`' is not assignable to type '"OPEN_ORDER_PANEL" | "SET_CHART_TYPE" | "OPEN_INDICATOR_NAVIGATOR" | "TOGGLE_CROSSHAIR" | "ZOOM_IN" | "ZOOM_OUT" | "TILE_WINDOWS" | "SELECT_TOOL" | "SET_TIMEFRAME" | "ADD_INDICATOR" | ... 15 more ... | "SET_CHART_SHIFT"'.
+src/examples/ChartIntegrationDemo.tsx(80,27): error TS2322: Type '"OPEN_INDICATORS"' is not assignable to type '"OPEN_ORDER_PANEL" | "SET_CHART_TYPE" | "OPEN_INDICATOR_NAVIGATOR" | "TOGGLE_CROSSHAIR" | "ZOOM_IN" | "ZOOM_OUT" | "TILE_WINDOWS" | "SELECT_TOOL" | "SET_TIMEFRAME" | "ADD_INDICATOR" | ... 15 more ... | "SET_CHART_SHIFT"'.
+src/examples/ChartIntegrationDemo.tsx(239,11): error TS2322: Type '"1m"' is not assignable to type 'Timeframe'.
+src/examples/CommandBusExample.tsx(252,45): error TS2345: Argument of type '"cursor" | "text" | "trendline" | "hline" | "vline"' is not assignable to parameter of type '"cursor"'.
+  Type '"text"' is not assignable to type '"cursor"'.
+src/examples/HistoricalDataExample.tsx(22,9): error TS2322: Type '"1h"' is not assignable to type 'Timeframe'.
+src/examples/HistoricalDataExample.tsx(60,11): error TS2322: Type '"15m"' is not assignable to type 'Timeframe'.
+src/examples/TradingDashboard.tsx(164,15): error TS2322: Type '{ symbol: string; currentBid: number; currentAsk: number; accountId: number; balance: number; }' is not assignable to type 'IntrinsicAttributes & OrderEntryProps'.
+  Property 'currentBid' does not exist on type 'IntrinsicAttributes & OrderEntryProps'.
+src/hooks/useHoverIntent.ts(18,22): error TS2554: Expected 1 arguments, but got 0.
+src/hooks/useKeyboardShortcut.ts(45,16): error TS2367: This comparison appears to be unintentional because the types 'true' and 'false' have no overlap.
+src/hooks/useKeyboardShortcut.ts(81,18): error TS2367: This comparison appears to be unintentional because the types 'true' and 'false' have no overlap.
+src/hooks/useOptimizedSelector.ts(47,29): error TS2554: Expected 1 arguments, but got 2.
+src/hooks/useOptimizedSelector.ts(67,29): error TS2554: Expected 1 arguments, but got 2.
+src/hooks/useOptimizedSelector.ts(80,29): error TS2554: Expected 1 arguments, but got 2.
+src/hooks/useOptimizedSelector.ts(90,29): error TS2554: Expected 1 arguments, but got 2.
+src/hooks/useOptimizedSelector.ts(102,24): error TS2554: Expected 1 arguments, but got 0.
+src/hooks/useOptimizedSelector.ts(126,20): error TS2554: Expected 1 arguments, but got 0.
+src/hooks/useOptimizedSelector.ts(147,22): error TS2554: Expected 1 arguments, but got 0.
+src/hooks/useOptimizedSelector.ts(148,20): error TS2554: Expected 1 arguments, but got 0.
+src/hooks/useWebSocket.ts(145,5): error TS2322: Type 'import("C:/Users/Yofor/Desktop/Flexy-TradingEngine/desktop/src/store/useWebSocketStore").ConnectionState' is not assignable to type 'import("C:/Users/Yofor/Desktop/Flexy-TradingEngine/desktop/src/services/websocket-enhanced").ConnectionState'.
+  Type '"reconnecting"' is not assignable to type 'ConnectionState'. Did you mean '"connecting"'?
+src/services/marketWatchActions.ts(472,10): error TS2322: Type '() => void' is not assignable to type 'void'.
+src/services/performance-monitor.ts(347,20): error TS2349: This expression is not callable.
+  Not all constituents of type 'ComponentType<P>' are callable.
+    Type 'ComponentClass<P, any>' has no call signatures.

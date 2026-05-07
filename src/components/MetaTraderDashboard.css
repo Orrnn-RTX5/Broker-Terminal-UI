@@ -1,0 +1,239 @@
+/* MetaTrader 5 Extended Styling - Precision Alignment */
+.metatrader-dashboard {
+    width: 100vw;
+    height: 100vh;
+    background: #F0F0F0;
+    display: flex;
+    flex-direction: column;
+    font-family: 'Segoe UI', Tahoma, Helvetica, sans-serif;
+    overflow: hidden;
+    color: #333;
+}
+
+/* ============================================
+   MT5 Menubar
+   ============================================ */
+.mt-menubar {
+    height: 22px;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    gap: 12px;
+    font-size: 11px;
+    border-bottom: 1px solid #D1D1D1;
+    cursor: default;
+}
+
+.mt-menubar span {
+    padding: 2px 4px;
+    border-radius: 2px;
+    transition: background 0.1s;
+}
+
+.mt-menubar span:hover {
+    background: #E5E5E5;
+}
+
+/* ============================================
+   MT5 Dense Toolbar
+   ============================================ */
+.mt-toolbar {
+    height: 34px;
+    background: #FFFFFF;
+    border-bottom: 1px solid #B4B4B4;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.mt-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding: 0 2px;
+}
+
+.mt-tool-btn {
+    min-width: 24px;
+    height: 24px;
+    padding: 0 4px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    color: #444;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s;
+}
+
+.mt-tool-btn:hover {
+    background: #E5E5E5;
+    border-color: #A0A0A0;
+}
+
+.mt-tool-btn.active {
+    background: #D5E1F2;
+    border-color: #7DAAF0;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.mt-v-divider {
+    width: 1px;
+    height: 20px;
+    background: #CCCCCC;
+    margin: 0 4px;
+}
+
+/* Timeframes Group */
+.mt-timeframes-group {
+    gap: 1px;
+}
+
+.mt-tf-btn {
+    min-width: 28px;
+    height: 24px;
+    padding: 0 4px;
+    font-size: 10px;
+    font-weight: bold;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    color: #003399;
+    /* Classic MT blue */
+    cursor: pointer;
+    font-family: 'Tahoma', sans-serif;
+}
+
+.mt-tf-btn:hover {
+    background: #E5E5E5;
+}
+
+.mt-tf-btn.active {
+    background: #2196F3;
+    color: #FFFFFF;
+    border-color: #1976D2;
+}
+
+/* ============================================
+   Chart Area & Overlays
+   ============================================ */
+.mt-chart-wrapper {
+    flex: 1;
+    position: relative;
+    background: #FFFFFF;
+    border-top: 1px solid #B4B4B4;
+}
+
+.mt-chart-container {
+    width: 100%;
+    height: 100%;
+}
+
+.mt-symbol-overlay {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    font-size: 11px;
+    font-weight: bold;
+    color: #333;
+    pointer-events: none;
+    z-index: 5;
+    text-shadow: 1px 1px 0 #FFF;
+}
+
+.mt-price-overlay {
+    position: absolute;
+    top: 30px;
+    left: 8px;
+    font-size: 18px;
+    font-weight: 900;
+    color: #D1D1D1;
+    /* Faded bg price like institutional terminals */
+    font-family: 'JetBrains Mono', monospace;
+    pointer-events: none;
+    z-index: 4;
+    opacity: 0.5;
+}
+
+/* Institutional Polish */
+* {
+    box-sizing: border-box;
+}
+
+/* Specific styling for the wide New Order / Algo Trading buttons */
+.mt-tool-btn svg[viewBox="0 0 80 18"],
+.mt-tool-btn svg[viewBox="0 0 70 18"] {
+    height: 20px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1100px) {
+    .mt-toolbar {
+        height: auto;
+        flex-wrap: wrap;
+        padding: 4px;
+    }
+}
+
+/* ============================================
+   Drawing Tools & Menus
+   ============================================ */
+.mt-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #FFF;
+    border: 1px solid #B4B4B4;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    min-width: 140px;
+    padding: 2px 0;
+}
+
+.mt-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 11px;
+    color: #333;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.mt-menu-item:hover {
+    background: #E5E5E5;
+}
+
+.mt-menu-item span {
+    flex: 1;
+}
+
+.drawing-node {
+    width: 6px;
+    height: 6px;
+    background: #FF0000;
+    border: 1px solid #FFF;
+    position: absolute;
+    top: -3px;
+    left: -3px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.mt-chart-wrapper .chart-drawing-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.chart-drawing {
+    position: absolute;
+    pointer-events: auto;
+}

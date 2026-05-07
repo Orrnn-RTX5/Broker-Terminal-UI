@@ -1,0 +1,72 @@
+{
+  "menu": {
+    "file": {
+      "label": "Fil",
+      "exit": "Afslut",
+      "newChart": "New Chart",
+      "openDeleted": "Open Deleted",
+      "profiles": "Profiles",
+      "close": "Close",
+      "save": "Save",
+      "saveAsPicture": "Save As Picture",
+      "openDataFolder": "Open Data Folder",
+      "print": "Print",
+      "printPreview": "Print Preview",
+      "printSetup": "Print Setup",
+      "openAccount": "Open an Account",
+      "loginTrade": "Login to Trade Account",
+      "loginWeb": "Login to Web Trader",
+      "loginMql5": "Login to MQL5.community"
+    },
+    "view": {
+      "label": "Vis",
+      "languages": "Sprog",
+      "colorThemes": "Color Themes",
+      "toolbars": "Toolbars",
+      "statusBar": "Status Bar",
+      "chartsBar": "Charts Bar",
+      "symbols": "Symbols",
+      "depthOfMarket": "Depth of Market",
+      "marketWatch": "Market Watch",
+      "dataWindow": "Data Window",
+      "navigator": "Navigator",
+      "toolbox": "Toolbox",
+      "strategyTester": "Strategy Tester",
+      "fullScreen": "Full Screen"
+    },
+    "help": {
+      "label": "Hjælp",
+      "helpTopics": "Help Topics",
+      "about": "About"
+    },
+    "insert": {
+      "label": "Insert",
+      "indicators": "Indicators",
+      "objects": "Objects",
+      "experts": "Experts",
+      "scripts": "Scripts"
+    },
+    "charts": {
+      "label": "Charts",
+      "depthOfMarket": "Depth of Market",
+      "indicatorList": "Indicator List",
+      "barChart": "Bar Chart",
+      "candlesticks": "Candlesticks",
+      "lineChart": "Line Chart",
+      "grid": "Grid",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
+      "properties": "Properties"
+    },
+    "tools": {
+      "label": "Tools",
+      "newOrder": "New Order",
+      "options": "Options"
+    },
+    "window": {
+      "label": "Window",
+      "tileWindows": "Tile Windows",
+      "cascade": "Cascade"
+    }
+  }
+}

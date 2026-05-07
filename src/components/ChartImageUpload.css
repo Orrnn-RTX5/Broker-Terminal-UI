@@ -1,0 +1,252 @@
+.chart-image-upload {
+    padding: 30px;
+    background: #0a0a0a;
+    border-radius: 8px;
+    max-width: 900px;
+    margin: 20px auto;
+}
+
+.upload-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.upload-header h2 {
+    font-size: 28px;
+    color: #fff;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+
+.upload-header p {
+    color: #888;
+    font-size: 14px;
+}
+
+/* Upload Form */
+.upload-form {
+    border: 3px dashed #3a3a3a;
+    border-radius: 12px;
+    padding: 60px 40px;
+    text-align: center;
+    background: #131313;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+.upload-form:hover {
+    border-color: #4a9eff;
+    background: #1a1a1a;
+}
+
+.upload-form.drag-active {
+    border-color: #4a9eff;
+    background: #1a2a3a;
+    transform: scale(1.02);
+}
+
+.upload-label {
+    cursor: pointer;
+    display: block;
+}
+
+.upload-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+}
+
+.upload-text {
+    font-size: 18px;
+    color: #fff;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.upload-hint {
+    font-size: 13px;
+    color: #666;
+}
+
+/* Results Section */
+.upload-results {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.preview-section {
+    position: relative;
+    background: #131313;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.preview-image {
+    width: 100%;
+    max-height: 400px;
+    object-fit: contain;
+    border-radius: 6px;
+}
+
+.clear-btn {
+    position: absolute;
+    top: 30px;
+    right: 30px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.2s;
+    backdrop-filter: blur(10px);
+}
+
+.clear-btn:hover {
+    background: rgba(239, 83, 80, 0.9);
+    transform: scale(1.05);
+}
+
+/* Analyzing State */
+.analyzing-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    padding: 40px;
+    background: #131313;
+    border-radius: 8px;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #333;
+    border-top-color: #4a9eff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.analyzing-state p {
+    color: #888;
+    font-size: 15px;
+}
+
+/* Error Box */
+.error-box {
+    padding: 20px;
+    background: #2a1515;
+    border: 1px solid #5a2525;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.error-box p {
+    color: #ef5350;
+    margin: 0;
+    font-size: 14px;
+}
+
+/* Detected Pairs */
+.detected-pairs {
+    background: #131313;
+    border-radius: 8px;
+    padding: 25px;
+}
+
+.detected-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.detected-header h3 {
+    font-size: 20px;
+    color: #26a69a;
+    margin: 0;
+    font-weight: 700;
+}
+
+.confidence-badge {
+    padding: 6px 14px;
+    background: linear-gradient(135deg, #4a9eff 0%, #26a69a 100%);
+    color: #fff;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.pairs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.pair-card {
+    background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+    border: 2px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.pair-card:hover {
+    border-color: #4a9eff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+}
+
+.pair-symbol {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+}
+
+.strict-notice {
+    background: #1a2a1a;
+    border-left: 4px solid #26a69a;
+    padding: 12px 16px;
+    border-radius: 4px;
+    color: #888;
+    font-size: 13px;
+    margin: 0;
+}
+
+.strict-notice strong {
+    color: #26a69a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .chart-image-upload {
+        padding: 20px;
+    }
+
+    .upload-form {
+        padding: 40px 20px;
+    }
+
+    .pairs-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 10px;
+    }
+
+    .detected-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+}

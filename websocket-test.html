@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        h1 {
+            color: #00ff00;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success {
+            background: #004400;
+            color: #00ff00;
+        }
+        .error {
+            background: #440000;
+            color: #ff0000;
+        }
+        .warning {
+            background: #444400;
+            color: #ffff00;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px 5px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 5px;
+        }
+        button:hover {
+            background: #444;
+        }
+        #log {
+            background: #000;
+            padding: 15px;
+            border: 1px solid #333;
+            border-radius: 5px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #333;
+            padding-left: 10px;
+        }
+        .log-info { border-left-color: #0088ff; }
+        .log-success { border-left-color: #00ff00; }
+        .log-error { border-left-color: #ff0000; }
+        .log-tick { border-left-color: #ffaa00; }
+    </style>
+</head>
+<body>
+    <h1>RTX WebSocket Connection Test</h1>
+
+    <div id="status" class="status warning">Not Connected</div>
+
+    <div>
+        <button onclick="login()">1. Login</button>
+        <button onclick="connectWebSocket()">2. Connect WebSocket</button>
+        <button onclick="disconnect()">3. Disconnect</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <h2>Connection Log</h2>
+    <div id="log"></div>
+
+    <script>
+        let ws = null;
+        let token = null;
+        let tickCount = 0;
+
+        function addLog(message, type = 'info') {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateStatus(message, isSuccess) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${isSuccess ? 'success' : 'error'}`;
+        }
+
+        async function login() {
+            addLog('Attempting login...', 'info');
+            try {
+                const response = await fetch('http://localhost:8080/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'demo-user',
+                        password: 'password'
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    token = data.token;
+                    addLog(`✅ Login successful! User: ${data.user.username} (Role: ${data.user.role})`, 'success');
+                    addLog(`Token: ${token.substring(0, 50)}...`, 'info');
+                    updateStatus('Logged In - Ready to Connect WebSocket', true);
+                } else {
+                    const text = await response.text();
+                    addLog(`❌ Login failed: ${text}`, 'error');
+                    updateStatus('Login Failed', false);
+                }
+            } catch (error) {
+                addLog(`❌ Login error: ${error.message}`, 'error');
+                updateStatus('Login Error', false);
+            }
+        }
+
+        function connectWebSocket() {
+            if (!token) {
+                addLog('❌ Please login first!', 'error');
+                return;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addLog('⚠️ WebSocket already connected', 'info');
+                return;
+            }
+
+            const wsUrl = `ws://localhost:8080/ws?token=${encodeURIComponent(token)}`;
+            addLog(`Connecting to ${wsUrl.substring(0, 50)}...`, 'info');
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                addLog('✅ WebSocket CONNECTED successfully!', 'success');
+                updateStatus('WebSocket Connected - Waiting for data...', true);
+                tickCount = 0;
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'tick') {
+                        tickCount++;
+                        if (tickCount <= 5 || tickCount % 10 === 0) {
+                            addLog(`📊 Tick #${tickCount}: ${data.symbol} | Bid: ${data.bid} | Ask: ${data.ask} | Spread: ${data.spread.toFixed(5)}`, 'tick');
+                        }
+                        updateStatus(`WebSocket Connected - Received ${tickCount} ticks`, true);
+                    } else {
+                        addLog(`📨 Message: ${JSON.stringify(data)}`, 'info');
+                    }
+                } catch (e) {
+                    addLog(`❌ Parse error: ${e.message}`, 'error');
+                }
+            };
+
+            ws.onerror = (error) => {
+                addLog(`❌ WebSocket error: ${JSON.stringify(error)}`, 'error');
+                updateStatus('WebSocket Error', false);
+            };
+
+            ws.onclose = (event) => {
+                addLog(`🔌 WebSocket closed - Code: ${event.code}, Reason: ${event.reason || 'none'}`, 'info');
+                if (event.code === 1006) {
+                    addLog('⚠️ Abnormal closure - Connection lost unexpectedly', 'error');
+                } else if (event.code === 1008) {
+                    addLog('🔒 Authentication failed - Invalid token', 'error');
+                }
+                updateStatus('WebSocket Disconnected', false);
+                ws = null;
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                addLog('Disconnecting WebSocket...', 'info');
+                ws.close(1000, 'User disconnected');
+                ws = null;
+                updateStatus('Disconnected', false);
+            } else {
+                addLog('⚠️ No active WebSocket connection', 'info');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            addLog('Log cleared', 'info');
+        }
+
+        // Initial log
+        addLog('WebSocket Test Page Ready', 'success');
+        addLog('Step 1: Click "Login" to get JWT token', 'info');
+        addLog('Step 2: Click "Connect WebSocket" to establish connection', 'info');
+        addLog('Step 3: Watch for tick data to start flowing', 'info');
+    </script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+.ai-chart-analysis-page {
+    min-height: 100vh;
+    background: #09090b;
+    padding: 20px;
+}
+
+.charts-section {
+    max-width: 1400px;
+    margin: 40px auto;
+    padding: 30px;
+    background: #0a0a0a;
+    border-radius: 8px;
+}
+
+.section-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.section-header h2 {
+    font-size: 26px;
+    color: #fff;
+    margin-bottom: 8px;
+    font-weight: 700;
+}
+
+.section-header p {
+    color: #888;
+    font-size: 14px;
+}
+
+/* Symbol Tabs */
+.symbol-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 25px;
+    padding: 15px;
+    background: #131313;
+    border-radius: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.symbol-tab {
+    padding: 10px 20px;
+    background: #1a1a1a;
+    color: #888;
+    border: 2px solid #2a2a2a;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Courier New', monospace;
+}
+
+.symbol-tab:hover {
+    background: #2a2a2a;
+    color: #fff;
+    border-color: #4a9eff;
+}
+
+.symbol-tab.active {
+    background: linear-gradient(135deg, #4a9eff 0%, #26a69a 100%);
+    color: #fff;
+    border-color: #4a9eff;
+    box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
+}
+
+/* Chart Display */
+.chart-display {
+    background: #0a0a0a;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+/* Empty State */
+.empty-state {
+    max-width: 600px;
+    margin: 60px auto;
+    text-align: center;
+    padding: 60px 40px;
+    background: #0a0a0a;
+    border-radius: 8px;
+    border: 2px dashed #2a2a2a;
+}
+
+.empty-icon {
+    font-size: 80px;
+    margin-bottom: 20px;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+.empty-state h3 {
+    font-size: 24px;
+    color: #fff;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+
+.empty-state p {
+    color: #888;
+    font-size: 15px;
+    margin-bottom: 30px;
+}
+
+.features-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+    display: inline-block;
+}
+
+.features-list li {
+    color: #26a69a;
+    font-size: 14px;
+    padding: 8px 0;
+    font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .ai-chart-analysis-page {
+        padding: 10px;
+    }
+
+    .charts-section {
+        padding: 20px 15px;
+    }
+
+    .symbol-tabs {
+        gap: 8px;
+    }
+
+    .symbol-tab {
+        padding: 8px 15px;
+        font-size: 13px;
+    }
+
+    .empty-state {
+        padding: 40px 20px;
+    }
+}

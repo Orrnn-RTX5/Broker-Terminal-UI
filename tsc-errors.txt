@@ -1,0 +1,10 @@
+src/components/dock/DockContainer.tsx(187,7): error TS2552: Cannot find name 'setDropTargetId'. Did you mean 'dropTargetId'?
+src/components/dock/DockContainer.tsx(193,9): error TS2552: Cannot find name 'setCompassDir'. Did you mean 'compassDir'?
+src/components/dock/DockContainer.tsx(232,9): error TS2552: Cannot find name 'setDropTargetId'. Did you mean 'dropTargetId'?
+src/components/dock/DockContainer.tsx(233,9): error TS2552: Cannot find name 'setCompassDir'. Did you mean 'compassDir'?
+src/components/dock/DockContainer.tsx(299,41): error TS2552: Cannot find name 'setCompassDir'. Did you mean 'compassDir'?
+src/components/dock/DockContainer.tsx(419,39): error TS2552: Cannot find name 'setCompassDir'. Did you mean 'compassDir'?
+src/components/dock/DockContainer.tsx(450,31): error TS2552: Cannot find name 'setCompassDir'. Did you mean 'compassDir'?
+src/components/dock/DockContainer.tsx(476,35): error TS2552: Cannot find name 'setCompassDir'. Did you mean 'compassDir'?
+src/components/dock/DockContainer.tsx(547,13): error TS2322: Type '{ targetPanelId: string; hoveredDir: string; onHoverChange: (dir: string) => void; }' is not assignable to type 'IntrinsicAttributes & { targetPanelId: string; hoveredDir: string; }'.
+  Property 'onHoverChange' does not exist on type 'IntrinsicAttributes & { targetPanelId: string; hoveredDir: string; }'.

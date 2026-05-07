@@ -1,0 +1,41 @@
+[33mcommit 3154892c46160cedec73c343d525ee3ecd9cb245[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Flexy Markets <flexymarketspremium@gmail.com>
+Date:   Thu Feb 26 08:42:07 2026 +0530
+
+    oj
+
+[33mcommit cf5a3fb2e81d747c10f15c643383913b5d83067d[m
+Author: Flexy Markets <flexymarketspremium@gmail.com>
+Date:   Wed Feb 25 23:56:54 2026 +0530
+
+    feat: implement magnetic docking system
+
+[33mcommit ab045f320f402ccfee6d7bd65d8127dd46d262c5[m
+Author: Raj Halder <rajhalder.dev@gmail.com>
+Date:   Wed Feb 25 19:33:05 2026 +0530
+
+    draw-tools
+
+[33mcommit 19534aa2fff90f4883ea8d3a3a84a3205f9c68bc[m
+Author: Raj Halder <rajhalder.dev@gmail.com>
+Date:   Wed Feb 25 18:17:41 2026 +0530
+
+    chat
+
+[33mcommit 69b0169f23e52c2ca8f340d9dd3a32fc87465ecc[m
+Author: Raj Halder <rajhalder.dev@gmail.com>
+Date:   Tue Feb 24 19:37:04 2026 +0530
+
+    account-summry
+
+[33mcommit bff0e5259286f8b940dce6cd2d7a5bfefcf962c6[m
+Author: Raj Halder <rajhalder.dev@gmail.com>
+Date:   Mon Feb 23 19:21:41 2026 +0530
+
+    funcationaly-fix
+
+[33mcommit a1148a346de5e6fa3bcc4db931855622a9d70b1a[m
+Author: Animesh-singha <singhaanimesh216@gmail.com>
+Date:   Sat Feb 21 16:09:42 2026 +0530
+
+    first commit

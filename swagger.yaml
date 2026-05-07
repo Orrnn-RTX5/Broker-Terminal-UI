@@ -1,0 +1,758 @@
+openapi: 3.0.3
+info:
+  title: Trading Engine RTX - API Documentation
+  description: |
+    Complete REST API documentation for Trading Engine RTX.
+
+    ## Architecture
+    - **Gateway Backend** (Port 7999) - Main API entry point
+    - **FIX API Backend** (Port 8081) - FIX protocol market data
+    - **MT5 Sync C++ Backend** (Port 8088) - MT5 trade execution
+
+    ## Authentication
+    Use the `/api/login` endpoint to get a Bearer token, then include it in all protected requests:
+    `Authorization: Bearer <your_token>`
+  version: 1.0.0
+  contact:
+    name: RTX Trading Engine
+
+# Apply BearerAuth to ALL endpoints by default
+# Public endpoints override this with: security: []
+security:
+  - BearerAuth: []
+
+servers:
+  - url: http://localhost:7999
+    description: Gateway Backend (Main)
+  - url: http://localhost:8081
+    description: FIX API Backend
+  - url: http://localhost:8088
+    description: MT5 Sync C++ Backend
+
+tags:
+  - name: Health
+    description: Service health check endpoints
+  - name: Auth
+    description: Authentication - Login, Logout, Refresh
+  - name: MT5 Account
+    description: MT5 account management (create accounts, get groups)
+  - name: Market Data
+    description: Public market data - symbols, quotes, candles, ticks
+  - name: Account
+    description: Trading account info - balance, history, equity
+  - name: Trading
+    description: Order and position management
+  - name: MT5 Sync Direct
+    description: Direct MT5 Sync C++ backend endpoints (port 8088)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: "900767"
+        password:
+          type: string
+          example: "47Y$Gj&0YS@T"
+
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        refresh_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            username:
+              type: string
+            email:
+              type: string
+            role:
+              type: string
+              example: "trader"
+
+    CreateAccountRequest:
+      type: object
+      required: [name, group]
+      properties:
+        name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          example: "john@example.com"
+        phone:
+          type: string
+          example: "+919876543210"
+        country:
+          type: string
+          example: "India"
+        city:
+          type: string
+          example: "Mumbai"
+        group:
+          type: string
+          example: "demo\\STD"
+        leverage:
+          type: integer
+          example: 100
+
+    CreateAccountResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        account:
+          type: object
+          properties:
+            login:
+              type: integer
+              example: 900789
+            master_password:
+              type: string
+              example: "Ux@O@w03Q7N@"
+            investor_password:
+              type: string
+            group:
+              type: string
+            server:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+
+    CreateOrderRequest:
+      type: object
+      required: [symbol, type, side, quantity]
+      properties:
+        symbol:
+          type: string
+          example: "EURUSD"
+        type:
+          type: string
+          enum: [market]
+          example: "market"
+        side:
+          type: string
+          enum: [buy, sell]
+          example: "buy"
+        quantity:
+          type: number
+          example: 0.01
+        price:
+          type: number
+          example: 0
+        account_login:
+          type: integer
+          example: 900767
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        symbol:
+          type: string
+        type:
+          type: string
+        side:
+          type: string
+        quantity:
+          type: number
+        price:
+          type: number
+        status:
+          type: string
+          enum: [pending, filled, cancelled, rejected]
+        created_at:
+          type: string
+          format: date-time
+        mt5_order_id:
+          type: integer
+        mt5_deal_id:
+          type: integer
+
+    Position:
+      type: object
+      properties:
+        id:
+          type: string
+        symbol:
+          type: string
+        side:
+          type: string
+          enum: [long, short]
+        quantity:
+          type: number
+        open_price:
+          type: number
+        current_price:
+          type: number
+        unrealized_pl:
+          type: number
+        opened_at:
+          type: string
+          format: date-time
+
+    AccountSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        balance:
+          type: number
+          example: 10300.25
+        equity:
+          type: number
+        margin_used:
+          type: number
+        margin_available:
+          type: number
+        unrealized_pl:
+          type: number
+        realized_pl:
+          type: number
+        open_positions:
+          type: integer
+        pending_orders:
+          type: integer
+        currency:
+          type: string
+          example: "USD"
+        leverage:
+          type: integer
+          example: 100
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "healthy"
+        timestamp:
+          type: integer
+        version:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+paths:
+
+  # ===== HEALTH =====
+  /health:
+    get:
+      tags: [Health]
+      summary: Gateway Health Check
+      description: Check if Gateway Backend (port 7999) is running
+      security: []   # Public - no token needed
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # ===== AUTH =====
+  /api/login:
+    post:
+      tags: [Auth]
+      summary: Login - Get Bearer Token
+      security: []   # Public - this is how you GET the token
+      description: |
+        Login with credentials to get access_token.
+        Use the token in `Authorization: Bearer <token>` header for all protected endpoints.
+
+        **Default credentials (from .env):**
+        - username: `900767`
+        - password: `47Y$Gj&0YS@T`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful - contains access_token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/logout:
+    post:
+      tags: [Auth]
+      summary: Logout
+      security: []   # Public - users can logout without a valid token
+      responses:
+        '200':
+          description: Logged out successfully
+
+  /api/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh Access Token
+      security: []   # Public - used to renew an expired access token
+      description: Get a new access_token using a refresh_token (before expiry)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New access_token returned
+        '401':
+          description: Invalid or expired refresh token
+
+  # ===== MT5 ACCOUNT =====
+  /api/mt5/status:
+    get:
+      tags: [MT5 Account]
+      summary: MT5 Connection Status
+      description: Check if the C++ backend is connected to the MT5 broker server
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: MT5 connection status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected:
+                    type: boolean
+                  address:
+                    type: string
+                  login:
+                    type: integer
+                  last_error:
+                    type: string
+
+  /api/mt5/groups:
+    get:
+      tags: [MT5 Account]
+      summary: Get All MT5 Groups
+      description: Get list of all available account groups from the broker (demo, live, etc.)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: "demo\\STD"
+                        currency:
+                          type: string
+                          example: "USD"
+
+  /api/mt5/account/create:
+    post:
+      tags: [MT5 Account]
+      summary: Create New MT5 Account (Register)
+      description: |
+        Creates a new trading account in the MT5 broker terminal using Manager API.
+        **No token required** — this is the new user registration endpoint.
+
+        Returns **Login ID**, **Master Password** (for trading), and **Investor Password** (read-only).
+      security: []   # Public - new user registration, no token needed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+      responses:
+        '200':
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAccountResponse'
+        '500':
+          description: Failed to create account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ===== MARKET DATA (PROTECTED) =====
+  /api/symbols:
+    get:
+      tags: [Market Data]
+      summary: Get All Trading Symbols
+      description: Returns list of all available trading symbols.
+      responses:
+        '200':
+          description: List of symbols
+
+  /api/quotes/{symbol}:
+    get:
+      tags: [Market Data]
+      summary: Get Live Quote
+      description: Get real-time bid/ask price for a trading symbol
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+            example: EURUSD
+      responses:
+        '200':
+          description: Live quote data
+
+  /api/candles/{symbol}:
+    get:
+      tags: [Market Data]
+      summary: Get Historical Candles (OHLCV)
+      description: Get historical OHLCV candle data for charting
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+            example: EURUSD
+        - name: timeframe
+          in: query
+          schema:
+            type: string
+            example: H1
+            enum: [M1, M5, M15, M30, H1, H4, D1, W1, MN]
+        - name: count
+          in: query
+          schema:
+            type: integer
+            example: 100
+      responses:
+        '200':
+          description: Candle data array
+
+  /api/ticks/{symbol}:
+    get:
+      tags: [Market Data]
+      summary: Get Tick Data
+      description: Get raw tick data for a symbol
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+            example: EURUSD
+      responses:
+        '200':
+          description: Tick data array
+
+  # ===== ACCOUNT INFO =====
+  /api/account/summary:
+    get:
+      tags: [Account]
+      summary: Account Summary
+      description: Get current account balance, equity, margin, open positions count
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Account summary data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSummary'
+
+  /api/account/transactions:
+    get:
+      tags: [Account]
+      summary: Transaction History
+      description: Get list of all account transactions (deposits, withdrawals, trades, fees)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          description: Filter by transaction type
+          schema:
+            type: string
+            enum: [deposit, withdrawal, trade, fee, commission]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 50
+      responses:
+        '200':
+          description: Transaction list
+
+  /api/account/equity-history:
+    get:
+      tags: [Account]
+      summary: Equity History (Chart Data)
+      description: Get equity curve data for portfolio performance chart
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [1d, 7d, 30d, 90d, 1y]
+            example: 30d
+        - name: interval
+          in: query
+          schema:
+            type: string
+            example: 1d
+      responses:
+        '200':
+          description: Equity history with statistics
+
+  # ===== TRADING =====
+  /api/orders:
+    get:
+      tags: [Trading]
+      summary: Get All Orders
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  count:
+                    type: integer
+
+    post:
+      tags: [Trading]
+      summary: Place Market Order
+      description: |
+        Place a market buy or sell order. The order is routed through MT5 Sync C++ backend for execution.
+
+        **Note:** Only `market` order type is currently supported.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order placed and filled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Invalid request or unsupported order type
+        '502':
+          description: MT5 execution failed
+
+  /api/orders/{id}:
+    delete:
+      tags: [Trading]
+      summary: Cancel Order
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order cancelled
+        '404':
+          description: Order not found
+
+  /api/positions:
+    get:
+      tags: [Trading]
+      summary: Get Open Positions
+      description: Get all currently open positions with unrealized P&L
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of open positions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  positions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Position'
+                  count:
+                    type: integer
+
+  /api/positions/{id}/close:
+    post:
+      tags: [Trading]
+      summary: Close Position
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Position closed with realized P&L
+        '404':
+          description: Position not found
+
+  # ===== MT5 SYNC DIRECT =====
+  /api/v1/trades/execute:
+    post:
+      tags: [MT5 Sync Direct]
+      summary: Direct Execute Trade (Port 8088)
+      description: |
+        Execute a trade directly on the MT5 Sync C++ backend (port 8088).
+        Bypasses the Gateway backend. No authentication required.
+
+        **Server:** http://localhost:8088
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_login, symbol, side, volume_lots]
+              properties:
+                account_login:
+                  type: integer
+                  example: 900767
+                symbol:
+                  type: string
+                  example: "EURUSD"
+                side:
+                  type: string
+                  enum: [buy, sell]
+                volume_lots:
+                  type: number
+                  example: 0.01
+                price:
+                  type: number
+                  example: 0
+                comment:
+                  type: string
+                  example: "RTX sync trade"
+                client_request_id:
+                  type: string
+                  example: "test-001"
+      responses:
+        '200':
+          description: Trade executed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  retcode:
+                    type: integer
+                  retcode_text:
+                    type: string
+                  result_order:
+                    type: integer
+                  result_deal:
+                    type: integer
+                  result_price:
+                    type: number
+
+  /api/v1/mt5/account/create:
+    post:
+      tags: [MT5 Sync Direct]
+      summary: Direct Create MT5 Account (Port 8088)
+      security: []   # Hits C++ backend directly on port 8088 — no gateway auth
+      description: Create MT5 account directly via C++ backend (port 8088). No auth needed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+      responses:
+        '200':
+          description: Account created
+
+  /api/v1/mt5/groups:
+    get:
+      tags: [MT5 Sync Direct]
+      summary: Direct Get Groups (Port 8088)
+      security: []   # Hits C++ backend directly on port 8088 — no gateway auth
+      responses:
+        '200':
+          description: List of groups
+
+  /api/v1/mt5/status:
+    get:
+      tags: [MT5 Sync Direct]
+      summary: Direct MT5 Status (Port 8088)
+      security: []   # Hits C++ backend directly on port 8088 — no gateway auth
+      responses:
+        '200':
+          description: MT5 connection status
