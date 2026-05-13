@@ -11,11 +11,11 @@
   if (!isElectron) return; // Browser/dev — leave console untouched
 
   // Silence all console methods
-  const noop = () => {};
+  const noop = () => { };
   (window as any).__originalConsole = { ...console };
-  (console as any).log   = noop;
-  (console as any).info  = noop;
-  (console as any).warn  = noop;
+  (console as any).log = noop;
+  (console as any).info = noop;
+  (console as any).warn = noop;
   (console as any).error = noop;
   (console as any).debug = noop;
   (console as any).trace = noop;

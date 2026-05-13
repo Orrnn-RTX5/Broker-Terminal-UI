@@ -57,7 +57,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                 );
             }
             return (
-                <div className="flex-1 w-full h-full min-h-0 min-w-0 relative flex flex-col group/chartpanel"
+                <div className="rtx-chart-panel flex-1 w-full h-full min-h-0 min-w-0 relative flex flex-col group/chartpanel"
                     style={{ background: '#0e0e12', border: '1px solid #28282e', borderRadius: 6, overflow: 'hidden', transition: 'border-color 0.15s, background 0.15s' }}
                     onMouseEnter={e => (e.currentTarget.style.borderColor = '#5a5a65')}
                     onMouseLeave={e => (e.currentTarget.style.borderColor = '#28282e')}
@@ -80,7 +80,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                         }
                     }}
                 >
-                    <div className="flex-1 w-full h-full relative" style={{ pointerEvents: 'auto' }}>
+                    <div className="rtx-chart-panel__canvas flex-1 w-full h-full relative" style={{ pointerEvents: 'auto' }}>
                         <ErrorBoundary>
                             <TradingChart
                                 key={`chart-${panel.id}-${chartSymbol}`}
@@ -96,7 +96,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         }
         if (panel.component === 'MarketWatch') {
             return (
-                <div className="flex-1 w-full h-full min-h-0 min-w-0 relative bg-[#131316] flex flex-col">
+                <div className="rtx-panel-shell flex-1 w-full h-full min-h-0 min-w-0 relative bg-[#131316] flex flex-col">
                     <ErrorBoundary>
                         <MarketWatchPanel
                             className="flex-1 min-h-0 min-w-0 w-full h-full"
@@ -110,7 +110,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         }
         if (panel.component === 'Navigator') {
             return (
-                <div className="flex-1 w-full h-full min-h-0 min-w-0 relative bg-[#131316] flex flex-col">
+                <div className="rtx-panel-shell flex-1 w-full h-full min-h-0 min-w-0 relative bg-[#131316] flex flex-col">
                     <ErrorBoundary>
                         <NavigatorPanel />
                     </ErrorBoundary>
@@ -119,7 +119,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         }
         if (panel.component === 'Terminal') {
             return (
-                <div className="flex-1 w-full h-full min-h-0 min-w-0 relative bg-[#131316] flex flex-col overflow-hidden">
+                <div className="rtx-panel-shell flex-1 w-full h-full min-h-0 min-w-0 relative bg-[#131316] flex flex-col overflow-hidden">
                     <ErrorBoundary>
                         <BottomDock
                             height="100%"
@@ -134,8 +134,8 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         }
         if (panel.component === 'EmptyChartArea') {
             return (
-                <div 
-                    className="flex-1 w-full h-full min-h-0 min-w-0 relative bg-[#0e0e12] flex items-center justify-center"
+                <div
+                    className="rtx-empty-chart-area flex-1 w-full h-full min-h-0 min-w-0 relative bg-[#0e0e12] flex items-center justify-center"
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => {
                         e.preventDefault();
@@ -174,7 +174,7 @@ const DockWorkspaceClean: React.FC<{
     useEffect(() => {
         const handleResetLayout = () => resetToDefaultLayout();
         window.addEventListener('resetLayout', handleResetLayout);
-        
+
         const unsubCommandBus = subscribe((cmd) => {
             if (cmd.type === 'TILE_WINDOWS') {
                 tileWindows();
@@ -205,7 +205,7 @@ const DockWorkspaceClean: React.FC<{
     layout.floatingPanels.forEach(collectCharts);
 
     return (
-        <div className="flex-1 w-full h-full relative overflow-hidden flex flex-col" style={{ background: '#0d0d11', padding: '6px', gap: '6px' }}>
+        <div className="rtx-dock-workspace flex-1 w-full h-full relative overflow-hidden flex flex-col" style={{ background: '#0d0d11', padding: '6px', gap: '6px' }}>
             {/* Reset Layout Button */}
             {isLayoutEmpty && (
                 <button

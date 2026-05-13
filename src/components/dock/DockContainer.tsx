@@ -69,7 +69,7 @@ const CompassRose: React.FC<{
   useEffect(() => {
     let animationFrameId: number;
     const el = document.querySelector(`[data-dock-panel="${targetPanelId}"]`);
-    
+
     if (!el) return;
 
     const updateRect = () => {
@@ -140,7 +140,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
   renderPanel,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
 
   const {
     layout,
@@ -176,7 +176,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
   useEffect(() => {
     if (!isRoot) return;
     if (dragState !== 'dragging') {
-            dockIntent.targetPanelId = null;
+      dockIntent.targetPanelId = null;
       dockIntent.direction = null;
       return;
     }

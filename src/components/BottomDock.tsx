@@ -136,7 +136,7 @@ export function BottomDock({
 
     return (
         <div
-            className="flex-1 bg-[#131316] border-t border-zinc-700 flex flex-col relative font-sans text-[12px] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] select-none min-h-0"
+            className="rtx-bottom-dock flex-1 bg-[#131316] border-t border-zinc-700 flex flex-col relative font-sans text-[12px] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] select-none min-h-0"
             style={{ height: height !== undefined ? (typeof height === 'number' ? `${height}px` : height) : '100%', width: '100%', zIndex: 30 }}
         >
             {/* Resize Handle */}
@@ -148,7 +148,7 @@ export function BottomDock({
             )}
 
             {/* Content Area */}
-            <div className="flex-1 overflow-hidden relative bg-[#131316] tabular-nums flex flex-col">
+            <div className="rtx-bottom-dock__content flex-1 overflow-hidden relative bg-[#131316] tabular-nums flex flex-col">
                 {activeTab === 'Toolbox' && (
                     <ToolboxTab />
                 )}
@@ -196,7 +196,7 @@ export function BottomDock({
             </div>
 
             {/* Bottom Tabs */}
-            <div className="flex items-center bg-[#131316] border-t border-zinc-700 select-none overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-700">
+            <div className="rtx-bottom-dock__tabs flex items-center bg-[#131316] border-t border-zinc-700 select-none overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-700">
                 {TABS.map((tab) => (
                     <button
                         key={tab.id}

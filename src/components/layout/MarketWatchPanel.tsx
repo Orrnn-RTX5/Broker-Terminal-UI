@@ -534,7 +534,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
 
       <div
         ref={containerRef}
-        className={className}
+        className={`rtx-market-watch ${className ?? ''}`}
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -548,7 +548,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         }}
       >
         {/* ── Header ──────────────────────────────────────────── */}
-        <div style={{
+        <div className="rtx-market-watch__header" style={{
           padding: '8px 12px 7px',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
           display: 'flex',
@@ -595,7 +595,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         </div>
 
         {/* ── Search / Add Symbol ──────────────────────────────── */}
-        <div style={{ padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)', position: 'relative', flexShrink: 0 }} ref={dropdownRef}>
+        <div className="rtx-market-watch__search" style={{ padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)', position: 'relative', flexShrink: 0 }} ref={dropdownRef}>
           <div style={{ position: 'relative' }}>
             {/* Search icon */}
             <svg
@@ -631,7 +631,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
 
           {/* Dropdown */}
           {showDropdown && (
-            <div style={{
+            <div className="rtx-market-watch__dropdown mw-scrollbar" style={{
               position: 'absolute',
               left: 10, right: 10,
               top: '100%',
@@ -643,7 +643,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               zIndex: 50,
               maxHeight: 220,
               overflowY: 'auto',
-            }} className="mw-scrollbar">
+            }}>
               {isLoadingSymbols ? (
                 <div style={{ padding: '10px 12px', fontSize: 11, color: '#50505a' }}>Loading…</div>
               ) : filteredSymbols.length === 0 ? (
@@ -689,13 +689,13 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
 
         {/* ── Symbols Panel (Ctrl+U) ───────────────────────────── */}
         {showSymbolsPanel && (
-          <div style={{
+          <div className="rtx-market-watch__symbols-panel mw-scrollbar" style={{
             borderBottom: '1px solid rgba(255,255,255,0.05)',
             background: '#0d0f18',
             maxHeight: 140,
             overflowY: 'auto',
             flexShrink: 0,
-          }} className="mw-scrollbar">
+          }}>
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '4px 10px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)',
@@ -727,7 +727,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         )}
 
         {/* ── Table & Column Headers ───────────────────────────── */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }} className="mw-scrollbar">
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }} className="rtx-market-watch__table mw-scrollbar">
           {rows.length === 0 ? (
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -795,7 +795,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         </div>
 
         {/* ── Footer: add symbol hint ──────────────────────────── */}
-        <div style={{
+        <div className="rtx-market-watch__footer" style={{
           padding: '5px 10px',
           borderTop: '1px solid rgba(255,255,255,0.04)',
           display: 'flex',

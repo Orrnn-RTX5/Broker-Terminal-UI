@@ -313,9 +313,32 @@ const MainToolbar = ({
     // User dropdown state
     const [showUserMenu, setShowUserMenu] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
+    const [advancedViewEnabled, setAdvancedViewEnabled] = useState(() => {
+        try {
+            return localStorage.getItem('rtx5-advanced-view-enabled') === 'true';
+        } catch {
+            return false;
+        }
+    });
     const userMenuRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const accountId = useAppStore((s) => s.accountId) || '---';
+
+    useEffect(() => {
+        const root = document.documentElement;
+        root.classList.toggle('rtx-advanced-view', advancedViewEnabled);
+        root.classList.toggle('rtx-skin-untitled-light', advancedViewEnabled);
+
+        try {
+            localStorage.setItem('rtx5-advanced-view-enabled', String(advancedViewEnabled));
+        } catch {
+            // Ignore storage failures; the visual toggle should still work for this session.
+        }
+
+        return () => {
+            root.classList.remove('rtx-advanced-view', 'rtx-skin-untitled-light');
+        };
+    }, [advancedViewEnabled]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -623,6 +646,12 @@ const MainToolbar = ({
             {/* Group 10: Far right controls */}
             <MT5Group>
                 <MT5Btn icon={<Search size={15} strokeWidth={1.5} />} title="Search" />
+                <MT5Btn
+                    icon={<LayoutGrid size={15} strokeWidth={1.5} />}
+                    title="Advanced View"
+                    active={advancedViewEnabled}
+                    onClick={() => setAdvancedViewEnabled((enabled) => !enabled)}
+                />
 
                 {/* User Icon with Logout Dropdown */}
                 <div className="relative" ref={userMenuRef}>

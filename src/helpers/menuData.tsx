@@ -12,11 +12,11 @@ export type MenuItem = {
     category?: 'trend' | 'oscillator' | 'volume' | 'bill-williams' | 'custom' | 'expert' | 'script';
 };
 
-// Helper to create simple label items
+
 const item = (label: string, shortcut?: string, icon?: React.ReactNode): MenuItem => ({ label, shortcut, icon });
 const divider = (): MenuItem => ({ label: '', divider: true });
 
-// --- INDICATORS STRUCTURE ---
+
 
 const trendIndicators: MenuItem[] = [
     item('Adaptive Moving Average'),

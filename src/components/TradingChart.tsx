@@ -6,7 +6,7 @@
  * - Proper candle aggregation
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   createChart,
   createSeriesMarkers,
@@ -209,6 +209,33 @@ export const TradingChart = React.memo(function TradingChart({
   const chartSettings = useChartSettingsStore(state =>
     state.symbolProperties[symbol] || state.globalProperties
   );
+  const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
+    if (typeof document === 'undefined') return false;
+    const root = document.documentElement;
+    return root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light');
+  });
+  const chartColors = useMemo(() => isAdvancedUntitledLight
+    ? {
+      ...chartSettings.colors,
+      background: '#ffffff',
+      foreground: '#475467',
+      grid: '#e5e7eb',
+    }
+    : chartSettings.colors, [chartSettings.colors, isAdvancedUntitledLight]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const syncSkinState = () => {
+      setIsAdvancedUntitledLight(
+        root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light')
+      );
+    };
+    syncSkinState();
+    const observer = new MutationObserver(syncSkinState);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   const normalizeChartTimeToUnixSeconds = useCallback((time: Time): number | null => {
     if (typeof time === 'number') {
       return time;
@@ -295,25 +322,25 @@ export const TradingChart = React.memo(function TradingChart({
     const chart = createChart(containerRef.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: chartSettings.colors.background },
-        textColor: chartSettings.colors.foreground,
+        background: { type: ColorType.Solid, color: chartColors.background },
+        textColor: chartColors.foreground,
         attributionLogo: false,
       },
       grid: {
         vertLines: {
-          color: chartSettings.showGrid ? chartSettings.colors.grid : 'transparent',
+          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
           style: 2
         },
         horzLines: {
-          color: chartSettings.showGrid ? chartSettings.colors.grid : 'transparent',
+          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
           style: 2
         },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
         // Arrow/cursor is the default tool — hide crosshair lines until a drawing tool is selected
-        vertLine: { visible: false, color: chartSettings.colors.foreground, width: 1, style: 2, labelVisible: false },
-        horzLine: { visible: false, color: chartSettings.colors.foreground, width: 1, style: 2, labelVisible: false },
+        vertLine: { visible: false, color: chartColors.foreground, width: 1, style: 2, labelVisible: false },
+        horzLine: { visible: false, color: chartColors.foreground, width: 1, style: 2, labelVisible: false },
       },
       handleScroll: {
         vertTouchDrag: false,
@@ -328,12 +355,12 @@ export const TradingChart = React.memo(function TradingChart({
         pinch: false,
       },
       rightPriceScale: {
-        borderColor: chartSettings.colors.foreground,
+        borderColor: chartColors.foreground,
         scaleMargins: { top: 0.1, bottom: 0.2 },
         autoScale: !chartSettings.scaleFixOneToOne,
       },
       timeScale: {
-        borderColor: chartSettings.colors.foreground,
+        borderColor: chartColors.foreground,
         timeVisible: true,
         secondsVisible: false,
         tickMarkMaxCharacterLength: getTradingChartTickMarkCharacterLength(timeframe),
@@ -1401,20 +1428,20 @@ export const TradingChart = React.memo(function TradingChart({
     // Apply global layout and grid
     chart.applyOptions({
       layout: {
-        background: { type: ColorType.Solid, color: chartSettings.colors.background },
-        textColor: chartSettings.colors.foreground,
+        background: { type: ColorType.Solid, color: chartColors.background },
+        textColor: chartColors.foreground,
       },
       grid: {
         vertLines: {
-          color: chartSettings.showGrid ? chartSettings.colors.grid : 'transparent',
+          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
         },
         horzLines: {
-          color: chartSettings.showGrid ? chartSettings.colors.grid : 'transparent',
+          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
         },
       },
       crosshair: {
-        vertLine: { color: chartSettings.colors.foreground },
-        horzLine: { color: chartSettings.colors.foreground },
+        vertLine: { color: chartColors.foreground },
+        horzLine: { color: chartColors.foreground },
       },
       handleScroll: {
         pressedMouseMove: !chartSettings.chartAutoScroll,
@@ -1424,11 +1451,11 @@ export const TradingChart = React.memo(function TradingChart({
         axisDoubleClickReset: { time: false, price: true },
       },
       rightPriceScale: {
-        borderColor: chartSettings.colors.foreground,
+        borderColor: chartColors.foreground,
         autoScale: !chartSettings.scaleFixOneToOne,
       },
       timeScale: {
-        borderColor: chartSettings.colors.foreground,
+        borderColor: chartColors.foreground,
       },
     });
 
@@ -1464,7 +1491,7 @@ export const TradingChart = React.memo(function TradingChart({
       });
     }
 
-  }, [chartSettings, chartType]);
+  }, [chartSettings, chartColors, chartType]);
 
   // getTimeframeSeconds is imported from candleAggregationService (module scope)
   // so it is never a stale closure value after a timeframe switch.
@@ -3584,7 +3611,7 @@ export const TradingChart = React.memo(function TradingChart({
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div
-      className="relative w-full h-full bg-[#0d0d0d]"
+      className="rtx-chart-wrapper relative w-full h-full bg-[#0d0d0d]"
       data-cursor="select"
       onContextMenu={handleContextMenu}
     >
@@ -3592,12 +3619,12 @@ export const TradingChart = React.memo(function TradingChart({
       {/* ── Inline Text Input Overlay (for text drawing tool) ── */}
       {textInputOverlay && (
         <div
-          className="fixed z-[9999] flex flex-col gap-1 p-2 rounded shadow-2xl"
+          className="rtx-chart-text-input-popover fixed z-[9999] flex flex-col gap-1 p-2 rounded shadow-2xl"
           style={{
             left: textInputOverlay.x,
             top: textInputOverlay.y,
-            background: '#18181b',
-            border: '1px solid #3f3f46',
+            background: 'var(--rtx-chart-text-input-bg, #18181b)',
+            border: '1px solid var(--rtx-chart-text-input-border, #3f3f46)',
             transform: 'translate(-50%, -120%)',
             minWidth: 180,
           }}

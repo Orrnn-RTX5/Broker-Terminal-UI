@@ -183,11 +183,11 @@ export const NavigatorPanel: React.FC = () => {
     ];
 
     return (
-        <div className="flex flex-col h-full bg-[#131316] text-zinc-300 select-none border-r border-zinc-700">
-            <div className="px-2 py-1 bg-[#191a1e] border-b border-zinc-700 text-xs font-bold text-zinc-400 uppercase tracking-wider">
+        <div className="navigator-panel flex flex-col h-full bg-[#131316] text-zinc-300 select-none border-r border-zinc-700">
+            <div className="navigator-panel__header px-2 py-1 bg-[#191a1e] border-b border-zinc-700 text-xs font-bold text-zinc-400 uppercase tracking-wider">
                 Navigator
             </div>
-            <div className="flex-1 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-zinc-700">
+            <div className="navigator-panel__body flex-1 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-zinc-700">
                 {/* Accounts */}
                 <ContextMenu items={getGeneralAccountContextMenuItems()}>
                     <TreeItem label="Accounts" icon={<Icon name="user" size="sm" />} defaultOpen>
@@ -335,13 +335,13 @@ function TreeItem({
     const hasChildren = React.Children.count(children) > 0;
 
     return (
-        <div className="relative" style={{ paddingLeft: 12 }}>
+        <div className="navigator-tree-item relative" style={{ paddingLeft: 12 }}>
             {/* Vertical dashed line connecting siblings - hidden for last item */}
             {!isLast && (
                 <div
-                    className="absolute top-0 left-[5px] w-px"
+                    className="navigator-tree-item__line absolute top-0 left-[5px] w-px"
                     style={{
-                        borderLeft: '1px dashed #555',
+                        borderLeft: '1px dashed var(--navigator-tree-line, #555)',
                         height: '100%',
                     }}
                 />
@@ -349,9 +349,9 @@ function TreeItem({
             {/* Short vertical line for last item (only to the branch point) */}
             {isLast && (
                 <div
-                    className="absolute top-0 left-[5px] w-px"
+                    className="navigator-tree-item__line absolute top-0 left-[5px] w-px"
                     style={{
-                        borderLeft: '1px dashed #555',
+                        borderLeft: '1px dashed var(--navigator-tree-line, #555)',
                         height: '11px',
                     }}
                 />
@@ -359,16 +359,16 @@ function TreeItem({
 
             {/* Horizontal connector line */}
             <div
-                className="absolute left-[5px]"
+                className="navigator-tree-item__line absolute left-[5px]"
                 style={{
                     top: '11px',
                     width: '8px',
-                    borderTop: '1px dashed #555',
+                    borderTop: '1px dashed var(--navigator-tree-line, #555)',
                 }}
             />
 
             <div
-                className="flex items-center gap-1.5 py-[1px] px-1 hover:bg-[#191a1e] cursor-pointer rounded-sm group select-none"
+                className="navigator-tree-item__row flex items-center gap-1.5 py-[1px] px-1 hover:bg-[#191a1e] cursor-pointer rounded-sm group select-none"
                 onClick={() => {
                     if (hasChildren) {
                         setIsOpen(!isOpen);
@@ -379,13 +379,13 @@ function TreeItem({
                 onDoubleClick={() => hasChildren && setIsOpen(!isOpen)}
             >
                 {hasChildren && (
-                    <span className="text-zinc-500 group-hover:text-zinc-300 flex-shrink-0" style={{ marginLeft: -2 }}>
+                    <span className="navigator-tree-item__chevron text-zinc-500 group-hover:text-zinc-300 flex-shrink-0" style={{ marginLeft: -2 }}>
                         {isOpen ? <Icon name="chevron-down" size="xs" /> : <Icon name="chevron-right" size="xs" />}
                     </span>
                 )}
                 {!hasChildren && <span className="w-3 flex-shrink-0" />}
-                <span className="text-zinc-400 group-hover:text-zinc-200 flex-shrink-0">{icon}</span>
-                <span className="text-[11px] font-medium text-zinc-300 group-hover:text-white truncate">{label}</span>
+                <span className="navigator-tree-item__icon text-zinc-400 group-hover:text-zinc-200 flex-shrink-0">{icon}</span>
+                <span className="navigator-tree-item__label text-[11px] font-medium text-zinc-300 group-hover:text-white truncate">{label}</span>
             </div>
             {isOpen && children && (
                 <div className="relative">
