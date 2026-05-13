@@ -8,6 +8,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { Wifi, RefreshCw, WifiOff, AlertTriangle, LogIn, Globe, Zap, Server } from 'lucide-react';
 import { LoginDialog } from './LoginDialog';
+import { useTradeFacingData } from '../hooks/useTradeFacingData';
 
 interface ConnectionStatusProps {
   wsRef?: React.RefObject<WebSocket | null>;
@@ -20,6 +21,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [lastUpdateAge, setLastUpdateAge] = useState(0);
+  const tradeStatus = useTradeFacingData(undefined, 15000);
 
   // Calculate last update age continuously
   useEffect(() => {
@@ -163,19 +165,19 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
             <div className="flex items-center justify-between px-3 py-[7px] hover:bg-[#2a3040] transition-colors cursor-default">
               <div className="flex items-center gap-2.5">
                 <Server size={14} className="text-zinc-400" />
-                <span>Access Server</span>
+                <span>Trade API</span>
               </div>
-              <span className={`text-[10px] font-mono ${latencyMs && latencyMs < 200 ? 'text-green-400' : 'text-yellow-400'}`}>
-                {latencyMs ? `${latencyMs.toFixed(2)} ms` : '---'}
+              <span className={`text-[10px] font-mono ${tradeStatus.error ? 'text-red-400' : 'text-green-400'}`}>
+                {tradeStatus.error ? 'REST error' : tradeStatus.loading ? 'syncing' : 'ready'}
               </span>
             </div>
             <div className="flex items-center justify-between px-3 py-[7px] hover:bg-[#2a3040] transition-colors cursor-default">
               <div className="flex items-center gap-2.5">
                 <Server size={14} className="text-zinc-400" />
-                <span>Access Server</span>
+                <span>Account Stream</span>
               </div>
-              <span className={`text-[10px] font-mono ${latencyMs && latencyMs < 200 ? 'text-green-400' : 'text-yellow-400'}`}>
-                {latencyMs ? `${(latencyMs * 1.08).toFixed(2)} ms` : '---'}
+              <span className={`text-[10px] font-mono ${tradeStatus.wsConnected ? 'text-green-400' : 'text-yellow-400'}`}>
+                {tradeStatus.wsConnected ? 'live' : 'polling'}
               </span>
             </div>
           </div>

@@ -6,14 +6,12 @@
 import { Icon } from './ui/Icon';
 import { PriceDisplay } from './ui/PriceDisplay';
 import { getSymbolDigits } from '../utils/symbolUtils';
-import { useState, useEffect, useMemo } from 'react';
-import { API_ENDPOINTS } from '../config/api';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import api from '../services/api';
-import mt5TradeService, { type MT5HistoryOrder } from '../services/mt5TradeService';
 import { useAppStore } from '../store/useAppStore';
 import { AlertManager } from './AlertManager';
 import { useAlertStore } from '../store/useAlertStore';
-import { useMT5Store } from '../store/useMT5Store';
+import { tradeGatewayApi } from '../api/tradeGateway';
 import { MarketSessions } from './MarketSessions';
 import { CorrelationMatrix } from './CorrelationMatrix';
 import { PositionsPanel } from './PositionsPanel';
@@ -63,8 +61,20 @@ interface Position {
     unrealizedPnL: number;
 }
 
-// HistoryTrade is now MT5HistoryOrder from the MT5 Sync API
-type HistoryTrade = MT5HistoryOrder;
+type HistoryTrade = {
+    order: number;
+    symbol: string;
+    type_text: string;
+    state_text: string;
+    volume_initial_lots: number;
+    price_order: number;
+    price_current: number;
+    price_sl: number;
+    price_tp: number;
+    time_setup: number;
+    time_done: number;
+    comment: string;
+};
 
 interface PendingOrder {
     id: string;
@@ -115,38 +125,78 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
 
     // Get account from store
     const account = useAppStore((state) => state.account);
+    const activeAccountIdRef = useRef(accountId);
+    const accountLogin = useMemo(() => {
+        const login = Number.parseInt(String(accountId || ''), 10);
+        return Number.isFinite(login) && login > 0 ? login : undefined;
+    }, [accountId]);
+    activeAccountIdRef.current = accountId;
 
     // Get alerts from alert store
     const { alerts } = useAlertStore();
 
+    const fetchPositions = useCallback(async (requestedAccountId = accountId) => {
+        const login = Number.parseInt(String(requestedAccountId || ''), 10);
+        if (!Number.isFinite(login) || login <= 0) {
+            if (activeAccountIdRef.current === requestedAccountId) setPositions([]);
+            return;
+        }
+
+        const data = await api.positions.getPositions(login);
+        if (activeAccountIdRef.current === requestedAccountId) {
+            setPositions((data || []) as unknown as Position[]);
+        }
+    }, [accountId]);
+
+    const fetchOrders = useCallback(async (requestedAccountId = accountId) => {
+        const login = Number.parseInt(String(requestedAccountId || ''), 10);
+        if (!Number.isFinite(login) || login <= 0) {
+            if (activeAccountIdRef.current === requestedAccountId) setOrders([]);
+            return;
+        }
+
+        const data = await api.orders.getPendingOrders(login);
+        if (activeAccountIdRef.current === requestedAccountId) {
+            setOrders((data || []) as unknown as PendingOrder[]);
+        }
+    }, [accountId]);
+
     // Fetch positions
     useEffect(() => {
-        const fetchPositions = async () => {
+        const refreshPositions = async () => {
             try {
-                // Must explicitly import here to avoid circular init if needed, or import at top
-                const { apiClient } = await import('../api/client');
-                const data = await apiClient.get<any>(`${API_ENDPOINTS.trading.positions}?accountId=${accountId}`);
-                setPositions(data || []);
+                await fetchPositions(accountId);
             } catch (err) {
                 console.error('[Toolbox] Failed to fetch positions:', err);
             }
         };
 
-        fetchPositions();
-        const interval = setInterval(fetchPositions, 10000); // Poll every 10s (rely on WS for real-time)
+        refreshPositions();
+        const interval = setInterval(refreshPositions, 10000); // Poll every 10s (rely on WS for real-time)
         return () => clearInterval(interval);
-    }, [accountId]);
+    }, [accountId, fetchPositions]);
 
-    // Fetch order history from MT5 Sync API (port 8088)
+    // Fetch order history from the trade API
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const login = parseInt(accountId, 10) || 0;
+                const login = accountLogin || 0;
                 if (!login) return;
-                const response = await mt5TradeService.getOrderHistory({ login });
-                if (response.success && Array.isArray(response.orders)) {
-                    setHistory(response.orders);
-                }
+                const response = await tradeGatewayApi.getOrderHistory(login);
+                setHistory(response.map((trade) => ({
+                    order: trade.id,
+                    symbol: trade.symbol,
+                    type_text: String(trade.side || trade.type || ''),
+                    state_text: trade.closeTime ? 'filled' : 'active',
+                    volume_initial_lots: Number(trade.volume) || 0,
+                    price_order: Number(trade.openPrice) || 0,
+                    price_current: Number(trade.closePrice ?? trade.openPrice) || 0,
+                    price_sl: 0,
+                    price_tp: 0,
+                    time_setup: trade.openTime ? Math.floor(new Date(trade.openTime).getTime() / 1000) : 0,
+                    time_done: trade.closeTime ? Math.floor(new Date(trade.closeTime).getTime() / 1000) : 0,
+                    comment: trade.type || '',
+                })));
             } catch (err) {
                 console.error('[Toolbox] Failed to fetch order history:', err);
             }
@@ -155,24 +205,22 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
         fetchHistory();
         const interval = setInterval(fetchHistory, 30000); // Refresh every 30s
         return () => clearInterval(interval);
-    }, [accountId]);
+    }, [accountLogin]);
 
     // Fetch pending orders
     useEffect(() => {
-        const fetchOrders = async () => {
+        const refreshOrders = async () => {
             try {
-                const { apiClient } = await import('../api/client');
-                const data = await apiClient.get<any>(`${API_ENDPOINTS.trading.orders}?accountId=${accountId}&status=PENDING`);
-                setOrders(data || []);
+                await fetchOrders(accountId);
             } catch (err) {
                 console.error('[Toolbox] Failed to fetch orders:', err);
             }
         };
 
-        fetchOrders();
-        const interval = setInterval(fetchOrders, 10000); // Poll every 10s
+        refreshOrders();
+        const interval = setInterval(refreshOrders, 10000); // Poll every 10s
         return () => clearInterval(interval);
-    }, [accountId]);
+    }, [accountId, fetchOrders]);
 
     // Alerts are managed by useAlertStore (Zustand) - no fetch needed
 
@@ -250,16 +298,14 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
         localStorage.setItem('toolbox-active-tab', activeTab);
     }, [activeTab]);
 
-    // Close position via MT5 Sync API (port 8088)
+    // Close position via the trade API
     const handleClosePosition = async (id: number) => {
+        const requestedAccountId = accountId;
         try {
-            const login = parseInt(accountId, 10) || 0;
-            await api.mt5.closePosition(id, undefined, login);
+            await api.positions.closePosition(String(id));
 
             // Refresh positions
-            const { apiClient } = await import('../api/client');
-            const data = await apiClient.get<any>(`${API_ENDPOINTS.trading.positions}?accountId=${accountId}`);
-            setPositions(data || []);
+            await fetchPositions(requestedAccountId);
 
             addJournalEntry(`Closed position #${id}`, 'SUCCESS');
         } catch (err) {
@@ -270,13 +316,12 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
 
     // Cancel order
     const handleCancelOrder = async (orderId: string) => {
+        const requestedAccountId = accountId;
         try {
-            const { apiClient } = await import('../api/client');
-            await apiClient.delete(`${API_ENDPOINTS.trading.cancelOrder(orderId)}`);
+            await api.orders.cancelOrder(orderId);
 
             // Refresh orders
-            const data = await apiClient.get<any>(`${API_ENDPOINTS.trading.orders}?accountId=${accountId}&status=PENDING`);
-            setOrders(data || []);
+            await fetchOrders(requestedAccountId);
 
             addJournalEntry(`Cancelled order #${orderId}`, 'SUCCESS');
         } catch (err) {

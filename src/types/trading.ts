@@ -3,6 +3,8 @@
  * Comprehensive type system for professional trading interface
  */
 
+export type * from './api';
+
 // Market Data Types
 export type MarketDepthEntry = {
   price: number;

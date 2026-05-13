@@ -47,6 +47,7 @@ export const TradePanel: React.FC<TradePanelProps> = ({ onClose, wsConnection })
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
   const [closingPositionId, setClosingPositionId] = useState<number | null>(null);
+  const [tradeError, setTradeError] = useState<string | null>(null);
   const closingTicketsRef = useRef<Set<number>>(new Set()); // synchronous guard vs double-click
 
   // Calculate live P&L for each position
@@ -131,31 +132,27 @@ export const TradePanel: React.FC<TradePanelProps> = ({ onClose, wsConnection })
     });
   };
 
-  // Close position via MT5 Sync API (port 8088)
+  // Close position via the trade API
   const handleClosePosition = async (positionId: number) => {
     if (!accountId) return;
+    const confirmed = await useConfirmStore.getState().showConfirm('Close Position', `Close position #${positionId}?`);
+    if (!confirmed) return;
     // Synchronous guard: prevents duplicate requests on rapid clicks
     if (closingTicketsRef.current.has(positionId)) return;
     closingTicketsRef.current.add(positionId);
     setClosingPositionId(positionId);
 
-    // Optimistically remove from both stores immediately
+    // Optimistically remove from the app store immediately
     useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== positionId));
-    import('../store/useMT5Store').then(({ useMT5Store }) => {
-        useMT5Store.setState(prev => ({ positions: prev.positions.filter(p => p.ticket !== positionId) }));
-    });
     window.dispatchEvent(new Event('rtx:force-refresh-positions'));
 
     try {
-      const login = parseInt(accountId, 10) || 0;
-      const result = await api.mt5.closePosition(positionId, undefined, login);
-      console.log('[TradePanel] Position closed via MT5 Sync:', result);
-
-      if (result?.success === false) {
-        console.error(`Failed to close position: ${result.retcode_text || result.message || 'Unknown error'}`);
-      }
+      await api.positions.closePosition(String(positionId));
+      console.log('[TradePanel] Position closed');
+      window.dispatchEvent(new Event('rtx:force-refresh-positions'));
     } catch (error: any) {
       console.error('Close position error:', error);
+      setTradeError(error?.message || 'Failed to close position');
     } finally {
       closingTicketsRef.current.delete(positionId);
       setClosingPositionId(null);
@@ -163,7 +160,7 @@ export const TradePanel: React.FC<TradePanelProps> = ({ onClose, wsConnection })
     }
   };
 
-  // Modify position SL/TP via MT5 API
+  // Modify position SL/TP via the trade API
   const handleModifyPosition = async () => {
     if (!accountId || !modifyingPosition) return;
 
@@ -171,13 +168,18 @@ export const TradePanel: React.FC<TradePanelProps> = ({ onClose, wsConnection })
     const tp = newTP ? parseFloat(newTP) : modifyingPosition.tp;
 
     try {
-      await api.mt5.modifyPosition(modifyingPosition.id, sl || 0, tp || 0);
+      await api.positions.modifyPosition(modifyingPosition.id, { price_sl: sl || 0, price_tp: tp || 0 });
+      useAppStore.getState().setPositions(useAppStore.getState().positions.map(p =>
+        p.id === modifyingPosition.id ? { ...p, sl: sl || 0, tp: tp || 0 } : p
+      ));
       setModifyDialogOpen(false);
       setModifyingPosition(null);
       setNewSL('');
       setNewTP('');
+      window.dispatchEvent(new Event('rtx:force-refresh-positions'));
     } catch (error: any) {
       console.error('Modify position error:', error);
+      setTradeError(error?.message || 'Failed to modify position');
     }
   };
 
@@ -247,6 +249,11 @@ export const TradePanel: React.FC<TradePanelProps> = ({ onClose, wsConnection })
 
       {/* Tab Content */}
       <div className="flex-1 overflow-hidden">
+        {tradeError && (
+          <div className="px-3 py-2 bg-red-950/50 border-b border-red-800 text-xs text-red-300">
+            {tradeError}
+          </div>
+        )}
         {activeTab === 'Trade' && (
           <TradeTab
             positions={enrichedPositions}

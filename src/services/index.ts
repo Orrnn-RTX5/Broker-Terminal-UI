@@ -1,6 +1,24 @@
 // Service exports
 export { default as api } from './api';
 export * from './api';
+export {
+  accountV2Api,
+  authV2Api,
+  brokerV2Api,
+  historyV2Api,
+  marketV2Api,
+  tradeApi,
+  tradingV2Api,
+  watchlistV2Api,
+  TradeWebSocketClient,
+  destroyTradeWebSocketClient,
+  getTradeWebSocketClient,
+} from './tradeApi';
+export type {
+  TradeSocketHandler,
+  TradeSocketOptions,
+  TradeSocketState,
+} from './tradeApi';
 
 export { historyDataManager } from './historyDataManager';
 export { chartDataService } from './chartDataService';

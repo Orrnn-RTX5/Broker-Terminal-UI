@@ -1,20 +1,90 @@
 import { apiClient } from './client';
-import { MT5_SYNC_URL } from '../config/api';
+import { API_HISTORY_BASE_URL, API_V2_BASE_URL } from '../config/api';
+
+const resolveV2BaseUrl = (baseUrl?: string): string => {
+  if (!baseUrl) return API_V2_BASE_URL;
+  const trimmed = baseUrl.replace(/\/$/, '');
+  return trimmed.endsWith('/api/v2') ? trimmed : `${trimmed}/api/v2`;
+};
+
+const resolveStoredLogin = (): number | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  const raw = localStorage.getItem('rtx_saved_username') || localStorage.getItem('rtx_last_login');
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const requireLogin = (login: unknown, context: string): number => {
+  const parsed = typeof login === 'number' ? login : Number.parseInt(String(login ?? ''), 10);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  throw new Error(`Missing account login for ${context}`);
+};
+
+const requireTicket = (ticket: unknown, context: string): number => {
+  const parsed = typeof ticket === 'number' ? ticket : Number.parseInt(String(ticket ?? ''), 10);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  throw new Error(`Missing ticket for ${context}`);
+};
+
+const normalizeSide = (side: string): 'buy' | 'sell' => side.toLowerCase() === 'sell' ? 'sell' : 'buy';
+
+const normalizeOrderPayload = (order: CreateOrderRequest): CreateOrderRequest & { login: number; side: 'buy' | 'sell'; volume: number } => {
+  const login = requireLogin(order.login ?? order.account_login, '/api/v2/orders');
+  const volume = order.volume ?? order.quantity;
+  if (!volume || volume <= 0) {
+    throw new Error('Missing order volume for /api/v2/orders');
+  }
+
+  const { account_login: _accountLogin, quantity: _quantity, sl, tp, type: _type, ...rest } = order;
+  return {
+    ...rest,
+    login,
+    side: normalizeSide(order.side),
+    volume,
+    price_sl: order.price_sl ?? sl,
+    price_tp: order.price_tp ?? tp,
+  };
+};
+
+const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderRequest & { login: number; side: 'buy' | 'sell' } => {
+  const login = requireLogin(order.login ?? order.account_login, '/api/v2/orders/pending');
+  const { account_login: _accountLogin, sl, tp, ...rest } = order;
+  return {
+    ...rest,
+    login,
+    side: normalizeSide(order.side),
+    type: order.type.toLowerCase() as PendingOrderRequest['type'],
+    price_sl: order.price_sl ?? sl,
+    price_tp: order.price_tp ?? tp,
+  };
+};
 
 // ====================
 // Types
 // ====================
 
 export interface LoginCredentials {
-  username: string;
+  username?: string;
+  email?: string;
+  login?: number;
   password: string;
+  broker_id?: string;
+  server?: string;
 }
 
 export interface LoginResponse {
-  access_token: string;
+  token?: string;
+  access_token?: string;
   refresh_token?: string;
   expires_at?: string;
-  user: User;
+  user?: User;
+  user_id?: string;
+  username?: string;
+  role?: string;
+  account_login?: number;
+  broker_id?: string;
+  broker_name?: string;
+  broker_server?: string;
 }
 
 export interface User {
@@ -28,6 +98,9 @@ export interface AccountSummary {
   id?: string;
   balance: number;
   equity: number;
+  margin?: number;
+  margin_free?: number;
+  margin_level?: number;
   margin_used?: number;
   margin_available?: number;
   unrealized_pl?: number;
@@ -54,36 +127,96 @@ export interface EquityHistoryPoint {
 }
 
 export interface Position {
-  id: string;
+  id?: string;
+  ticket?: number;
+  account_login?: number;
   symbol: string;
-  side: 'long' | 'short';
-  quantity: number;
-  open_price: number;
-  current_price: number;
-  unrealized_pl: number;
-  opened_at: string;
+  side: 'buy' | 'sell' | 'long' | 'short';
+  quantity?: number;
+  volume?: number;
+  open_price?: number;
+  current_price?: number;
+  price_open?: number;
+  price_current?: number;
+  price_sl?: number | null;
+  price_tp?: number | null;
+  sl?: number;
+  tp?: number;
+  swap?: number;
+  commission?: number;
+  profit?: number;
+  unrealized_pl?: number;
+  opened_at?: string;
+  time_create?: number;
 }
 
 export interface Order {
-  id: string;
+  id?: string;
+  ticket?: number;
+  account_login?: number;
   symbol: string;
   type: string;
   side: 'buy' | 'sell';
-  quantity: number;
+  quantity?: number;
+  volume?: number;
   price: number;
-  status: 'pending' | 'filled' | 'cancelled' | 'rejected';
-  created_at: string;
+  price_sl?: number | null;
+  price_tp?: number | null;
+  status: 'pending' | 'filled' | 'cancelled' | 'rejected' | 'active' | 'triggered' | 'expired';
+  created_at?: string;
+  time_create?: number;
   mt5_order_id?: number;
   mt5_deal_id?: number;
 }
 
 export interface CreateOrderRequest {
-  symbol: string;
-  type: 'market';
-  side: 'buy' | 'sell';
-  quantity: number;
-  price?: number;
+  login?: number;
   account_login?: number;
+  symbol: string;
+  type?: 'market';
+  side: 'buy' | 'sell' | 'BUY' | 'SELL';
+  quantity?: number;
+  volume?: number;
+  price?: number;
+  price_sl?: number;
+  price_tp?: number;
+  sl?: number;
+  tp?: number;
+  comment?: string;
+  trailing_stop?: number;
+  trailing_step?: number;
+  magic?: number;
+}
+
+export interface PendingOrderRequest {
+  login?: number;
+  account_login?: number;
+  symbol: string;
+  side: 'buy' | 'sell' | 'BUY' | 'SELL';
+  volume: number;
+  type: 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop' | 'BUY_LIMIT' | 'SELL_LIMIT' | 'BUY_STOP' | 'SELL_STOP';
+  price: number;
+  price_sl?: number;
+  price_tp?: number;
+  sl?: number;
+  tp?: number;
+  expiration?: number;
+  comment?: string;
+  trailing_stop?: number;
+  trailing_step?: number;
+  magic?: number;
+}
+
+export interface ModifyPositionRequest {
+  price_sl?: number;
+  price_tp?: number;
+  trailing_stop?: number;
+  trailing_step?: number;
+}
+
+export interface ModifyPendingOrderRequest extends ModifyPositionRequest {
+  price?: number;
+  expiration?: number;
 }
 
 export interface CreateAccountRequest {
@@ -165,13 +298,13 @@ export interface EconomicEvent {
 
 export const authApi = {
   login: (credentials: LoginCredentials, options?: { baseUrl?: string }) =>
-    apiClient.post<LoginResponse>('/api/login', credentials, options),
+    apiClient.post<LoginResponse>('/auth/login', credentials, { baseUrl: resolveV2BaseUrl(options?.baseUrl) }),
 
   logout: () =>
-    apiClient.post<void>('/api/logout', {}),
+    apiClient.post<void>('/auth/logout', {}, { baseUrl: API_V2_BASE_URL }),
 
   refresh: (refresh_token: string) =>
-    apiClient.post<LoginResponse>('/api/refresh', { refresh_token }),
+    apiClient.post<LoginResponse>('/auth/refresh', { refresh_token }, { baseUrl: API_V2_BASE_URL }),
 };
 
 // ====================
@@ -181,20 +314,10 @@ export const authApi = {
 export const accountApi = {
   getSummary: async (login?: number) => {
     try {
-      const storedLoginRaw = typeof window !== 'undefined'
-        ? (localStorage.getItem('rtx_saved_username') || localStorage.getItem('rtx_last_login'))
-        : null;
-      const storedLogin = storedLoginRaw ? Number.parseInt(storedLoginRaw, 10) : Number.NaN;
-      const resolvedLogin = Number.isFinite(login as number) && (login as number) > 0
-        ? login
-        : (Number.isFinite(storedLogin) && storedLogin > 0 ? storedLogin : undefined);
+      const resolvedLogin = requireLogin(login ?? resolveStoredLogin(), '/api/v2/account/{login}');
 
-      if (!resolvedLogin) {
-        throw new Error('Missing account login for /api/account/summary');
-      }
-
-      const res = await apiClient.get<AccountSummary>('/api/account/summary', {
-        params: { login: resolvedLogin },
+      const res = await apiClient.get<AccountSummary>(`/account/${resolvedLogin}`, {
+        baseUrl: API_V2_BASE_URL,
       });
       console.log('[DEBUG REST ACCOUNT PAYLOAD]', res);
       return res;
@@ -205,15 +328,37 @@ export const accountApi = {
     }
   },
 
-  getTransactions: (params?: { type?: string; limit?: number }) =>
-    apiClient.get<Transaction[]>('/api/account/transactions', {
-      params
-    }),
+  getTransactions: async (params?: { type?: string; limit?: number; offset?: number; login?: number }) => {
+    const login = requireLogin(params?.login ?? resolveStoredLogin(), '/api/v2/accounts/{login}/history');
+    const rows = await apiClient.get<any[]>(`/accounts/${login}/history`, {
+      baseUrl: API_V2_BASE_URL,
+      params: { limit: params?.limit, offset: params?.offset },
+    });
 
-  getEquityHistory: (params?: { period?: '1d' | '7d' | '30d' | '90d' | '1y'; interval?: string }) =>
-    apiClient.get<EquityHistoryPoint[]>('/api/account/equity-history', {
-      params
-    }),
+    return rows
+      .filter((row) => !params?.type || row.type === params.type)
+      .map((row) => ({
+        id: String(row.id),
+        type: row.type,
+        amount: Number(row.amount),
+        currency: row.currency || 'USD',
+        description: row.comment,
+        createdAt: row.time ? new Date(Number(row.time) * 1000).toISOString() : '',
+      })) as Transaction[];
+  },
+
+  getEquityHistory: async (params?: { period?: '1d' | '7d' | '30d' | '90d' | '1y'; interval?: string; login?: number; from?: number; to?: number }) => {
+    const login = requireLogin(params?.login ?? resolveStoredLogin(), '/api/v2/account/{login}/equity');
+    const points = await apiClient.get<any[]>(`/account/${login}/equity`, {
+      baseUrl: API_V2_BASE_URL,
+      params: { from: params?.from, to: params?.to },
+    });
+
+    return points.map((point) => ({
+      timestamp: point.time ? new Date(Number(point.time) * 1000).toISOString() : '',
+      equity: Number(point.equity),
+    })) as EquityHistoryPoint[];
+  },
 };
 
 // ====================
@@ -221,65 +366,95 @@ export const accountApi = {
 // ====================
 
 export const tradingApi = {
-  getPositions: () =>
-    apiClient.get<{ positions: Position[]; count: number }>('/api/positions'),
+  getPositions: (login?: number, params?: { limit?: number; offset?: number }): Promise<any> =>
+    apiClient.get<Position[]>(`/positions/${requireLogin(login, '/api/v2/positions/{login}')}`, {
+      baseUrl: API_V2_BASE_URL,
+      params,
+    }),
 
-  getOrders: () =>
-    apiClient.get<{ orders: Order[]; count: number }>('/api/orders'),
+  getOrders: (login?: number, params?: { limit?: number }): Promise<any> =>
+    apiClient.get<Order[]>(`/orders/${requireLogin(login, '/api/v2/orders/{login}')}`, {
+      baseUrl: API_V2_BASE_URL,
+      params,
+    }),
 
-  placeOrder: (order: CreateOrderRequest) =>
-    apiClient.post<Order>('/api/orders', order),
+  getPendingOrders: (login: number): Promise<any> =>
+    apiClient.get<Order[]>(`/orders/pending/${requireLogin(login, '/api/v2/orders/pending/{login}')}`, { baseUrl: API_V2_BASE_URL }),
 
-  cancelOrder: (orderId: string) =>
-    apiClient.delete<void>(`/api/orders/${orderId}`),
+  placeOrder: (order: CreateOrderRequest): Promise<any> =>
+    apiClient.post<Position>('/orders', normalizeOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
 
-  closePosition: (positionId: string) =>
-    apiClient.post<void>(`/api/positions/${positionId}/close`, {}),
+  placePendingOrder: (order: PendingOrderRequest): Promise<any> =>
+    apiClient.post<Order>('/orders/pending', normalizePendingOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
+
+  cancelOrder: (orderId: string | number): Promise<any> =>
+    apiClient.delete<{ message?: string }>(`/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`, { baseUrl: API_V2_BASE_URL }),
+
+  modifyPendingOrder: (orderId: string | number, data: ModifyPendingOrderRequest): Promise<any> =>
+    apiClient.put<Order>(`/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`, data, { baseUrl: API_V2_BASE_URL }),
+
+  closePosition: (positionId: string | number): Promise<any> =>
+    apiClient.post<void>(`/positions/${requireTicket(positionId, '/api/v2/positions/{id}/close')}/close`, {}, { baseUrl: API_V2_BASE_URL }),
+
+  modifyPosition: (positionId: string | number, data: ModifyPositionRequest): Promise<any> =>
+    apiClient.put<Position>(`/positions/${requireTicket(positionId, '/api/v2/positions/{id}')}`, data, { baseUrl: API_V2_BASE_URL }),
+
 };
 
 // ====================
 // Market Endpoints
 // ====================
 
-// FIX API Base URL
-const FIX_API_BASE = import.meta.env.VITE_FIX_API_URL || 'https://rtxbackend.tradecopier.org';
-
 export const marketApi = {
   getSymbols: async () => {
-    const response = await apiClient.get<{ symbols: string[] }>(
-      '/api/symbols'
-    );
-    // Map the string array to the Symbol object format expected by the frontend
-    return (response.symbols || []).map((sym) => ({
-      id: sym,
-      name: sym,
-      description: sym,
-      category: 'Forex',
-      digits: 5,
-      tickSize: 0.00001,
-      contractSize: 100000,
-      marginRate: 0.01,
-      tradingEnabled: true
+    const response = await apiClient.get<any[]>('/instruments', {
+      baseUrl: API_V2_BASE_URL,
+    });
+    return (response || []).map((instrument) => ({
+      id: instrument.symbol,
+      name: instrument.symbol,
+      description: instrument.description || instrument.symbol,
+      category: instrument.category || 'Forex',
+      digits: instrument.digits,
+      tickSize: instrument.tick_size ?? Math.pow(10, -Number(instrument.digits || 5)),
+      contractSize: instrument.contract_size,
+      marginRate: instrument.margin_rate ?? 0.01,
+      tradingEnabled: instrument.enabled !== false
     })) as unknown as Symbol[];
   },
 
   getQuote: (symbol: string) =>
-    apiClient.get<Quote>(`/api/fix/quotes/${symbol}`),
+    apiClient.get<Quote>(`/quotes/${encodeURIComponent(symbol)}`, { baseUrl: API_V2_BASE_URL }),
 
   getCandles: (symbol: string, params?: { timeframe?: string; count?: number; from?: number; to?: number }) =>
-    apiClient.get<{ candles: Candle[] } | Candle[]>(`/api/fix/candles/${symbol}`, { params }),
+    apiClient.get<{ candles: Candle[] } | Candle[]>(`/candles/${encodeURIComponent(symbol)}`, {
+      baseUrl: API_HISTORY_BASE_URL,
+      params: {
+        tf: params?.timeframe,
+        count: params?.count,
+        from: params?.from,
+        to: params?.to,
+      },
+      skipAuth: true,
+    }),
 
   getOHLC: async (symbol: string, timeframe: string = 'M1', count: number = 100) => {
     const response = await apiClient.get<{ candles: Candle[] } | Candle[]>(
-      `/api/fix/candles/${symbol}`,
-      { params: { timeframe, count } }
+      `/candles/${encodeURIComponent(symbol)}`,
+      {
+        baseUrl: API_HISTORY_BASE_URL,
+        params: { tf: timeframe, count },
+        skipAuth: true,
+      }
     );
-    // Handle both { candles: [] } and direct array response
     return Array.isArray(response) ? response : (response.candles || []);
   },
 
   getTicks: (symbol: string) =>
-    apiClient.get<any[]>(`/api/fix/ticks/${symbol}`),
+    apiClient.get<any[]>(`/ticks/${encodeURIComponent(symbol)}`, {
+      baseUrl: API_V2_BASE_URL,
+      params: { limit: 100 },
+    }),
 };
 
 // ====================
@@ -305,49 +480,6 @@ export const notificationsApi = {
 // ====================
 // Economic Calendar Endpoints
 // ====================
-
-// ====================
-// MT5 Sync Endpoints (Port 8088)
-// ====================
-
-export const mt5Api = {
-  createAccount: (data: CreateAccountRequest) =>
-    apiClient.post<CreateAccountResponse>('/api/mt5/account/create', data),
-
-  executeTrade: (data: {
-    account_login: number;
-    symbol: string;
-    side: string;
-    volume_lots: number;
-    price?: number;
-    sl?: number;
-    tp?: number;
-    comment?: string;
-    client_request_id?: string;
-  }) =>
-    apiClient.post<any>('/api/v1/trades/execute', data, { baseUrl: MT5_SYNC_URL }),
-
-  closeTrade: (data: {
-    account_login: number;
-    ticket: number;
-    volume_lots?: number;
-  }) =>
-    apiClient.post<any>('/api/v1/trades/close', data, { baseUrl: MT5_SYNC_URL }),
-
-  getGroups: () =>
-    apiClient.get<{ groups: string[] }>('/api/mt5/groups'),
-
-  getStatus: () =>
-    apiClient.get<any>('/api/mt5/status'),
-
-  changePassword: (data: {
-    login: number;
-    old_password: string;
-    new_password: string;
-    type: 'master' | 'investor';
-  }) =>
-    apiClient.post<{ success: boolean; login: number; type: string; message: string }>('/api/v1/mt5/change-password', data),
-};
 
 export const economicCalendarApi = {
   getEvents: (params?: { from?: string; to?: string; currencies?: string[]; impact?: string[] }) =>

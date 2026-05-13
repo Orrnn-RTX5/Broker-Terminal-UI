@@ -25,6 +25,7 @@ import {
   Notification,
   EconomicEvent,
 } from './endpoints';
+import { getStoredBrokerServer, persistBrokerServer, resolveLoginBrokerTarget } from '../services/brokerServers';
 
 // ====================
 // Generic Types
@@ -91,8 +92,20 @@ export const useLogin = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await authApi.login(credentials);
-      setToken(response.access_token);
+      const selectedServer = credentials.server || getStoredBrokerServer();
+      const loginTarget = credentials.broker_id
+        ? { displayValue: credentials.broker_id, broker_id: credentials.broker_id }
+        : resolveLoginBrokerTarget(selectedServer);
+      const response = await authApi.login({
+        ...credentials,
+        broker_id: loginTarget.broker_id,
+        server: loginTarget.server,
+      });
+      persistBrokerServer(response.broker_server || loginTarget.displayValue);
+      const accessToken = response.access_token || response.token;
+      if (accessToken) {
+        setToken(accessToken);
+      }
       return response;
     } catch (err) {
       const apiError = err instanceof ApiError ? err : new ApiError(0, 'Login failed');

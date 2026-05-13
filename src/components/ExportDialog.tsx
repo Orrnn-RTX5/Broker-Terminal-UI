@@ -2,6 +2,7 @@ import { Icon } from './ui/Icon';
 import { useState } from 'react';
 import Papa from 'papaparse';
 import type { Trade } from '../store/useAppStore';
+import { api } from '../services/api';
 
 interface ExportDialogProps {
   accountId: string;
@@ -162,12 +163,19 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
   };
 
   const fetchData = async () => {
+    if (dataType === 'positions') {
+      const login = Number(accountId);
+      if (!Number.isFinite(login) || login <= 0) {
+        throw new Error('A valid account login is required to export positions');
+      }
+
+      return api.positions.getPositions(login);
+    }
+
     const endpoint =
       dataType === 'trades'
         ? `/api/trades?accountId=${accountId}`
-        : dataType === 'positions'
-          ? `/api/positions?accountId=${accountId}`
-          : `/api/performance?accountId=${accountId}`;
+        : `/api/performance?accountId=${accountId}`;
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`);
 

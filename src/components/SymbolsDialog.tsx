@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { Search, ChevronRight, ChevronDown, FolderOpen, Folder, X, Minus, Square } from 'lucide-react';
-import { api } from '../services/api';
 import { useWatchlistStore } from '../store/useWatchlistStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
-import { MARKET_WS_URL } from '../config/api';
+import { API_ENDPOINTS, MARKET_WS_URL } from '../config/api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -100,6 +99,103 @@ const getSymbolSector = (sym: string) => {
     if (sym.startsWith(prefix)) return SYMBOL_SECTOR_MAP[prefix];
   }
   return { sector: 'Forex', industry: 'Currency Pairs' };
+};
+
+const getAuthHeaders = (): HeadersInit => {
+  const token = localStorage.getItem('auth_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
+const fetchJson = async <T,>(url: string, options?: RequestInit): Promise<T> => {
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...(options?.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+};
+
+const asArray = <T,>(payload: unknown, keys: string[] = []): T[] => {
+  if (Array.isArray(payload)) return payload as T[];
+  if (payload && typeof payload === 'object') {
+    for (const key of keys) {
+      const value = (payload as Record<string, unknown>)[key];
+      if (Array.isArray(value)) return value as T[];
+    }
+  }
+  return [];
+};
+
+const normalizeInstrument = (raw: any): SymbolSpec | null => {
+  const name = String(raw?.symbol ?? raw?.name ?? '').trim();
+  if (!name) return null;
+  const sector = getSymbolSector(name);
+  const digits = Number(raw?.digits ?? 5);
+  const tickSize = Number(raw?.tick_size ?? raw?.tickSize ?? (digits > 0 ? 1 / Math.pow(10, digits) : 0.00001));
+  const contractSize = Number(raw?.contract_size ?? raw?.contractSize ?? 0);
+
+  return {
+    id: String(raw?.id ?? name),
+    name,
+    symbol: name,
+    description: String(raw?.description ?? name),
+    category: String(raw?.category ?? 'Forex'),
+    digits: Number.isFinite(digits) ? digits : 5,
+    tickSize: Number.isFinite(tickSize) ? tickSize : 0.00001,
+    contractSize: Number.isFinite(contractSize) ? contractSize : 0,
+    marginRate: Number(raw?.margin_rate ?? raw?.marginRate ?? 0),
+    tradingEnabled: Boolean(raw?.enabled ?? raw?.tradingEnabled ?? true),
+    ...sector,
+    spread: raw?.spread ?? 'floating',
+    stopsLevel: Number(raw?.stops_level ?? raw?.stopsLevel ?? 0),
+    marginCurrency: raw?.margin_currency ?? raw?.marginCurrency ?? name.slice(0, 3),
+    swapLong: Number(raw?.swap_long ?? raw?.swapLong ?? 0),
+    swapShort: Number(raw?.swap_short ?? raw?.swapShort ?? 0),
+    minVolume: Number(raw?.min_volume ?? raw?.minVolume ?? 0),
+    maxVolume: Number(raw?.max_volume ?? raw?.maxVolume ?? 0),
+    volumeStep: Number(raw?.volume_step ?? raw?.volumeStep ?? 0),
+    expiration: raw?.expiration,
+  };
+};
+
+const normalizeBar = (raw: any): BarRow | null => {
+  const rawTime = raw?.time ?? raw?.Time ?? raw?.timestamp ?? raw?.t ?? raw?.date;
+  const open = Number(raw?.open ?? raw?.Open ?? raw?.o);
+  const high = Number(raw?.high ?? raw?.High ?? raw?.h);
+  const low = Number(raw?.low ?? raw?.Low ?? raw?.l);
+  const close = Number(raw?.close ?? raw?.Close ?? raw?.c);
+  const volume = Number(raw?.volume ?? raw?.Volume ?? raw?.v ?? raw?.tick_count ?? raw?.tickCount ?? 0);
+  if (rawTime == null || ![open, high, low, close].every(Number.isFinite)) return null;
+  if (open <= 0 && close <= 0) return null;
+  return {
+    time: safeTime(rawTime),
+    open,
+    high,
+    low,
+    close,
+    volume: Number.isFinite(volume) ? volume : 0,
+  };
+};
+
+const normalizeTick = (raw: any): TickRow | null => {
+  const rawTime = raw?.time ?? raw?.timestamp ?? raw?.ts ?? raw?.created_at;
+  const bid = Number(raw?.bid);
+  const ask = Number(raw?.ask);
+  const last = Number(raw?.last ?? raw?.close ?? raw?.bid);
+  const volume = Number(raw?.volume ?? 0);
+  if (rawTime == null || !Number.isFinite(bid) || !Number.isFinite(ask)) return null;
+  if (bid <= 0 && ask <= 0) return null;
+  return {
+    time: safeTime(rawTime),
+    bid,
+    ask,
+    last: Number.isFinite(last) ? last : bid,
+    volume: Number.isFinite(volume) ? volume : 0,
+    flags: String(raw?.flags ?? ''),
+  };
 };
 
 // Build tree from flat symbol list
@@ -241,15 +337,18 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   const [ticks, setTicks] = useState<TickRow[]>([]);
   const [barsLoading, setBarsLoading] = useState(false);
   const [ticksLoading, setTicksLoading] = useState(false);
+  const [symbolsError, setSymbolsError] = useState<string | null>(null);
+  const [barsError, setBarsError] = useState<string | null>(null);
+  const [ticksError, setTicksError] = useState<string | null>(null);
   const [barsProgress, setBarsProgress] = useState(0);
   const [ticksProgress, setTicksProgress] = useState(0);
   const [barsVisibleCount, setBarsVisibleCount] = useState(100);
   const [ticksVisibleCount, setTicksVisibleCount] = useState(100);
 
   // Bars tab specific state
-  const TIMEFRAMES = useMemo(() => ['M1','M2','M3','M4','M5','M6','M10','M12','M15','M20','M30','H1','H2','H3','H4','H6','H8','H12','D1','W1','MN1'], []);
+  const TIMEFRAMES = useMemo(() => ['M1','M5','M15','M30','H1','H4','D1','W1','MN'], []);
   const [barsSymbolInput, setBarsSymbolInput] = useState('');
-  const [barsTimeframe, setBarsTimeframe] = useState('M12');
+  const [barsTimeframe, setBarsTimeframe] = useState('M15');
   
   const formatDateForInput = (d: Date) => d.toISOString().slice(0, 16);
   const [barsStartTime, setBarsStartTime] = useState(() => {
@@ -259,6 +358,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   });
   const [barsEndTime, setBarsEndTime] = useState(() => formatDateForInput(new Date()));
   const [barsFetchTrigger, setBarsFetchTrigger] = useState(0);
+  const [symbolsFetchTrigger, setSymbolsFetchTrigger] = useState(0);
 
   useEffect(() => {
     if (selectedSymbol && !barsSymbolInput) {
@@ -300,41 +400,30 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
-    api.market.getSymbols()
-      .then(syms => {
-        // Enrich with sector/industry
-        const enriched = syms.map(s => ({
-          ...s,
-          symbol: s.name,
-          ...getSymbolSector(s.name),
-          spread: 'floating',
-          stopsLevel: 20,
-          marginCurrency: s.name.slice(0, 3),
-        }));
-        setAllSymbols(enriched);
-        if (enriched.length > 0 && !selectedSymbol) {
-          setSelectedSymbol(enriched[0]);
+    setSymbolsError(null);
+
+    fetchJson<unknown>(API_ENDPOINTS.v2.market.instruments)
+      .then(payload => {
+        const instruments = asArray<any>(payload, ['instruments', 'data']);
+        const normalized = instruments
+          .map(normalizeInstrument)
+          .filter((symbol): symbol is SymbolSpec => Boolean(symbol));
+        setAllSymbols(normalized);
+        setSelectedSymbol(current => {
+          if (current && normalized.some(sym => (sym.symbol || sym.name) === (current.symbol || current.name))) return current;
+          return normalized[0] || null;
+        });
+        if (normalized.length === 0) {
+          setSymbolsError('No instruments returned by /api/v2/instruments.');
         }
       })
-      .catch(() => {
-        // Fallback demo symbols
-        const fallback: SymbolSpec[] = [
-          { id: 'XAUUSD', name: 'XAUUSD.c', description: 'Gold vs US Dollar', category: 'Trading.CFD-Bullion-Futures', digits: 2, tickSize: 0.01, contractSize: 100, marginRate: 0.01, tradingEnabled: true, symbol: 'XAUUSD', sector: 'Commodities', industry: 'Precious Metals', spread: 'floating', stopsLevel: 20, marginCurrency: 'XAU' },
-          { id: 'XAGUSD', name: 'XAGUSD.c', description: 'Silver  vs US Dollar', category: 'Trading.CFD-Bullion-Futures', digits: 3, tickSize: 0.001, contractSize: 5000, marginRate: 0.01, tradingEnabled: true, symbol: 'XAGUSD', sector: 'Commodities', industry: 'Precious Metals', spread: 'floating', stopsLevel: 20, marginCurrency: 'XAG' },
-          { id: 'EURUSD', name: 'EURUSD', description: 'Euro vs US Dollar', category: 'Trading.CFD-FX', digits: 5, tickSize: 0.00001, contractSize: 100000, marginRate: 0.01, tradingEnabled: true, symbol: 'EURUSD', sector: 'Forex', industry: 'Major Pairs', spread: 'floating', stopsLevel: 10, marginCurrency: 'EUR' },
-          { id: 'GBPUSD', name: 'GBPUSD', description: 'British Pound vs US Dollar', category: 'Trading.CFD-FX', digits: 5, tickSize: 0.00001, contractSize: 100000, marginRate: 0.01, tradingEnabled: true, symbol: 'GBPUSD', sector: 'Forex', industry: 'Major Pairs', spread: 'floating', stopsLevel: 10, marginCurrency: 'GBP' },
-          { id: 'BTCUSD', name: 'BTCUSD', description: 'Bitcoin vs US Dollar', category: 'Trading.CFD-Metels', digits: 2, tickSize: 0.01, contractSize: 1, marginRate: 0.01, tradingEnabled: true, symbol: 'BTCUSD', sector: 'Crypto', industry: 'Digital Assets', spread: 'floating', stopsLevel: 50, marginCurrency: 'BTC' },
-          { id: 'ETHUSD', name: 'ETHUSD', description: 'Ethereum vs US Dollar', category: 'Trading.CFD-Metels', digits: 2, tickSize: 0.01, contractSize: 1, marginRate: 0.01, tradingEnabled: true, symbol: 'ETHUSD', sector: 'Crypto', industry: 'Digital Assets', spread: 'floating', stopsLevel: 30, marginCurrency: 'ETH' },
-          { id: 'USDJPY', name: 'USDJPY', description: 'US Dollar vs Japanese Yen', category: 'Trading.CFD-FX', digits: 3, tickSize: 0.001, contractSize: 100000, marginRate: 0.01, tradingEnabled: true, symbol: 'USDJPY', sector: 'Forex', industry: 'Major Pairs', spread: 'floating', stopsLevel: 10, marginCurrency: 'USD' },
-          { id: 'US30', name: 'US30', description: 'Dow Jones Industrial Average', category: 'Trading.CFD-Indices', digits: 2, tickSize: 0.01, contractSize: 1, marginRate: 0.01, tradingEnabled: true, symbol: 'US30', sector: 'Indices', industry: 'US Indices', spread: 'floating', stopsLevel: 50, marginCurrency: 'USD' },
-          { id: 'NAS100', name: 'NAS100', description: 'NASDAQ 100 Index', category: 'Trading.CFD-Indices', digits: 2, tickSize: 0.01, contractSize: 1, marginRate: 0.01, tradingEnabled: true, symbol: 'NAS100', sector: 'Indices', industry: 'US Indices', spread: 'floating', stopsLevel: 50, marginCurrency: 'USD' },
-          { id: 'USOIL', name: 'USOIL', description: 'Crude Oil WTI', category: 'Trading.CFD-Energy-Spot', digits: 2, tickSize: 0.01, contractSize: 1000, marginRate: 0.01, tradingEnabled: true, symbol: 'USOIL', sector: 'Commodities', industry: 'Energy', spread: 'floating', stopsLevel: 20, marginCurrency: 'USD' },
-        ];
-        setAllSymbols(fallback);
-        if (!selectedSymbol) setSelectedSymbol(fallback[0]);
+      .catch(err => {
+        setAllSymbols([]);
+        setSelectedSymbol(null);
+        setSymbolsError(err instanceof Error ? err.message : 'Failed to load instruments.');
       })
       .finally(() => setLoading(false));
-  }, [isOpen]);
+  }, [isOpen, symbolsFetchTrigger]);
 
   // ── Filter symbols by search (memoized) ───────────────────────────────────
   const filteredSymbols = useMemo(() => {
@@ -348,123 +437,60 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
     );
   }, [searchQuery, allSymbols]);
 
-  // ── Generate demo bars helper ────────────────────────────────────────────
-  const generateDemoBars = useCallback((sym: SymbolSpec): BarRow[] => {
-    const name = sym.symbol || sym.name;
-    const base = name.includes('XAU') ? 2650 : name.includes('XAG') ? 30 :
-      name.includes('BTC') ? 67800 : name.includes('ETH') ? 3500 :
-      name.includes('JPY') ? 149.5 : name.includes('NAS') ? 18500 :
-      name.includes('US30') ? 39000 : name.includes('OIL') ? 82 : 1.085;
-    const digits = sym.digits || 5;
-    return Array.from({ length: 30 }, (_, i) => {
-      const variance = base * 0.0008;
-      const open = parseFloat((base + (Math.random() - 0.5) * variance).toFixed(digits));
-      const close = parseFloat((open + (Math.random() - 0.5) * variance).toFixed(digits));
-      const high = parseFloat((Math.max(open, close) + Math.random() * variance * 0.5).toFixed(digits));
-      const low = parseFloat((Math.min(open, close) - Math.random() * variance * 0.5).toFixed(digits));
-      return {
-        time: safeTime(Date.now() - i * 60000),
-        open, high, low, close,
-        volume: Math.floor(Math.random() * 5000) + 100,
-      };
-    }).reverse();
-  }, []);
-
-  // ── Load bar data ─────────────────────────────────────────────────────────
+  // Load bar data from swagger v2/history APIs. Empty/error responses stay visible instead of fabricating candles.
   useEffect(() => {
     if (activeTab !== 'Bars' || !barsSymbolInput) return;
     setBarsLoading(true);
     setBarsProgress(0);
+    setBarsError(null);
     setBars([]);
     setBarsVisibleCount(100);
     const symName = barsSymbolInput;
 
     const fetchBars = async () => {
-      const interval = setInterval(() => {
-        setBarsProgress(p => p < 95 ? p + 2 + Math.random() : p);
-      }, 50);
-
       try {
-        const token = localStorage.getItem('auth_token');
-        const isElectron = !!(window as any).electron || !!(window as any).electronAPI ||
-          navigator.userAgent.includes('Electron') || window.location.protocol === 'file:';
-        const baseUrl = isElectron ? 'https://rtxbackend.tradecopier.org' : '';
-        
         const fromTs = Math.floor(new Date(barsStartTime).getTime() / 1000);
         const toTs = Math.floor(new Date(barsEndTime).getTime() / 1000);
-        const url = `${baseUrl}/api/fix/candles/${symName}?timeframe=${barsTimeframe}&from=${fromTs}&to=${toTs}&limit=50000`;
-
-        const res = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        const historyParams = new URLSearchParams({
+          tf: barsTimeframe,
+          from: String(fromTs),
+          to: String(toTs),
+          count: '5000',
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const v2Params = new URLSearchParams({
+          timeframe: barsTimeframe,
+          from: String(fromTs),
+          to: String(toTs),
+          limit: '5000',
+        });
 
-        const rawCandles: any[] = Array.isArray(data) ? data : (data.candles || []);
-
-        if (rawCandles.length === 0) {
-          setBars(generateDemoBars({ name: symName, symbol: symName } as SymbolSpec));
-          return;
+        setBarsProgress(35);
+        let payload: unknown;
+        try {
+          payload = await fetchJson<unknown>(`${API_ENDPOINTS.v2.history.candles(symName)}?${historyParams.toString()}`);
+        } catch {
+          setBarsProgress(65);
+          payload = await fetchJson<unknown>(`${API_ENDPOINTS.v2.market.candles(symName)}?${v2Params.toString()}`);
         }
 
-        const parsed: BarRow[] = rawCandles
-          .filter(c => c && (c.time ?? c.Time ?? c.timestamp) != null)
-          .map(c => {
-            const rawTime = c.time ?? c.Time ?? c.timestamp ?? c.t ?? c.date;
-            const timeNum = typeof rawTime === 'string'
-              ? new Date(rawTime).getTime() / 1000
-              : Number(rawTime);
-            return {
-              time: safeTime(timeNum > 1e10 ? timeNum : timeNum),
-              open:   Number(c.open   ?? c.Open   ?? c.o) || 0,
-              high:   Number(c.high   ?? c.High   ?? c.h) || 0,
-              low:    Number(c.low    ?? c.Low    ?? c.l) || 0,
-              close:  Number(c.close  ?? c.Close  ?? c.c) || 0,
-              volume: Number(c.volume ?? c.Volume ?? c.v) || 0,
-            };
-          })
-          .filter(b => b.open > 0 || b.close > 0);
-
+        const parsed = asArray<any>(payload, ['candles', 'data'])
+          .map(normalizeBar)
+          .filter((bar): bar is BarRow => Boolean(bar));
+        setBars(parsed);
         if (parsed.length === 0) {
-          setBars(generateDemoBars({ name: symName, symbol: symName } as SymbolSpec));
-        } else {
-          setBars(parsed);
+          setBarsError(`No bars returned for ${symName} ${barsTimeframe}.`);
         }
-      } catch {
-        setBars(generateDemoBars({ name: symName, symbol: symName } as SymbolSpec));
+      } catch (err) {
+        setBars([]);
+        setBarsError(err instanceof Error ? err.message : `Failed to load bars for ${symName}.`);
       } finally {
-        clearInterval(interval);
         setBarsProgress(100);
         setTimeout(() => setBarsLoading(false), 200);
       }
     };
 
     fetchBars();
-  }, [activeTab, barsFetchTrigger, generateDemoBars]);
-
-  // ── Generate demo ticks helper ───────────────────────────────────────────
-  const generateDemoTicks = useCallback((sym: SymbolSpec, overrideBase?: number, toMs?: number, count: number = 40): TickRow[] => {
-    const name = sym.symbol || sym.name;
-    const base = overrideBase !== undefined ? overrideBase : (name.includes('XAU') ? 2650 : name.includes('XAG') ? 30 :
-      name.includes('BTC') ? 67800 : name.includes('ETH') ? 3500 :
-      name.includes('JPY') ? 149.5 : 1.085);
-    const digits = sym.digits || 5;
-    const spreadVal = name.includes('XAU') ? 0.3 : name.includes('BTC') ? 30 :
-      name.includes('JPY') ? 0.015 : 0.00015;
-    return Array.from({ length: count }, (_, i) => {
-      const mid = base + (Math.random() - 0.5) * base * 0.0005;
-      const bid = parseFloat((mid - spreadVal / 2).toFixed(digits));
-      const ask = parseFloat((mid + spreadVal / 2).toFixed(digits));
-      return {
-        time: safeTime((toMs || Date.now()) - i * 1500),
-        bid,
-        ask,
-        last: parseFloat((mid + (Math.random() - 0.5) * spreadVal).toFixed(digits)),
-        volume: Math.floor(Math.random() * 100) + 1,
-        flags: '',
-      };
-    }).reverse();
-  }, []);
+  }, [activeTab, barsFetchTrigger, barsSymbolInput, barsTimeframe, barsStartTime, barsEndTime]);
 
   // Ticks tab specific state
   const TICK_TYPES = useMemo(() => ['Bid/Ask ticks', 'Info ticks'], []);
@@ -485,70 +511,54 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   }, [selectedSymbol, ticksSymbolInput]);
 
   // ── Load tick data ────────────────────────────────────────────────────────
+  // Load tick data from swagger v2/history APIs. Empty/error responses stay visible instead of fabricating ticks.
   useEffect(() => {
     if (activeTab !== 'Ticks' || !ticksSymbolInput) return;
     setTicksLoading(true);
     setTicksProgress(0);
+    setTicksError(null);
     setTicks([]);
     setTicksVisibleCount(100);
     const symName = ticksSymbolInput;
 
     const fetchTicks = async () => {
-      const interval = setInterval(() => {
-        setTicksProgress(p => p < 95 ? p + 2 + Math.random() : p);
-      }, 50);
-
       try {
         const fromTs = Math.floor(new Date(ticksStartTime).getTime() / 1000);
         const toTs = Math.floor(new Date(ticksEndTime).getTime() / 1000);
-        
-        const token = localStorage.getItem('auth_token');
-        const isElectron = !!(window as any).electron || !!(window as any).electronAPI ||
-          navigator.userAgent.includes('Electron') || window.location.protocol === 'file:';
-        const baseUrl = isElectron ? 'https://rtxbackend.tradecopier.org' : '';
-        const url = `${baseUrl}/api/fix/ticks/${symName}?from=${fromTs}&to=${toTs}&limit=50000`;
-
-        const res = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        const historyParams = new URLSearchParams({
+          from: String(fromTs),
+          to: String(toTs),
+          limit: '10000',
         });
-        
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const v2Params = new URLSearchParams({ limit: '1000' });
 
-        if (!data || data.length === 0) {
-          setTicks(generateDemoTicks({ name: symName, symbol: symName } as SymbolSpec, undefined, toTs * 1000, 300));
-          return;
-        }
-        
-        let mapped: TickRow[] = data.map((t: any) => ({
-          time: safeTime(t.timestamp ?? t.time ?? t.ts ?? t.created_at),
-          bid: parseFloat(String(t.bid || 0)) || 0,
-          ask: parseFloat(String(t.ask || 0)),
-          last: parseFloat(String(t.last || t.bid || 0)),
-          volume: parseFloat(String(t.volume || 0)),
-          flags: String(t.flags || ''),
-        }));
-
-        if (mapped.length > 0 && mapped.length < 50) {
-          // Backend returned only live cache. Fill historical gap with demo data for UI
-          const realTickPrice = mapped[0].bid;
-          const demoTicks = generateDemoTicks({ name: symName, symbol: symName } as SymbolSpec, realTickPrice, toTs * 1000, 300);
-          mapped = [...mapped, ...demoTicks.slice(mapped.length)];
+        setTicksProgress(35);
+        let payload: unknown;
+        try {
+          payload = await fetchJson<unknown>(`${API_ENDPOINTS.v2.history.ticks(symName)}?${historyParams.toString()}`);
+        } catch {
+          setTicksProgress(65);
+          payload = await fetchJson<unknown>(`${API_ENDPOINTS.v2.market.ticks(symName)}?${v2Params.toString()}`);
         }
 
-        setTicks(mapped);
-      } catch {
-        const toTs = Math.floor(new Date(ticksEndTime).getTime());
-        setTicks(generateDemoTicks({ name: symName, symbol: symName } as SymbolSpec, undefined, toTs, 300));
+        const parsed = asArray<any>(payload, ['ticks', 'data'])
+          .map(normalizeTick)
+          .filter((tick): tick is TickRow => Boolean(tick));
+        setTicks(parsed);
+        if (parsed.length === 0) {
+          setTicksError(`No ticks returned for ${symName}.`);
+        }
+      } catch (err) {
+        setTicks([]);
+        setTicksError(err instanceof Error ? err.message : `Failed to load ticks for ${symName}.`);
       } finally {
-        clearInterval(interval);
         setTicksProgress(100);
         setTimeout(() => setTicksLoading(false), 200);
       }
     };
-    
+
     fetchTicks();
-  }, [activeTab, ticksFetchTrigger, generateDemoTicks]);
+  }, [activeTab, ticksFetchTrigger, ticksSymbolInput, ticksStartTime, ticksEndTime]);
 
   const handleBarsScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -763,7 +773,17 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                         );
                       })}
                       {bars.length === 0 && !barsLoading && (
-                        <tr><td colSpan={8} className="text-center py-6 text-zinc-600">No bar data available</td></tr>
+                        <tr>
+                          <td colSpan={8} className="text-center py-6 text-zinc-600">
+                            <div>{barsError || 'No bar data available'}</div>
+                            <button
+                              className="mt-2 px-3 py-1 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                              onClick={() => setBarsFetchTrigger(v => v + 1)}
+                            >
+                              Retry
+                            </button>
+                          </td>
+                        </tr>
                       )}
                     </tbody>
                   </table>
@@ -847,7 +867,17 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                         </tr>
                       ))}
                       {ticks.length === 0 && !ticksLoading && (
-                        <tr><td colSpan={6} className="text-center py-6 text-zinc-600">No tick data available</td></tr>
+                        <tr>
+                          <td colSpan={6} className="text-center py-6 text-zinc-600">
+                            <div>{ticksError || 'No tick data available'}</div>
+                            <button
+                              className="mt-2 px-3 py-1 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                              onClick={() => setTicksFetchTrigger(v => v + 1)}
+                            >
+                              Retry
+                            </button>
+                          </td>
+                        </tr>
                       )}
                     </tbody>
                   </table>
@@ -865,6 +895,16 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
             <div className="flex-1 overflow-y-auto no-scrollbar py-1">
               {loading ? (
                 <div className="text-[11px] text-zinc-500 px-3 py-2">Loading...</div>
+              ) : symbolsError ? (
+                <div className="px-3 py-2 text-[11px] text-zinc-500">
+                  <div>{symbolsError}</div>
+                  <button
+                    className="mt-2 px-3 py-1 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                    onClick={() => setSymbolsFetchTrigger(v => v + 1)}
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : (
                 Object.entries(tree.children || {}).map(([n, node]) => (
                   <TreeItem
@@ -926,7 +966,17 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                 <tbody>
                   {filteredSymbols.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={3} className="text-center py-4 text-zinc-600 text-[11px]">No symbols found</td>
+                      <td colSpan={3} className="text-center py-4 text-zinc-600 text-[11px]">
+                        <div>{symbolsError || 'No symbols found'}</div>
+                        {symbolsError && (
+                          <button
+                            className="mt-2 px-3 py-1 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                            onClick={() => setSymbolsFetchTrigger(v => v + 1)}
+                          >
+                            Retry
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   )}
                   {filteredSymbols.map(sym => (
@@ -942,7 +992,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                           addSymbolToWatchlist(activeWatchlist.id, symName);
                           try {
                             const wsService = getEnhancedWebSocketService(MARKET_WS_URL);
-                            wsService.sendMessage({ type: 'subscribe', symbols: [symName] });
+                            wsService.sendMessage({ action: 'subscribe', channel: `ticks.${symName}` });
                             useMarketDataStore.getState().subscribeSymbol(symName);
                           } catch (err) {}
                         }
@@ -1049,7 +1099,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                       addSymbolToWatchlist(activeWatchlist.id, symName);
                       try {
                         const wsService = getEnhancedWebSocketService(MARKET_WS_URL);
-                        wsService.sendMessage({ type: 'subscribe', symbols: [symName] });
+                        wsService.sendMessage({ action: 'subscribe', channel: `ticks.${symName}` });
                         useMarketDataStore.getState().subscribeSymbol(symName);
                       } catch (err) {}
                       onShowSymbol?.(symName);

@@ -69,6 +69,14 @@ export function OneClickPanel({
   const placeOrder = useCallback(
     async (side: 'BUY' | 'SELL') => {
       if (isPlacing || volume <= 0) return;
+      if (!symbol.trim()) {
+        setError('Missing symbol');
+        return;
+      }
+      if (currentBid <= 0 || currentAsk <= 0) {
+        setError('Waiting for a valid bid/ask price');
+        return;
+      }
 
       setError(null);
       setIsPlacing(true);
@@ -79,9 +87,9 @@ export function OneClickPanel({
         const defaultTP = localStorage.getItem('defaultTakeProfit');
 
         const orderData: any = {
-          accountId,
+          login: accountId,
           symbol,
-          side,
+          side: side.toLowerCase(),
           volume,
         };
 
@@ -113,6 +121,7 @@ export function OneClickPanel({
 
         // Notify parent
         onOrderPlaced?.();
+        window.dispatchEvent(new Event('rtx:force-refresh-positions'));
       } catch (err: any) {
         console.error('One-click order failed:', err);
         setError(err.message || 'Order failed');

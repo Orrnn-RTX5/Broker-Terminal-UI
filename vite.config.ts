@@ -15,11 +15,6 @@ export default defineConfig({
       clientPort: 5173,
     },
     proxy: {
-      '/mt5-sync-api': {
-        target: 'https://rtxbackend.tradecopier.org',
-        changeOrigin: true,
-        rewrite: (path: string) => path.replace(/^\/mt5-sync-api/, ''),
-      },
       '/api': {
         target: 'https://rtxbackend.tradecopier.org',
         changeOrigin: true,

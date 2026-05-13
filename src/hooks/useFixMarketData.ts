@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import * as endpoints from '../api/endpoints';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
-import { getFixMarketDataSocket } from '../services/fixMarketDataSocket';
 import {
   candleAggregationService,
   CandleData,
@@ -21,6 +20,11 @@ const VALID_TIMEFRAMES: Timeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1
 
 function isValidTimeframe(tf: string): tf is Timeframe {
   return VALID_TIMEFRAMES.includes(tf as Timeframe);
+}
+
+function toValidTimeframe(tf: string): Timeframe {
+  const upperTf = tf.toUpperCase();
+  return isValidTimeframe(upperTf) ? upperTf : 'M1';
 }
 
 export function useFixMarketData({
@@ -61,8 +65,7 @@ export function useFixMarketData({
    * Get current timeframe as valid Timeframe type
    */
   const getCurrentTimeframe = useCallback((): Timeframe => {
-    const tf = timeframeRef.current.toUpperCase();
-    return isValidTimeframe(tf) ? tf : 'M1';
+    return toValidTimeframe(timeframeRef.current);
   }, []);
 
   /**
@@ -83,6 +86,112 @@ export function useFixMarketData({
     }
   }, [getCurrentTimeframe]);
 
+  const normalizeCandle = useCallback((candle: any): CandleData | null => {
+    if (!candle) return null;
+    const time = Number(candle.time);
+    const open = Number(candle.open);
+    const high = Number(candle.high);
+    const low = Number(candle.low);
+    const close = Number(candle.close);
+
+    if (![time, open, high, low, close].every(Number.isFinite)) {
+      return null;
+    }
+
+    return {
+      time: time > 1_000_000_000_000 ? Math.floor(time / 1000) : time,
+      open,
+      high,
+      low,
+      close,
+      volume: Number(candle.volume ?? candle.tick_count) || 0,
+      isComplete: true,
+    };
+  }, []);
+
+  const applyServerCandles = useCallback((
+    candlesInput: any,
+    options: { timeframe?: Timeframe; isSnapshot?: boolean } = {},
+  ) => {
+    const normalizedCandles = (Array.isArray(candlesInput) ? candlesInput : [candlesInput])
+      .map(normalizeCandle)
+      .filter((candle): candle is CandleData => candle !== null)
+      .sort((a, b) => a.time - b.time);
+
+    if (normalizedCandles.length === 0) return;
+
+    const targetTimeframe = options.timeframe ?? getCurrentTimeframe();
+
+    if (Array.isArray(candlesInput) || options.isSnapshot) {
+      candleAggregationService.loadHistoricalCandles(
+        symbolRef.current,
+        targetTimeframe,
+        normalizedCandles
+      );
+    } else {
+      candleAggregationService.addCompletedCandle(
+        symbolRef.current,
+        targetTimeframe,
+        normalizedCandles[0]
+      );
+    }
+
+    const visibleCandles = candleAggregationService.getCandles(
+      symbolRef.current,
+      getCurrentTimeframe(),
+      true,
+      true
+    );
+
+    const candlesToDisplay = visibleCandles.length > 0 ? visibleCandles : normalizedCandles;
+    const latestCandle = candlesToDisplay[candlesToDisplay.length - 1];
+
+    setHistoricalData(candlesToDisplay);
+    setCandleCount(candlesToDisplay.length);
+    setLastPrice(latestCandle.close);
+    onCandleUpdateRef.current?.(latestCandle);
+  }, [getCurrentTimeframe, normalizeCandle]);
+
+  const unwrapCandlePayload = useCallback((payload: any): { candles: any; isSnapshot: boolean } => {
+    if (!payload) return { candles: null, isSnapshot: false };
+    if (Array.isArray(payload)) return { candles: payload, isSnapshot: false };
+
+    if (payload.candle) return { candles: payload.candle, isSnapshot: false };
+    if (payload.candles) return { candles: payload.candles, isSnapshot: false };
+
+    const snapshot = payload.snapshot;
+    if (snapshot) {
+      if (Array.isArray(snapshot)) return { candles: snapshot, isSnapshot: true };
+      if (snapshot.candle) return { candles: snapshot.candle, isSnapshot: true };
+      if (snapshot.candles) return { candles: snapshot.candles, isSnapshot: true };
+      return { candles: snapshot, isSnapshot: true };
+    }
+
+    return { candles: payload, isSnapshot: false };
+  }, []);
+
+  const matchesCurrentSymbol = useCallback((payload: any, fallbackSymbol?: string): boolean => {
+    const incomingSymbol = payload?.symbol ?? fallbackSymbol;
+    return !incomingSymbol || incomingSymbol === symbolRef.current;
+  }, []);
+
+  const resolveMessageTimeframe = useCallback((
+    payload: any,
+    fallbackTimeframe?: string,
+    defaultTimeframe?: Timeframe,
+  ): Timeframe => {
+    const incomingTimeframe = payload?.timeframe ?? payload?.tf ?? fallbackTimeframe;
+    return incomingTimeframe ? toValidTimeframe(String(incomingTimeframe)) : defaultTimeframe ?? getCurrentTimeframe();
+  }, [getCurrentTimeframe]);
+
+  const matchesCurrentTimeframe = useCallback((
+    payload: any,
+    fallbackTimeframe?: string,
+    defaultTimeframe?: Timeframe,
+  ): boolean => {
+    return resolveMessageTimeframe(payload, fallbackTimeframe, defaultTimeframe) === getCurrentTimeframe();
+  }, [getCurrentTimeframe, resolveMessageTimeframe]);
+
   /**
    * Load historical data from API
    */
@@ -90,8 +199,7 @@ export function useFixMarketData({
     setStatus(`Loading ${sym} (${tf})...`);
 
     try {
-      // Fetch candles from backend using FIX API endpoint
-      console.log(`[useFixMarketData] Fetching candles for ${sym} (${tf})...`);
+      console.log(`[useFixMarketData] Fetching history candles for ${sym} (${tf})...`);
       const candles = await endpoints.marketApi.getOHLC(sym, tf, 200);
 
       if (!candles || candles.length === 0) {
@@ -109,7 +217,7 @@ export function useFixMarketData({
         high: Number(c.high),
         low: Number(c.low),
         close: Number(c.close),
-        volume: Number(c.volume) || 0,
+        volume: Number(c.volume ?? c.tick_count) || 0,
         isComplete: true,
       }));
 
@@ -216,10 +324,12 @@ export function useFixMarketData({
         unsubscribeRef.current = null;
       }
 
-      const currentSym = symbolRef.current;
-      const tickChannel = `quotes.${currentSym}`;
+      const currentSym = symbol;
+      const currentTf = toValidTimeframe(timeframe);
+      const tickChannel = `ticks.${currentSym}`;
+      const candleChannel = `candles.${currentSym}.${currentTf}`;
 
-      console.log(`[useFixMarketData] Subscribing to ${tickChannel}...`);
+      console.log(`[useFixMarketData] Subscribing to ${tickChannel} and ${candleChannel}...`);
 
       const wsService = getEnhancedWebSocketService();
       setIsConnected(wsService.getState() === 'connected');
@@ -230,14 +340,34 @@ export function useFixMarketData({
         try {
           const payload = msg.data || msg;
 
-          // Handle tick data
-          if (msg.type === 'channel_message' &&
-              (msg.channel === tickChannel || msg.channel === 'prices')) {
-
-            const tickInfo = payload;
-            if (tickInfo.symbol === symbolRef.current) {
+          if (msg.type === 'channel_message' && msg.channel === tickChannel) {
+            const tickInfo = payload?.tick ?? payload;
+            if (tickInfo.symbol === currentSym) {
               processTick(tickInfo);
             }
+          }
+
+          if (msg.type === 'channel_message' && msg.channel === candleChannel) {
+            const candlePayload = unwrapCandlePayload(payload);
+            applyServerCandles(candlePayload.candles, {
+              timeframe: currentTf,
+              isSnapshot: candlePayload.isSnapshot,
+            });
+          }
+
+          if (msg.type === 'tick' && matchesCurrentSymbol(msg)) {
+            processTick(msg);
+          }
+
+          if (msg.type === 'update' && msg.candle && matchesCurrentSymbol(msg)) {
+            const messageTimeframe = resolveMessageTimeframe(msg, undefined, 'M1');
+            if (messageTimeframe !== 'M1' && !matchesCurrentTimeframe(msg)) return;
+
+            const candlePayload = unwrapCandlePayload(msg);
+            applyServerCandles(candlePayload.candles, {
+              timeframe: messageTimeframe,
+              isSnapshot: candlePayload.isSnapshot,
+            });
           }
         } catch (err) {
           console.error('[useFixMarketData] WS message error:', err);
@@ -245,7 +375,12 @@ export function useFixMarketData({
       };
 
       // Subscribe to WebSocket
-      unsubscribeRef.current = wsService.subscribe(tickChannel, handleWsMessage);
+      const unsubscribeTick = wsService.subscribe(tickChannel, handleWsMessage);
+      const unsubscribeCandles = wsService.subscribe(candleChannel, handleWsMessage);
+      unsubscribeRef.current = () => {
+        unsubscribeTick();
+        unsubscribeCandles();
+      };
 
       // Monitor connection state
       const unbindStatus = wsService.onStateChange((state) => {
@@ -255,34 +390,13 @@ export function useFixMarketData({
           setStatus('Connection error');
         }
 
-        // Resubscribe on reconnect
-        if (state === 'connected') {
-          wsService.sendMessage({
-            type: 'subscribe',
-            channel: tickChannel,
-          });
-        }
       });
-
-      // Subscribe immediately if already connected
-      if (wsService.getState() === 'connected') {
-        wsService.sendMessage({
-          type: 'subscribe',
-          channel: tickChannel,
-        });
-      }
 
       // Combined unsubscribe function
       const originalUnsubscribe = unsubscribeRef.current;
       unsubscribeRef.current = () => {
-        originalUnsubscribe();
+        originalUnsubscribe?.();
         unbindStatus();
-        try {
-          wsService.sendMessage({
-            type: 'unsubscribe',
-            channel: tickChannel,
-          });
-        } catch (e) { /* ignore */ }
       };
 
     } catch (err) {
@@ -293,7 +407,16 @@ export function useFixMarketData({
         }, 5000);
       }
     }
-  }, [processTick]);
+  }, [
+    applyServerCandles,
+    matchesCurrentSymbol,
+    matchesCurrentTimeframe,
+    processTick,
+    resolveMessageTimeframe,
+    symbol,
+    timeframe,
+    unwrapCandlePayload,
+  ]);
 
   /**
    * Refresh data manually
@@ -307,7 +430,7 @@ export function useFixMarketData({
 
   // Load historical data on symbol/timeframe change
   useEffect(() => {
-    const currentTf = isValidTimeframe(timeframe) ? timeframe : 'M1';
+    const currentTf = toValidTimeframe(timeframe);
     loadHistoricalData(symbol, currentTf);
   }, [symbol, timeframe, loadHistoricalData]);
 
@@ -344,53 +467,6 @@ export function useFixMarketData({
     return () => clearInterval(refreshInterval);
   }, [getCurrentTimeframe, loadHistoricalData]);
 
-  // Subscribe to FIX socket candle 'update' messages to drive new-candle creation
-  // The FIX socket sends finalized server-side candles every minute (type='update').
-  // Without this, the chart only gets new candles when a tick straddles a minute
-  // boundary OR after the 30-second periodic reload — causing the "no new candle" bug.
-  useEffect(() => {
-    const fixSocket = getFixMarketDataSocket();
-
-    const unsubscribe = fixSocket.onMessage((msg) => {
-      if (!isMountedRef.current) return;
-      if (msg.type !== 'update' || !msg.candle) return;
-      if (msg.symbol !== symbolRef.current) return;
-
-      // Only process M1 candles (the server always sends M1)
-      const currentTf = getCurrentTimeframe();
-      if (currentTf !== 'M1') return;
-
-      const serverCandle: CandleData = {
-        time: msg.candle.time,       // already Unix seconds
-        open: msg.candle.open,
-        high: msg.candle.high,
-        low: msg.candle.low,
-        close: msg.candle.close,
-        volume: msg.candle.volume,
-      };
-
-      setHistoricalData(prev => {
-        const lastIndex = prev.findIndex(c => c.time === serverCandle.time);
-
-        if (lastIndex >= 0) {
-          // Update existing (forming) candle with latest server data
-          return [
-            ...prev.slice(0, lastIndex),
-            serverCandle,
-            ...prev.slice(lastIndex + 1),
-          ];
-        } else {
-          // Brand new candle — new minute has started!
-          return [...prev, serverCandle];
-        }
-      });
-
-      // Push directly to the lightweight-charts series for zero-lag rendering
-      onCandleUpdateRef.current?.(serverCandle);
-    });
-
-    return () => unsubscribe();
-  }, [getCurrentTimeframe]);
 
   return {
     status,

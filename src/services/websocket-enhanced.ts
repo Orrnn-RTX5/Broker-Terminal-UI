@@ -17,7 +17,8 @@ export type MetricsCallback = (metrics: ConnectionMetrics) => void;
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error' | 'offline';
 
 export interface WebSocketMessage {
-  type: string;
+  type?: string;
+  action?: string;
   symbol?: string;
   channel?: string;
   data?: unknown;
@@ -226,7 +227,7 @@ export class EnhancedWebSocketService {
     if (this.ws?.readyState === WebSocket.OPEN) {
       console.log(`[WS] Sending subscribe request for channel: ${channel}`);
       this.sendMessage({
-        type: 'subscribe',
+        action: 'subscribe',
         channel,
       });
     } else {
@@ -241,7 +242,7 @@ export class EnhancedWebSocketService {
         if (callbacks.size === 0) {
           this.subscribers.delete(channel);
           this.sendMessage({
-            type: 'unsubscribe',
+            action: 'unsubscribe',
             channel,
           });
         }
@@ -250,40 +251,15 @@ export class EnhancedWebSocketService {
   }
 
   /**
-   * Subscribe to market data symbols (fixapibackend format)
-   * Format: {"type":"subscribe","symbols":["BTCUSD"]}
+   * Backward-compatible helper: subscribe each symbol through swagger v2 channels.
    */
   public subscribeSymbols(symbols: string[], callback: SubscriptionCallback): () => void {
-    const channel = `symbols:${symbols.join(',')}`;
+    const unsubscribers = symbols
+      .map((symbol) => String(symbol).trim().toUpperCase())
+      .filter(Boolean)
+      .map((symbol) => this.subscribe(`ticks.${symbol}`, callback));
 
-    if (!this.subscribers.has(channel)) {
-      this.subscribers.set(channel, new Set());
-    }
-
-    this.subscribers.get(channel)!.add(callback);
-
-    // Send subscription message if connected
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log(`[WS] Subscribing to symbols: ${symbols.join(', ')}`);
-      this.sendMessage({
-        type: 'subscribe',
-        symbols,
-      });
-    } else {
-      console.log(`[WS] Queued subscribe for symbols: ${symbols.join(', ')} (not connected yet)`);
-    }
-
-    // Return unsubscribe function
-    return () => {
-      const callbacks = this.subscribers.get(channel);
-      if (callbacks) {
-        callbacks.delete(callback);
-        if (callbacks.size === 0) {
-          this.subscribers.delete(channel);
-          // Note: Backend may not support unsubscribe, but we stop tracking
-        }
-      }
-    };
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }
 
   /**
@@ -329,8 +305,9 @@ export class EnhancedWebSocketService {
    */
   public sendMessage(message: WebSocketMessage): void {
     const messageStr = JSON.stringify(message);
+    const messageAction = message.action || message.type;
     // Log ALL subscription messages with full details
-    if (message.type === 'subscribe') {
+    if (messageAction === 'subscribe') {
       const symbols = (message as any).symbols;
       if (symbols && Array.isArray(symbols)) {
         console.log(`[WS] Sending subscribe for symbols: ${symbols.join(', ')}`);
@@ -347,8 +324,8 @@ export class EnhancedWebSocketService {
         this.queueMessage(message);
       }
     } else {
-      if (message.type === 'subscribe' || message.type === 'unsubscribe') {
-        console.log(`[WS] Queued ${message.type} (not connected)`);
+      if (messageAction === 'subscribe' || messageAction === 'unsubscribe') {
+        console.log(`[WS] Queued ${messageAction} (not connected)`);
       }
       this.queueMessage(message);
     }
@@ -515,6 +492,29 @@ export class EnhancedWebSocketService {
   private handleFixTick(data: WebSocketMessage): void {
     const timestamp = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
     const ts = timestamp > 1000000000000 ? timestamp : timestamp * 1000;
+    const bid = Number(data.bid) || 0;
+    const ask = Number(data.ask) || bid;
+    const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask;
+    const previousClose = Number((data as any).previous_close ?? (data as any).previousClose) || 0;
+    const dailyOpen = Number((data as any).daily_open ?? (data as any).dailyOpen ?? (data as any).open) || 0;
+    const dailyReference = previousClose > 0 ? previousClose : dailyOpen;
+    const session = ((data as any).session ?? {}) as Record<string, unknown>;
+    const sessionHigh = Math.max(
+      Number(session.high_bid) || 0,
+      Number(session.high_ask) || 0,
+      Number((data as any).high) || 0
+    );
+    const sessionLowValues = [
+      Number(session.low_bid) || 0,
+      Number(session.low_ask) || 0,
+      Number((data as any).low) || 0,
+    ].filter((value) => value > 0);
+    const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
+    const dailyChange = data.dailyChange !== undefined
+      ? Number(data.dailyChange)
+      : dailyReference > 0
+        ? ((mid - dailyReference) / dailyReference) * 100
+        : undefined;
     // Log the exact TS to debug frozen timestamp issues
     console.log(`[WS TICK] ${data.symbol} bid=${data.bid} ask=${data.ask} spread=${data.spread} ts=${ts} daily=${data.dailyChange}`);
 
@@ -525,9 +525,9 @@ export class EnhancedWebSocketService {
     import('../store/useMarketDataStore').then(({ useMarketDataStore }) => {
       useMarketDataStore.getState().updateTick(data.symbol!, {
         symbol: data.symbol!,
-        bid: Number(data.bid) || 0,
-        ask: Number(data.ask) || 0,
-        spread: Number(data.spread) || 0,
+        bid,
+        ask,
+        spread: Number(data.spread) || (ask - bid),
         timestamp: ts,
         lp: data.lp as string | undefined,
         volume: 1,
@@ -541,16 +541,19 @@ export class EnhancedWebSocketService {
     import('../store/useAppStore').then(({ useAppStore }) => {
       useAppStore.getState().setTick(data.symbol!, {
         symbol: data.symbol!,
-        bid: Number(data.bid) || 0,
-        ask: Number(data.ask) || 0,
-        spread: Number(data.spread) || 0,
+        bid,
+        ask,
+        spread: Number(data.spread) || (ask - bid),
         timestamp: ts,
         lp: data.lp as string | undefined,
         volume: 1,
-        // MT5-style daily data sent by the broker
-        dailyChange: data.dailyChange !== undefined ? Number(data.dailyChange) : undefined,
-        high24h: data.high24h !== undefined ? Number(data.high24h) : undefined,
-        low24h: data.low24h !== undefined ? Number(data.low24h) : undefined,
+        dailyChange,
+        high24h: data.high24h !== undefined ? Number(data.high24h) : sessionHigh || undefined,
+        low24h: data.low24h !== undefined ? Number(data.low24h) : sessionLow,
+        high: data.high !== undefined ? Number(data.high) : undefined,
+        low: data.low !== undefined ? Number(data.low) : undefined,
+        open: dailyOpen || undefined,
+        close: (previousClose > 0 || data.close !== undefined) ? Number(data.close ?? previousClose) : undefined,
       } as any);
     }).catch(err => {
       console.error('[WS] Failed to import useAppStore:', err);
@@ -587,23 +590,11 @@ export class EnhancedWebSocketService {
   }
 
   /**
-   * Handle MT5 WebSocket updates - update useMT5Store directly
+   * Ignore legacy MT5 compatibility messages.
+   * Trade-facing state is hydrated through useTradeFacingData/useAppStore.
    */
   private handleMT5Update(data: WebSocketMessage): void {
-    // Dynamically import to avoid circular dependency
-    import('../store/useMT5Store').then(({ useMT5Store }) => {
-      const store = useMT5Store.getState();
-
-      if (data.type === 'mt5_positions' && Array.isArray(data.positions)) {
-        store.setPositionsFromWS(data.positions as any);
-      } else if (data.type === 'mt5_account' && data.account) {
-        store.setAccountFromWS(data.account as any);
-      } else if (data.type === 'mt5_orders' && Array.isArray(data.orders)) {
-        store.setOrdersFromWS(data.orders as any);
-      }
-    }).catch(err => {
-      console.error('[WS] Failed to import useMT5Store:', err);
-    });
+    console.debug('[WS] Ignoring legacy MT5 compatibility message:', data.type);
   }
 
   /**
@@ -641,9 +632,15 @@ export class EnhancedWebSocketService {
     };
 
     // Broadcast to channel-specific subscribers
+    const matchingCallbacks = new Set<SubscriptionCallback>();
     const callbacks = this.subscribers.get(channel);
-    if (callbacks) {
-      callbacks.forEach((callback) => {
+    callbacks?.forEach((callback) => matchingCallbacks.add(callback));
+    if (data.symbol) {
+      this.subscribers.get(`ticks.${data.symbol}`)?.forEach((callback) => matchingCallbacks.add(callback));
+    }
+
+    if (matchingCallbacks.size > 0) {
+      matchingCallbacks.forEach((callback) => {
         try {
           callback(makeCallbackMessage());
         } catch (error) {
@@ -853,23 +850,12 @@ export class EnhancedWebSocketService {
     this.subscribers.forEach((_, channel) => {
       if (channel === '*') return;
 
-      // Handle symbol subscriptions (format: symbols:BTCUSD,ETHUSD)
-      if (channel.startsWith('symbols:')) {
-        const symbolsStr = channel.replace('symbols:', '');
-        const symbols = symbolsStr.split(',').filter(s => s.length > 0);
-        if (symbols.length > 0) {
-          this.sendMessage({
-            type: 'subscribe',
-            symbols,
-          });
-        }
-      } else {
-        // Regular channel subscription
-        this.sendMessage({
-          type: 'subscribe',
-          channel,
-        });
-      }
+      if (channel.startsWith('symbols:')) return;
+
+      this.sendMessage({
+        action: 'subscribe',
+        channel,
+      });
     });
   }
 
@@ -975,18 +961,17 @@ export class EnhancedWebSocketService {
    * - Preserves explicit local FIX backends like ws://localhost:8081/ws
    */
   private normalizeWsUrl(input: string): string {
-    // Preserve fixapibackend URL as-is (this is the new market data backend)
-    if (input?.includes('fixapibackend.tradecopier.org')) {
+    if (input?.includes('/ws/v2')) {
       return input;
     }
 
-    const fallback = import.meta.env.VITE_WS_URL || 'wss://fixapibackend.tradecopier.org/ws';
+    const fallback = import.meta.env.VITE_RTX5_WS_URL || 'wss://backend.orrnn.com/ws/v2';
     if (!input) return fallback;
 
     try {
       const url = new URL(input, window.location.origin);
 
-      // If app is still pointing to Vite dev proxy ws URL, force backend FIX endpoint.
+      // If app is still pointing to Vite dev proxy ws URL, force swagger v2 endpoint.
       if (
         (url.hostname === 'localhost' || url.hostname === '127.0.0.1') &&
         (url.port === '5173' || url.port === '') &&
@@ -995,14 +980,13 @@ export class EnhancedWebSocketService {
         return fallback;
       }
 
-      // Migrate rtxbackend `/ws` to `/fix-ws` (old backend only).
-      // Do NOT change fixapibackend URLs.
+      // Migrate legacy market sockets to swagger v2.
       if (
         url.pathname === '/ws' &&
         url.hostname.includes('rtxbackend') &&
         !url.hostname.includes('fixapibackend')
       ) {
-        url.pathname = '/fix-ws';
+        return fallback;
       }
 
       return url.toString();
@@ -1021,11 +1005,13 @@ let wsInstance: EnhancedWebSocketService | null = null;
 export const getEnhancedWebSocketService = (url?: string): EnhancedWebSocketService => {
   const normalizedRequestedUrl = (() => {
     if (!url) return undefined;
-    // Preserve fixapibackend URLs (new market data backend)
-    if (url.includes('fixapibackend.tradecopier.org')) return url;
-    // Only rewrite known production legacy endpoint, not explicit local FIX endpoints.
+    if (url.includes('/ws/v2')) return url;
+    if (url.includes('fixapibackend.tradecopier.org')) {
+      return import.meta.env.VITE_RTX5_WS_URL || 'wss://backend.orrnn.com/ws/v2';
+    }
+    // Only rewrite known production legacy endpoint, not explicit local test endpoints.
     if (url.includes('rtxbackend') && url.includes('/ws') && !url.includes('fixapi')) {
-      return url.replace('/ws', '/fix-ws');
+      return import.meta.env.VITE_RTX5_WS_URL || 'wss://backend.orrnn.com/ws/v2';
     }
     return url;
   })();

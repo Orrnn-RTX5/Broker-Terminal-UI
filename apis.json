@@ -7,7 +7,6 @@ info:
     ## Architecture
     - **Gateway Backend** (Port 7999) - Main API entry point
     - **FIX API Backend** (Port 8081) - FIX protocol market data
-    - **MT5 Sync C++ Backend** (Port 8088) - MT5 trade execution
 
     ## Authentication
     Use the `/api/login` endpoint to get a Bearer token, then include it in all protected requests:
@@ -26,24 +25,18 @@ servers:
     description: Gateway Backend (Main)
   - url: http://localhost:8081
     description: FIX API Backend
-  - url: http://localhost:8088
-    description: MT5 Sync C++ Backend
 
 tags:
   - name: Health
     description: Service health check endpoints
   - name: Auth
     description: Authentication - Login, Logout, Refresh
-  - name: MT5 Account
-    description: MT5 account management (create accounts, get groups)
   - name: Market Data
     description: Public market data - symbols, quotes, candles, ticks
   - name: Account
     description: Trading account info - balance, history, equity
   - name: Trading
     description: Order and position management
-  - name: MT5 Sync Direct
-    description: Direct MT5 Sync C++ backend endpoints (port 8088)
 
 components:
   securitySchemes:
@@ -87,58 +80,6 @@ components:
             role:
               type: string
               example: "trader"
-
-    CreateAccountRequest:
-      type: object
-      required: [name, group]
-      properties:
-        name:
-          type: string
-          example: "John Doe"
-        email:
-          type: string
-          example: "john@example.com"
-        phone:
-          type: string
-          example: "+919876543210"
-        country:
-          type: string
-          example: "India"
-        city:
-          type: string
-          example: "Mumbai"
-        group:
-          type: string
-          example: "demo\\STD"
-        leverage:
-          type: integer
-          example: 100
-
-    CreateAccountResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        account:
-          type: object
-          properties:
-            login:
-              type: integer
-              example: 900789
-            master_password:
-              type: string
-              example: "Ux@O@w03Q7N@"
-            investor_password:
-              type: string
-            group:
-              type: string
-            server:
-              type: string
-            created_at:
-              type: string
-              format: date-time
 
     CreateOrderRequest:
       type: object
@@ -194,24 +135,139 @@ components:
     Position:
       type: object
       properties:
-        id:
-          type: string
+        ticket:
+          type: integer
+          format: int64
+          example: 1000001
+        account_login:
+          type: integer
+          format: int64
+          example: 100001
         symbol:
           type: string
+          example: EURUSD
         side:
           type: string
-          enum: [long, short]
-        quantity:
+          enum: [buy, sell]
+          example: buy
+        volume:
           type: number
-        open_price:
+          format: double
+          example: 1.00
+        price_open:
           type: number
-        current_price:
+          format: double
+          example: 1.08650
+        price_current:
           type: number
-        unrealized_pl:
+          format: double
+          example: 1.08750
+        price_sl:
           type: number
-        opened_at:
+          format: double
+          nullable: true
+        price_tp:
+          type: number
+          format: double
+          nullable: true
+        profit:
+          type: number
+          format: double
+          example: 100.00
+        swap:
+          type: number
+          format: double
+          example: -1.50
+        commission:
+          type: number
+          format: double
+          example: -7.00
+        comment:
           type: string
-          format: date-time
+        time_create:
+          type: integer
+          format: int64
+        time_update:
+          type: integer
+          format: int64
+        trailing_stop:
+          type: integer
+          description: Trailing stop distance in points (0 = disabled)
+          example: 50
+        trailing_step:
+          type: integer
+          description: Minimum move in points before trailing adjusts
+          example: 10
+        magic:
+          type: integer
+          format: int64
+          description: Expert Advisor magic number (0 = manual trade)
+          example: 0
+
+    Deal:
+      type: object
+      properties:
+        ticket:
+          type: integer
+          format: int64
+        order_ticket:
+          type: integer
+          format: int64
+          description: Related order ticket
+        position_ticket:
+          type: integer
+          format: int64
+          description: Related position ticket
+        account_login:
+          type: integer
+          format: int64
+        symbol:
+          type: string
+        action:
+          type: string
+          enum: [deal_buy, deal_sell, deal_balance, deal_credit, deal_commission, deal_correction]
+        entry:
+          type: string
+          enum: [entry_in, entry_out, entry_inout]
+          description: "entry_in = opening side, entry_out = closing side, entry_inout = close-by"
+        volume:
+          type: number
+          format: double
+        price:
+          type: number
+          format: double
+        profit:
+          type: number
+          format: double
+        swap:
+          type: number
+          format: double
+        commission:
+          type: number
+          format: double
+        fee:
+          type: number
+          format: double
+        magic:
+          type: integer
+          format: int64
+          description: EA magic number (0 if manual)
+        comment:
+          type: string
+        time:
+          type: integer
+          format: int64
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Invalid request parameters
 
     AccountSummary:
       type: object
@@ -341,90 +397,6 @@ paths:
         '401':
           description: Invalid or expired refresh token
 
-  # ===== MT5 ACCOUNT =====
-  /api/mt5/status:
-    get:
-      tags: [MT5 Account]
-      summary: MT5 Connection Status
-      description: Check if the C++ backend is connected to the MT5 broker server
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: MT5 connection status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  connected:
-                    type: boolean
-                  address:
-                    type: string
-                  login:
-                    type: integer
-                  last_error:
-                    type: string
-
-  /api/mt5/groups:
-    get:
-      tags: [MT5 Account]
-      summary: Get All MT5 Groups
-      description: Get list of all available account groups from the broker (demo, live, etc.)
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: List of groups
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  count:
-                    type: integer
-                  groups:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                          example: "demo\\STD"
-                        currency:
-                          type: string
-                          example: "USD"
-
-  /api/mt5/account/create:
-    post:
-      tags: [MT5 Account]
-      summary: Create New MT5 Account (Register)
-      description: |
-        Creates a new trading account in the MT5 broker terminal using Manager API.
-        **No token required** — this is the new user registration endpoint.
-
-        Returns **Login ID**, **Master Password** (for trading), and **Investor Password** (read-only).
-      security: []   # Public - new user registration, no token needed
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateAccountRequest'
-      responses:
-        '200':
-          description: Account created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateAccountResponse'
-        '500':
-          description: Failed to create account
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
   # ===== MARKET DATA (PROTECTED) =====
   /api/symbols:
     get:
@@ -435,21 +407,22 @@ paths:
         '200':
           description: List of symbols
 
-  /api/quotes/{symbol}:
+  /api/v2/quotes:
     get:
       tags: [Market Data]
-      summary: Get Live Quote
-      description: Get real-time bid/ask price for a trading symbol
+      summary: Get quotes for multiple symbols
+      description: Get latest quotes for one or more trading symbols.
       parameters:
-        - name: symbol
-          in: path
-          required: true
+        - name: symbols
+          in: query
+          required: false
           schema:
             type: string
-            example: EURUSD
+            example: EURUSD,GBPUSD
+          description: Comma-separated symbol list
       responses:
         '200':
-          description: Live quote data
+          description: Quotes
 
   /api/candles/{symbol}:
     get:
@@ -582,7 +555,7 @@ paths:
       tags: [Trading]
       summary: Place Market Order
       description: |
-        Place a market buy or sell order. The order is routed through MT5 Sync C++ backend for execution.
+        Place a market buy or sell order through the trading gateway.
 
         **Note:** Only `market` order type is currently supported.
       security:
@@ -602,8 +575,6 @@ paths:
                 $ref: '#/components/schemas/Order'
         '400':
           description: Invalid request or unsupported order type
-        '502':
-          description: MT5 execution failed
 
   /api/orders/{id}:
     delete:
@@ -623,32 +594,48 @@ paths:
         '404':
           description: Order not found
 
-  /api/positions:
+  /api/v2/positions/{login}:
     get:
+      operationId: getPositions
       tags: [Trading]
-      summary: Get Open Positions
-      description: Get all currently open positions with unrealized P&L
+      summary: Get open positions for an account
       security:
         - BearerAuth: []
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
       responses:
         '200':
-          description: List of open positions
+          description: Open positions
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  positions:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Position'
-                  count:
-                    type: integer
+                type: array
+                items:
+                  $ref: '#/components/schemas/Position'
 
-  /api/positions/{id}/close:
+  /api/v2/positions/{id}/close:
     post:
+      operationId: closePosition
       tags: [Trading]
-      summary: Close Position
+      summary: Close a specific position by ticket
+      description: |
+        The position must belong to an account owned by the authenticated user.
+        Uses a DB transaction for atomicity. Rejected if market data returns zero or negative prices.
       security:
         - BearerAuth: []
       parameters:
@@ -656,103 +643,21 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            type: integer
+            format: int64
       responses:
         '200':
-          description: Position closed with realized P&L
-        '404':
-          description: Position not found
-
-  # ===== MT5 SYNC DIRECT =====
-  /api/v1/trades/execute:
-    post:
-      tags: [MT5 Sync Direct]
-      summary: Direct Execute Trade (Port 8088)
-      description: |
-        Execute a trade directly on the MT5 Sync C++ backend (port 8088).
-        Bypasses the Gateway backend. No authentication required.
-
-        **Server:** http://localhost:8088
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [account_login, symbol, side, volume_lots]
-              properties:
-                account_login:
-                  type: integer
-                  example: 900767
-                symbol:
-                  type: string
-                  example: "EURUSD"
-                side:
-                  type: string
-                  enum: [buy, sell]
-                volume_lots:
-                  type: number
-                  example: 0.01
-                price:
-                  type: number
-                  example: 0
-                comment:
-                  type: string
-                  example: "RTX sync trade"
-                client_request_id:
-                  type: string
-                  example: "test-001"
-      responses:
-        '200':
-          description: Trade executed successfully
+          description: Position closed
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  retcode:
-                    type: integer
-                  retcode_text:
-                    type: string
-                  result_order:
-                    type: integer
-                  result_deal:
-                    type: integer
-                  result_price:
-                    type: number
+                $ref: '#/components/schemas/Deal'
+        '404':
+          description: Position not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limited - too many requests. Check Retry-After header.
 
-  /api/v1/mt5/account/create:
-    post:
-      tags: [MT5 Sync Direct]
-      summary: Direct Create MT5 Account (Port 8088)
-      security: []   # Hits C++ backend directly on port 8088 — no gateway auth
-      description: Create MT5 account directly via C++ backend (port 8088). No auth needed.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateAccountRequest'
-      responses:
-        '200':
-          description: Account created
-
-  /api/v1/mt5/groups:
-    get:
-      tags: [MT5 Sync Direct]
-      summary: Direct Get Groups (Port 8088)
-      security: []   # Hits C++ backend directly on port 8088 — no gateway auth
-      responses:
-        '200':
-          description: List of groups
-
-  /api/v1/mt5/status:
-    get:
-      tags: [MT5 Sync Direct]
-      summary: Direct MT5 Status (Port 8088)
-      security: []   # Hits C++ backend directly on port 8088 — no gateway auth
-      responses:
-        '200':
-          description: MT5 connection status

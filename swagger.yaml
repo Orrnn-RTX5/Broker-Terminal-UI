@@ -1,710 +1,3027 @@
-openapi: 3.0.3
+﻿openapi: 3.0.3
 info:
-  title: Trading Engine RTX - API Documentation
+  title: RTX5 Trading Platform API
   description: |
-    Complete REST API documentation for Trading Engine RTX.
-
-    ## Architecture
-    - **Gateway Backend** (Port 7999) - Main API entry point
-    - **FIX API Backend** (Port 8081) - FIX protocol market data
-    - **MT5 Sync C++ Backend** (Port 8088) - MT5 trade execution
+    Complete API documentation for all RTX5 backend services (excluding Manager Backend, which has its own Swagger).
+    Timestamps are Unix int64 (seconds unless noted otherwise).
 
     ## Authentication
-    Use the `/api/login` endpoint to get a Bearer token, then include it in all protected requests:
-    `Authorization: Bearer <your_token>`
-  version: 1.0.0
-  contact:
-    name: RTX Trading Engine
+    Most Core Gateway endpoints require either a **Bearer token** (obtained via `/api/v2/auth/login`)
+    or an **API key** (obtained via `/api/v2/auth/register`), passed in the `X-API-Key` header.
 
-# Apply BearerAuth to ALL endpoints by default
-# Public endpoints override this with: security: []
-security:
-  - BearerAuth: []
+    ## Error Handling
+    All errors follow a consistent JSON format with `error` and `message` fields.
+
+    ## Security & Data Integrity
+    - **Transaction atomicity:** All balance-modifying operations (orders, deposits, withdrawals, position closures) use database transactions to guarantee atomicity.
+    - **Zero-price validation:** Market orders and position closures are rejected if live market data returns zero or negative prices, preventing erroneous fills.
+    - **Account ownership:** Most account-specific endpoints enforce ownership checks â€” only the authenticated user who owns the account can access or modify it. Unauthorized access returns 404.
+    - **Amount validation:** Deposit/withdrawal amounts must be positive and cannot exceed 1,000,000. Credit amounts must be non-zero.
+    - **SL/TP validation:** Stop-loss and take-profit values are validated against the current market price (not the position open price).
+
+    ## Rate Limiting
+    - Auth endpoints (login, register, refresh): 10 requests/minute per IP
+    - Trading endpoints (orders, close): 60 requests/minute per account
+    - Balance endpoints (deposit, withdraw, credit): 10 requests/minute per account (admin only)
+    - General API: 300 requests/minute per IP
+    A `429 Too Many Requests` response is returned when limits are exceeded, with a `Retry-After` header.
+
+    ## Services
+    | Service | Port | Prefix |
+    |---------|------|--------|
+    | Core Gateway | 8090 | /api/v2 |
+    | **RTX5 Tech Admin** | **8102** | **/rtx5** |
+    | Risk Backend | 8092 | /risk/v1 |
+    | LP Gateway | 8094 | /lp/v1 |
+    | Reports Backend | 8095 | /reports/v1 |
+    | Exchange Gateway | 8096 | /exchange/v1 |
+    | News Backend | 8097 | /news/v1 |
+    | History Backend | 8098 | /history |
+    | Logging Backend | 8099 | /logging/v1 |
+    | License Server | 8100 | /license-server/v1 |
+    | License Agent | 8100 | /license |
+  version: 5.0.0
+  contact:
+    name: RTX5 Team
 
 servers:
-  - url: http://localhost:7999
-    description: Gateway Backend (Main)
-  - url: http://localhost:8081
-    description: FIX API Backend
-  - url: http://localhost:8088
-    description: MT5 Sync C++ Backend
+  - url: https://backend.orrnn.com
+    description: RTX5 Production (Cloudflare Tunnel)
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
 
 tags:
-  - name: Health
-    description: Service health check endpoints
+  # Core Gateway (8090)
+  - name: "RTX5 Tech Admin"
+    description: |
+      RTX5 Platform Admin API â€” **standalone service on port 8102**.
+      For RTX5 tech team ONLY (not brokers).
+      Register brokers, manage broker servers, suspend/activate brokers.
+      Requires admin role JWT.
+
+      **Swagger UI:** https://backend.orrnn.com/rtx5/swagger
+      **Base URL:** https://backend.orrnn.com/rtx5/api/v1
+  - name: System
+    description: Health and status endpoints
   - name: Auth
-    description: Authentication - Login, Logout, Refresh
-  - name: MT5 Account
-    description: MT5 account management (create accounts, get groups)
+    description: Authentication, registration, and token management
   - name: Market Data
-    description: Public market data - symbols, quotes, candles, ticks
-  - name: Account
-    description: Trading account info - balance, history, equity
+    description: Instruments, quotes, candles, and depth
+  - name: Accounts
+    description: Account management, deposits, withdrawals, and credit operations
   - name: Trading
-    description: Order and position management
-  - name: MT5 Sync Direct
-    description: Direct MT5 Sync C++ backend endpoints (port 8088)
-
-components:
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
-  schemas:
-    LoginRequest:
-      type: object
-      required: [username, password]
-      properties:
-        username:
-          type: string
-          example: "900767"
-        password:
-          type: string
-          example: "47Y$Gj&0YS@T"
-
-    LoginResponse:
-      type: object
-      properties:
-        access_token:
-          type: string
-          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        refresh_token:
-          type: string
-        expires_at:
-          type: string
-          format: date-time
-        user:
-          type: object
-          properties:
-            id:
-              type: string
-            username:
-              type: string
-            email:
-              type: string
-            role:
-              type: string
-              example: "trader"
-
-    CreateAccountRequest:
-      type: object
-      required: [name, group]
-      properties:
-        name:
-          type: string
-          example: "John Doe"
-        email:
-          type: string
-          example: "john@example.com"
-        phone:
-          type: string
-          example: "+919876543210"
-        country:
-          type: string
-          example: "India"
-        city:
-          type: string
-          example: "Mumbai"
-        group:
-          type: string
-          example: "demo\\STD"
-        leverage:
-          type: integer
-          example: 100
-
-    CreateAccountResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        account:
-          type: object
-          properties:
-            login:
-              type: integer
-              example: 900789
-            master_password:
-              type: string
-              example: "Ux@O@w03Q7N@"
-            investor_password:
-              type: string
-            group:
-              type: string
-            server:
-              type: string
-            created_at:
-              type: string
-              format: date-time
-
-    CreateOrderRequest:
-      type: object
-      required: [symbol, type, side, quantity]
-      properties:
-        symbol:
-          type: string
-          example: "EURUSD"
-        type:
-          type: string
-          enum: [market]
-          example: "market"
-        side:
-          type: string
-          enum: [buy, sell]
-          example: "buy"
-        quantity:
-          type: number
-          example: 0.01
-        price:
-          type: number
-          example: 0
-        account_login:
-          type: integer
-          example: 900767
-
-    Order:
-      type: object
-      properties:
-        id:
-          type: string
-        symbol:
-          type: string
-        type:
-          type: string
-        side:
-          type: string
-        quantity:
-          type: number
-        price:
-          type: number
-        status:
-          type: string
-          enum: [pending, filled, cancelled, rejected]
-        created_at:
-          type: string
-          format: date-time
-        mt5_order_id:
-          type: integer
-        mt5_deal_id:
-          type: integer
-
-    Position:
-      type: object
-      properties:
-        id:
-          type: string
-        symbol:
-          type: string
-        side:
-          type: string
-          enum: [long, short]
-        quantity:
-          type: number
-        open_price:
-          type: number
-        current_price:
-          type: number
-        unrealized_pl:
-          type: number
-        opened_at:
-          type: string
-          format: date-time
-
-    AccountSummary:
-      type: object
-      properties:
-        id:
-          type: string
-        balance:
-          type: number
-          example: 10300.25
-        equity:
-          type: number
-        margin_used:
-          type: number
-        margin_available:
-          type: number
-        unrealized_pl:
-          type: number
-        realized_pl:
-          type: number
-        open_positions:
-          type: integer
-        pending_orders:
-          type: integer
-        currency:
-          type: string
-          example: "USD"
-        leverage:
-          type: integer
-          example: 100
-
-    HealthResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: "healthy"
-        timestamp:
-          type: integer
-        version:
-          type: string
-
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          type: string
-        message:
-          type: string
+    description: Market orders, positions, and deal history
+  - name: Pending Orders
+    description: Limit and stop pending order management
+  - name: OCO Orders
+    description: One-Cancels-Other order pairs
+  - name: Watchlist
+    description: User watchlist management
+  - name: Notifications
+    description: User notification management
+  - name: Webhooks
+    description: Webhook subscription management
+  - name: Alerts
+    description: Price alert management
+  - name: Devices
+    description: Push notification device registration
+  - name: Support
+    description: Support ticket system
+  - name: Contests
+    description: Trading contest management
+  - name: Social
+    description: Trader public profiles
+  - name: Calculators
+    description: Margin and profit calculation utilities
+  - name: Copy Trading
+    description: Social / copy trading features
+  - name: Prop Firm
+    description: Proprietary trading firm challenge and payout management
+  - name: Bonuses
+    description: Bonus and promotion management
+  - name: IB
+    description: Introducing Broker referral management
+  - name: Admin
+    description: Administrative endpoints for system monitoring and bulk operations
+  - name: WebSocket
+    description: Real-time streaming via WebSocket
+  # Risk Backend (8092)
+  - name: "Risk: Exposure"
+    description: Real-time exposure monitoring (port 8092)
+  - name: "Risk: Rules"
+    description: Risk rule management (port 8092)
+  - name: "Risk: Alerts"
+    description: Risk alert monitoring (port 8092)
+  - name: "Risk: Dealing"
+    description: Dealing desk queue management (port 8092)
+  # LP Gateway (8094)
+  - name: LP Gateway
+    description: Liquidity provider management, fill tracking, and order routing (port 8094)
+  # Reports Backend (8095)
+  - name: Reports
+    description: Account statements, equity curves, daily summaries, and exports (port 8095)
+  # Exchange Gateway (8096)
+  - name: Exchange Gateway
+    description: Market data feed management and exchange connectivity (port 8096)
+  # News Backend (8097)
+  - name: News
+    description: Financial news and economic calendar (port 8097)
+  # History Backend (8098)
+  - name: "History: Candles"
+    description: Historical candle data and batch retrieval (port 8098)
+  - name: "History: Ticks"
+    description: Raw tick data retrieval (port 8098)
+  - name: "History: Stats"
+    description: Data coverage statistics (port 8098)
+  - name: "History: Admin"
+    description: Candle generation and admin operations (port 8098)
+  - name: "History: WebSocket"
+    description: Real-time candle update streaming (port 8098)
+  # Logging Backend (8099)
+  - name: "Audit: Search"
+    description: Audit trail search and full-text search (port 8099)
+  - name: "Audit: Export"
+    description: Audit log export for compliance (port 8099)
+  - name: "Audit: Metrics"
+    description: Latency and volume metrics from audit data (port 8099)
+  # License Server (8100)
+  - name: "License: Management"
+    description: License CRUD, suspension, and revocation (port 8100 â€” RTX5 internal)
+  - name: "License: Validation"
+    description: License validation and heartbeat (port 8100)
+  - name: "License: Usage"
+    description: Usage tracking and billing dashboard (port 8100 â€” RTX5 internal)
+  # License Agent (8100)
+  - name: "License: Agent"
+    description: Local license enforcement checks (port 8100 â€” broker-side)
+  # Orrnn demo broker
+  - name: "Orrnn Demo"
+    description: |
+      Public (no-auth) endpoints for creating demo trading accounts on the centralized
+      **orrnn** broker. The orrnn broker has unlimited accounts, no license limit, and
+      only demo groups are allowed. Accounts can only be created through these endpoints;
+      DB triggers reject any admin/manager-initiated account under broker_id='orrnn'.
 
 paths:
-
-  # ===== HEALTH =====
+  # ===========================================================================
+  # CORE GATEWAY â€” System (port 8090)
+  # ===========================================================================
   /health:
     get:
-      tags: [Health]
-      summary: Gateway Health Check
-      description: Check if Gateway Backend (port 7999) is running
-      security: []   # Public - no token needed
+      operationId: getHealth
+      tags: [System]
+      summary: Gateway health check
+      security: []
       responses:
-        '200':
+        "200":
           description: Service is healthy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: rtx5-gateway
+                  time:
+                    type: string
+                    format: date-time
 
-  # ===== AUTH =====
-  /api/login:
-    post:
-      tags: [Auth]
-      summary: Login - Get Bearer Token
-      security: []   # Public - this is how you GET the token
+  /api/v2/time:
+    get:
+      operationId: getServerTime
+      tags: [System]
+      summary: Get server time
+      security: []
+      responses:
+        "200":
+          description: Server time
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  time:
+                    type: integer
+                    format: int64
+                  iso:
+                    type: string
+                    format: date-time
+
+  /ws/v2:
+    get:
+      operationId: websocketConnect
+      tags: [WebSocket]
+      summary: Open WebSocket connection for real-time data
+      security: []
       description: |
-        Login with credentials to get access_token.
-        Use the token in `Authorization: Bearer <token>` header for all protected endpoints.
+        Upgrades to WebSocket for real-time streaming. Authentication required for account-specific channels.
 
-        **Default credentials (from .env):**
-        - username: `900767`
-        - password: `47Y$Gj&0YS@T`
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginRequest'
+        ## Authentication
+        Connect with JWT token: `ws://host/ws/v2?token=YOUR_JWT_TOKEN`
+
+        Authentication is required. The token must be a valid JWT obtained from the login endpoint.
+
+        ## Channel Authorization
+        Account-specific channels (positions.{login}, account.{login}, orders.{login})
+        require that the login belongs to the authenticated user. Public channels
+        (ticks.{symbol}, candles.{symbol}) are available to all authenticated connections.
+
+        ## Subscribe/Unsubscribe
+        ```json
+        {"action": "subscribe", "channel": "ticks.XAUUSD"}
+        {"action": "unsubscribe", "channel": "ticks.XAUUSD"}
+        ```
+
+        ## Available Channels
+
+        **Public (no auth required):**
+        | Channel | Description |
+        |---------|-------------|
+        | `ticks.{SYMBOL}` | Live bid/ask per tick for a symbol |
+        | `ticks.all` | All symbols fire-hose |
+        | `depth.{SYMBOL}` | Order book updates |
+        | `news` | Breaking news broadcast |
+        | `announcements` | Server announcements |
+        | `system` | Maintenance, symbol halt events |
+        | `candles.{SYMBOL}.{TF}` | Candle update + snapshot on subscribe |
+
+        **Authenticated (requires Bearer token):**
+        | Channel | Description |
+        |---------|-------------|
+        | `positions.{LOGIN}` | Position open/close/update/sl_hit/tp_hit |
+        | `account.{LOGIN}` | Equity, margin, free_margin, margin_level per tick |
+        | `alerts.{LOGIN}` | Margin call, stop out events |
+        | `orders.{LOGIN}` | Pending order triggered/cancelled |
+        | `deals.{LOGIN}` | Deal executed |
+        | `notifications.{LOGIN}` | User notification events |
+
+        ## Authentication
+        Send auth message after connecting:
+        ```json
+        {"action": "auth", "token": "JWT_TOKEN_HERE"}
+        ```
+
+        ## Candle Snapshot
+        On subscribing to `candles.{SYMBOL}.{TF}`, the server immediately sends the last 50 candles as a snapshot, then streams updates.
       responses:
-        '200':
-          description: Login successful - contains access_token
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LoginResponse'
-        '401':
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+        "101":
+          description: Switching Protocols
 
-  /api/logout:
+  # ===========================================================================
+  # CORE GATEWAY â€” Auth (port 8090)
+  # ===========================================================================
+  /api/v2/auth/login:
     post:
+      operationId: authLogin
       tags: [Auth]
-      summary: Logout
-      security: []   # Public - users can logout without a valid token
-      responses:
-        '200':
-          description: Logged out successfully
+      summary: Authenticate user â€” direct or via broker server proxy
+      security: []
+      description: |
+        **`broker_id` is REQUIRED** for all trader/manager logins. Admin users can login without it.
 
-  /api/refresh:
-    post:
-      tags: [Auth]
-      summary: Refresh Access Token
-      security: []   # Public - used to renew an expired access token
-      description: Get a new access_token using a refresh_token (before expiry)
+        Rate limited: 10 requests per minute per IP address.
+
+        Accepts `username` (email), `email`, or `login` (account number) as the identifier.
+
+        **Flow 1 â€” Direct Login (broker's own app):**
+        Send `username` + `password` + `broker_id`. Validates locally against this server's database.
+        The user must belong to the specified broker â€” otherwise login is rejected.
+
+        **Flow 2 â€” Global Terminal Login (proxy to broker server):**
+        Send `username` + `password` + `server` (broker's IP:port). The RTX5 server looks up the
+        broker in the `broker_servers` registry, forwards the login request to that broker's server,
+        and returns the broker's response enriched with `broker_id`, `broker_name`, and `broker_server`.
+
+        **Validation:**
+        - Broker must exist in the system and be `active`
+        - User must belong to the specified broker
+        - Suspended/terminated brokers are rejected
+
+        Use `GET /rtx5/api/v1/broker/servers` to retrieve the list of registered broker servers.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [password, broker_id]
+              properties:
+                username:
+                  type: string
+                  description: "User's email or username (use this OR login OR email)"
+                  example: john@fxtrust.com
+                login:
+                  type: integer
+                  description: "Account login number (alternative to username)"
+                  example: 200007
+                email:
+                  type: string
+                  description: "Alias for username"
+                  example: john@fxtrust.com
+                password:
+                  type: string
+                  description: User's password
+                  example: "REDACTED â€” set via environment variable"
+                broker_id:
+                  type: string
+                  description: "**Required.** Broker identifier the user belongs to"
+                  example: fxtrust
+                server:
+                  type: string
+                  description: "Broker server address in ip:port format (optional â€” for global terminal proxy login)"
+                  example: "69.197.178.27:8090"
+            examples:
+              login_by_email:
+                summary: Login by email + broker_id
+                value:
+                  username: john@fxtrust.com
+                  password: "REDACTED â€” set via environment variable"
+                  broker_id: fxtrust
+              login_by_account_number:
+                summary: Login by account number + broker_id
+                value:
+                  login: 200007
+                  password: "REDACTED â€” set via environment variable"
+                  broker_id: fxtrust
+              global_terminal:
+                summary: Global terminal login (proxy to broker)
+                value:
+                  username: john@fxtrust.com
+                  password: "REDACTED â€” set via environment variable"
+                  server: "69.197.178.27:8090"
+              admin_login:
+                summary: Admin login (no broker_id needed)
+                value:
+                  username: admin
+                  password: "REDACTED â€” set via environment variable"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT Bearer token
+                  user_id:
+                    type: integer
+                  username:
+                    type: string
+                  role:
+                    type: string
+                    enum: [admin, manager, trader]
+                  account_login:
+                    type: integer
+                  broker_id:
+                    type: string
+                    description: "Broker identifier (always present in proxy mode)"
+                  broker_name:
+                    type: string
+                    description: "Broker display name (proxy mode only)"
+                  broker_server:
+                    type: string
+                    description: "Broker server address (proxy mode only)"
+                  expires_at:
+                    type: integer
+                    format: int64
+        "400":
+          description: Invalid input or unregistered server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |
+            Authentication failed. Possible errors:
+            - `UNAUTHORIZED` â€” Invalid credentials (wrong password)
+            - `BROKER_MISMATCH` â€” User does not belong to the specified broker
+            - `INVALID_BROKER` â€” Broker not found in the system
+            - `BROKER_INACTIVE` â€” Broker is suspended or terminated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited â€” too many requests. Check Retry-After header.
+        "502":
+          description: Broker server unreachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/auth/register:
+    post:
+      operationId: authRegister
+      tags: [Auth]
+      summary: Register a new trading account
+      security: []
+      description: |
+        Creates a new trading account + user login in one step.
+        The `broker_id` links the account to a registered broker.
+        Returns a JWT token so the user is logged in immediately.
+
+        Rate limited: 10 requests per minute per IP address.
+        broker_id is required for non-admin accounts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name, broker_id]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: trader@example.com
+                password:
+                  type: string
+                  example: "REDACTED â€” set via environment variable"
+                name:
+                  type: string
+                  example: John Doe
+                broker_id:
+                  type: string
+                  description: "**Required.** Broker this account belongs to"
+                  example: fxtrust
+                group:
+                  type: string
+                  description: Account group (default demo_standard)
+                  example: demo_standard
+                leverage:
+                  type: integer
+                  description: Account leverage (default 100)
+                  example: 100
+                currency:
+                  type: string
+                  description: Account currency (default USD)
+                  example: USD
+                referral_code:
+                  type: string
+                  description: IB referral code to link this account
+      responses:
+        "201":
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited â€” too many requests. Check Retry-After header.
+
+  /api/v2/auth/me:
+    get:
+      operationId: authMe
+      tags: [Auth]
+      summary: Get current authenticated user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/auth/refresh:
+    post:
+      operationId: authRefreshToken
+      tags: [Auth]
+      summary: Refresh JWT access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
               properties:
                 refresh_token:
                   type: string
       responses:
-        '200':
-          description: New access_token returned
-        '401':
-          description: Invalid or expired refresh token
-
-  # ===== MT5 ACCOUNT =====
-  /api/mt5/status:
-    get:
-      tags: [MT5 Account]
-      summary: MT5 Connection Status
-      description: Check if the C++ backend is connected to the MT5 broker server
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: MT5 connection status
+        "200":
+          description: New token pair
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  connected:
-                    type: boolean
-                  address:
-                    type: string
-                  login:
-                    type: integer
-                  last_error:
-                    type: string
-
-  /api/mt5/groups:
-    get:
-      tags: [MT5 Account]
-      summary: Get All MT5 Groups
-      description: Get list of all available account groups from the broker (demo, live, etc.)
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: List of groups
+                $ref: "#/components/schemas/AuthTokenResponse"
+        "401":
+          description: Invalid refresh token
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  count:
-                    type: integer
-                  groups:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                          example: "demo\\STD"
-                        currency:
-                          type: string
-                          example: "USD"
+                $ref: "#/components/schemas/Error"
 
-  /api/mt5/account/create:
+  /api/v2/auth/change-password:
     post:
-      tags: [MT5 Account]
-      summary: Create New MT5 Account (Register)
-      description: |
-        Creates a new trading account in the MT5 broker terminal using Manager API.
-        **No token required** — this is the new user registration endpoint.
-
-        Returns **Login ID**, **Master Password** (for trading), and **Investor Password** (read-only).
-      security: []   # Public - new user registration, no token needed
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateAccountRequest'
-      responses:
-        '200':
-          description: Account created successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateAccountResponse'
-        '500':
-          description: Failed to create account
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  # ===== MARKET DATA (PROTECTED) =====
-  /api/symbols:
-    get:
-      tags: [Market Data]
-      summary: Get All Trading Symbols
-      description: Returns list of all available trading symbols.
-      responses:
-        '200':
-          description: List of symbols
-
-  /api/quotes/{symbol}:
-    get:
-      tags: [Market Data]
-      summary: Get Live Quote
-      description: Get real-time bid/ask price for a trading symbol
-      parameters:
-        - name: symbol
-          in: path
-          required: true
-          schema:
-            type: string
-            example: EURUSD
-      responses:
-        '200':
-          description: Live quote data
-
-  /api/candles/{symbol}:
-    get:
-      tags: [Market Data]
-      summary: Get Historical Candles (OHLCV)
-      description: Get historical OHLCV candle data for charting
-      parameters:
-        - name: symbol
-          in: path
-          required: true
-          schema:
-            type: string
-            example: EURUSD
-        - name: timeframe
-          in: query
-          schema:
-            type: string
-            example: H1
-            enum: [M1, M5, M15, M30, H1, H4, D1, W1, MN]
-        - name: count
-          in: query
-          schema:
-            type: integer
-            example: 100
-      responses:
-        '200':
-          description: Candle data array
-
-  /api/ticks/{symbol}:
-    get:
-      tags: [Market Data]
-      summary: Get Tick Data
-      description: Get raw tick data for a symbol
-      parameters:
-        - name: symbol
-          in: path
-          required: true
-          schema:
-            type: string
-            example: EURUSD
-      responses:
-        '200':
-          description: Tick data array
-
-  # ===== ACCOUNT INFO =====
-  /api/account/summary:
-    get:
-      tags: [Account]
-      summary: Account Summary
-      description: Get current account balance, equity, margin, open positions count
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: Account summary data
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountSummary'
-
-  /api/account/transactions:
-    get:
-      tags: [Account]
-      summary: Transaction History
-      description: Get list of all account transactions (deposits, withdrawals, trades, fees)
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: type
-          in: query
-          description: Filter by transaction type
-          schema:
-            type: string
-            enum: [deposit, withdrawal, trade, fee, commission]
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            example: 50
-      responses:
-        '200':
-          description: Transaction list
-
-  /api/account/equity-history:
-    get:
-      tags: [Account]
-      summary: Equity History (Chart Data)
-      description: Get equity curve data for portfolio performance chart
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: period
-          in: query
-          schema:
-            type: string
-            enum: [1d, 7d, 30d, 90d, 1y]
-            example: 30d
-        - name: interval
-          in: query
-          schema:
-            type: string
-            example: 1d
-      responses:
-        '200':
-          description: Equity history with statistics
-
-  # ===== TRADING =====
-  /api/orders:
-    get:
-      tags: [Trading]
-      summary: Get All Orders
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: List of orders
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  orders:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Order'
-                  count:
-                    type: integer
-
-    post:
-      tags: [Trading]
-      summary: Place Market Order
-      description: |
-        Place a market buy or sell order. The order is routed through MT5 Sync C++ backend for execution.
-
-        **Note:** Only `market` order type is currently supported.
-      security:
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateOrderRequest'
-      responses:
-        '201':
-          description: Order placed and filled
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-        '400':
-          description: Invalid request or unsupported order type
-        '502':
-          description: MT5 execution failed
-
-  /api/orders/{id}:
-    delete:
-      tags: [Trading]
-      summary: Cancel Order
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Order cancelled
-        '404':
-          description: Order not found
-
-  /api/positions:
-    get:
-      tags: [Trading]
-      summary: Get Open Positions
-      description: Get all currently open positions with unrealized P&L
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: List of open positions
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  positions:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Position'
-                  count:
-                    type: integer
-
-  /api/positions/{id}/close:
-    post:
-      tags: [Trading]
-      summary: Close Position
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Position closed with realized P&L
-        '404':
-          description: Position not found
-
-  # ===== MT5 SYNC DIRECT =====
-  /api/v1/trades/execute:
-    post:
-      tags: [MT5 Sync Direct]
-      summary: Direct Execute Trade (Port 8088)
-      description: |
-        Execute a trade directly on the MT5 Sync C++ backend (port 8088).
-        Bypasses the Gateway backend. No authentication required.
-
-        **Server:** http://localhost:8088
+      operationId: authChangePassword
+      tags: [Auth]
+      summary: Change current user password
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [account_login, symbol, side, volume_lots]
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                new_password:
+                  type: string
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/auth/keys:
+    get:
+      operationId: listAPIKeys
+      tags: [Auth]
+      summary: List all API keys for current user
+      responses:
+        "200":
+          description: API key list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/APIKey"
+    post:
+      operationId: createAPIKey
+      tags: [Auth]
+      summary: Create a new API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                scopes:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKey"
+
+  /api/v2/auth/keys/{id}:
+    delete:
+      operationId: revokeAPIKey
+      tags: [Auth]
+      summary: Revoke an API key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Key revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "404":
+          description: Key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/auth/sessions:
+    get:
+      operationId: listSessions
+      tags: [Auth]
+      summary: List active sessions for current user
+      responses:
+        "200":
+          description: Session list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    ip:
+                      type: string
+                    user_agent:
+                      type: string
+                    created_at:
+                      type: integer
+                      format: int64
+    delete:
+      operationId: logoutAllSessions
+      tags: [Auth]
+      summary: Logout from all sessions
+      responses:
+        "200":
+          description: All sessions terminated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /api/v2/auth/sessions/{id}:
+    delete:
+      operationId: revokeSession
+      tags: [Auth]
+      summary: Revoke a specific session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v2/broker/config:
+    get:
+      operationId: getBrokerConfig
+      tags: [System]
+      summary: Get broker branding configuration
+      description: |
+        Returns broker-specific configuration. Resolves broker from:
+        1. `broker_id` query param (explicit)
+        2. Bearer token (auto-detects logged-in user's broker)
+        3. Falls back to platform defaults if neither provided
+      parameters:
+        - name: broker_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Broker ID to fetch config for (optional if Bearer token is provided)
+      responses:
+        "200":
+          description: Broker branding config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerConfig"
+
+  /api/v2/broker/servers:
+    get:
+      operationId: listBrokerServers
+      tags: [System]
+      summary: List all registered broker servers
+      description: |
+        Public endpoint â€” terminals call this to show the broker server list in the login screen.
+        Each broker can have multiple servers in different regions. Traders select a server and
+        pass it as the `server` field in the login request.
+      security: []
+      responses:
+        "200":
+          description: List of registered broker servers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BrokerServer"
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Market Data (port 8090)
+  # ===========================================================================
+  /api/v2/market/status:
+    get:
+      operationId: getMarketStatus
+      tags: [Market Data]
+      summary: Get overall market status
+      responses:
+        "200":
+          description: Market status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketStatus"
+
+  /api/v2/market/status/{symbol}:
+    get:
+      operationId: getMarketStatusSymbol
+      tags: [Market Data]
+      summary: Get market status for a specific symbol
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Symbol market status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketStatus"
+        "404":
+          description: Symbol not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/instruments:
+    get:
+      operationId: getInstruments
+      tags: [Market Data]
+      summary: List all available trading instruments
+      responses:
+        "200":
+          description: Instrument list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Instrument"
+
+  /api/v2/quotes:
+    get:
+      operationId: getMultiQuotes
+      tags: [Market Data]
+      summary: Get quotes for multiple symbols
+      parameters:
+        - name: symbols
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated symbol list
+      responses:
+        "200":
+          description: Quotes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tick"
+
+  /api/v2/quotes/{symbol}:
+    get:
+      operationId: getQuote
+      tags: [Market Data]
+      summary: Get latest quote for a symbol
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latest quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tick"
+        "404":
+          description: Symbol not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/candles/{symbol}:
+    get:
+      operationId: getCandles
+      tags: [Market Data]
+      summary: Get OHLCV candle data for a symbol
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: timeframe
+          in: query
+          schema:
+            type: string
+            enum: [M1, M5, M15, M30, H1, H4, D1, W1, MN]
+            default: H1
+        - name: from
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp start
+        - name: to
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp end
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 500
+      responses:
+        "200":
+          description: Candle data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Candle"
+
+  /api/v2/ticks/{symbol}:
+    get:
+      operationId: getTickHistory
+      tags: [Market Data]
+      summary: Get tick history for a symbol
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: Tick history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tick"
+
+  /api/v2/depth/{symbol}:
+    get:
+      operationId: getOrderBook
+      tags: [Market Data]
+      summary: Get order book depth for a symbol
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Order book
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderBook"
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Calculators (port 8090)
+  # ===========================================================================
+  /api/v2/calculate/margin:
+    post:
+      operationId: calculateMargin
+      tags: [Calculators]
+      summary: Calculate required margin for a trade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_login, symbol, side, volume]
               properties:
                 account_login:
                   type: integer
-                  example: 900767
+                  format: int64
+                  description: Server looks up account leverage automatically
                 symbol:
                   type: string
-                  example: "EURUSD"
                 side:
                   type: string
                   enum: [buy, sell]
-                volume_lots:
+                volume:
                   type: number
-                  example: 0.01
-                price:
+                  format: double
+      responses:
+        "200":
+          description: Margin calculation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarginCalcResponse"
+
+  /api/v2/calculate/profit:
+    post:
+      operationId: calculateProfit
+      tags: [Calculators]
+      summary: Calculate potential profit/loss for a trade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [symbol, volume, side, open_price, close_price]
+              properties:
+                symbol:
+                  type: string
+                volume:
                   type: number
-                  example: 0
+                  format: double
+                side:
+                  type: string
+                  enum: [buy, sell]
+                open_price:
+                  type: number
+                  format: double
+                close_price:
+                  type: number
+                  format: double
+      responses:
+        "200":
+          description: Profit calculation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfitCalcResponse"
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Accounts (port 8090)
+  # ===========================================================================
+  /api/v2/accounts:
+    get:
+      operationId: listAccounts
+      tags: [Accounts]
+      summary: List all accounts for current user
+      description: |
+        Requires admin or manager role. Returns accounts scoped to the authenticated user's broker.
+      responses:
+        "200":
+          description: Account list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+    post:
+      operationId: createAccount
+      tags: [Accounts]
+      summary: Create a new trading account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, currency, leverage]
+              properties:
+                name:
+                  type: string
+                currency:
+                  type: string
+                  example: USD
+                leverage:
+                  type: integer
+                  example: 100
+                group:
+                  type: string
+                  example: demo
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/account/{login}:
+    get:
+      operationId: getAccount
+      tags: [Accounts]
+      summary: Get account details by login
+      description: |
+        Account must belong to the authenticated user. Admin/manager roles can access any account.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/account/{login}/metrics:
+    get:
+      operationId: getAccountMetrics
+      tags: [Accounts]
+      summary: Get trading metrics for an account
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Account metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountMetrics"
+
+  /api/v2/account/{login}/equity:
+    get:
+      operationId: getEquityHistory
+      tags: [Accounts]
+      summary: Get equity history for an account
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: from
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: to
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Equity history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EquityPoint"
+
+  /api/v2/accounts/{login}:
+    put:
+      operationId: updateAccount
+      tags: [Accounts]
+      summary: Update account settings
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                leverage:
+                  type: integer
+      responses:
+        "200":
+          description: Account updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/accounts/{login}/history:
+    get:
+      operationId: getBalanceHistory
+      tags: [Accounts]
+      summary: Get balance operation history for an account
+      description: |
+        Requires account ownership verification. Returns 404 if the account is not owned by the authenticated user.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Balance history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BalanceOp"
+
+  /api/v2/accounts/{login}/audit:
+    get:
+      operationId: getAuditLog
+      tags: [Accounts]
+      summary: Get audit log for an account
+      description: |
+        Requires account ownership verification. Returns 404 if the account is not owned by the authenticated user.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditEntry"
+
+  /api/v2/accounts/{login}/close-all:
+    post:
+      operationId: closeAllPositions
+      tags: [Accounts]
+      summary: Close all open positions for an account
+      description: |
+        Requires account ownership verification. Uses DB transactions for atomicity. Rejects closure if market data returns zero/negative prices.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: All positions closed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  closed:
+                    type: integer
+                  message:
+                    type: string
+
+  /api/v2/accounts/{login}/investor-password:
+    post:
+      operationId: setInvestorPassword
+      tags: [Accounts]
+      summary: Set investor (read-only) password for an account
+      description: |
+        Requires account ownership. Returns 404 if the account is not owned by the authenticated user.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Investor password set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Trading (port 8090)
+  # ===========================================================================
+  /api/v2/positions/{login}:
+    get:
+      operationId: getPositions
+      tags: [Trading]
+      summary: Get open positions for an account
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Open positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Position"
+
+  /api/v2/positions/{login}/history:
+    get:
+      operationId: getPositionHistory
+      tags: [Trading]
+      summary: Get closed position history for an account
+      description: |
+        Requires account ownership verification. Returns 404 if the account is not owned by the authenticated user.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Position history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClosedPosition"
+
+  /api/v2/deals/{login}:
+    get:
+      operationId: getDeals
+      tags: [Trading]
+      summary: Get deal history for an account
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Deal history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deal"
+
+  /api/v2/account/orders:
+    get:
+      operationId: getUserOrders
+      tags: [Trading]
+      summary: Get all orders for the authenticated trader's own account
+      description: |
+        Returns order history for the account linked to the authenticated user's session.
+        No login parameter required â€” the account is resolved from the JWT token.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 500
+            maximum: 1000
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Order history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+        "400":
+          description: No trading account linked to this session
+
+  /api/v2/account/deals:
+    get:
+      operationId: getUserDeals
+      tags: [Trading]
+      summary: Get all deals for the authenticated trader's own account
+      description: |
+        Returns deal history for the account linked to the authenticated user's session.
+        No login parameter required â€” the account is resolved from the JWT token.
+        Supports optional date range filtering via from/to Unix timestamps.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 500
+            maximum: 1000
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: from
+          in: query
+          description: Start time (Unix timestamp)
+          schema:
+            type: integer
+            format: int64
+        - name: to
+          in: query
+          description: End time (Unix timestamp, defaults to now)
+          schema:
+            type: integer
+            format: int64
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Deal history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deal"
+        "400":
+          description: No trading account linked to this session
+
+  /api/v2/orders:
+    post:
+      operationId: placeOrder
+      tags: [Trading]
+      summary: Place a market order
+      description: |
+        The account_login must belong to the authenticated user.
+        Rate limited: 60 requests per minute per account.
+        Uses a DB transaction for atomicity. Rejected if market data returns zero or negative prices.
+        SL/TP values (if provided) are validated against the current market price.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, symbol, side, volume]
+              properties:
+                login:
+                  type: integer
+                  format: int64
+                symbol:
+                  type: string
+                side:
+                  type: string
+                  enum: [buy, sell]
+                volume:
+                  type: number
+                  format: double
+                price_sl:
+                  type: number
+                  format: double
+                price_tp:
+                  type: number
+                  format: double
                 comment:
                   type: string
-                  example: "RTX sync trade"
-                client_request_id:
-                  type: string
-                  example: "test-001"
+                trailing_stop:
+                  type: integer
+                  description: Trailing stop distance in points
+                trailing_step:
+                  type: integer
+                  description: Trailing step in points
+                magic:
+                  type: integer
+                  format: int64
+                  description: EA magic number
       responses:
-        '200':
-          description: Trade executed successfully
+        "200":
+          description: Order executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Position"
+        "400":
+          description: Order rejected â€” invalid SL/TP (validated against current market price), zero/negative market price, or invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited â€” too many requests. Check Retry-After header.
+
+  /api/v2/positions/{id}/close:
+    post:
+      operationId: closePosition
+      tags: [Trading]
+      summary: Close a specific position by ticket
+      description: |
+        The position must belong to an account owned by the authenticated user.
+        Uses a DB transaction for atomicity. Rejected if market data returns zero or negative prices.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Position closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "404":
+          description: Position not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited â€” too many requests. Check Retry-After header.
+
+  /api/v2/positions/{id}:
+    put:
+      operationId: modifyPosition
+      tags: [Trading]
+      summary: Modify SL/TP of an open position
+      description: |
+        Requires account ownership. Returns 404 if the position is not owned by the authenticated user.
+        SL/TP values are validated against the current market price (not the position open price).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price_sl:
+                  type: number
+                  format: double
+                price_tp:
+                  type: number
+                  format: double
+                trailing_stop:
+                  type: integer
+                  description: Trailing stop distance in points
+                trailing_step:
+                  type: integer
+                  description: Trailing step in points
+      responses:
+        "200":
+          description: Position modified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Position"
+        "400":
+          description: Invalid SL/TP â€” values are validated against current market price
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Position not found or not owned by authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/orders/{login}:
+    get:
+      operationId: getOrders
+      tags: [Trading]
+      summary: Get order history for an account
+      description: |
+        Returns only orders for accounts owned by the authenticated user. Returns 404 if the account is not owned by the authenticated user.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Order history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Pending Orders (port 8090)
+  # ===========================================================================
+  /api/v2/orders/pending:
+    post:
+      operationId: placePendingOrder
+      tags: [Pending Orders]
+      summary: Place a pending (limit/stop) order
+      description: |
+        Requires ownership of the specified account. Returns 404 if the account is not owned by the authenticated user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, symbol, side, volume, type, price]
+              properties:
+                login:
+                  type: integer
+                  format: int64
+                symbol:
+                  type: string
+                side:
+                  type: string
+                  enum: [buy, sell]
+                volume:
+                  type: number
+                  format: double
+                type:
+                  type: string
+                  enum: [buy_limit, sell_limit, buy_stop, sell_stop]
+                price:
+                  type: number
+                  format: double
+                price_sl:
+                  type: number
+                  format: double
+                price_tp:
+                  type: number
+                  format: double
+                expiration:
+                  type: integer
+                  format: int64
+                  description: Unix timestamp for order expiration
+                comment:
+                  type: string
+                trailing_stop:
+                  type: integer
+                  description: Trailing stop distance in points
+                trailing_step:
+                  type: integer
+                  description: Trailing step in points
+                magic:
+                  type: integer
+                  format: int64
+                  description: EA magic number
+      responses:
+        "201":
+          description: Pending order created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingOrder"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/orders/pending/{login}:
+    get:
+      operationId: getPendingOrders
+      tags: [Pending Orders]
+      summary: List pending orders for an account
+      description: |
+        Requires account ownership. Returns 404 if the account is not owned by the authenticated user.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Pending order list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PendingOrder"
+
+  /api/v2/orders/pending/{ticket}:
+    delete:
+      operationId: cancelPendingOrder
+      tags: [Pending Orders]
+      summary: Cancel a pending order
+      description: |
+        Requires ownership of the order's account. Returns 404 if the order is not owned by the authenticated user.
+      parameters:
+        - name: ticket
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Pending order cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      operationId: modifyPendingOrder
+      tags: [Pending Orders]
+      summary: Modify a pending order
+      description: |
+        Requires ownership of the order's account. Returns 404 if the order is not owned by the authenticated user.
+      parameters:
+        - name: ticket
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price:
+                  type: number
+                  format: double
+                price_sl:
+                  type: number
+                  format: double
+                price_tp:
+                  type: number
+                  format: double
+                expiration:
+                  type: integer
+                  format: int64
+                trailing_stop:
+                  type: integer
+                  description: Trailing stop distance in points
+                trailing_step:
+                  type: integer
+                  description: Trailing step in points
+      responses:
+        "200":
+          description: Pending order modified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingOrder"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ===========================================================================
+  # CORE GATEWAY â€” OCO Orders (port 8090)
+  # ===========================================================================
+  /api/v2/orders/oco:
+    post:
+      operationId: placeOCO
+      tags: [OCO Orders]
+      summary: Place an OCO (One-Cancels-Other) order pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_login, symbol, volume, order1, order2]
+              properties:
+                account_login:
+                  type: integer
+                  format: int64
+                symbol:
+                  type: string
+                side:
+                  type: string
+                  enum: [buy, sell]
+                volume:
+                  type: number
+                  format: double
+                order1:
+                  type: object
+                  required: [type, price]
+                  properties:
+                    type:
+                      type: string
+                      enum: [buy_limit, sell_limit, buy_stop, sell_stop]
+                    price:
+                      type: number
+                      format: double
+                order2:
+                  type: object
+                  required: [type, price]
+                  properties:
+                    type:
+                      type: string
+                      enum: [buy_limit, sell_limit, buy_stop, sell_stop]
+                    price:
+                      type: number
+                      format: double
+                comment:
+                  type: string
+      responses:
+        "201":
+          description: OCO pair created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OCOPair"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/orders/oco/{login}:
+    get:
+      operationId: getOCOPairs
+      tags: [OCO Orders]
+      summary: List OCO order pairs for an account
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OCO pair list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OCOPair"
+
+  /api/v2/orders/oco/{id}:
+    delete:
+      operationId: cancelOCO
+      tags: [OCO Orders]
+      summary: Cancel an OCO order pair
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: OCO pair cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "404":
+          description: OCO pair not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Watchlist (port 8090)
+  # ===========================================================================
+  /api/v2/watchlist:
+    get:
+      operationId: getWatchlist
+      tags: [Watchlist]
+      summary: Get user watchlist
+      responses:
+        "200":
+          description: Watchlist items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WatchlistItem"
+    put:
+      operationId: replaceWatchlist
+      tags: [Watchlist]
+      summary: Replace entire watchlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [symbols]
+              properties:
+                symbols:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Watchlist replaced
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WatchlistItem"
+
+  /api/v2/watchlist/{symbol}:
+    post:
+      operationId: addToWatchlist
+      tags: [Watchlist]
+      summary: Add a symbol to the watchlist
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Symbol added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistItem"
+        "400":
+          description: Symbol already in watchlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: removeFromWatchlist
+      tags: [Watchlist]
+      summary: Remove a symbol from the watchlist
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Symbol removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Notifications (port 8090)
+  # ===========================================================================
+  /api/v2/notifications:
+    get:
+      operationId: getNotifications
+      tags: [Notifications]
+      summary: Get user notifications
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: unread_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+
+  /api/v2/notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [Notifications]
+      summary: Mark a notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /api/v2/notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [Notifications]
+      summary: Mark all notifications as read
+      responses:
+        "200":
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  count:
+                    type: integer
+
+  /api/v2/notifications/{id}:
+    delete:
+      operationId: deleteNotification
+      tags: [Notifications]
+      summary: Delete a notification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Notification deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Webhooks (port 8090)
+  # ===========================================================================
+  /api/v2/webhooks:
+    get:
+      operationId: listWebhooks
+      tags: [Webhooks]
+      summary: List registered webhooks
+      responses:
+        "200":
+          description: Webhook list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Webhook"
+    post:
+      operationId: createWebhook
+      tags: [Webhooks]
+      summary: Register a new webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                secret:
+                  type: string
+      responses:
+        "201":
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+
+  /api/v2/webhooks/{id}:
+    delete:
+      operationId: deleteWebhook
+      tags: [Webhooks]
+      summary: Delete a webhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Webhook deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /api/v2/webhooks/{id}/test:
+    post:
+      operationId: testWebhook
+      tags: [Webhooks]
+      summary: Send a test event to a webhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Test event sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status_code:
+                    type: integer
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Copy Trading (port 8090)
+  # ===========================================================================
+  /api/v2/copy/masters:
+    get:
+      operationId: getCopyLeaderboard
+      tags: [Copy Trading]
+      summary: Get copy trading leaderboard of master traders
+      parameters:
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [profit, win_rate, followers]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Master trader leaderboard
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CopyMaster"
+
+  /api/v2/copy/masters/{login}:
+    get:
+      operationId: getMasterStats
+      tags: [Copy Trading]
+      summary: Get stats for a specific master trader
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Master trader stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopyMaster"
+        "404":
+          description: Master not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/copy/follow:
+    post:
+      operationId: followMaster
+      tags: [Copy Trading]
+      summary: Start following a master trader
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [master_login]
+              properties:
+                master_login:
+                  type: integer
+                  format: int64
+                copy_ratio:
+                  type: number
+                  format: double
+                  default: 1.0
+                max_lot:
+                  type: number
+                  format: double
+                  description: Maximum lot size per copied trade
+                reverse:
+                  type: boolean
+                  default: false
+                  description: Copy in reverse direction
+                symbol_filter:
+                  type: array
+                  items:
+                    type: string
+                  description: Only copy trades for these symbols (empty = all)
+      responses:
+        "200":
+          description: Now following master
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "400":
+          description: Already following or invalid params
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/copy/following/{master_login}:
+    delete:
+      operationId: unfollowMaster
+      tags: [Copy Trading]
+      summary: Stop following a master trader
+      parameters:
+        - name: master_login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Unfollowed master
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /api/v2/copy/following:
+    get:
+      operationId: getFollowing
+      tags: [Copy Trading]
+      summary: Get list of master traders the user is following
+      responses:
+        "200":
+          description: Following list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CopyMaster"
+
+  /api/v2/copy/my-stats:
+    get:
+      operationId: getCopyStats
+      tags: [Copy Trading]
+      summary: Get copy trading statistics for current user
+      responses:
+        "200":
+          description: Copy stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_copied_trades:
+                    type: integer
+                  total_profit:
+                    type: number
+                    format: double
+                  active_follows:
+                    type: integer
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Prop Firm (port 8090)
+  # ===========================================================================
+  /api/v2/prop/challenges:
+    get:
+      operationId: listPublicChallenges
+      tags: [Prop Firm]
+      summary: List available prop firm challenges
+      responses:
+        "200":
+          description: Challenge list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PropChallenge"
+
+  /api/v2/prop/my-accounts:
+    get:
+      operationId: getMyPropAccounts
+      tags: [Prop Firm]
+      summary: Get user prop firm accounts
+      responses:
+        "200":
+          description: Prop accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                    challenge_id:
+                      type: integer
+                      format: int64
+                    login:
+                      type: integer
+                      format: int64
+                    phase:
+                      type: string
+                      enum: [challenge, verification, funded, failed]
+                    current_balance:
+                      type: number
+                      format: double
+                    profit_pct:
+                      type: number
+                      format: double
+                    daily_loss_pct:
+                      type: number
+                      format: double
+                    total_loss_pct:
+                      type: number
+                      format: double
+                    trading_days:
+                      type: integer
+
+  /api/v2/prop/my-accounts/{id}/status:
+    get:
+      operationId: getPropStatus
+      tags: [Prop Firm]
+      summary: Get prop account status and progress
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Prop account status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  phase:
+                    type: string
+                  profit_pct:
+                    type: number
+                    format: double
+                  daily_loss_pct:
+                    type: number
+                    format: double
+                  total_loss_pct:
+                    type: number
+                    format: double
+                  trading_days:
+                    type: integer
+                  target_met:
+                    type: boolean
+        "404":
+          description: Prop account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/prop/payout-request:
+    post:
+      operationId: requestPayout
+      tags: [Prop Firm]
+      summary: Request a payout from a funded prop account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prop_account_id, amount]
+              properties:
+                prop_account_id:
+                  type: integer
+                  format: int64
+                amount:
+                  type: number
+                  format: double
+      responses:
+        "200":
+          description: Payout requested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  payout_id:
+                    type: integer
+                    format: int64
+        "400":
+          description: Not eligible or invalid amount
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v2/prop/payout-history:
+    get:
+      operationId: getPayoutHistory
+      tags: [Prop Firm]
+      summary: Get payout request history
+      responses:
+        "200":
+          description: Payout history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                    prop_account_id:
+                      type: integer
+                      format: int64
+                    amount:
+                      type: number
+                      format: double
+                    status:
+                      type: string
+                      enum: [pending, approved, rejected, paid]
+                    requested_at:
+                      type: integer
+                      format: int64
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Bonuses (port 8090)
+  # ===========================================================================
+  /api/v2/bonuses:
+    get:
+      operationId: getMyBonuses
+      tags: [Bonuses]
+      summary: Get bonuses for current user
+      responses:
+        "200":
+          description: Bonus list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Bonus"
+
+  /api/v2/bonuses/{id}:
+    get:
+      operationId: getBonus
+      tags: [Bonuses]
+      summary: Get bonus details by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Bonus details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bonus"
+        "404":
+          description: Bonus not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ===========================================================================
+  # CORE GATEWAY â€” IB (port 8090)
+  # ===========================================================================
+  /api/v2/ib/my-referral:
+    get:
+      operationId: getMyReferral
+      tags: [IB]
+      summary: Get IB referral information for current user
+      responses:
+        "200":
+          description: Referral info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  referral_code:
+                    type: string
+                  referral_link:
+                    type: string
+                  total_referrals:
+                    type: integer
+                  total_commission:
+                    type: number
+                    format: double
+
+  # ===========================================================================
+  # NEWS BACKEND (port 8097)
+  # ===========================================================================
+  /news/v1/articles:
+    get:
+      operationId: newsGetNews
+      tags: [News]
+      summary: Get financial news articles
+      security: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: symbol
+          in: query
+          schema:
+            type: string
+          description: Filter by related symbol
+      responses:
+        "200":
+          description: News articles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NewsItem"
+
+  /news/v1/breaking:
+    get:
+      operationId: newsGetBreakingNews
+      tags: [News]
+      summary: Get breaking / high-impact news
+      security: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: Breaking news
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NewsItem"
+
+  /news/v1/calendar:
+    get:
+      operationId: newsGetCalendar
+      tags: [News]
+      summary: Get economic calendar events
+      security: []
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: impact
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high]
+      responses:
+        "200":
+          description: Economic events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EconomicEvent"
+
+  /api/v1/calendar/today:
+    get:
+      operationId: newsGetCalendarToday
+      tags: [News]
+      summary: Get today's economic calendar events
+      security: []
+      responses:
+        "200":
+          description: Today's events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EconomicEvent"
+
+  /news/v1/calendar/week:
+    get:
+      operationId: newsGetCalendarWeek
+      tags: [News]
+      summary: Get this week's economic calendar events
+      security: []
+      responses:
+        "200":
+          description: This week's events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EconomicEvent"
+
+  # ===========================================================================
+  # HISTORY BACKEND (port 8098)
+  # ===========================================================================
+
+  /history/candles/{symbol}:
+    get:
+      operationId: historyGetCandles
+      tags: ["History: Candles"]
+      summary: Get historical candles for a symbol
+      security: []
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+            example: XAUUSD
+        - name: tf
+          in: query
+          required: false
+          description: "Timeframe: M1, M5, M15, M30, H1, H4, D1, W1, MN"
+          schema:
+            type: string
+            default: H1
+            enum: [M1, M5, M15, M30, H1, H4, D1, W1, MN]
+        - name: from
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp start
+        - name: to
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp end
+        - name: count
+          in: query
+          schema:
+            type: integer
+            default: 500
+            maximum: 5000
+          description: Number of candles to return
+      responses:
+        "200":
+          description: Array of OHLCV candles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoryCandle"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /history/candles/{symbol}/latest:
+    get:
+      operationId: historyGetLatestCandle
+      tags: ["History: Candles"]
+      summary: Get the most recent candle for a symbol
+      security: []
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+            example: EURUSD
+        - name: tf
+          in: query
+          schema:
+            type: string
+            default: H1
+            enum: [M1, M5, M15, M30, H1, H4, D1, W1, MN]
+      responses:
+        "200":
+          description: Latest candle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryCandle"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /history/ticks/{symbol}:
+    get:
+      operationId: historyGetTicks
+      tags: ["History: Ticks"]
+      summary: Get raw tick data for a symbol
+      description: Used by strategy tester and tick replay. Max 10000 ticks per request.
+      security: []
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+            example: XAUUSD
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp start
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp end
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 5000
+            maximum: 10000
+      responses:
+        "200":
+          description: Array of raw ticks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoryTick"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # ===========================================================================
+  # CORE GATEWAY â€” 2FA / TOTP (port 8090)
+  # ===========================================================================
+  /api/v2/auth/2fa/setup:
+    post:
+      operationId: setup2FA
+      tags: [Auth]
+      summary: Generate TOTP secret and backup codes
+      responses:
+        "200":
+          description: TOTP setup data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret:
+                    type: string
+                    description: Base32-encoded TOTP secret
+                  qr_url:
+                    type: string
+                    description: otpauth:// URI for QR code generation
+                  backup_codes:
+                    type: array
+                    items:
+                      type: string
+                    description: One-time backup codes
+
+  /api/v2/auth/2fa/verify:
+    post:
+      operationId: verify2FA
+      tags: [Auth]
+      summary: Verify TOTP code and enable 2FA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  example: "123456"
+      responses:
+        "200":
+          description: 2FA enabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 2FA enabled successfully
+
+  /api/v2/auth/2fa/disable:
+    post:
+      operationId: disable2FA
+      tags: [Auth]
+      summary: Disable 2FA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: Current TOTP code to confirm
+      responses:
+        "200":
+          description: 2FA disabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: 2FA disabled successfully
+
+  /api/v2/auth/2fa/status:
+    get:
+      operationId: get2FAStatus
+      tags: [Auth]
+      summary: Check 2FA status
+      responses:
+        "200":
+          description: 2FA status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  has_backup_codes:
+                    type: boolean
+
+  /api/v2/auth/2fa/backup:
+    post:
+      operationId: useBackupCode
+      tags: [Auth]
+      summary: Use a backup code to authenticate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: One-time backup code
+      responses:
+        "200":
+          description: Backup code accepted
           content:
             application/json:
               schema:
@@ -712,47 +3029,3041 @@ paths:
                 properties:
                   success:
                     type: boolean
-                  retcode:
+                  remaining_codes:
                     type: integer
-                  retcode_text:
-                    type: string
-                  result_order:
-                    type: integer
-                  result_deal:
-                    type: integer
-                  result_price:
-                    type: number
 
-  /api/v1/mt5/account/create:
+  # ===========================================================================
+  # CORE GATEWAY â€” Price Alerts (port 8090)
+  # ===========================================================================
+  /api/v2/alerts:
     post:
-      tags: [MT5 Sync Direct]
-      summary: Direct Create MT5 Account (Port 8088)
-      security: []   # Hits C++ backend directly on port 8088 — no gateway auth
-      description: Create MT5 account directly via C++ backend (port 8088). No auth needed.
+      operationId: createPriceAlert
+      tags: [Alerts]
+      summary: Create a price alert
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateAccountRequest'
+              type: object
+              required: [symbol, condition, price]
+              properties:
+                symbol:
+                  type: string
+                  example: EURUSD
+                condition:
+                  type: string
+                  enum: [above, below, cross]
+                price:
+                  type: number
+                  format: double
+                  example: 1.1050
+                message:
+                  type: string
+                  example: EUR/USD crossed target
       responses:
-        '200':
-          description: Account created
-
-  /api/v1/mt5/groups:
+        "200":
+          description: Alert created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  symbol:
+                    type: string
+                  condition:
+                    type: string
+                  price:
+                    type: number
+                    format: double
+                  message:
+                    type: string
+                  created_at:
+                    type: integer
+                    format: int64
     get:
-      tags: [MT5 Sync Direct]
-      summary: Direct Get Groups (Port 8088)
-      security: []   # Hits C++ backend directly on port 8088 — no gateway auth
+      operationId: listPriceAlerts
+      tags: [Alerts]
+      summary: List my price alerts
       responses:
-        '200':
-          description: List of groups
+        "200":
+          description: List of alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                    symbol:
+                      type: string
+                    condition:
+                      type: string
+                      enum: [above, below, cross]
+                    price:
+                      type: number
+                      format: double
+                    message:
+                      type: string
+                    triggered:
+                      type: boolean
+                    created_at:
+                      type: integer
+                      format: int64
 
-  /api/v1/mt5/status:
-    get:
-      tags: [MT5 Sync Direct]
-      summary: Direct MT5 Status (Port 8088)
-      security: []   # Hits C++ backend directly on port 8088 — no gateway auth
+  /api/v2/alerts/{id}:
+    delete:
+      operationId: deletePriceAlert
+      tags: [Alerts]
+      summary: Delete a price alert
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
       responses:
-        '200':
-          description: MT5 connection status
+        "200":
+          description: Alert deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: alert deleted
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Devices (port 8090)
+  # ===========================================================================
+  /api/v2/devices:
+    post:
+      operationId: registerDevice
+      tags: [Devices]
+      summary: Register a push notification device token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties:
+                token:
+                  type: string
+                  description: Push notification token
+                platform:
+                  type: string
+                  enum: [ios, android, web]
+                device_name:
+                  type: string
+                  example: iPhone 15
+      responses:
+        "200":
+          description: Device registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  token:
+                    type: string
+                  platform:
+                    type: string
+                  device_name:
+                    type: string
+                  created_at:
+                    type: integer
+                    format: int64
+    get:
+      operationId: listDevices
+      tags: [Devices]
+      summary: List registered devices
+      responses:
+        "200":
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                    token:
+                      type: string
+                    platform:
+                      type: string
+                      enum: [ios, android, web]
+                    device_name:
+                      type: string
+                    created_at:
+                      type: integer
+                      format: int64
+
+  /api/v2/devices/{id}:
+    delete:
+      operationId: unregisterDevice
+      tags: [Devices]
+      summary: Unregister a device
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Device unregistered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: device removed
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Withdrawal Workflow (port 8090)
+  # ===========================================================================
+  /api/v2/account/{login}/withdrawal-request:
+    post:
+      operationId: submitWithdrawalRequest
+      tags: [Accounts]
+      summary: Submit a withdrawal request (pending approval, not instant)
+      description: |
+        Requires account ownership. Returns 404 if the account is not owned by the authenticated user.
+        Amount must be positive and cannot exceed 1,000,000.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: number
+                  format: double
+                  example: 500.00
+                method:
+                  type: string
+                  example: bank_wire
+                details:
+                  type: string
+                  description: Payment details or wallet address
+      responses:
+        "200":
+          description: Withdrawal request submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  status:
+                    type: string
+                    example: pending
+                  amount:
+                    type: number
+                    format: double
+                  created_at:
+                    type: integer
+                    format: int64
+
+  /api/v2/account/{login}/withdrawal-requests:
+    get:
+      operationId: listWithdrawalRequests
+      tags: [Accounts]
+      summary: List withdrawal requests for an account
+      description: |
+        Requires account ownership. Returns 404 if the account is not owned by the authenticated user.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: List of withdrawal requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                    amount:
+                      type: number
+                      format: double
+                    method:
+                      type: string
+                    status:
+                      type: string
+                      enum: [pending, approved, rejected, completed]
+                    created_at:
+                      type: integer
+                      format: int64
+                    updated_at:
+                      type: integer
+                      format: int64
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Leverage Requests (port 8090)
+  # ===========================================================================
+  /api/v2/account/{login}/leverage-request:
+    post:
+      operationId: submitLeverageRequest
+      tags: [Accounts]
+      summary: Submit a leverage change request
+      description: |
+        Requires account ownership. Returns 404 if the account is not owned by the authenticated user.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [leverage]
+              properties:
+                leverage:
+                  type: integer
+                  example: 200
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Leverage request submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  current_leverage:
+                    type: integer
+                  requested_leverage:
+                    type: integer
+                  status:
+                    type: string
+                    example: pending
+                  created_at:
+                    type: integer
+                    format: int64
+
+  /api/v2/account/{login}/leverage-requests:
+    get:
+      operationId: listLeverageRequests
+      tags: [Accounts]
+      summary: List leverage change requests for an account
+      description: |
+        Requires account ownership. Returns 404 if the account is not owned by the authenticated user.
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: List of leverage requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                    current_leverage:
+                      type: integer
+                    requested_leverage:
+                      type: integer
+                    status:
+                      type: string
+                      enum: [pending, approved, rejected]
+                    created_at:
+                      type: integer
+                      format: int64
+                    updated_at:
+                      type: integer
+                      format: int64
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Support Tickets (port 8090)
+  # ===========================================================================
+  /api/v2/support/tickets:
+    post:
+      operationId: createSupportTicket
+      tags: [Support]
+      summary: Create a support ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, message]
+              properties:
+                subject:
+                  type: string
+                  example: Cannot withdraw funds
+                message:
+                  type: string
+                  example: I submitted a withdrawal 3 days ago and it is still pending.
+                category:
+                  type: string
+                  example: withdrawals
+                priority:
+                  type: string
+                  enum: [low, medium, high]
+                  example: medium
+      responses:
+        "200":
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  subject:
+                    type: string
+                  status:
+                    type: string
+                    example: open
+                  priority:
+                    type: string
+                  created_at:
+                    type: integer
+                    format: int64
+    get:
+      operationId: listSupportTickets
+      tags: [Support]
+      summary: List my support tickets
+      responses:
+        "200":
+          description: List of tickets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                    subject:
+                      type: string
+                    status:
+                      type: string
+                      enum: [open, in_progress, resolved, closed]
+                    priority:
+                      type: string
+                    category:
+                      type: string
+                    created_at:
+                      type: integer
+                      format: int64
+                    updated_at:
+                      type: integer
+                      format: int64
+
+  /api/v2/support/tickets/{id}:
+    get:
+      operationId: getSupportTicket
+      tags: [Support]
+      summary: Get a ticket with its messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Ticket with messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  subject:
+                    type: string
+                  status:
+                    type: string
+                  priority:
+                    type: string
+                  category:
+                    type: string
+                  created_at:
+                    type: integer
+                    format: int64
+                  messages:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          format: int64
+                        sender:
+                          type: string
+                          enum: [user, support]
+                        message:
+                          type: string
+                        created_at:
+                          type: integer
+                          format: int64
+
+  /api/v2/support/tickets/{id}/reply:
+    post:
+      operationId: replySupportTicket
+      tags: [Support]
+      summary: Reply to a support ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  example: Thank you for looking into this.
+      responses:
+        "200":
+          description: Reply sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    format: int64
+                  message:
+                    type: string
+                  created_at:
+                    type: integer
+                    format: int64
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Trading Contests (port 8090)
+  # ===========================================================================
+  /api/v2/contests:
+    get:
+      operationId: listContests
+      tags: [Contests]
+      summary: List active and upcoming trading contests
+      responses:
+        "200":
+          description: List of contests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      format: int64
+                    name:
+                      type: string
+                    description:
+                      type: string
+                    status:
+                      type: string
+                      enum: [upcoming, active, ended]
+                    start_time:
+                      type: integer
+                      format: int64
+                    end_time:
+                      type: integer
+                      format: int64
+                    prize_pool:
+                      type: number
+                      format: double
+                    participants:
+                      type: integer
+
+  /api/v2/contests/{id}/enroll:
+    post:
+      operationId: enrollContest
+      tags: [Contests]
+      summary: Join a trading contest
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Enrolled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contest_id:
+                    type: integer
+                    format: int64
+                  enrolled:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Successfully enrolled in contest
+
+  /api/v2/contests/{id}/leaderboard:
+    get:
+      operationId: contestLeaderboard
+      tags: [Contests]
+      summary: Get contest leaderboard
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Contest leaderboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contest_id:
+                    type: integer
+                    format: int64
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        rank:
+                          type: integer
+                        login:
+                          type: integer
+                          format: int64
+                        display_name:
+                          type: string
+                        profit:
+                          type: number
+                          format: double
+                        return_pct:
+                          type: number
+                          format: double
+                        trades:
+                          type: integer
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Trader Profiles (port 8090)
+  # ===========================================================================
+  /api/v2/profile/public:
+    put:
+      operationId: updateTraderProfile
+      tags: [Social]
+      summary: Update my public trader profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name:
+                  type: string
+                  example: TraderJoe
+                bio:
+                  type: string
+                  example: Forex trader since 2018
+                avatar_url:
+                  type: string
+                  format: uri
+                show_stats:
+                  type: boolean
+                  description: Whether to show trading statistics publicly
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  login:
+                    type: integer
+                    format: int64
+                  display_name:
+                    type: string
+                  bio:
+                    type: string
+                  avatar_url:
+                    type: string
+                  show_stats:
+                    type: boolean
+                  updated_at:
+                    type: integer
+                    format: int64
+
+  /api/v2/traders/{login}/profile:
+    get:
+      operationId: getTraderProfile
+      tags: [Social]
+      summary: View a trader's public profile
+      security: []
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Public trader profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  login:
+                    type: integer
+                    format: int64
+                  display_name:
+                    type: string
+                  bio:
+                    type: string
+                  avatar_url:
+                    type: string
+                  total_trades:
+                    type: integer
+                  win_rate:
+                    type: number
+                    format: double
+                  profit_factor:
+                    type: number
+                    format: double
+                  joined_at:
+                    type: integer
+                    format: int64
+
+  # ===========================================================================
+  # CORE GATEWAY â€” Statement Download (port 8090)
+  # ===========================================================================
+  /api/v2/account/{login}/statement:
+    get:
+      operationId: getAccountStatement
+      tags: [Accounts]
+      summary: Download account statement
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Start timestamp (Unix seconds)
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: End timestamp (Unix seconds)
+        - name: deals
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Include deals in statement
+        - name: balance_ops
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Include balance operations in statement
+      responses:
+        "200":
+          description: Account statement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  login:
+                    type: integer
+                    format: int64
+                  from:
+                    type: integer
+                    format: int64
+                  to:
+                    type: integer
+                    format: int64
+                  balance:
+                    type: number
+                    format: double
+                  equity:
+                    type: number
+                    format: double
+                  deals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ticket:
+                          type: integer
+                          format: int64
+                        symbol:
+                          type: string
+                        side:
+                          type: string
+                        volume:
+                          type: number
+                          format: double
+                        profit:
+                          type: number
+                          format: double
+                        time:
+                          type: integer
+                          format: int64
+                  balance_operations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          format: int64
+                        type:
+                          type: string
+                        amount:
+                          type: number
+                          format: double
+                        time:
+                          type: integer
+                          format: int64
+
+  # ===========================================================================
+  # CORE GATEWAY â€” TradingView Webhook (port 8090)
+  # ===========================================================================
+  /api/v2/webhooks/tradingview:
+    post:
+      operationId: tradingViewWebhook
+      tags: [Webhooks]
+      summary: Receive a TradingView alert signal
+      description: Public endpoint authenticated via `X-TV-Token` header (not Bearer JWT).
+      security: []
+      parameters:
+        - name: X-TV-Token
+          in: header
+          required: true
+          schema:
+            type: string
+          description: TradingView webhook token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                symbol:
+                  type: string
+                  example: EURUSD
+                action:
+                  type: string
+                  enum: [buy, sell, close]
+                volume:
+                  type: number
+                  format: double
+                  example: 0.1
+                price:
+                  type: number
+                  format: double
+                sl:
+                  type: number
+                  format: double
+                tp:
+                  type: number
+                  format: double
+                message:
+                  type: string
+      responses:
+        "200":
+          description: Signal processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  order_ticket:
+                    type: integer
+                    format: int64
+                  message:
+                    type: string
+
+  /api/v2/webhooks/tradingview/setup:
+    post:
+      operationId: setupTVWebhook
+      tags: [Webhooks]
+      summary: Create a TradingView webhook token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_login:
+                  type: integer
+                  format: int64
+                  description: Trading account to execute signals on
+                allowed_symbols:
+                  type: array
+                  items:
+                    type: string
+                  description: Restrict signals to specific symbols
+      responses:
+        "200":
+          description: Webhook token created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: Token to set in TradingView alert webhook URL header
+                  webhook_url:
+                    type: string
+                    description: Full webhook URL to configure in TradingView
+                  created_at:
+                    type: integer
+                    format: int64
+
+  # ===========================================================================
+  # ORRNN DEMO â€” Public (no auth) demo account creation (proxied to Manager 8091)
+  # ===========================================================================
+  /api/v1/public/demo-status:
+    get:
+      operationId: orrnnDemoStatus
+      tags: ["Orrnn Demo"]
+      summary: Demo broker health and status
+      description: |
+        Returns the health of the **orrnn** demo account subsystem.
+        Use this endpoint to verify the demo broker is reachable before
+        showing the account-creation form in the user-label frontend.
+      security: []
+      responses:
+        "200":
+          description: Demo system healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:               {type: string, example: orrnn-demo}
+                  status:                {type: string, enum: [ok, degraded, error], example: ok}
+                  broker:                {type: string, example: active}
+                  demo_groups_available: {type: integer, example: 1}
+                  total_demo_accounts:   {type: integer, example: 0}
+                  database:              {type: string, example: connected}
+        "503":
+          description: Demo system unavailable
+
+  /api/v1/public/demo-groups:
+    get:
+      operationId: orrnnDemoGroups
+      tags: ["Orrnn Demo"]
+      summary: List available demo groups for the orrnn broker
+      description: |
+        Returns all enabled demo groups under broker_id='orrnn'.
+        Use the `name` field from the response as the `group` in the
+        POST /api/v1/public/demo-account request.
+      security: []
+      responses:
+        "200":
+          description: List of demo groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:        {type: string, example: orrnn/demo-std}
+                        description: {type: string, example: Orrnn Standard Demo}
+                        currency:    {type: string, example: USD}
+                        leverage:    {type: integer, example: 100}
+                  count: {type: integer, example: 1}
+
+  /api/v1/public/demo-account:
+    post:
+      operationId: orrnnDemoAccountCreate
+      tags: ["Orrnn Demo"]
+      summary: Create a demo account on the orrnn broker (user-label frontend)
+      description: |
+        Creates a demo trading account under the centralized **orrnn** broker.
+        No authentication required.
+
+        Server enforces (and the client cannot override):
+        - `broker_id` = `orrnn`
+        - `created_by_type` = `user`
+        - Only demo groups are accepted; a live group returns MT_RET_ERR_PERMISSIONS
+        - Default `initial_balance` = 10,000 if not specified
+
+        The account is created and a `login` number plus `api_key` are returned.
+        `origin_broker` is stored as-is for analytics (which broker's frontend
+        referred the user).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [group, email, master_pass]
+              properties:
+                group:           {type: string, example: orrnn/demo-std, description: Demo group name (see GET /api/v1/public/demo-groups)}
+                email:           {type: string, format: email, example: trader@example.com}
+                master_pass:     {type: string, example: "Strong-Pass-123"}
+                investor_pass:   {type: string, example: "Read-Only-Pass"}
+                first_name:      {type: string, example: Jane}
+                last_name:       {type: string, example: Doe}
+                phone:           {type: string, example: "+1-555-0100"}
+                country:         {type: string, example: US}
+                currency:        {type: string, example: USD, default: USD}
+                leverage:        {type: integer, example: 100, default: 100}
+                initial_balance: {type: number, example: 10000, default: 10000}
+                origin_broker:   {type: string, example: fxtrust, description: "Tracked only; the actual broker_id is always 'orrnn'."}
+                comment:         {type: string, example: "Public demo account"}
+      responses:
+        "200":
+          description: Demo account created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  login:         {type: integer, format: int64, example: 900000001}
+                  broker_id:     {type: string, example: orrnn}
+                  group:         {type: string, example: orrnn/demo-std}
+                  currency:      {type: string, example: USD}
+                  leverage:      {type: integer, example: 100}
+                  balance:       {type: number, example: 10000}
+                  api_key:       {type: string, example: rtx5_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx}
+                  master_pass:   {type: string, example: (hashed server-side)}
+                  created_at:    {type: integer, format: int64}
+        "201":
+          description: Error (MT5-compatible ExceptionResult JSON — e.g. MT_RET_ERR_PERMISSIONS for live group, MT_RET_ERR_DATA for DB failure)
+
+# =============================================================================
+# COMPONENTS
+# =============================================================================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /api/v2/auth/login
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key obtained during registration
+    AdminApiKey:
+      type: apiKey
+      in: header
+      name: X-Admin-API-Key
+      description: RTX5 admin API key for License Server operations
+
+  schemas:
+    # --- Common ---
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Invalid request parameters
+
+    # --- Auth ---
+    AuthTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIs...
+        refresh_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIs...
+        api_key:
+          type: string
+          description: API key (only returned on registration)
+        user:
+          $ref: "#/components/schemas/User"
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [user, manager, admin]
+        enabled:
+          type: boolean
+        api_key:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+
+    # --- Market Data ---
+    Instrument:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: EURUSD
+        description:
+          type: string
+          example: Euro vs US Dollar
+        category:
+          type: string
+          example: forex
+        digits:
+          type: integer
+          example: 5
+        contract_size:
+          type: number
+          format: double
+          example: 100000
+        min_volume:
+          type: number
+          format: double
+          example: 0.01
+        max_volume:
+          type: number
+          format: double
+          example: 100.0
+        volume_step:
+          type: number
+          format: double
+          example: 0.01
+        spread:
+          type: number
+          format: double
+          example: 1.2
+        swap_long:
+          type: number
+          format: double
+          example: -0.5
+        swap_short:
+          type: number
+          format: double
+          example: 0.3
+        commission:
+          type: number
+          format: double
+          example: 7.0
+        enabled:
+          type: boolean
+          example: true
+
+    InstrumentCreate:
+      type: object
+      required: [symbol, category, digits, contract_size]
+      properties:
+        symbol:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        digits:
+          type: integer
+        contract_size:
+          type: number
+          format: double
+        min_volume:
+          type: number
+          format: double
+        max_volume:
+          type: number
+          format: double
+        volume_step:
+          type: number
+          format: double
+        spread:
+          type: number
+          format: double
+        swap_long:
+          type: number
+          format: double
+        swap_short:
+          type: number
+          format: double
+        commission:
+          type: number
+          format: double
+        enabled:
+          type: boolean
+
+    Tick:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: EURUSD
+        bid:
+          type: number
+          format: double
+          example: 1.08650
+        ask:
+          type: number
+          format: double
+          example: 1.08670
+        daily_open:
+          type: number
+          format: double
+          example: 1.08610
+        previous_close:
+          type: number
+          format: double
+          example: 1.08590
+        session:
+          type: object
+          properties:
+            high_bid:
+              type: number
+              format: double
+              example: 1.08720
+            low_bid:
+              type: number
+              format: double
+              example: 1.08540
+            high_ask:
+              type: number
+              format: double
+              example: 1.08740
+            low_ask:
+              type: number
+              format: double
+              example: 1.08560
+        open:
+          type: number
+          format: double
+          example: 1.08610
+        high:
+          type: number
+          format: double
+          example: 1.08730
+        low:
+          type: number
+          format: double
+          example: 1.08550
+        close:
+          type: number
+          format: double
+          example: 1.08590
+        time:
+          type: integer
+          format: int64
+          example: 1700000000
+
+    Candle:
+      type: object
+      properties:
+        time:
+          type: integer
+          format: int64
+        open:
+          type: number
+          format: double
+        high:
+          type: number
+          format: double
+        low:
+          type: number
+          format: double
+        close:
+          type: number
+          format: double
+        volume:
+          type: number
+          format: double
+
+    OrderBook:
+      type: object
+      properties:
+        symbol:
+          type: string
+        bids:
+          type: array
+          items:
+            $ref: "#/components/schemas/DepthLevel"
+        asks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DepthLevel"
+        time:
+          type: integer
+          format: int64
+
+    DepthLevel:
+      type: object
+      properties:
+        price:
+          type: number
+          format: double
+        volume:
+          type: number
+          format: double
+
+    MarketStatus:
+      type: object
+      properties:
+        symbol:
+          type: string
+        status:
+          type: string
+          enum: [open, closed, pre_market, after_hours]
+        session_open:
+          type: integer
+          format: int64
+        session_close:
+          type: integer
+          format: int64
+
+    Broker:
+      type: object
+      properties:
+        broker_id:
+          type: string
+          example: alphatrading
+        name:
+          type: string
+          example: Alpha Trading Inc
+        contact_name:
+          type: string
+        contact_email:
+          type: string
+        contact_phone:
+          type: string
+        company_address:
+          type: string
+        country:
+          type: string
+        license_type:
+          type: string
+          enum: [trial, standard, enterprise]
+        max_accounts:
+          type: integer
+        max_managers:
+          type: integer
+        status:
+          type: string
+          enum: [active, suspended, trial, terminated]
+        server_count:
+          type: integer
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+
+    BrokerDetail:
+      allOf:
+        - $ref: "#/components/schemas/Broker"
+        - type: object
+          properties:
+            servers:
+              type: array
+              items:
+                $ref: "#/components/schemas/BrokerServer"
+
+    BrokerServer:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        broker_id:
+          type: string
+          example: fxtrust
+        broker_name:
+          type: string
+          example: FX Trust Ltd
+        server:
+          type: string
+          description: "ip:port format â€” pass this as the 'server' field in login"
+          example: "69.197.178.27:8090"
+        server_ip:
+          type: string
+          example: "69.197.178.27"
+        server_port:
+          type: integer
+          example: 8090
+        protocol:
+          type: string
+          example: http
+        region:
+          type: string
+          example: us-east
+        enabled:
+          type: boolean
+          example: true
+        created_at:
+          type: integer
+          format: int64
+
+    BrokerConfig:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Acme Markets
+        logo_url:
+          type: string
+          format: uri
+          example: https://cdn.acmemarkets.com/logo.png
+        support_email:
+          type: string
+          format: email
+          example: support@acmemarkets.com
+        theme_color:
+          type: string
+          example: "#1A73E8"
+        timezone:
+          type: string
+          example: Europe/London
+        domain:
+          type: string
+          example: trade.acmemarkets.com
+        terms_url:
+          type: string
+          format: uri
+        privacy_url:
+          type: string
+          format: uri
+
+    MarginCalcResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+        volume:
+          type: number
+          format: double
+        leverage:
+          type: integer
+        required_margin:
+          type: number
+          format: double
+        free_margin:
+          type: number
+          format: double
+        max_lots:
+          type: number
+          format: double
+          description: Maximum lots the account can open for this symbol
+        pip_value:
+          type: number
+          format: double
+        currency:
+          type: string
+          example: USD
+
+    ProfitCalcResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+        volume:
+          type: number
+          format: double
+        side:
+          type: string
+        open_price:
+          type: number
+          format: double
+        close_price:
+          type: number
+          format: double
+        profit:
+          type: number
+          format: double
+        pips:
+          type: number
+          format: double
+
+    # --- Accounts ---
+    Account:
+      type: object
+      properties:
+        login:
+          type: integer
+          format: int64
+          example: 100001
+        name:
+          type: string
+          example: My Trading Account
+        currency:
+          type: string
+          example: USD
+        leverage:
+          type: integer
+          example: 100
+        group:
+          type: string
+          example: demo
+        balance:
+          type: number
+          format: double
+          example: 10000.00
+        credit:
+          type: number
+          format: double
+          example: 0.00
+        equity:
+          type: number
+          format: double
+          example: 10250.00
+        margin:
+          type: number
+          format: double
+          example: 500.00
+        margin_free:
+          type: number
+          format: double
+          example: 9750.00
+        margin_level:
+          type: number
+          format: double
+          example: 2050.00
+        floating:
+          type: number
+          format: double
+          example: 250.00
+        status:
+          type: string
+          enum: [active, suspended, readonly, deleted]
+          example: active
+        created_at:
+          type: integer
+          format: int64
+
+    AccountMetrics:
+      type: object
+      properties:
+        login:
+          type: integer
+          format: int64
+        total_deals:
+          type: integer
+        winning_deals:
+          type: integer
+        losing_deals:
+          type: integer
+        win_rate:
+          type: number
+          format: double
+        profit_factor:
+          type: number
+          format: double
+        total_profit:
+          type: number
+          format: double
+        total_loss:
+          type: number
+          format: double
+        net_profit:
+          type: number
+          format: double
+        avg_profit:
+          type: number
+          format: double
+        avg_loss:
+          type: number
+          format: double
+        max_drawdown:
+          type: number
+          format: double
+        total_volume:
+          type: number
+          format: double
+        total_commission:
+          type: number
+          format: double
+        total_swap:
+          type: number
+          format: double
+
+    BalanceOp:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        account_login:
+          type: integer
+          format: int64
+        type:
+          type: string
+          enum: [deposit, withdrawal, credit]
+        amount:
+          type: number
+          format: double
+        balance_after:
+          type: number
+          format: double
+        comment:
+          type: string
+        time:
+          type: integer
+          format: int64
+
+    AuditEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        account_login:
+          type: integer
+          format: int64
+        action:
+          type: string
+        details:
+          type: string
+        user_id:
+          type: integer
+          format: int64
+        ip_address:
+          type: string
+        time:
+          type: integer
+          format: int64
+
+    EquityPoint:
+      type: object
+      properties:
+        time:
+          type: integer
+          format: int64
+        equity:
+          type: number
+          format: double
+        balance:
+          type: number
+          format: double
+        margin:
+          type: number
+          format: double
+
+    # --- Trading ---
+    Position:
+      type: object
+      properties:
+        ticket:
+          type: integer
+          format: int64
+          example: 1000001
+        account_login:
+          type: integer
+          format: int64
+          example: 100001
+        symbol:
+          type: string
+          example: EURUSD
+        side:
+          type: string
+          enum: [buy, sell]
+          example: buy
+        volume:
+          type: number
+          format: double
+          example: 1.00
+        price_open:
+          type: number
+          format: double
+          example: 1.08650
+        price_current:
+          type: number
+          format: double
+          example: 1.08750
+        price_sl:
+          type: number
+          format: double
+          nullable: true
+        price_tp:
+          type: number
+          format: double
+          nullable: true
+        profit:
+          type: number
+          format: double
+          example: 100.00
+        swap:
+          type: number
+          format: double
+          example: -1.50
+        commission:
+          type: number
+          format: double
+          example: -7.00
+        comment:
+          type: string
+        time_create:
+          type: integer
+          format: int64
+        time_update:
+          type: integer
+          format: int64
+        trailing_stop:
+          type: integer
+          description: Trailing stop distance in points (0 = disabled)
+          example: 50
+        trailing_step:
+          type: integer
+          description: Minimum move in points before trailing adjusts
+          example: 10
+        magic:
+          type: integer
+          format: int64
+          description: Expert Advisor magic number (0 = manual trade)
+          example: 0
+
+    ClosedPosition:
+      type: object
+      properties:
+        ticket:
+          type: integer
+          format: int64
+        account_login:
+          type: integer
+          format: int64
+        symbol:
+          type: string
+        side:
+          type: string
+          enum: [buy, sell]
+        volume:
+          type: number
+          format: double
+        price_open:
+          type: number
+          format: double
+        price_close:
+          type: number
+          format: double
+        price_sl:
+          type: number
+          format: double
+          nullable: true
+        price_tp:
+          type: number
+          format: double
+          nullable: true
+        profit:
+          type: number
+          format: double
+        swap:
+          type: number
+          format: double
+        commission:
+          type: number
+          format: double
+        magic:
+          type: integer
+          format: int64
+        comment:
+          type: string
+        reason:
+          type: string
+          enum: [manual, sl_hit, tp_hit, stop_out, close_by, expired]
+          description: Why the position was closed
+        duration_seconds:
+          type: integer
+          format: int64
+          description: How long the position was open
+        time_create:
+          type: integer
+          format: int64
+        time_close:
+          type: integer
+          format: int64
+
+    Deal:
+      type: object
+      properties:
+        ticket:
+          type: integer
+          format: int64
+        order_ticket:
+          type: integer
+          format: int64
+          description: Related order ticket
+        position_ticket:
+          type: integer
+          format: int64
+          description: Related position ticket
+        account_login:
+          type: integer
+          format: int64
+        symbol:
+          type: string
+        action:
+          type: string
+          enum: [deal_buy, deal_sell, deal_balance, deal_credit, deal_commission, deal_correction]
+        entry:
+          type: string
+          enum: [entry_in, entry_out, entry_inout]
+          description: "entry_in = opening side, entry_out = closing side, entry_inout = close-by"
+        volume:
+          type: number
+          format: double
+        price:
+          type: number
+          format: double
+        profit:
+          type: number
+          format: double
+        swap:
+          type: number
+          format: double
+        commission:
+          type: number
+          format: double
+        fee:
+          type: number
+          format: double
+        magic:
+          type: integer
+          format: int64
+          description: EA magic number (0 if manual)
+        comment:
+          type: string
+        time:
+          type: integer
+          format: int64
+
+    Order:
+      type: object
+      properties:
+        ticket:
+          type: integer
+          format: int64
+        account_login:
+          type: integer
+          format: int64
+        symbol:
+          type: string
+        type:
+          type: string
+          enum: [market, buy_limit, sell_limit, buy_stop, sell_stop]
+        side:
+          type: string
+          enum: [buy, sell]
+        volume:
+          type: number
+          format: double
+        price:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [filled, cancelled, pending, rejected]
+        comment:
+          type: string
+        time_create:
+          type: integer
+          format: int64
+        magic:
+          type: integer
+          format: int64
+
+    PendingOrder:
+      type: object
+      properties:
+        ticket:
+          type: integer
+          format: int64
+        account_login:
+          type: integer
+          format: int64
+        symbol:
+          type: string
+        type:
+          type: string
+          enum: [buy_limit, sell_limit, buy_stop, sell_stop]
+        side:
+          type: string
+          enum: [buy, sell]
+        volume:
+          type: number
+          format: double
+        price:
+          type: number
+          format: double
+        price_sl:
+          type: number
+          format: double
+          nullable: true
+        price_tp:
+          type: number
+          format: double
+          nullable: true
+        expiration:
+          type: integer
+          format: int64
+          nullable: true
+        status:
+          type: string
+          enum: [active, triggered, cancelled, expired]
+        comment:
+          type: string
+        magic:
+          type: integer
+          format: int64
+        time_create:
+          type: integer
+          format: int64
+
+    OCOPair:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        account_login:
+          type: integer
+          format: int64
+        symbol:
+          type: string
+        volume:
+          type: number
+          format: double
+        order_a:
+          $ref: "#/components/schemas/PendingOrder"
+        order_b:
+          $ref: "#/components/schemas/PendingOrder"
+        status:
+          type: string
+          enum: [active, triggered, cancelled]
+        triggered_ticket:
+          type: integer
+          format: int64
+          nullable: true
+        time_create:
+          type: integer
+          format: int64
+
+    WatchlistItem:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: EURUSD
+        added_at:
+          type: integer
+          format: int64
+        sort_order:
+          type: integer
+          example: 0
+
+    # --- Notifications ---
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          example: Margin Call Warning
+        body:
+          type: string
+          example: Account 100001 margin level below 100%
+        type:
+          type: string
+          enum: [info, warning, alert, system]
+          example: warning
+        read:
+          type: boolean
+          example: false
+        created_at:
+          type: integer
+          format: int64
+
+    # --- Webhooks ---
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        url:
+          type: string
+          format: uri
+          example: https://example.com/webhook
+        events:
+          type: array
+          items:
+            type: string
+          example: ["trade.opened", "trade.closed"]
+        secret:
+          type: string
+          description: Masked secret (only full value shown on creation)
+        active:
+          type: boolean
+          example: true
+        created_at:
+          type: integer
+          format: int64
+        last_triggered:
+          type: integer
+          format: int64
+          nullable: true
+
+    # --- Copy Trading ---
+    CopyMaster:
+      type: object
+      properties:
+        login:
+          type: integer
+          format: int64
+          example: 100001
+        name:
+          type: string
+          example: TopTrader
+        win_rate:
+          type: number
+          format: double
+          example: 0.72
+        profit_factor:
+          type: number
+          format: double
+          example: 2.1
+        total_profit:
+          type: number
+          format: double
+          example: 25000.00
+        max_drawdown:
+          type: number
+          format: double
+          example: 8.5
+        followers_count:
+          type: integer
+          example: 42
+        since:
+          type: integer
+          format: int64
+
+    # --- Prop Firm ---
+    PropChallenge:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: 100K Challenge
+        account_size:
+          type: number
+          format: double
+          example: 100000.00
+        profit_target_pct:
+          type: number
+          format: double
+          example: 10.0
+        max_daily_loss_pct:
+          type: number
+          format: double
+          example: 5.0
+        max_total_loss_pct:
+          type: number
+          format: double
+          example: 10.0
+        min_trading_days:
+          type: integer
+          example: 10
+        fee:
+          type: number
+          format: double
+          example: 499.00
+        currency:
+          type: string
+          example: USD
+
+    # --- Bonuses ---
+    Bonus:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: Welcome Bonus 30%
+        type:
+          type: string
+          enum: [welcome, deposit_match, no_deposit, volume_rebate, cashback, loyalty]
+          example: deposit
+        amount:
+          type: number
+          format: double
+          nullable: true
+        percentage:
+          type: number
+          format: double
+          nullable: true
+          example: 30.0
+        max_amount:
+          type: number
+          format: double
+          nullable: true
+          example: 5000.00
+        terms:
+          type: string
+          example: Minimum 1.0 lot per $1 bonus to withdraw
+        active:
+          type: boolean
+          example: true
+        valid_from:
+          type: integer
+          format: int64
+        valid_to:
+          type: integer
+          format: int64
+          nullable: true
+        account_login:
+          type: integer
+          format: int64
+          description: Account this bonus was awarded to
+        awarded_amount:
+          type: number
+          format: double
+          description: Actual amount credited to the account
+        lots_traded:
+          type: number
+          format: double
+          description: Lots traded towards unlocking this bonus
+        lots_required:
+          type: number
+          format: double
+          description: Total lots required to unlock withdrawal
+        status:
+          type: string
+          enum: [pending, active, unlocked, expired, cancelled]
+          description: Current bonus status
+        expires_at:
+          type: integer
+          format: int64
+          nullable: true
+
+    # --- API Keys ---
+    APIKey:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: Trading Bot Key
+        key:
+          type: string
+          description: Full key (only shown on creation); masked afterwards
+          example: rtx5_abc123def456
+        scopes:
+          type: array
+          items:
+            type: string
+          example: ["trade", "read"]
+        created_at:
+          type: integer
+          format: int64
+        last_used:
+          type: integer
+          format: int64
+          nullable: true
+
+    # --- Risk ---
+    RiskRule:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          example: Max EURUSD Exposure
+        type:
+          type: string
+          enum: [max_exposure, max_volume, max_loss, symbol_limit]
+        symbol:
+          type: string
+          nullable: true
+        threshold:
+          type: number
+          format: double
+          example: 50.0
+        action:
+          type: string
+          enum: [alert, block, hedge]
+          example: alert
+        enabled:
+          type: boolean
+          example: true
+        created_at:
+          type: integer
+          format: int64
+
+    RiskAlert:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        rule_id:
+          type: integer
+          format: int64
+        type:
+          type: string
+        message:
+          type: string
+          example: EURUSD net exposure exceeded 50 lots
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        acknowledged:
+          type: boolean
+          example: false
+        created_at:
+          type: integer
+          format: int64
+        acknowledged_at:
+          type: integer
+          format: int64
+          nullable: true
+
+    SymbolExposure:
+      type: object
+      properties:
+        symbol:
+          type: string
+          example: EURUSD
+        long_volume:
+          type: number
+          format: double
+          example: 25.5
+        short_volume:
+          type: number
+          format: double
+          example: 18.3
+        net_volume:
+          type: number
+          format: double
+          example: 7.2
+        long_count:
+          type: integer
+          example: 15
+        short_count:
+          type: integer
+          example: 10
+        net_profit:
+          type: number
+          format: double
+          example: 3200.50
+
+    # --- LP Gateway ---
+    LPFill:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        lp_name:
+          type: string
+          example: MockLP
+        symbol:
+          type: string
+          example: EURUSD
+        side:
+          type: string
+          enum: [buy, sell]
+        volume:
+          type: number
+          format: double
+        requested_price:
+          type: number
+          format: double
+        filled_price:
+          type: number
+          format: double
+        slippage:
+          type: number
+          format: double
+        latency_ms:
+          type: integer
+        status:
+          type: string
+          enum: [filled, partial, rejected]
+        filled_at:
+          type: integer
+          format: int64
+
+    FillQuality:
+      type: object
+      properties:
+        total_fills:
+          type: integer
+        avg_slippage:
+          type: number
+          format: double
+        avg_latency_ms:
+          type: number
+          format: double
+        fill_rate:
+          type: number
+          format: double
+          description: Percentage of successfully filled orders
+        rejection_rate:
+          type: number
+          format: double
+        by_lp:
+          type: array
+          items:
+            type: object
+            properties:
+              lp_name:
+                type: string
+              fills:
+                type: integer
+              avg_slippage:
+                type: number
+                format: double
+              avg_latency_ms:
+                type: number
+                format: double
+
+    # --- Reports ---
+    AccountStatement:
+      type: object
+      properties:
+        login:
+          type: integer
+          format: int64
+        name:
+          type: string
+        currency:
+          type: string
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        opening_balance:
+          type: number
+          format: double
+        closing_balance:
+          type: number
+          format: double
+        total_deposits:
+          type: number
+          format: double
+        total_withdrawals:
+          type: number
+          format: double
+        total_profit:
+          type: number
+          format: double
+        total_commission:
+          type: number
+          format: double
+        total_swap:
+          type: number
+          format: double
+        deals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Deal"
+
+    DailySummary:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        login:
+          type: integer
+          format: int64
+        starting_balance:
+          type: number
+          format: double
+        ending_balance:
+          type: number
+          format: double
+        profit:
+          type: number
+          format: double
+        volume:
+          type: number
+          format: double
+        deals:
+          type: integer
+        commission:
+          type: number
+          format: double
+        swap:
+          type: number
+          format: double
+
+    BrokerSummary:
+      type: object
+      properties:
+        total_accounts:
+          type: integer
+        active_accounts:
+          type: integer
+        total_balance:
+          type: number
+          format: double
+        total_equity:
+          type: number
+          format: double
+        total_open_positions:
+          type: integer
+        total_volume_today:
+          type: number
+          format: double
+        total_profit_today:
+          type: number
+          format: double
+        total_commission_today:
+          type: number
+          format: double
+        total_swap_today:
+          type: number
+          format: double
+
+    # --- Exchange Gateway ---
+    ExchangeStatus:
+      type: object
+      properties:
+        source:
+          type: string
+          example: binance
+        connected:
+          type: boolean
+        subscribed_symbols:
+          type: array
+          items:
+            type: string
+        uptime_seconds:
+          type: integer
+          format: int64
+        ticks_received:
+          type: integer
+          format: int64
+        last_tick_at:
+          type: integer
+          format: int64
+
+    # --- News ---
+    NewsItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          example: Fed Holds Rates Steady
+        summary:
+          type: string
+        source:
+          type: string
+          example: Reuters
+        url:
+          type: string
+          format: uri
+        symbols:
+          type: array
+          items:
+            type: string
+        impact:
+          type: string
+          enum: [low, medium, high]
+        published_at:
+          type: integer
+          format: int64
+
+    EconomicEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+          example: US Non-Farm Payrolls
+        country:
+          type: string
+          example: US
+        currency:
+          type: string
+          example: USD
+        impact:
+          type: string
+          enum: [low, medium, high]
+        forecast:
+          type: string
+          nullable: true
+        previous:
+          type: string
+          nullable: true
+        actual:
+          type: string
+          nullable: true
+        event_at:
+          type: integer
+          format: int64
+
+    # --- History Backend ---
+    HistoryCandle:
+      type: object
+      properties:
+        time:
+          type: integer
+          format: int64
+          description: Unix timestamp of candle open
+        open:
+          type: number
+          format: double
+        high:
+          type: number
+          format: double
+        low:
+          type: number
+          format: double
+        close:
+          type: number
+          format: double
+        tick_count:
+          type: integer
+
+    HistoryTick:
+      type: object
+      properties:
+        symbol:
+          type: string
+        bid:
+          type: number
+          format: double
+        ask:
+          type: number
+          format: double
+        time:
+          type: integer
+          format: int64
+
+    HistoryStats:
+      type: object
+      properties:
+        symbol:
+          type: string
+        earliest_tick:
+          type: integer
+          format: int64
+        latest_tick:
+          type: integer
+          format: int64
+        total_ticks:
+          type: integer
+          format: int64
+        earliest_candle_m1:
+          type: integer
+          format: int64
+
+    # --- Logging Backend ---
+    AuditEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        broker_id:
+          type: integer
+        timestamp:
+          type: integer
+          format: int64
+        timestamp_unix:
+          type: integer
+          format: int64
+        service:
+          type: string
+          example: rtx5-core
+        action:
+          type: string
+          example: order_fill
+        actor_type:
+          type: string
+          enum: [trader, manager, system, api_key]
+        actor_id:
+          type: string
+        actor_ip:
+          type: string
+        target_type:
+          type: string
+          enum: [account, position, order, deal]
+        target_id:
+          type: integer
+          format: int64
+        before_state:
+          type: object
+        after_state:
+          type: object
+        metadata:
+          type: object
+        result:
+          type: string
+          enum: [success, failure, rejected]
+        error_code:
+          type: string
+        session_id:
+          type: string
+        request_id:
+          type: string
+          format: uuid
+
+    LatencyMetrics:
+      type: object
+      properties:
+        p50:
+          type: number
+          format: double
+        p95:
+          type: number
+          format: double
+        p99:
+          type: number
+          format: double
+        avg:
+          type: number
+          format: double
+        count:
+          type: integer
+
+    VolumeMetric:
+      type: object
+      properties:
+        period:
+          type: string
+          description: Period start (e.g. "2024-11-14" for day)
+        trade_count:
+          type: integer
+        total_volume:
+          type: number
+          format: double
+
+    # --- License Server ---
+    License:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        license_key:
+          type: string
+          format: uuid
+        broker_name:
+          type: string
+        broker_id:
+          type: integer
+        plan:
+          type: string
+          enum: [starter, growth, enterprise]
+        status:
+          type: string
+          enum: [active, suspended, expired, grace_period]
+        max_accounts:
+          type: integer
+          description: "-1 = unlimited"
+        max_instruments:
+          type: integer
+        max_managers:
+          type: integer
+        modules_enabled:
+          type: array
+          items:
+            type: string
+        issued_at:
+          type: integer
+          format: int64
+        valid_from:
+          type: integer
+          format: int64
+        valid_until:
+          type: integer
+          format: int64
+          nullable: true
+        grace_period_days:
+          type: integer
+        contact_email:
+          type: string
+          format: email
+        contact_name:
+          type: string
+        billing_model:
+          type: string
+          enum: [flat_monthly, per_account, volume_based]
+        base_price_usd:
+          type: number
+          format: double
+        per_account_usd:
+          type: number
+          format: double
+        last_heartbeat:
+          type: integer
+          format: int64
+        current_accounts:
+          type: integer
+        current_active_accounts:
+          type: integer
+        total_deals_lifetime:
+          type: integer
+          format: int64
+        total_volume_lifetime:
+          type: number
+          format: double
+
+    LicenseCreateRequest:
+      type: object
+      required: [broker_name, broker_id, plan, contact_email, billing_model]
+      properties:
+        broker_name:
+          type: string
+        broker_id:
+          type: integer
+        plan:
+          type: string
+          enum: [starter, growth, enterprise]
+        max_accounts:
+          type: integer
+          description: Override default for plan
+        max_instruments:
+          type: integer
+        max_managers:
+          type: integer
+        modules_enabled:
+          type: array
+          items:
+            type: string
+        contact_email:
+          type: string
+          format: email
+        contact_name:
+          type: string
+        billing_model:
+          type: string
+          enum: [flat_monthly, per_account, volume_based]
+        base_price_usd:
+          type: number
+        per_account_usd:
+          type: number
+        valid_from:
+          type: integer
+          format: int64
+        valid_until:
+          type: integer
+          format: int64
+          nullable: true
+        grace_period_days:
+          type: integer
+          default: 7
+
+    LicenseUpdateRequest:
+      type: object
+      properties:
+        plan:
+          type: string
+          enum: [starter, growth, enterprise]
+        max_accounts:
+          type: integer
+        max_instruments:
+          type: integer
+        max_managers:
+          type: integer
+        modules_enabled:
+          type: array
+          items:
+            type: string
+        billing_model:
+          type: string
+        base_price_usd:
+          type: number
+        per_account_usd:
+          type: number
+        valid_until:
+          type: integer
+          format: int64
+
+    HeartbeatRequest:
+      type: object
+      required: [license_key, broker_id, accounts, active_accounts, deals, volume]
+      properties:
+        license_key:
+          type: string
+          format: uuid
+        broker_id:
+          type: integer
+        accounts:
+          type: integer
+        active_accounts:
+          type: integer
+        deals:
+          type: integer
+          format: int64
+        volume:
+          type: number
+          format: double
+        server_version:
+          type: string
+
+    HeartbeatRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        license_key:
+          type: string
+        broker_id:
+          type: integer
+        reported_accounts:
+          type: integer
+        reported_active_accounts:
+          type: integer
+        reported_deals:
+          type: integer
+          format: int64
+        reported_volume:
+          type: number
+          format: double
+        server_version:
+          type: string
+        ip:
+          type: string
+        timestamp:
+          type: integer
+          format: int64
+
+    BrokerUsage:
+      type: object
+      properties:
+        broker_id:
+          type: integer
+        broker_name:
+          type: string
+        plan:
+          type: string
+        current_accounts:
+          type: integer
+        current_active_accounts:
+          type: integer
+        total_deals_lifetime:
+          type: integer
+          format: int64
+        total_volume_lifetime:
+          type: number
+          format: double
+        last_heartbeat:
+          type: integer
+          format: int64
+
+    DashboardStats:
+      type: object
+      properties:
+        total_brokers:
+          type: integer
+        total_accounts:
+          type: integer
+        total_volume:
+          type: number
+          format: double
+        mrr:
+          type: number
+          format: double
+          description: Monthly Recurring Revenue in USD
+
+    LicenseSummary:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, suspended, expired, grace_period]
+        max_accounts:
+          type: integer
+        modules_enabled:
+          type: array
+          items:
+            type: string
+        valid_until:
+          type: integer
+          format: int64
+          nullable: true
+
+    # --- License Agent ---
+    LicenseAgentStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, suspended, expired, grace_period]
+        plan:
+          type: string
+        broker_id:
+          type: integer
+        broker_name:
+          type: string
+        max_accounts:
+          type: integer
+        current_accounts:
+          type: integer
+        max_instruments:
+          type: integer
+        max_managers:
+          type: integer
+        modules_enabled:
+          type: array
+          items:
+            type: string
+        valid_until:
+          type: integer
+          format: int64
+          nullable: true
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

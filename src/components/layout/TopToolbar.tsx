@@ -18,8 +18,6 @@ import type { Command } from '../../types/commands';
 import { NotificationBadge } from '../notifications/NotificationBadge';
 import { NotificationCenter } from '../notifications/NotificationCenter';
 import { useNotificationStore } from '../../store/useNotificationStore';
-import { MT5Toggle } from '../MT5Toggle';
-import { MT5AccountInfo } from '../MT5AccountInfo';
 import { useAppStore } from '../../store/useAppStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
 
@@ -172,7 +170,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     }, [timeframe, toolbarState.timeframe, dispatchToolbar]);
 
     return (
-        <div className="flex flex-col z-50 relative">
+        <div className="flex flex-col z-50 relative bg-slate-950/20 backdrop-blur-2xl border-b border-white/5 shadow-2xl">
             {/* 1. Header Bar (Topmost) */}
             <HeaderBar
                 symbol={symbol}
@@ -224,7 +222,7 @@ const HeaderBar = ({ symbol, timeframe, server }: { symbol: string, timeframe: s
 
     return (
         <div
-            className="h-7 bg-[#131316] flex items-center justify-between text-[12px] font-segoe select-none text-zinc-300 border-b border-[#2a2e39]"
+            className="h-9 bg-transparent flex items-center justify-between text-[12px] font-segoe select-none text-slate-300 border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] backdrop-blur-md"
             style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
             {/* Left: Standard Title */}
@@ -240,7 +238,7 @@ const HeaderBar = ({ symbol, timeframe, server }: { symbol: string, timeframe: s
             >
                 {/* Minimize */}
                 <button
-                    className="h-full px-3 hover:bg-white/10 transition-colors flex items-center justify-center"
+                    className="h-full px-3 hover:bg-white/20 hover:shadow-[0_0_10px_rgba(255,255,255,0.2)] transition-all duration-300 rounded-sm transition-colors flex items-center justify-center"
                     onClick={handleMinimize}
                     title="Minimize"
                 >
@@ -249,7 +247,7 @@ const HeaderBar = ({ symbol, timeframe, server }: { symbol: string, timeframe: s
 
                 {/* Maximize / Restore */}
                 <button
-                    className="h-full px-3 hover:bg-white/10 transition-colors flex items-center justify-center"
+                    className="h-full px-3 hover:bg-white/20 hover:shadow-[0_0_10px_rgba(255,255,255,0.2)] transition-all duration-300 rounded-sm transition-colors flex items-center justify-center"
                     onClick={handleMaximize}
                     title={isMaximized ? 'Restore' : 'Maximize'}
                 >
@@ -269,7 +267,7 @@ const HeaderBar = ({ symbol, timeframe, server }: { symbol: string, timeframe: s
 
                 {/* Close */}
                 <button
-                    className="h-full px-4 hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center group"
+                    className="h-full px-4 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.6)] transition-all duration-300 rounded-sm hover:text-white transition-colors flex items-center justify-center group"
                     onClick={handleClose}
                     title="Close"
                 >
@@ -375,7 +373,7 @@ const MainToolbar = ({
     };
 
     return (
-        <div className="flex items-center bg-[#131316] border-b border-[#2a2e39] h-[40px] px-1.5 shadow-sm select-none overflow-x-auto no-scrollbar gap-[2px]">
+        <div className="flex items-center bg-[#131316] border-b border-white/10 h-[40px] px-1.5 shadow-sm select-none overflow-x-auto no-scrollbar gap-[2px]">
 
 
 
@@ -687,7 +685,7 @@ const MainToolbar = ({
                             <button
                                 onClick={handleLogout}
                                 disabled={loggingOut}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-red-400 hover:bg-red-500/15 hover:text-red-300 transition-colors disabled:opacity-50"
+                                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-red-400 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.6)] transition-all duration-300 rounded-sm/15 hover:text-red-300 transition-colors disabled:opacity-50"
                             >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -723,7 +721,7 @@ const MT5Group = ({ children }: { children: React.ReactNode }) => (
 );
 
 const MT5Divider = () => (
-    <div className="mx-[4px] w-[2px] h-6 border-l border-[#2a2e39] bg-[#1a1c23] shadow-sm" />
+    <div className="mx-[4px] w-[2px] h-6 border-l border-white/10 bg-[#1a1c23] shadow-sm" />
 );
 
 interface MT5BtnProps {

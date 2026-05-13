@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { useMT5Store } from '../store/useMT5Store';
 import { useAppStore } from '../store/useAppStore';
+import api from '../services/api';
 
 const PENDING_CLOSURES = new Set<number>();
 
@@ -12,9 +12,8 @@ export function useAutoCloseMonitor(intervalMs = 500) {
         isRunning.current = true;
 
         const intervalId = setInterval(() => {
-            const mt5State = useMT5Store.getState();
             const appState = useAppStore.getState();
-            const positions = mt5State.positions;
+            const positions = appState.positions;
             const ticks = appState.ticks;
 
             // Pre-compute normalized ticks dictionary for ultra-fast fuzzy resolution
@@ -25,7 +24,7 @@ export function useAutoCloseMonitor(intervalMs = 500) {
             }
 
             positions.forEach(pos => {
-                if (!pos.ticket || PENDING_CLOSURES.has(pos.ticket)) return;
+                if (!pos.id || PENDING_CLOSURES.has(pos.id)) return;
 
                 // Only check if we actually have SL or TP defined locally or from server
                 if ((!pos.sl || pos.sl === 0) && (!pos.tp || pos.tp === 0)) return;
@@ -38,8 +37,7 @@ export function useAutoCloseMonitor(intervalMs = 500) {
                 if (!tick) return;
 
                 // Handle string variation of Side/Action mappings ('BUY', 'buy', 0)
-                const action = (pos as any).action || (pos as any).side || '';
-                const isBuy = String(action).toLowerCase() === 'buy';
+                const isBuy = String(pos.side || '').toLowerCase() === 'buy';
                 
                 const livePrice = isBuy ? tick.bid : tick.ask;
 
@@ -55,24 +53,25 @@ export function useAutoCloseMonitor(intervalMs = 500) {
                 }
 
                 if (shouldClose) {
-                    console.log(`[AutoClose] Triggered ${reason} for ticket ${pos.ticket} at live price ${livePrice}`);
-                    PENDING_CLOSURES.add(pos.ticket);
+                    console.log(`[AutoClose] Triggered ${reason} for ticket ${pos.id} at live price ${livePrice}`);
+                    PENDING_CLOSURES.add(pos.id);
                     
-                    mt5State.closePosition(pos.ticket, pos.volume)
+                    api.positions.closePosition(String(pos.id))
                         .then(() => {
-                            console.log(`[AutoClose] Successfully closed ticket ${pos.ticket}`);
+                            console.log(`[AutoClose] Successfully closed ticket ${pos.id}`);
                             // Force an instant reactive update across the UI layer
+                            useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== pos.id));
                             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
                             import('../utils/audio').then(m => {
                                 if (m.playSystemSound) m.playSystemSound('close');
                             }).catch(() => {});
                         })
                         .catch(err => {
-                            console.error(`[AutoClose] Failed to close ticket ${pos.ticket}:`, err);
+                            console.error(`[AutoClose] Failed to close ticket ${pos.id}:`, err);
                         })
                         .finally(() => {
                             // Release the lock after a few seconds in case it failed so we can retry later
-                            setTimeout(() => PENDING_CLOSURES.delete(pos.ticket), 5000);
+                            setTimeout(() => PENDING_CLOSURES.delete(pos.id), 5000);
                         });
                 }
             });

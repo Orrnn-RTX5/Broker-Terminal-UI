@@ -1,18 +1,15 @@
 /**
  * Enhanced Positions/Orders Panel
  * Professional positions and orders management with inline editing
- * Features: SL/TP inline editing, partial close, close all, real-time P&L
+ * Features: SL/TP inline editing, close all, real-time P&L
  */
 
 import { Icon } from './ui/Icon';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { API_ENDPOINTS } from '../config/api';
 import api from '../services/api';
-import { useMT5Store } from '../store/useMT5Store';
 import { useCurrentTick, useMarketDataStore } from '../store/useMarketDataStore';
 import { useConfirmStore } from '../store/useConfirmStore';
 import { useAppStore } from '../store/useAppStore';
-import apiClient from '../api/client';
 import { ModifyPositionDialog } from './ModifyPositionDialog';
 import { PriceDisplay } from './ui/PriceDisplay';
 
@@ -63,10 +60,23 @@ const toNumber = (value: unknown, fallback = 0): number => {
     return Number.isFinite(n) ? n : fallback;
 };
 
+const POSITION_CLOSED_EVENTS = new Set(['close', 'closed', 'sl_hit', 'tp_hit']);
+
+const getPositionEventName = (message: any): string => {
+    const raw = message?.event ?? message?.type ?? message?.action ?? message?.data?.event ?? message?.data?.type ?? message?.data?.action ?? message?.data?.reason;
+    return String(raw ?? '').trim().toLowerCase();
+};
+
+const getPositionEventTicket = (message: any): number | null => {
+    const payload = message?.position ?? message?.data?.position ?? message?.data ?? message;
+    const ticket = Number.parseInt(String(payload?.ticket ?? payload?.id ?? payload?.position_ticket ?? message?.ticket ?? ''), 10);
+    return Number.isFinite(ticket) && ticket > 0 ? ticket : null;
+};
+
 const normalizePosition = (raw: Record<string, any>, index: number): Position => {
-    const parsedId = Number.parseInt(String(raw.id ?? index + 1), 10);
-    const openPrice = toNumber(raw.open_price ?? raw.openPrice ?? raw.price, 0);
-    const currentPrice = toNumber(raw.current_price ?? raw.currentPrice, openPrice);
+    const parsedId = Number.parseInt(String(raw.ticket ?? raw.id ?? index + 1), 10);
+    const openPrice = toNumber(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.price, 0);
+    const currentPrice = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, openPrice);
     const rawSide = String(raw.side ?? '').toUpperCase();
 
     return {
@@ -76,18 +86,19 @@ const normalizePosition = (raw: Record<string, any>, index: number): Position =>
         volume: toNumber(raw.quantity ?? raw.volume, 0),
         openPrice,
         currentPrice,
-        openTime: String(raw.opened_at ?? raw.openTime ?? new Date().toISOString()),
-        sl: toNumber(raw.sl, 0),
-        tp: toNumber(raw.tp, 0),
+        openTime: String(raw.opened_at ?? raw.openTime ?? (raw.time_create ? new Date(toNumber(raw.time_create) * 1000).toISOString() : new Date().toISOString())),
+        sl: toNumber(raw.price_sl ?? raw.sl, 0),
+        tp: toNumber(raw.price_tp ?? raw.tp, 0),
         swap: toNumber(raw.swap, 0),
         commission: toNumber(raw.commission, 0),
-        unrealizedPnL: toNumber(raw.unrealized_pl ?? raw.unrealizedPnL, 0),
+        unrealizedPnL: toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0),
     };
 };
 
 const normalizeOrder = (raw: Record<string, any>, index: number): PendingOrder => {
-    const side = String(raw.side ?? '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
-    const type = String(raw.type ?? '').toUpperCase();
+    const rawType = String(raw.type ?? '').toUpperCase();
+    const side = String(raw.side ?? '').toUpperCase() === 'SELL' || rawType.includes('SELL') ? 'SELL' : 'BUY';
+    const type = rawType;
     const normalizedType: PendingOrder['type'] =
         type === 'STOP_LIMIT' ? 'STOP_LIMIT' :
             type === 'STOP' ? 'STOP' :
@@ -95,19 +106,19 @@ const normalizeOrder = (raw: Record<string, any>, index: number): PendingOrder =
     const status = String(raw.status ?? '').toUpperCase();
 
     return {
-        id: String(raw.id ?? index + 1),
+        id: String(raw.ticket ?? raw.id ?? index + 1),
         symbol: String(raw.symbol ?? ''),
         type: normalizedType,
         side,
         volume: toNumber(raw.quantity ?? raw.volume, 0),
         price: toNumber(raw.price, 0),
         triggerPrice: toNumber(raw.stop_price ?? raw.triggerPrice, 0),
-        sl: toNumber(raw.sl, 0),
-        tp: toNumber(raw.tp, 0),
+        sl: toNumber(raw.price_sl ?? raw.sl, 0),
+        tp: toNumber(raw.price_tp ?? raw.tp, 0),
         status: status === 'PENDING' || status === 'TRIGGERED' || status === 'FILLED' || status === 'CANCELLED'
             ? status
             : 'PENDING',
-        createdAt: String(raw.created_at ?? raw.createdAt ?? new Date().toISOString()),
+        createdAt: String(raw.created_at ?? raw.createdAt ?? (raw.time_create ? new Date(toNumber(raw.time_create) * 1000).toISOString() : new Date().toISOString())),
     };
 };
 
@@ -116,12 +127,6 @@ const getSymbolDigits = (symbol: string) => {
     if (symbol.startsWith('BTC') || symbol.startsWith('ETH') || symbol.startsWith('XAU')) return 2;
     if (symbol.startsWith('XAG')) return 3;
     return 5;
-};
-
-// Helper to get auth headers
-const getAuthHeaders = (): Record<string, string> => {
-    const token = localStorage.getItem('auth_token');
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
 };
 
 // High-frequency live Total PnL component
@@ -173,7 +178,6 @@ function PositionRow({
     editing,
     setEditing,
     handleModifySLTP,
-    setShowPartialClose,
     handleClosePosition,
     loading,
     onDoubleClick
@@ -183,7 +187,6 @@ function PositionRow({
     editing: EditingState | null,
     setEditing: (state: EditingState | null) => void,
     handleModifySLTP: (id: number, field: 'sl' | 'tp', value: string) => void,
-    setShowPartialClose: (state: { positionId: number; maxVolume: number } | null) => void,
     handleClosePosition: (id: number) => void,
     loading: boolean,
     onDoubleClick: (pos: Position) => void
@@ -313,14 +316,6 @@ function PositionRow({
             <td className="px-1 py-[2px] pr-2">
                 <div className="flex items-center gap-1">
                     <button
-                        onClick={() => setShowPartialClose({ positionId: pos.id, maxVolume: pos.volume })}
-                        className="text-zinc-600 hover:text-yellow-400 hover:bg-zinc-700 w-5 h-5 rounded flex items-center justify-center transition-colors"
-                        title="Partial Close"
-                        disabled={loading}
-                    >
-                        <Icon name="trending-down" size="xs" />
-                    </button>
-                    <button
                         onClick={() => handleClosePosition(pos.id)}
                         className="text-zinc-600 hover:text-white hover:bg-zinc-700 w-5 h-5 rounded flex items-center justify-center transition-colors"
                         title="Close Position"
@@ -421,68 +416,34 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
     const [orders, setOrders] = useState<PendingOrder[]>([]);
     const [editing, setEditing] = useState<EditingState | null>(null);
     const [showCloseAllConfirm, setShowCloseAllConfirm] = useState(false);
-    const [showPartialClose, setShowPartialClose] = useState<{ positionId: number; maxVolume: number } | null>(null);
-    const [partialCloseVolume, setPartialCloseVolume] = useState<string>('');
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const closingTicketsRef = useRef<Set<number>>(new Set()); // synchronous guard vs double-click
     const [modifyPosition, setModifyPosition] = useState<Position | null>(null);
     const [modifyOrder, setModifyOrder] = useState<PendingOrder | null>(null);
 
     // MT5 mode — use granular selectors to avoid re-renders on unrelated store updates
-    const mt5Enabled = localStorage.getItem('rtx5_mt5_mode') === 'true';
-    const mt5RawPositions = useMT5Store((s) => s.positions);
-    const mt5RawOrders = useMT5Store((s) => s.orders);
-    const mt5FetchPositions = useMT5Store((s) => s.fetchPositions);
-    const mt5FetchOrders = useMT5Store((s) => s.fetchOrders);
-
-    const mt5Positions = mt5RawPositions.map(p => ({
-        id: p.ticket,
-        symbol: p.symbol,
-        side: p.action === 'BUY' ? 'BUY' as const : 'SELL' as const,
-        volume: p.volume,
-        openPrice: p.open_price,
-        currentPrice: p.current_price,
-        openTime: new Date(p.time_ms).toISOString(),
-        sl: p.sl,
-        tp: p.tp,
-        swap: p.swap,
-        commission: 0,
-        unrealizedPnL: p.profit
-    }));
-    const mt5Orders = mt5RawOrders.map(o => ({
-        id: String(o.ticket),
-        symbol: o.symbol,
-        type: o.type as any,
-        side: o.type.includes('BUY') ? 'BUY' as const : 'SELL' as const,
-        volume: o.volume,
-        price: o.price,
-        sl: o.sl,
-        tp: o.tp,
-        status: 'PENDING' as const,
-        createdAt: new Date(o.time_ms).toISOString()
-    }));
-
     // Fetch positions
     const fetchPositions = useCallback(async () => {
         try {
-            const { apiClient } = await import('../api/client');
-            const data = await apiClient.get<any>(`${API_ENDPOINTS.trading.positions}?accountId=${accountId}`, { headers: getAuthHeaders() });
-            const list = Array.isArray(data?.positions) ? data.positions : [];
+            const data = await api.positions.getPositions();
+            const list = Array.isArray(data) ? data : [];
             setPositions(list.map((item: Record<string, any>, index: number) => normalizePosition(item, index)));
         } catch (err) {
             console.error('[PositionsPanel] Failed to fetch positions:', err);
+            setError((err as Error)?.message || 'Failed to fetch positions');
         }
     }, [accountId]);
 
     // Fetch pending orders
     const fetchOrders = useCallback(async () => {
         try {
-            const { apiClient } = await import('../api/client');
-            const data = await apiClient.get<any>(`${API_ENDPOINTS.trading.orders}?accountId=${accountId}&status=PENDING`, { headers: getAuthHeaders() });
-            const list = Array.isArray(data?.orders) ? data.orders : [];
+            const data = await api.orders.getPendingOrders();
+            const list = Array.isArray(data) ? data : [];
             setOrders(list.map((item: Record<string, any>, index: number) => normalizeOrder(item, index)));
         } catch (err) {
             console.error('[PositionsPanel] Failed to fetch orders:', err);
+            setError((err as Error)?.message || 'Failed to fetch orders');
         }
     }, [accountId]);
 
@@ -508,16 +469,50 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
         const handleMessage = (event: MessageEvent) => {
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === 'position_update') {
+                if (data.type === 'position_update' || data.channel?.startsWith('positions.')) {
+                    const eventName = getPositionEventName(data);
+                    const ticket = getPositionEventTicket(data);
+                    if (POSITION_CLOSED_EVENTS.has(eventName) && ticket) {
+                        setPositions(prev => prev.filter(position => position.id !== ticket));
+                        useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== ticket));
+                        window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+                        return;
+                    }
+                    const payload = data.position || data.data?.position || data.data;
+                    if (Array.isArray(data.data?.positions)) {
+                        setPositions(data.data.positions.map((item: Record<string, any>, index: number) => normalizePosition(item, index)));
+                        return;
+                    }
+                    if (!payload) return;
                     setPositions((prev) => {
-                        const index = prev.findIndex((p) => p.id === data.position.id);
+                        const normalized = normalizePosition(payload, prev.length);
+                        const index = prev.findIndex((p) => p.id === normalized.id);
                         if (index >= 0) {
                             const updated = [...prev];
-                            updated[index] = { ...updated[index], ...data.position };
+                            updated[index] = { ...updated[index], ...normalized };
                             return updated;
                         }
-                        return prev;
+                        return [...prev, normalized];
                     });
+                } else if (data.type === 'order_update' || data.channel?.startsWith('orders.')) {
+                    if (Array.isArray(data.data?.orders)) {
+                        setOrders(data.data.orders.map((item: Record<string, any>, index: number) => normalizeOrder(item, index)));
+                    } else if (data.order || data.data?.order || data.data) {
+                        const payload = data.order || data.data?.order || data.data;
+                        setOrders((prev) => {
+                            const normalized = normalizeOrder(payload, prev.length);
+                            if (normalized.status === 'CANCELLED' || normalized.status === 'TRIGGERED' || normalized.status === 'FILLED') {
+                                return prev.filter((order) => order.id !== normalized.id);
+                            }
+                            const index = prev.findIndex((order) => order.id === normalized.id);
+                            if (index >= 0) {
+                                const updated = [...prev];
+                                updated[index] = { ...updated[index], ...normalized };
+                                return updated;
+                            }
+                            return [...prev, normalized];
+                        });
+                    }
                 }
             } catch (err) {
                 console.error('[PositionsPanel] WS parse error:', err);
@@ -530,22 +525,23 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
 
     // Close position via MT5 Sync API
     const handleClosePosition = async (id: number) => {
+        if (!(await useConfirmStore.getState().showConfirm('Close Position', `Close position #${id}?`))) return;
         // Synchronous guard: prevents duplicate requests on rapid clicks
         if (closingTicketsRef.current.has(id)) return;
         closingTicketsRef.current.add(id);
 
         // Optimistically remove from both stores immediately for fast UI feedback
         useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== id));
-        useMT5Store.setState(prev => ({ positions: prev.positions.filter(p => p.ticket !== id) }));
         window.dispatchEvent(new Event('rtx:force-refresh-positions'));
 
         try {
             setLoading(true);
-            const { default: mt5TradeService } = await import('../services/mt5TradeService');
-            await mt5TradeService.closeTrade({ ticket: id });
+            setError(null);
+            await api.positions.closePosition(String(id));
             await fetchPositions();
         } catch (err) {
             console.error('[PositionsPanel] Close position failed:', err);
+            setError((err as Error)?.message || 'Failed to close position');
         } finally {
             closingTicketsRef.current.delete(id);
             setLoading(false);
@@ -556,49 +552,21 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
     const handleCloseAll = async () => {
         try {
             setLoading(true);
-            const { default: mt5TradeService } = await import('../services/mt5TradeService');
-            const allPositions = mt5Enabled ? mt5Positions : positions;
+            setError(null);
+            const allPositions = positions;
             
             // Optimistically remove all from both stores immediately
             useAppStore.getState().setPositions([]);
-            useMT5Store.setState({ positions: [] });
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
 
             await Promise.all(allPositions.map(pos =>
-                mt5TradeService.closeTrade({ ticket: pos.id })
+                api.positions.closePosition(String(pos.id))
             ));
             await fetchPositions();
             setShowCloseAllConfirm(false);
         } catch (err) {
             console.error('[PositionsPanel] Close all failed:', err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Partial close via MT5 Sync API
-    const handlePartialClose = async () => {
-        if (!showPartialClose) return;
-
-        const volume = parseFloat(partialCloseVolume);
-        if (isNaN(volume) || volume <= 0 || volume > showPartialClose.maxVolume) {
-            alert(`Invalid volume. Must be between 0 and ${showPartialClose.maxVolume}`);
-            return;
-        }
-
-        try {
-            setLoading(true);
-            const { default: mt5TradeService } = await import('../services/mt5TradeService');
-
-            // Optimistically dispatch an event (volume updates usually wait for the backend, so full removal isn't done here)
-            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-
-            await mt5TradeService.closeTrade({ ticket: showPartialClose.positionId, volumeLots: volume });
-            await fetchPositions();
-            setShowPartialClose(null);
-            setPartialCloseVolume('');
-        } catch (err) {
-            console.error('[PositionsPanel] Partial close failed:', err);
+            setError((err as Error)?.message || 'Failed to close all positions');
         } finally {
             setLoading(false);
         }
@@ -614,9 +582,10 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
 
         try {
             setLoading(true);
+            setError(null);
 
             // Get current position to preserve the other SL/TP value
-            const allPositions = mt5Enabled ? mt5Positions : positions;
+            const allPositions = positions;
             const pos = allPositions.find(p => p.id === positionId);
             const currentSl = pos?.sl ?? 0;
             const currentTp = pos?.tp ?? 0;
@@ -624,26 +593,11 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
             const newSl = field === 'sl' ? numValue : currentSl;
             const newTp = field === 'tp' ? numValue : currentTp;
 
-            const { default: mt5TradeService } = await import('../services/mt5TradeService');
-            const data = await mt5TradeService.modifyTrade({
-                ticket: positionId,
-                stopLoss: newSl,
-                takeProfit: newTp,
-            });
+            await api.positions.modifyPosition(positionId, { price_sl: newSl, price_tp: newTp });
 
-            if (!data.success) {
-                throw new Error(data.retcode_text || 'Modify failed');
-            }
-
-            // Optimistically update the MT5 store immediately
-            if (mt5Enabled) {
-                const { useMT5Store } = await import('../store/useMT5Store');
-                const store = useMT5Store.getState();
-                const updatedPositions = store.positions.map(p =>
-                    p.ticket === positionId ? { ...p, sl: newSl, tp: newTp } : p
-                );
-                store.setPositionsFromWS(updatedPositions);
-            }
+            useAppStore.getState().setPositions(useAppStore.getState().positions.map(p =>
+                p.id === positionId ? { ...p, sl: newSl, tp: newTp } : p
+            ));
 
             await fetchPositions();
 
@@ -655,6 +609,7 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
             setEditing(null);
         } catch (err) {
             console.error('[PositionsPanel] Modify SL/TP failed:', err);
+            setError((err as Error)?.message || 'Failed to modify SL/TP');
         } finally {
             setLoading(false);
         }
@@ -662,18 +617,17 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
 
     // Cancel order
     const handleCancelOrder = async (orderId: string) => {
-        if (!confirm('Cancel this order?')) return;
+        if (!(await useConfirmStore.getState().showConfirm('Cancel Order', `Cancel pending order #${orderId}?`))) return;
 
         try {
             setLoading(true);
-            const { apiClient } = await import('../api/client');
-            await apiClient.delete(`${API_ENDPOINTS.trading.cancelOrder(orderId)}`, {
-                headers: { ...getAuthHeaders() }
-            });
+            setError(null);
+            await api.orders.cancelOrder(orderId);
 
             await fetchOrders();
         } catch (err) {
             console.error('[PositionsPanel] Cancel order failed:', err);
+            setError((err as Error)?.message || 'Failed to cancel order');
         } finally {
             setLoading(false);
         }
@@ -698,12 +652,8 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
 
     // Use MT5 or B-Book positions/orders based on mode
     // Ensure arrays - handle edge cases where data might not be an array
-    const displayPositions = Array.isArray(mt5Enabled ? mt5Positions : positions)
-        ? (mt5Enabled ? mt5Positions : positions)
-        : [];
-    const displayOrders = Array.isArray(mt5Enabled ? mt5Orders : orders)
-        ? (mt5Enabled ? mt5Orders : orders)
-        : [];
+    const displayPositions = Array.isArray(positions) ? positions : [];
+    const displayOrders = Array.isArray(orders) ? orders : [];
 
 
     return (
@@ -738,6 +688,11 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
 
             {/* Content */}
             <div className="flex-1 overflow-hidden relative">
+                {error && (
+                    <div className="absolute top-0 left-0 right-0 z-20 px-3 py-2 bg-red-950/90 border-b border-red-800 text-xs text-red-300">
+                        {error}
+                    </div>
+                )}
                 {activeTab === 'Positions' && (
                     <div className="h-full overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
                         <table className="w-full text-left border-collapse">
@@ -773,7 +728,6 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                                             editing={editing}
                                             setEditing={setEditing}
                                             handleModifySLTP={handleModifySLTP}
-                                            setShowPartialClose={setShowPartialClose}
                                             handleClosePosition={handleClosePosition}
                                             loading={loading}
                                             onDoubleClick={(p) => setModifyPosition(p)}
@@ -834,7 +788,6 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                     <LiveTotalPnL positions={displayPositions} />
                     <div className="flex-1"></div>
                     <span className="text-zinc-500">{displayPositions.length} position{displayPositions.length !== 1 ? 's' : ''}</span>
-                    {mt5Enabled && <span className="text-blue-400 text-[10px]">MT5</span>}
                 </div>
             )}
 
@@ -868,59 +821,12 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                 </div>
             )}
 
-            {/* Partial Close Modal */}
-            {showPartialClose && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="bg-[#131316] border border-zinc-700 rounded-lg shadow-2xl p-6 max-w-md">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-zinc-100">Partial Close</h3>
-                            <button onClick={() => setShowPartialClose(null)} className="text-zinc-500 hover:text-zinc-300">
-                                <Icon name="x-close" size="lg" />
-                            </button>
-                        </div>
-                        <p className="text-sm text-zinc-400 mb-4">
-                            Enter volume to close (max: {showPartialClose.maxVolume.toFixed(2)} lots)
-                        </p>
-                        <input
-                            type="number"
-                            step="0.01"
-                            min="0.01"
-                            max={showPartialClose.maxVolume}
-                            value={partialCloseVolume}
-                            onChange={(e) => setPartialCloseVolume(e.target.value)}
-                            placeholder="0.00"
-                            className="w-full bg-zinc-800 text-zinc-100 px-3 py-2 rounded text-sm font-mono mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            autoFocus
-                        />
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setShowPartialClose(null)}
-                                className="flex-1 px-4 py-2 text-sm font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handlePartialClose}
-                                disabled={loading}
-                                className="flex-1 px-4 py-2 text-sm font-medium bg-zinc-700 hover:bg-zinc-600 text-white rounded transition-colors disabled:opacity-50"
-                            >
-                                {loading ? 'Closing...' : 'Partial Close'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
             {/* Modify Position Dialog */}
             <ModifyPositionDialog
                 isOpen={modifyPosition !== null}
                 onClose={() => {
                     setModifyPosition(null);
                     fetchPositions();
-                    // Also refresh MT5 store positions so updated SL/TP values appear
-                    if (mt5Enabled) {
-                        const login = parseInt(accountId, 10) || undefined;
-                        mt5FetchPositions(login);
-                    }
                     // Dispatch refresh event so chart lines update
                     if (typeof window !== 'undefined') {
                         window.dispatchEvent(new Event('rtx:force-refresh-positions'));
@@ -931,13 +837,10 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
             {/* Modify Order Dialog (reuses same dialog for pending orders) */}
             <ModifyPositionDialog
                 isOpen={modifyOrder !== null}
+                kind="pending-order"
                 onClose={() => {
                     setModifyOrder(null);
                     fetchOrders();
-                    if (mt5Enabled) {
-                        const login = parseInt(accountId, 10) || undefined;
-                        mt5FetchOrders(login);
-                    }
                 }}
                 position={modifyOrder ? {
                     id: parseInt(modifyOrder.id, 10),

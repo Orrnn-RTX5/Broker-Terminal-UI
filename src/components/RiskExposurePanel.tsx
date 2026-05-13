@@ -26,7 +26,7 @@ const LEVERAGE = 100;
 export function RiskExposurePanel() {
   const { showCorrelationWarnings, marginWarningThreshold } = useRiskExposureStore();
 
-  // TODO: Replace with API call to /api/positions
+  // TODO: Replace mock data with the swagger v2 positions helper.
   const positions = useMemo(() => generateMockPositions(), []);
 
   // Calculate portfolio metrics
@@ -581,7 +581,7 @@ function RiskPerTradeTable({ positions, accountBalance }: { positions: Position[
   );
 }
 
-// TODO: Replace with API call to /api/positions
+// TODO: Replace mock data with the swagger v2 positions helper.
 function generateMockPositions(): Position[] {
   // Placeholder: Returns empty array until backend API is implemented
   return [];

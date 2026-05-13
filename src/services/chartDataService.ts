@@ -4,6 +4,7 @@
  */
 
 import type { TickData } from '../types/history';
+import { RTX5_API_URL, RTX5_WS_URL } from '../config/api';
 
 export type OHLCData = {
   time: number;
@@ -15,8 +16,281 @@ export type OHLCData = {
 };
 
 export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
+export type ApiTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
+
+export interface FetchCandlesOptions {
+  symbol: string;
+  timeframe: string;
+  count?: number;
+  from?: number;
+  to?: number;
+  signal?: AbortSignal;
+}
+
+export interface CandleStreamOptions {
+  symbol: string;
+  timeframe: string;
+  onSnapshot?: (candles: OHLCData[]) => void;
+  onCandle?: (candle: OHLCData) => void;
+  onError?: (error: Error) => void;
+}
+
+export interface CandleStreamSubscription {
+  close: () => void;
+}
+
+const TIMEFRAME_ALIASES: Record<string, ApiTimeframe> = {
+  '1M': 'M1',
+  '1MIN': 'M1',
+  'M1': 'M1',
+  '1': 'M1',
+  '5M': 'M5',
+  '5MIN': 'M5',
+  'M5': 'M5',
+  '5': 'M5',
+  '15M': 'M15',
+  '15MIN': 'M15',
+  'M15': 'M15',
+  '15': 'M15',
+  '30M': 'M30',
+  '30MIN': 'M30',
+  'M30': 'M30',
+  '30': 'M30',
+  '1H': 'H1',
+  'H1': 'H1',
+  '60': 'H1',
+  '4H': 'H4',
+  'H4': 'H4',
+  '1D': 'D1',
+  'D1': 'D1',
+  '1W': 'W1',
+  'W1': 'W1',
+  'MN': 'MN',
+  '1MO': 'MN',
+};
+
+const API_TIMEFRAME_SECONDS: Record<Exclude<ApiTimeframe, 'MN'>, number> = {
+  M1: 60,
+  M5: 5 * 60,
+  M15: 15 * 60,
+  M30: 30 * 60,
+  H1: 60 * 60,
+  H4: 4 * 60 * 60,
+  D1: 24 * 60 * 60,
+  W1: 7 * 24 * 60 * 60,
+};
+
+const normalizeTimeForApiTimeframe = (time: number, timeframe?: ApiTimeframe): number => {
+  if (!time || !timeframe) return time;
+  if (timeframe === 'MN') {
+    const date = new Date(time * 1000);
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1) / 1000;
+  }
+  if (timeframe === 'W1') {
+    const date = new Date(time * 1000);
+    const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - daysSinceMonday) / 1000;
+  }
+
+  const intervalSeconds = API_TIMEFRAME_SECONDS[timeframe];
+  return Math.floor(time / intervalSeconds) * intervalSeconds;
+};
+
+const runtimeApiBaseUrl = (): string => RTX5_API_URL.replace(/\/$/, '');
+
+const getAuthToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('auth_token');
+};
+
+const buildQuery = (params: Record<string, string | number | undefined>): string => {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) search.set(key, String(value));
+  });
+  const qs = search.toString();
+  return qs ? `?${qs}` : '';
+};
+
+const normalizeSymbol = (symbol: string): string =>
+  symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+const toSeconds = (value: unknown): number => {
+  const raw = typeof value === 'string' && Number.isNaN(Number(value))
+    ? new Date(value).getTime() / 1000
+    : Number(value);
+  if (!Number.isFinite(raw)) return 0;
+  return raw > 1_000_000_000_000 ? Math.floor(raw / 1000) : Math.floor(raw);
+};
+
+const extractCandles = (payload: any): any[] => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.candles)) return payload.candles;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.payload?.candles)) return payload.payload.candles;
+  return [];
+};
+
+const extractCandle = (payload: any): any | null =>
+  payload?.candle ?? payload?.data?.candle ?? payload?.payload?.candle ?? payload?.data ?? null;
 
 export class ChartDataService {
+  normalizeTimeframe(timeframe: string): ApiTimeframe {
+    const normalized = timeframe.trim().toUpperCase();
+    return TIMEFRAME_ALIASES[normalized] ?? 'M1';
+  }
+
+  normalizeCandle(input: any, timeframe?: string): OHLCData | null {
+    if (!input) return null;
+    const tf = timeframe ? this.normalizeTimeframe(timeframe) : undefined;
+    const rawTime = toSeconds(input.time ?? input.Time ?? input.timestamp ?? input.open_time ?? input.openTime);
+    const time = normalizeTimeForApiTimeframe(rawTime, tf);
+    const open = Number(input.open ?? input.Open);
+    const high = Number(input.high ?? input.High);
+    const low = Number(input.low ?? input.Low);
+    const close = Number(input.close ?? input.Close);
+    const volume = Number(input.volume ?? input.Volume ?? input.tick_count ?? input.tickCount ?? 0);
+
+    if (!time || ![open, high, low, close].every(Number.isFinite)) return null;
+
+    return { time, open, high, low, close, volume: Number.isFinite(volume) ? volume : 0 };
+  }
+
+  normalizeCandles(input: any, timeframe?: string): OHLCData[] {
+    const byTime = new Map<number, OHLCData>();
+    for (const item of extractCandles(input)) {
+      const candle = this.normalizeCandle(item, timeframe);
+      if (candle) byTime.set(candle.time, candle);
+    }
+    return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+  }
+
+  mergeCandle(candles: OHLCData[], incoming: OHLCData, maxCandles?: number): OHLCData[] {
+    const next = [...candles];
+    const last = next[next.length - 1];
+
+    if (!last || incoming.time > last.time) {
+      next.push(incoming);
+    } else if (incoming.time === last.time) {
+      next[next.length - 1] = { ...last, ...incoming };
+    } else {
+      const index = next.findIndex(c => c.time === incoming.time);
+      if (index >= 0) next[index] = { ...next[index], ...incoming };
+      else next.push(incoming);
+      const sorted = next.sort((a, b) => a.time - b.time);
+      return maxCandles && sorted.length > maxCandles ? sorted.slice(-maxCandles) : sorted;
+    }
+
+    return maxCandles && next.length > maxCandles ? next.slice(-maxCandles) : next;
+  }
+
+  shouldRepaintForCandle(candles: OHLCData[], incoming: OHLCData): boolean {
+    const last = candles[candles.length - 1];
+    return !!last && incoming.time < last.time;
+  }
+
+  async fetchCandles(options: FetchCandlesOptions): Promise<OHLCData[]> {
+    const { symbol, timeframe, count = 500, from, to, signal } = options;
+    const apiTf = this.normalizeTimeframe(timeframe);
+    const baseUrl = runtimeApiBaseUrl();
+    const token = getAuthToken();
+    const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    const coreUrl = `${baseUrl}/api/v2/candles/${encodeURIComponent(symbol)}${buildQuery({
+      timeframe: apiTf,
+      limit: count,
+      from,
+      to,
+    })}`;
+
+    const historyUrl = `${baseUrl}/history/candles/${encodeURIComponent(symbol)}${buildQuery({
+      tf: apiTf,
+      count,
+      from,
+      to,
+    })}`;
+
+    const attempts = [
+      { url: coreUrl, headers: authHeaders },
+      { url: historyUrl, headers: undefined },
+    ];
+
+    let lastError: Error | null = null;
+    for (const attempt of attempts) {
+      try {
+        const response = await fetch(attempt.url, {
+          signal,
+          headers: attempt.headers,
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return this.normalizeCandles(await response.json(), apiTf);
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') throw error;
+        lastError = error instanceof Error ? error : new Error('Failed to load candles');
+      }
+    }
+
+    throw lastError ?? new Error('Failed to load candles');
+  }
+
+  subscribeCandles(options: CandleStreamOptions): CandleStreamSubscription {
+    const apiTf = this.normalizeTimeframe(options.timeframe);
+    const symbol = normalizeSymbol(options.symbol);
+    const channel = `candles.${symbol}.${apiTf}`;
+    const wsBase = RTX5_WS_URL.replace(/\/$/, '');
+    const token = getAuthToken();
+    const separator = wsBase.includes('?') ? '&' : '?';
+    const url = `${wsBase}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}`;
+    let closed = false;
+    let ws: WebSocket | null = null;
+
+    try {
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        if (!ws || closed) return;
+        if (token) ws.send(JSON.stringify({ action: 'auth', token }));
+        ws.send(JSON.stringify({ action: 'subscribe', channel }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          const messageChannel = message.channel ?? message.topic;
+          if (messageChannel && messageChannel !== channel) return;
+
+          const snapshot = extractCandles(message);
+          if (snapshot.length > 0) {
+            options.onSnapshot?.(this.normalizeCandles(snapshot, apiTf));
+            return;
+          }
+
+          const candle = this.normalizeCandle(extractCandle(message), apiTf);
+          if (candle) options.onCandle?.(candle);
+        } catch (error) {
+          options.onError?.(error instanceof Error ? error : new Error('Invalid candle stream message'));
+        }
+      };
+
+      ws.onerror = () => {
+        options.onError?.(new Error(`Candle stream error for ${channel}`));
+      };
+    } catch (error) {
+      options.onError?.(error instanceof Error ? error : new Error('Failed to open candle stream'));
+    }
+
+    return {
+      close: () => {
+        closed = true;
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: 'unsubscribe', channel }));
+        }
+        ws?.close(1000, 'Chart candle subscription closed');
+        ws = null;
+      },
+    };
+  }
+
   /**
    * Aggregate tick data into OHLC candles
    */

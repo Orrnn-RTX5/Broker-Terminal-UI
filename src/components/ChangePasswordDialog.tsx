@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react';
-import { api } from '../services/api';
+import { ApiError } from '../api/client';
+import { tradeApi } from '../api/trade';
 
 interface ChangePasswordDialogProps {
     isOpen: boolean;
@@ -21,7 +22,7 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        if (!oldPassword || !newPassword || !confirmPassword) {
+        if ((type === 'master' && !oldPassword) || !newPassword || !confirmPassword) {
             setError('Please fill in all fields');
             return;
         }
@@ -36,26 +37,26 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
         setSuccess('');
 
         try {
-            const loginNum = parseInt(accountLogin, 10);
-            const res = await api.mt5.changePassword(loginNum, oldPassword, newPassword, type);
+            const response = type === 'master'
+                ? await tradeApi.auth.changePassword({
+                    current_password: oldPassword,
+                    new_password: newPassword,
+                })
+                : await tradeApi.account.setInvestorPassword(accountLogin, {
+                    password: newPassword,
+                });
 
-            if (res.success) {
-                setSuccess(res.message || 'Password changed successfully');
-                // Clear form
-                setOldPassword('');
-                setNewPassword('');
-                setConfirmPassword('');
-
-                // Auto-close after success
-                setTimeout(() => {
-                    onClose();
-                    setSuccess('');
-                }, 2000);
-            } else {
-                setError(res.message || 'Failed to change password');
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || 'An error occurred while changing password');
+            setOldPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+            setSuccess(response.message || 'Password changed successfully');
+        } catch (err) {
+            const message = err instanceof ApiError
+                ? err.message
+                : err instanceof Error
+                    ? err.message
+                    : 'Password changes are unavailable';
+            setError(message);
         } finally {
             setIsLoading(false);
         }
@@ -79,7 +80,11 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                         <label className="text-xs text-zinc-400">Password Type</label>
                         <select
                             value={type}
-                            onChange={(e) => setType(e.target.value as 'master' | 'investor')}
+                            onChange={(e) => {
+                                setType(e.target.value as 'master' | 'investor');
+                                setError('');
+                                setSuccess('');
+                            }}
                             className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
                         >
                             <option value="master">Master Password</option>
@@ -87,16 +92,18 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                         </select>
                     </div>
 
-                    <div className="space-y-1">
-                        <label className="text-xs text-zinc-400">Current Password</label>
-                        <input
-                            type="password"
-                            value={oldPassword}
-                            onChange={(e) => setOldPassword(e.target.value)}
-                            className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
-                            placeholder="Enter current password"
-                        />
-                    </div>
+                    {type === 'master' && (
+                        <div className="space-y-1">
+                            <label className="text-xs text-zinc-400">Current Password</label>
+                            <input
+                                type="password"
+                                value={oldPassword}
+                                onChange={(e) => setOldPassword(e.target.value)}
+                                className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                                placeholder="Enter current password"
+                            />
+                        </div>
+                    )}
 
                     <div className="space-y-1">
                         <label className="text-xs text-zinc-400">New Password</label>

@@ -2,7 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createChart, CandlestickSeries, LineSeries, BarSeries, HistogramSeries } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import './MetaTraderDashboard.css';
-import { WS_ENDPOINTS, buildApiUrl } from '../config/api';
+import { buildApiV2WsUrl } from '../config/api';
+import { getAuthToken } from '../api/client';
+import { tradeGatewayApi } from '../api/tradeGateway';
+import { useTradeFacingData } from '../hooks/useTradeFacingData';
 
 // Exact MetaTrader-style SVGs for all requested icons
 const ToolIcons = {
@@ -202,6 +205,7 @@ type ChartType = 'candlestick' | 'bar' | 'line';
 type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
 
 const MetaTraderDashboard: React.FC = () => {
+    useTradeFacingData(undefined, 15000);
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const seriesRef = useRef<ISeriesApi<any> | null>(null);
@@ -220,8 +224,8 @@ const MetaTraderDashboard: React.FC = () => {
 
     const timeframes: Timeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
     const timeframeMap: Record<Timeframe, string> = {
-        'M1': '1m', 'M5': '5m', 'M15': '15m', 'M30': '30m',
-        'H1': '1h', 'H4': '4h', 'D1': '1d', 'W1': '1w', 'MN': '1M'
+        'M1': 'M1', 'M5': 'M5', 'M15': 'M15', 'M30': 'M30',
+        'H1': 'H1', 'H4': 'H4', 'D1': 'D1', 'W1': 'W1', 'MN': 'MN'
     };
 
     // Initialize chart
@@ -368,19 +372,30 @@ const MetaTraderDashboard: React.FC = () => {
 
     // WebSocket for Live Data
     useEffect(() => {
-        const ws = new WebSocket(`${WS_ENDPOINTS.general}?token=${localStorage.getItem('token') || ''}`);
+        const token = getAuthToken() || undefined;
+        const apiTimeframe = timeframeMap[selectedTimeframe];
+        const ws = new WebSocket(buildApiV2WsUrl(token));
 
         ws.onopen = () => {
             console.log('[Dashboard] WebSocket Connected');
-            ws.send(JSON.stringify({ type: 'subscribe', symbol: selectedSymbol }));
+            if (token) ws.send(JSON.stringify({ action: 'auth', token }));
+            ws.send(JSON.stringify({ action: 'subscribe', channel: `ticks.${selectedSymbol}` }));
+            ws.send(JSON.stringify({ action: 'subscribe', channel: `candles.${selectedSymbol}.${apiTimeframe}` }));
         };
 
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+            const message = JSON.parse(event.data);
+            const channel = String(message.channel ?? '');
+            const data = message.data ?? message.payload ?? message;
             // console.log('[Dashboard] WS Message:', data.type); // Uncomment for verbose debug
-            if (data.type === 'tick' && data.symbol === selectedSymbol && seriesRef.current) {
+            if ((channel === `ticks.${selectedSymbol}` || (data.symbol === selectedSymbol && data.bid != null)) && seriesRef.current) {
                 const tickPrice = data.bid; // Or ask, or mid
-                const tickTime = Math.floor(data.timestamp / 1000) as Time;
+                const rawTickTime = Number(data.time ?? data.timestamp);
+                const tickTime = (
+                    Number.isFinite(rawTickTime)
+                        ? Math.floor(rawTickTime > 1_000_000_000_000 ? rawTickTime / 1000 : rawTickTime)
+                        : Math.floor(Date.now() / 1000)
+                ) as Time;
 
                 // Get current candle data
                 // Note: Lightweight-charts doesn't strictly expose "getLastCandle", we have to manage state or rely on series update logic
@@ -454,6 +469,21 @@ const MetaTraderDashboard: React.FC = () => {
                     lastCandleRef.current = newBar;
                 }
             }
+
+            if (channel === `candles.${selectedSymbol}.${apiTimeframe}` && seriesRef.current) {
+                const candle = Array.isArray(data) ? data[data.length - 1] : data;
+                if (!candle || candle.open == null || candle.close == null) return;
+                const nextBar = {
+                    time: candle.time as Time,
+                    open: candle.open,
+                    high: candle.high,
+                    low: candle.low,
+                    close: candle.close,
+                    volume: candle.volume || candle.tick_count || 0,
+                };
+                seriesRef.current.update(nextBar);
+                lastCandleRef.current = nextBar;
+            }
         };
 
         return () => ws.close();
@@ -515,17 +545,18 @@ const MetaTraderDashboard: React.FC = () => {
     const fetchHistoricalData = async () => {
         try {
             const apiTimeframe = timeframeMap[selectedTimeframe];
-            const response = await fetch(`${buildApiUrl('')}/api/history/ohlc?symbol=${selectedSymbol}&timeframe=${apiTimeframe}&limit=500`);
+            const response = await fetch(tradeGatewayApi.getHistoryUrl(selectedSymbol, apiTimeframe, 500));
             const data = await response.json();
             console.log('[Dashboard] History Fetch:', data);
+            const candlesArray = Array.isArray(data) ? data : data?.candles || [];
 
-            if (data && data.candles && seriesRef.current && volumeSeriesRef.current) {
-                console.log(`[Dashboard] Loaded ${data.candles.length} candles for ${selectedSymbol}`);
-                const candles = data.candles.map((c: OHLC) => ({
+            if (candlesArray.length > 0 && seriesRef.current && volumeSeriesRef.current) {
+                console.log(`[Dashboard] Loaded ${candlesArray.length} candles for ${selectedSymbol}`);
+                const candles = candlesArray.map((c: OHLC) => ({
                     time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close,
                 }));
-                const volumes = data.candles.map((c: OHLC) => ({
-                    time: c.time as Time, value: c.volume || Math.random() * 1000,
+                const volumes = candlesArray.map((c: OHLC & { tick_count?: number }) => ({
+                    time: c.time as Time, value: c.volume || c.tick_count || 0,
                     color: c.close >= c.open ? '#26a69a80' : '#ef535080',
                 }));
 

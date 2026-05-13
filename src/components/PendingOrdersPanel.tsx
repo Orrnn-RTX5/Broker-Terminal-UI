@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { buildApiUrl } from '../config/api';
+import api from '../services/api';
+import { useConfirmStore } from '../store/useConfirmStore';
 
 interface PendingOrder {
     id: string;
@@ -23,18 +24,30 @@ interface PendingOrdersPanelProps {
 export function PendingOrdersPanel({ symbol }: PendingOrdersPanelProps) {
     const [orders, setOrders] = useState<PendingOrder[]>([]);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Fetch pending orders
     useEffect(() => {
         const fetchOrders = async () => {
             try {
-                const res = await fetch(`${buildApiUrl('')}/orders/pending`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setOrders(data || []);
-                }
+                const data = await api.orders.getPendingOrders();
+                setOrders((data || []).map((order: any) => ({
+                    id: String(order.ticket ?? order.id),
+                    symbol: String(order.symbol ?? ''),
+                    side: String(order.side ?? '').toUpperCase(),
+                    type: String(order.type ?? '').toUpperCase(),
+                    subtype: String(order.type ?? '').toUpperCase(),
+                    volume: Number(order.volume ?? order.quantity ?? 0),
+                    entryPrice: Number(order.price ?? 0),
+                    triggerPrice: Number(order.price ?? 0),
+                    sl: Number(order.price_sl ?? order.sl ?? 0),
+                    tp: Number(order.price_tp ?? order.tp ?? 0),
+                    status: String(order.status ?? 'pending').toUpperCase(),
+                    createdAt: order.createdAt ?? order.created_at ?? (order.time_create ? new Date(Number(order.time_create) * 1000).toISOString() : new Date().toISOString()),
+                })));
             } catch (err) {
                 console.error('Failed to fetch pending orders:', err);
+                setError((err as Error)?.message || 'Failed to fetch pending orders');
             }
         };
 
@@ -44,16 +57,15 @@ export function PendingOrdersPanel({ symbol }: PendingOrdersPanelProps) {
     }, []);
 
     const handleCancel = async (orderId: string) => {
+        if (!(await useConfirmStore.getState().showConfirm('Cancel Order', `Cancel pending order #${orderId}?`))) return;
         setLoading(true);
         try {
-            await fetch(`${buildApiUrl('')}/order/cancel`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orderId }),
-            });
+            setError(null);
+            await api.orders.cancelOrder(orderId);
             setOrders(orders.filter(o => o.id !== orderId));
         } catch (err) {
             console.error('Failed to cancel order:', err);
+            setError((err as Error)?.message || 'Failed to cancel order');
         } finally {
             setLoading(false);
         }
@@ -66,13 +78,18 @@ export function PendingOrdersPanel({ symbol }: PendingOrdersPanelProps) {
     if (filteredOrders.length === 0) {
         return (
             <div className="text-xs text-zinc-500 text-center py-4">
-                No pending orders
+                {error ? <span className="text-red-400">{error}</span> : 'No pending orders'}
             </div>
         );
     }
 
     return (
         <div className="space-y-2">
+            {error && (
+                <div className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded p-2">
+                    {error}
+                </div>
+            )}
             {filteredOrders.map((order) => (
                 <div
                     key={order.id}

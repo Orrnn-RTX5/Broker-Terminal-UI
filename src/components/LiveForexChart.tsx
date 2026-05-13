@@ -2,8 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { createChart, ColorType } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import './LiveForexChart.css';
-import { API_BASE_URL as API_BASE, WS_ENDPOINTS } from '../config/api';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { chartDataService, type CandleStreamSubscription } from '../services/chartDataService';
 
 interface OHLCCandle {
     time: number; // UNIX timestamp
@@ -21,15 +20,13 @@ const AVAILABLE_SYMBOLS = [
 ];
 
 const TIMEFRAMES = [
-    { label: '1m', value: '1m' },
-    { label: '5m', value: '5m' },
-    { label: '15m', value: '15m' },
-    { label: '1h', value: '1h' },
-    { label: '4h', value: '4h' },
-    { label: '1D', value: '1d' }
+    { label: '1m', value: 'M1' },
+    { label: '5m', value: 'M5' },
+    { label: '15m', value: 'M15' },
+    { label: '1h', value: 'H1' },
+    { label: '4h', value: 'H4' },
+    { label: '1D', value: 'D1' }
 ];
-
-// API_BASE imported from config
 
 interface LiveForexChartProps {
     initialSymbol?: string;
@@ -42,7 +39,7 @@ export const LiveForexChart: React.FC<LiveForexChartProps> = ({
 }) => {
     const symbols = availableSymbols || AVAILABLE_SYMBOLS;
     const [selectedSymbol, setSelectedSymbol] = useState(initialSymbol);
-    const [selectedTimeframe, setSelectedTimeframe] = useState('5m');
+    const [selectedTimeframe, setSelectedTimeframe] = useState('M5');
     const [currentPrice, setCurrentPrice] = useState({ bid: 0, ask: 0, spread: 0 });
     const [ohlc, setOhlc] = useState({ open: 0, high: 0, low: 0, close: 0 });
     const [loading, setLoading] = useState(false);
@@ -51,7 +48,8 @@ export const LiveForexChart: React.FC<LiveForexChartProps> = ({
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-    const wsRef = useRef<WebSocket | null>(null);
+    const candlesRef = useRef<OHLCCandle[]>([]);
+    const streamRef = useRef<CandleStreamSubscription | null>(null);
 
     // Initialize chart
     useEffect(() => {
@@ -102,100 +100,119 @@ export const LiveForexChart: React.FC<LiveForexChartProps> = ({
         };
     }, []);
 
-    // Fetch OHLC data when symbol or timeframe changes
     useEffect(() => {
-        fetchOHLCData();
+        const controller = new AbortController();
+        let disposed = false;
+
+        streamRef.current?.close();
+        streamRef.current = null;
+        candlesRef.current = [];
+        candleSeriesRef.current?.setData([]);
+        fetchOHLCData(controller.signal, () => disposed);
+
+        streamRef.current = chartDataService.subscribeCandles({
+            symbol: selectedSymbol,
+            timeframe: selectedTimeframe,
+            onSnapshot: (snapshot) => {
+                if (disposed) return;
+                candlesRef.current = snapshot;
+                updateChart(snapshot);
+            },
+            onCandle: (candle) => {
+                if (disposed) return;
+                const repaint = chartDataService.shouldRepaintForCandle(candlesRef.current, candle);
+                candlesRef.current = chartDataService.mergeCandle(candlesRef.current, candle, 1000);
+                if (repaint) {
+                    updateChart(candlesRef.current);
+                } else {
+                    candleSeriesRef.current?.update({
+                        time: candle.time as Time,
+                        open: candle.open,
+                        high: candle.high,
+                        low: candle.low,
+                        close: candle.close,
+                    });
+                }
+                setOhlc({
+                    open: candle.open,
+                    high: candle.high,
+                    low: candle.low,
+                    close: candle.close,
+                });
+                setCurrentPrice(prev => ({
+                    bid: candle.close,
+                    ask: prev.ask || candle.close,
+                    spread: prev.spread,
+                }));
+            },
+            onError: (err) => {
+                if (!disposed) setError(err.message);
+            },
+        });
+
+        return () => {
+            disposed = true;
+            controller.abort();
+            streamRef.current?.close();
+            streamRef.current = null;
+        };
     }, [selectedSymbol, selectedTimeframe]);
 
-    // WebSocket connection handled by useWebSocket hook and subscribe useEffect above
+    const updateChart = (candles: OHLCCandle[]) => {
+        const chartData = candles.map(candle => ({
+            time: candle.time as Time,
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+        }));
 
-    const fetchOHLCData = async () => {
+        candleSeriesRef.current?.setData(chartData);
+
+        const lastCandle = candles[candles.length - 1];
+        if (!lastCandle) return;
+
+        setOhlc({
+            open: lastCandle.open,
+            high: lastCandle.high,
+            low: lastCandle.low,
+            close: lastCandle.close,
+        });
+        setCurrentPrice(prev => ({
+            bid: lastCandle.close,
+            ask: prev.ask || lastCandle.close,
+            spread: prev.spread,
+        }));
+    };
+
+    const fetchOHLCData = async (signal?: AbortSignal, isDisposed: () => boolean = () => false) => {
         try {
             setLoading(true);
             setError(null);
 
-            const response = await fetch(
-                `${API_BASE}/api/history/ohlc?symbol=${selectedSymbol}&timeframe=${selectedTimeframe}&limit=200`
-            );
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch OHLC data: ${response.statusText}`);
-            }
-
-            const candles: OHLCCandle[] = await response.json();
+            const candles = await chartDataService.fetchCandles({
+                symbol: selectedSymbol,
+                timeframe: selectedTimeframe,
+                count: 200,
+                signal,
+            });
+            if (isDisposed()) return;
 
             if (candles.length === 0) {
                 setError(`No historical data available for ${selectedSymbol}`);
                 return;
             }
 
-            // Convert to Lightweight Charts format
-            const chartData = candles.map(candle => ({
-                time: candle.time as Time,
-                open: candle.open,
-                high: candle.high,
-                low: candle.low,
-                close: candle.close,
-            }));
-
-            // Update chart
-            if (candleSeriesRef.current) {
-                candleSeriesRef.current.setData(chartData);
-            }
-
-            // Update current OHLC display
-            const lastCandle = candles[candles.length - 1];
-            setOhlc({
-                open: lastCandle.open,
-                high: lastCandle.high,
-                low: lastCandle.low,
-                close: lastCandle.close,
-            });
-
+            candlesRef.current = candles;
+            updateChart(candles);
             setLoading(false);
         } catch (err) {
+            if ((err as Error).name === 'AbortError') return;
             console.error('Error fetching OHLC data:', err);
             setError(err instanceof Error ? err.message : 'Failed to fetch data');
             setLoading(false);
         }
     };
-
-    // Use centralized WebSocket with auto-reconnection
-    const { subscribe } = useWebSocket({
-        url: WS_ENDPOINTS.general,
-        autoConnect: true,
-    });
-
-    // Subscribe to tick messages for selected symbol
-    useEffect(() => {
-        const unsubscribe = subscribe('*', (message: any) => {
-            try {
-                const data = message;
-
-                if (data.type === 'tick' && data.symbol === selectedSymbol) {
-                    setCurrentPrice({
-                        bid: data.bid,
-                        ask: data.ask,
-                        spread: data.spread || (data.ask - data.bid),
-                    });
-
-                    // Update latest candle close price
-                    setOhlc(prev => ({
-                        ...prev,
-                        close: (data.bid + data.ask) / 2,
-                        high: Math.max(prev.high, (data.bid + data.ask) / 2),
-                        low: Math.min(prev.low, (data.bid + data.ask) / 2),
-                    }));
-                }
-            } catch (err) {
-                console.error('Error parsing WebSocket message:', err);
-            }
-        });
-
-        return () => {
-            unsubscribe();
-        };
-    }, [selectedSymbol, subscribe]);
 
     const handleSymbolChange = (symbol: string) => {
         setSelectedSymbol(symbol);
@@ -255,7 +272,7 @@ export const LiveForexChart: React.FC<LiveForexChartProps> = ({
             {error && (
                 <div className="error-message">
                     <p>⚠️ {error}</p>
-                    <button onClick={fetchOHLCData}>Retry</button>
+                    <button onClick={() => fetchOHLCData()}>Retry</button>
                 </div>
             )}
 

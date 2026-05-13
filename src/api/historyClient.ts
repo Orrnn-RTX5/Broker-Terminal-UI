@@ -4,11 +4,13 @@
  */
 
 import type { TickData, DateRange, SymbolDataInfo, DownloadChunk } from '../types/history';
-import { API_BASE_URL } from '../config/api';
+import type { HistoryCandle, HistoryCandleParams, HistoryTickParams, Timeframe } from '../types/api';
+import { historyV2Api } from './trade';
 
-const CHUNK_SIZE = 5000; // Ticks per chunk
+const CHUNK_SIZE = 10000; // Swagger history/v2 max ticks per request
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // ms
+const UNSUPPORTED_DOWNLOADER_METADATA_STATUS = 501;
 
 export class HistoryApiError extends Error {
   statusCode?: number;
@@ -27,36 +29,39 @@ export class HistoryClient {
    * Fetch available symbols and their date ranges
    */
   async getAvailableData(): Promise<SymbolDataInfo[]> {
-    const response = await this.fetchWithRetry(
-      `${API_BASE_URL}/api/history/available`
-    );
-
-    if (!response.ok) {
-      throw new HistoryApiError(
-        `Failed to fetch available data: ${response.statusText}`,
-        response.status
-      );
-    }
-
-    return await response.json();
+    throw this.unsupportedDownloaderMetadata('available symbol history metadata');
   }
 
   /**
    * Fetch symbol info
    */
   async getSymbolInfo(symbol: string): Promise<SymbolDataInfo> {
-    const response = await this.fetchWithRetry(
-      `${API_BASE_URL}/api/history/info?symbol=${encodeURIComponent(symbol)}`
-    );
+    throw this.unsupportedDownloaderMetadata(`symbol history metadata for ${symbol}`);
+  }
 
-    if (!response.ok) {
-      throw new HistoryApiError(
-        `Failed to fetch symbol info: ${response.statusText}`,
-        response.status
-      );
+  /**
+   * Fetch historical candles through the Swagger history/v2 API.
+   */
+  async getCandles(
+    symbol: string,
+    params?: HistoryCandleParams
+  ): Promise<HistoryCandle[]> {
+    try {
+      return await historyV2Api.getCandles(symbol, params);
+    } catch (error) {
+      throw this.toHistoryApiError(error, 'Failed to fetch candles');
     }
+  }
 
-    return await response.json();
+  /**
+   * Fetch the latest historical candle through the Swagger history/v2 API.
+   */
+  async getLatestCandle(symbol: string, tf?: Timeframe): Promise<HistoryCandle> {
+    try {
+      return await historyV2Api.getLatestCandle(symbol, tf);
+    } catch (error) {
+      throw this.toHistoryApiError(error, 'Failed to fetch latest candle');
+    }
   }
 
   /**
@@ -68,33 +73,36 @@ export class HistoryClient {
     offset = 0,
     limit = CHUNK_SIZE
   ): Promise<DownloadChunk> {
-    const params = new URLSearchParams({
-      symbol,
-      date,
-      offset: offset.toString(),
-      limit: limit.toString()
-    });
+    const chunkIndex = Math.floor(offset / limit);
 
-    const response = await this.fetchWithRetry(
-      `${API_BASE_URL}/api/history/ticks?${params}`
-    );
-
-    if (!response.ok) {
-      throw new HistoryApiError(
-        `Failed to fetch ticks: ${response.statusText}`,
-        response.status
-      );
+    if (offset > 0) {
+      return {
+        symbol,
+        date,
+        ticks: [],
+        chunkIndex,
+        totalChunks: 1
+      };
     }
 
-    const data = await response.json();
-
-    return {
-      symbol,
-      date,
-      ticks: data.ticks || [],
-      chunkIndex: Math.floor(offset / limit),
-      totalChunks: Math.ceil((data.total || 0) / limit)
+    const params: HistoryTickParams = {
+      ...this.getUnixDayRange(date),
+      limit: Math.min(limit, CHUNK_SIZE)
     };
+
+    try {
+      const ticks = await historyV2Api.getTicks(symbol, params);
+
+      return {
+        symbol,
+        date,
+        ticks: ticks.map(tick => this.toTickData(tick, symbol)),
+        chunkIndex,
+        totalChunks: 1
+      };
+    } catch (error) {
+      throw this.toHistoryApiError(error, 'Failed to fetch ticks');
+    }
   }
 
   /**
@@ -146,10 +154,9 @@ export class HistoryClient {
 
     try {
       let offset = 0;
-      let totalChunks = 1;
       let currentChunk = 0;
 
-      while (currentChunk < totalChunks) {
+      while (currentChunk < 1) {
         // Check if cancelled
         if (controller.signal.aborted) {
           throw new Error('Download cancelled');
@@ -157,17 +164,17 @@ export class HistoryClient {
 
         const chunk = await this.getTicksByDate(symbol, date, offset, CHUNK_SIZE);
 
-        totalChunks = chunk.totalChunks;
         currentChunk = chunk.chunkIndex;
 
         onChunk(chunk);
 
         if (onProgress) {
-          const progress = ((currentChunk + 1) / totalChunks) * 100;
+          const progress = ((currentChunk + 1) / chunk.totalChunks) * 100;
           onProgress(Math.min(progress, 100));
         }
 
         offset += CHUNK_SIZE;
+        currentChunk += 1;
       }
     } finally {
       this.abortControllers.delete(taskId);
@@ -189,46 +196,16 @@ export class HistoryClient {
    * Verify data integrity
    */
   async verifyData(symbol: string, date: string, checksum?: string): Promise<boolean> {
-    const params = new URLSearchParams({
-      symbol,
-      date,
-      ...(checksum && { checksum })
-    });
-
-    const response = await this.fetchWithRetry(
-      `${API_BASE_URL}/api/history/verify?${params}`
+    throw this.unsupportedDownloaderMetadata(
+      `tick integrity verification for ${symbol} on ${date}${checksum ? ' with checksum' : ''}`
     );
-
-    if (!response.ok) {
-      throw new HistoryApiError(
-        `Failed to verify data: ${response.statusText}`,
-        response.status
-      );
-    }
-
-    const result = await response.json();
-    return result.valid === true;
   }
 
   /**
    * Get total tick count for a date
    */
   async getTickCount(symbol: string, date: string): Promise<number> {
-    const params = new URLSearchParams({ symbol, date });
-
-    const response = await this.fetchWithRetry(
-      `${API_BASE_URL}/api/history/count?${params}`
-    );
-
-    if (!response.ok) {
-      throw new HistoryApiError(
-        `Failed to get tick count: ${response.statusText}`,
-        response.status
-      );
-    }
-
-    const result = await response.json();
-    return result.count || 0;
+    throw this.unsupportedDownloaderMetadata(`tick count metadata for ${symbol} on ${date}`);
   }
 
   /**
@@ -303,6 +280,58 @@ export class HistoryClient {
    */
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Utility: Convert date-only download requests to Swagger history tick params.
+   */
+  private getUnixDayRange(date: string): Pick<HistoryTickParams, 'from' | 'to'> {
+    const start = new Date(`${date}T00:00:00.000Z`);
+
+    if (Number.isNaN(start.getTime())) {
+      throw new HistoryApiError(`Invalid history date: ${date}`, 400);
+    }
+
+    const from = Math.floor(start.getTime() / 1000);
+    return {
+      from,
+      to: from + 86400 - 1
+    };
+  }
+
+  /**
+   * Utility: Normalize Swagger history ticks to the downloader cache shape.
+   */
+  private toTickData(tick: { symbol?: string; bid: number; ask: number; time: number }, fallbackSymbol: string): TickData {
+    return {
+      symbol: tick.symbol || fallbackSymbol,
+      bid: tick.bid,
+      ask: tick.ask,
+      timestamp: tick.time
+    };
+  }
+
+  /**
+   * Downloader/admin metadata endpoints are intentionally outside the S0 trade API contract.
+   */
+  private unsupportedDownloaderMetadata(operation: string): HistoryApiError {
+    return new HistoryApiError(
+      `Unsupported history downloader metadata request (${operation}); no Swagger history/v2 trade endpoint is available.`,
+      UNSUPPORTED_DOWNLOADER_METADATA_STATUS
+    );
+  }
+
+  private toHistoryApiError(error: unknown, fallbackMessage: string): HistoryApiError {
+    if (error instanceof HistoryApiError) {
+      return error;
+    }
+
+    const statusCode = typeof error === 'object' && error !== null && 'status' in error
+      ? Number((error as { status?: number }).status)
+      : undefined;
+
+    const message = error instanceof Error ? error.message : fallbackMessage;
+    return new HistoryApiError(message || fallbackMessage, Number.isNaN(statusCode) ? undefined : statusCode);
   }
 }
 

@@ -5,6 +5,7 @@ import { MarketWatchContextMenu } from './MarketWatchContextMenu';
 import { SymbolInfo } from './SymbolInfo';
 import { PriceDisplay } from './ui/PriceDisplay';
 import { getSymbolDigits, formatPrice as formatPriceUtil } from '../utils/symbolUtils';
+import { useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../hooks/useLiveMarketData';
 
 interface MarketWatchProps {
     onSelectSymbol: (symbol: string) => void;
@@ -43,11 +44,17 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         return active;
     });
     const watchlistSymbols = activeWatchlist?.symbols || [];
+    const {
+        loading: watchlistLoading,
+        error: watchlistError,
+    } = useRemoteWatchlistSync(activeWatchlist?.id);
 
     // Use watchlist prop if provided, otherwise use WatchlistStore
     const symbols = watchlist && watchlist.length > 0
         ? watchlist.map((s) => normalizeSymbol(String(s))).filter(Boolean)
         : watchlistSymbols;
+    const { loading: quotesLoading, error: quotesError } = useLiveQuotes(symbols);
+    const { symbols: availableInstruments, loading: symbolsLoading, error: symbolsError } = useMarketInstruments();
 
     const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; symbol: string } | null>(null);
     const [columnVisibility, setColumnVisibility] = useState({
@@ -167,7 +174,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     // Format daily change as percentage
     const formatDailyChange = (change: number) => {
         if (!Number.isFinite(change)) return '-';
-        const percent = (change * 100).toFixed(2);
+        const percent = change.toFixed(2);
         return `${percent}%`;
     };
 
@@ -201,9 +208,19 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                 </div>
 
                 <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white min-w-0">
+                    {(quotesError || symbolsError || watchlistError) && (
+                        <div className="px-2 py-1 text-[11px] text-red-700 bg-red-50 border-b border-red-200">
+                            {quotesError || symbolsError || watchlistError}
+                        </div>
+                    )}
+                    {quotesLoading && symbols.length > 0 && Object.keys(liveTicks).length === 0 && (
+                        <div className="px-2 py-1 text-[11px] text-gray-500 bg-[#f7f7f7] border-b border-[#dddddd]">
+                            Loading quotes...
+                        </div>
+                    )}
                     {symbols.length === 0 ? (
                         <div className="flex items-center justify-center h-32 text-gray-500 text-xs px-4 text-center">
-                            <span>No symbols subscribed. Click + to add.</span>
+                            <span>{symbolsLoading || watchlistLoading ? 'Loading symbols...' : 'No symbols subscribed. Click + to add.'}</span>
                         </div>
                     ) : (
                         <table className="w-full text-[12px] border-collapse bg-white table-fixed" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
@@ -334,10 +351,16 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                                                         if (e.key === 'Enter') handleAddSymbolConfirm();
                                                         if (e.key === 'Escape') { setAddingSymbol(false); setAddSymbolInput(''); }
                                                     }}
+                                                    list="market-watch-symbols"
                                                     placeholder="e.g. BTCUSD"
                                                     className="flex-1 border border-[#a0a0a0] px-2 py-0.5 text-[12px] text-black rounded outline-none focus:border-blue-500"
                                                     style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}
                                                 />
+                                                <datalist id="market-watch-symbols">
+                                                    {availableInstruments.map((item) => (
+                                                        <option key={item.symbol} value={item.symbol} />
+                                                    ))}
+                                                </datalist>
                                                 <button onClick={handleAddSymbolConfirm} className="text-[12px] text-white bg-[#008000] px-2 py-0.5 rounded hover:bg-green-700">Add</button>
                                                 <button onClick={() => { setAddingSymbol(false); setAddSymbolInput(''); }} className="text-[12px] text-gray-500 px-1">✕</button>
                                             </div>

@@ -56,17 +56,13 @@ export const PositionList = () => {
     if (closingTicketsRef.current.has(positionId)) return;
     closingTicketsRef.current.add(positionId);
     setClosingPositionId(positionId);
-    // Optimistically remove from both stores immediately
+    // Optimistically remove from the app store immediately
     useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== positionId));
-    import('../store/useMT5Store').then(({ useMT5Store }) => {
-        useMT5Store.setState(prev => ({ positions: prev.positions.filter(p => p.ticket !== positionId) }));
-    });
     window.dispatchEvent(new Event('rtx:force-refresh-positions'));
 
     try {
-      const login = parseInt(accountId, 10) || 0;
-      await api.mt5.closePosition(positionId, undefined, login);
-      console.log('Position closed successfully via MT5 Sync');
+      await api.positions.closePosition(String(positionId));
+      console.log('Position closed successfully');
     } catch (error: any) {
       console.error('Close position error:', error);
     } finally {
@@ -87,8 +83,8 @@ export const PositionList = () => {
     }
 
     try {
-      await api.mt5.modifyPosition(positionId, sl || 0, tp || 0);
-      console.log('Position modified successfully via MT5 Sync');
+      await api.positions.modifyPosition(positionId, { price_sl: sl || 0, price_tp: tp || 0 });
+      console.log('Position modified successfully');
       setModifyingPosition(null);
       setNewSL('');
       setNewTP('');
@@ -103,18 +99,14 @@ export const PositionList = () => {
     if (!confirm(`Close all ${positions.length} positions?`)) return;
 
     try {
-      // Optimistically remove all from both stores immediately
+      // Optimistically remove all from the app store immediately
       useAppStore.getState().setPositions([]);
-      import('../store/useMT5Store').then(({ useMT5Store }) => {
-          useMT5Store.setState({ positions: [] });
-      });
       window.dispatchEvent(new Event('rtx:force-refresh-positions'));
 
-      const login = parseInt(accountId, 10) || 0;
       await Promise.all(positions.map(pos =>
-        api.mt5.closePosition(pos.id, undefined, login)
+        api.positions.closePosition(String(pos.id))
       ));
-      console.log('All positions closed via MT5 Sync');
+      console.log('All positions closed');
     } catch (error: any) {
       console.error('Close all error:', error);
     }

@@ -50,6 +50,7 @@ const CandlestickChartComponent = forwardRef<CandlestickChartRef, CandlestickCha
         const chartRef = useRef<IChartApi | null>(null);
         const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
         const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+        const candleDataRef = useRef<CandleData[]>([]);
 
         // Helper: build volume bars from candle data
         const buildVolumeData = (candles: CandleData[]) =>
@@ -61,8 +62,52 @@ const CandlestickChartComponent = forwardRef<CandlestickChartRef, CandlestickCha
                     : 'rgba(239, 83, 80, 0.5)',   // red with alpha
             }));
 
+        const normalizeData = (candles: CandleData[]) => {
+            const byTime = new Map<number | string, CandleData>();
+            candles.forEach(candle => {
+                if (
+                    candle.time === undefined ||
+                    candle.time === null ||
+                    !Number.isFinite(candle.open) ||
+                    !Number.isFinite(candle.high) ||
+                    !Number.isFinite(candle.low) ||
+                    !Number.isFinite(candle.close)
+                ) {
+                    return;
+                }
+                byTime.set(candle.time, candle);
+            });
+            return Array.from(byTime.values()).sort((a, b) => {
+                const aTime = typeof a.time === 'string' ? new Date(a.time).getTime() : a.time;
+                const bTime = typeof b.time === 'string' ? new Date(b.time).getTime() : b.time;
+                return aTime - bTime;
+            });
+        };
+
         useImperativeHandle(ref, () => ({
             updateCandle: (candle: CandleData) => {
+                const previous = candleDataRef.current;
+                const last = previous[previous.length - 1];
+                const normalized = normalizeData([...previous, candle]);
+                candleDataRef.current = normalized;
+                const repaint = !!last && (() => {
+                    const lastTime = typeof last.time === 'string' ? new Date(last.time).getTime() : last.time;
+                    const candleTime = typeof candle.time === 'string' ? new Date(candle.time).getTime() : candle.time;
+                    return candleTime < lastTime;
+                })();
+
+                if (repaint) {
+                    candleSeriesRef.current?.setData(normalized.map(c => ({
+                        time: c.time as Time,
+                        open: c.open,
+                        high: c.high,
+                        low: c.low,
+                        close: c.close,
+                    })));
+                    volumeSeriesRef.current?.setData(buildVolumeData(normalized));
+                    return;
+                }
+
                 if (candleSeriesRef.current) {
                     try {
                         candleSeriesRef.current.update({
@@ -93,7 +138,9 @@ const CandlestickChartComponent = forwardRef<CandlestickChartRef, CandlestickCha
             setData: (newData: CandleData[]) => {
                 if (candleSeriesRef.current && chartRef.current) {
                     try {
-                        const formatted = newData.map(c => ({
+                        const normalized = normalizeData(newData);
+                        candleDataRef.current = normalized;
+                        const formatted = normalized.map(c => ({
                             time: c.time as Time,
                             open: c.open,
                             high: c.high,
@@ -103,7 +150,7 @@ const CandlestickChartComponent = forwardRef<CandlestickChartRef, CandlestickCha
                         candleSeriesRef.current.setData(formatted);
 
                         if (volumeSeriesRef.current) {
-                            volumeSeriesRef.current.setData(buildVolumeData(newData));
+                            volumeSeriesRef.current.setData(buildVolumeData(normalized));
                         }
 
                         chartRef.current.timeScale().fitContent();
@@ -185,7 +232,9 @@ const CandlestickChartComponent = forwardRef<CandlestickChartRef, CandlestickCha
             volumeSeriesRef.current = volumeSeries;
 
             if (data.length > 0) {
-                const formatted = data.map(c => ({
+                const normalized = normalizeData(data);
+                candleDataRef.current = normalized;
+                const formatted = normalized.map(c => ({
                     time: c.time as Time,
                     open: c.open,
                     high: c.high,
@@ -193,7 +242,7 @@ const CandlestickChartComponent = forwardRef<CandlestickChartRef, CandlestickCha
                     close: c.close,
                 }));
                 candleSeries.setData(formatted);
-                volumeSeries.setData(buildVolumeData(data));
+                volumeSeries.setData(buildVolumeData(normalized));
                 chart.timeScale().fitContent();
             }
 
@@ -246,6 +295,25 @@ const CandlestickChartComponent = forwardRef<CandlestickChartRef, CandlestickCha
                 }
             };
         }, []); // Empty dependency array, chart is initialized once. Updates flow through refs.
+
+        useEffect(() => {
+            if (!candleSeriesRef.current || !chartRef.current) return;
+            const normalized = normalizeData(data);
+            candleDataRef.current = normalized;
+            try {
+                candleSeriesRef.current.setData(normalized.map(c => ({
+                    time: c.time as Time,
+                    open: c.open,
+                    high: c.high,
+                    low: c.low,
+                    close: c.close,
+                })));
+                volumeSeriesRef.current?.setData(buildVolumeData(normalized));
+                if (normalized.length > 0) chartRef.current.timeScale().fitContent();
+            } catch (e) {
+                // Chart may have been disposed during a fast symbol/timeframe switch.
+            }
+        }, [data, symbol, timeframe]);
 
         return (
             <div style={{ width: '100%', height: '100%', position: 'relative' }}>

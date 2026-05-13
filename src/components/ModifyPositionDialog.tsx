@@ -6,10 +6,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useCurrentTick } from '../store/useMarketDataStore';
+import { useAppStore } from '../store/useAppStore';
+import api from '../services/api';
 
 interface ModifyPositionDialogProps {
     isOpen: boolean;
     onClose: (modifiedSl?: number, modifiedTp?: number) => void;
+    kind?: 'position' | 'pending-order';
     position: {
         id: number;
         symbol: string;
@@ -49,7 +52,7 @@ const getSymbolFullName = (symbol: string) => {
     return names[symbol] || symbol;
 };
 
-export function ModifyPositionDialog({ isOpen, onClose, position }: ModifyPositionDialogProps) {
+export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'position' }: ModifyPositionDialogProps) {
     const [sl, setSl] = useState('0.00');
     const [tp, setTp] = useState('0.00');
     const [comment, setComment] = useState('');
@@ -129,34 +132,25 @@ export function ModifyPositionDialog({ isOpen, onClose, position }: ModifyPositi
             const tpVal = parseFloat(tp) || 0;
             console.log('[Modify] Sending modify request for ticket:', position.id, 'SL:', slVal, 'TP:', tpVal);
 
-            // Use MT5 Trade Service for correct backend URL routing
-            const { default: mt5TradeService } = await import('../services/mt5TradeService');
-            const data = await mt5TradeService.modifyTrade({
-                ticket: position.id,
-                stopLoss: slVal,
-                takeProfit: tpVal,
-            });
-
-            console.log('[Modify] Response data:', data);
-
-            if (data.success) {
-                setSuccess(true);
-                // Optimistically update the position's SL/TP in the MT5 store immediately
-                try {
-                    const { useMT5Store } = await import('../store/useMT5Store');
-                    const store = useMT5Store.getState();
-                    const updated = store.positions.map(p =>
-                        p.ticket === position.id ? { ...p, sl: slVal, tp: tpVal } : p
-                    );
-                    store.setPositionsFromWS(updated);
-                    if (typeof window !== 'undefined') {
-                        window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-                    }
-                } catch { /* ignore */ }
-                setTimeout(() => onClose(slVal, tpVal), 600);
+            if (kind === 'pending-order') {
+                await api.orders.modifyPendingOrder(position.id, {
+                    price: position.openPrice,
+                    price_sl: slVal,
+                    price_tp: tpVal,
+                });
             } else {
-                setError(data.retcode_text || data.message || `Modification failed (code: ${data.retcode})`);
+                await api.positions.modifyPosition(position.id, { price_sl: slVal, price_tp: tpVal });
             }
+
+            setSuccess(true);
+            const store = useAppStore.getState();
+            store.setPositions(store.positions.map(p =>
+                p.id === position.id ? { ...p, sl: slVal, tp: tpVal } : p
+            ));
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+            }
+            setTimeout(() => onClose(slVal, tpVal), 600);
         } catch (err: any) {
             console.error('[Modify] Error:', err);
             setError(err.message || 'Network error');
@@ -310,7 +304,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position }: ModifyPositi
                         <div className="flex items-center gap-3">
                             <label className="text-[11px] w-[80px] text-right text-zinc-500">Type:</label>
                             <div className="flex-1 bg-[#2a2a2a] border border-zinc-600 px-2.5 py-1.5 text-xs text-zinc-200 rounded">
-                                Modify Position
+                                {kind === 'pending-order' ? 'Modify Pending Order' : 'Modify Position'}
                             </div>
                         </div>
 

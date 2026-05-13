@@ -4,24 +4,9 @@
  */
 
 import { Icon } from './ui/Icon';
-import { useState, useEffect, useMemo } from 'react';
-import { buildApiUrl } from '../config/api';
+import { useState, useMemo } from 'react';
 import { formatPrice as formatPriceUtil } from '../utils/symbolUtils';
-
-type OrderBookEntry = {
-  price: number;
-  volume: number;
-  total: number;
-};
-
-type OrderBookData = {
-  symbol: string;
-  bids: OrderBookEntry[];
-  asks: OrderBookEntry[];
-  spread: number;
-  spreadPips: number;
-  timestamp: number;
-};
+import { useLiveOrderBook } from '../hooks/useLiveMarketData';
 
 type OrderBookProps = {
   symbol: string;
@@ -30,42 +15,8 @@ type OrderBookProps = {
 };
 
 export const OrderBook = ({ symbol, currentBid = 0, currentAsk = 0 }: OrderBookProps) => {
-  const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
   const [depth, setDepth] = useState<10 | 20 | 50>(20);
-  const [loading, setLoading] = useState(false);
-
-  // Fetch order book data
-  useEffect(() => {
-    if (!symbol) return;
-
-    const fetchOrderBook = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(
-          buildApiUrl(`/api/orderbook?symbol=${symbol}&depth=${depth}`)
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          setOrderBook(data);
-        } else {
-          // TODO: API endpoint not available - no fallback data
-          setOrderBook(null);
-        }
-      } catch (error) {
-        console.error('Failed to fetch order book:', error);
-        // TODO: API call failed - no fallback data
-        setOrderBook(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOrderBook();
-    const interval = setInterval(fetchOrderBook, 1000); // Update every second
-
-    return () => clearInterval(interval);
-  }, [symbol, depth, currentBid, currentAsk]);
+  const { orderBook, loading, error } = useLiveOrderBook(symbol, depth);
 
   // Calculate max volume for bar chart sizing
   const maxVolume = useMemo(() => {
@@ -96,8 +47,9 @@ export const OrderBook = ({ symbol, currentBid = 0, currentAsk = 0 }: OrderBookP
 
   if (!orderBook) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500">
-        <p>No order book data available</p>
+      <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-2 px-4 text-center">
+        <Icon name="layers" size="sm" className="w-6 h-6" />
+        <p>{error || 'No order book data available'}</p>
       </div>
     );
   }
@@ -260,15 +212,4 @@ const OrderBookRow = ({
       </div>
     </div>
   );
-};
-
-// TODO: Replace with API call to /api/orderbook?symbol={symbol}&depth={depth}
-const generateMockOrderBook = (
-  _symbol: string,
-  _bid: number,
-  _ask: number,
-  _depth: number
-): OrderBookData | null => {
-  // Placeholder: Returns null until backend API is implemented
-  return null;
 };

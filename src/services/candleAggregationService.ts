@@ -9,6 +9,8 @@
  *  5. All completed candles remain immutable; only forming candles accept late ticks
  */
 
+import { alignTimeframeBoundaryMilliseconds, alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -78,8 +80,7 @@ export function normalizeTimestamp(ts: number): number {
  * Example: 11:17:43 on M5 → 11:15:00.
  */
 export function alignToTimeframe(timestampMs: number, tf: Timeframe): number {
-  const tfMs = TIMEFRAME_CONFIG[tf].seconds * 1000;
-  return Math.floor(timestampMs / tfMs) * tfMs;
+  return alignTimeframeBoundaryMilliseconds(timestampMs, tf, TIMEFRAME_CONFIG[tf].seconds);
 }
 
 /** Return the period length in seconds for a Timeframe label. */
@@ -326,7 +327,7 @@ export class SymbolCandleBuilder {
     const sorted = [...candles].sort((a, b) => a.time - b.time);
     const tfSec           = TIMEFRAME_CONFIG[timeframe].seconds;
     const nowSec          = Math.floor(Date.now() / 1000);
-    const currentBoundary = Math.floor(nowSec / tfSec) * tfSec;
+    const currentBoundary = alignTimeframeBoundarySeconds(nowSec, timeframe, tfSec);
     const lastCandle      = sorted[sorted.length - 1];
     const lastIsForming   = lastCandle.time >= currentBoundary;
 
@@ -376,6 +377,7 @@ export class SymbolCandleBuilder {
         }
         this.m1Completed.push(completed);
         this.trimM1History();
+        this.processCompletedM1(completed, new Map<Timeframe, OHLCV>());
       }
     } else {
       const data = this.higherTFs.get(timeframe);
@@ -461,7 +463,7 @@ export class SymbolCandleBuilder {
   private processCompletedM1(m1: OHLCV, updates: Map<Timeframe, OHLCV>): void {
     for (const [tf, data] of this.higherTFs) {
       const config = TIMEFRAME_CONFIG[tf];
-      const tfTime = Math.floor(m1.time / config.seconds) * config.seconds;
+      const tfTime = alignTimeframeBoundarySeconds(m1.time, tf, config.seconds);
 
       if (!data.forming || data.forming.time !== tfTime) {
         // Finalize the previous forming candle (if any)
@@ -543,8 +545,7 @@ export class SymbolCandleBuilder {
       if (!data.forming) continue;
 
       const config         = TIMEFRAME_CONFIG[tf];
-      const tfMs           = config.seconds * 1000;
-      const tfTimeMs       = Math.floor(tsMs / tfMs) * tfMs;
+      const tfTimeMs       = alignTimeframeBoundaryMilliseconds(tsMs, tf, config.seconds);
       const tfTimeSeconds  = Math.floor(tfTimeMs / 1000);
 
       if (tfTimeSeconds === data.forming.time) {
@@ -598,8 +599,7 @@ export class SymbolCandleBuilder {
 
     for (const [tf, data] of this.higherTFs) {
       const config        = TIMEFRAME_CONFIG[tf];
-      const tfMs          = config.seconds * 1000;
-      const tfTimeMs      = Math.floor(m1TimeMs / tfMs) * tfMs;
+      const tfTimeMs      = alignTimeframeBoundaryMilliseconds(m1TimeMs, tf, config.seconds);
       const tfTimeSeconds = Math.floor(tfTimeMs / 1000);
 
       if (data.forming && data.forming.time !== tfTimeSeconds) {

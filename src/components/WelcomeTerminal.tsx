@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
+import { getStoredBrokerServer, loadBrokerServers, persistBrokerServer, resolveLoginBrokerTarget } from '../services/brokerServers';
 
 interface WelcomeTerminalProps {
     onLogin: (accountId: string) => void;
@@ -38,7 +39,7 @@ const STARTUP_SEQUENCE: { delay: number; text: string; type: LogLine['type'] }[]
     { delay: 280, text: '----------------------------------------------------', type: 'info' },
     { delay: 450, text: 'Initializing market data subsystem...', type: 'info' },
     { delay: 700, text: 'Loading symbol catalog...', type: 'info' },
-    { delay: 950, text: 'Connecting to rtxbackend.tradecopier.org:443', type: 'info' },
+    { delay: 950, text: 'Connecting to trading API', type: 'info' },
     { delay: 1300, text: 'FIX gateway handshake OK', type: 'ok' },
     { delay: 1550, text: 'WebSocket market feed: READY', type: 'ok' },
     { delay: 1800, text: 'Price aggregation engine: ONLINE', type: 'ok' },
@@ -56,20 +57,35 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
     const [error, setError] = useState<string | null>(null);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [server, setServer] = useState(() => getStoredBrokerServer());
+    const [brokerServers, setBrokerServers] = useState<string[]>([]);
     const [rememberMe, setRememberMe] = useState(false);
 
     const addSavedAccount = useAppStore(s => s.addSavedAccount);
     const setActiveAccount = useAppStore(s => s.setActiveAccount);
 
-    // Pre-fill remembered credentials
+    // Pre-fill remembered account ID only. Passwords must not be restored from storage.
     useEffect(() => {
         const savedUser = localStorage.getItem('rtx_saved_username');
-        const savedPass = localStorage.getItem('rtx_saved_password');
-        if (savedUser && savedPass) {
+        localStorage.removeItem('rtx_saved_password');
+        if (savedUser) {
             setUsername(savedUser);
-            try { setPassword(atob(savedPass)); } catch { /* ignore */ }
             setRememberMe(true);
         }
+    }, []);
+
+    useEffect(() => {
+        let isMounted = true;
+        loadBrokerServers()
+            .then((servers) => {
+                if (!isMounted || servers.length === 0) return;
+                setBrokerServers(servers);
+                setServer(current => servers.includes(current) ? current : current || servers[0]);
+            })
+            .catch((err) => console.warn('[WelcomeTerminal] Could not load broker servers:', err));
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     // Run startup log sequence
@@ -96,22 +112,24 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
         setLoading(true);
         setError(null);
 
-        const BACKEND_URL = 'https://rtxbackend.tradecopier.org';
-
         try {
-            const data = await api.auth.login(username, password, BACKEND_URL);
+            const selectedServer = persistBrokerServer(server);
+            const loginTarget = resolveLoginBrokerTarget(selectedServer);
+            const data = await api.auth.login(username, password, {
+                broker_id: loginTarget.broker_id,
+                server: loginTarget.server,
+            });
             const token = data.access_token;
             if (!token) throw new Error('No authentication token received');
 
-            const accountId = data.user?.id || username;
+            const accountId = data.account_login ?? username;
 
-            // Persist credentials & tokens
+            // Persist account ID and tokens only; never persist the password.
             localStorage.setItem('rtx_last_login', String(accountId));
-            localStorage.setItem('rtx_saved_username', username);
-            try { localStorage.setItem('rtx_saved_password', btoa(password)); } catch { /* ignore */ }
+            localStorage.setItem('rtx_saved_username', String(accountId));
+            localStorage.removeItem('rtx_saved_password');
 
-            const { setBaseUrl, setToken, setRefreshToken } = await import('../api/client');
-            setBaseUrl(BACKEND_URL);
+            const { setToken, setRefreshToken } = await import('../api/client');
             setToken(token);
             if (data.refresh_token) setRefreshToken(data.refresh_token);
             if (data.expires_at) localStorage.setItem('token_expires_at', data.expires_at);
@@ -120,15 +138,14 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             useAppStore.getState().setAuthenticated(true, String(accountId), token, data.refresh_token);
 
             // Save to multi-account list
-            const loginNum = parseInt(username, 10);
+            const loginNum = parseInt(String(accountId), 10);
             if (!isNaN(loginNum)) {
                 addSavedAccount({
                     login: loginNum,
-                    name: data.user?.username || '',
-                    server: 'FlexyMarkets-Server',
+                    name: data.user?.username || data.username || '',
+                    server: loginTarget.server || data.broker_server || loginTarget.displayValue,
                     isLive: true,
                     lastUsed: Date.now(),
-                    password: btoa(password),
                 });
                 setActiveAccount(loginNum);
             }
@@ -136,7 +153,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             // Append success line to terminal
             setLines(prev => [
                 ...prev,
-                { time: now(), text: `Connected — Account ${accountId}  [ ${data.user?.username || username} ]`, type: 'ok' },
+                { time: now(), text: `Connected — Account ${accountId}  [ ${data.user?.username || data.username || username} ]`, type: 'ok' },
                 { time: now(), text: 'Loading workspace...', type: 'info' },
             ]);
 
@@ -350,6 +367,26 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                 onFocus={e => (e.target.style.borderColor = '#10b981')}
                                 onBlur={e => (e.target.style.borderColor = '#3f3f46')}
                             />
+                        </div>
+
+                        <div>
+                            <label style={labelStyle}>Server</label>
+                            <input
+                                type="text"
+                                placeholder="Server"
+                                required
+                                value={server}
+                                list="welcome-broker-servers"
+                                onChange={e => setServer(e.target.value)}
+                                style={inputStyle}
+                                onFocus={e => (e.target.style.borderColor = '#10b981')}
+                                onBlur={e => (e.target.style.borderColor = '#3f3f46')}
+                            />
+                            <datalist id="welcome-broker-servers">
+                                {brokerServers.map(serverName => (
+                                    <option key={serverName} value={serverName} />
+                                ))}
+                            </datalist>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0' }}>

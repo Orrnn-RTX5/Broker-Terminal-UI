@@ -92,7 +92,6 @@ export interface SavedAccount {
   server: string;
   isLive: boolean;
   lastUsed?: number;
-  password?: string; // base64-encoded password for auto re-login on account switch
 }
 
 interface AppState {
@@ -184,6 +183,32 @@ const initialState = {
   isLoadingPositions: false,
   isPlacingOrder: false,
 };
+
+const CREDENTIAL_STORAGE_KEYS = [
+  'mt5_credentials',
+  'mt5_auto_login',
+  'rtx_saved_password',
+];
+
+const clearLegacyCredentialStorage = () => {
+  if (typeof window === 'undefined') return;
+  CREDENTIAL_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+};
+
+const sanitizeSavedAccount = (account: SavedAccount | (SavedAccount & { password?: unknown })): SavedAccount | null => {
+  if (!account || typeof account !== 'object') return null;
+  const { password: _password, ...safeAccount } = account as SavedAccount & { password?: unknown };
+  return safeAccount;
+};
+
+const sanitizeSavedAccounts = (accounts: unknown): SavedAccount[] => {
+  if (!Array.isArray(accounts)) return [];
+  return accounts
+    .map((account) => sanitizeSavedAccount(account as SavedAccount & { password?: unknown }))
+    .filter((account): account is SavedAccount => account !== null);
+};
+
+clearLegacyCredentialStorage();
 
 export const useAppStore = create<AppState>()(
   devtools(
@@ -309,16 +334,18 @@ export const useAppStore = create<AppState>()(
 
         addSavedAccount: (account) =>
           set((state) => {
-            const exists = state.savedAccounts.find((a) => a.login === account.login);
+            const safeAccount = sanitizeSavedAccount(account);
+            if (!safeAccount) return { savedAccounts: sanitizeSavedAccounts(state.savedAccounts) };
+            const exists = state.savedAccounts.find((a) => a.login === safeAccount.login);
             if (exists) {
               return {
                 savedAccounts: state.savedAccounts.map((a) =>
-                  a.login === account.login ? { ...a, ...account, lastUsed: Date.now() } : a
+                  a.login === safeAccount.login ? { ...a, ...safeAccount, lastUsed: Date.now() } : a
                 )
               };
             }
             return {
-              savedAccounts: [...state.savedAccounts, { ...account, lastUsed: Date.now() }]
+              savedAccounts: [...sanitizeSavedAccounts(state.savedAccounts), { ...safeAccount, lastUsed: Date.now() }]
             };
           }),
 
@@ -360,8 +387,17 @@ export const useAppStore = create<AppState>()(
           chartType: state.chartType,
           timeframe: state.timeframe,
           orderVolume: state.orderVolume,
-          savedAccounts: state.savedAccounts,
+          savedAccounts: sanitizeSavedAccounts(state.savedAccounts),
         }),
+        merge: (persistedState, currentState) => {
+          const persisted = persistedState as Partial<AppState> | undefined;
+          clearLegacyCredentialStorage();
+          return {
+            ...currentState,
+            ...persisted,
+            savedAccounts: sanitizeSavedAccounts(persisted?.savedAccounts),
+          };
+        },
       }
     )
   )

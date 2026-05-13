@@ -1,10 +1,12 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useCurrentTick } from '../store/useMarketDataStore';
+import { useLiveOrderBook } from '../hooks/useLiveMarketData';
 
 interface DepthOfMarketProps {
     symbol: string;
     onClose?: () => void;
     onPlaceOrder?: (side: 'BUY' | 'SELL', price: number, volume: number) => void;
+    onCloseBulk?: (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => void;
     onDragHandleMouseDown?: (e: React.MouseEvent) => void;
 }
 
@@ -609,6 +611,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   symbol,
   onClose,
   onPlaceOrder,
+  onCloseBulk,
   onDragHandleMouseDown,
 }) => {
   const currentTick = useCurrentTick(symbol);
@@ -646,38 +649,20 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   const OVERHEAD = 110;
   const availableForRows = Math.max(200, containerHeight - OVERHEAD);
   const dynamicLevels = Math.max(6, Math.floor(availableForRows / ROW_H / 2));
+  const { orderBook, loading: depthLoading, error: depthError } = useLiveOrderBook(symbol, dynamicLevels);
+  const bestBid = currentTick?.bid ?? orderBook?.bids[0]?.price ?? 0;
+  const bestAsk = currentTick?.ask ?? orderBook?.asks[0]?.price ?? 0;
 
   const depthLevels = useMemo(() => {
-    if (!currentTick) return { asks: [] as any[], bids: [] as any[], maxVolume: 0 };
-    const levels = dynamicLevels;
-
-    const isCrypto = symbol.startsWith('BTC') || symbol.startsWith('ETH');
-    const isJPY = symbol.includes('JPY');
-    const isMetals = symbol.startsWith('XAU') || symbol.startsWith('XAG');
-
-    const baseStep = isCrypto ? 0.01 : isJPY ? 0.001 : isMetals ? 0.01 : 0.00001;
-    const spread = currentTick.ask - currentTick.bid;
-    const step = Math.max(baseStep, spread / 4);
-
-    const asks: { price: number; volume: number }[] = [];
-    const bids: { price: number; volume: number }[] = [];
-    let maxVolume = 0;
-
-    for (let i = 0; i < levels; i++) {
-      const rawVol = Math.max(0.01, parseFloat((Math.random() * 0.5 * (1 + 1 / (i + 1))).toFixed(2)));
-      asks.push({ price: currentTick.ask + i * step, volume: i === 0 ? parseFloat((Math.random() * 0.3 + 0.05).toFixed(2)) : rawVol });
-      maxVolume = Math.max(maxVolume, asks[asks.length - 1].volume);
-    }
-    asks.reverse();
-
-    for (let i = 0; i < levels; i++) {
-      const rawVol = Math.max(0.01, parseFloat((Math.random() * 0.5 * (1 + 1 / (i + 1))).toFixed(2)));
-      bids.push({ price: currentTick.bid - i * step, volume: i === 0 ? parseFloat((Math.random() * 0.3 + 0.05).toFixed(2)) : rawVol });
-      maxVolume = Math.max(maxVolume, bids[bids.length - 1].volume);
+    if (orderBook && (orderBook.asks.length > 0 || orderBook.bids.length > 0)) {
+      const asks = orderBook.asks.slice(0, dynamicLevels).reverse();
+      const bids = orderBook.bids.slice(0, dynamicLevels);
+      const maxVolume = Math.max(...[...asks, ...bids].map((level) => level.volume), 0);
+      return { asks, bids, maxVolume };
     }
 
-    return { asks, bids, maxVolume };
-  }, [currentTick, symbol, dynamicLevels]);
+    return { asks: [] as any[], bids: [] as any[], maxVolume: 0 };
+  }, [orderBook, dynamicLevels]);
 
   const digits = useMemo(() => {
     if (symbol.includes('JPY')) return 3;
@@ -687,18 +672,18 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   }, [symbol]);
 
   const handleCloseAll = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('closeBulk', { detail: { type: 'ALL', symbol } }));
-  }, [symbol]);
+    onCloseBulk?.('ALL', symbol);
+  }, [onCloseBulk, symbol]);
 
-  if (!currentTick) {
+  if (!currentTick && !orderBook) {
     return (
       <div
         className="flex flex-col items-center justify-center h-full select-none"
         style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: 11, color: C.textSecondary }}
       >
         <div className="text-center">
-          <div className="w-4 h-4 border-2 border-zinc-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-2" />
-          Waiting for {symbol} data...
+          {depthLoading && <div className="w-4 h-4 border-2 border-zinc-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-2" />}
+          {depthError || `Waiting for ${symbol} market depth...`}
         </div>
       </div>
     );
@@ -801,6 +786,11 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
 
           {/* Scrollable Price Levels */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ background: C.bgSecondary }}>
+            {depthLevels.asks.length === 0 && depthLevels.bids.length === 0 && (
+              <div className="flex items-center justify-center h-full px-3 text-center text-[10px]" style={{ color: C.textTertiary }}>
+                {depthLoading ? 'Loading market depth...' : depthError || 'No market depth available'}
+              </div>
+            )}
             {/* ── ASK (Sell) rows ── */}
             {depthLevels.asks.map((level, i) => {
               const isNearSpread = i === depthLevels.asks.length - 1;
@@ -842,7 +832,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             })}
 
             {/* ── Spread row ── */}
-            {currentTick && (
+            {(bestBid > 0 || bestAsk > 0) && (
               <div
                 className="grid"
                 style={{
@@ -855,7 +845,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
               >
                 <div className="flex items-center justify-center border-r" style={{ borderColor: C.borderSecondary }} />
                 <div className="flex items-center justify-center border-r text-[9px] font-bold uppercase tracking-widest" style={{ borderColor: C.borderSecondary, color: '#7aacca' }}>
-                  ↕ {((currentTick.ask - currentTick.bid) * Math.pow(10, digits)).toFixed(1)} pts
+                  ↕ {((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)} pts
                 </div>
                 <div className="flex items-center justify-center" />
               </div>
@@ -970,7 +960,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
       {/* ── Sell / Close / Buy Buttons ── */}
       <div className="flex shrink-0" style={{ borderTop: `1px solid ${C.borderPrimary}` }}>
         <button
-          onClick={() => onPlaceOrder?.('SELL', currentTick.bid, volume)}
+          onClick={() => onPlaceOrder?.('SELL', bestBid, volume)}
           onMouseDown={e => e.stopPropagation()}
           className="flex-1 py-[5px] text-[11px] font-bold text-white transition-all"
           style={{ background: C.sellBtn, borderRight: `1px solid ${C.bgSecondary}`, borderRadius: '0 0 0 10px' }}
@@ -990,7 +980,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           Close
         </button>
         <button
-          onClick={() => onPlaceOrder?.('BUY', currentTick.ask, volume)}
+          onClick={() => onPlaceOrder?.('BUY', bestAsk, volume)}
           onMouseDown={e => e.stopPropagation()}
           className="flex-1 py-[5px] text-[11px] font-bold text-white transition-all"
           style={{ background: C.buyBtn, borderRadius: '0 0 10px 0' }}

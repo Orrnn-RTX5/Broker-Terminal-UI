@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { ExportDialog } from './ExportDialog';
 import { DollarSign, Activity, Shield, TrendingUp } from 'lucide-react';
+import { useTradeFacingData } from '../hooks/useTradeFacingData';
 
 const StatCard = ({
   icon: Icon,
@@ -43,7 +44,8 @@ const StatCard = ({
 );
 
 export const AccountInfoDashboard = () => {
-  const { account, positions } = useAppStore();
+  const { account, positions, accountId } = useAppStore();
+  const { loading, error, refresh } = useTradeFacingData(accountId ?? undefined, 10000);
   const [showExportDialog, setShowExportDialog] = useState(false);
 
   const accountHealth = useMemo(() => {
@@ -70,7 +72,7 @@ export const AccountInfoDashboard = () => {
   if (!account) {
     return (
       <div className="p-4 bg-zinc-900 rounded-lg border border-zinc-800">
-        <div className="text-center text-zinc-500">Loading account data...</div>
+        <div className="text-center text-zinc-500">{loading ? 'Loading account data...' : (error || 'No account data')}</div>
       </div>
     );
   }
@@ -201,6 +203,14 @@ export const AccountInfoDashboard = () => {
       )}
 
       {/* Export Button */}
+      <button
+        onClick={() => refresh()}
+        className="w-full px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors flex items-center justify-center gap-2"
+      >
+        <Icon name="refresh" size="sm" className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        Refresh Account
+      </button>
+
       <button
         onClick={() => setShowExportDialog(true)}
         className="w-full px-4 py-3 bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 rounded-lg text-white font-medium transition-colors flex items-center justify-center gap-2"

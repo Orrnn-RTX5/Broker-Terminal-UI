@@ -5,8 +5,7 @@ import { useWatchlistStore } from '../../store/useWatchlistStore';
 import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
-import { getEnhancedWebSocketService } from '../../services/websocket-enhanced';
-import { MARKET_WS_URL } from '../../config/api';
+import { useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../../hooks/useLiveMarketData';
 
 interface MarketWatchPanelProps {
   allSymbols: any[];
@@ -228,22 +227,29 @@ const MarketWatchRow: React.FC<{
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
-  allSymbols: _allSymbols,
+  allSymbols,
   selectedSymbol,
   onSymbolSelect,
   className,
 }) => {
   const liveTicks = useAppStore((state) => state.ticks);
+  const {
+    symbols: marketInstruments,
+    loading: isLoadingSymbols,
+    error: symbolsError,
+  } = useMarketInstruments();
 
   const activeWatchlist = useWatchlistStore((s) => {
     return s.watchlists.find((w) => w.id === s.activeWatchlistId);
   });
+  const {
+    loading: watchlistLoading,
+    error: watchlistError,
+  } = useRemoteWatchlistSync(activeWatchlist?.id);
   const watchlistSymbols = activeWatchlist?.symbols || [];
 
   const [search, setSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
-  const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [showGrid, setShowGrid] = useState(true);
   const [showSymbolsPanel, setShowSymbolsPanel] = useState(false);
@@ -273,23 +279,13 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   const showSpread = panelWidth >= 300;
   const showDaily  = panelWidth >= 380;
 
-  useEffect(() => {
-    const fetchSymbols = async () => {
-      setIsLoadingSymbols(true);
-      try {
-        const { apiClient } = await import('../../api/client');
-        const data = await apiClient.get<any>('/api/fix/symbols');
-        if (data?.symbols && Array.isArray(data.symbols)) {
-          setAvailableSymbols(data.symbols.map((s: string) => s.toUpperCase()));
-        }
-      } catch (err) {
-        console.error('[MarketWatch] Failed to fetch FIX symbols:', err);
-      } finally {
-        setIsLoadingSymbols(false);
-      }
-    };
-    fetchSymbols();
-  }, []);
+  const availableSymbols = useMemo(() => {
+    const fromProps = (Array.isArray(allSymbols) ? allSymbols : [])
+      .map((item) => normalizeSymbol(String(item?.symbol ?? item?.name ?? item?.id ?? item)))
+      .filter(Boolean);
+    const fromApi = marketInstruments.map((item) => item.symbol);
+    return Array.from(new Set([...fromApi, ...fromProps])).sort((a, b) => a.localeCompare(b));
+  }, [allSymbols, marketInstruments]);
 
   const filteredSymbols = useMemo(() => {
     if (!search.trim()) return [];
@@ -304,20 +300,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     if (!next || !activeWatchlist) return;
     if (!watchlistSymbols.includes(next)) {
       useWatchlistStore.getState().addSymbolToWatchlist(activeWatchlist.id, next);
-      
-      // Instantly push this specific pair to the real-time WebSocket connection
-      try {
-        const wsService = getEnhancedWebSocketService(MARKET_WS_URL);
-        wsService.sendMessage({
-          type: 'subscribe',
-          symbols: [next]
-        });
-        // Register in market data store so it manages history/stats
-        useMarketDataStore.getState().subscribeSymbol(next);
-        console.log(`[MarketWatch] Dynamically subscribed to new symbol: ${next}`);
-      } catch (err) {
-        console.warn(`[MarketWatch] Failed to push raw socket subscription for ${next}:`, err);
-      }
+      useMarketDataStore.getState().subscribeSymbol(next);
     }
     setSearch('');
     setShowDropdown(false);
@@ -394,7 +377,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
             `Bid: ${tick?.bid ?? 'N/A'}`,
             `Ask: ${tick?.ask ?? 'N/A'}`,
             `Spread: ${tick?.spread ?? 'N/A'}`,
-            `Daily Change: ${tick?.dailyChange ? (tick.dailyChange * 100).toFixed(2) + '%' : 'N/A'}`,
+            `Daily Change: ${tick?.dailyChange !== undefined ? tick.dailyChange.toFixed(2) + '%' : 'N/A'}`,
           ].join('\n');
           alert(info);
         },
@@ -514,6 +497,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   const rows = useMemo(() => {
     return watchlistSymbols.map(normalizeSymbol).filter(Boolean);
   }, [watchlistSymbols]);
+  const { loading: quotesLoading, error: quotesError } = useLiveQuotes(rows);
 
   const timeStr = currentTime.toLocaleTimeString('en-US', { hour12: false });
 
@@ -521,15 +505,18 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     <>
       {/* Inline style for hover row and flash animation */}
       <style>{`
+        .mw-row { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
         .mw-row:hover {
-          background: rgba(255,255,255,0.03) !important;
+          background: linear-gradient(90deg, rgba(59,130,246,0.15) 0%, rgba(59,130,246,0.05) 100%) !important;
+          box-shadow: inset 2px 0 0 rgba(96,165,250,0.8);
         }
-        .mw-input::placeholder { color: #50505a; }
-        .mw-input:focus { border-color: rgba(99,102,241,0.5) !important; box-shadow: 0 0 0 1px rgba(99,102,241,0.2); }
-        .mw-scrollbar::-webkit-scrollbar { width: 3px; }
+        .mw-input { transition: all 0.3s ease; }
+        .mw-input::placeholder { color: #64748b; }
+        .mw-input:focus { border-color: rgba(59,130,246,0.5) !important; box-shadow: 0 0 15px rgba(59,130,246,0.25), inset 0 0 0 1px rgba(59,130,246,0.5) !important; background: rgba(15,23,42,0.6) !important; }
+        .mw-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
         .mw-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .mw-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 2px; }
-        .mw-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+        .mw-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .mw-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
       `}</style>
 
       <div
@@ -539,7 +526,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
           display: 'flex',
           flexDirection: 'column',
           height: '100%',
-          background: '#131316',
+          background: 'transparent',
           color: '#e2e2e8',
           fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
           fontSize: 12,
@@ -559,14 +546,6 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             {/* Subtle accent dot */}
-            <span style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #8a8a8f, #3f3f46)',
-              boxShadow: '0 0 4px rgba(107,114,128,0.4)',
-              flexShrink: 0,
-            }} />
             <span style={{ fontSize: 11, fontWeight: 500, color: '#808088', letterSpacing: '0.04em' }}>
               MARKET WATCH
             </span>
@@ -814,6 +793,24 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
           </span>
           <span style={{ fontSize: 9, color: '#36363e' }}>{rows.length} symbols</span>
         </div>
+
+        {(symbolsError || quotesError || watchlistError) && (
+          <div style={{
+            padding: '5px 10px',
+            borderTop: '1px solid rgba(248,113,113,0.16)',
+            color: '#f87171',
+            background: 'rgba(248,113,113,0.06)',
+            fontSize: 10,
+            lineHeight: 1.3,
+          }}>
+            {symbolsError || quotesError || watchlistError}
+          </div>
+        )}
+        {(quotesLoading || watchlistLoading) && rows.length > 0 && Object.keys(liveTicks).length === 0 && (
+          <div style={{ padding: '4px 10px', color: '#606068', fontSize: 10 }}>
+            Loading quotes...
+          </div>
+        )}
       </div>
     </>
   );

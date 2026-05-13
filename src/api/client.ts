@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config/api';
+import { API_V2_BASE_URL } from '../config/api';
 
 // Custom error class for API errors
 export class ApiError extends Error {
@@ -17,6 +17,8 @@ const getToken = (): string | null => {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('auth_token');
 };
+
+export const getAuthToken = getToken;
 
 const getRefreshToken = (): string | null => {
   if (typeof window === 'undefined') return null;
@@ -45,8 +47,8 @@ export const removeToken = (): void => {
 // Build request headers
 const buildHeaders = (customHeaders?: Record<string, string>, skipAuth?: boolean): Record<string, string> => {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...customHeaders,
+    'Content-Type': 'application/json',
   };
 
   if (!skipAuth) {
@@ -61,7 +63,7 @@ const buildHeaders = (customHeaders?: Record<string, string>, skipAuth?: boolean
 
 // Endpoints that should NOT carry an existing Bearer token
 // (they authenticate via credentials in the body, not via the Authorization header)
-const AUTH_ENDPOINTS = ['/api/login', '/api/refresh'];
+const AUTH_ENDPOINTS = ['/api/login', '/api/refresh', '/api/v2/auth/login', '/api/v2/auth/refresh', '/auth/login', '/auth/refresh'];
 
 // Build query string from params object
 const buildQueryString = (params?: Record<string, any>): string => {
@@ -141,7 +143,10 @@ const handleResponse = async <T>(response: Response, originalRequest?: RequestIn
       isRefreshing = true;
 
       try {
-        const refreshResponse = await fetch(`${getBaseUrl()}/api/refresh`, {
+        const refreshEndpoint = response.url.includes('/api/v2/')
+          ? `${API_V2_BASE_URL}/auth/refresh`
+          : `${getBaseUrl()}/api/refresh`;
+        const refreshResponse = await fetch(refreshEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh_token: refreshToken }) // Note: Use the expected field name for your backend
@@ -154,8 +159,9 @@ const handleResponse = async <T>(response: Response, originalRequest?: RequestIn
         const data = await refreshResponse.json();
 
         // Ensure new tokens are set
-        if (data.access_token) {
-          setToken(data.access_token);
+        const accessToken = data.access_token || data.token;
+        if (accessToken) {
+          setToken(accessToken);
           if (data.refresh_token) {
             setRefreshToken(data.refresh_token);
           }
@@ -163,12 +169,12 @@ const handleResponse = async <T>(response: Response, originalRequest?: RequestIn
             localStorage.setItem('token_expires_at', data.expires_at);
           }
 
-          processQueue(null, data.access_token);
+          processQueue(null, accessToken);
 
           // Retry the current failed request
           if (originalRequest) {
             if (!originalRequest.headers) originalRequest.headers = {};
-            (originalRequest.headers as Record<string, string>)['Authorization'] = `Bearer ${data.access_token}`;
+            (originalRequest.headers as Record<string, string>)['Authorization'] = `Bearer ${accessToken}`;
             const retryResp = await fetch(originalRequest.url, originalRequest);
             isRefreshing = false;
             return handleResponse<T>(retryResp);
@@ -214,6 +220,7 @@ export interface ApiRequestOptions extends RequestInit {
   params?: Record<string, any>;
   headers?: Record<string, string>;
   baseUrl?: string;
+  apiKey?: string;
   /** If true, do NOT attach the stored Bearer token to this request */
   skipAuth?: boolean;
 }
@@ -242,12 +249,48 @@ export const setBaseUrl = (url: string): void => {
   localStorage.setItem('api_base_url', url);
 };
 
+const normalizeEndpoint = (endpoint: string): string =>
+  endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+const withApiKey = (headers: Record<string, string> | undefined, apiKey?: string): Record<string, string> | undefined => {
+  if (!apiKey) return headers;
+  return { ...headers, 'X-API-Key': apiKey };
+};
+
+const toRequestInit = (options?: ApiRequestOptions): RequestInit => {
+  if (!options) return {};
+  const { params: _params, baseUrl: _baseUrl, apiKey: _apiKey, skipAuth: _skipAuth, ...requestInit } = options;
+  return requestInit;
+};
+
+const buildRequestConfig = (
+  method: string,
+  options: ApiRequestOptions | undefined,
+  shouldSkipAuth: boolean,
+  signal: AbortSignal,
+  body?: unknown
+): RequestInit => {
+  const requestInit = toRequestInit(options);
+  const config: RequestInit = {
+    ...requestInit,
+    method,
+    headers: buildHeaders(withApiKey(options?.headers, options?.apiKey), shouldSkipAuth),
+    signal,
+  };
+
+  if (body !== undefined) {
+    config.body = JSON.stringify(body);
+  }
+
+  return config;
+};
+
 export const apiClient = {
   // GET request
   get: async <T>(endpoint: string, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
     // Ensure endpoint starts with / for proper URL construction
-    const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const normalizedEndpoint = normalizeEndpoint(endpoint);
     const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
     console.log('[API Client] GET URL:', url);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
@@ -255,12 +298,7 @@ export const apiClient = {
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const reqConfig = {
-        method: 'GET',
-        headers: buildHeaders(options?.headers, shouldSkipAuth),
-        signal: controller.signal,
-        ...options,
-      };
+      const reqConfig = buildRequestConfig('GET', options, shouldSkipAuth, controller.signal);
       const response = await fetch(url, reqConfig);
       clearTimeout(timeoutId);
       return handleResponse<T>(response, { url, ...reqConfig });
@@ -275,7 +313,7 @@ export const apiClient = {
   post: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
     // Ensure endpoint starts with / for proper URL construction
-    const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const normalizedEndpoint = normalizeEndpoint(endpoint);
     const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
     console.log('[API Client] POST URL:', url);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
@@ -283,13 +321,7 @@ export const apiClient = {
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const reqConfig = {
-        method: 'POST',
-        headers: buildHeaders(options?.headers, shouldSkipAuth),
-        body: JSON.stringify(body),
-        signal: controller.signal,
-        ...options,
-      };
+      const reqConfig = buildRequestConfig('POST', options, shouldSkipAuth, controller.signal, body);
       const response = await fetch(url, reqConfig);
       clearTimeout(timeoutId);
       return handleResponse<T>(response, { url, ...reqConfig });
@@ -303,18 +335,14 @@ export const apiClient = {
   // PUT request
   put: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
-    const url = `${baseUrl}${endpoint}${buildQueryString(options?.params)}`;
+    const normalizedEndpoint = normalizeEndpoint(endpoint);
+    const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
+    const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const reqConfig = {
-        method: 'PUT',
-        headers: buildHeaders(options?.headers),
-        body: JSON.stringify(body),
-        signal: controller.signal,
-        ...options,
-      };
+      const reqConfig = buildRequestConfig('PUT', options, shouldSkipAuth, controller.signal, body);
       const response = await fetch(url, reqConfig);
       clearTimeout(timeoutId);
       return handleResponse<T>(response, { url, ...reqConfig });
@@ -328,18 +356,14 @@ export const apiClient = {
   // PATCH request
   patch: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
-    const url = `${baseUrl}${endpoint}${buildQueryString(options?.params)}`;
+    const normalizedEndpoint = normalizeEndpoint(endpoint);
+    const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
+    const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const reqConfig = {
-        method: 'PATCH',
-        headers: buildHeaders(options?.headers),
-        body: JSON.stringify(body),
-        signal: controller.signal,
-        ...options,
-      };
+      const reqConfig = buildRequestConfig('PATCH', options, shouldSkipAuth, controller.signal, body);
       const response = await fetch(url, reqConfig);
       clearTimeout(timeoutId);
       return handleResponse<T>(response, { url, ...reqConfig });
@@ -353,17 +377,14 @@ export const apiClient = {
   // DELETE request
   delete: async <T>(endpoint: string, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
-    const url = `${baseUrl}${endpoint}${buildQueryString(options?.params)}`;
+    const normalizedEndpoint = normalizeEndpoint(endpoint);
+    const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
+    const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
-      const reqConfig = {
-        method: 'DELETE',
-        headers: buildHeaders(options?.headers),
-        signal: controller.signal,
-        ...options,
-      };
+      const reqConfig = buildRequestConfig('DELETE', options, shouldSkipAuth, controller.signal);
       const response = await fetch(url, reqConfig);
       clearTimeout(timeoutId);
       return handleResponse<T>(response, { url, ...reqConfig });
@@ -411,7 +432,7 @@ export const apiClient = {
         }
       }
     }
-
+    throw lastError instanceof ApiError ? lastError : new ApiError(0, lastError?.message || 'Request failed');
   },
 };
 

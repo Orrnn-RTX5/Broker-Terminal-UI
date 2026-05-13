@@ -6,7 +6,7 @@
 import { Icon } from './ui/Icon';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { API_ENDPOINTS } from '../config/api';
+import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 
 interface AccountPanelProps {
   onClose: () => void;
@@ -23,7 +23,7 @@ interface Transaction {
 }
 
 export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnection }) => {
-  const { account } = useAppStore();
+  const { account, accountId } = useAppStore();
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -41,43 +41,41 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const response = await fetch(API_ENDPOINTS.account.summary, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-          }
+        const login = Number.parseInt(accountId || '', 10) || getStoredAccountLogin();
+        if (!login) return;
+        const data = await tradeGatewayApi.getAccount(login);
+        setAccountInfo({
+          accountNumber: `RTX-${login.toString().padStart(6, '0')}`,
+          accountType: 'Standard',
+          leverage: data.leverage || 100,
         });
-        if (response.ok) {
-          const data = await response.json();
-          setAccountInfo({
-            accountNumber: data.id ? `RTX-${data.id.toString().padStart(6, '0')}` : 'RTX-000000',
-            accountType: data.type || 'Standard',
-            leverage: data.leverage || 100,
-          });
-          setLeverage(data.leverage || 100);
-        }
+        setLeverage(data.leverage || 100);
       } catch (err) {
         console.error('Failed to fetch account profile:', err);
       }
     };
     fetchProfile();
-  }, []);
+  }, [accountId]);
 
   // Fetch transaction history
   useEffect(() => {
     const fetchTransactions = async () => {
       setIsLoadingTransactions(true);
       try {
-        const response = await fetch(API_ENDPOINTS.payments.history, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-          }
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setTransactions(data.slice(0, 10)); // Last 10 transactions
-        } else {
+        const login = Number.parseInt(accountId || '', 10) || getStoredAccountLogin();
+        if (!login) {
           setTransactions([]);
+          return;
         }
+        const data = await tradeGatewayApi.getBalanceHistory(login, 10);
+        setTransactions((data || []).slice(0, 10).map((item: any) => ({
+          id: String(item.id ?? item.time ?? Math.random()),
+          date: item.time ? new Date(item.time * 1000).toISOString() : new Date().toISOString(),
+          type: item.type === 'withdrawal' ? 'withdrawal' : 'deposit',
+          amount: Number(item.amount ?? 0),
+          status: 'completed',
+          method: item.comment,
+        })));
       } catch (error) {
         console.error('Failed to fetch transactions:', error);
         setTransactions([]);
@@ -87,46 +85,10 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
     };
 
     fetchTransactions();
-  }, []);
+  }, [accountId]);
 
-  // Handle leverage change
-  const handleLeverageChange = async (newLeverage: number) => {
-    try {
-      const response = await fetch(API_ENDPOINTS.account.settings, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-        },
-        body: JSON.stringify({ leverage: newLeverage }),
-      });
-
-      if (response.ok) {
-        setLeverage(newLeverage);
-      }
-    } catch (error) {
-      console.error('Failed to update leverage:', error);
-    }
-  };
-
-  // Handle one-click trading toggle
-  const handleOneClickToggle = async (enabled: boolean) => {
-    try {
-      const response = await fetch(API_ENDPOINTS.account.settings, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-        },
-        body: JSON.stringify({ oneClickTrading: enabled }),
-      });
-
-      if (response.ok) {
-        setOneClickTrading(enabled);
-      }
-    } catch (error) {
-      console.error('Failed to update one-click trading:', error);
-    }
+  const handleUnsupportedAccountAction = (action: string) => {
+    console.info(`${action} is not supported by the trade-facing API contract`);
   };
 
   return (
@@ -186,15 +148,21 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
           <div className="p-4 border-b border-zinc-800">
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => setShowDepositModal(true)}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400 text-sm font-medium transition-colors"
+                type="button"
+                disabled
+                title="Deposits are not supported by the trade-facing API contract"
+                onClick={() => handleUnsupportedAccountAction('Deposit')}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/50 border border-zinc-700 rounded-lg text-zinc-500 text-sm font-medium cursor-not-allowed"
               >
                 <Icon name="trending-up" size="sm" className="w-4 h-4" />
                 Deposit
               </button>
               <button
-                onClick={() => setShowWithdrawModal(true)}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-lg text-rose-400 text-sm font-medium transition-colors"
+                type="button"
+                disabled
+                title="Withdrawals are not supported by the trade-facing API contract"
+                onClick={() => handleUnsupportedAccountAction('Withdrawal')}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/50 border border-zinc-700 rounded-lg text-zinc-500 text-sm font-medium cursor-not-allowed"
               >
                 <Icon name="trending-up" size="sm" className="w-4 h-4 rotate-180" />
                 Withdraw
@@ -238,8 +206,10 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
                 <span className="text-xs text-zinc-400">Leverage</span>
                 <select
                   value={leverage}
-                  onChange={(e) => handleLeverageChange(Number(e.target.value))}
-                  className="bg-[#252525] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-zinc-600"
+                  disabled
+                  onChange={() => undefined}
+                  title="Leverage changes are not supported by the trade API"
+                  className="bg-[#252525] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-500 focus:outline-none cursor-not-allowed"
                 >
                   <option value={50}>1:50</option>
                   <option value={100}>1:100</option>
@@ -250,8 +220,11 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
 
               {/* Change Password Button */}
               <button
-                onClick={() => setShowPasswordModal(true)}
-                className="w-full flex items-center justify-between px-3 py-2 bg-[#252525] hover:bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
+                type="button"
+                disabled
+                title="Password changes are not supported by the trade-facing API contract"
+                onClick={() => handleUnsupportedAccountAction('Password changes')}
+                className="w-full flex items-center justify-between px-3 py-2 bg-[#252525] border border-zinc-700 rounded-lg text-xs text-zinc-500 cursor-not-allowed"
               >
                 <div className="flex items-center gap-2">
                   <Icon name="lock" size="sm" className="w-3.5 h-3.5 text-zinc-500" />
@@ -264,8 +237,11 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
               <div className="flex items-center justify-between py-2">
                 <span className="text-xs text-zinc-400">One-Click Trading</span>
                 <button
-                  onClick={() => handleOneClickToggle(!oneClickTrading)}
-                  className={`relative w-10 h-5 rounded-full transition-colors ${oneClickTrading ? 'bg-emerald-500' : 'bg-zinc-700'
+                  type="button"
+                  disabled
+                  title="One-click trading settings are not supported by the trade-facing API contract"
+                  onClick={() => handleUnsupportedAccountAction('One-click trading settings')}
+                  className={`relative w-10 h-5 rounded-full transition-colors cursor-not-allowed opacity-60 ${oneClickTrading ? 'bg-emerald-500' : 'bg-zinc-700'
                     }`}
                 >
                   <div
@@ -280,21 +256,6 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
       </div>
 
       {/* Modals */}
-      {showDepositModal && (
-        <PaymentModal
-          type="deposit"
-          onClose={() => setShowDepositModal(false)}
-        />
-      )}
-      {showWithdrawModal && (
-        <PaymentModal
-          type="withdrawal"
-          onClose={() => setShowWithdrawModal(false)}
-        />
-      )}
-      {showPasswordModal && (
-        <PasswordModal onClose={() => setShowPasswordModal(false)} />
-      )}
     </>
   );
 };
@@ -389,36 +350,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      const endpoint = type === 'deposit' ? API_ENDPOINTS.payments.deposit : API_ENDPOINTS.payments.withdrawal;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-        },
-        body: JSON.stringify({
-          amount: parseFloat(amount),
-          method,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Payment request failed');
-      }
-
-      setSuccess(true);
-      setTimeout(() => {
-        onClose();
-      }, 2000);
-    } catch (err: any) {
-      setError(err.message || 'Payment failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    setLoading(false);
+    setSuccess(false);
+    setError(`${type === 'deposit' ? 'Deposits' : 'Withdrawals'} are not supported by the trade-facing API contract.`);
   };
 
   const title = type === 'deposit' ? 'Deposit Funds' : 'Withdraw Funds';
@@ -515,7 +449,8 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setSuccess(false);
+    setError('Password changes are not supported by the trade-facing API contract.');
 
     if (newPassword !== confirmPassword) {
       setError('New passwords do not match');
@@ -527,34 +462,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
       return;
     }
 
-    setLoading(true);
-
-    try {
-      const response = await fetch(API_ENDPOINTS.account.password, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-        },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Password change failed');
-      }
-
-      setSuccess(true);
-      setTimeout(() => {
-        onClose();
-      }, 2000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to change password');
-    } finally {
-      setLoading(false);
-    }
+    setLoading(false);
   };
 
   return (

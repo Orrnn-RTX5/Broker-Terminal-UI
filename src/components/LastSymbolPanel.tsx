@@ -153,23 +153,22 @@ export function LastSymbolPanel() {
             try {
                 const orderData: any = {
                     symbol: lastSymbol,
-                    action: side.toLowerCase(),
+                    side: side.toLowerCase(),
                     volume: effectiveLot,
                     login: Number(accountId) || 0,
                     comment: 'RTX sync trade',
-                    client_request_id: `rtx-${Date.now()}`,
                 };
 
                 // Auto SL/TP
                 if (autoSLTP && slPips > 0) {
                     const basePrice = side === 'BUY' ? ask : bid;
                     if (basePrice > 0) {
-                        orderData.sl =
+                        orderData.price_sl =
                             side === 'BUY'
                                 ? basePrice - slPips * pipSize
                                 : basePrice + slPips * pipSize;
                         if (tpPips > 0) {
-                            orderData.tp =
+                            orderData.price_tp =
                                 side === 'BUY'
                                     ? basePrice + tpPips * pipSize
                                     : basePrice - tpPips * pipSize;
@@ -177,8 +176,9 @@ export function LastSymbolPanel() {
                     }
                 }
 
-                await api.mt5.submitOrder(orderData);
+                await api.orders.placeMarketOrder(orderData);
                 setLastSymbol(lastSymbol, side);
+                window.dispatchEvent(new Event('rtx:force-refresh-positions'));
                 flash(`${side} ${effectiveLot} ${lastSymbol} ✓`, 'success');
             } catch (err: any) {
                 console.error('LastSymbolPanel order failed:', err);
@@ -199,16 +199,19 @@ export function LastSymbolPanel() {
 
         setIsClosing(true);
         try {
-            const login = Number(accountId) || 0;
             let closed = 0;
             for (const pos of lastSymbolPositions) {
                 try {
-                    await api.mt5.closePosition(pos.id, undefined, login);
+                    await api.positions.closePosition(String(pos.id));
                     closed++;
                 } catch (e) {
                     console.error('Failed to close position', pos.id, e);
                 }
             }
+            useAppStore.getState().setPositions(useAppStore.getState().positions.filter(
+                (pos) => pos.symbol.toUpperCase() !== lastSymbol.toUpperCase()
+            ));
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
             flash(`Closed ${closed} position(s) on ${lastSymbol} ✓`, 'success');
         } catch (err: any) {
             flash(err.message || 'Close failed', 'error');

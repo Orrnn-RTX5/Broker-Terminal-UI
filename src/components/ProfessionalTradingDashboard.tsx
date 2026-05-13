@@ -5,9 +5,12 @@ import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-c
 
 import { MarketWatch } from './MarketWatch';
 import './ProfessionalTradingDashboard.css';
-import { WS_ENDPOINTS, buildApiUrl } from '../config/api';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { buildApiV2WsUrl } from '../config/api';
 import { marketApi } from '../services/api';
+import { useTradeFacingData } from '../hooks/useTradeFacingData';
+import { getAuthToken } from '../api/client';
+import { tradeApi } from '../api/trade';
+import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 
 // Icons as React components for better performance
 const Icons = {
@@ -260,8 +263,20 @@ interface OHLC {
 type ChartTool = 'crosshair' | 'trendline' | 'horizontal' | 'vertical' | 'fibonacci' | 'brush' | 'text' | 'measure' | 'zoom_in' | 'zoom_out';
 type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1D' | '1W' | '1M';
 type Indicator = 'MA' | 'EMA' | 'RSI' | 'MACD' | 'BB' | 'Volume';
+const toContractTimeframe = (timeframe: Timeframe): string => ({
+    '1m': 'M1',
+    '5m': 'M5',
+    '15m': 'M15',
+    '30m': 'M30',
+    '1h': 'H1',
+    '4h': 'H4',
+    '1D': 'D1',
+    '1W': 'W1',
+    '1M': 'MN',
+}[timeframe]);
 
 const ProfessionalTradingDashboard: React.FC = () => {
+    useTradeFacingData(undefined, 15000);
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -537,8 +552,9 @@ const ProfessionalTradingDashboard: React.FC = () => {
     // Fetch historical data
     const fetchHistoricalData = async () => {
         try {
+            const apiTimeframe = toContractTimeframe(selectedTimeframe);
             const response = await fetch(
-                buildApiUrl(`/api/history/ohlc?symbol=${selectedSymbol}&timeframe=${selectedTimeframe}&limit=500`)
+                tradeGatewayApi.getHistoryUrl(selectedSymbol, apiTimeframe, 500)
             );
             const rawData = await response.json();
             const candlesArray = Array.isArray(rawData) ? rawData : (rawData.candles || []);
@@ -554,7 +570,7 @@ const ProfessionalTradingDashboard: React.FC = () => {
 
                 const formattedVolumes = candlesArray.map((c: any) => ({
                     time: (c.time || c.timestamp) as Time,
-                    value: c.volume || 0,
+                    value: c.volume || c.tick_count || 0,
                     color: c.close >= c.open ? '#10B98133' : '#EF444433',
                 }));
 
@@ -586,7 +602,7 @@ const ProfessionalTradingDashboard: React.FC = () => {
                     high: latest.high,
                     low: latest.low,
                     close: latest.close,
-                    volume: latest.volume || 0
+                    volume: latest.volume || latest.tick_count || 0
                 };
             }
         } catch (error) {
@@ -596,20 +612,19 @@ const ProfessionalTradingDashboard: React.FC = () => {
 
     const formingCandleRef = useRef<OHLC | null>(null);
 
-    // Use centralized WebSocket with auto-reconnection
-    const { subscribe } = useWebSocket({
-        url: WS_ENDPOINTS.general,
-        autoConnect: true,
-    });
-
     // WebSocket connection for live updates
     useEffect(() => {
-        const unsubscribe = subscribe('*', (message: any) => {
+        const token = getAuthToken() || undefined;
+        const socket = new WebSocket(buildApiV2WsUrl(token));
+        const apiTimeframe = toContractTimeframe(selectedTimeframe);
+        const handleMessage = (event: MessageEvent) => {
             try {
-                const data = message;
+                const message = JSON.parse(event.data);
+                const channel = String(message.channel ?? '');
+                const data = message.data ?? message.payload ?? message;
 
                 // Handle 'tick' for current price display (Bid/Ask/Spread)
-                if (data.type === 'tick' && data.symbol === selectedSymbol) {
+                if (channel === `ticks.${selectedSymbol}` || (data.symbol === selectedSymbol && data.bid != null)) {
                     const price = data.bid;
                     const ask = data.ask || price;
 
@@ -622,23 +637,20 @@ const ProfessionalTradingDashboard: React.FC = () => {
                 }
 
                 // Handle 'candle_update' for Chart
-                if (data.type === 'candle_update' && data.symbol === selectedSymbol && data.timeframe === 'M1') {
-                    // Only verify mapping for M1 current timeframe,
-                    // generic handling would need timeframe check against selectedTimeframe
-                    if (selectedTimeframe !== '1m') return;
-
+                if (channel === `candles.${selectedSymbol}.${apiTimeframe}` || (data.symbol === selectedSymbol && data.open != null && data.close != null)) {
+                    const candle = Array.isArray(data) ? data[data.length - 1] : data;
                     const candleVal = {
-                        time: data.time as Time,
-                        open: data.open,
-                        high: data.high,
-                        low: data.low,
-                        close: data.close,
+                        time: candle.time as Time,
+                        open: candle.open,
+                        high: candle.high,
+                        low: candle.low,
+                        close: candle.close,
                     };
 
                     const volumeVal = {
-                        time: data.time as Time,
-                        value: data.volume,
-                        color: data.close >= data.open ? '#10B98133' : '#EF444433'
+                        time: candle.time as Time,
+                        value: candle.volume || candle.tick_count || 0,
+                        color: candle.close >= candle.open ? '#10B98133' : '#EF444433'
                     };
 
                     if (candleSeriesRef.current) {
@@ -650,50 +662,36 @@ const ProfessionalTradingDashboard: React.FC = () => {
 
                     // Update forming candle ref for other logic if needed
                     formingCandleRef.current = {
-                        time: data.time,
-                        open: data.open,
-                        high: data.high,
-                        low: data.low,
-                        close: data.close,
-                        volume: data.volume
+                        time: candle.time,
+                        open: candle.open,
+                        high: candle.high,
+                        low: candle.low,
+                        close: candle.close,
+                        volume: candle.volume || candle.tick_count || 0
                     };
                 }
             } catch (error) {
                 console.error('WebSocket message error:', error);
             }
-        });
+        };
+
+        socket.onopen = () => {
+            if (token) socket.send(JSON.stringify({ action: 'auth', token }));
+            socket.send(JSON.stringify({ action: 'subscribe', channel: `ticks.${selectedSymbol}` }));
+            socket.send(JSON.stringify({ action: 'subscribe', channel: `candles.${selectedSymbol}.${apiTimeframe}` }));
+        };
+        socket.addEventListener('message', handleMessage);
 
         return () => {
-            unsubscribe();
+            socket.removeEventListener('message', handleMessage);
+            socket.close(1000, 'dashboard chart changed');
         };
-    }, [selectedSymbol, selectedTimeframe, subscribe]);
+    }, [selectedSymbol, selectedTimeframe]);
 
     // Refetch chart history when selected symbol changes
     useEffect(() => {
         fetchHistoricalData();
     }, [selectedSymbol, selectedTimeframe]);
-
-    // Subscribe to ALL Market Watch symbols to ensure live updates for the panel
-    useEffect(() => {
-        if (symbols.length === 0) return;
-
-        const subscribeAll = async () => {
-            console.log('Subscribing to full Market Watch list...');
-            // Use the dynamically loaded symbols array
-            symbols.forEach(async (sym) => {
-                try {
-                    await fetch(`${buildApiUrl('')}/api/symbols/subscribe`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ symbol: sym })
-                    });
-                } catch (err) {
-                    console.error(`Failed to subscribe ${sym}:`, err);
-                }
-            });
-        };
-        subscribeAll();
-    }, [symbols]);
 
     const toggleIndicator = (indicator: Indicator) => {
         setActiveIndicators(prev =>
@@ -717,44 +715,23 @@ const ProfessionalTradingDashboard: React.FC = () => {
         return volume.toFixed(2);
     };
 
-    const placeOrder = async (side: string) => {
+    const placeOrder = async (side: 'BUY' | 'SELL') => {
         try {
-            const response = await fetch(`${buildApiUrl('')}/api/orders/market`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    symbol: selectedSymbol,
-                    side: side,
-                    volume: tradingVolume,
-                    type: 'MARKET'
-                }),
+            const login = getStoredAccountLogin();
+            if (!login) {
+                console.error('Order placement blocked: missing account login');
+                return;
+            }
+
+            const data = await tradeApi.trading.placeOrder({
+                login,
+                symbol: selectedSymbol,
+                side: side.toLowerCase() as 'buy' | 'sell',
+                volume: tradingVolume,
             });
 
-            const data = await response.json();
-
-            if (response.ok) {
-                console.log('Order placed successfully:', data);
-                // Optional: Show success notification or updated account info
-            } else {
-                console.error('Order placement failed:', data);
-                // Fallback to legacy endpoint if simple B-Book fails or for debugging
-                if (response.status === 404) {
-                    // Try legacy OANDA/A-Book endpoint
-                    const legacyResponse = await fetch(`${buildApiUrl('')}/order`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            symbol: selectedSymbol,
-                            side: side,
-                            volume: tradingVolume,
-                            type: 'MARKET'
-                        })
-                    });
-                    if (legacyResponse.ok) console.log('Legacy Order placed');
-                }
-            }
+            console.log('Order placed successfully:', data);
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
         } catch (error) {
             console.error('Error placing order:', error);
         }

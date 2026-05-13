@@ -7,6 +7,8 @@ import { CodeBaseTab, ArticlesTab, ExpertsTab } from './layout/ResearchTabs';
 import { JournalTab } from './layout/JournalTab';
 import { HistoryDownloader } from './HistoryDownloader';
 import { useAppStore } from '../store/useAppStore';
+import { useTradeFacingData } from '../hooks/useTradeFacingData';
+import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 
 // BottomDock reads trading data from the store directly to avoid re-rendering
 // the chart panel every time positions update (root cause of post-trade crashes).
@@ -22,10 +24,10 @@ interface BottomDockProps {
 type TabType = 'Toolbox' | 'Trade' | 'Exposure' | 'History' | 'News' | 'Mailbox' | 'Calendar' | 'Company' | 'Alerts' | 'Articles' | 'Code Base' | 'Experts' | 'Journal' | 'Historical Data';
 
 const TABS: { id: TabType; icon?: any }[] = [
-    { id: 'Toolbox' },
     { id: 'Trade' },
-    { id: 'Exposure' },
     { id: 'History' },
+    { id: 'Exposure' },
+    { id: 'Toolbox' },
     { id: 'Historical Data' },
     { id: 'News' },
     { id: 'Mailbox' },
@@ -43,16 +45,18 @@ export function BottomDock({
     onHeightChange,
     onClosePosition,
     onModifyPosition,
+    onCloseBulk,
 }: BottomDockProps) {
     // Read trading data directly from store — NOT from props
     // This prevents DockWorkspace.renderPanel from needing to re-create when positions change
     const positions = useAppStore(s => s.positions);
     const account = useAppStore(s => s.account);
     const history = useAppStore(s => s.trades);
+    useTradeFacingData(undefined, 10000);
     const [activeTab, setActiveTab] = useState<TabType>(() => {
         const saved = localStorage.getItem('bottomdock-active-tab');
         // If no saved value or it was the old default 'Toolbox', start on Journal
-        if (!saved || saved === 'Toolbox') return 'Journal';
+        if (!saved || saved === 'Toolbox' || saved === 'Journal') return 'Trade';
         return saved as TabType;
     });
     const [isResizing, setIsResizing] = useState(false);
@@ -158,6 +162,7 @@ export function BottomDock({
                         account={account}
                         onClosePosition={onClosePosition}
                         onModifyPosition={onModifyPosition}
+                        onCloseBulk={onCloseBulk}
                         formatMoney={formatMoney}
                         formatDate={formatDate}
                     />
@@ -190,23 +195,27 @@ export function BottomDock({
                 )}
 
                 {/* Placeholder Tabs */}
-                {['News', 'Mailbox', 'Company', 'Alerts'].includes(activeTab) && (
+                {['News', 'Company', 'Mailbox', 'Alerts'].includes(activeTab) && (
                     <PlaceholderTab title={activeTab} />
                 )}
             </div>
 
             {/* Bottom Tabs */}
-            <div className="rtx-bottom-dock__tabs flex items-center bg-[#131316] border-t border-zinc-700 select-none overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-700">
+            <div className="rtx-bottom-dock__tabs flex items-center bg-transparent border-t border-white/5 select-none overflow-x-auto scrollbar-thin scrollbar-thumb-white/10 px-2 py-1 gap-1">
                 {TABS.map((tab) => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`px-3 py-1 text-[11px] font-medium transition-all whitespace-nowrap border-r border-zinc-700/50 relative
+                        className={`px-4 py-1.5 text-[11px] font-semibold transition-all duration-300 whitespace-nowrap rounded-md relative overflow-hidden group
                         ${activeTab === tab.id
-                                ? 'text-white bg-[#191a1e] shadow-[inset_0_2px_0_0_#8a8a8f] font-semibold'
-                                : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#191a1e]/60'}`}
+                                ? 'text-white bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.1)] border border-white/20'
+                                : 'text-slate-400 border border-transparent hover:text-white hover:bg-white/5'}`}
                     >
-                        {tab.id}
+                        {activeTab === tab.id && (
+                            <span className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-500 shadow-[0_-2px_10px_rgba(99,102,241,0.5)]"></span>
+                        )}
+                        <span className="relative z-10">{tab.id}</span>
+                        <div className="absolute inset-0 bg-gradient-to-t from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     </button>
                 ))}
             </div>
@@ -326,7 +335,7 @@ function BlinkingText({ value, formatFn, prefix = '', suffix = '', defaultColor 
     return <span className={`${defaultColor} px-0.5 rounded-sm inline-block`}>{prefix}{formatFn ? formatFn(value) : value}{suffix}</span>;
 }
 
-function TradeTab({ positions, account, onClosePosition, onModifyPosition, formatMoney, formatDate }: any) {
+function TradeTab({ positions, account, onClosePosition, onModifyPosition, onCloseBulk, formatMoney, formatDate }: any) {
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editSL, setEditSL] = useState("");
     const [editTP, setEditTP] = useState("");
@@ -516,6 +525,30 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, forma
                 <span className="flex gap-1"><span className="text-zinc-500">Free Margin:</span> <BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
                 <span className="flex gap-1"><span className="text-zinc-500">Margin Level:</span> <BlinkingText value={liveMarginLevel} formatFn={formatMoney} suffix=" %" /></span>
                 <div className="flex-1"></div>
+                <button
+                    type="button"
+                    onClick={() => onCloseBulk?.('WINNERS')}
+                    disabled={!onCloseBulk || livePositions.length === 0}
+                    className="px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                    Close Winners
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onCloseBulk?.('LOSERS')}
+                    disabled={!onCloseBulk || livePositions.length === 0}
+                    className="px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                    Close Losers
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onCloseBulk?.('ALL')}
+                    disabled={!onCloseBulk || livePositions.length === 0}
+                    className="px-2 py-0.5 rounded-sm border border-red-800/70 text-red-300 hover:bg-red-950/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                    Close All
+                </button>
                 <span className="pr-4 font-bold text-zinc-100"><BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL >= 0 ? "text-emerald-400" : "text-red-400"} /></span>
             </div>
             {/* Modify Position Dialog */}
@@ -616,30 +649,17 @@ function HistoryTab({ formatMoney }: any) {
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'today' | 'week' | 'month' | 'all'>('all');
 
-    const getLogin = (): number => {
-        try {
-            const token = localStorage.getItem('auth_token') || '';
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            return parseInt(payload.user_id || payload.login || payload.sub || '0', 10);
-        } catch { return 0; }
-    };
-
     const fetchHistory = async () => {
-        const login = getLogin();
+        const login = getStoredAccountLogin();
         if (!login) { setError('No account login found'); return; }
         setLoading(true);
         setError(null);
         try {
-            const token = localStorage.getItem('auth_token') || '';
-            const isElectron = !!(window as any).electron || !!(window as any).electronAPI || navigator.userAgent.includes('Electron') || window.location.protocol === 'file:';
-            const baseUrl = isElectron ? 'https://rtxbackend.tradecopier.org' : '';
-            const res = await fetch(`${baseUrl}/api/v1/orders/history?login=${login}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-            });
-            const data = await res.json();
-            setOrders(Array.isArray(data?.orders) ? data.orders : []);
+            const data = await tradeGatewayApi.getOrderHistory(login);
+            setOrders(data);
         } catch (err: any) {
             console.warn('[History] Failed to load:', err);
+            setError(err?.message || 'Failed to load history');
         } finally {
             setLoading(false);
         }
@@ -650,12 +670,12 @@ function HistoryTab({ formatMoney }: any) {
     const filteredOrders = useMemo(() => {
         if (filter === 'all') return orders;
         const cutoff = Date.now() - (filter === 'today' ? 86400000 : filter === 'week' ? 7 * 86400000 : 30 * 86400000);
-        return orders.filter(o => ((o.time_done || o.time_setup || 0) * 1000) >= cutoff);
+        return orders.filter(o => Date.parse(o.closeTime || o.openTime || '') >= cutoff);
     }, [orders, filter]);
 
-    const formatTs = (ts: number) => {
-        if (!ts) return '-';
-        return new Date(ts * 1000).toLocaleString('en-US', {
+    const formatTs = (value: string) => {
+        if (!value) return '-';
+        return new Date(value).toLocaleString('en-US', {
             year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
         }).replace(',', '');
@@ -718,30 +738,30 @@ function HistoryTab({ formatMoney }: any) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[11px]">
-                            {[...filteredOrders].reverse().map((o: any, i: number) => (
-                                <tr key={o.order ?? i}
-                                    className={`${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors`}>
-                                    <td className="p-1 pl-2 border-r border-zinc-800 text-zinc-500">{o.order ?? '-'}</td>
-                                    <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">{formatTs(o.time_setup)}</td>
-                                    <td className={`p-1 border-r border-zinc-800 font-bold text-[10px] ${typeColor(o.type_text)}`}>{(o.type_text || '-').toUpperCase()}</td>
+                            {filteredOrders.map((o: any, i: number) => (
+                                <tr key={`${o.type}-${o.id}-${i}`}
+                                    className={`group transition-all duration-300 ease-in-out hover:bg-gradient-to-r hover:from-blue-500/10 hover:via-indigo-500/5 hover:to-transparent hover:shadow-[inset_2px_0_0_rgba(99,102,241,0.8)]`}>
+                                    <td className="p-1 pl-2 border-r border-zinc-800 text-zinc-500">{o.id ?? '-'}</td>
+                                    <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">{formatTs(o.openTime)}</td>
+                                    <td className={`p-1 border-r border-zinc-800 font-bold text-[10px] ${typeColor(o.side)}`}>{(o.side || o.type || '-').toUpperCase()}</td>
                                     <td className="p-1 border-r border-zinc-800 text-right font-medium text-zinc-200">
-                                        {o.volume_initial_lots != null ? Number(o.volume_initial_lots).toFixed(2) : '-'}
+                                        {o.volume != null ? Number(o.volume).toFixed(2) : '-'}
                                     </td>
                                     <td className="p-1 border-r border-zinc-800 font-bold text-zinc-100 pl-3">{o.symbol ?? '-'}</td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">
-                                        {o.price_order ? <PriceDisplay price={o.price_order} symbol={o.symbol} /> : '-'}
+                                        {o.openPrice ? <PriceDisplay price={o.openPrice} symbol={o.symbol} /> : '-'}
                                     </td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-500">
-                                        {o.price_sl > 0 ? <PriceDisplay price={o.price_sl} symbol={o.symbol} /> : '-'}
+                                        -
                                     </td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-500">
-                                        {o.price_tp > 0 ? <PriceDisplay price={o.price_tp} symbol={o.symbol} /> : '-'}
+                                        -
                                     </td>
-                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-400 text-[10px]">{formatTs(o.time_done)}</td>
+                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-400 text-[10px]">{formatTs(o.closeTime || o.openTime)}</td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">
-                                        {o.price_current ? <PriceDisplay price={o.price_current} symbol={o.symbol} /> : '-'}
+                                        {o.closePrice ? <PriceDisplay price={o.closePrice} symbol={o.symbol} /> : '-'}
                                     </td>
-                                    <td className="p-1 pr-2 text-right text-zinc-500 text-[10px]">{o.state_text ?? '-'}</td>
+                                    <td className="p-1 pr-2 text-right text-zinc-500 text-[10px]">{o.type ?? '-'}</td>
                                 </tr>
                             ))}
                         </tbody>

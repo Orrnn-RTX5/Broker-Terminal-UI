@@ -11,7 +11,6 @@ import { AlertsContainer } from './components/AlertsContainer';
 import { useAppStore } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
 import { useWatchlistStore } from './store/useWatchlistStore';
-import { useMT5Store } from './store/useMT5Store';
 import { terminateWorker } from './services/aggregationWorkerManager';
 import { API_BASE_URL, WS_ENDPOINTS } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -20,10 +19,10 @@ import { LastSymbolPanel } from './components/LastSymbolPanel';
 import { useLastSymbolStore } from './store/useLastSymbolStore';
 import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
-import mt5TradeService from './services/mt5TradeService';
-import apiClient from './api/client';
-import * as endpoints from './api/endpoints';
+import { accountV2Api, tradingV2Api } from './api/trade';
+import { tradeGatewayApi } from './api/tradeGateway';
 import { OneClickTrading } from './components/OneClickTrading';
+import { getStoredBrokerServer } from './services/brokerServers';
 
 // Layout Components
 import { TopToolbar } from './components/layout/TopToolbar';
@@ -281,9 +280,9 @@ const normalizePositions = (payload: unknown): Position[] => {
       : [];
 
   return source.map((raw: RawRecord, index: number) => {
-    const parsedId = Number.parseInt(String(raw.id ?? index + 1), 10);
-    const openPrice = toNumber(raw.open_price ?? raw.openPrice ?? raw.price, 0);
-    const currentPrice = toNumber(raw.current_price ?? raw.currentPrice, openPrice);
+    const parsedId = Number.parseInt(String(raw.ticket ?? raw.id ?? index + 1), 10);
+    const openPrice = toNumber(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.price, 0);
+    const currentPrice = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, openPrice);
     const rawSide = String(raw.side ?? '').toLowerCase();
 
     return {
@@ -293,12 +292,12 @@ const normalizePositions = (payload: unknown): Position[] => {
       volume: toNumber(raw.quantity ?? raw.volume, 0),
       openPrice,
       currentPrice,
-      openTime: String(raw.opened_at ?? raw.openTime ?? new Date().toISOString()),
-      sl: toNumber(raw.sl, 0),
-      tp: toNumber(raw.tp, 0),
+      openTime: String(raw.opened_at ?? raw.openTime ?? (raw.time_create ? new Date(toNumber(raw.time_create) * 1000).toISOString() : new Date().toISOString())),
+      sl: toNumber(raw.price_sl ?? raw.sl, 0),
+      tp: toNumber(raw.price_tp ?? raw.tp, 0),
       swap: toNumber(raw.swap, 0),
       commission: toNumber(raw.commission, 0),
-      unrealizedPnL: toNumber(raw.unrealized_pl ?? raw.unrealizedPnL, 0),
+      unrealizedPnL: toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0),
     };
   });
 };
@@ -385,6 +384,34 @@ const extractAccountPayload = (message: any): RawRecord => {
   return {};
 };
 
+const POSITION_CLOSED_EVENTS = new Set(['close', 'closed', 'sl_hit', 'tp_hit']);
+
+const toV2Timeframe = (value: string | undefined): string => {
+  const normalized = String(value || 'M1').trim().toUpperCase();
+  const map: Record<string, string> = {
+    '1M': 'M1',
+    '5M': 'M5',
+    '15M': 'M15',
+    '30M': 'M30',
+    '1H': 'H1',
+    '4H': 'H4',
+    '1D': 'D1',
+    '1W': 'W1',
+  };
+  return map[normalized] || normalized;
+};
+
+const getPositionEventName = (message: any): string => {
+  const raw = message?.event ?? message?.type ?? message?.action ?? message?.data?.event ?? message?.data?.type ?? message?.data?.action ?? message?.data?.reason;
+  return String(raw ?? '').trim().toLowerCase();
+};
+
+const getPositionEventTicket = (message: any): number | null => {
+  const payload = message?.position ?? message?.data?.position ?? message?.data ?? message;
+  const ticket = Number.parseInt(String(payload?.ticket ?? payload?.id ?? payload?.position_ticket ?? message?.ticket ?? ''), 10);
+  return Number.isFinite(ticket) && ticket > 0 ? ticket : null;
+};
+
 function App() {
   const DEFAULT_CHART_TIMEFRAME: Timeframe = 'M5';
   const TIMEFRAME_MIGRATION_KEY = 'rtx5_timeframe_default_v2';
@@ -463,7 +490,7 @@ function App() {
     return () => window.removeEventListener('rtx:logout', handleLogoutEvent);
   }, []);
 
-  // Session restore: re-login with saved credentials, fallback to old token
+  // Session restore uses existing token state only; App must not decode or replay saved passwords.
   useEffect(() => {
     const restoreSession = async () => {
       setIsAutoAuthenticating(true);
@@ -472,11 +499,16 @@ function App() {
       const token = localStorage.getItem('auth_token');
       const refreshToken = localStorage.getItem('refresh_token');
       const rememberedLogin = localStorage.getItem('rtx_saved_username') || localStorage.getItem('rtx_last_login');
-      const savedPassword = localStorage.getItem('rtx_saved_password');
+      localStorage.removeItem('rtx_saved_password');
 
       // Also check savedAccounts from persisted store for multi-account support
       const storeState = useAppStore.getState();
       const savedAccounts = storeState.savedAccounts || [];
+      if (savedAccounts.some((account: any) => account.password)) {
+        useAppStore.setState({
+          savedAccounts: savedAccounts.map(({ password: _password, ...account }: any) => account)
+        } as any);
+      }
       const lastAccountId = storeState.accountId;
 
       // Determine which login to restore: prefer store's active accountId, then localStorage
@@ -494,32 +526,7 @@ function App() {
       }
 
       try {
-        // Strategy 1: Try savedAccounts password (multi-account aware)
-        const savedAccount = savedAccounts.find(a => a.login === loginId);
-        const passwordToUse = savedAccount?.password || savedPassword;
-
-        if (passwordToUse) {
-          try {
-            const password = atob(passwordToUse);
-            const response = await api.auth.login(String(loginId), password);
-
-            if (response && response.access_token) {
-              const expiresAt = response.expires_at ? new Date(response.expires_at).getTime() : undefined;
-              useAppStore.getState().setAuthTokens(response.access_token, response.refresh_token, expiresAt);
-              useAppStore.getState().setAuthenticated(true, String(loginId), response.access_token, response.refresh_token, expiresAt);
-              // Keep localStorage in sync for backward compatibility
-              localStorage.setItem('rtx_saved_username', String(loginId));
-              localStorage.setItem('rtx_saved_password', passwordToUse);
-              localStorage.setItem('rtx_last_login', String(loginId));
-              setIsAuthenticated(true);
-              setAccountId(String(loginId));
-              console.log('[Session] Restored via re-login for:', loginId);
-              return;
-            }
-          } catch (loginErr: any) {
-            console.log('[Session] Re-login failed, trying old token:', loginErr.message);
-          }
-        }
+        // Saved-password re-login intentionally removed. Validate the current token only.
 
         // Strategy 2: Fallback — try old token 
         if (token || refreshToken) {
@@ -534,7 +541,7 @@ function App() {
           useAppStore.getState().setAuthenticated(true, restoredAccountId, activeToken, activeRefresh, expiresAt);
           setIsAuthenticated(true);
           setAccountId(restoredAccountId);
-          console.log('[Session] Restored via old token for:', restoredAccountId);
+          console.log('[Session] Restored via token for:', restoredAccountId);
           return;
         }
       } catch (err: any) {
@@ -895,6 +902,20 @@ function App() {
     }
   }, []);
 
+  const refreshOrdersAndHistory = useCallback(async (login?: number) => {
+    const resolvedLogin = login || parsePositiveInt(accountId);
+    if (!resolvedLogin) return;
+
+    const [pendingOrders, orderHistory] = await Promise.all([
+      api.orders.getPendingOrders().catch(() => []),
+      tradeGatewayApi.getOrderHistory(resolvedLogin).catch(() => []),
+    ]);
+
+    setOrders(pendingOrders as any);
+    useAppStore.getState().setOrders(pendingOrders as any);
+    useAppStore.getState().setTrades(orderHistory as any);
+  }, [accountId]);
+
   useEffect(() => {
     const handleSync = () => refreshPositions();
     window.addEventListener('rtx:force-refresh-positions', handleSync);
@@ -911,17 +932,14 @@ function App() {
     }
     closingTicketsRef.current.add(id);
 
-    // Optimistically remove from both stores immediately
+    // Optimistically remove from the app store immediately.
     useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== id));
-    import('./store/useMT5Store').then(({ useMT5Store }) => {
-        useMT5Store.setState(prev => ({ positions: prev.positions.filter(p => p.ticket !== id) }));
-    });
     // Trigger close sound
     import('./utils/audio').then(m => m.playSystemSound('close'));
     window.dispatchEvent(new Event('rtx:force-refresh-positions'));
 
     try {
-      await api.mt5.closePosition(id, undefined, parsePositiveInt(accountId) || 0);
+      await api.positions.closePosition(String(id));
       refreshPositions();
     } catch (err: any) {
       console.error('Failed to close position:', err);
@@ -943,17 +961,12 @@ function App() {
 
   const handleModifyPosition = async (id: number, sl: number, tp: number) => {
     try {
-      const data = await mt5TradeService.modifyTrade({
-        ticket: id,
-        stopLoss: sl,
-        takeProfit: tp,
+      await tradingV2Api.modifyPosition(id, {
+        price_sl: sl,
+        price_tp: tp,
       });
-      if (!data.success) {
-        console.error(data.retcode_text || 'Modification failed');
-      } else {
-        // Refresh positions so chart draws the new SL/TP lines
-        refreshPositions();
-      }
+      // Refresh positions so chart draws the new SL/TP lines
+      refreshPositions();
     } catch (err: any) {
       console.error('Failed to modify position:', err);
     }
@@ -962,19 +975,26 @@ function App() {
   const handleCloseBulk = async (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => {
     if (!confirm(`Close ${type} positions?`)) return;
 
-    // Fast visual clearance (may not match exactly, but refreshes shortly)
-    if (type === 'ALL') {
-        useAppStore.getState().setPositions([]);
-        import('./store/useMT5Store').then(({ useMT5Store }) => {
-            useMT5Store.setState({ positions: [] });
-        });
-        window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-    }
-
     try {
-      const accId = Number(accountId);
-      if (isNaN(accId)) return;
-      await api.positions.closeBulk(accId, type, symbol);
+      const accId = parsePositiveInt(accountId);
+      if (!accId) return;
+
+      if (type === 'ALL' && !symbol) {
+        await accountV2Api.closeAllPositions(accId);
+        useAppStore.getState().setPositions([]);
+      } else {
+        const openPositions = normalizePositions(await tradingV2Api.getPositions(accId, { limit: 500, offset: 0 }).catch(() => api.positions.getPositions(accId) as any));
+        const candidates = openPositions.filter((position) => {
+          if (symbol && position.symbol !== symbol) return false;
+          if (type === 'ALL') return true;
+          const profit = Number(position.unrealizedPnL ?? 0);
+          return type === 'WINNERS' ? profit > 0 : profit < 0;
+        });
+
+        await Promise.all(candidates.map((position) => tradingV2Api.closePosition(position.id)));
+      }
+
+      window.dispatchEvent(new Event('rtx:force-refresh-positions'));
       refreshPositions();
     } catch (err) {
       console.error('Bulk close failed:', err);
@@ -1000,12 +1020,11 @@ function App() {
           useAppStore.getState().setTrades([] as any);
         }
 
-        const [accPayload, posPayload, ordPayload, histPayload, ledgPayload] = await Promise.all([
+        const [accPayload, posPayload, ordPayload, histPayload] = await Promise.all([
           api.account.getAccountSummary(loginId).catch((e) => { if (isInitial) console.error('[REST Error] getAccountSummary failed:', e); return null; }),
           api.positions.getPositions().catch(() => []),
           api.orders.getPendingOrders().catch(() => []),
-          api.history.getLedger().catch(() => []),
-          api.history.getLedger().catch(() => []) // Ledger aliases history
+          tradeGatewayApi.getOrderHistory(loginId).catch(() => [])
         ]);
 
         // Write account data to the Zustand store directly — NOT to App local state.
@@ -1020,10 +1039,20 @@ function App() {
           const raw = accPayload as any;
           const accountName = raw?.name || raw?.account_name || raw?.display_name || raw?.user_name || '';
           if (accountName) {
-            useAppStore.getState().addSavedAccount({
+            const appState = useAppStore.getState();
+            const existingAccount = appState.savedAccounts.find((account) => account.login === loginId);
+            const serverFromPayload = [
+              raw?.broker_server,
+              raw?.server,
+              raw?.server_name,
+              raw?.mt5_server,
+              raw?.trade_server,
+            ].map((server) => typeof server === 'string' ? server.trim() : '').find(Boolean);
+
+            appState.addSavedAccount({
               login: loginId,
               name: accountName,
-              server: 'FlexyMarkets-Server',
+              server: existingAccount?.server || serverFromPayload || getStoredBrokerServer(),
               isLive: true,
               lastUsed: Date.now(),
             });
@@ -1064,8 +1093,7 @@ function App() {
     isConnected,
     connectionState,
     reconnect,
-    subscribe,
-    sendMessage
+    subscribe
   } = useWebSocket({
     url: WS_ENDPOINTS.general,
     autoConnect: isAuthenticated,
@@ -1081,7 +1109,7 @@ function App() {
     console.log(`[App] WebSocket connection state: ${connectionState}, isConnected: ${isConnected}`);
   }, [connectionState, isConnected]);
 
-  // Subscribe to ALL symbols in active watchlist via WebSocket (fixapibackend format)
+  // Subscribe to market data through swagger v2 action/channel websocket messages.
   useEffect(() => {
     console.log(`[WS Subscription Effect] isAuthenticated=${isAuthenticated}, isConnected=${isConnected}`);
     if (!isAuthenticated || !isConnected) {
@@ -1089,62 +1117,66 @@ function App() {
       return;
     }
 
-    // Wait a bit for WebSocket to be fully ready, then subscribe
-    const subscribeTimeout = setTimeout(() => {
-      // 4 pairs always subscribed for all users
-      const ALWAYS_SUBSCRIBED = ['EURCAD', 'GBPUSD', 'XAUUSD', 'BTCUSD'];
+    const unsubscribers: Array<() => void> = [];
 
-      // Get ALL symbols from active watchlist
+    const subscribeTimeout = setTimeout(() => {
+      const ALWAYS_SUBSCRIBED = ['EURCAD', 'GBPUSD', 'XAUUSD', 'BTCUSD'];
       const activeWatchlist = useWatchlistStore.getState().getActiveWatchlist();
       const watchlistSymbols = activeWatchlist?.symbols || [];
 
-      // Merge: always-subscribed + watchlist + selected symbol (deduplicated)
-      let symbolsToSubscribe = [...new Set([...ALWAYS_SUBSCRIBED, ...watchlistSymbols, selectedSymbol].filter(Boolean))];
+      const symbolsToSubscribe = [...new Set([...ALWAYS_SUBSCRIBED, ...watchlistSymbols, selectedSymbol].filter(Boolean))]
+        .map(symbol => String(symbol).trim().toUpperCase())
+        .filter(Boolean);
 
-      console.log(`[WS] Connected! Subscribing to ${symbolsToSubscribe.length} symbols from watchlist: ${activeWatchlist?.name || 'default'}`);
+      console.log(`[WS] Connected! Subscribing to ${symbolsToSubscribe.length} v2 market channels from watchlist: ${activeWatchlist?.name || 'default'}`);
 
-      // Subscribe to ALL symbols for market data (fixapibackend format)
-      // Format: {"type":"subscribe","symbols":["BTCUSD","ETHUSD","EURUSD",...]}
       try {
-        console.log(`[WS] >>> SENDING SUBSCRIBE for symbols: ${symbolsToSubscribe.join(', ')}`);
-        sendMessage({
-          type: 'subscribe',
-          symbols: symbolsToSubscribe
-        });
-
-        // Also subscribe each symbol to market data store
         symbolsToSubscribe.forEach(symbol => {
+          unsubscribers.push(subscribe(`ticks.${symbol}`, () => undefined));
           useMarketDataStore.getState().subscribeSymbol(symbol);
         });
 
-        console.log(`[WS] <<< SUBSCRIPTION SENT for ${symbolsToSubscribe.length} symbols`);
+        const selected = String(selectedSymbol || '').trim().toUpperCase();
+        if (selected) {
+          unsubscribers.push(subscribe(`candles.${selected}.${toV2Timeframe(timeframe as string)}`, () => undefined));
+          unsubscribers.push(subscribe(`depth.${selected}`, () => undefined));
+        }
 
-        // Retry subscription after 2 seconds if no data received
-        setTimeout(() => {
-          const state = useMarketDataStore.getState();
-          const hasData = symbolsToSubscribe.some(sym => state.symbolData[sym]?.currentTick);
-          if (!hasData) {
-            console.log('[WS] No data received yet, retrying subscription...');
-            sendMessage({
-              type: 'subscribe',
-              symbols: symbolsToSubscribe
-            });
-          }
-        }, 2000);
+        console.log(`[WS] <<< v2 subscriptions active for ${symbolsToSubscribe.length} symbols`);
       } catch (e) {
-        console.error("[WS] Failed to subscribe to symbols:", e);
+        console.error("[WS] Failed to subscribe to v2 market channels:", e);
       }
-    }, 500); // Wait 500ms for WebSocket to be fully ready
+    }, 500);
 
-    return () => clearTimeout(subscribeTimeout);
+    return () => {
+      clearTimeout(subscribeTimeout);
+      unsubscribers.forEach(unsubscribe => unsubscribe());
+    };
   }, [
     isAuthenticated,
     isConnected,
-    sendMessage,
+    subscribe,
     selectedSymbol,
+    timeframe,
     useWatchlistStore.getState().activeWatchlistId,
     useWatchlistStore.getState().getActiveWatchlist()?.symbols.join(',')
   ]);
+
+  useEffect(() => {
+    const loginId = parsePositiveInt(accountId);
+    if (!isAuthenticated || !isConnected || !loginId) return;
+
+    const channels = [
+      `account.${loginId}`,
+      `positions.${loginId}`,
+      `orders.${loginId}`,
+      `deals.${loginId}`,
+    ];
+
+    console.log('[WS] Subscribing to account v2 channels:', channels.join(', '));
+    const unsubscribers = channels.map(channel => subscribe(channel, () => undefined));
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe());
+  }, [accountId, isAuthenticated, isConnected, subscribe]);
 
   // Subscribe to all WebSocket messages
   useEffect(() => {
@@ -1176,6 +1208,7 @@ function App() {
           if (WS_DEBUG) console.log('[DEBUG WS ACCOUNT PAYLOAD]', accData);
           setAccount(prev => {
             const next = normalizeAccountSummary(accData, prev);
+            useAppStore.getState().setAccount(next as any);
             if (prev &&
               prev.balance === next.balance &&
               prev.equity === next.equity &&
@@ -1193,14 +1226,52 @@ function App() {
           if (channelAccountId && accountId && channelAccountId !== accountId) return;
           if (WS_DEBUG) console.log('[DEBUG WS POSITIONS RAW]', data);
           try {
-            if (data.data?.positions && Array.isArray(data.data.positions)) {
-              setPositions(normalizePositions(data.data.positions));
+            const eventName = getPositionEventName(data);
+            const ticket = getPositionEventTicket(data);
+            if (POSITION_CLOSED_EVENTS.has(eventName) && ticket) {
+              setPositions(prev => prev.filter(position => position.id !== ticket));
+              useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== ticket));
+              window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+            } else if (data.data?.positions && Array.isArray(data.data.positions)) {
+              const normalized = normalizePositions(data.data.positions);
+              setPositions(normalized);
+              useAppStore.getState().setPositions(normalized as any);
             } else if (data.data && Array.isArray(data.data)) {
-              setPositions(normalizePositions(data.data));
+              const normalized = normalizePositions(data.data);
+              setPositions(normalized);
+              useAppStore.getState().setPositions(normalized as any);
+            } else if (data.position || data.data?.position || data.data) {
+              const payload = data.position || data.data?.position || data.data;
+              const normalized = normalizePositions([payload])[0];
+              if (normalized) {
+                setPositions(prev => {
+                  const index = prev.findIndex(position => position.id === normalized.id);
+                  if (index < 0) return [...prev, normalized];
+                  const updated = [...prev];
+                  updated[index] = { ...updated[index], ...normalized };
+                  return updated;
+                });
+                const storePositions = useAppStore.getState().positions;
+                const storeIndex = storePositions.findIndex(position => position.id === normalized.id);
+                const nextStorePositions = storeIndex < 0
+                  ? [...storePositions, normalized]
+                  : storePositions.map((position, index) => index === storeIndex ? { ...position, ...normalized } : position);
+                useAppStore.getState().setPositions(nextStorePositions as any);
+              }
             }
           } catch (err) {
             console.error('[WS POSITIONS ERROR]', err);
           }
+        } else if (data.channel?.startsWith('orders.')) {
+          const channelAccountId = data.channel.split('.')[1];
+          if (channelAccountId && accountId && channelAccountId !== accountId) return;
+          const loginId = parsePositiveInt(channelAccountId || accountId);
+          refreshOrdersAndHistory(loginId || undefined).catch(err => console.error('[WS ORDERS REFRESH ERROR]', err));
+        } else if (data.channel?.startsWith('deals.')) {
+          const channelAccountId = data.channel.split('.')[1];
+          if (channelAccountId && accountId && channelAccountId !== accountId) return;
+          const loginId = parsePositiveInt(channelAccountId || accountId);
+          refreshOrdersAndHistory(loginId || undefined).catch(err => console.error('[WS DEALS REFRESH ERROR]', err));
         } else if (data.type === 'tick' || isTickLikeUpdate || isLiveQuote || data.channel === 'prices') {
           // Wrap live quote data if it comes in raw formats
           const tickPayload: any = (isLiveQuote || data.channel === 'prices') && data.data ? data.data : data;
@@ -1396,27 +1467,26 @@ function App() {
     return () => {
       unsubscribe();
     };
-  }, [isAuthenticated, subscribe, accountId]);
+  }, [isAuthenticated, subscribe, accountId, refreshOrdersAndHistory]);
 
   const placeOrder = useCallback(async (side: 'BUY' | 'SELL') => {
     setOrderLoading(true);
     try {
-      const { useMT5Store } = await import('./store/useMT5Store');
-      const result = await useMT5Store.getState().submitOrder({
+      const result = await api.orders.placeMarketOrder({
         symbol: selectedSymbol,
-        action: side.toUpperCase(),
+        side,
         volume,
         login: parsePositiveInt(accountId) || 0,
-        // comment will be stripped in MT5Store type internally but it passes through dynamically
-      } as any);
-      console.log('[Trade] Order executed via MT5 Sync:', result);
-      // Removed refreshPositions() - let useMT5Store manage optimistic state and dispatch WS
+      });
+      console.log('[Trade] Order executed via trading API:', result);
+      refreshPositions();
+      refreshOrdersAndHistory().catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
     } catch (err: any) {
       alert('Order failed: ' + err.message);
     } finally {
       setOrderLoading(false);
     }
-  }, [accountId, selectedSymbol, volume]);
+  }, [accountId, selectedSymbol, volume, refreshPositions, refreshOrdersAndHistory]);
 
   const handleOrderPanelSubmit = useCallback(async (order: {
     type: 'buy' | 'sell';
@@ -1428,33 +1498,37 @@ function App() {
       const side = order.type.toUpperCase() as 'BUY' | 'SELL';
       const submitSymbol = order.symbol || orderPanelSymbol || selectedSymbol;
 
-      const { useMT5Store } = await import('./store/useMT5Store');
-      const result = await useMT5Store.getState().submitOrder({
+      const result = await api.orders.placeMarketOrder({
         symbol: submitSymbol,
-        action: side,
+        side,
         volume: order.volume,
         login: parsePositiveInt(accountId) || 0,
-      } as any);
+      });
 
-      console.log('[Trade] Order executed from dialog via MT5 Sync:', result);
-      // Removed refreshPositions() - let useMT5Store manage optimistic state and dispatch WS
+      console.log('[Trade] Order executed from dialog via trading API:', result);
+      refreshPositions();
+      refreshOrdersAndHistory().catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
     } catch (err: any) {
       alert('Order failed: ' + err.message);
     } finally {
       setOrderLoading(false);
     }
-  }, [accountId, orderPanelSymbol, selectedSymbol]);
+  }, [accountId, orderPanelSymbol, selectedSymbol, refreshPositions, refreshOrdersAndHistory]);
 
   const closePosition = useCallback(async (tradeId: number, volume?: number) => {
+    if (volume !== undefined) {
+      console.error('Partial close is unsupported by the trading API');
+      return;
+    }
     // Trigger close sound
     import('./utils/audio').then(m => m.playSystemSound('close'));
     try {
-      await api.mt5.closePosition(tradeId, volume, parsePositiveInt(accountId) || 0);
+      await api.positions.closePosition(String(tradeId));
       refreshPositions(); // fire-and-forget
     } catch (err) {
       console.error('Close failed:', err);
     }
-  }, [accountId, refreshPositions]);
+  }, [refreshPositions]);
 
   // Fetch symbols from backend
   const [allSymbols, setAllSymbols] = useState<any[]>([]);
@@ -2027,6 +2101,7 @@ function App() {
                   <DepthOfMarket
                     symbol={domSymbol}
                     onClose={() => setShowDOM(false)}
+                    onCloseBulk={handleCloseBulk}
                     onDragHandleMouseDown={handleDomMouseDown}
                     onPlaceOrder={(side, price, vol) => {
                       setVolume(vol);

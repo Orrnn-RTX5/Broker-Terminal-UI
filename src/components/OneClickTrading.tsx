@@ -6,8 +6,8 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { useMT5Store } from '../store/useMT5Store';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
+import api from '../services/api';
 import { getSymbolDigits } from '../utils/symbolUtils';
 import { formatPriceParts } from './ui/PriceDisplay';
 
@@ -21,6 +21,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
     const [volume, setVolume] = useState(0.01);
     const [isPlacing, setIsPlacing] = useState(false);
     const [flashSide, setFlashSide] = useState<'buy' | 'sell' | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const prevBidRef = useRef<number>(0);
     const prevAskRef = useRef<number>(0);
 
@@ -73,29 +74,46 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
         return saved ? parseInt(saved, 10) || 0 : 0;
     }, []);
 
-    const isVolumeValid = volume > 0;
+    const isVolumeValid = Number.isFinite(volume) && volume > 0;
+    const hasExecutablePrice = bid > 0 && ask > 0;
 
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
-        if (isPlacing || !isVolumeValid || bid <= 0) return;
+        if (isPlacing) return;
+        if (!symbol.trim()) {
+            setError('Missing symbol');
+            return;
+        }
+        if (!isVolumeValid) {
+            setError('Volume must be greater than zero');
+            return;
+        }
+        if (!hasExecutablePrice) {
+            setError('Waiting for a valid bid/ask price');
+            return;
+        }
+        setError(null);
         setIsPlacing(true);
         setFlashSide(side);
 
         try {
             const login = getAccountLogin();
-            await useMT5Store.getState().submitOrder({
-                action: side.toUpperCase() as 'BUY' | 'SELL',
+            await api.orders.placeMarketOrder({
+                side,
                 symbol,
                 volume,
                 login,
             });
             useLastSymbolStore.getState().setLastSymbol(symbol, side.toUpperCase() as 'BUY' | 'SELL');
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
         } catch (err: any) {
             console.error('[OneClick] Trade failed:', err);
+            setError(err?.message || 'Order failed');
+            setTimeout(() => setError(null), 3000);
         } finally {
             setIsPlacing(false);
             setTimeout(() => setFlashSide(null), 500);
         }
-    }, [isPlacing, isVolumeValid, volume, bid, symbol, getAccountLogin]);
+    }, [isPlacing, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin]);
 
     if (!visible || !symbol) return null;
 
@@ -134,19 +152,18 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
         height: 52,
         minHeight: 52,
         maxHeight: 52,
-        border: '1px solid rgba(255,255,255,0.15)',
-        borderRadius: 0,
-        cursor: isPlacing || !isVolumeValid ? 'not-allowed' : 'pointer',
+        border: '1px solid rgba(255,255,255,0.1)',
+        cursor: isPlacing || !isVolumeValid || !hasExecutablePrice ? 'not-allowed' : 'pointer',
         position: 'relative',
         opacity: !isVolumeValid ? 0.5 : 1,
-        transition: 'background 0.2s, opacity 0.2s',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         boxSizing: 'border-box',
     };
 
     return (
         <div
-            className="absolute top-[6px] left-[6px] z-30 select-none"
-            style={{ pointerEvents: 'auto', fontFamily: "'Segoe UI', Tahoma, sans-serif", display: 'inline-block', width: 'fit-content' }}
+            className="absolute top-[10px] left-[10px] z-30 select-none drop-shadow-2xl"
+            style={{ pointerEvents: 'auto', fontFamily: "'Inter', 'Segoe UI', Tahoma, sans-serif", display: 'inline-block', width: 'fit-content' }}
         >
             {/* ─── Header: Symbol + Timeframe ─── */}
             <div
@@ -154,18 +171,20 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    padding: '3px 10px',
-                    background: 'rgba(20, 24, 33, 0.92)',
-                    backdropFilter: 'blur(8px)',
-                    borderRadius: 0,
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    padding: '6px 12px',
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    backdropFilter: 'blur(16px)',
+                    WebkitBackdropFilter: 'blur(16px)',
+                    borderRadius: '10px 10px 0 0',
+                    border: '1px solid rgba(255,255,255,0.1)',
                     borderBottom: 'none',
+                    boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.05)'
                 }}
             >
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#e2e2e8', letterSpacing: '0.4px' }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc', letterSpacing: '0.5px' }}>
                     {symbol}, {timeframe}:
                 </span>
-                <span style={{ fontSize: 10, color: '#8a8a8f', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 10, color: '#94a3b8', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {desc}
                 </span>
             </div>
@@ -174,25 +193,29 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
             <div
                 style={{
                     display: 'flex',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: 0,
+                    background: 'rgba(15, 23, 42, 0.4)',
+                    backdropFilter: 'blur(16px)',
+                    WebkitBackdropFilter: 'blur(16px)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '0 0 10px 10px',
                     overflow: 'hidden',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                    boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.05), 0 10px 40px rgba(0,0,0,0.5)',
                 }}
             >
                 {/* ── BUY Button ── */}
                 <button
                     onClick={() => placeOrder('buy')}
-                    disabled={isPlacing || !isVolumeValid}
+                    disabled={isPlacing || !isVolumeValid || !hasExecutablePrice}
                     style={{
                         ...sharedButtonStyle,
                         background: flashSide === 'buy'
-                            ? 'linear-gradient(180deg, #1e3a5f 0%, #1e3a8a 100%)'
-                            : 'linear-gradient(180deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%)',
+                            ? 'linear-gradient(180deg, rgba(30,58,138,0.8) 0%, rgba(30,58,138,0.9) 100%)'
+                            : 'linear-gradient(180deg, rgba(37,99,235,0.85) 0%, rgba(29,78,216,0.85) 50%, rgba(30,64,175,0.95) 100%)',
                         borderRight: 'none',
+                        borderRadius: '0 0 0 10px'
                     }}
-                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, #2a6fd4 0%, #1e54a8 50%, #1a448a 100%)'; }}
-                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%)'; }}
+                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(59,130,246,0.9) 0%, rgba(37,99,235,0.9) 50%, rgba(29,78,216,0.95) 100%)'; }}
+                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(37,99,235,0.85) 0%, rgba(29,78,216,0.85) 50%, rgba(30,64,175,0.95) 100%)'; }}
                 >
                     <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.7)', letterSpacing: '1px', textTransform: 'uppercase' }}>
                         BUY
@@ -290,16 +313,17 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                 {/* ── SELL Button ── */}
                 <button
                     onClick={() => placeOrder('sell')}
-                    disabled={isPlacing || !isVolumeValid}
+                    disabled={isPlacing || !isVolumeValid || !hasExecutablePrice}
                     style={{
                         ...sharedButtonStyle,
                         background: flashSide === 'sell'
-                            ? 'linear-gradient(180deg, #991b1b 0%, #7f1d1d 100%)'
-                            : 'linear-gradient(180deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%)',
+                            ? 'linear-gradient(180deg, rgba(153,27,27,0.8) 0%, rgba(127,29,29,0.9) 100%)'
+                            : 'linear-gradient(180deg, rgba(220,38,38,0.85) 0%, rgba(185,28,28,0.85) 50%, rgba(153,27,27,0.95) 100%)',
                         borderLeft: 'none',
+                        borderRadius: '0 0 10px 0'
                     }}
-                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%)'; }}
-                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%)'; }}
+                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.9) 50%, rgba(185,28,28,0.95) 100%)'; }}
+                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(220,38,38,0.85) 0%, rgba(185,28,28,0.85) 50%, rgba(153,27,27,0.95) 100%)'; }}
                 >
                     <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.7)', letterSpacing: '1px', textTransform: 'uppercase' }}>
                         SELL
@@ -343,6 +367,20 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     borderTop: 'none',
                 }}>
                     ⚠ Invalid volume (min 0.01)
+                </div>
+            )}
+            {error && (
+                <div style={{
+                    fontSize: 10,
+                    color: '#fecaca',
+                    textAlign: 'center',
+                    padding: '3px 8px',
+                    background: 'rgba(127, 29, 29, 0.72)',
+                    borderRadius: 0,
+                    border: '1px solid #7f1d1d',
+                    borderTop: 'none',
+                }}>
+                    {error}
                 </div>
             )}
         </div>

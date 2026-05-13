@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
-import { API_BASE_URL, buildApiUrl } from '../config/api';
+import { API_BASE_URL } from '../config/api';
+import { tradeApi } from '../api/trade';
+import { getStoredAccountLogin } from '../api/tradeGateway';
+
+type SupportedOrderType = 'MARKET' | 'LIMIT' | 'STOP';
 
 interface OrderType {
-    value: string;
+    value: SupportedOrderType;
     label: string;
 }
 
@@ -16,15 +20,19 @@ const orderTypes: OrderType[] = [
     { value: 'MARKET', label: 'Market' },
     { value: 'LIMIT', label: 'Limit' },
     { value: 'STOP', label: 'Stop' },
-    { value: 'STOP_LIMIT', label: 'Stop Limit' },
 ];
 
 const slTpModes = ['Price', 'Pips', 'Money'] as const;
 type SLTPMode = typeof slTpModes[number];
+type OrderSide = 'BUY' | 'SELL';
+type PendingOrderType = 'buy_limit' | 'sell_limit' | 'buy_stop' | 'sell_stop';
+
+const isSupportedOrderType = (value: unknown): value is SupportedOrderType =>
+    value === 'MARKET' || value === 'LIMIT' || value === 'STOP';
 
 export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: OrderPanelProps) {
-    const [orderType, setOrderType] = useState('MARKET');
-    const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
+    const [orderType, setOrderType] = useState<SupportedOrderType>('MARKET');
+    const [side, setSide] = useState<OrderSide>('BUY');
     const [volume, setVolume] = useState('0.01');
     const [price, setPrice] = useState('');
     const [triggerPrice, setTriggerPrice] = useState('');
@@ -84,47 +92,63 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
         });
     }, [volume, symbol, side]);
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (nextSide = side) => {
+        setSide(nextSide);
+        if (!isSupportedOrderType(orderType)) {
+            console.error('Unsupported order type:', orderType);
+            setShowConfirmation(false);
+            return;
+        }
         if (!oneClick) {
             setShowConfirmation(true);
             return;
         }
-        await executeOrder();
+        await executeOrder(nextSide);
     };
 
-    const executeOrder = async () => {
+    const executeOrder = async (nextSide = side) => {
         setLoading(true);
         setShowConfirmation(false);
 
         try {
-            let endpoint = '/order';
-            const body: any = {
-                symbol,
-                side,
-                volume: parseFloat(volume),
-            };
-
-            switch (orderType) {
-                case 'LIMIT':
-                    endpoint = '/order/limit';
-                    body.price = parseFloat(price);
-                    break;
-                case 'STOP':
-                    endpoint = '/order/stop';
-                    body.triggerPrice = parseFloat(triggerPrice || price);
-                    break;
-                case 'STOP_LIMIT':
-                    endpoint = '/order/stop-limit';
-                    body.triggerPrice = parseFloat(triggerPrice);
-                    body.limitPrice = parseFloat(price);
-                    break;
+            if (!isSupportedOrderType(orderType)) {
+                throw new Error(`Unsupported order type: ${orderType}`);
             }
 
-            if (sl) body.sl = parseFloat(sl);
-            if (tp) body.tp = parseFloat(tp);
+            const login = getStoredAccountLogin();
+            if (!login) {
+                throw new Error('Missing account login for order placement');
+            }
 
-            const { apiClient } = await import('../api/client');
-            const data = await apiClient.post<any>(`${API_BASE_URL}${endpoint}`, body);
+            const orderSide = nextSide.toLowerCase() as 'buy' | 'sell';
+            const parsedVolume = parseFloat(volume);
+            const body = {
+                login,
+                symbol,
+                side: orderSide,
+                volume: parsedVolume,
+                ...(sl ? { price_sl: parseFloat(sl) } : {}),
+                ...(tp ? { price_tp: parseFloat(tp) } : {}),
+            };
+
+            if (orderType === 'MARKET') {
+                const data = await tradeApi.trading.placeOrder(body);
+                if (onOrderPlaced) onOrderPlaced(data);
+                return;
+            }
+
+            const pendingType: PendingOrderType = orderType === 'LIMIT'
+                ? `${orderSide}_limit` as PendingOrderType
+                : `${orderSide}_stop` as PendingOrderType;
+            const orderPrice = orderType === 'LIMIT'
+                ? parseFloat(price)
+                : parseFloat(triggerPrice || price);
+
+            const data = await tradeApi.trading.placePendingOrder({
+                ...body,
+                type: pendingType,
+                price: orderPrice,
+            });
             if (onOrderPlaced) onOrderPlaced(data);
         } catch (err) {
             console.error('Order failed:', err);
@@ -197,7 +221,7 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
             {/* Price Fields (for non-market orders) */}
             {orderType !== 'MARKET' && (
                 <div className="mb-3 grid grid-cols-2 gap-2">
-                    {(orderType === 'STOP' || orderType === 'STOP_LIMIT') && (
+                    {orderType === 'STOP' && (
                         <div>
                             <label className="text-xs text-zinc-500 mb-1 block">Trigger Price</label>
                             <input
@@ -212,7 +236,7 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
                     )}
                     <div className={orderType === 'STOP' ? 'hidden' : ''}>
                         <label className="text-xs text-zinc-500 mb-1 block">
-                            {orderType === 'STOP_LIMIT' ? 'Limit Price' : 'Price'}
+                            Price
                         </label>
                         <input
                             type="number"
@@ -319,7 +343,7 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
                 <button
                     onClick={() => {
                         setSide('SELL');
-                        handleSubmit();
+                        handleSubmit('SELL');
                     }}
                     disabled={loading}
                     className="py-3 rounded-lg bg-red-500/20 text-red-400 font-semibold hover:bg-red-500/30 transition-colors disabled:opacity-50"
@@ -330,7 +354,7 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
                 <button
                     onClick={() => {
                         setSide('BUY');
-                        handleSubmit();
+                        handleSubmit('BUY');
                     }}
                     disabled={loading}
                     className="py-3 rounded-lg bg-emerald-500/20 text-emerald-400 font-semibold hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
@@ -360,7 +384,7 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
                                 Cancel
                             </button>
                             <button
-                                onClick={executeOrder}
+                                onClick={() => executeOrder(side)}
                                 className={`flex-1 py-2 rounded font-semibold ${side === 'BUY'
                                     ? 'bg-emerald-500 text-white hover:bg-emerald-600'
                                     : 'bg-red-500 text-white hover:bg-red-600'

@@ -8,6 +8,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
+import { API_V2_BASE_URL } from '../config/api';
+import { getStoredBrokerServer, loadBrokerServers, persistBrokerServer, resolveLoginBrokerTarget } from '../services/brokerServers';
 import { User, X, HelpCircle } from 'lucide-react';
 
 interface LoginDialogProps {
@@ -15,13 +17,14 @@ interface LoginDialogProps {
     onClose: () => void;
     onLoginSuccess?: (accountId: string) => void;
     initialLogin?: string;
+    initialServer?: string;
 }
 
-export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = '' }: LoginDialogProps) {
+export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = '', initialServer }: LoginDialogProps) {
     const [login, setLogin] = useState('');
     const [password, setPassword] = useState('');
-    const [server, setServer] = useState('FlexyMarkets-Server');
-    const [savePassword, setSavePassword] = useState(true);
+    const [server, setServer] = useState(() => getStoredBrokerServer());
+    const [brokerServers, setBrokerServers] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const loginInputRef = useRef<HTMLInputElement>(null);
@@ -30,12 +33,29 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
     useEffect(() => {
         if (isOpen) {
             const accountId = initialLogin || useAppStore.getState().accountId || '';
+            const accountServer = initialServer?.trim() || getStoredBrokerServer();
             setLogin(accountId);
             setPassword('');
+            setServer(accountServer);
             setError(null);
             setTimeout(() => loginInputRef.current?.select(), 100);
         }
-    }, [isOpen, initialLogin]);
+    }, [isOpen, initialLogin, initialServer]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        let isMounted = true;
+        loadBrokerServers()
+            .then((servers) => {
+                if (!isMounted || servers.length === 0) return;
+                setBrokerServers(servers);
+                setServer(current => servers.includes(current) ? current : current || servers[0]);
+            })
+            .catch((err) => console.warn('[LoginDialog] Could not load broker servers:', err));
+        return () => {
+            isMounted = false;
+        };
+    }, [isOpen]);
 
     // Handle ESC key
     useEffect(() => {
@@ -60,27 +80,30 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
         try {
             // Logout current session (fire-and-forget)
-            fetch('https://rtxbackend.tradecopier.org/api/logout', {
+            fetch(`${API_V2_BASE_URL}/auth/logout`, {
                 method: 'POST',
                 headers: { 'accept': '*/*', 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` },
             }).catch(() => { });
 
             // Login with new credentials
-            const data = await api.auth.login(login.trim(), password);
+            const selectedServer = persistBrokerServer(server);
+            const loginTarget = resolveLoginBrokerTarget(selectedServer);
+            const data = await api.auth.login(login.trim(), password, {
+                broker_id: loginTarget.broker_id,
+                server: loginTarget.server,
+            });
 
             const token = data.access_token;
             if (!token) {
                 throw new Error('No authentication token received');
             }
 
-            const accountId = data.user?.id || login.trim();
+            const accountId = data.account_login ?? login.trim();
 
-            // Save credentials
+            // Save account ID only; passwords are never persisted.
             localStorage.setItem('rtx_last_login', String(accountId));
-            localStorage.setItem('rtx_saved_username', login.trim());
-            if (savePassword) {
-                try { localStorage.setItem('rtx_saved_password', btoa(password)); } catch { }
-            }
+            localStorage.setItem('rtx_saved_username', String(accountId));
+            localStorage.removeItem('rtx_saved_password');
 
             // Set tokens
             const { setToken, setRefreshToken } = await import('../api/client');
@@ -94,15 +117,14 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             useAppStore.getState().setAuthenticated(true, String(accountId), token, data.refresh_token, expiresAt);
 
             // Save to saved accounts for Navigator panel
-            const loginNum = parseInt(login.trim(), 10);
+            const loginNum = parseInt(String(accountId), 10);
             if (!isNaN(loginNum)) {
                 useAppStore.getState().addSavedAccount({
                     login: loginNum,
-                    name: data.user?.username || '',
-                    server: 'FlexyMarkets-Server',
+                    name: data.user?.username || data.username || '',
+                    server: loginTarget.server || data.broker_server || loginTarget.displayValue,
                     isLive: true,
                     lastUsed: Date.now(),
-                    password: savePassword ? btoa(password) : undefined,
                 });
                 useAppStore.getState().setActiveAccount(loginNum);
             }
@@ -187,15 +209,6 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                 placeholder="Password"
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
                             />
-                            <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0">
-                                <input
-                                    type="checkbox"
-                                    checked={savePassword}
-                                    onChange={(e) => setSavePassword(e.target.checked)}
-                                    className="w-3.5 h-3.5 rounded border-zinc-500 bg-[#1a1c26] accent-blue-500"
-                                />
-                                <span className="text-[10px] text-zinc-400 whitespace-nowrap leading-tight">Save<br />password</span>
-                            </label>
                         </div>
                     </div>
 
@@ -204,10 +217,16 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                         <label className="text-[12px] text-zinc-400 w-20 text-right flex-shrink-0">Server:</label>
                         <input
                             type="text"
-                            value="FlexyMarkets-Server"
-                            readOnly
-                            className="flex-1 h-[28px] px-2 bg-[#1a1c26] border border-[#555] rounded text-[12px] text-zinc-100 outline-none transition-colors cursor-not-allowed opacity-80"
+                            value={server}
+                            list="login-dialog-broker-servers"
+                            onChange={(e) => setServer(e.target.value)}
+                            className="flex-1 h-[28px] px-2 bg-[#1a1c26] border border-[#555] rounded text-[12px] text-zinc-100 outline-none focus:border-zinc-600 transition-colors"
                         />
+                        <datalist id="login-dialog-broker-servers">
+                            {brokerServers.map(serverName => (
+                                <option key={serverName} value={serverName} />
+                            ))}
+                        </datalist>
                     </div>
 
                     {/* Error */}

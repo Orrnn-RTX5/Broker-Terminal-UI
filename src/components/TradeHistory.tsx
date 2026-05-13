@@ -5,9 +5,8 @@
 
 import { Icon } from './ui/Icon';
 import { useState, useEffect, useMemo } from 'react';
-import { buildApiUrl } from '../config/api';
 import { useAppStore } from '../store/useAppStore';
-import { useMT5Store } from '../store/useMT5Store';
+import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 import { DollarSign, TrendingUp } from 'lucide-react';
 
 type Trade = {
@@ -41,52 +40,30 @@ export const TradeHistory = ({ accountId }: TradeHistoryProps) => {
   const [filterProfit, setFilterProfit] = useState<'ALL' | 'PROFIT' | 'LOSS'>('ALL');
   const [dateRange, setDateRange] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
 
-  // MT5 mode
-  const mt5Enabled = localStorage.getItem('rtx5_mt5_mode') === 'true';
-  // Use stable selectors instead of the whole store object to prevent infinite re-render loops
-  const mt5History = useMT5Store((s) => s.history);
-  const mt5FetchHistory = useMT5Store((s) => s.fetchHistory);
-  const mt5HistoryLength = useMT5Store((s) => s.history.length);
-
-  const displayMt5History = useMemo(() => mt5History.map((deal, idx) => ({
-    id: deal.deal || idx,
-    symbol: deal.symbol,
-    side: deal.type.includes('BUY') ? 'BUY' as const : 'SELL' as const,
-    volume: deal.volume,
-    openPrice: deal.price,
-    closePrice: deal.price,
-    openTime: new Date(deal.time_ms).toISOString(),
-    closeTime: new Date(deal.time_ms).toISOString(),
-    profit: deal.profit,
-    commission: deal.commission,
-    swap: deal.swap,
-    pips: 0,
-    duration: '0s'
-  })), [mt5History]);
-
   // Fetch trade history
   useEffect(() => {
-    if (mt5Enabled) {
-      // Fetch MT5 history if not already loaded
-      if (mt5HistoryLength === 0) {
-        mt5FetchHistory();
-      }
-      return;
-    }
-
-    if (!activeAccountId) return;
+    const activeLogin = Number.parseInt(String(activeAccountId || ''), 10) || getStoredAccountLogin();
+    if (!activeLogin) return;
 
     const fetchTrades = async () => {
       setLoading(true);
       try {
-        const response = await fetch(
-          buildApiUrl(`/api/trades/history?accountId=${activeAccountId}`)
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          setTrades(data || []);
-        }
+        const data = await tradeGatewayApi.getOrderHistory(activeLogin);
+        setTrades(data.map((trade) => ({
+          id: trade.id,
+          symbol: trade.symbol,
+          side: trade.side?.toUpperCase().includes('SELL') ? 'SELL' : 'BUY',
+          volume: trade.volume,
+          openPrice: trade.openPrice,
+          closePrice: trade.closePrice ?? trade.openPrice,
+          openTime: trade.openTime,
+          closeTime: trade.closeTime ?? trade.openTime,
+          profit: trade.profit,
+          commission: trade.commission,
+          swap: trade.swap,
+          pips: 0,
+          duration: '0s',
+        })));
       } catch (error) {
         console.error('Failed to fetch trade history:', error);
         setTrades([]);
@@ -99,10 +76,9 @@ export const TradeHistory = ({ accountId }: TradeHistoryProps) => {
     const interval = setInterval(fetchTrades, 5000); // Refresh every 5 seconds
 
     return () => clearInterval(interval);
-  }, [activeAccountId, mt5Enabled, mt5HistoryLength, mt5FetchHistory]);
+  }, [activeAccountId]);
 
-  // Use MT5 or B-Book trades based on mode
-  const displayTrades = useMemo(() => mt5Enabled ? displayMt5History : trades, [mt5Enabled, displayMt5History, trades]);
+  const displayTrades = trades;
 
   // Filter trades
   const filteredTrades = useMemo(() => {

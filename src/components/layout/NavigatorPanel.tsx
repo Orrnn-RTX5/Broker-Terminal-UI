@@ -6,20 +6,25 @@ import { ContextMenu } from '../ui/ContextMenu';
 import { LoginDialog } from '../LoginDialog';
 import { ChangePasswordDialog } from '../ChangePasswordDialog';
 import { api } from '../../services/api';
+import { getStoredBrokerServer } from '../../services/brokerServers';
 
 export const NavigatorPanel: React.FC = () => {
     const accountId = useAppStore(state => state.accountId);
     const savedAccounts = useAppStore(state => state.savedAccounts);
     const removeSavedAccount = useAppStore(state => state.removeSavedAccount);
     const addSavedAccount = useAppStore(state => state.addSavedAccount);
-    const setActiveAccount = useAppStore(state => state.setActiveAccount);
-    const setAuthenticated = useAppStore(state => state.setAuthenticated);
 
     const [loginDialogOpen, setLoginDialogOpen] = useState(false);
     const [selectedAccountForLogin, setSelectedAccountForLogin] = useState<SavedAccount | null>(null);
     const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
     const [selectedAccountForPassword, setSelectedAccountForPassword] = useState<SavedAccount | null>(null);
-    const [switchingLogin, setSwitchingLogin] = useState<number | null>(null);
+    const [switchingLogin] = useState<number | null>(null);
+
+    useEffect(() => {
+        localStorage.removeItem('rtx_saved_password');
+        localStorage.removeItem('mt5_credentials');
+        localStorage.removeItem('mt5_auto_login');
+    }, []);
 
     // Auto-add active account to savedAccounts if not already present,
     // and fetch its real name from the backend APIs
@@ -29,12 +34,13 @@ export const NavigatorPanel: React.FC = () => {
         if (isNaN(loginNum)) return;
 
         const existing = savedAccounts.find(a => a.login === loginNum);
+        const activeServer = existing?.server || getStoredBrokerServer();
         // Add if missing (with empty name first so it shows up immediately)
         if (!existing) {
             addSavedAccount({
                 login: loginNum,
                 name: '',
-                server: 'FlexyMarkets-Server',
+                server: activeServer,
                 isLive: true,
                 lastUsed: Date.now(),
             });
@@ -50,7 +56,7 @@ export const NavigatorPanel: React.FC = () => {
                         addSavedAccount({
                             login: loginNum,
                             name: accountName,
-                            server: 'FlexyMarkets-Server',
+                            server: activeServer,
                             isLive: true,
                             lastUsed: Date.now(),
                         });
@@ -60,7 +66,7 @@ export const NavigatorPanel: React.FC = () => {
                     console.debug('[Navigator] account summary not available:', err);
                 });
         }
-    }, [accountId]);
+    }, [accountId, addSavedAccount, savedAccounts]);
 
     // Group accounts by server
     const servers = Array.from(new Set(savedAccounts.map(a => a.server)));
@@ -74,59 +80,16 @@ export const NavigatorPanel: React.FC = () => {
         setLoginDialogOpen(true);
     };
 
-    // Switch account: re-login silently with saved password → reload (no dialog popup)
+    // Switch account: require interactive login unless this account is already active.
     const handleSwitchAccount = useCallback(async (acc: SavedAccount) => {
-        // Already active? Skip
         if (acc.login.toString() === accountId) return;
 
-        // No saved password at all? Must open login dialog
-        if (!acc.password) {
-            handleLoginToAccount(acc);
-            return;
-        }
-
-        setSwitchingLogin(acc.login);
-        try {
-            // 1. Logout old session (fire-and-forget)
-            try { api.auth.logout(); } catch (_) { /* ignore */ }
-
-            // 2. Re-login with saved credentials
-            const password = atob(acc.password);
-            const response = await api.auth.login(String(acc.login), password);
-
-            if (response && response.access_token) {
-                // 3. Store new credentials for session restore on reload
-                localStorage.setItem('auth_token', response.access_token);
-                if (response.refresh_token) localStorage.setItem('refresh_token', response.refresh_token);
-                localStorage.setItem('rtx_saved_username', String(acc.login));
-                localStorage.setItem('rtx_saved_password', acc.password);
-                localStorage.setItem('rtx_last_login', String(acc.login));
-
-                // 4. Update store then reload for clean switch
-                setAuthenticated(true, String(acc.login), response.access_token, response.refresh_token);
-                setActiveAccount(acc.login);
-
-                console.log(`[Navigator] Switched to account ${acc.login} — reloading`);
-                window.location.reload();
-            } else {
-                // Auth failed silently — just reload with saved creds, session restore will handle it
-                localStorage.setItem('rtx_saved_username', String(acc.login));
-                localStorage.setItem('rtx_saved_password', acc.password);
-                localStorage.setItem('rtx_last_login', String(acc.login));
-                console.warn(`[Navigator] Re-auth response missing token for ${acc.login}, reloading`);
-                window.location.reload();
-            }
-        } catch (err: any) {
-            // On error, still try to reload with saved creds — session restore will retry
-            console.error(`[Navigator] Account switch error for ${acc.login}:`, err.message);
-            localStorage.setItem('rtx_saved_username', String(acc.login));
-            localStorage.setItem('rtx_saved_password', acc.password);
-            localStorage.setItem('rtx_last_login', String(acc.login));
-            window.location.reload();
-        } finally {
-            setSwitchingLogin(null);
-        }
-    }, [accountId, setActiveAccount, setAuthenticated]);
+        localStorage.setItem('rtx_saved_username', String(acc.login));
+        localStorage.setItem('rtx_last_login', String(acc.login));
+        localStorage.removeItem('rtx_saved_password');
+        addSavedAccount({ ...acc, lastUsed: Date.now() });
+        handleLoginToAccount(acc);
+    }, [accountId, addSavedAccount]);
 
     const getAccountContextMenuItems = (acc: SavedAccount) => [
         {
@@ -231,7 +194,7 @@ export const NavigatorPanel: React.FC = () => {
                         {/* Add Account Placeholder if empty */}
                         {savedAccounts.length === 0 && (
                             <TreeItem
-                                label="FlexyMarkets-Server"
+                                label={getStoredBrokerServer()}
                                 icon={<Icon name="server" size="sm" className="text-zinc-400" />}
                                 defaultOpen
                                 isLast
@@ -294,6 +257,7 @@ export const NavigatorPanel: React.FC = () => {
                 isOpen={loginDialogOpen}
                 onClose={() => setLoginDialogOpen(false)}
                 initialLogin={selectedAccountForLogin?.login.toString()}
+                initialServer={selectedAccountForLogin?.server}
             />
 
             <ChangePasswordDialog

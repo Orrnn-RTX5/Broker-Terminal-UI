@@ -2,7 +2,7 @@ import { Icon } from './ui/Icon';
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
-import { API_BASE_URL } from '../config/api';
+import { getStoredBrokerServer, loadBrokerServers, persistBrokerServer, resolveLoginBrokerTarget } from '../services/brokerServers';
 import '../styles/login.css';
 
 interface LoginProps {
@@ -16,27 +16,32 @@ export function Login({ onLogin }: LoginProps) {
     // Form fields
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [server, setServer] = useState(
-        import.meta.env.DEV
-            ? 'rtxbackend.tradecopier.org'
-            : API_BASE_URL.replace('http://', '').replace('https://', '')
-    );
+    const [server, setServer] = useState(() => getStoredBrokerServer());
+    const [brokerServers, setBrokerServers] = useState<string[]>([]);
     const [rememberMe, setRememberMe] = useState(false);
 
-    // Initial load for remembered credentials
+    // Initial load for remembered account ID only. Passwords must not be restored from storage.
     React.useEffect(() => {
         const savedUsername = localStorage.getItem('rtx_saved_username');
-        const savedPassword = localStorage.getItem('rtx_saved_password');
-        if (savedUsername && savedPassword) {
+        localStorage.removeItem('rtx_saved_password');
+        if (savedUsername) {
             setUsername(savedUsername);
-            try {
-                // Basic decoding - not true encryption but better than plain text in storage
-                setPassword(atob(savedPassword));
-            } catch (e) {
-                // Fallback if decoding fails
-            }
             setRememberMe(true);
         }
+    }, []);
+
+    React.useEffect(() => {
+        let isMounted = true;
+        loadBrokerServers()
+            .then((servers) => {
+                if (!isMounted || servers.length === 0) return;
+                setBrokerServers(servers);
+                setServer(current => servers.includes(current) ? current : current || servers[0]);
+            })
+            .catch((err) => console.warn('[Login] Could not load broker servers:', err));
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     const setAuthenticated = useAppStore(state => state.setAuthenticated);
@@ -49,12 +54,13 @@ export function Login({ onLogin }: LoginProps) {
         setLoading(true);
         setError(null);
 
-        // Always call the backend directly
-        const BACKEND_URL = 'https://rtxbackend.tradecopier.org';
-
         try {
-            // Make login request using the direct backend URL
-            const data = await api.auth.login(username, password, BACKEND_URL);
+            const selectedServer = persistBrokerServer(server);
+            const loginTarget = resolveLoginBrokerTarget(selectedServer);
+            const data = await api.auth.login(username, password, {
+                broker_id: loginTarget.broker_id,
+                server: loginTarget.server,
+            });
 
             console.log('[Login] Full login response user:', data.user);
             const token = data.access_token;
@@ -62,23 +68,17 @@ export function Login({ onLogin }: LoginProps) {
                 throw new Error('No authentication token received');
             }
 
-            // Extract true account ID from user data, fallback to username if not present
-            const accountId = data.user?.id || username;
+            const accountId = data.account_login ?? username;
 
             // Persist last successful login for session restore even without Remember Me
             localStorage.setItem('rtx_last_login', String(accountId));
 
-            // Always save credentials for session restore / auto re-login
-            localStorage.setItem('rtx_saved_username', username);
-            try {
-                localStorage.setItem('rtx_saved_password', btoa(password));
-            } catch (e) {
-                // Ignore encoding errors
-            }
+            // Remember account ID only; never persist the password.
+            localStorage.setItem('rtx_saved_username', String(accountId));
+            localStorage.removeItem('rtx_saved_password');
 
-            // Persist the base URL and tokens for all subsequent requests
-            import('../api/client').then(({ setBaseUrl, setToken, setRefreshToken }) => {
-                setBaseUrl(BACKEND_URL);
+            // Persist tokens for all subsequent requests
+            import('../api/client').then(({ setToken, setRefreshToken }) => {
                 setToken(token);
                 if (data.refresh_token) {
                     setRefreshToken(data.refresh_token);
@@ -88,18 +88,17 @@ export function Login({ onLogin }: LoginProps) {
                 }
             });
 
-            onLogin(accountId);
+            onLogin(String(accountId));
 
             // Save into savedAccounts for multi-account switching persistence
-            const loginNum = parseInt(username, 10);
+            const loginNum = parseInt(String(accountId), 10);
             if (!isNaN(loginNum)) {
                 addSavedAccount({
                     login: loginNum,
-                    name: data.user?.username || '',
-                    server: 'FlexyMarkets-Server',
+                    name: data.user?.username || data.username || '',
+                    server: loginTarget.server || data.broker_server || loginTarget.displayValue,
                     isLive: true,
                     lastUsed: Date.now(),
-                    password: btoa(password),
                 });
                 setActiveAccount(loginNum);
             }
@@ -166,7 +165,6 @@ export function Login({ onLogin }: LoginProps) {
                             />
                         </div>
                     </div>
-                    {/* 
                     <div className="mb-6">
                         <label className="block text-[10px] font-bold text-[#4a5568] uppercase tracking-[0.2em] mb-3 ml-1">
                             Server Connection
@@ -179,10 +177,16 @@ export function Login({ onLogin }: LoginProps) {
                                 placeholder="Server Address"
                                 required
                                 value={server}
+                                list="login-broker-servers"
                                 onChange={(e) => setServer(e.target.value)}
                             />
+                            <datalist id="login-broker-servers">
+                                {brokerServers.map(serverName => (
+                                    <option key={serverName} value={serverName} />
+                                ))}
+                            </datalist>
                         </div>
-                    </div> */}
+                    </div>
 
                     <div className="mb-6 flex items-center">
                         <input

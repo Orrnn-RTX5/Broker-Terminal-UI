@@ -6,6 +6,7 @@
 
 import type { Position, Order, Account, Trade, Tick } from '../store/useAppStore';
 import { useAppStore } from '../store/useAppStore';
+import { API_V2_BASE_URL } from '../config/api';
 
 // ============================================
 // API Response Types
@@ -110,9 +111,113 @@ export interface AdminAccount {
 import { API_BASE_URL } from '../config/api';
 import { ApiError, apiClient } from '../api/client';
 import * as endpoints from '../api/endpoints';
-import mt5TradeService from './mt5TradeService';
+import { getStoredBrokerServer, resolveLoginBrokerTarget } from './brokerServers';
 
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
+const DEFAULT_BROKER_ID = 'broker_3';
+
+interface LoginOptions {
+  baseUrl?: string;
+  broker_id?: string;
+  server?: string;
+}
+
+const normalizeLoginOption = (value: unknown): string => String(value || '').trim();
+
+const toFiniteNumber = (value: unknown, fallback = 0): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const resolveTradingLogin = (login?: number): number => {
+  if (Number.isFinite(login) && Number(login) > 0) return Number(login);
+  const stateLogin = Number.parseInt(String(useAppStore.getState().accountId || ''), 10);
+  if (Number.isFinite(stateLogin) && stateLogin > 0) return stateLogin;
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('rtx_saved_username') || localStorage.getItem('rtx_last_login');
+    const storedLogin = Number.parseInt(String(stored || ''), 10);
+    if (Number.isFinite(storedLogin) && storedLogin > 0) return storedLogin;
+  }
+  throw new Error('Missing account login for trading request');
+};
+
+const requireSymbol = (symbol: unknown): string => {
+  const normalized = String(symbol || '').trim().toUpperCase();
+  if (!normalized) throw new Error('Missing symbol');
+  return normalized;
+};
+
+const requireVolume = (volume: unknown): number => {
+  const parsed = Number(volume);
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error('Volume must be greater than zero');
+  return parsed;
+};
+
+const normalizeSideForApi = (side: unknown): 'buy' | 'sell' => {
+  const normalized = String(side || '').trim().toLowerCase();
+  if (normalized !== 'buy' && normalized !== 'sell') throw new Error('Side must be buy or sell');
+  return normalized;
+};
+
+const timestampToIso = (value: unknown): string => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return new Date().toISOString();
+  return new Date(n > 1_000_000_000_000 ? n : n * 1000).toISOString();
+};
+
+const unwrapList = <T,>(payload: T[] | { positions?: T[]; orders?: T[]; count?: number } | undefined, key: 'positions' | 'orders'): T[] => {
+  if (Array.isArray(payload)) return payload;
+  const list = payload?.[key];
+  return Array.isArray(list) ? list : [];
+};
+
+const normalizeGatewayPositionForApp = (raw: any, index = 0) => {
+  const ticket = toFiniteNumber(raw?.ticket ?? raw?.id, index + 1);
+  const openPrice = toFiniteNumber(raw?.price_open ?? raw?.open_price ?? raw?.openPrice ?? raw?.price, 0);
+  const currentPrice = toFiniteNumber(raw?.price_current ?? raw?.current_price ?? raw?.currentPrice, openPrice);
+  const side = String(raw?.side ?? '').toLowerCase() === 'sell' ? 'SELL' : 'BUY';
+
+  return {
+    ...raw,
+    id: ticket,
+    ticket,
+    symbol: requireSymbol(raw?.symbol),
+    side,
+    volume: toFiniteNumber(raw?.volume ?? raw?.quantity, 0),
+    quantity: toFiniteNumber(raw?.volume ?? raw?.quantity, 0),
+    open_price: openPrice,
+    current_price: currentPrice,
+    opened_at: raw?.opened_at ?? timestampToIso(raw?.time_create),
+    sl: toFiniteNumber(raw?.price_sl ?? raw?.sl, 0),
+    tp: toFiniteNumber(raw?.price_tp ?? raw?.tp, 0),
+    swap: toFiniteNumber(raw?.swap, 0),
+    commission: toFiniteNumber(raw?.commission, 0),
+    unrealized_pl: toFiniteNumber(raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL, 0),
+  };
+};
+
+const normalizeGatewayOrderForApp = (raw: any, index = 0) => {
+  const ticket = toFiniteNumber(raw?.ticket ?? raw?.id, index + 1);
+  const type = String(raw?.type || '').toUpperCase();
+  const side = String(raw?.side ?? '').toLowerCase() === 'sell' || type.includes('SELL') ? 'SELL' : 'BUY';
+
+  return {
+    ...raw,
+    id: String(ticket),
+    ticket,
+    symbol: requireSymbol(raw?.symbol),
+    type,
+    side,
+    volume: toFiniteNumber(raw?.volume ?? raw?.quantity, 0),
+    quantity: toFiniteNumber(raw?.volume ?? raw?.quantity, 0),
+    price: toFiniteNumber(raw?.price, 0),
+    sl: toFiniteNumber(raw?.price_sl ?? raw?.sl, 0),
+    tp: toFiniteNumber(raw?.price_tp ?? raw?.tp, 0),
+    status: String(raw?.status || 'pending').toUpperCase(),
+    created_at: raw?.created_at ?? timestampToIso(raw?.time_create),
+    createdAt: raw?.createdAt ?? raw?.created_at ?? timestampToIso(raw?.time_create),
+  };
+};
 
 // ============================================
 // HTTP Client with Error Handling
@@ -123,31 +228,70 @@ const DEFAULT_TIMEOUT = 10000; // 10 seconds
 // ============================================
 
 export const authApi = {
-  async login(username: string, password: string, baseUrl?: string): Promise<endpoints.LoginResponse> {
-    const result = await endpoints.authApi.login({ username, password }, baseUrl ? { baseUrl } : undefined);
+  async login(username: string, password: string, options?: string | LoginOptions): Promise<endpoints.LoginResponse> {
+    const loginOptions = typeof options === 'string' ? { baseUrl: options } : options;
+    const storedBrokerId = typeof window !== 'undefined'
+      ? normalizeLoginOption(localStorage.getItem('rtx_broker_id') || localStorage.getItem('broker_id'))
+      : '';
+    const explicitBrokerId = normalizeLoginOption(loginOptions?.broker_id);
+    const explicitServer = normalizeLoginOption(loginOptions?.server);
+    const storedTarget = resolveLoginBrokerTarget(getStoredBrokerServer());
+    const loginTarget = explicitBrokerId
+      ? { displayValue: explicitBrokerId, broker_id: explicitBrokerId }
+      : explicitServer
+        ? resolveLoginBrokerTarget(explicitServer)
+        : storedTarget.server
+          ? storedTarget
+          : {
+            displayValue: storedTarget.displayValue,
+            broker_id: storedTarget.broker_id || storedBrokerId || DEFAULT_BROKER_ID,
+          };
+    const numericLogin = Number.parseInt(username, 10);
+    const identifier = Number.isFinite(numericLogin) && String(numericLogin) === username.trim()
+      ? { login: numericLogin }
+      : username.includes('@')
+        ? { email: username }
+        : { username };
+    const result = await endpoints.authApi.login(
+      { ...identifier, password, ...(loginTarget.server ? { server: loginTarget.server } : { broker_id: loginTarget.broker_id || DEFAULT_BROKER_ID }) },
+      loginOptions?.baseUrl ? { baseUrl: loginOptions.baseUrl } : undefined
+    );
+    const accessToken = result.token || result.access_token;
+    const resolvedBrokerId = result.broker_id || loginTarget.broker_id;
+    const resolvedBrokerServer = loginTarget.server || result.broker_server || loginTarget.displayValue;
 
     // Store tokens in Zustand store after successful login
-    if (result.access_token) {
+    if (accessToken) {
       useAppStore.getState().setAuthTokens(
-        result.access_token,
+        accessToken,
         result.refresh_token,
         result.expires_at ? new Date(result.expires_at).getTime() : undefined
       );
     }
+    if (typeof window !== 'undefined') {
+      if (resolvedBrokerId) {
+        localStorage.setItem('rtx_broker_id', resolvedBrokerId);
+        localStorage.setItem('broker_id', resolvedBrokerId);
+      }
+      if (resolvedBrokerServer) {
+        localStorage.setItem('rtx_broker_server', resolvedBrokerServer);
+      }
+    }
 
-    return result;
+    return { ...result, access_token: accessToken, broker_id: resolvedBrokerId, broker_server: resolvedBrokerServer };
   },
 
   async refresh(refreshToken: string): Promise<endpoints.LoginResponse> {
     const result = await endpoints.authApi.refresh(refreshToken);
-    if (result.access_token) {
+    const accessToken = result.token || result.access_token;
+    if (accessToken) {
       useAppStore.getState().setAuthTokens(
-        result.access_token,
+        accessToken,
         result.refresh_token,
         result.expires_at ? new Date(result.expires_at).getTime() : undefined
       );
     }
-    return result;
+    return { ...result, access_token: accessToken };
   },
 
   logout(): void {
@@ -164,11 +308,6 @@ export const accountApi = {
   async getAccountSummary(login?: number): Promise<endpoints.AccountSummary> {
     return endpoints.accountApi.getSummary(login);
   },
-
-  async createAccount(data: endpoints.CreateAccountRequest): Promise<endpoints.CreateAccountResponse> {
-    // Use the registration endpoint from apis.json
-    return apiClient.post<endpoints.CreateAccountResponse>('/api/mt5/account/create', data);
-  },
 };
 
 // ============================================
@@ -176,10 +315,10 @@ export const accountApi = {
 // ============================================
 
 export const positionsApi = {
-  async getPositions(): Promise<endpoints.Position[]> {
+  async getPositions(login?: number): Promise<endpoints.Position[]> {
     try {
-      const response = await endpoints.tradingApi.getPositions();
-      return response.positions || [];
+      const response = await endpoints.tradingApi.getPositions(resolveTradingLogin(login));
+      return unwrapList(response, 'positions').map(normalizeGatewayPositionForApp) as any;
     } catch {
       // Gateway may be unavailable — positions come from MT5 Sync WS instead
       return [];
@@ -187,9 +326,20 @@ export const positionsApi = {
   },
 
   async closePosition(positionId: string): Promise<void> {
-    // Route via MT5 trade service which has auth attached
-    const ticket = typeof positionId === 'string' ? parseInt(positionId, 10) : positionId;
-    await mt5TradeService.closeTrade({ ticket });
+    const ticket = Number.parseInt(String(positionId), 10);
+    if (!Number.isFinite(ticket) || ticket <= 0) throw new Error('Invalid position ticket');
+    await endpoints.tradingApi.closePosition(ticket);
+  },
+
+  async modifyPosition(positionId: string | number, data: endpoints.ModifyPositionRequest): Promise<endpoints.Position> {
+    const ticket = Number.parseInt(String(positionId), 10);
+    if (!Number.isFinite(ticket) || ticket <= 0) throw new Error('Invalid position ticket');
+    return endpoints.tradingApi.modifyPosition(ticket, {
+      price_sl: data.price_sl,
+      price_tp: data.price_tp,
+      trailing_stop: data.trailing_stop,
+      trailing_step: data.trailing_step,
+    });
   },
 
   async closeBulk(
@@ -197,7 +347,32 @@ export const positionsApi = {
     type: 'ALL' | 'WINNERS' | 'LOSERS',
     symbol?: string
   ): Promise<{ closed: number; message: string }> {
-    return apiClient.post<{ closed: number; message: string }>('/api/positions/close-bulk', { accountId, type, symbol });
+    const login = resolveTradingLogin(accountId);
+    const normalizedSymbol = symbol ? requireSymbol(symbol) : undefined;
+
+    if (type === 'ALL' && !normalizedSymbol) {
+      return apiClient.post<{ closed: number; message: string }>(
+        `/accounts/${login}/close-all`,
+        {},
+        { baseUrl: API_V2_BASE_URL }
+      );
+    }
+
+    const response = await endpoints.tradingApi.getPositions(login, { limit: 500, offset: 0 });
+    const positions = unwrapList(response, 'positions').map(normalizeGatewayPositionForApp);
+    const candidates = positions.filter((position: any) => {
+      if (normalizedSymbol && position.symbol !== normalizedSymbol) return false;
+      if (type === 'ALL') return true;
+      const profit = toFiniteNumber(position.profit ?? position.unrealized_pl ?? position.unrealizedPnL, 0);
+      return type === 'WINNERS' ? profit > 0 : profit < 0;
+    });
+
+    await Promise.all(candidates.map((position: any) => endpoints.tradingApi.closePosition(position.id ?? position.ticket)));
+
+    return {
+      closed: candidates.length,
+      message: `Closed ${candidates.length} ${type.toLowerCase()} position${candidates.length === 1 ? '' : 's'}`,
+    };
   },
 };
 
@@ -206,17 +381,65 @@ export const positionsApi = {
 // ============================================
 
 export const ordersApi = {
-  async placeMarketOrder(data: endpoints.CreateOrderRequest): Promise<endpoints.Order> {
-    return endpoints.tradingApi.placeOrder(data);
+  async placeMarketOrder(data: endpoints.CreateOrderRequest): Promise<endpoints.Position> {
+    return endpoints.tradingApi.placeOrder({
+      login: resolveTradingLogin(data.login ?? data.account_login),
+      symbol: requireSymbol(data.symbol),
+      side: normalizeSideForApi(data.side),
+      volume: requireVolume(data.volume ?? data.quantity),
+      price_sl: data.price_sl ?? data.sl,
+      price_tp: data.price_tp ?? data.tp,
+      comment: data.comment,
+      trailing_stop: data.trailing_stop,
+      trailing_step: data.trailing_step,
+      magic: data.magic,
+    });
   },
 
-  async getPendingOrders(): Promise<endpoints.Order[]> {
-    const response = await endpoints.tradingApi.getOrders();
-    return response.orders || [];
+  async placePendingOrder(data: endpoints.PendingOrderRequest): Promise<endpoints.Order> {
+    const type = String(data.type || '').trim().toLowerCase();
+    if (!['buy_limit', 'sell_limit', 'buy_stop', 'sell_stop'].includes(type)) {
+      throw new Error('Pending order type must be buy_limit, sell_limit, buy_stop, or sell_stop');
+    }
+    return endpoints.tradingApi.placePendingOrder({
+      login: resolveTradingLogin(data.login ?? data.account_login),
+      symbol: requireSymbol(data.symbol),
+      side: normalizeSideForApi(data.side),
+      volume: requireVolume(data.volume),
+      type: type as endpoints.PendingOrderRequest['type'],
+      price: requireVolume(data.price),
+      price_sl: data.price_sl ?? data.sl,
+      price_tp: data.price_tp ?? data.tp,
+      expiration: data.expiration,
+      comment: data.comment,
+      trailing_stop: data.trailing_stop,
+      trailing_step: data.trailing_step,
+      magic: data.magic,
+    });
+  },
+
+  async getPendingOrders(login?: number): Promise<endpoints.Order[]> {
+    const response = await endpoints.tradingApi.getPendingOrders(resolveTradingLogin(login));
+    return unwrapList(response as any, 'orders').map(normalizeGatewayOrderForApp) as any;
   },
 
   async cancelOrder(orderId: string): Promise<void> {
-    return endpoints.tradingApi.cancelOrder(orderId);
+    const ticket = Number.parseInt(String(orderId), 10);
+    if (!Number.isFinite(ticket) || ticket <= 0) throw new Error('Invalid pending order ticket');
+    await endpoints.tradingApi.cancelOrder(ticket);
+  },
+
+  async modifyPendingOrder(orderId: string | number, data: endpoints.ModifyPendingOrderRequest): Promise<endpoints.Order> {
+    const ticket = Number.parseInt(String(orderId), 10);
+    if (!Number.isFinite(ticket) || ticket <= 0) throw new Error('Invalid pending order ticket');
+    return endpoints.tradingApi.modifyPendingOrder(ticket, {
+      price: data.price,
+      price_sl: data.price_sl,
+      price_tp: data.price_tp,
+      expiration: data.expiration,
+      trailing_stop: data.trailing_stop,
+      trailing_step: data.trailing_step,
+    });
   },
 };
 
@@ -380,46 +603,6 @@ export const adminApi = {
 };
 
 // ============================================
-// Alerts API
-// ============================================
-
-export type AlertRule = {
-  id: string;
-  name: string;
-  enabled: boolean;
-  condition: {
-    type: 'price_above' | 'price_below' | 'pnl_above' | 'pnl_below' | 'margin_level_below';
-    symbol?: string;
-    threshold: number;
-  };
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  message: string;
-};
-
-export const alertsApi = {
-  async getRules(): Promise<AlertRule[]> {
-    const data = await apiClient.get<AlertRule[]>('/api/alerts/rules');
-    return data || [];
-  },
-
-  async createRule(rule: Omit<AlertRule, 'id'>): Promise<AlertRule> {
-    return apiClient.post<AlertRule>('/api/alerts/rules', rule);
-  },
-
-  async updateRule(id: string, updates: Partial<AlertRule>): Promise<AlertRule> {
-    return apiClient.put<AlertRule>(`/api/alerts/rules/${id}`, updates);
-  },
-
-  async deleteRule(id: string): Promise<void> {
-    return apiClient.delete<void>(`/api/alerts/rules/${id}`);
-  },
-
-  async testRule(id: string): Promise<void> {
-    return apiClient.post<void>(`/api/alerts/rules/${id}/test`, {});
-  },
-};
-
-// ============================================
 // Analytics & Export API
 // ============================================
 
@@ -551,235 +734,6 @@ export const notificationsApi = {
 };
 
 // ============================================
-// MT5 Manager API (Account Creation)
-// ============================================
-
-export interface MT5Group {
-  name: string;
-  description?: string;
-  type?: string;
-}
-
-export interface CreateMT5AccountRequest {
-  group: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  country?: string;
-  city?: string;
-  leverage?: number;
-}
-
-export interface CreateMT5AccountResponse {
-  login: number;
-  master_password: string;
-  investor_password: string;
-  group: string;
-  server: string;
-  created_at: string;
-}
-
-export interface MT5ManagerStatus {
-  connected: boolean;
-  address?: string;
-  login?: number;
-  last_error?: string;
-  config?: {
-    sdk_configured: boolean;
-  };
-}
-
-export const mt5ManagerApi = {
-  async getStatus(): Promise<MT5ManagerStatus> {
-    const response = await apiClient.get<MT5ManagerStatus>('/api/mt5/status');
-    return response;
-  },
-
-  async getGroups(): Promise<MT5Group[]> {
-    const response = await apiClient.get<{ groups: MT5Group[] }>('/api/mt5/groups');
-    return response.groups || [];
-  },
-
-  async createAccount(request: endpoints.CreateAccountRequest): Promise<endpoints.CreateAccountResponse> {
-    // Uses Gateway API (/api/mt5/account/create) as defined in endpoints
-    return endpoints.mt5Api.createAccount(request);
-  },
-
-  async isReady(): Promise<boolean> {
-    try {
-      const status = await this.getStatus();
-      return status.connected;
-    } catch {
-      return false;
-    }
-  },
-};
-
-// ============================================
-// MT5 Direct Trading API
-// ============================================
-
-export interface MT5Position {
-  ticket: number;
-  login: number;
-  symbol: string;
-  action: string;
-  volume: number;
-  open_price: number;
-  current_price: number;
-  sl: number;
-  tp: number;
-  profit: number;
-  swap: number;
-  time_ms: number;
-}
-
-export interface MT5Account {
-  login: number;
-  balance: number;
-  equity: number;
-  margin: number;
-  free_margin: number;
-  margin_level: number;
-  leverage: number;
-  currency: string;
-  name: string;
-}
-
-export interface MT5Order {
-  ticket: number;
-  login: number;
-  symbol: string;
-  type: string;
-  volume: number;
-  price: number;
-  sl: number;
-  tp: number;
-  time_ms: number;
-}
-
-export interface MT5HistoryDeal {
-  deal: number;
-  order: number;
-  time_ms: number;
-  type: string;
-  entry: string;
-  symbol: string;
-  volume: number;
-  price: number;
-  profit: number;
-  commission: number;
-  swap: number;
-  comment: string;
-}
-
-export interface MT5Status {
-  connected: boolean;
-  endpoint: string;
-  adapter_id: string;
-  adapter_name: string;
-}
-
-export const mt5Api = {
-  async getStatus(): Promise<MT5Status> {
-    return endpoints.mt5Api.getStatus();
-  },
-
-  async getAccount(login?: number): Promise<MT5Account> {
-    // Correct Gateway endpoint: /api/account/summary (with optional login param)
-    const params: Record<string, any> = {};
-    if (login) params.login = login;
-    const data = await apiClient.get<any>('/api/account/summary', { params });
-    // Normalize gateway response shape to MT5Account interface
-    return {
-      login: login || data.id || 0,
-      balance: data.balance ?? 0,
-      equity: data.equity ?? 0,
-      margin: data.margin_used ?? 0,
-      free_margin: data.margin_available ?? 0,
-      margin_level: data.margin_available && data.margin_used
-        ? (data.equity / data.margin_used) * 100
-        : 0,
-      leverage: data.leverage ?? 0,
-      currency: data.currency ?? 'USD',
-      name: data.id ?? String(login ?? ''),
-    } as MT5Account;
-  },
-
-  async getPositions(login?: number): Promise<MT5Position[]> {
-    // Correct Gateway endpoint: /api/positions (no login param needed — auth token identifies account)
-    const data = await apiClient.get<{ positions: MT5Position[]; count: number }>('/api/positions');
-    return data?.positions || [];
-  },
-
-  async getOrders(login?: number): Promise<MT5Order[]> {
-    // Correct Gateway endpoint: /api/orders
-    const data = await apiClient.get<{ orders: MT5Order[]; count: number }>('/api/orders');
-    return data?.orders || [];
-  },
-
-  async getHistory(params: {
-    login?: number;
-    from?: number;
-    to?: number;
-    symbol?: string
-  }): Promise<MT5HistoryDeal[]> {
-    const data = await apiClient.get<MT5HistoryDeal[]>('/api/mt5/history', { params });
-    return data || [];
-  },
-
-  async submitOrder(order: {
-    symbol: string;
-    action: string;
-    volume: number;
-    price?: number;
-    sl?: number;
-    tp?: number;
-    login?: number;
-    comment?: string;
-    client_request_id?: string;
-  }): Promise<any> {
-    // Axios-based direct execute on port 8088
-    return mt5TradeService.executeTrade({
-      accountLogin: order.login || 0,
-      symbol: order.symbol,
-      side: order.action.toLowerCase() as 'buy' | 'sell',
-      volumeLots: order.volume,
-      price: order.price,
-      sl: order.sl,
-      tp: order.tp,
-      comment: order.comment || 'RTX sync trade',
-    });
-  },
-
-  async closePosition(ticket: number, volume?: number, login?: number): Promise<any> {
-    // Axios-based direct close on port 8088
-    return mt5TradeService.closeTrade({
-      accountLogin: login || 0,
-      ticket,
-      volumeLots: volume,
-    });
-  },
-
-  async modifyPosition(ticket: number, sl: number, tp: number): Promise<any> {
-    return mt5TradeService.modifyTrade({
-      ticket,
-      stopLoss: sl,
-      takeProfit: tp,
-    });
-  },
-
-  async changePassword(login: number, oldPassword: string, newPassword: string, type: 'master' | 'investor' = 'master'): Promise<{ success: boolean; login: number; type: string; message: string }> {
-    return endpoints.mt5Api.changePassword({
-      login,
-      old_password: oldPassword,
-      new_password: newPassword,
-      type
-    });
-  },
-};
-
-// ============================================
 // Economic Calendar API
 // ============================================
 
@@ -875,11 +829,8 @@ export const api = {
   config: configApi,
   admin: adminApi,
   analytics: analyticsApi,
-  alerts: alertsApi,
   workspace: workspaceApi,
   notifications: notificationsApi,
-  mt5: mt5Api,
-  mt5Manager: mt5ManagerApi,
   economicCalendar: economicCalendarApi,
   journal: journalApi,
 };

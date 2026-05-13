@@ -1,6 +1,6 @@
 /**
  * Clean MT5-Style Trading Chart
- * - Loads historical OHLC from /api/fix/candles/{symbol}
+ * - Loads historical OHLC from Swagger candle endpoints
  * - WebSocket live tick updates
  * - Single price line (MT5 style)
  * - Proper candle aggregation
@@ -24,11 +24,9 @@ import { useToolbarState } from '../hooks/useToolbarState';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { drawingManager } from '../services/drawingManager';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
-import { FixMarketDataSocket } from '../services/fixMarketDataSocket';
-import { getFixMarketDataSocket } from '../services/fixMarketDataSocket';
 import { candleAggregationService, getTimeframeSeconds, type OHLCV, type Timeframe as AggTimeframe } from '../services/candleAggregationService';
 import { useAppStore } from '../store/useAppStore';
-import { useMT5Store } from '../store/useMT5Store';
+import api from '../services/api';
 import { useDockLayoutStore } from '../store/useDockLayoutStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { commandBus } from '../services/commandBus';
@@ -39,6 +37,7 @@ import { getSymbolDigits } from '../utils/symbolUtils';
 import { ChartContextMenu } from './ChartContextMenu';
 import { captureFullPage } from '../services/screenshotService';
 import { indicatorManager } from '../services/indicatorManager';
+import { chartDataService } from '../services/chartDataService';
 import { ChartTemplateDialog } from './ChartTemplateDialog';
 import { type ChartTemplate } from '../store/useTemplateStore';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
@@ -51,6 +50,7 @@ import {
   getTradingChartTickMarkCharacterLength,
   shouldTradingChartFooterPromoteLeftEdgeDateLabel,
 } from '../utils/chartTimeFormat';
+import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
 
 export type ChartType = 'candlestick' | 'bar' | 'line' | 'area';
 export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
@@ -735,26 +735,15 @@ export const TradingChart = React.memo(function TradingChart({
     console.log(`[Chart] Loading history for ${symbol}, timeframe: ${activeTf}`);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      // Direct backend URL
-      const isElectron = !!(window as any).electron || !!(window as any).electronAPI || navigator.userAgent.includes('Electron') || window.location.protocol === 'file:';
-      const baseUrl = isElectron ? 'https://rtxbackend.tradecopier.org' : '';
-      const url = `${baseUrl}/api/fix/candles/${symbol}?timeframe=${activeTf}&limit=500`;
-
-      console.log(`[Chart] Fetching: ${url}`);
-
-      const response = await fetch(url, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      const candles: Candle[] = await chartDataService.fetchCandles({
+        symbol,
+        timeframe: activeTf,
+        count: 500,
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-
-      // Handle both { candles: [] } and direct array response
-      const rawCandles = Array.isArray(data) ? data : (data.candles || []);
-      console.log(`[Chart] Received ${rawCandles.length} candles`, data);
+      console.log(`[Chart] Received ${candles.length} candles`);
 
       // If API returns empty candles, initialize series so live ticks can build candles
-      if (rawCandles.length === 0) {
+      if (candles.length === 0) {
         console.log(`[Chart] No historical candles for ${symbol} ${activeTf} — live-only mode`);
         if (seriesRef.current) seriesRef.current.setData([]);
         if (volumeRef.current) volumeRef.current.setData([]);
@@ -768,27 +757,6 @@ export const TradingChart = React.memo(function TradingChart({
         setIsLoading(false);
         return;
       }
-
-      const tfSec = getTimeframeSeconds(activeTf as AggTimeframe);
-      const candles: Candle[] = rawCandles
-        .filter((c: any) => c && (c.time ?? c.Time) != null && (c.open ?? c.Open) != null)
-        .map((c: any) => {
-          const rawRawTime = typeof (c.time ?? c.Time) === 'string'
-            ? new Date(c.time ?? c.Time).getTime() / 1000
-            : Number(c.time ?? c.Time);
-          const rawTimeSeconds = rawRawTime > 1000000000000 ? Math.floor(rawRawTime / 1000) : rawRawTime;
-          const alignedTime = Math.floor(rawTimeSeconds / tfSec) * tfSec;
-
-          return {
-            time: alignedTime,
-            open: Number(c.open ?? c.Open) || 0,
-            high: Number(c.high ?? c.High) || 0,
-            low: Number(c.low ?? c.Low) || 0,
-            close: Number(c.close ?? c.Close) || 0,
-            volume: Number(c.volume ?? c.Volume) || 0,
-          };
-        })
-        .filter((c: any) => c.time > 0 && (c.open > 0 || c.close > 0));
 
       // Sort by time ascending
       candles.sort((a, b) => (a.time as number) - (b.time as number));
@@ -847,7 +815,7 @@ export const TradingChart = React.memo(function TradingChart({
         // is LESS than it, making the clockInterval condition (current < expected) FALSE:
         // the clock never fires and the forming candle never rolls over to a new bar.
         const tfSec = getTimeframeSeconds(activeTf as AggTimeframe);
-        const normalizedTime = Math.floor(last.time / tfSec) * tfSec;
+        const normalizedTime = alignTimeframeBoundarySeconds(last.time, activeTf as AggTimeframe, tfSec);
 
         currentCandleRef.current = { ...last, time: normalizedTime };
         setLegend({ o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume });
@@ -896,34 +864,18 @@ export const TradingChart = React.memo(function TradingChart({
     console.log(`[Chart] Infinite scroll: Fetching 5000 more candles before ${oldestCandle.time}`);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      const isElectron = !!(window as any).electron || !!(window as any).electronAPI || navigator.userAgent.includes('Electron') || window.location.protocol === 'file:';
-      const baseUrl = isElectron ? 'https://rtxbackend.tradecopier.org' : '';
-      const url = `${baseUrl}/api/fix/candles/${symbol}?timeframe=${timeframe}&limit=5000&to=${Math.floor(oldestCandle.time)}`;
-      const response = await fetch(url, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      const olderCandles: Candle[] = await chartDataService.fetchCandles({
+        symbol,
+        timeframe,
+        count: 5000,
+        to: Math.floor(oldestCandle.time),
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
 
-      const rawCandles = Array.isArray(data) ? data : (data.candles || []);
-
-      if (rawCandles.length === 0) {
+      if (olderCandles.length === 0) {
         console.log(`[Chart] Reached absolute beginning of chart history for ${symbol}`);
         hasReachedBeginningRef.current = true;
         return;
       }
-
-      const olderCandles: Candle[] = rawCandles
-        .filter((c: any) => c && (c.time ?? c.Time) != null && (c.open ?? c.Open) != null)
-        .map((c: any) => ({
-          time: typeof (c.time ?? c.Time) === 'string' ? new Date(c.time ?? c.Time).getTime() / 1000 : Number(c.time ?? c.Time),
-          open: Number(c.open ?? c.Open) || 0,
-          high: Number(c.high ?? c.High) || 0,
-          low: Number(c.low ?? c.Low) || 0,
-          close: Number(c.close ?? c.Close) || 0,
-          volume: Number(c.volume ?? c.Volume) || 0,
-        }));
 
       // If we got fewer than requested, we probably hit the beginning of the market data
       if (olderCandles.length < 4000) {
@@ -1607,7 +1559,7 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       const tfs = getTimeframeSeconds(activeTf as AggTimeframe);
-      const candleTime = Math.floor(ts / tfs) * tfs;
+      const candleTime = alignTimeframeBoundarySeconds(ts, activeTf as AggTimeframe, tfs);
 
       // Dedup: same raw timestamp AND same price → skip (prevents 100ms poll from
       // re-processing the exact same tick repeatedly). candleTime is NOT used as the
@@ -1696,8 +1648,11 @@ export const TradingChart = React.memo(function TradingChart({
           const pId = trade.key.replace('trade:', '');
           console.log(`[Chart] 🛑 Auto-closing trade ${pId} due to SL/TP cross`);
           
-          useMT5Store.getState().closePosition(Number(pId)).catch(err => {
-            console.warn(`[Chart] Auto-close MT5 failed:`, err);
+          api.positions.closePosition(String(pId)).then(() => {
+            useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== Number(pId)));
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+          }).catch(err => {
+            console.warn(`[Chart] Auto-close failed:`, err);
             tradeAutoClosePendingRef.current.delete(trade.key);
           });
         }
@@ -1708,37 +1663,29 @@ export const TradingChart = React.memo(function TradingChart({
     }, 100);
 
     // ── FIX WebSocket: server-confirmed completed candles ──────────────────────
-    // Only used when the server pushes a finalised bar (end-of-minute confirmation).
-    // MUST use the dedicated fix backend because `rtxbackend` does NOT reliably send `update` payloads!
-    const fixSocket = getFixMarketDataSocket();
-    fixSocket.connect();
-    fixSocket.subscribe([normalizedSymbol]);
-
-    const unsubscribeFix = fixSocket.onMessage((rawMsg) => {
-      const msg = rawMsg as any;
+    const applyServerCandle = (c: Candle) => {
       if (isDisposedRef.current || isRebuildingRef.current) return;
-      if (msg.type !== 'update' || !msg.candle) return;
-      const msgSym = msg.symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-      if (msgSym !== normalizedSymbol) return;
-
-      const activeTf = prevTimeframeRef.current || timeframe;
-      const c = msg.candle;
 
       // 1. Is this an update to an older (already closed) bar?
       if (currentCandleRef.current && c.time < currentCandleRef.current.time) {
-        // We cannot call `push(closed, false)` because LightweightCharts prohibits
-        // updating historical datums directly via `update()`. If a live tick already
-        // rolled the chart into the next minute, simply ignore the slightly-late server
-        // compilation of the previous minute to prevent `Cannot update oldest data` errors.
+        // LightweightCharts cannot update historical datums via update(); merge the
+        // authoritative server correction and repaint the full sorted set instead.
+        candlesRef.current = chartDataService.mergeCandle(candlesRef.current, c, 1000) as Candle[];
+        updateChartData(candlesRef.current);
         return;
       }
 
       // 2. Is this an update to the CURRENTLY forming bar?
       if (currentCandleRef.current && c.time === currentCandleRef.current.time) {
-        currentCandleRef.current.high = Math.max(currentCandleRef.current.high, c.high);
-        currentCandleRef.current.low = Math.min(currentCandleRef.current.low, c.low);
-        // Do NOT overwrite close with server close if our local live tick is newer!
-        // But we can update volume.
+        currentCandleRef.current = {
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+        };
+        candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
         push(currentCandleRef.current, false);
         return;
       }
@@ -1750,20 +1697,42 @@ export const TradingChart = React.memo(function TradingChart({
 
         // Immediately apply server's data to it
         if (currentCandleRef.current && currentCandleRef.current.time === c.time) {
-          currentCandleRef.current.high = c.high;
-          currentCandleRef.current.low = c.low;
-          currentCandleRef.current.close = c.close;
+          currentCandleRef.current = {
+            time: c.time,
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume: c.volume,
+          };
+          candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
           push(currentCandleRef.current, false);
         }
 
         // We no longer need to reschedule boundary timer here!
         // The immortal Date.now() loop handles it automatically in the background.
       }
+    };
+
+    const candleStream = chartDataService.subscribeCandles({
+      symbol,
+      timeframe,
+      onSnapshot: (snapshot) => {
+        if (isDisposedRef.current || isRebuildingRef.current || snapshot.length === 0) return;
+        candlesRef.current = snapshot.reduce(
+          (acc, candle) => chartDataService.mergeCandle(acc, candle, 1000),
+          candlesRef.current,
+        ) as Candle[];
+        updateChartData(candlesRef.current);
+        currentCandleRef.current = candlesRef.current[candlesRef.current.length - 1] ?? currentCandleRef.current;
+      },
+      onCandle: (candle) => applyServerCandle(candle),
+      onError: (error) => setApiError(error.message),
     });
 
     return () => {
       clearInterval(interval);
-      unsubscribeFix();
+      candleStream.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, timeframe]);
@@ -2292,7 +2261,7 @@ export const TradingChart = React.memo(function TradingChart({
       tradeHistoryRefreshTimerRef.current = null;
     }
 
-    useMT5Store.getState().fetchHistory({ symbol }).catch(() => {});
+    window.dispatchEvent(new Event('rtx:force-refresh-positions'));
   }, [clearTradeOverlay, symbol]);
 
   const updateLabelPositions = useCallback(() => {
@@ -2469,13 +2438,13 @@ export const TradingChart = React.memo(function TradingChart({
       if (!Number.isFinite(timeframeSeconds) || timeframeSeconds <= 0) return normalizedTimestamp;
 
       if (candlesRef.current.length === 0) {
-        return Math.floor(normalizedTimestamp / timeframeSeconds) * timeframeSeconds;
+        return alignTimeframeBoundarySeconds(normalizedTimestamp, activeTf as AggTimeframe, timeframeSeconds);
       }
 
       const candidates = new Set<number>();
       const addCandidate = (value: number | null) => {
         if (value == null || !Number.isFinite(value)) return;
-        candidates.add(Math.floor(value / timeframeSeconds) * timeframeSeconds);
+        candidates.add(alignTimeframeBoundarySeconds(value, activeTf as AggTimeframe, timeframeSeconds));
       };
 
       addCandidate(normalizedTimestamp);
@@ -2497,7 +2466,7 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }
 
-      return bestTime ?? Math.floor(normalizedTimestamp / timeframeSeconds) * timeframeSeconds;
+      return bestTime ?? alignTimeframeBoundarySeconds(normalizedTimestamp, activeTf as AggTimeframe, timeframeSeconds);
     };
 
     const formatTradeTime = (chartTimeSeconds: number) => {
@@ -2531,7 +2500,7 @@ export const TradingChart = React.memo(function TradingChart({
       }
       tradeHistoryRefreshTimerRef.current = window.setTimeout(() => {
         tradeHistoryRefreshTimerRef.current = null;
-        useMT5Store.getState().fetchHistory({ symbol }).catch(() => {});
+        window.dispatchEvent(new Event('rtx:force-refresh-positions'));
       }, 350);
     };
 
@@ -2584,11 +2553,8 @@ export const TradingChart = React.memo(function TradingChart({
 
       clearTradeOverlay();
       const appState = useAppStore.getState();
-      const mt5State = useMT5Store.getState();
       const appPositions = Array.isArray(appState.positions) ? appState.positions : [];
       const appTrades = Array.isArray(appState.trades) ? appState.trades : [];
-      const mt5Positions = Array.isArray(mt5State.positions) ? mt5State.positions : [];
-      const mt5History = Array.isArray(mt5State.history) ? mt5State.history : [];
       const liveTrailTime = getLiveTrailTime();
 
       const normalizedAppPositions = appPositions.map((position: any) => ({
@@ -2603,38 +2569,7 @@ export const TradingChart = React.memo(function TradingChart({
         tp: Number(position.tp) || 0,
       }));
 
-      const normalizedMt5Positions = mt5Positions.map((position: any) => {
-        const action = String(position.action ?? '').toUpperCase().trim();
-        const side: TradeSide = position.action === 0 || action === '0' || action === 'BUY' ? 'BUY' : 'SELL';
-        const rawOpenTime = normalizeUnixSeconds(position.time_create_msc)
-          ?? normalizeUnixSeconds(position.time_create)
-          ?? normalizeUnixSeconds(position.open_time_captured)
-          ?? normalizeUnixSeconds(position.time_setup_msc)
-          ?? normalizeUnixSeconds(position.time_setup)
-          ?? normalizeUnixSeconds(position.time)
-          ?? normalizeUnixSeconds(position.time_ms)
-          ?? normalizeUnixSeconds(position.openTime);
-
-        return {
-          id: position.ticket,
-          symbol: position.symbol,
-          side,
-          volume: Number(position.volume) || 0,
-          openPrice: Number(position.open_price || position.price_open || position.openPrice || position.current_price || 0),
-          currentPrice: Number(position.current_price || position.price_current || position.currentPrice || 0),
-          rawOpenTime,
-          sl: Number(position.sl) || 0,
-          tp: Number(position.tp) || 0,
-        };
-      });
-
-      const mt5Ids = new Set(normalizedMt5Positions.map((position) => position.id));
-      const combinedPositions = [
-        ...normalizedMt5Positions,
-        ...normalizedAppPositions.filter((position) => !mt5Ids.has(position.id)),
-      ];
-
-      const matchingPositions = combinedPositions.filter((position) => {
+      const matchingPositions = normalizedAppPositions.filter((position) => {
         const positionSymbol = String(position.symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
         return Number(position.volume) > 0 && (
           positionSymbol === normalizedChartSymbol
@@ -2713,48 +2648,6 @@ export const TradingChart = React.memo(function TradingChart({
         }
       };
 
-      const historyDeals = mt5History.filter((deal) =>
-        String(deal.symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase() === normalizedChartSymbol,
-      );
-      const historyByPosition = new Map<string, typeof historyDeals>();
-      historyDeals.forEach((deal: any) => {
-        const positionId = String(deal.position ?? deal.position_id ?? deal.order ?? deal.deal);
-        if (!historyByPosition.has(positionId)) historyByPosition.set(positionId, []);
-        historyByPosition.get(positionId)!.push(deal);
-      });
-
-      historyByPosition.forEach((deals, positionId) => {
-        const sortedDeals = [...deals].sort((left: any, right: any) =>
-          (normalizeUnixSeconds(left.time_ms) ?? 0) - (normalizeUnixSeconds(right.time_ms) ?? 0),
-        );
-        const entryDeal = sortedDeals.find((deal: any) => {
-          const entry = String(deal.entry ?? '').toUpperCase();
-          return entry === '0' || entry === 'IN';
-        });
-        const exitDeals = sortedDeals.filter((deal: any) => {
-          const entry = String(deal.entry ?? '').toUpperCase();
-          return entry === '1' || entry === 'OUT';
-        });
-        if (!entryDeal || exitDeals.length === 0) return;
-
-        const finalExitDeal = exitDeals[exitDeals.length - 1];
-        const typeRaw = String(entryDeal.type ?? '').toUpperCase();
-        const side: TradeSide = typeRaw.includes('SELL') || typeRaw === '1' ? 'SELL' : 'BUY';
-
-        registerClosedTrade({
-          key: `trade:${positionId}`,
-          symbol: normalizedChartSymbol,
-          side,
-          volume: exitDeals.reduce((sum, deal: any) => sum + Number(deal.volume || 0), 0) || Number(finalExitDeal.volume || entryDeal.volume || 0),
-          entryPrice: Number(entryDeal.price) || 0,
-          entryTime: mapTradeTimestampToChartTime(entryDeal.time_ms) ?? (normalizeUnixSeconds(entryDeal.time_ms) || 0),
-          exitPrice: Number(finalExitDeal.price) || 0,
-          exitTime: mapTradeTimestampToChartTime(finalExitDeal.time_ms) ?? (normalizeUnixSeconds(finalExitDeal.time_ms) || 0),
-          profit: sortedDeals.reduce((sum, deal: any) => sum + Number(deal.profit || 0), 0),
-          source: 'mt5-history',
-        });
-      });
-
       appTrades.forEach((trade: any) => {
         const tradeSymbol = String(trade.symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
         if (tradeSymbol !== normalizedChartSymbol || trade.closePrice == null || trade.closeTime == null) return;
@@ -2815,12 +2708,6 @@ export const TradingChart = React.memo(function TradingChart({
       }
     });
 
-    const unsubscribeMT5Store = useMT5Store.subscribe((state, previousState) => {
-      if (state.positions !== previousState.positions || state.history !== previousState.history) {
-        renderTradeOverlay();
-      }
-    });
-
     const handleForceRefresh = () => {
       window.setTimeout(() => {
         renderTradeOverlay();
@@ -2831,7 +2718,6 @@ export const TradingChart = React.memo(function TradingChart({
 
     return () => {
       unsubscribeAppStore();
-      unsubscribeMT5Store();
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
       window.removeEventListener('rtx:flush-trade-overlay', renderTradeOverlay);
 
@@ -3038,7 +2924,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       const getCandleBoundaryTime = (timestamp: number) => {
         const tfs = getTimeframeSeconds(timeframe as AggTimeframe);
-        const candleBoundary = Math.floor(timestamp / tfs) * tfs;
+        const candleBoundary = alignTimeframeBoundarySeconds(timestamp, timeframe as AggTimeframe, tfs);
         let targetTime = candleBoundary;
         const candles = candlesRef.current;
         if (candles && candles.length > 0) {
@@ -3071,8 +2957,8 @@ export const TradingChart = React.memo(function TradingChart({
 
       const state = useAppStore.getState();
       const appPositions = state.positions || [];
-      const mt5State = useMT5Store.getState();
-      const mt5Positions = (mt5State.positions || []).map((p: any) => {
+      const mt5State = { history: [] as any[] };
+      const mt5Positions: any[] = ([] as any[]).map((p: any) => {
         const rawAction = p.action;
         const actionStr = String(rawAction ?? '').toUpperCase().trim();
         const isBuy = rawAction === 0 || actionStr === '0' || actionStr === 'BUY';
@@ -3302,14 +3188,6 @@ export const TradingChart = React.memo(function TradingChart({
       }
     });
 
-    // Re-render when MT5 store positions or history changes (used in MT5 mode)
-    const unsubscribeMT5 = useMT5Store.subscribe((state, prevState) => {
-      if (state.positions !== prevState.positions || state.history !== prevState.history) {
-        console.log(`[TradingChart] MT5Store positions/history updated, re-rendering markers for ${symbol}`);
-        renderPositionLines();
-      }
-    });
-
     // Also listen for force-refresh event (fired after trade execution)
     // Use a small delay to give the API time to reflect the new position
     const handleForceRefresh = () => {
@@ -3322,7 +3200,6 @@ export const TradingChart = React.memo(function TradingChart({
 
     return () => {
       unsubscribePositions();
-      unsubscribeMT5();
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
       if (chartRef.current) {
         try { chartRef.current.unsubscribeCrosshairMove(crosshairLabelUpdater); } catch { }
@@ -3570,7 +3447,7 @@ export const TradingChart = React.memo(function TradingChart({
                window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
                window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
                
-               useMT5Store.getState().modifyPosition(ticket, sl || 0, tp || 0).catch(err => {
+               api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 }).catch(err => {
                  console.error('[Chart] Failed to modify SL/TP:', err);
                  // On outright error, revert override
                  tradeLevelOverridesRef.current.delete(tradeObj.key);
