@@ -8,7 +8,7 @@ import {
     MousePointer2, Crosshair, ArrowUpDown, MoveHorizontal, MoveVertical,
     Minus, Pencil, Type, Shapes, Camera, Search, User, Shield,
     LogOut, GitCommitHorizontal, AlignCenter, BookMarked, RefreshCw,
-    PanelBottomOpen, LayoutPanelTop
+    PanelBottomOpen, LayoutPanelTop, SlidersHorizontal
 } from 'lucide-react';
 import { useToolbarState } from '../../hooks/useToolbarState';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcut';
@@ -290,6 +290,39 @@ interface MainToolbarProps extends TopToolbarProps {
     onLoadTemplate?: (template: any) => void;
 }
 
+type AdvancedFontSize = 'small' | 'normal' | 'large';
+type AdvancedDensity = 'comfortable' | 'compact';
+type AdvancedAccent = 'purple' | 'blue' | 'green' | 'amber';
+type AdvancedChartSurface = 'white' | 'soft' | 'paper';
+
+interface AdvancedViewOptions {
+    fontSize: AdvancedFontSize;
+    density: AdvancedDensity;
+    accent: AdvancedAccent;
+    chartSurface: AdvancedChartSurface;
+    focusChart: boolean;
+}
+
+const ADVANCED_OPTIONS_STORAGE_KEY = 'rtx5-advanced-view-options';
+
+const DEFAULT_ADVANCED_OPTIONS: AdvancedViewOptions = {
+    fontSize: 'normal',
+    density: 'comfortable',
+    accent: 'purple',
+    chartSurface: 'white',
+    focusChart: false,
+};
+
+function loadAdvancedOptions(): AdvancedViewOptions {
+    try {
+        const raw = localStorage.getItem(ADVANCED_OPTIONS_STORAGE_KEY);
+        if (!raw) return DEFAULT_ADVANCED_OPTIONS;
+        return { ...DEFAULT_ADVANCED_OPTIONS, ...JSON.parse(raw) };
+    } catch {
+        return DEFAULT_ADVANCED_OPTIONS;
+    }
+}
+
 const MainToolbar = ({
     chartType,
     timeframe,
@@ -312,6 +345,7 @@ const MainToolbar = ({
 
     // User dropdown state
     const [showUserMenu, setShowUserMenu] = useState(false);
+    const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
     const [advancedViewEnabled, setAdvancedViewEnabled] = useState(() => {
         try {
@@ -320,8 +354,11 @@ const MainToolbar = ({
             return false;
         }
     });
+    const [advancedOptions, setAdvancedOptions] = useState<AdvancedViewOptions>(loadAdvancedOptions);
     const userMenuRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const advancedOptionsRef = useRef<HTMLDivElement>(null);
+    const advancedOptionsDropdownRef = useRef<HTMLDivElement>(null);
     const accountId = useAppStore((s) => s.accountId) || '---';
 
     useEffect(() => {
@@ -329,34 +366,81 @@ const MainToolbar = ({
         root.classList.toggle('rtx-advanced-view', advancedViewEnabled);
         root.classList.toggle('rtx-skin-untitled-light', advancedViewEnabled);
 
+        root.classList.remove(
+            'rtx-advanced-font-small',
+            'rtx-advanced-font-normal',
+            'rtx-advanced-font-large',
+            'rtx-advanced-density-compact',
+            'rtx-advanced-density-comfortable',
+            'rtx-advanced-accent-purple',
+            'rtx-advanced-accent-blue',
+            'rtx-advanced-accent-green',
+            'rtx-advanced-accent-amber',
+            'rtx-advanced-surface-white',
+            'rtx-advanced-surface-soft',
+            'rtx-advanced-surface-paper',
+            'rtx-advanced-focus-chart'
+        );
+
+        if (advancedViewEnabled) {
+            root.classList.add(
+                `rtx-advanced-font-${advancedOptions.fontSize}`,
+                `rtx-advanced-density-${advancedOptions.density}`,
+                `rtx-advanced-accent-${advancedOptions.accent}`,
+                `rtx-advanced-surface-${advancedOptions.chartSurface}`,
+            );
+            root.classList.toggle('rtx-advanced-focus-chart', advancedOptions.focusChart);
+        }
+
         try {
             localStorage.setItem('rtx5-advanced-view-enabled', String(advancedViewEnabled));
+            localStorage.setItem(ADVANCED_OPTIONS_STORAGE_KEY, JSON.stringify(advancedOptions));
         } catch {
             // Ignore storage failures; the visual toggle should still work for this session.
         }
 
         return () => {
-            root.classList.remove('rtx-advanced-view', 'rtx-skin-untitled-light');
+            root.classList.remove(
+                'rtx-advanced-view',
+                'rtx-skin-untitled-light',
+                'rtx-advanced-font-small',
+                'rtx-advanced-font-normal',
+                'rtx-advanced-font-large',
+                'rtx-advanced-density-compact',
+                'rtx-advanced-density-comfortable',
+                'rtx-advanced-accent-purple',
+                'rtx-advanced-accent-blue',
+                'rtx-advanced-accent-green',
+                'rtx-advanced-accent-amber',
+                'rtx-advanced-surface-white',
+                'rtx-advanced-surface-soft',
+                'rtx-advanced-surface-paper',
+                'rtx-advanced-focus-chart'
+            );
         };
-    }, [advancedViewEnabled]);
+    }, [advancedViewEnabled, advancedOptions]);
 
     // Close dropdown on outside click
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             const target = e.target as Node;
-            // Check both the button wrapper AND the portal dropdown
-            if (
-                userMenuRef.current && !userMenuRef.current.contains(target) &&
-                dropdownRef.current && !dropdownRef.current.contains(target)
-            ) {
+            const clickedUserMenu = !!userMenuRef.current?.contains(target) || !!dropdownRef.current?.contains(target);
+            const clickedAdvancedOptions = !!advancedOptionsRef.current?.contains(target) || !!advancedOptionsDropdownRef.current?.contains(target);
+
+            if (!clickedUserMenu && !clickedAdvancedOptions) {
                 setShowUserMenu(false);
+                setShowAdvancedOptions(false);
             }
         };
-        if (showUserMenu) {
+        if (showUserMenu || showAdvancedOptions) {
             document.addEventListener('mousedown', handleClickOutside);
         }
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showUserMenu]);
+    }, [showUserMenu, showAdvancedOptions]);
+
+    const updateAdvancedOptions = (patch: Partial<AdvancedViewOptions>) => {
+        setAdvancedOptions((current) => ({ ...current, ...patch }));
+    };
 
     const handleLogout = () => {
         // Fire-and-forget the backend logout API (don't wait)
@@ -650,13 +734,129 @@ const MainToolbar = ({
                     icon={<LayoutGrid size={15} strokeWidth={1.5} />}
                     title="Advanced View"
                     active={advancedViewEnabled}
-                    onClick={() => setAdvancedViewEnabled((enabled) => !enabled)}
+                    onClick={() => {
+                        setAdvancedViewEnabled((enabled) => {
+                            const next = !enabled;
+                            if (!next) setShowAdvancedOptions(false);
+                            return next;
+                        });
+                    }}
                 />
+
+                <div className="relative" ref={advancedOptionsRef}>
+                    <MT5Btn
+                        icon={<SlidersHorizontal size={15} strokeWidth={1.5} />}
+                        title="Advanced Options"
+                        active={advancedViewEnabled && showAdvancedOptions}
+                        onClick={() => {
+                            if (!advancedViewEnabled) {
+                                setAdvancedViewEnabled(true);
+                            }
+                            setShowUserMenu(false);
+                            setShowAdvancedOptions((open) => !open);
+                        }}
+                    />
+
+                    {showAdvancedOptions && ReactDOM.createPortal(
+                        <div
+                            ref={advancedOptionsDropdownRef}
+                            className="fixed w-[300px] bg-white border border-[#d0d5dd] rounded-md shadow-2xl z-[9999] p-3 text-[#101828] font-segoe"
+                            style={{
+                                top: (advancedOptionsRef.current?.getBoundingClientRect().bottom ?? 0) + 6,
+                                right: window.innerWidth - (advancedOptionsRef.current?.getBoundingClientRect().right ?? 0),
+                            }}
+                        >
+                            <div className="flex items-center justify-between border-b border-[#e5e7eb] pb-2 mb-3">
+                                <div>
+                                    <div className="text-[12px] font-semibold">Advanced Options</div>
+                                    <div className="text-[10px] text-[#667085]">Frontend-only workspace controls</div>
+                                </div>
+                                <button
+                                    className={`px-2 py-1 text-[10px] rounded border transition-colors ${advancedOptions.focusChart
+                                        ? 'bg-[#f4ebff] text-[#6941c6] border-[#d6bbfb]'
+                                        : 'bg-white text-[#475467] border-[#d0d5dd] hover:bg-[#f9fafb]'
+                                        }`}
+                                    onClick={() => updateAdvancedOptions({ focusChart: !advancedOptions.focusChart })}
+                                >
+                                    Focus Chart
+                                </button>
+                            </div>
+
+                            <AdvancedOptionRow label="Font">
+                                <SegmentedControl
+                                    value={advancedOptions.fontSize}
+                                    options={[
+                                        { value: 'small', label: 'S' },
+                                        { value: 'normal', label: 'M' },
+                                        { value: 'large', label: 'L' },
+                                    ]}
+                                    onChange={(fontSize) => updateAdvancedOptions({ fontSize: fontSize as AdvancedFontSize })}
+                                />
+                            </AdvancedOptionRow>
+
+                            <AdvancedOptionRow label="Density">
+                                <SegmentedControl
+                                    value={advancedOptions.density}
+                                    options={[
+                                        { value: 'comfortable', label: 'Comfort' },
+                                        { value: 'compact', label: 'Compact' },
+                                    ]}
+                                    onChange={(density) => updateAdvancedOptions({ density: density as AdvancedDensity })}
+                                />
+                            </AdvancedOptionRow>
+
+                            <AdvancedOptionRow label="Chart Surface">
+                                <SegmentedControl
+                                    value={advancedOptions.chartSurface}
+                                    options={[
+                                        { value: 'white', label: 'White' },
+                                        { value: 'soft', label: 'Soft' },
+                                        { value: 'paper', label: 'Paper' },
+                                    ]}
+                                    onChange={(chartSurface) => updateAdvancedOptions({ chartSurface: chartSurface as AdvancedChartSurface })}
+                                />
+                            </AdvancedOptionRow>
+
+                            <AdvancedOptionRow label="Accent">
+                                <div className="flex items-center gap-1.5">
+                                    {([
+                                        ['purple', '#7f56d9'],
+                                        ['blue', '#2e90fa'],
+                                        ['green', '#12b76a'],
+                                        ['amber', '#f79009'],
+                                    ] as const).map(([accent, color]) => (
+                                        <button
+                                            key={accent}
+                                            title={accent}
+                                            onClick={() => updateAdvancedOptions({ accent })}
+                                            className={`w-6 h-6 rounded border transition-all ${advancedOptions.accent === accent ? 'border-[#101828] shadow-sm' : 'border-[#d0d5dd]'}`}
+                                            style={{ background: color }}
+                                        />
+                                    ))}
+                                </div>
+                            </AdvancedOptionRow>
+
+                            <div className="flex items-center justify-between pt-3 mt-3 border-t border-[#e5e7eb]">
+                                <button
+                                    className="px-2.5 py-1 text-[11px] rounded border border-[#d0d5dd] text-[#475467] hover:bg-[#f9fafb]"
+                                    onClick={() => setAdvancedOptions(DEFAULT_ADVANCED_OPTIONS)}
+                                >
+                                    Reset
+                                </button>
+                                <span className="text-[10px] text-[#667085]">Saved locally</span>
+                            </div>
+                        </div>,
+                        document.body
+                    )}
+                </div>
 
                 {/* User Icon with Logout Dropdown */}
                 <div className="relative" ref={userMenuRef}>
                     <button
-                        onClick={() => setShowUserMenu(!showUserMenu)}
+                        onClick={() => {
+                            setShowAdvancedOptions(false);
+                            setShowUserMenu(!showUserMenu);
+                        }}
                         className={`flex items-center justify-center w-[32px] h-[32px] rounded-[3px] transition-all border group relative ${showUserMenu
                             ? 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
                             : 'bg-transparent border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-zinc-400 hover:text-blue-300'
@@ -715,6 +915,38 @@ const MainToolbar = ({
 
 
 // --- MT5 Style Utility Components ---
+
+const AdvancedOptionRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div className="flex items-center justify-between gap-3 py-1.5">
+        <span className="text-[11px] font-medium text-[#475467]">{label}</span>
+        {children}
+    </div>
+);
+
+const SegmentedControl = ({
+    value,
+    options,
+    onChange,
+}: {
+    value: string;
+    options: { value: string; label: string }[];
+    onChange: (value: string) => void;
+}) => (
+    <div className="inline-flex items-center rounded border border-[#d0d5dd] overflow-hidden bg-[#f9fafb]">
+        {options.map((option) => (
+            <button
+                key={option.value}
+                onClick={() => onChange(option.value)}
+                className={`px-2 py-1 text-[10px] transition-colors border-r border-[#d0d5dd] last:border-r-0 ${value === option.value
+                    ? 'bg-white text-[#101828] shadow-sm font-semibold'
+                    : 'text-[#667085] hover:bg-white'
+                    }`}
+            >
+                {option.label}
+            </button>
+        ))}
+    </div>
+);
 
 const MT5Group = ({ children }: { children: React.ReactNode }) => (
     <div className="flex items-center gap-[2px]">

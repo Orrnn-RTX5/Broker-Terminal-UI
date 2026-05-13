@@ -74,6 +74,10 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(.bg-\[\#0d0d0d\], .bg-\[\#
   background-color: #ffffff !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.bg-\[\#1a1a1a\], .bg-\[\#1e1e22\], .bg-\[\#222226\], .bg-\[\#2a2a2a\]) {
+  background-color: #f9fafb !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light :where(.bg-zinc-800, .bg-gray-800, .bg-zinc-700, .bg-gray-700) {
   background-color: #f9fafb !important;
 }
@@ -87,6 +91,10 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(.text-zinc-400, .text-zinc
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :where(.border-\[\#2a2e39\], .border-zinc-400, .border-zinc-700, .border-zinc-800, .border-gray-700, .border-gray-800) {
+  border-color: #e5e7eb !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.border-\[\#28282e\], .border-\[\#28282e\]\/60, .border-\[\#1e1e22\]\/80, .border-zinc-700\/30, .border-zinc-700\/40, .border-zinc-700\/50) {
   border-color: #e5e7eb !important;
 }
 
@@ -154,6 +162,34 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-empty-chart-area {
   color: #101828 !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel] > div {
+  background: #ffffff !important;
+  border-color: #e5e7eb !important;
+  color: #101828 !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel] > div > div[class*="h-[22px]"] {
+  background: #f9fafb !important;
+  background-image: none !important;
+  border-color: #e5e7eb !important;
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel] > div > div[class*="h-[22px]"] :where(span, button, svg) {
+  color: #667085 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel] > div > div[class*="h-[22px]"] button:hover {
+  background: #ffffff !important;
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel] > div > div[class*="h-[22px]"] button[title="Close"]:hover {
+  background: #fef3f2 !important;
+  color: #b42318 !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-panel {
   background: #ffffff !important;
   border-color: #e5e7eb !important;
@@ -168,6 +204,41 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper {
   --rtx-chart-text-input-bg: #ffffff;
   --rtx-chart-text-input-border: #d0d5dd;
   background: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) {
+  background: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) > div,
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) > div > .flex-1,
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) > div > .flex-1 > div,
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) > div > .flex-1 > div > div {
+  background: #ffffff !important;
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="background: #0d0d11"],
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="background: rgb(13, 13, 17)"] {
+  background: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="radial-gradient"] {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(249, 250, 251, 0.92)) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="color: #f4f4f5"],
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="color: rgb(244, 244, 245)"] {
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) p,
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) span,
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="color: #52525b"],
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) div[style*="color: #3f3f46"],
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) p[style*="color: #a1a1aa"],
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) p[style*="color: rgb(161, 161, 170)"] {
+  color: #667085 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-text-input-popover {
@@ -385,6 +456,32 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs {
   box-shadow: var(--shadow-sm) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :where(.bg-\[\#131316\], .bg-\[\#191a1e\], .bg-\[\#1a1a1a\], .bg-\[\#0f0f12\]) {
+  background-color: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :where(.border-zinc-600, .border-zinc-700, .border-zinc-700\/50, .border-zinc-800, .border-zinc-800\/50) {
+  border-color: #e5e7eb !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs button {
+  background: #ffffff !important;
+  border-color: #e5e7eb !important;
+  color: #475467 !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs button:hover {
+  background: #f9fafb !important;
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs button[class*="shadow-"] {
+  background: #ffffff !important;
+  color: #101828 !important;
+  box-shadow: inset 0 2px 0 0 #7f56d9 !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr {
   background: #ffffff !important;
 }
@@ -432,4 +529,134 @@ html.rtx-advanced-view.rtx-skin-untitled-light .drawing-node {
   background-color: #ffffff !important;
   border-color: #7f56d9 !important;
   box-shadow: 0 0 0 3px #f4ebff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-blue {
+  --ring: #2e90fa;
+  --primary: #2e90fa;
+  --color-primary: #2e90fa;
+  --color-primary-dim: #2e90fa30;
+  --color-primary-dimmer: #2e90fa18;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-green {
+  --ring: #12b76a;
+  --primary: #12b76a;
+  --color-primary: #12b76a;
+  --color-primary-dim: #12b76a30;
+  --color-primary-dimmer: #12b76a18;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-amber {
+  --ring: #f79009;
+  --primary: #f79009;
+  --color-primary: #f79009;
+  --color-primary-dim: #f7900930;
+  --color-primary-dimmer: #f7900918;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-blue :where(.text-blue-300, .text-blue-400, .text-blue-500, .text-blue-600, .text-purple-500),
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-blue :where(button[class*="text-blue"], button[class*="text-purple"]) {
+  color: #175cd3 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-green :where(.text-blue-300, .text-blue-400, .text-blue-500, .text-blue-600, .text-purple-500),
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-green :where(button[class*="text-blue"], button[class*="text-purple"]) {
+  color: #027a48 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-amber :where(.text-blue-300, .text-blue-400, .text-blue-500, .text-blue-600, .text-purple-500),
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-amber :where(button[class*="text-blue"], button[class*="text-purple"]) {
+  color: #b54708 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-blue :where(.bg-blue-500\/15, .bg-blue-500\/10, .bg-purple-500, .bg-blue-600, .bg-zinc-8000) {
+  background-color: #eff8ff !important;
+  color: #175cd3 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-green :where(.bg-blue-500\/15, .bg-blue-500\/10, .bg-purple-500, .bg-blue-600, .bg-zinc-8000) {
+  background-color: #ecfdf3 !important;
+  color: #027a48 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-amber :where(.bg-blue-500\/15, .bg-blue-500\/10, .bg-purple-500, .bg-blue-600, .bg-zinc-8000) {
+  background-color: #fffaeb !important;
+  color: #b54708 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-small :where(.rtx-dock-workspace, .rtx-bottom-dock, .rtx-market-watch, .navigator-panel) {
+  font-size: 11px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-normal :where(.rtx-dock-workspace, .rtx-bottom-dock, .rtx-market-watch, .navigator-panel) {
+  font-size: 12px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-large :where(.rtx-dock-workspace, .rtx-bottom-dock, .rtx-market-watch, .navigator-panel) {
+  font-size: 13px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact [data-dock-panel] > div > div[class*="h-[22px]"] {
+  height: 18px !important;
+  min-height: 18px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact [data-dock-panel] > div > div[class*="h-[22px]"] span {
+  line-height: 18px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :where(.rtx-bottom-dock__tabs button, .rtx-market-watch__header, .navigator-panel__header) {
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :where(td, th) {
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft {
+  --bg-primary: #f4f6f8;
+  --bg-secondary: #fbfcfd;
+  --bg-tertiary: #f2f4f7;
+  background: #f4f6f8;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper {
+  --bg-primary: #fbfaf6;
+  --bg-secondary: #fffdf7;
+  --bg-tertiary: #f7f3ea;
+  background: #fbfaf6;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft :where(body, #root, .trading-terminal, .rtx-dock-workspace, .dock-container, .dock-container--split, .rtx-empty-chart-area) {
+  background: #f4f6f8 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper :where(body, #root, .trading-terminal, .rtx-dock-workspace, .dock-container, .dock-container--split, .rtx-empty-chart-area) {
+  background: #fbfaf6 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) > div,
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) > div > .flex-1 > div > div,
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft .rtx-chart-wrapper {
+  background: #fbfcfd !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) > div,
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper [data-dock-panel]:has(svg[viewBox="0 0 270 100"]) > div > .flex-1 > div > div,
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper .rtx-chart-wrapper {
+  background: #fffdf7 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart [data-dock-panel="market-watch"],
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart [data-dock-panel="navigator"],
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart [data-dock-panel="toolbox"] {
+  display: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart .dock-resize-handle {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
