@@ -161,15 +161,15 @@ function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: T
       canvas.height = height * dpr;
       ctx.scale(dpr, dpr);
 
-      // Dark background
-      ctx.fillStyle = C.bgPrimary;
+      const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
+
+      // Dark/Light background
+      ctx.fillStyle = isLight ? '#f8fafc' : C.bgPrimary;
       ctx.fillRect(0, 0, width, height);
 
       const chartH = height * 0.72;
       const volH = height * 0.22;
       const volTop = chartH + 4;
-
-      // Find price range
       let minP = Infinity, maxP = -Infinity;
       let maxVol = 1;
       for (const t of history) {

@@ -90,14 +90,16 @@ function MiniTickChart({ symbol, bid, ask }: { symbol: string; bid: number; ask:
       const chartW = w - LEFT - RIGHT;
       const chartH = h - TOP - BOTTOM;
 
+      const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
+      
       // Clear
-      ctx.fillStyle = '#0d0d11';
+      ctx.fillStyle = isLight ? '#f8fafc' : '#0d0d11';
       ctx.fillRect(0, 0, w, h);
 
       // Header: bid / ask at top
       ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#999';
+      ctx.fillStyle = isLight ? '#64748b' : '#999';
       ctx.fillText(symbol, 4, 14);
 
       if (bid && ask) {
@@ -404,7 +406,7 @@ export function OrderPanelDialog({
       onContextMenu={(e) => e.stopPropagation()}
     >
       <div 
-        className="bg-[#1e222d] border border-zinc-600 rounded-sm shadow-2xl select-none flex flex-col" 
+        className="rtx-order-dialog bg-[#1e222d] border border-zinc-600 rounded-sm shadow-2xl select-none flex flex-col" 
         style={{ 
           maxWidth: '90vw',
           transform: `translate(${pos.x}px, ${pos.y}px)`,

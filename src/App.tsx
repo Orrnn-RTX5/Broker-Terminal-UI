@@ -2476,7 +2476,7 @@ function App() {
               {/* DOM Panel — draggable + resizable floating card */}
               {showDOM && (
                 <div
-                  className="absolute z-30 flex flex-col overflow-hidden"
+                  className="rtx-dom-dialog absolute z-30 flex flex-col overflow-hidden"
                   style={{
                     left: domPos.x,
                     top: domPos.y,
