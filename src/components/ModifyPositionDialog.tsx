@@ -198,28 +198,29 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
         return (
             <svg width={w} height={h} className="w-full h-full">
                 {/* Grid lines */}
+                {/* Grid lines */}
                 {[0.25, 0.5, 0.75].map(f => {
                     const y = pad + f * (h - pad * 2);
                     const price = max - f * range;
                     return (
                         <g key={f}>
-                            <line x1={pad} y1={y} x2={w - pad} y2={y} stroke="#333" strokeWidth="0.5" />
-                            <text x={w - pad + 4} y={y + 3} fill="#666" fontSize="8" fontFamily="monospace">{price.toFixed(digits)}</text>
+                            <line x1={pad} y1={y} x2={w - pad} y2={y} stroke="var(--chart-grid, #333)" strokeWidth="0.5" />
+                            <text x={w - pad + 4} y={y + 3} fill="var(--chart-axis, #666)" fontSize="8" fontFamily="monospace">{price.toFixed(digits)}</text>
                         </g>
                     );
                 })}
                 {/* Ask line (red) */}
-                <path d={toPath(askData)} fill="none" stroke="#ef4444" strokeWidth="1.5" />
+                <path d={toPath(askData)} fill="none" stroke="var(--chart-ask, #ef4444)" strokeWidth="1.5" />
                 {/* Bid line (blue) */}
-                <path d={toPath(bidData)} fill="none" stroke="#8a8a8f" strokeWidth="1.5" />
+                <path d={toPath(bidData)} fill="none" stroke="var(--chart-bid, #8a8a8f)" strokeWidth="1.5" />
                 {/* Current price labels */}
-                <rect x={w - pad - 55} y={askY - 8} width={55} height={16} rx={2} fill="#ef4444" />
+                <rect x={w - pad - 55} y={askY - 8} width={55} height={16} rx={2} fill="var(--chart-ask, #ef4444)" />
                 <text x={w - pad - 52} y={askY + 4} fill="white" fontSize="9" fontWeight="bold" fontFamily="monospace">{ask.toFixed(digits)}</text>
-                <rect x={w - pad - 55} y={bidY - 8} width={55} height={16} rx={2} fill="#8a8a8f" />
+                <rect x={w - pad - 55} y={bidY - 8} width={55} height={16} rx={2} fill="var(--chart-bid, #8a8a8f)" />
                 <text x={w - pad - 52} y={bidY + 4} fill="white" fontSize="9" fontWeight="bold" fontFamily="monospace">{bid.toFixed(digits)}</text>
                 {/* Symbol label */}
-                <text x={pad + 4} y={16} fill="#888" fontSize="10" fontWeight="bold">{position.symbol}</text>
-                <text x={pad + 4} y={28} fill="#666" fontSize="8">{bid.toFixed(digits)} / {ask.toFixed(digits)}</text>
+                <text x={pad + 4} y={16} fill="var(--chart-text-bold, #888)" fontSize="10" fontWeight="bold">{position.symbol}</text>
+                <text x={pad + 4} y={28} fill="var(--chart-text-muted, #666)" fontSize="8">{bid.toFixed(digits)} / {ask.toFixed(digits)}</text>
             </svg>
         );
     };
@@ -263,8 +264,8 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
     };
 
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div ref={dialogRef} className="bg-[#131316] rounded-lg shadow-2xl w-[680px] overflow-hidden border border-zinc-700">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm rtx-modify-dialog-overlay">
+            <div ref={dialogRef} className="rtx-modify-dialog bg-[#131316] rounded-lg shadow-2xl w-[680px] overflow-hidden border border-zinc-700">
                 {/* Title Bar - MT5 style with position info */}
                 <div className="bg-[#2d2d2d] px-4 py-2 flex items-center justify-between border-b border-zinc-700">
                     <span className="text-sm font-medium text-zinc-200">
