@@ -7,8 +7,11 @@
  * - Candle: {"type":"update","symbol":"XAUUSD","candle":{"time":1772261040,"open":63922.955,"high":63991.705,"low":63921.995,"close":63991.705,"volume":223}}
  */
 
-import { OHLCV, Tick, useMarketDataStore } from '../store/useMarketDataStore';
+import { useMarketDataStore } from '../store/useMarketDataStore';
 import { useWebSocketStore, type ConnectionState } from '../store/useWebSocketStore';
+import { enqueueLiveTick } from './liveTickDispatcher';
+
+const FIX_SOCKET_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
 export type FixSocketState = ConnectionState;
 
@@ -241,8 +244,7 @@ export class FixMarketDataSocket {
     const ts = timestamp > 1000000000000 ? timestamp : timestamp * 1000;
 
     // Update MarketDataStore (OHLCV aggregation — uses bid/ask/spread only)
-    const store = useMarketDataStore.getState();
-    store.updateTick(symbol, {
+    enqueueLiveTick(symbol, {
       symbol,
       bid,
       ask,
@@ -250,25 +252,9 @@ export class FixMarketDataSocket {
       timestamp: ts,
       lp,
       volume: 1,
-    });
-
-    // Update AppStore with FULL tick including dailyChange, high24h, low24h
-    // MarketWatchPanel reads from useAppStore.ticks for the Daily column
-    import('../store/useAppStore').then(({ useAppStore }) => {
-      useAppStore.getState().setTick(symbol, {
-        symbol,
-        bid,
-        ask,
-        spread,
-        timestamp: ts,
-        lp,
-        volume: 1,
-        dailyChange,   // already a % from broker (e.g. -2.31 = -2.31%)
-        high24h,
-        low24h,
-      } as any);
-    }).catch(err => {
-      console.error('[FixSocket] Failed to update AppStore:', err);
+      dailyChange,
+      high24h,
+      low24h,
     });
   }
 

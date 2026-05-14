@@ -222,7 +222,7 @@ const HeaderBar = ({ symbol, timeframe, server }: { symbol: string, timeframe: s
 
     return (
         <div
-            className="h-9 bg-transparent flex items-center justify-between text-[12px] font-segoe select-none text-slate-300 border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] backdrop-blur-md"
+            className="rtx-header-bar h-9 bg-transparent flex items-center justify-between text-[12px] font-segoe select-none text-slate-300 border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] backdrop-blur-md"
             style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
             {/* Left: Standard Title */}

@@ -12,6 +12,7 @@ import { resolveTickFromLookup, useAppStore } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
 import { useWatchlistStore } from './store/useWatchlistStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
+import { enqueueLiveTick } from './services/liveTickDispatcher';
 import { API_BASE_URL, WS_ENDPOINTS } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
 
@@ -1700,20 +1701,22 @@ function App() {
                 const previousTick = currentStore[resolveSymbol];
                 const normalizedTick = normalizeRealtimeTick(scopedTickData, previousTick, sharedJitter);
                 if (normalizedTick) {
-                  useAppStore.getState().setTick(normalizedTick.symbol, normalizedTick);
-                  const normalizedBase = normalizedTick.symbol.split('.')[0];
-                  if (normalizedBase && normalizedBase !== normalizedTick.symbol) {
-                    useAppStore.getState().setTick(normalizedBase, { ...normalizedTick, symbol: normalizedBase });
-                  }
-                  useMarketDataStore.getState().updateTick(normalizedTick.symbol, {
-                    symbol: normalizedTick.symbol,
-                    bid: normalizedTick.bid,
-                    ask: normalizedTick.ask,
-                    spread: normalizedTick.spread,
+                  enqueueLiveTick(normalizedTick.symbol, {
+                    ...normalizedTick,
                     timestamp: normalizedTick.timestamp || Date.now(),
                     lp: normalizedTick.lp || 'YOFX',
-                    volume: normalizedTick.volume || 1
+                    volume: normalizedTick.volume || 1,
                   });
+                  const normalizedBase = normalizedTick.symbol.split('.')[0];
+                  if (normalizedBase && normalizedBase !== normalizedTick.symbol) {
+                    enqueueLiveTick(normalizedBase, {
+                      ...normalizedTick,
+                      symbol: normalizedBase,
+                      timestamp: normalizedTick.timestamp || Date.now(),
+                      lp: normalizedTick.lp || 'YOFX',
+                      volume: normalizedTick.volume || 1,
+                    });
+                  }
                 }
               });
               return; // Skip slow variant resolution below
@@ -1755,26 +1758,22 @@ function App() {
 
                 if (normalizedTick) {
                   if (WS_DEBUG) console.log(`[WS] Updating store for ${normalizedTick.symbol}: bid=${normalizedTick.bid}`);
-                  // Update app-wide tick store (used by Market Watch rows)
-                  useAppStore.getState().setTick(normalizedTick.symbol, normalizedTick);
-                  const normalizedBase = normalizedTick.symbol.split('.')[0];
-                  if (normalizedBase && normalizedBase !== normalizedTick.symbol) {
-                    useAppStore.getState().setTick(normalizedBase, {
-                      ...normalizedTick,
-                      symbol: normalizedBase,
-                    });
-                  }
-
-                  // Update market data store (used by chart/analytics components)
-                  useMarketDataStore.getState().updateTick(normalizedTick.symbol, {
-                    symbol: normalizedTick.symbol,
-                    bid: normalizedTick.bid,
-                    ask: normalizedTick.ask,
-                    spread: normalizedTick.spread,
+                  enqueueLiveTick(normalizedTick.symbol, {
+                    ...normalizedTick,
                     timestamp: normalizedTick.timestamp || Date.now(),
                     lp: normalizedTick.lp || 'YOFX',
-                    volume: normalizedTick.volume || 1
+                    volume: normalizedTick.volume || 1,
                   });
+                  const normalizedBase = normalizedTick.symbol.split('.')[0];
+                  if (normalizedBase && normalizedBase !== normalizedTick.symbol) {
+                    enqueueLiveTick(normalizedBase, {
+                      ...normalizedTick,
+                      symbol: normalizedBase,
+                      timestamp: normalizedTick.timestamp || Date.now(),
+                      lp: normalizedTick.lp || 'YOFX',
+                      volume: normalizedTick.volume || 1,
+                    });
+                  }
                 } else {
                   if (WS_DEBUG) console.log(`[DEBUG WS] normalizeRealtimeTick returned null for ${resolveSymbol}`, scopedTickData);
                 }

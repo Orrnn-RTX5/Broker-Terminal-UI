@@ -282,6 +282,7 @@ export function LastSymbolPanel() {
             const diff = Math.floor((Date.now() - lastTradeTime) / 1000);
             if (diff < 60) return `${diff}s ago`;
             if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+
             return `${Math.floor(diff / 3600)}h ago`;
         })()
         : '';
@@ -289,13 +290,14 @@ export function LastSymbolPanel() {
     return (
         <div
             ref={panelRef}
-            className="fixed z-[9999] select-none"
+            className="rtx-last-symbol-panel fixed z-[9999] select-none"
             style={{ left: position.x, top: position.y }}
         >
             <div
                 className="w-[252px] bg-[#1a1a22] border border-[#2a2e39] rounded-lg shadow-2xl overflow-hidden"
                 style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
             >
+
                 {/* Header — draggable */}
                 <div
                     className="flex items-center justify-between px-3 py-2 bg-[#22222d] border-b border-[#2a2e39] cursor-move"

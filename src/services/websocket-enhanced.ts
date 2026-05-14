@@ -9,6 +9,9 @@
  */
 
 import { useWebSocketStore } from '../store/useWebSocketStore';
+import { enqueueLiveTick } from './liveTickDispatcher';
+
+const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
 export type SubscriptionCallback = (data: unknown) => void;
 export type ConnectionStateCallback = (state: ConnectionState) => void;
@@ -515,48 +518,28 @@ export class EnhancedWebSocketService {
       : dailyReference > 0
         ? ((mid - dailyReference) / dailyReference) * 100
         : undefined;
-    // Log the exact TS to debug frozen timestamp issues
-    console.log(`[WS TICK] ${data.symbol} bid=${data.bid} ask=${data.ask} spread=${data.spread} ts=${ts} daily=${data.dailyChange}`);
+    if (WS_DEBUG) {
+      console.log(`[WS TICK] ${data.symbol} bid=${data.bid} ask=${data.ask} spread=${data.spread} ts=${ts} daily=${data.dailyChange}`);
+    }
 
     // Estimate live ping based on tick frequency / server time diff
     this.estimateLatencyFromActivity(ts);
 
-    // Update MarketDataStore (OHLCV aggregation)
-    import('../store/useMarketDataStore').then(({ useMarketDataStore }) => {
-      useMarketDataStore.getState().updateTick(data.symbol!, {
-        symbol: data.symbol!,
-        bid,
-        ask,
-        spread: Number(data.spread) || (ask - bid),
-        timestamp: ts,
-        lp: data.lp as string | undefined,
-        volume: 1,
-      });
-    }).catch(err => {
-      console.error('[WS] Failed to import useMarketDataStore:', err);
-    });
-
-    // Update AppStore directly with ALL broker fields (bid, ask, spread, dailyChange, high24h, low24h)
-    // This is what MarketWatchPanel reads for the Daily column
-    import('../store/useAppStore').then(({ useAppStore }) => {
-      useAppStore.getState().setTick(data.symbol!, {
-        symbol: data.symbol!,
-        bid,
-        ask,
-        spread: Number(data.spread) || (ask - bid),
-        timestamp: ts,
-        lp: data.lp as string | undefined,
-        volume: 1,
-        dailyChange,
-        high24h: data.high24h !== undefined ? Number(data.high24h) : sessionHigh || undefined,
-        low24h: data.low24h !== undefined ? Number(data.low24h) : sessionLow,
-        high: data.high !== undefined ? Number(data.high) : undefined,
-        low: data.low !== undefined ? Number(data.low) : undefined,
-        open: dailyOpen || undefined,
-        close: (previousClose > 0 || data.close !== undefined) ? Number(data.close ?? previousClose) : undefined,
-      } as any);
-    }).catch(err => {
-      console.error('[WS] Failed to import useAppStore:', err);
+    enqueueLiveTick(data.symbol!, {
+      symbol: data.symbol!,
+      bid,
+      ask,
+      spread: Number(data.spread) || (ask - bid),
+      timestamp: ts,
+      lp: data.lp as string | undefined,
+      volume: 1,
+      dailyChange,
+      high24h: data.high24h !== undefined ? Number(data.high24h) : sessionHigh || undefined,
+      low24h: data.low24h !== undefined ? Number(data.low24h) : sessionLow,
+      high: data.high !== undefined ? Number(data.high) : undefined,
+      low: data.low !== undefined ? Number(data.low) : undefined,
+      open: dailyOpen || undefined,
+      close: (previousClose > 0 || data.close !== undefined) ? Number(data.close ?? previousClose) : undefined,
     });
   }
 
@@ -566,7 +549,7 @@ export class EnhancedWebSocketService {
    */
   private handleFixCandle(data: WebSocketMessage): void {
     const candle = data.candle as Record<string, number> | undefined;
-    if (candle) {
+    if (WS_DEBUG && candle) {
       console.log(`[WS CANDLE] ${data.symbol} O=${candle.open} H=${candle.high} L=${candle.low} C=${candle.close} V=${candle.volume}`);
     }
     import('../store/useMarketDataStore').then(({ useMarketDataStore }) => {

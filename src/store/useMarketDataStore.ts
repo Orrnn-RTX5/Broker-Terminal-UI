@@ -12,6 +12,8 @@ import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { getWorkerManager } from '../services/aggregationWorkerManager';
 
+const MARKET_DATA_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
+
 // ============================================
 // Types
 // ============================================
@@ -72,6 +74,10 @@ export interface CandleUpdate {
   time: number;
 }
 
+export interface UpdateTickOptions {
+  syncAppStore?: boolean;
+}
+
 interface MarketDataState {
   // Symbol data organized by symbol for efficient access
   symbolData: Record<string, SymbolData>;
@@ -80,7 +86,7 @@ interface MarketDataState {
   subscribedSymbols: Set<string>;
 
   // Actions
-  updateTick: (symbol: string, tick: Tick) => void;
+  updateTick: (symbol: string, tick: Tick, options?: UpdateTickOptions) => void;
   updateCandle: (update: CandleUpdate) => void;
   updateBulkTicks: (ticks: Tick[]) => void;
   subscribeSymbol: (symbol: string) => void;
@@ -245,7 +251,9 @@ export const useMarketDataStore = create<MarketDataState>()(
         symbolData: {},
         subscribedSymbols: new Set(),
 
-        updateTick: (symbol, tick) => {
+        updateTick: (symbol, tick, options = {}) => {
+          const { syncAppStore = true } = options;
+
           set((state) => {
             const data = state.symbolData[symbol] || createEmptySymbolData();
 
@@ -302,8 +310,12 @@ export const useMarketDataStore = create<MarketDataState>()(
               );
             }
 
-            // Calculate stats
-            const stats = calculateStats(symbol, currentTick, previousTick, tickBuffer, ohlcv1h);
+            // Stats scan the rolling buffer, so avoid doing that work for every
+            // high-frequency tick while keeping UI stats fresh.
+            const shouldUpdateStats = !data.stats || now - data.stats.lastUpdate > 1000;
+            const stats = shouldUpdateStats
+              ? calculateStats(symbol, currentTick, previousTick, tickBuffer, ohlcv1h)
+              : data.stats;
 
             return {
               symbolData: {
@@ -322,14 +334,18 @@ export const useMarketDataStore = create<MarketDataState>()(
 
           // ─── Cross-store sync: TradingChart polls useAppStore.ticks ───────────
           // Dynamically import to avoid circular dep. Fire-and-forget.
-          import('../store/useAppStore').then(({ useAppStore }) => {
-            useAppStore.getState().setTick(symbol, tick as any);
-          }).catch(() => {/* ignore */});
+          if (syncAppStore) {
+            import('../store/useAppStore').then(({ useAppStore }) => {
+              useAppStore.getState().setTick(symbol, tick as any);
+            }).catch(() => {/* ignore */});
+          }
         },
 
 
         updateCandle: (update) => {
-          console.log(`[Store updateCandle] ${update.symbol} ${update.timeframe} O=${update.open} H=${update.high} L=${update.low} C=${update.close} time=${update.time}`);
+          if (MARKET_DATA_DEBUG) {
+            console.log(`[Store updateCandle] ${update.symbol} ${update.timeframe} O=${update.open} H=${update.high} L=${update.low} C=${update.close} time=${update.time}`);
+          }
           set((state) => {
             const data = state.symbolData[update.symbol] || createEmptySymbolData();
 
@@ -362,7 +378,9 @@ export const useMarketDataStore = create<MarketDataState>()(
                 if (newOHLCV.length > 1000) newOHLCV.shift();
               }
 
-              console.log(`[Store updateCandle] ${update.symbol} now has ${newOHLCV.length} candles`);
+              if (MARKET_DATA_DEBUG) {
+                console.log(`[Store updateCandle] ${update.symbol} now has ${newOHLCV.length} candles`);
+              }
 
               return {
                 symbolData: {

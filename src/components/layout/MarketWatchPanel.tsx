@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useAppStore } from '../../store/useAppStore';
+import { resolveTickFromLookup, useAppStore, useTick } from '../../store/useAppStore';
 import { useMarketDataStore } from '../../store/useMarketDataStore';
 import { useWatchlistStore } from '../../store/useWatchlistStore';
 import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
@@ -47,17 +47,22 @@ const getCategory = (sym: string): { label: string; color: string } => {
   return { label: 'Forex', color: '#7aacca' };
 };
 
+const getTickSnapshot = (symbol: string) => {
+  const state = useAppStore.getState();
+  return resolveTickFromLookup(state.ticks, state.tickLookup, symbol);
+};
+
 // ─── Market Watch Row ─────────────────────────────────────────────────────────
 const MarketWatchRow: React.FC<{
   symbol: string;
-  tick: any;
   isSelected: boolean;
   onClick: () => void;
   contextMenuItems: ContextMenuItemConfig[];
   showAsk: boolean;
   showSpread: boolean;
   showDaily: boolean;
-}> = ({ symbol, tick, isSelected, onClick, contextMenuItems, showAsk, showSpread, showDaily }) => {
+}> = ({ symbol, isSelected, onClick, contextMenuItems, showAsk, showSpread, showDaily }) => {
+  const tick = useTick(symbol);
   const bidDirection = tick?.bidDirection ?? 'none';
   const bid = tick?.bid ?? 0;
   const ask = tick?.ask ?? 0;
@@ -232,7 +237,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   onSymbolSelect,
   className,
 }) => {
-  const liveTicks = useAppStore((state) => state.ticks);
+  const liveTickCount = useAppStore((state) => Object.keys(state.ticks).length);
   const {
     symbols: marketInstruments,
     loading: isLoadingSymbols,
@@ -336,11 +341,11 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
 
   const handleExport = useCallback(() => {
     const data = watchlistSymbols.map(sym => {
-      const tick = liveTicks[sym];
+      const tick = getTickSnapshot(sym);
       return `${sym}\t${tick?.bid ?? '-'}\t${tick?.ask ?? '-'}\t${tick?.spread ?? '-'}`;
     }).join('\n');
     navigator.clipboard.writeText(`Symbol\tBid\tAsk\tSpread\n${data}`);
-  }, [watchlistSymbols, liveTicks]);
+  }, [watchlistSymbols]);
 
   const getContextMenuItems = useCallback((symbol: string): ContextMenuItemConfig[] => {
     return [
@@ -371,7 +376,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         label: 'Specification',
         icon: <Icon name="file-text" size="xs" />,
         action: () => {
-          const tick = liveTicks[symbol];
+          const tick = getTickSnapshot(symbol);
           const info = [
             `Symbol: ${symbol}`,
             `Bid: ${tick?.bid ?? 'N/A'}`,
@@ -427,7 +432,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         autoClose: false,
       },
     ];
-  }, [liveTicks, handleHideSymbol, handleHideAll, handleShowAll, handleSort, handleExport, showGrid]);
+  }, [handleHideSymbol, handleHideAll, handleShowAll, handleSort, handleExport, showGrid]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -738,24 +743,10 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
 
               <tbody>
                 {rows.map((symbol) => {
-                  let tick = liveTicks[symbol];
-                  if (!tick) {
-                    const caseMatch = Object.keys(liveTicks).find(k => k.toUpperCase() === symbol.toUpperCase());
-                    if (caseMatch) tick = liveTicks[caseMatch];
-                  }
-                  if (!tick) {
-                    const baseSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-                    const baseMatch = Object.keys(liveTicks).find(k => {
-                      return k.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === baseSymbol;
-                    });
-                    if (baseMatch) tick = liveTicks[baseMatch];
-                  }
-
                   return (
                     <MarketWatchRow
                       key={symbol}
                       symbol={symbol}
-                      tick={tick}
                       isSelected={symbol === normalizeSymbol(selectedSymbol)}
                       onClick={() => onSymbolSelect(symbol)}
                       contextMenuItems={getContextMenuItems(symbol)}
@@ -804,7 +795,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
             {symbolsError || quotesError || watchlistError}
           </div>
         )}
-        {(quotesLoading || watchlistLoading) && rows.length > 0 && Object.keys(liveTicks).length === 0 && (
+        {(quotesLoading || watchlistLoading) && rows.length > 0 && liveTickCount === 0 && (
           <div style={{ padding: '4px 10px', color: '#606068', fontSize: 10 }}>
             Loading quotes...
           </div>

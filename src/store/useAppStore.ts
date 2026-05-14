@@ -375,6 +375,19 @@ export const useAppStore = create<AppState>()(
         setTick: (symbol, tick) =>
           set((state) => {
             const prevTick = state.ticks[symbol];
+            if (
+              prevTick &&
+              prevTick.bid === tick.bid &&
+              prevTick.ask === tick.ask &&
+              prevTick.spread === tick.spread &&
+              getTickTimestamp(prevTick) === getTickTimestamp(tick) &&
+              (tick.dailyChange === undefined || prevTick.dailyChange === tick.dailyChange) &&
+              (tick.high24h === undefined || prevTick.high24h === tick.high24h) &&
+              (tick.low24h === undefined || prevTick.low24h === tick.low24h)
+            ) {
+              return state;
+            }
+
             let bidDirection: 'up' | 'down' | 'none' = prevTick?.bidDirection || 'none';
             if (prevTick && tick.bid > prevTick.bid) {
               bidDirection = 'up';

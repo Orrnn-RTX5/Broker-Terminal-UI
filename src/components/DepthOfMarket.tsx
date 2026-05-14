@@ -194,7 +194,7 @@ function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: T
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, chartH); ctx.stroke();
       }
 
-      
+
       // Price scale on right
       ctx.fillStyle = C.textTertiary;
       ctx.font = `9px ${MONO}`;

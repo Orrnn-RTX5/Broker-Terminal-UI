@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient, ApiError } from '../api/client';
 import { API_V2_BASE_URL, MARKET_WS_URL } from '../config/api';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
-import { useAppStore, type Tick as AppTick } from '../store/useAppStore';
+import { enqueueLiveTick } from '../services/liveTickDispatcher';
+import type { Tick as AppTick } from '../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../store/useMarketDataStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
 
@@ -153,8 +154,7 @@ export const normalizeOrderBook = (raw: any, fallbackSymbol?: string): LiveOrder
 };
 
 const upsertTick = (tick: Tick & Partial<AppTick>): void => {
-  useMarketDataStore.getState().updateTick(tick.symbol, tick);
-  useAppStore.getState().setTick(tick.symbol, tick as AppTick);
+  enqueueLiveTick(tick.symbol, tick);
 };
 
 const toV2Endpoint = (endpoint: string): string =>

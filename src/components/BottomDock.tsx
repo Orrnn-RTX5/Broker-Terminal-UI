@@ -49,10 +49,20 @@ export function BottomDock({
 }: BottomDockProps) {
     // Read trading data directly from store — NOT from props
     // This prevents DockWorkspace.renderPanel from needing to re-create when positions change
-    const positions = useAppStore(s => s.positions);
-    const account = useAppStore(s => s.account);
+    const [account, setAccount] = useState<any>(useAppStore.getState().account);
+    const [positions, setPositions] = useState<any[]>(useAppStore.getState().positions);
     const history = useAppStore(s => s.trades);
     useTradeFacingData(undefined, 10000);
+
+    // Throttle account and positions updates to 500ms to prevent React layout thrashing/flickering
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setAccount(useAppStore.getState().account);
+            setPositions(useAppStore.getState().positions);
+        }, 500);
+        return () => clearInterval(interval);
+    }, []);
+
     const [activeTab, setActiveTab] = useState<TabType>(() => {
         const saved = localStorage.getItem('bottomdock-active-tab');
         // If no saved value or it was the old default 'Toolbox', start on Journal
@@ -344,8 +354,15 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
     // Local SL/TP overrides: track modified values since the Gateway API doesn't return them
     const [slTpOverrides, setSlTpOverrides] = useState<Record<number, { sl: number; tp: number }>>({});
 
-    // Subscribe to live ticks from App Store for high-frequency price mapping
-    const ticks = useAppStore(state => state.ticks);
+    // Use a throttled version of ticks to prevent violent UI flickering
+    const [throttledTicks, setThrottledTicks] = useState<any>({});
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setThrottledTicks(useAppStore.getState().ticks);
+        }, 500); // 500ms throttle for stable rendering
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         const handleTradeModified = (e: any) => {
@@ -375,7 +392,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
     const livePositions = useMemo(() => {
         return positions.map((pos: any) => {
             const symbol = pos?.symbol ?? '';
-            const tick = symbol ? ticks[symbol] : undefined;
+            const tick = symbol ? throttledTicks[symbol] : undefined;
             let livePrice = Number(pos?.currentPrice ?? 0);
             let livePnL = Number(pos?.unrealizedPnL ?? 0);
             const openPrice = Number(pos?.openPrice ?? 0);
@@ -411,7 +428,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                 livePnL
             };
         });
-    }, [positions, ticks, slTpOverrides]);
+    }, [positions, throttledTicks, slTpOverrides]);
 
     // Compute live account totals based on realtime positions
     const totalLivePnL = useMemo(() => livePositions.reduce((acc, pos) => acc + (pos.livePnL || 0), 0), [livePositions]);
