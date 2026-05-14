@@ -6,9 +6,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useWebSocketStore } from '../store/useWebSocketStore';
+import { useAppStore } from '../store/useAppStore';
 import { Wifi, RefreshCw, WifiOff, AlertTriangle, LogIn, Globe, Zap, Server } from 'lucide-react';
 import { LoginDialog } from './LoginDialog';
-import { useTradeFacingData } from '../hooks/useTradeFacingData';
 
 interface ConnectionStatusProps {
   wsRef?: React.RefObject<WebSocket | null>;
@@ -17,23 +17,11 @@ interface ConnectionStatusProps {
 
 export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusProps) {
   const storeState = useWebSocketStore();
+  const tradeWsConnected = useAppStore((state) => state.wsConnected);
+  const tradeApiStatus = useAppStore((state) => state.tradeApiStatus);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [lastUpdateAge, setLastUpdateAge] = useState(0);
-  const tradeStatus = useTradeFacingData(undefined, 15000);
-
-  // Calculate last update age continuously
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (storeState.lastMessageTime) {
-        setLastUpdateAge(Math.floor((Date.now() - storeState.lastMessageTime) / 1000));
-      } else {
-        setLastUpdateAge(0);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [storeState.lastMessageTime]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -61,6 +49,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
 
   const state = storeState.connectionState;
   const isStale = storeState.isStale;
+  const accountStreamConnected = tradeWsConnected || state === 'connected';
   
   // Prefer FIX metrics if it's connected, otherwise use the legacy background socket's metrics
   const metrics = storeState.fixConnectionState === 'connected' 
@@ -103,6 +92,12 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
   };
 
   const latencyMs = metrics.lastLatency > 0 ? metrics.lastLatency : null;
+  const tradeApiLabel = tradeApiStatus.error ? 'REST error' : tradeApiStatus.loading ? 'syncing' : 'ready';
+  const tradeApiColor = tradeApiStatus.error
+    ? 'text-red-400'
+    : tradeApiStatus.loading
+      ? 'text-yellow-400'
+      : 'text-green-400';
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -167,8 +162,11 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
                 <Server size={14} className="text-zinc-400" />
                 <span>Trade API</span>
               </div>
-              <span className={`text-[10px] font-mono ${tradeStatus.error ? 'text-red-400' : 'text-green-400'}`}>
-                {tradeStatus.error ? 'REST error' : tradeStatus.loading ? 'syncing' : 'ready'}
+              <span
+                className={`text-[10px] font-mono ${tradeApiColor}`}
+                title={tradeApiStatus.error ?? undefined}
+              >
+                {tradeApiLabel}
               </span>
             </div>
             <div className="flex items-center justify-between px-3 py-[7px] hover:bg-[#2a3040] transition-colors cursor-default">
@@ -176,8 +174,8 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
                 <Server size={14} className="text-zinc-400" />
                 <span>Account Stream</span>
               </div>
-              <span className={`text-[10px] font-mono ${tradeStatus.wsConnected ? 'text-green-400' : 'text-yellow-400'}`}>
-                {tradeStatus.wsConnected ? 'live' : 'polling'}
+              <span className={`text-[10px] font-mono ${accountStreamConnected ? 'text-green-400' : 'text-yellow-400'}`}>
+                {accountStreamConnected ? 'live' : 'polling'}
               </span>
             </div>
           </div>

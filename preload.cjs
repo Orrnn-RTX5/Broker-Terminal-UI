@@ -23,7 +23,6 @@ contextBridge.exposeInMainWorld('electron', {
         },
     },
 
-    // Generic IPC
     ipcRenderer: {
         send: (channel, data) => {
             const allowedChannels = ['app-quit', 'install-update'];
@@ -42,7 +41,7 @@ contextBridge.exposeInMainWorld('electron', {
         },
     },
 
-    // OTA Updater API
+ 
     updater: {
         onStatus: (callback) => {
             const handler = (_event, data) => callback(data);

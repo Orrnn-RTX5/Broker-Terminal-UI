@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  apiClient,
   ApiError,
   setToken,
   removeToken,
@@ -14,7 +13,6 @@ import {
   economicCalendarApi,
   LoginCredentials,
   CreateOrderRequest,
-  User,
   AccountSummary,
   Transaction,
   EquityHistoryPoint,
@@ -26,6 +24,7 @@ import {
   EconomicEvent,
 } from './endpoints';
 import { getStoredBrokerServer, persistBrokerServer, resolveLoginBrokerTarget } from '../services/brokerServers';
+import { useAppStore } from '../store/useAppStore';
 
 // ====================
 // Generic Types
@@ -42,12 +41,54 @@ interface UseApiReturn<T> extends UseApiState<T> {
   reset: () => void;
 }
 
+type AccountLogin = string | number | null | undefined;
+
+const parseAccountLogin = (login: AccountLogin): number | undefined => {
+  const parsed = typeof login === 'number' ? login : Number.parseInt(String(login ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const getStoredAccountLogin = (): number | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  return parseAccountLogin(
+    localStorage.getItem('rtx_saved_username') || localStorage.getItem('rtx_last_login')
+  );
+};
+
+const useResolvedAccountLogin = (explicitLogin?: AccountLogin): number | undefined => {
+  const activeAccountId = useAppStore((state) => state.accountId);
+  return parseAccountLogin(explicitLogin) ?? parseAccountLogin(activeAccountId) ?? getStoredAccountLogin();
+};
+
+const normalizePositionsResponse = (data: unknown): { positions: Position[]; count: number } => {
+  const payload = data as { positions?: unknown; count?: unknown; total?: unknown } | null | undefined;
+  const positions = Array.isArray(data) ? data : payload?.positions;
+  const rows = Array.isArray(positions) ? positions : [];
+  return {
+    positions: rows as Position[],
+    count: Number(payload?.count ?? payload?.total ?? rows.length),
+  };
+};
+
+const normalizeOrdersResponse = (data: unknown): { orders: Order[]; total: number } => {
+  const payload = data as { orders?: unknown; count?: unknown; total?: unknown } | null | undefined;
+  const orders = Array.isArray(data) ? data : payload?.orders;
+  const rows = Array.isArray(orders) ? orders : [];
+  return {
+    orders: rows as Order[],
+    total: Number(payload?.total ?? payload?.count ?? rows.length),
+  };
+};
+
 // ====================
 // Generic Hook Factory
 // ====================
 
 function createUseApiHook<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
   return function useApiHook(): UseApiReturn<T> {
+    const fetchFnRef = useRef(fetchFn);
+    fetchFnRef.current = fetchFn;
+
     const [state, setState] = useState<UseApiState<T>>({
       data: null,
       loading: true,
@@ -57,7 +98,7 @@ function createUseApiHook<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
     const fetchData = useCallback(async () => {
       setState(prev => ({ ...prev, loading: true, error: null }));
       try {
-        const data = await fetchFn();
+        const data = await fetchFnRef.current();
         setState({ data, loading: false, error: null });
       } catch (error) {
         setState({
@@ -143,8 +184,12 @@ export const useLogout = () => {
 // Account Hooks
 // ====================
 
-export const useAccount = () => {
-  return createUseApiHook<AccountSummary>(() => accountApi.getSummary(), [])();
+export const useAccount = (login?: AccountLogin): UseApiReturn<AccountSummary> => {
+  const resolvedLogin = useResolvedAccountLogin(login);
+  return createUseApiHook<AccountSummary | null>(
+    () => resolvedLogin ? accountApi.getSummary(resolvedLogin) : Promise.resolve(null),
+    [resolvedLogin]
+  )() as UseApiReturn<AccountSummary>;
 };
 
 interface UseTransactionsParams {
@@ -153,9 +198,12 @@ interface UseTransactionsParams {
   type?: string;
   limit?: number;
   offset?: number;
+  login?: AccountLogin;
 }
 
 export const useTransactions = (params?: UseTransactionsParams) => {
+  const resolvedLogin = useResolvedAccountLogin(params?.login);
+  const { type, limit, offset } = params || {};
   const [state, setState] = useState<UseApiState<{ transactions: Transaction[]; total: number }>>({
     data: null,
     loading: true,
@@ -164,8 +212,13 @@ export const useTransactions = (params?: UseTransactionsParams) => {
 
   const fetchTransactions = useCallback(async () => {
     setState(prev => ({ ...prev, loading: true, error: null }));
+    if (!resolvedLogin) {
+      setState({ data: { transactions: [], total: 0 }, loading: false, error: null });
+      return;
+    }
+
     try {
-      const data = await accountApi.getTransactions(params);
+      const data = await accountApi.getTransactions({ type, limit, offset, login: resolvedLogin });
       setState({ data: { transactions: data, total: data.length }, loading: false, error: null });
     } catch (error) {
       setState({
@@ -174,7 +227,7 @@ export const useTransactions = (params?: UseTransactionsParams) => {
         error: error instanceof ApiError ? error : new ApiError(0, 'Failed to fetch transactions'),
       });
     }
-  }, [params?.startDate, params?.endDate, params?.type, params?.limit, params?.offset]);
+  }, [type, limit, offset, resolvedLogin]);
 
   useEffect(() => {
     fetchTransactions();
@@ -185,9 +238,12 @@ export const useTransactions = (params?: UseTransactionsParams) => {
 
 interface UseEquityHistoryParams {
   period?: '1d' | '7d' | '30d' | '90d' | '1y';
+  login?: AccountLogin;
 }
 
 export const useEquityHistory = (params?: UseEquityHistoryParams) => {
+  const resolvedLogin = useResolvedAccountLogin(params?.login);
+  const { period } = params || {};
   const [state, setState] = useState<UseApiState<EquityHistoryPoint[]>>({
     data: null,
     loading: true,
@@ -196,8 +252,13 @@ export const useEquityHistory = (params?: UseEquityHistoryParams) => {
 
   const fetchHistory = useCallback(async () => {
     setState(prev => ({ ...prev, loading: true, error: null }));
+    if (!resolvedLogin) {
+      setState({ data: [], loading: false, error: null });
+      return;
+    }
+
     try {
-      const data = await accountApi.getEquityHistory(params);
+      const data = await accountApi.getEquityHistory({ period, login: resolvedLogin });
       setState({ data, loading: false, error: null });
     } catch (error) {
       setState({
@@ -206,7 +267,7 @@ export const useEquityHistory = (params?: UseEquityHistoryParams) => {
         error: error instanceof ApiError ? error : new ApiError(0, 'Failed to fetch equity history'),
       });
     }
-  }, [params?.period]);
+  }, [period, resolvedLogin]);
 
   useEffect(() => {
     fetchHistory();
@@ -219,16 +280,26 @@ export const useEquityHistory = (params?: UseEquityHistoryParams) => {
 // Trading Hooks
 // ====================
 
-export const usePositions = () => {
-  return createUseApiHook<{ positions: Position[]; count: number }>(() => tradingApi.getPositions(), [])();
+export const usePositions = (login?: AccountLogin): UseApiReturn<{ positions: Position[]; count: number }> => {
+  const resolvedLogin = useResolvedAccountLogin(login);
+  return createUseApiHook<{ positions: Position[]; count: number }>(
+    async () => {
+      if (!resolvedLogin) return { positions: [], count: 0 };
+      return normalizePositionsResponse(await tradingApi.getPositions(resolvedLogin));
+    },
+    [resolvedLogin]
+  )();
 };
 
 interface UseOrdersParams {
   status?: string;
   symbol?: string;
+  login?: AccountLogin;
 }
 
-export const useOrders = (params?: UseOrdersParams) => {
+export const useOrders = (params?: UseOrdersParams, login?: AccountLogin) => {
+  const resolvedLogin = useResolvedAccountLogin(login ?? params?.login);
+  const { status, symbol } = params || {};
   const [state, setState] = useState<UseApiState<{ orders: Order[]; total: number }>>({
     data: null,
     loading: true,
@@ -237,9 +308,23 @@ export const useOrders = (params?: UseOrdersParams) => {
 
   const fetchOrders = useCallback(async () => {
     setState(prev => ({ ...prev, loading: true, error: null }));
+    if (!resolvedLogin) {
+      setState({ data: { orders: [], total: 0 }, loading: false, error: null });
+      return;
+    }
+
     try {
-      const data = await tradingApi.getOrders();
-      setState({ data: { orders: data.orders, total: data.count }, loading: false, error: null });
+      const data = await tradingApi.getOrders(resolvedLogin);
+      const normalized = normalizeOrdersResponse(data);
+      const filteredOrders = normalized.orders.filter((order) => (
+        (!status || order.status === status) &&
+        (!symbol || order.symbol === symbol)
+      ));
+      setState({
+        data: { orders: filteredOrders, total: filteredOrders.length },
+        loading: false,
+        error: null
+      });
     } catch (error) {
       setState({
         data: null,
@@ -247,7 +332,7 @@ export const useOrders = (params?: UseOrdersParams) => {
         error: error instanceof ApiError ? error : new ApiError(0, 'Failed to fetch orders'),
       });
     }
-  }, [params?.status, params?.symbol]);
+  }, [status, symbol, resolvedLogin]);
 
   useEffect(() => {
     fetchOrders();
@@ -607,10 +692,23 @@ export const usePollingQuotes = (symbols?: string[], interval: number = 5000) =>
   }, interval, !!symbols?.length);
 };
 
-export const usePollingPositions = (interval: number = 5000) => {
-  return usePolling(() => tradingApi.getPositions(), interval, true);
+export const usePollingPositions = (interval: number = 5000, login?: AccountLogin) => {
+  const resolvedLogin = useResolvedAccountLogin(login);
+  return usePolling(
+    async () => {
+      if (!resolvedLogin) return { positions: [], count: 0 };
+      return normalizePositionsResponse(await tradingApi.getPositions(resolvedLogin));
+    },
+    interval,
+    !!resolvedLogin
+  );
 };
 
-export const usePollingAccount = (interval: number = 10000) => {
-  return usePolling(() => accountApi.getSummary(), interval, true);
+export const usePollingAccount = (interval: number = 10000, login?: AccountLogin) => {
+  const resolvedLogin = useResolvedAccountLogin(login);
+  return usePolling(
+    () => resolvedLogin ? accountApi.getSummary(resolvedLogin) : Promise.resolve(null),
+    interval,
+    !!resolvedLogin
+  );
 };

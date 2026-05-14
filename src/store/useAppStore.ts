@@ -94,6 +94,13 @@ export interface SavedAccount {
   lastUsed?: number;
 }
 
+export interface TradeApiStatus {
+  loading: boolean;
+  error: string | null;
+  lastUpdated: number | null;
+  lastStartedAt: number | null;
+}
+
 interface AppState {
   // Authentication
   isAuthenticated: boolean;
@@ -105,6 +112,7 @@ interface AppState {
 
   // Market Data
   ticks: Record<string, Tick>;
+  tickLookup: Record<string, string>;
   selectedSymbol: string;
 
   // Trading
@@ -124,6 +132,9 @@ interface AppState {
 
   // WebSocket
   wsConnected: boolean;
+
+  // Trade API REST lifecycle
+  tradeApiStatus: TradeApiStatus;
 
   // Loading States
   isLoadingAccount: boolean;
@@ -152,6 +163,7 @@ interface AppState {
   setTimeframe: (tf: '1m' | '5m' | '15m' | '1h' | '4h' | '1d') => void;
   setOrderVolume: (volume: number) => void;
   setWsConnected: (connected: boolean) => void;
+  setTradeApiStatus: (status: Partial<TradeApiStatus>) => void;
   setLoadingStates: (states: Partial<{
     isLoadingAccount: boolean;
     isLoadingPositions: boolean;
@@ -168,6 +180,7 @@ const initialState = {
   tokenExpiresAt: null,
   isRefreshing: false,
   ticks: {},
+  tickLookup: {},
   selectedSymbol: '',
   positions: [],
   orders: [],
@@ -179,6 +192,12 @@ const initialState = {
   timeframe: '1m' as const,
   orderVolume: 0.01,
   wsConnected: false,
+  tradeApiStatus: {
+    loading: false,
+    error: null,
+    lastUpdated: null,
+    lastStartedAt: null,
+  },
   isLoadingAccount: false,
   isLoadingPositions: false,
   isPlacingOrder: false,
@@ -209,6 +228,78 @@ const sanitizeSavedAccounts = (accounts: unknown): SavedAccount[] => {
 };
 
 clearLegacyCredentialStorage();
+
+export const normalizeTickLookupKey = (symbol: string | undefined | null): string => (
+  String(symbol || '').trim().toUpperCase()
+);
+
+export const getTickBaseLookupKey = (symbol: string | undefined | null): string => (
+  normalizeTickLookupKey(symbol).split('.')[0]
+);
+
+const getTickTimestamp = (tick?: Tick): number => Number(tick?.timestamp ?? 0);
+
+const buildTickLookup = (ticks: Record<string, Tick>): Record<string, string> => {
+  const lookup: Record<string, string> = {};
+
+  Object.entries(ticks).forEach(([storeSymbol, tick]) => {
+    const normalizedStoreSymbol = normalizeTickLookupKey(storeSymbol);
+    const normalizedTickSymbol = normalizeTickLookupKey(tick?.symbol);
+    const baseSymbol = getTickBaseLookupKey(normalizedStoreSymbol || normalizedTickSymbol);
+    if (!normalizedStoreSymbol && !normalizedTickSymbol) return;
+
+    if (normalizedStoreSymbol) lookup[normalizedStoreSymbol] = storeSymbol;
+    if (normalizedTickSymbol) lookup[normalizedTickSymbol] = storeSymbol;
+
+    const currentBaseKey = lookup[baseSymbol];
+    const currentBaseTick = currentBaseKey ? ticks[currentBaseKey] : undefined;
+    if (baseSymbol && (!currentBaseTick || getTickTimestamp(tick) >= getTickTimestamp(currentBaseTick))) {
+      lookup[baseSymbol] = storeSymbol;
+    }
+  });
+
+  return lookup;
+};
+
+const updateTickLookup = (
+  currentLookup: Record<string, string>,
+  currentTicks: Record<string, Tick>,
+  storeSymbol: string,
+  tick: Tick,
+): Record<string, string> => {
+  const normalizedStoreSymbol = normalizeTickLookupKey(storeSymbol);
+  const normalizedTickSymbol = normalizeTickLookupKey(tick?.symbol);
+  const baseSymbol = getTickBaseLookupKey(normalizedStoreSymbol || normalizedTickSymbol);
+  if (!normalizedStoreSymbol && !normalizedTickSymbol) return currentLookup;
+
+  const nextLookup = { ...currentLookup };
+  if (normalizedStoreSymbol) nextLookup[normalizedStoreSymbol] = storeSymbol;
+  if (normalizedTickSymbol) nextLookup[normalizedTickSymbol] = storeSymbol;
+
+  const currentBaseKey = baseSymbol ? nextLookup[baseSymbol] : undefined;
+  const currentBaseTick = currentBaseKey ? currentTicks[currentBaseKey] : undefined;
+  if (baseSymbol && (!currentBaseTick || getTickTimestamp(tick) >= getTickTimestamp(currentBaseTick))) {
+    nextLookup[baseSymbol] = storeSymbol;
+  }
+
+  return nextLookup;
+};
+
+export const resolveTickFromLookup = (
+  ticks: Record<string, Tick>,
+  tickLookup: Record<string, string>,
+  symbol: string,
+): Tick | undefined => {
+  const rawSymbol = symbol || '';
+  const normalizedSymbol = normalizeTickLookupKey(rawSymbol);
+  if (!normalizedSymbol) return undefined;
+
+  const exact = ticks[normalizedSymbol] || ticks[rawSymbol];
+  if (exact) return exact;
+
+  const lookupKey = tickLookup[normalizedSymbol] || tickLookup[getTickBaseLookupKey(normalizedSymbol)];
+  return lookupKey ? ticks[lookupKey] : undefined;
+};
 
 export const useAppStore = create<AppState>()(
   devtools(
@@ -276,6 +367,7 @@ export const useAppStore = create<AppState>()(
             positions: [],
             orders: [],
             trades: [],
+            tradeApiStatus: initialState.tradeApiStatus,
             // savedAccounts intentionally NOT cleared — they persist across logout
           });
         },
@@ -297,10 +389,7 @@ export const useAppStore = create<AppState>()(
               askDirection = 'down';
             }
 
-            return {
-              ticks: {
-                ...state.ticks,
-                [symbol]: {
+            const nextTick = {
                   // Preserve daily/high/low fields from previous tick if new tick doesn't include them
                   // (broker often sends price-only ticks without dailyChange)
                   dailyChange: prevTick?.dailyChange,
@@ -315,12 +404,17 @@ export const useAppStore = create<AppState>()(
                   prevAsk: prevTick?.ask,
                   bidDirection,
                   askDirection,
-                },
+                };
+            return {
+              ticks: {
+                ...state.ticks,
+                [symbol]: nextTick,
               },
+              tickLookup: updateTickLookup(state.tickLookup, state.ticks, symbol, nextTick),
             };
           }),
 
-        setTicks: (ticks) => set({ ticks }),
+        setTicks: (ticks) => set({ ticks, tickLookup: buildTickLookup(ticks) }),
 
         setSelectedSymbol: (symbol) => set({ selectedSymbol: symbol }),
 
@@ -372,6 +466,14 @@ export const useAppStore = create<AppState>()(
 
         setWsConnected: (connected) => set({ wsConnected: connected }),
 
+        setTradeApiStatus: (status) =>
+          set((state) => ({
+            tradeApiStatus: {
+              ...state.tradeApiStatus,
+              ...status,
+            },
+          })),
+
         setLoadingStates: (states) => set(states),
 
         reset: () => set(initialState),
@@ -404,27 +506,5 @@ export const useAppStore = create<AppState>()(
 );
 // Selector for a single tick
 export const useTick = (symbol: string) => useAppStore((state) => {
-  const rawSymbol = symbol || '';
-  const normalizedSymbol = rawSymbol.trim().toUpperCase();
-  const baseSymbol = normalizedSymbol.split('.')[0];
-
-  const exact = state.ticks[normalizedSymbol] || state.ticks[rawSymbol];
-  if (exact) return exact;
-
-  const exactCaseInsensitiveKey = Object.keys(state.ticks).find((key) => key.toLowerCase() === normalizedSymbol.toLowerCase());
-  if (exactCaseInsensitiveKey) return state.ticks[exactCaseInsensitiveKey];
-
-  // Choose freshest matching variant by timestamp instead of first key match.
-  const candidates = Object.entries(state.ticks)
-    .filter(([key]) => key.trim().toUpperCase().split('.')[0] === baseSymbol)
-    .map(([, tick]) => tick)
-    .filter(Boolean);
-
-  if (candidates.length === 0) return undefined;
-
-  return candidates.reduce((latest, current) => {
-    const latestTs = Number(latest?.timestamp ?? 0);
-    const currentTs = Number(current?.timestamp ?? 0);
-    return currentTs >= latestTs ? current : latest;
-  });
+  return resolveTickFromLookup(state.ticks, state.tickLookup, symbol);
 });

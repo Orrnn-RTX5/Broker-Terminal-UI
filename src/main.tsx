@@ -75,7 +75,16 @@ try {
   root.render(
     <StrictMode>
       <ThemeProvider>
-        <Suspense fallback={<div style={{ color: 'white' }}>Loading...</div>}>
+        <Suspense fallback={
+          <div className="rtx-preloader">
+            <svg className="rtx-infinity-svg" viewBox="0 0 100 50">
+              <path className="rtx-infinity-bg" d="M 50 25 C 65 5, 95 5, 95 25 C 95 45, 65 45, 50 25 C 35 5, 5 5, 5 25 C 5 45, 35 45, 50 25 Z" />
+              <path className="rtx-infinity-trace" d="M 50 25 C 65 5, 95 5, 95 25 C 95 45, 65 45, 50 25 C 35 5, 5 5, 5 25 C 5 45, 35 45, 50 25 Z" />
+            </svg>
+            <div className="rtx-preloader-logo">RTX<span>5</span></div>
+            <div className="rtx-preloader-text">Loading Workspace...</div>
+          </div>
+        }>
           <App />
         </Suspense>
       </ThemeProvider>

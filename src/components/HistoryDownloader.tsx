@@ -124,6 +124,9 @@ export const HistoryDownloader: React.FC = () => {
   };
 
   const selectedSymbolInfo = symbols.find(s => s.symbol === selectedSymbol);
+  const selectedDateRangeLabel = selectedSymbolInfo?.firstDate && selectedSymbolInfo.lastDate
+    ? `Cached: ${selectedSymbolInfo.firstDate} to ${selectedSymbolInfo.lastDate}`
+    : 'Date range is user selected';
 
   return (
     <div className="flex flex-col h-full bg-gray-900 text-gray-100">
@@ -191,7 +194,9 @@ export const HistoryDownloader: React.FC = () => {
 
                     <div className="text-xs text-gray-400 space-y-1">
                       <div>
-                        {symbolInfo.downloadedDates.length} / {symbolInfo.availableDates.length} days
+                        {symbolInfo.availableDates.length > 0
+                          ? `${symbolInfo.downloadedDates.length} / ${symbolInfo.availableDates.length} days`
+                          : `${symbolInfo.downloadedDates.length} cached days`}
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
@@ -217,7 +222,7 @@ export const HistoryDownloader: React.FC = () => {
               <h3 className="text-sm font-semibold mb-2">Download Settings</h3>
               {selectedSymbolInfo && (
                 <div className="text-sm text-gray-400 mb-3">
-                  Available: {selectedSymbolInfo.firstDate} to {selectedSymbolInfo.lastDate}
+                  {selectedDateRangeLabel}
                 </div>
               )}
             </div>

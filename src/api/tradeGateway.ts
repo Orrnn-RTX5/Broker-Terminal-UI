@@ -223,10 +223,25 @@ export const normalizeOrder = (raw: GatewayOrder, index = 0): Trade => {
   };
 };
 
+const ARRAY_WRAPPER_KEYS = ['data', 'items', 'results'] as const;
+
 const arrayFrom = <T>(data: unknown, key?: string): T[] => {
-  if (Array.isArray(data)) return data as T[];
-  if (key && Array.isArray((data as any)?.[key])) return (data as any)[key] as T[];
-  return [];
+  const extract = (value: unknown, depth = 0): T[] => {
+    if (Array.isArray(value)) return value as T[];
+    if (!value || typeof value !== 'object' || depth > ARRAY_WRAPPER_KEYS.length) return [];
+
+    const record = value as Record<string, unknown>;
+    if (key && Array.isArray(record[key])) return record[key] as T[];
+
+    for (const wrapperKey of ARRAY_WRAPPER_KEYS) {
+      const nested = extract(record[wrapperKey], depth + 1);
+      if (nested.length > 0) return nested;
+    }
+
+    return [];
+  };
+
+  return extract(data);
 };
 
 export const tradeGatewayApi = {

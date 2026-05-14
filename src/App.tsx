@@ -8,7 +8,7 @@ import type { ChartType, Timeframe } from './components/TradingChart';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { BottomDock } from './components/BottomDock';
 import { AlertsContainer } from './components/AlertsContainer';
-import { useAppStore } from './store/useAppStore';
+import { resolveTickFromLookup, useAppStore } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
 import { useWatchlistStore } from './store/useWatchlistStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
@@ -95,6 +95,25 @@ interface Position {
   unrealizedPnL: number;
 }
 
+interface TradeRestRead {
+  startedAt: number;
+  startedVersion: number;
+  startedLocalMutationVersion: number;
+}
+
+interface RefreshPositionsOptions {
+  allowWsCommit?: boolean;
+}
+
+interface PendingPositionsRefresh {
+  login: number;
+  options?: RefreshPositionsOptions;
+}
+
+interface OptimisticCloseReconcileOptions {
+  clearConfirmedAbsent?: boolean;
+}
+
 interface Account {
   balance: number;
   equity: number;
@@ -128,6 +147,53 @@ const parsePositiveInt = (value: string | null | undefined): number | null => {
   if (!value) return null;
   const parsed = Number.parseInt(String(value), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return fallback;
+};
+
+const mergeOrderHistory = (parts: any[][]): any[] => {
+  const seen = new Set<string>();
+  return parts
+    .flat()
+    .filter((trade) => {
+      const key = `${trade?.type}:${trade?.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => Date.parse(b?.closeTime ?? b?.openTime) - Date.parse(a?.closeTime ?? a?.openTime))
+    .slice(0, 500);
+};
+
+type OrderHistoryRefreshResult = {
+  trades: any[];
+  warning: string | null;
+};
+
+const fetchOrderHistory = async (login: number): Promise<OrderHistoryRefreshResult> => {
+  const results = await Promise.allSettled([
+    tradeGatewayApi.getClosedPositions(login),
+    tradeGatewayApi.getDeals(login),
+    tradeGatewayApi.getOrders(login),
+  ]);
+
+  const rejected = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  const fulfilled = results.filter((result): result is PromiseFulfilledResult<any[]> => result.status === 'fulfilled');
+
+  if (fulfilled.length === 0 && rejected.length > 0) {
+    throw new Error(rejected.map((result) => getErrorMessage(result.reason, 'history endpoint failed')).join('; '));
+  }
+
+  return {
+    trades: mergeOrderHistory(fulfilled.map((result) => result.value)),
+    warning: rejected.length > 0
+      ? rejected.map((result) => getErrorMessage(result.reason, 'history endpoint failed')).join('; ')
+      : null,
+  };
 };
 
 // Market data must come from FIX API backend (no mock market feed)
@@ -302,6 +368,30 @@ const normalizePositions = (payload: unknown): Position[] => {
   });
 };
 
+const getLivePositionPnL = (position: Position, tick?: Tick): number => {
+  const openPrice = Number(position.openPrice ?? 0);
+  const volume = Number(position.volume ?? 0);
+
+  if (!tick || openPrice <= 0) {
+    return Number(position.unrealizedPnL ?? 0);
+  }
+
+  const symbol = position.symbol ?? '';
+  const livePrice = position.side === 'BUY' ? Number(tick.bid) : Number(tick.ask);
+  if (!Number.isFinite(livePrice) || livePrice <= 0) {
+    return Number(position.unrealizedPnL ?? 0);
+  }
+
+  let multiplier = 100000;
+  if (symbol.includes('JPY')) multiplier = 1000;
+  else if (symbol.startsWith('BTC') || symbol.startsWith('ETH')) multiplier = 1;
+  else if (symbol.startsWith('XAU')) multiplier = 100;
+  else if (symbol.startsWith('XAG')) multiplier = 5000;
+
+  const priceDiff = position.side === 'BUY' ? (livePrice - openPrice) : (openPrice - livePrice);
+  return priceDiff * volume * multiplier;
+};
+
 const normalizeAccountSummary = (payload: unknown, prev?: Account | null): Account => {
   const raw = (payload || {}) as RawRecord;
 
@@ -385,6 +475,7 @@ const extractAccountPayload = (message: any): RawRecord => {
 };
 
 const POSITION_CLOSED_EVENTS = new Set(['close', 'closed', 'sl_hit', 'tp_hit']);
+const TRADE_WS_HEARTBEAT_STALE_MS = 10_000;
 
 const toV2Timeframe = (value: string | undefined): string => {
   const normalized = String(value || 'M1').trim().toUpperCase();
@@ -419,9 +510,11 @@ function App() {
   // Mount the Auto-Close Supervisor (tests tick state against SL/TP repeatedly)
   useAutoCloseMonitor(500);
 
-  // ── Authentication is bypassed at startup — terminal opens directly ──
-  // Session restore still runs silently to load accountId/tokens.
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  // Start closed and restore only after a validated token or active authenticated store session.
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const state = useAppStore.getState();
+    return Boolean(state.isAuthenticated && parsePositiveInt(state.accountId || undefined));
+  });
   const [isAutoAuthenticating, setIsAutoAuthenticating] = useState(false);
   const [autoAuthError, setAutoAuthError] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState<string>(() => {
@@ -430,7 +523,6 @@ function App() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [account, setAccount] = useState<Account | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
   const [ledger, setLedger] = useState<any[]>([]);
   const [volume, setVolume] = useState(0.01);
   const [orderLoading, setOrderLoading] = useState(false);
@@ -448,9 +540,117 @@ function App() {
     return saved ? parseInt(saved, 10) : 250;
   });
   const [accountId, setAccountId] = useState<string>('');
+  const activeAccountDataRef = useRef<number | null>(null);
+  const accountIdRef = useRef(accountId);
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  const refreshPositionsInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshPositionsPendingRef = useRef<PendingPositionsRefresh | null>(null);
+  const refreshHistoryInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshHistoryPendingLoginRef = useRef<number | null>(null);
+  const accountPollInFlightRef = useRef<Promise<void> | null>(null);
+  const lastTradeWsMessageAtRef = useRef(0);
+  const tradeDataVersionRef = useRef(0);
+  const localTradeDataVersionRef = useRef(0);
+  const optimisticClosedTicketsRef = useRef<Set<number>>(new Set());
   const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
 
   const [enableHistoricalData] = useState(true);
+
+  accountIdRef.current = accountId;
+  isAuthenticatedRef.current = isAuthenticated;
+
+  const clearLocalAccountState = useCallback(() => {
+    activeAccountDataRef.current = null;
+    accountIdRef.current = '';
+    isAuthenticatedRef.current = false;
+    setAccount(null);
+    setPositions([]);
+    setOrders([]);
+    setLedger([]);
+    useAppStore.getState().setAccount(null);
+    useAppStore.getState().setPositions([] as any);
+    useAppStore.getState().setOrders([] as any);
+    useAppStore.getState().setTrades([] as any);
+  }, []);
+
+  const getLiveTradingLogin = useCallback(() => {
+    const state = useAppStore.getState();
+    if (!isAuthenticatedRef.current && !state.isAuthenticated) return null;
+
+    const authenticatedStoreLogin = state.isAuthenticated
+      ? parsePositiveInt(state.accountId || undefined)
+      : null;
+    return authenticatedStoreLogin || parsePositiveInt(accountIdRef.current || undefined);
+  }, []);
+
+  const getAcceptedChannelLogin = useCallback((channel?: string): number | null => {
+    if (!isAuthenticatedRef.current) return null;
+
+    const liveLogin = getLiveTradingLogin();
+    if (!liveLogin) return null;
+
+    const channelLogin = parsePositiveInt(channel?.split('.')[1]);
+    if (channelLogin && channelLogin !== liveLogin) return null;
+
+    return channelLogin || liveLogin;
+  }, [getLiveTradingLogin]);
+
+  const markTradeWsMessage = useCallback(() => {
+    lastTradeWsMessageAtRef.current = Date.now();
+    tradeDataVersionRef.current += 1;
+  }, []);
+
+  const markLocalTradeMutation = useCallback((ticketIds: number[] = []) => {
+    tradeDataVersionRef.current += 1;
+    localTradeDataVersionRef.current += 1;
+    ticketIds.forEach((ticketId) => {
+      if (Number.isFinite(ticketId)) {
+        optimisticClosedTicketsRef.current.add(ticketId);
+      }
+    });
+  }, []);
+
+  const markServerClosedTickets = useCallback((ticketIds: number[] = []) => {
+    ticketIds.forEach((ticketId) => {
+      if (Number.isFinite(ticketId)) {
+        optimisticClosedTicketsRef.current.add(ticketId);
+      }
+    });
+  }, []);
+
+  const reconcileOptimisticClosedPositions = useCallback((normalized: Position[], options: OptimisticCloseReconcileOptions = {}) => {
+    const optimisticTickets = optimisticClosedTicketsRef.current;
+    if (optimisticTickets.size === 0) return normalized;
+
+    if (options.clearConfirmedAbsent) {
+      const returnedTickets = new Set(normalized.map((position) => position.id));
+      optimisticTickets.forEach((ticketId) => {
+        if (!returnedTickets.has(ticketId)) {
+          optimisticTickets.delete(ticketId);
+        }
+      });
+    }
+
+    if (optimisticTickets.size === 0) return normalized;
+    return normalized.filter((position) => !optimisticTickets.has(position.id));
+  }, []);
+
+  const clearOptimisticClosedTickets = useCallback((ticketIds: number[]) => {
+    ticketIds.forEach((ticketId) => optimisticClosedTicketsRef.current.delete(ticketId));
+  }, []);
+
+  const beginTradeRestRead = useCallback((): TradeRestRead => ({
+    startedAt: Date.now(),
+    startedVersion: tradeDataVersionRef.current,
+    startedLocalMutationVersion: localTradeDataVersionRef.current,
+  }), []);
+
+  const isStaleTradeRestRead = useCallback((request: TradeRestRead, options: RefreshPositionsOptions = {}) => {
+    if (localTradeDataVersionRef.current > request.startedLocalMutationVersion) return true;
+    if (options.allowWsCommit) return false;
+    return lastTradeWsMessageAtRef.current > request.startedAt
+      || tradeDataVersionRef.current > request.startedVersion;
+  }, []);
 
   useEffect(() => {
     const hasMigrated = localStorage.getItem(TIMEFRAME_MIGRATION_KEY) === '1';
@@ -483,12 +683,13 @@ function App() {
   // Listen for logout event from toolbar
   useEffect(() => {
     const handleLogoutEvent = () => {
+      clearLocalAccountState();
       setIsAuthenticated(false);
       setAccountId('');
     };
     window.addEventListener('rtx:logout', handleLogoutEvent);
     return () => window.removeEventListener('rtx:logout', handleLogoutEvent);
-  }, []);
+  }, [clearLocalAccountState]);
 
   // Session restore uses existing token state only; App must not decode or replay saved passwords.
   useEffect(() => {
@@ -511,10 +712,22 @@ function App() {
       }
       const lastAccountId = storeState.accountId;
 
+      if (storeState.isAuthenticated) {
+        const authenticatedLogin = parsePositiveInt(lastAccountId || undefined);
+        if (authenticatedLogin) {
+          const restoredAccountId = String(authenticatedLogin);
+          setIsAuthenticated(true);
+          setAccountId(restoredAccountId);
+          console.log('[Session] Restored active authenticated store session for:', restoredAccountId);
+          setIsAutoAuthenticating(false);
+          return;
+        }
+      }
+
       // Determine which login to restore: prefer store's active accountId, then localStorage
       const targetLogin = lastAccountId || rememberedLogin;
 
-      if (!targetLogin && !token && !refreshToken && savedAccounts.length === 0) {
+      if (!targetLogin || (!token && !refreshToken)) {
         setIsAutoAuthenticating(false);
         return;
       }
@@ -536,9 +749,12 @@ function App() {
           const expiresAt = expiresAtStr ? new Date(expiresAtStr).getTime() : undefined;
           const activeToken = localStorage.getItem('auth_token') || token;
           const activeRefresh = localStorage.getItem('refresh_token') || refreshToken;
+          if (!activeToken) {
+            throw new Error('Session restore did not produce an access token');
+          }
 
-          useAppStore.getState().setAuthTokens(activeToken, activeRefresh, expiresAt);
-          useAppStore.getState().setAuthenticated(true, restoredAccountId, activeToken, activeRefresh, expiresAt);
+          useAppStore.getState().setAuthTokens(activeToken, activeRefresh || undefined, expiresAt);
+          useAppStore.getState().setAuthenticated(true, restoredAccountId, activeToken, activeRefresh || undefined, expiresAt);
           setIsAuthenticated(true);
           setAccountId(restoredAccountId);
           console.log('[Session] Restored via token for:', restoredAccountId);
@@ -546,13 +762,10 @@ function App() {
         }
       } catch (err: any) {
         console.log('[Session] Restore failed:', err.message);
-        const persistedAccountId = useAppStore.getState().accountId;
-        if (persistedAccountId) {
-          setIsAuthenticated(true);
-          setAccountId(persistedAccountId);
-        } else {
-          setAutoAuthError(err.message || 'Session restore failed');
-        }
+        setIsAuthenticated(false);
+        setAccountId('');
+        useAppStore.getState().clearAuth();
+        setAutoAuthError(err.message || 'Session restore failed');
       } finally {
         setIsAutoAuthenticating(false);
       }
@@ -563,20 +776,29 @@ function App() {
 
   // Reactively read store accountId (changes when user clicks account in Navigator)
   const storeAccountId = useAppStore(state => state.accountId);
+  const storeIsAuthenticated = useAppStore(state => state.isAuthenticated);
 
   // Sync store accountId to local state — triggers data re-fetch
   useEffect(() => {
-    if (storeAccountId) {
-      setAccountId((prev) => {
-        if (prev !== storeAccountId) {
-          console.log('[App] Account switched via store:', prev, '->', storeAccountId);
-          setIsAuthenticated(true);
-          return storeAccountId;
-        }
-        return prev;
-      });
+    if (!storeIsAuthenticated || !storeAccountId) {
+      if (accountId) {
+        console.log('[App] Account cleared via store:', accountId);
+        clearLocalAccountState();
+        setIsAuthenticated(false);
+        setAccountId('');
+      }
+      return;
     }
-  }, [storeAccountId]);
+
+    setAccountId((prev) => {
+      if (prev !== storeAccountId) {
+        console.log('[App] Account switched via store:', prev, '->', storeAccountId);
+        setIsAuthenticated(true);
+        return storeAccountId;
+      }
+      return prev;
+    });
+  }, [storeAccountId, storeIsAuthenticated, accountId, clearLocalAccountState]);
 
   // UI State
   const [showDOM, setShowDOM] = useState(false);
@@ -889,38 +1111,152 @@ function App() {
     } as any);
   }, []);
 
-  const refreshPositions = useCallback(async () => {
+  const refreshPositions = useCallback(async (login?: number, options: RefreshPositionsOptions = {}) => {
+    const requestedLogin = login || getLiveTradingLogin();
+    if (!requestedLogin) return;
+
+    if (refreshPositionsInFlightRef.current) {
+      refreshPositionsPendingRef.current = { login: requestedLogin, options };
+      await refreshPositionsInFlightRef.current;
+      return;
+    }
+
+    const request = (async () => {
     try {
-      const posData = await api.positions.getPositions();
-      const normalized = normalizePositions(posData);
+      const restRead = beginTradeRestRead();
+      const posData = await api.positions.getPositions(requestedLogin);
+      const activeLogin = parsePositiveInt(useAppStore.getState().accountId || accountIdRef.current || undefined);
+      if (!isAuthenticatedRef.current || activeLogin !== requestedLogin) return;
+      if (isStaleTradeRestRead(restRead, options)) return;
+
+      const normalized = reconcileOptimisticClosedPositions(normalizePositions(posData), { clearConfirmedAbsent: true });
       // Write ONLY to the central store — NOT to local App state.
       // This prevents App.tsx from re-rendering (which caused the blank-display crash
       // after every Buy/Sell). BottomDock reads positions from useAppStore directly.
       useAppStore.getState().setPositions(normalized as any);
     } catch (err: any) {
       console.warn('[App] refreshPositions failed:', err.message);
+    } finally {
+      refreshPositionsInFlightRef.current = null;
+      const pendingRefresh = refreshPositionsPendingRef.current;
+      refreshPositionsPendingRef.current = null;
+      if (pendingRefresh) {
+        void refreshPositions(pendingRefresh.login, pendingRefresh.options);
+      }
     }
-  }, []);
+    })();
+
+    refreshPositionsInFlightRef.current = request;
+    await request;
+  }, [beginTradeRestRead, getLiveTradingLogin, isStaleTradeRestRead, reconcileOptimisticClosedPositions]);
 
   const refreshOrdersAndHistory = useCallback(async (login?: number) => {
-    const resolvedLogin = login || parsePositiveInt(accountId);
+    const resolvedLogin = login || getLiveTradingLogin();
     if (!resolvedLogin) return;
 
-    const [pendingOrders, orderHistory] = await Promise.all([
-      api.orders.getPendingOrders().catch(() => []),
-      tradeGatewayApi.getOrderHistory(resolvedLogin).catch(() => []),
-    ]);
+    if (refreshHistoryInFlightRef.current) {
+      refreshHistoryPendingLoginRef.current = resolvedLogin;
+      await refreshHistoryInFlightRef.current;
+      return;
+    }
 
-    setOrders(pendingOrders as any);
-    useAppStore.getState().setOrders(pendingOrders as any);
-    useAppStore.getState().setTrades(orderHistory as any);
-  }, [accountId]);
+    window.dispatchEvent(new CustomEvent('rtx:trade-history-refresh-started', {
+      detail: { login: resolvedLogin },
+    }));
+
+    const request = (async () => {
+      let historyError: unknown = null;
+      let historySucceeded = false;
+      try {
+        const [pendingOrdersResult, orderHistoryResult] = await Promise.allSettled([
+          api.orders.getPendingOrders(resolvedLogin),
+          fetchOrderHistory(resolvedLogin),
+        ]);
+
+        if (!isAuthenticatedRef.current || getLiveTradingLogin() !== resolvedLogin) return;
+
+        const pendingOrders = pendingOrdersResult.status === 'fulfilled'
+          ? pendingOrdersResult.value
+          : [];
+
+        setOrders(pendingOrders as any);
+        useAppStore.getState().setOrders(pendingOrders as any);
+
+        if (orderHistoryResult.status === 'fulfilled') {
+          historySucceeded = true;
+          useAppStore.getState().setTrades(orderHistoryResult.value.trades as any);
+          if (orderHistoryResult.value.warning) {
+            historyError = orderHistoryResult.value.warning;
+            console.warn('[History] Partially refreshed trade history:', historyError);
+            window.dispatchEvent(new CustomEvent('rtx:trade-history-refresh-error', {
+              detail: {
+                login: resolvedLogin,
+                partial: true,
+                message: getErrorMessage(historyError, 'Some order history sources failed'),
+              },
+            }));
+          }
+        } else {
+          historyError = orderHistoryResult.reason;
+          console.error('[History] Failed to refresh trade history:', historyError);
+          window.dispatchEvent(new CustomEvent('rtx:trade-history-refresh-error', {
+            detail: {
+              login: resolvedLogin,
+              message: getErrorMessage(historyError, 'Failed to refresh order history'),
+            },
+          }));
+        }
+      } finally {
+        refreshHistoryInFlightRef.current = null;
+        window.dispatchEvent(new CustomEvent('rtx:trade-history-refresh-completed', {
+          detail: {
+            login: resolvedLogin,
+            ok: historySucceeded,
+            message: historyError ? getErrorMessage(historyError, 'Failed to refresh order history') : null,
+          },
+        }));
+
+        const pendingLogin = refreshHistoryPendingLoginRef.current;
+        refreshHistoryPendingLoginRef.current = null;
+        if (pendingLogin) {
+          void refreshOrdersAndHistory(pendingLogin);
+        }
+      }
+    })();
+
+    refreshHistoryInFlightRef.current = request;
+    await request;
+  }, [getLiveTradingLogin]);
 
   useEffect(() => {
-    const handleSync = () => refreshPositions();
+    const handleSync = (event: Event) => {
+      const eventLogin = parsePositiveInt(String((event as CustomEvent)?.detail?.login ?? ''));
+      const requestedLogin = eventLogin || getLiveTradingLogin();
+      if (!requestedLogin) return;
+      refreshPositions(requestedLogin, { allowWsCommit: true });
+    };
     window.addEventListener('rtx:force-refresh-positions', handleSync);
     return () => window.removeEventListener('rtx:force-refresh-positions', handleSync);
-  }, [refreshPositions]);
+  }, [getLiveTradingLogin, refreshPositions]);
+
+  useEffect(() => {
+    const handleHistoryRefreshRequest = (event: Event) => {
+      if (!isAuthenticatedRef.current) return;
+
+      const requestedLogin = parsePositiveInt(String((event as CustomEvent)?.detail?.login ?? ''));
+      const liveLogin = getLiveTradingLogin();
+      if (!requestedLogin || !liveLogin || requestedLogin !== liveLogin) return;
+
+      refreshOrdersAndHistory(requestedLogin).catch(err => {
+        console.error('[History] Failed to refresh orders/history:', err);
+      });
+    };
+
+    window.addEventListener('rtx:refresh-trade-history-requested', handleHistoryRefreshRequest);
+    return () => {
+      window.removeEventListener('rtx:refresh-trade-history-requested', handleHistoryRefreshRequest);
+    };
+  }, [getLiveTradingLogin, refreshOrdersAndHistory]);
 
   const closingTicketsRef = useRef<Set<number>>(new Set());
 
@@ -932,17 +1268,20 @@ function App() {
     }
     closingTicketsRef.current.add(id);
 
+    markLocalTradeMutation([id]);
     // Optimistically remove from the app store immediately.
     useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== id));
     // Trigger close sound
     import('./utils/audio').then(m => m.playSystemSound('close'));
-    window.dispatchEvent(new Event('rtx:force-refresh-positions'));
 
     try {
       await api.positions.closePosition(String(id));
-      refreshPositions();
+      markLocalTradeMutation();
+      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
     } catch (err: any) {
+      clearOptimisticClosedTickets([id]);
       console.error('Failed to close position:', err);
+      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
     } finally {
       closingTicketsRef.current.delete(id);
     }
@@ -951,9 +1290,15 @@ function App() {
   const handleCancelOrder = async (orderId: string) => {
     if (!(await useConfirmStore.getState().showConfirm('Confirm Action', 'Cancel this order?'))) return;
     try {
+      const loginId = getLiveTradingLogin();
+      if (!loginId) return;
+
       await api.orders.cancelOrder(orderId);
-      const ordersPayload = await api.orders.getPendingOrders().catch(() => []);
+      const ordersPayload = await api.orders.getPendingOrders(loginId).catch(() => []);
+      if (!isAuthenticatedRef.current || getLiveTradingLogin() !== loginId) return;
+
       setOrders(ordersPayload);
+      useAppStore.getState().setOrders(ordersPayload as any);
     } catch (err) {
       console.error('Failed to cancel order:', err);
     }
@@ -966,7 +1311,7 @@ function App() {
         price_tp: tp,
       });
       // Refresh positions so chart draws the new SL/TP lines
-      refreshPositions();
+      refreshPositions(getLiveTradingLogin() || undefined);
     } catch (err: any) {
       console.error('Failed to modify position:', err);
     }
@@ -975,31 +1320,51 @@ function App() {
   const handleCloseBulk = async (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => {
     if (!confirm(`Close ${type} positions?`)) return;
 
+    let optimisticTicketIds: number[] = [];
     try {
       const accId = parsePositiveInt(accountId);
       if (!accId) return;
 
       if (type === 'ALL' && !symbol) {
-        await accountV2Api.closeAllPositions(accId);
+        optimisticTicketIds = useAppStore.getState().positions.map((position) => position.id);
+        markLocalTradeMutation(optimisticTicketIds);
         useAppStore.getState().setPositions([]);
+        await accountV2Api.closeAllPositions(accId);
       } else {
         const openPositions = normalizePositions(await tradingV2Api.getPositions(accId, { limit: 500, offset: 0 }).catch(() => api.positions.getPositions(accId) as any));
+        const { ticks, tickLookup } = useAppStore.getState();
         const candidates = openPositions.filter((position) => {
           if (symbol && position.symbol !== symbol) return false;
           if (type === 'ALL') return true;
-          const profit = Number(position.unrealizedPnL ?? 0);
+          const profit = getLivePositionPnL(position, resolveTickFromLookup(ticks, tickLookup, position.symbol));
           return type === 'WINNERS' ? profit > 0 : profit < 0;
         });
 
+        optimisticTicketIds = candidates.map((position) => position.id);
+        markLocalTradeMutation(optimisticTicketIds);
+        useAppStore.getState().setPositions(useAppStore.getState().positions.filter((position) => !optimisticTicketIds.includes(position.id)));
         await Promise.all(candidates.map((position) => tradingV2Api.closePosition(position.id)));
       }
 
-      window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-      refreshPositions();
+      markLocalTradeMutation();
+      refreshPositions(accId, { allowWsCommit: true });
     } catch (err) {
+      clearOptimisticClosedTickets(optimisticTicketIds);
       console.error('Bulk close failed:', err);
+      refreshPositions(parsePositiveInt(accountId) || undefined, { allowWsCommit: true });
     }
   };
+
+  // Connect to WebSocket using centralized hook with auto-reconnection
+  const {
+    isConnected,
+    connectionState,
+    reconnect,
+    subscribe
+  } = useWebSocket({
+    url: WS_ENDPOINTS.general,
+    autoConnect: isAuthenticated,
+  });
 
   // Fetch account and positions from backend + periodic polling
   useEffect(() => {
@@ -1007,25 +1372,49 @@ function App() {
 
     const loginId = parsePositiveInt(accountId);
     if (!loginId) return;
+    let cancelled = false;
 
-    // Shared fetch function for initial load and polling
-    const fetchAccountData = async (isInitial = false) => {
-      try {
+    const fetchAccountHeartbeat = async (isInitial = false) => {
+      if (accountPollInFlightRef.current) {
+        await accountPollInFlightRef.current;
+        return;
+      }
+
+      const request = (async () => {
+        try {
+        const restRead = beginTradeRestRead();
+        const isAccountSwitch = activeAccountDataRef.current !== loginId;
         if (isInitial) {
           console.log('[App] Fetching account data for login:', loginId);
           // Clear stale data — write to store, not local App state
-          useAppStore.getState().setAccount(null);
-          useAppStore.getState().setPositions([] as any);
-          useAppStore.getState().setOrders([] as any);
-          useAppStore.getState().setTrades([] as any);
+          if (isAccountSwitch) {
+            // Clear stale data only when moving to a different account.
+            useAppStore.getState().setAccount(null);
+            useAppStore.getState().setPositions([] as any);
+            useAppStore.getState().setOrders([] as any);
+            useAppStore.getState().setTrades([] as any);
+          }
         }
 
-        const [accPayload, posPayload, ordPayload, histPayload] = await Promise.all([
-          api.account.getAccountSummary(loginId).catch((e) => { if (isInitial) console.error('[REST Error] getAccountSummary failed:', e); return null; }),
-          api.positions.getPositions().catch(() => []),
-          api.orders.getPendingOrders().catch(() => []),
-          tradeGatewayApi.getOrderHistory(loginId).catch(() => [])
+        const [accResult, posResult] = await Promise.allSettled([
+          api.account.getAccountSummary(loginId),
+          api.positions.getPositions(loginId),
         ]);
+
+        const activeLogin = parsePositiveInt(useAppStore.getState().accountId || accountIdRef.current || undefined);
+        if (cancelled || !isAuthenticatedRef.current || activeLogin !== loginId) {
+          return;
+        }
+
+        const accPayload = accResult.status === 'fulfilled' ? accResult.value : null;
+        const posPayload = posResult.status === 'fulfilled' ? posResult.value : null;
+
+        if (isInitial) {
+          if (accResult.status === 'rejected') console.error('[REST Error] getAccountSummary failed:', accResult.reason);
+          if (posResult.status === 'rejected') console.error('[REST Error] getPositions failed:', posResult.reason);
+        }
+
+        if (isStaleTradeRestRead(restRead, isInitial ? { allowWsCommit: true } : undefined)) return;
 
         // Write account data to the Zustand store directly — NOT to App local state.
         // This prevents App.tsx from re-rendering on every poll (root cause of blank-display crash).
@@ -1060,24 +1449,41 @@ function App() {
           }
         }
 
-        if (posPayload) useAppStore.getState().setPositions(normalizePositions(posPayload) as any);
-        if (ordPayload) useAppStore.getState().setOrders(ordPayload as any);
-        if (histPayload) useAppStore.getState().setTrades(histPayload as any);
+        if (posPayload !== null) {
+          useAppStore.getState().setPositions(reconcileOptimisticClosedPositions(normalizePositions(posPayload), { clearConfirmedAbsent: true }) as any);
+        }
+        activeAccountDataRef.current = loginId;
 
         if (isInitial) console.log('[App] Account data loaded for login:', loginId);
-      } catch (err) {
-        if (isInitial) console.error('Failed to fetch account data:', err);
-      }
+        } catch (err) {
+          if (isInitial) console.error('Failed to fetch account data:', err);
+        } finally {
+          accountPollInFlightRef.current = null;
+        }
+      })();
+
+      accountPollInFlightRef.current = request;
+      await request;
     };
 
     // Initial fetch
-    fetchAccountData(true);
+    void fetchAccountHeartbeat(true);
+    void refreshOrdersAndHistory(loginId).catch(err => {
+      console.error('[History] Failed to refresh initial orders/history:', err);
+    });
 
-    // Poll every 3 seconds for live data from MT5
-    const pollInterval = setInterval(() => fetchAccountData(false), 3000);
+    // Poll account/positions only as a fallback heartbeat; order/history refreshes are event/manual driven.
+    const pollInterval = setInterval(() => {
+      const hasFreshTradeWs = isConnected && Date.now() - lastTradeWsMessageAtRef.current < TRADE_WS_HEARTBEAT_STALE_MS;
+      if (hasFreshTradeWs) return;
+      void fetchAccountHeartbeat(false);
+    }, 3000);
 
-    return () => clearInterval(pollInterval);
-  }, [isAuthenticated, accountId]);
+    return () => {
+      cancelled = true;
+      clearInterval(pollInterval);
+    };
+  }, [beginTradeRestRead, isAuthenticated, accountId, isConnected, isStaleTradeRestRead, reconcileOptimisticClosedPositions, refreshOrdersAndHistory]);
 
   // NOTE: positions are now written directly to useAppStore in the polling above.
   // No sync useEffect needed — removed to prevent double-write cascade.
@@ -1087,17 +1493,6 @@ function App() {
   // const tickBuffer = useRef<Record<string, Tick>>({});
 
 
-
-  // Connect to WebSocket using centralized hook with auto-reconnection
-  const {
-    isConnected,
-    connectionState,
-    reconnect,
-    subscribe
-  } = useWebSocket({
-    url: WS_ENDPOINTS.general,
-    autoConnect: isAuthenticated,
-  });
 
   // Update reconnect callback ref for StatusBar
   useEffect(() => {
@@ -1198,59 +1593,45 @@ function App() {
         );
         const isLiveQuote = data.channel?.startsWith('quotes.');
         if (data.channel?.startsWith('account.')) {
-          // Filter: only accept data for the current account
-          const channelAccountId = data.channel.split('.')[1];
-          if (channelAccountId && accountId && channelAccountId !== accountId) return;
+          const acceptedLogin = getAcceptedChannelLogin(data.channel);
+          if (!acceptedLogin) return;
+          markTradeWsMessage();
 
           // Live backend account summary stream
           if (WS_DEBUG) console.log('[DEBUG WS ACCOUNT RAW]', data);
           const accData = extractAccountPayload(data);
           if (WS_DEBUG) console.log('[DEBUG WS ACCOUNT PAYLOAD]', accData);
-          setAccount(prev => {
-            const next = normalizeAccountSummary(accData, prev);
-            useAppStore.getState().setAccount(next as any);
-            if (prev &&
-              prev.balance === next.balance &&
-              prev.equity === next.equity &&
-              prev.margin === next.margin &&
-              prev.freeMargin === next.freeMargin &&
-              prev.unrealizedPL === next.unrealizedPL &&
-              prev.marginLevel === next.marginLevel) {
-              return prev; // Prevent re-render if nothing actually changed materially
-            }
-            return next;
-          });
+          const previousAccount = useAppStore.getState().account as Account | null | undefined;
+          const next = normalizeAccountSummary(accData, previousAccount);
+          if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
+          useAppStore.getState().setAccount(next as any);
         } else if (data.channel?.startsWith('positions.')) {
-          // Filter: only accept data for the current account
-          const channelAccountId = data.channel.split('.')[1];
-          if (channelAccountId && accountId && channelAccountId !== accountId) return;
+          const acceptedLogin = getAcceptedChannelLogin(data.channel);
+          if (!acceptedLogin) return;
+          markTradeWsMessage();
           if (WS_DEBUG) console.log('[DEBUG WS POSITIONS RAW]', data);
           try {
             const eventName = getPositionEventName(data);
             const ticket = getPositionEventTicket(data);
+            if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
             if (POSITION_CLOSED_EVENTS.has(eventName) && ticket) {
-              setPositions(prev => prev.filter(position => position.id !== ticket));
+              // Keep optimistic close suppression until REST confirms absence; WS snapshots can lag.
+              markServerClosedTickets([ticket]);
               useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== ticket));
-              window.dispatchEvent(new Event('rtx:force-refresh-positions'));
             } else if (data.data?.positions && Array.isArray(data.data.positions)) {
-              const normalized = normalizePositions(data.data.positions);
-              setPositions(normalized);
+              const normalized = reconcileOptimisticClosedPositions(normalizePositions(data.data.positions));
+              if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
               useAppStore.getState().setPositions(normalized as any);
             } else if (data.data && Array.isArray(data.data)) {
-              const normalized = normalizePositions(data.data);
-              setPositions(normalized);
+              const normalized = reconcileOptimisticClosedPositions(normalizePositions(data.data));
+              if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
               useAppStore.getState().setPositions(normalized as any);
             } else if (data.position || data.data?.position || data.data) {
               const payload = data.position || data.data?.position || data.data;
               const normalized = normalizePositions([payload])[0];
               if (normalized) {
-                setPositions(prev => {
-                  const index = prev.findIndex(position => position.id === normalized.id);
-                  if (index < 0) return [...prev, normalized];
-                  const updated = [...prev];
-                  updated[index] = { ...updated[index], ...normalized };
-                  return updated;
-                });
+                if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
+                if (optimisticClosedTicketsRef.current.has(normalized.id)) return;
                 const storePositions = useAppStore.getState().positions;
                 const storeIndex = storePositions.findIndex(position => position.id === normalized.id);
                 const nextStorePositions = storeIndex < 0
@@ -1263,15 +1644,15 @@ function App() {
             console.error('[WS POSITIONS ERROR]', err);
           }
         } else if (data.channel?.startsWith('orders.')) {
-          const channelAccountId = data.channel.split('.')[1];
-          if (channelAccountId && accountId && channelAccountId !== accountId) return;
-          const loginId = parsePositiveInt(channelAccountId || accountId);
-          refreshOrdersAndHistory(loginId || undefined).catch(err => console.error('[WS ORDERS REFRESH ERROR]', err));
+          const loginId = getAcceptedChannelLogin(data.channel);
+          if (!loginId) return;
+          markTradeWsMessage();
+          refreshOrdersAndHistory(loginId).catch(err => console.error('[WS ORDERS REFRESH ERROR]', err));
         } else if (data.channel?.startsWith('deals.')) {
-          const channelAccountId = data.channel.split('.')[1];
-          if (channelAccountId && accountId && channelAccountId !== accountId) return;
-          const loginId = parsePositiveInt(channelAccountId || accountId);
-          refreshOrdersAndHistory(loginId || undefined).catch(err => console.error('[WS DEALS REFRESH ERROR]', err));
+          const loginId = getAcceptedChannelLogin(data.channel);
+          if (!loginId) return;
+          markTradeWsMessage();
+          refreshOrdersAndHistory(loginId).catch(err => console.error('[WS DEALS REFRESH ERROR]', err));
         } else if (data.type === 'tick' || isTickLikeUpdate || isLiveQuote || data.channel === 'prices') {
           // Wrap live quote data if it comes in raw formats
           const tickPayload: any = (isLiveQuote || data.channel === 'prices') && data.data ? data.data : data;
@@ -1467,26 +1848,29 @@ function App() {
     return () => {
       unsubscribe();
     };
-  }, [isAuthenticated, subscribe, accountId, refreshOrdersAndHistory]);
+  }, [isAuthenticated, subscribe, getAcceptedChannelLogin, getLiveTradingLogin, markServerClosedTickets, markTradeWsMessage, reconcileOptimisticClosedPositions, refreshOrdersAndHistory]);
 
   const placeOrder = useCallback(async (side: 'BUY' | 'SELL') => {
     setOrderLoading(true);
     try {
+      const loginId = getLiveTradingLogin();
+      if (!loginId) return;
+
       const result = await api.orders.placeMarketOrder({
         symbol: selectedSymbol,
         side,
         volume,
-        login: parsePositiveInt(accountId) || 0,
+        login: loginId,
       });
       console.log('[Trade] Order executed via trading API:', result);
-      refreshPositions();
-      refreshOrdersAndHistory().catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
+      refreshPositions(loginId);
+      refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
     } catch (err: any) {
       alert('Order failed: ' + err.message);
     } finally {
       setOrderLoading(false);
     }
-  }, [accountId, selectedSymbol, volume, refreshPositions, refreshOrdersAndHistory]);
+  }, [getLiveTradingLogin, selectedSymbol, volume, refreshPositions, refreshOrdersAndHistory]);
 
   const handleOrderPanelSubmit = useCallback(async (order: {
     type: 'buy' | 'sell';
@@ -1497,23 +1881,25 @@ function App() {
     try {
       const side = order.type.toUpperCase() as 'BUY' | 'SELL';
       const submitSymbol = order.symbol || orderPanelSymbol || selectedSymbol;
+      const loginId = getLiveTradingLogin();
+      if (!loginId) return;
 
       const result = await api.orders.placeMarketOrder({
         symbol: submitSymbol,
         side,
         volume: order.volume,
-        login: parsePositiveInt(accountId) || 0,
+        login: loginId,
       });
 
       console.log('[Trade] Order executed from dialog via trading API:', result);
-      refreshPositions();
-      refreshOrdersAndHistory().catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
+      refreshPositions(loginId);
+      refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
     } catch (err: any) {
       alert('Order failed: ' + err.message);
     } finally {
       setOrderLoading(false);
     }
-  }, [accountId, orderPanelSymbol, selectedSymbol, refreshPositions, refreshOrdersAndHistory]);
+  }, [getLiveTradingLogin, orderPanelSymbol, selectedSymbol, refreshPositions, refreshOrdersAndHistory]);
 
   const closePosition = useCallback(async (tradeId: number, volume?: number) => {
     if (volume !== undefined) {
@@ -1522,13 +1908,18 @@ function App() {
     }
     // Trigger close sound
     import('./utils/audio').then(m => m.playSystemSound('close'));
+    markLocalTradeMutation([tradeId]);
+    useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== tradeId));
     try {
       await api.positions.closePosition(String(tradeId));
-      refreshPositions(); // fire-and-forget
+      markLocalTradeMutation();
+      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true }); // fire-and-forget
     } catch (err) {
+      clearOptimisticClosedTickets([tradeId]);
       console.error('Close failed:', err);
+      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
     }
-  }, [refreshPositions]);
+  }, [clearOptimisticClosedTickets, getLiveTradingLogin, markLocalTradeMutation, refreshPositions]);
 
   // Fetch symbols from backend
   const [allSymbols, setAllSymbols] = useState<any[]>([]);

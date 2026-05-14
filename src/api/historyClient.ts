@@ -5,7 +5,7 @@
 
 import type { TickData, DateRange, SymbolDataInfo, DownloadChunk } from '../types/history';
 import type { HistoryCandle, HistoryCandleParams, HistoryTickParams, Timeframe } from '../types/api';
-import { historyV2Api } from './trade';
+import { historyV2Api, marketV2Api } from './trade';
 
 const CHUNK_SIZE = 10000; // Swagger history/v2 max ticks per request
 const MAX_RETRIES = 3;
@@ -26,17 +26,50 @@ export class HistoryClient {
   private abortControllers = new Map<string, AbortController>();
 
   /**
-   * Fetch available symbols and their date ranges
+   * Fetch symbols that can be used with the Swagger history/v2 endpoints.
+   * The contract has no downloader metadata/date-range endpoint, so date
+   * availability is intentionally left to the user's selected range and local cache.
    */
   async getAvailableData(): Promise<SymbolDataInfo[]> {
-    throw this.unsupportedDownloaderMetadata('available symbol history metadata');
+    try {
+      const instruments = await marketV2Api.getInstruments();
+
+      return instruments
+        .filter(instrument => instrument.enabled !== false)
+        .map(instrument => ({
+          symbol: instrument.symbol,
+          availableDates: [],
+          totalTicks: 0,
+          firstDate: '',
+          lastDate: '',
+          downloadedDates: [],
+          downloadProgress: 0
+        }))
+        .sort((a, b) => a.symbol.localeCompare(b.symbol));
+    } catch (error) {
+      throw this.toHistoryApiError(error, 'Failed to fetch instruments for history downloader');
+    }
   }
 
   /**
    * Fetch symbol info
    */
   async getSymbolInfo(symbol: string): Promise<SymbolDataInfo> {
-    throw this.unsupportedDownloaderMetadata(`symbol history metadata for ${symbol}`);
+    const symbolInfo = (await this.getAvailableData()).find(item => item.symbol === symbol);
+
+    if (symbolInfo) {
+      return symbolInfo;
+    }
+
+    return {
+      symbol,
+      availableDates: [],
+      totalTicks: 0,
+      firstDate: '',
+      lastDate: '',
+      downloadedDates: [],
+      downloadProgress: 0
+    };
   }
 
   /**
@@ -307,8 +340,14 @@ export class HistoryClient {
       symbol: tick.symbol || fallbackSymbol,
       bid: tick.bid,
       ask: tick.ask,
-      timestamp: tick.time
+      timestamp: this.toEpochMilliseconds(tick.time)
     };
+  }
+
+  private toEpochMilliseconds(timestamp: number): number {
+    return Math.abs(timestamp) < 1_000_000_000_000
+      ? timestamp * 1000
+      : timestamp;
   }
 
   /**

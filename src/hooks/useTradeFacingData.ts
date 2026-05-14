@@ -15,11 +15,17 @@ type HookState = {
   lastUpdated: number | null;
 };
 
+type UseTradeFacingDataOptions = {
+  enabled?: boolean;
+};
+
 const INITIAL_STATE: HookState = {
   loading: false,
   error: null,
   lastUpdated: null,
 };
+
+const EMPTY_LIST: [] = [];
 
 const readChannelPayload = (message: any) => message?.data ?? message?.payload ?? message;
 
@@ -42,13 +48,21 @@ const removePosition = (positions: ReturnType<typeof useAppStore.getState>['posi
   return positions.filter((position) => positionId(position) !== id);
 };
 
-export function useTradeFacingData(accountId?: string | number, pollMs = 10000) {
-  const storeAccountId = useAppStore((state) => state.accountId);
+export function useTradeFacingData(accountId?: string | number, pollMs = 10000, options: UseTradeFacingDataOptions = {}) {
+  const enabled = options.enabled ?? true;
+  const storeAccountId = useAppStore((state) => enabled ? state.accountId : undefined);
+  const account = useAppStore((state) => enabled ? state.account : null);
+  const positions = useAppStore((state) => enabled ? state.positions : EMPTY_LIST);
+  const trades = useAppStore((state) => enabled ? state.trades : EMPTY_LIST);
+  const storeWsConnected = useAppStore((state) => state.wsConnected);
   const setAccount = useAppStore((state) => state.setAccount);
   const setPositions = useAppStore((state) => state.setPositions);
   const setTrades = useAppStore((state) => state.setTrades);
+  const setTradeApiStatus = useAppStore((state) => state.setTradeApiStatus);
   const [state, setState] = useState<HookState>(INITIAL_STATE);
   const wsRef = useRef<WebSocket | null>(null);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const refreshPendingRef = useRef(false);
   const [wsConnected, setWsConnected] = useState(false);
 
   const login = useMemo(() => {
@@ -58,6 +72,7 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000) 
   }, [accountId, storeAccountId]);
 
   const applySnapshot = useCallback((snapshot: Partial<TradeGatewaySnapshot>) => {
+    if (!enabled) return;
     if (snapshot.account) setAccount(snapshot.account);
     if (snapshot.positions) setPositions(snapshot.positions);
     if (snapshot.deals) setTrades(snapshot.deals);
@@ -65,30 +80,55 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000) 
       ...prev,
       lastUpdated: Date.now(),
     }));
-  }, [setAccount, setPositions, setTrades]);
+  }, [enabled, setAccount, setPositions, setTrades]);
 
   const refresh = useCallback(async () => {
-    if (!login) return;
+    if (!enabled || !login) return;
 
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
-      const [account, positions, deals] = await Promise.all([
-        tradeGatewayApi.getAccount(login),
-        tradeGatewayApi.getPositions(login),
-        tradeGatewayApi.getDeals(login).catch(() => tradeGatewayApi.getDeals(undefined)),
-      ]);
-      applySnapshot({ account, positions, deals });
-      setState((prev) => ({ ...prev, loading: false, error: null }));
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : 'Failed to refresh trading data',
-      }));
+    if (refreshInFlightRef.current) {
+      refreshPendingRef.current = true;
+      await refreshInFlightRef.current;
+      return;
     }
-  }, [applySnapshot, login]);
+
+    const request = (async () => {
+      const startedAt = Date.now();
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+      setTradeApiStatus({ loading: true, error: null, lastStartedAt: startedAt });
+      try {
+        const [account, positions, deals] = await Promise.all([
+          tradeGatewayApi.getAccount(login),
+          tradeGatewayApi.getPositions(login),
+          tradeGatewayApi.getDeals(login).catch(() => tradeGatewayApi.getDeals(undefined)),
+        ]);
+        applySnapshot({ account, positions, deals });
+        const completedAt = Date.now();
+        setState((prev) => ({ ...prev, loading: false, error: null, lastUpdated: completedAt }));
+        setTradeApiStatus({ loading: false, error: null, lastUpdated: completedAt });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to refresh trading data';
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: message,
+        }));
+        setTradeApiStatus({ loading: false, error: message });
+      } finally {
+        refreshInFlightRef.current = null;
+        const hasPendingRefresh = refreshPendingRef.current;
+        refreshPendingRef.current = false;
+        if (hasPendingRefresh) {
+          void refresh();
+        }
+      }
+    })();
+
+    refreshInFlightRef.current = request;
+    await request;
+  }, [applySnapshot, enabled, login, setTradeApiStatus]);
 
   useEffect(() => {
+    if (!enabled) return;
     refresh();
     if (!login || pollMs <= 0) return;
 
@@ -99,10 +139,10 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000) 
       window.clearInterval(interval);
       window.removeEventListener('rtx:force-refresh-positions', forceRefresh);
     };
-  }, [login, pollMs, refresh]);
+  }, [enabled, login, pollMs, refresh]);
 
   useEffect(() => {
-    if (!login || typeof window === 'undefined') return;
+    if (!enabled || !login || typeof window === 'undefined') return;
 
     const token = localStorage.getItem('auth_token');
     if (!token) return;
@@ -175,12 +215,21 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000) 
       ws.close(1000, 'trade-facing hook unmounted');
       if (wsRef.current === ws) wsRef.current = null;
     };
-  }, [applySnapshot, login]);
+  }, [applySnapshot, enabled, login]);
+
+  useEffect(() => {
+    if (enabled) return;
+    if (!account && positions.length === 0 && trades.length === 0) return;
+    setState((prev) => ({
+      ...prev,
+      lastUpdated: Date.now(),
+    }));
+  }, [account, enabled, positions, trades]);
 
   return {
     ...state,
     login,
     refresh,
-    wsConnected,
+    wsConnected: enabled ? wsConnected : storeWsConnected,
   };
 }

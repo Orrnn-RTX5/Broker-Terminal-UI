@@ -65,13 +65,10 @@ export const PriceDisplay: React.FC<PriceDisplayProps> = ({
         bigPart = decPart.slice(-2);
     }
 
-    const bigFontSize = size === 'lg' ? 'text-[14px]' : 'text-[13px]';
-    const bigFontWeight = 'font-extrabold';
-
     return (
-        <span className={`${className} whitespace-nowrap`}>
-            <span>{smallPart}</span>
-            <span className={`${bigFontSize} ${bigFontWeight}`}>{bigPart}</span>
+        <span className={`price-display ${className} whitespace-nowrap`} data-size={size}>
+            <span className="price-small">{smallPart}</span>
+            <span className="price-big">{bigPart}</span>
         </span>
     );
 };

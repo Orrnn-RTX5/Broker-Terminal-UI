@@ -38,6 +38,16 @@ import { ChartContextMenu } from './ChartContextMenu';
 import { captureFullPage } from '../services/screenshotService';
 import { indicatorManager } from '../services/indicatorManager';
 import { chartDataService } from '../services/chartDataService';
+import {
+  getMedianCandlePrice,
+  getReferenceScaleFactor,
+  isPriceCompatibleWithCandles,
+  normalizeCandlesToReference,
+  normalizeCandlesToRenderedScale,
+  resetLiveQuoteGuardState,
+  scaleCandlePrices,
+  updateLiveQuoteGuardState,
+} from '../services/chartPriceGuards';
 import { ChartTemplateDialog } from './ChartTemplateDialog';
 import { type ChartTemplate } from '../store/useTemplateStore';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
@@ -182,6 +192,67 @@ export const TradingChart = React.memo(function TradingChart({
   const livePriceBadgeRef = useRef<HTMLDivElement | null>(null);
   const livePriceRef = useRef<number | null>(null);
   const leftVisibleTimeRef = useRef<number | null>(null);
+  const lastAcceptedQuoteRef = useRef<number | null>(null);
+  const incompatibleQuoteCountRef = useRef(0);
+
+  const resetLiveQuotePriceGuard = useCallback(() => {
+    const reset = resetLiveQuoteGuardState();
+    lastAcceptedQuoteRef.current = reset.lastAcceptedQuote;
+    incompatibleQuoteCountRef.current = reset.incompatibleQuoteCount;
+  }, []);
+
+  const hideLivePriceOverlay = useCallback((clearPrice = true) => {
+    if (clearPrice) livePriceRef.current = null;
+    if (livePriceLineRef.current) {
+      livePriceLineRef.current.style.display = 'none';
+      livePriceLineRef.current.style.top = '-9999px';
+    }
+    if (livePriceBadgeRef.current) {
+      livePriceBadgeRef.current.style.display = 'none';
+      livePriceBadgeRef.current.style.top = '-9999px';
+      if (clearPrice) livePriceBadgeRef.current.textContent = '';
+    }
+  }, []);
+
+  const renderLivePriceOverlay = useCallback((bid: number) => {
+    livePriceRef.current = bid;
+
+    if (!livePriceLineRef.current || !livePriceBadgeRef.current || !seriesRef.current) return;
+
+    const y = seriesRef.current.priceToCoordinate(bid);
+    if (y === null || y === undefined) {
+      hideLivePriceOverlay(false);
+      return;
+    }
+
+    const digits = getSymbolDigits(symbol);
+    const badgeColor = '#5A5A66'; // MT5-style solid gray
+    const scaleW = seriesRef.current.priceScale().width();
+
+    livePriceLineRef.current.style.top = `${y}px`;
+    livePriceLineRef.current.style.right = `${scaleW}px`;
+    livePriceLineRef.current.style.borderTopColor = badgeColor;
+    livePriceLineRef.current.style.display = 'block';
+
+    livePriceBadgeRef.current.style.top = `${y}px`;
+    livePriceBadgeRef.current.style.width = `${scaleW}px`;
+    livePriceBadgeRef.current.style.background = badgeColor;
+    livePriceBadgeRef.current.textContent = bid.toFixed(digits);
+    livePriceBadgeRef.current.style.display = 'block';
+  }, [hideLivePriceOverlay, symbol]);
+
+  const resetEmptyHistoryState = useCallback((activeTf: Timeframe) => {
+    candlesRef.current = [];
+    currentCandleRef.current = null;
+    prevPriceRef.current = null;
+    hideLivePriceOverlay();
+    leftVisibleTimeRef.current = null;
+    hasReachedBeginningRef.current = false;
+    isLoadingMoreRef.current = false;
+    lastStoreCandleSecRef.current = 0;
+    resetLiveQuotePriceGuard();
+    candleAggregationService.loadHistoricalCandles(symbol, activeTf as AggTimeframe, []);
+  }, [hideLivePriceOverlay, resetLiveQuotePriceGuard, symbol]);
 
   // Keep ctxMenuOpenRef in sync so the wheelHandler (closed over the ref) can read it
   useEffect(() => {
@@ -258,6 +329,50 @@ export const TradingChart = React.memo(function TradingChart({
 
     return null;
   }, []);
+  const resolveCurrentQuote = useCallback((): number | null => {
+    const normalizedSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const ticks = useAppStore.getState().ticks;
+    const tick = ticks[symbol]
+      ?? ticks[symbol.toUpperCase()]
+      ?? (() => {
+        const key = Object.keys(ticks).find(k =>
+          k.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedSymbol);
+        return key ? ticks[key] : undefined;
+      })();
+
+    const bid = Number(tick?.bid ?? tick?.last);
+    const ask = Number(tick?.ask ?? tick?.bid ?? tick?.last);
+    if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) {
+      return (bid + ask) / 2;
+    }
+    if (Number.isFinite(bid) && bid > 0) return bid;
+    return null;
+  }, [symbol]);
+
+  const reconcileCandlesWithLiveQuote = useCallback((candles: Candle[], context: string): Candle[] => {
+    const referencePrice = resolveCurrentQuote();
+    const result = referencePrice
+      ? normalizeCandlesToReference(candles, referencePrice)
+      : normalizeCandlesToRenderedScale(candles, candlesRef.current);
+
+    if (result.status === 'scaled') {
+      const source = referencePrice ? 'live quote' : 'rendered candle';
+      console.warn(`[Chart] Normalized ${symbol} ${context} candles by factor ${result.factor} to match ${source} scale.`);
+    } else if (result.status === 'incompatible') {
+      const source = referencePrice ? `live quote ${referencePrice}` : 'rendered candles';
+      console.warn(`[Chart] Ignoring ${symbol} ${context} candles because their price range is incompatible with ${source}.`);
+      setApiError(`${symbol} candle range differs from ${referencePrice ? 'live quote' : 'rendered chart'}; waiting for matching ${timeframe} data.`);
+    }
+
+    return result.candles as Candle[];
+  }, [resolveCurrentQuote, symbol, timeframe]);
+
+  const isLivePriceSafeForCandles = useCallback((price: number): boolean => {
+    const candles = candlesRef.current;
+    if (candles.length === 0) return true;
+    return isPriceCompatibleWithCandles(price, candles);
+  }, []);
+
   const syncLeftVisibleTime = useCallback(() => {
     const chart = chartRef.current;
     const candles = candlesRef.current;
@@ -722,6 +837,40 @@ export const TradingChart = React.memo(function TradingChart({
     }
   }, []);
 
+  const reloadAggregationCandles = useCallback((candles: Candle[], activeTf: Timeframe) => {
+    const ohlcvCandles: OHLCV[] = candles.map(c => ({
+      time: c.time,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume,
+    }));
+    candleAggregationService.loadHistoricalCandles(symbol, activeTf as AggTimeframe, ohlcvCandles);
+  }, [symbol]);
+
+  const normalizeRenderedCandlesToLivePrice = useCallback((price: number, activeTf: Timeframe): boolean => {
+    const candles = candlesRef.current;
+    if (candles.length === 0) return true;
+
+    const factor = getReferenceScaleFactor(getMedianCandlePrice(candles), price);
+    if (factor === null) return false;
+    if (factor === 1) return true;
+
+    console.warn(`[Chart] Normalizing existing ${symbol} candles by factor ${factor} before applying delayed live quote ${price}.`);
+
+    candlesRef.current = candles.map(candle => scaleCandlePrices(candle, factor));
+    if (currentCandleRef.current) {
+      currentCandleRef.current = scaleCandlePrices(currentCandleRef.current, factor);
+    }
+
+    reloadAggregationCandles(candlesRef.current, activeTf);
+    updateChartData(candlesRef.current);
+    prevPriceRef.current = currentCandleRef.current?.close ?? candlesRef.current[candlesRef.current.length - 1]?.close ?? null;
+
+    return true;
+  }, [reloadAggregationCandles, symbol, updateChartData]);
+
   // Load historical data
   const loadHistory = useCallback(async () => {
     if (isDisposedRef.current || !symbol) {
@@ -731,11 +880,12 @@ export const TradingChart = React.memo(function TradingChart({
 
     setIsLoading(true);
     setApiError(null);
+    resetLiveQuotePriceGuard();
     const activeTf = prevTimeframeRef.current || timeframe;
     console.log(`[Chart] Loading history for ${symbol}, timeframe: ${activeTf}`);
 
     try {
-      const candles: Candle[] = await chartDataService.fetchCandles({
+      let candles: Candle[] = await chartDataService.fetchCandles({
         symbol,
         timeframe: activeTf,
         count: 500,
@@ -745,6 +895,7 @@ export const TradingChart = React.memo(function TradingChart({
       // If API returns empty candles, initialize series so live ticks can build candles
       if (candles.length === 0) {
         console.log(`[Chart] No historical candles for ${symbol} ${activeTf} — live-only mode`);
+        resetEmptyHistoryState(activeTf);
         if (seriesRef.current) seriesRef.current.setData([]);
         if (volumeRef.current) volumeRef.current.setData([]);
         if (chartRef.current) chartRef.current.timeScale().scrollToRealTime();
@@ -760,6 +911,15 @@ export const TradingChart = React.memo(function TradingChart({
 
       // Sort by time ascending
       candles.sort((a, b) => (a.time as number) - (b.time as number));
+      candles = reconcileCandlesWithLiveQuote(candles, 'history');
+
+      if (candles.length === 0) {
+        resetEmptyHistoryState(activeTf);
+        if (seriesRef.current) seriesRef.current.setData([]);
+        if (volumeRef.current) volumeRef.current.setData([]);
+        setIsLoading(false);
+        return;
+      }
 
       // ── TIMEZONE AUTOCORRECTION ──────────────────────────────────────────────
       // MT5 REST backends often return history in broker time (EET, UTC+2/+3),
@@ -846,7 +1006,7 @@ export const TradingChart = React.memo(function TradingChart({
       setIsLoading(false);
       setCandlesLoadedRev(r => r + 1);
     }
-  }, [symbol, timeframe, updateChartData]);
+  }, [symbol, timeframe, reconcileCandlesWithLiveQuote, resetEmptyHistoryState, resetLiveQuotePriceGuard, updateChartData]);
 
   // Keep loadHistoryRef in sync so the boundary poller can trigger a silent refresh
   useEffect(() => {
@@ -894,9 +1054,14 @@ export const TradingChart = React.memo(function TradingChart({
 
       // Filter out any candles with null/NaN OHLC values to prevent chart crashes
       const validNewCandles = newCandles.filter(c => c.open != null && c.high != null && c.low != null && c.close != null && !isNaN(c.open) && !isNaN(c.close));
+      const reconciledNewCandles = reconcileCandlesWithLiveQuote(validNewCandles, 'older history');
+      if (reconciledNewCandles.length === 0) {
+        console.warn(`[Chart] Ignoring ${symbol} older history batch because no candles survived price reconciliation.`);
+        return;
+      }
 
       // Prepend to current array
-      candlesRef.current = [...validNewCandles, ...candlesRef.current];
+      candlesRef.current = [...reconciledNewCandles, ...candlesRef.current];
 
       // Re-hydrate the chart with the new full array 
       // WITHOUT snapping the viewport to the right edge
@@ -926,11 +1091,11 @@ export const TradingChart = React.memo(function TradingChart({
         volumeRef.current.setData(volumeData);
 
         // Shift position rightward so the view doesn't jump
-        timeScale.scrollToPosition(currentPos + newCandles.length, false);
+        timeScale.scrollToPosition(currentPos + reconciledNewCandles.length, false);
       }
 
       // Update aggregation service history with these older ones too
-      const ohlcvCandles: OHLCV[] = newCandles.map(c => ({
+      const ohlcvCandles: OHLCV[] = reconciledNewCandles.map(c => ({
         time: c.time,
         open: c.open,
         high: c.high,
@@ -946,7 +1111,7 @@ export const TradingChart = React.memo(function TradingChart({
     } finally {
       isLoadingMoreRef.current = false;
     }
-  }, [symbol, timeframe]);
+  }, [symbol, timeframe, reconcileCandlesWithLiveQuote]);
 
   // Keep ref pointing to the latest loadMoreHistory
   useEffect(() => {
@@ -983,6 +1148,7 @@ export const TradingChart = React.memo(function TradingChart({
         currentCandleRef.current = null;
         hasReachedBeginningRef.current = false;
         isLoadingMoreRef.current = false;
+        resetLiveQuotePriceGuard();
         prevTimeframeRef.current = timeframe;
         // Reset the store candle cursor so first tick on new TF
         // doesn't compare against a stale old-TF boundary.
@@ -1007,6 +1173,7 @@ export const TradingChart = React.memo(function TradingChart({
         prevPriceRef.current = null;
         hasReachedBeginningRef.current = false;
         isLoadingMoreRef.current = false;
+        resetLiveQuotePriceGuard();
         prevSymbolRef.current = symbol;
         prevTimeframeRef.current = timeframe;
 
@@ -1041,6 +1208,7 @@ export const TradingChart = React.memo(function TradingChart({
       candlesRef.current = [];
       currentCandleRef.current = null;
       prevPriceRef.current = null;
+      resetLiveQuotePriceGuard();
     }
 
     // Only block ticks during rebuild when we DON'T have cached data
@@ -1305,7 +1473,7 @@ export const TradingChart = React.memo(function TradingChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(timeRangeHandler);
 
     isRebuildingRef.current = false; // Safe to resume ticks and resizes
-  }, [chartType, symbol, loadHistory, updateChartData]); // Note: intentional omit chartSettings
+  }, [chartType, symbol, loadHistory, resetLiveQuotePriceGuard, updateChartData]); // Note: intentional omit chartSettings
 
   // ── Chart Shift (standalone effect) ───────────────────────────────────
   // Listens for rtx:chartShift window events and applies rightOffset directly.
@@ -1549,6 +1717,42 @@ export const TradingChart = React.memo(function TradingChart({
       if (!tick?.bid) return;
 
       const price = (tick.bid + (tick.ask ?? tick.bid)) / 2;
+      const livePriceMatchesRenderedScale = normalizeRenderedCandlesToLivePrice(price, activeTf);
+      if (!livePriceMatchesRenderedScale || !isLivePriceSafeForCandles(price)) {
+        const guard = updateLiveQuoteGuardState({
+          lastAcceptedQuote: lastAcceptedQuoteRef.current,
+          incompatibleQuoteCount: incompatibleQuoteCountRef.current,
+        }, false, price);
+        lastAcceptedQuoteRef.current = guard.state.lastAcceptedQuote;
+        incompatibleQuoteCountRef.current = guard.state.incompatibleQuoteCount;
+        setApiError(`${symbol} live quote is outside the candle range; waiting for matching ${activeTf} data.`);
+
+        // If the first live quotes consistently disagree with preloaded history,
+        // the history is likely from a stale/wrong instrument. Drop it so live
+        // ticks can rebuild the chart at the executable quote scale.
+        if (guard.shouldDropCandles) {
+          console.warn(`[Chart] Dropping incompatible ${symbol} candles after repeated live quote mismatch.`);
+          candlesRef.current = [];
+          currentCandleRef.current = null;
+          prevPriceRef.current = null;
+          leftVisibleTimeRef.current = null;
+          lastStoreCandleSecRef.current = 0;
+          try { seriesRef.current?.setData([]); } catch { }
+          try { volumeRef.current?.setData([]); } catch { }
+          hideLivePriceOverlay();
+          candleAggregationService.loadHistoricalCandles(symbol, activeTf as AggTimeframe, []);
+          resetLiveQuotePriceGuard();
+        } else {
+          return;
+        }
+      } else {
+        const guard = updateLiveQuoteGuardState({
+          lastAcceptedQuote: lastAcceptedQuoteRef.current,
+          incompatibleQuoteCount: incompatibleQuoteCountRef.current,
+        }, true, price);
+        lastAcceptedQuoteRef.current = guard.state.lastAcceptedQuote;
+        incompatibleQuoteCountRef.current = guard.state.incompatibleQuoteCount;
+      }
       let ts = tick.timestamp;
       if (!ts) return;
       if (ts > 1_000_000_000_000) ts = Math.floor(ts / 1000); // ms → sec
@@ -1626,6 +1830,10 @@ export const TradingChart = React.memo(function TradingChart({
         push(currentCandleRef.current, false);
       }
 
+      // Refresh after candle creation/update so the first live-only tick has a
+      // price scale before we ask LightweightCharts for a coordinate.
+      renderLivePriceOverlay(tick.bid);
+
       // ── Auto Close Trade on SL/TP Cross ──
       activeTradeSnapshotsRef.current.forEach((trade) => {
         if (tradeAutoClosePendingRef.current.has(trade.key)) return;
@@ -1665,6 +1873,10 @@ export const TradingChart = React.memo(function TradingChart({
     // ── FIX WebSocket: server-confirmed completed candles ──────────────────────
     const applyServerCandle = (c: Candle) => {
       if (isDisposedRef.current || isRebuildingRef.current) return;
+      const [reconciled] = reconcileCandlesWithLiveQuote([c], 'stream update');
+      if (!reconciled) return;
+      c = reconciled;
+      if (!normalizeRenderedCandlesToLivePrice(c.close, prevTimeframeRef.current || timeframe)) return;
 
       // 1. Is this an update to an older (already closed) bar?
       if (currentCandleRef.current && c.time < currentCandleRef.current.time) {
@@ -1719,7 +1931,11 @@ export const TradingChart = React.memo(function TradingChart({
       timeframe,
       onSnapshot: (snapshot) => {
         if (isDisposedRef.current || isRebuildingRef.current || snapshot.length === 0) return;
-        candlesRef.current = snapshot.reduce(
+        const reconciledSnapshot = reconcileCandlesWithLiveQuote(snapshot as Candle[], 'stream snapshot');
+        if (reconciledSnapshot.length === 0) return;
+        const latestClose = reconciledSnapshot[reconciledSnapshot.length - 1]?.close;
+        if (latestClose && !normalizeRenderedCandlesToLivePrice(latestClose, prevTimeframeRef.current || timeframe)) return;
+        candlesRef.current = reconciledSnapshot.reduce(
           (acc, candle) => chartDataService.mergeCandle(acc, candle, 1000),
           candlesRef.current,
         ) as Candle[];
@@ -2486,7 +2702,8 @@ export const TradingChart = React.memo(function TradingChart({
       const quote = side === 'BUY'
         ? Number(tick?.bid ?? tick?.last ?? 0)
         : Number(tick?.ask ?? tick?.bid ?? tick?.last ?? 0);
-      return quote > 0 ? quote : (fallbackPrice > 0 ? fallbackPrice : null);
+      if (quote > 0 && isLivePriceSafeForCandles(quote)) return quote;
+      return fallbackPrice > 0 ? fallbackPrice : null;
     };
     const deriveClosedTradeColor = (trade: ClosedTradeSnapshot) => {
       const pnl = trade.profit ?? (
@@ -2735,7 +2952,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       clearTradeOverlay();
     };
-  }, [brokerTimeOffsetSec, candlesLoadedRev, clearTradeOverlay, getNearestCandleByTime, symbol, timeframe, updateLabelPositions]);
+  }, [brokerTimeOffsetSec, candlesLoadedRev, clearTradeOverlay, getNearestCandleByTime, isLivePriceSafeForCandles, symbol, timeframe, updateLabelPositions]);
 
   // Subscribe to positions from the store and render price lines
   useEffect(() => {

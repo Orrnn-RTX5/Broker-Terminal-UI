@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { apiClient } from './client';
 import {
   normalizeAccount,
   normalizeDeal,
@@ -6,7 +7,17 @@ import {
   tradeGatewayApi,
 } from './tradeGateway';
 
+vi.mock('./client', () => ({
+  apiClient: {
+    get: vi.fn(),
+  },
+}));
+
 describe('trade gateway normalization', () => {
+  afterEach(() => {
+    vi.mocked(apiClient.get).mockReset();
+  });
+
   it('uses the shared v2 REST and websocket authority helpers', () => {
     expect(tradeGatewayApi.getWsUrl()).toBe('wss://backend.orrnn.com/ws/v2');
     expect(tradeGatewayApi.getHistoryUrl('EUR/USD', 'M5', 100)).toBe(
@@ -93,5 +104,43 @@ describe('trade gateway normalization', () => {
       commission: -0.7,
       swap: -0.1,
     });
+  });
+
+  it('extracts open positions from common wrapped response shapes', async () => {
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce({ data: [{ ticket: 101, symbol: 'EURUSD', action: 'buy' }] })
+      .mockResolvedValueOnce({ items: [{ ticket: 102, symbol: 'GBPUSD', action: 'sell' }] })
+      .mockResolvedValueOnce({ results: [{ ticket: 103, symbol: 'USDJPY', action: 'buy' }] })
+      .mockResolvedValueOnce({ data: { positions: [{ ticket: 104, symbol: 'XAUUSD', action: 'sell' }] } });
+
+    await expect(tradeGatewayApi.getPositions(123456)).resolves.toMatchObject([
+      { id: 101, symbol: 'EURUSD', side: 'BUY' },
+    ]);
+    await expect(tradeGatewayApi.getPositions(123456)).resolves.toMatchObject([
+      { id: 102, symbol: 'GBPUSD', side: 'SELL' },
+    ]);
+    await expect(tradeGatewayApi.getPositions(123456)).resolves.toMatchObject([
+      { id: 103, symbol: 'USDJPY', side: 'BUY' },
+    ]);
+    await expect(tradeGatewayApi.getPositions(123456)).resolves.toMatchObject([
+      { id: 104, symbol: 'XAUUSD', side: 'SELL' },
+    ]);
+  });
+
+  it('extracts trade history arrays when deals and orders are wrapped', async () => {
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce({ data: { deals: [{ deal: 201, symbol: 'EURUSD', action: 'deal_buy' }] } })
+      .mockResolvedValueOnce({ data: { items: [{ ticket: 301, symbol: 'GBPUSD', type: 'sell_limit' }] } })
+      .mockResolvedValueOnce({ results: [{ position_id: 401, symbol: 'USDJPY', action: 'sell' }] });
+
+    await expect(tradeGatewayApi.getDeals(123456)).resolves.toMatchObject([
+      { id: 201, symbol: 'EURUSD', side: 'BUY' },
+    ]);
+    await expect(tradeGatewayApi.getOrders(123456)).resolves.toMatchObject([
+      { id: 301, symbol: 'GBPUSD', side: 'SELL' },
+    ]);
+    await expect(tradeGatewayApi.getClosedPositions(123456)).resolves.toMatchObject([
+      { id: 401, symbol: 'USDJPY', side: 'SELL' },
+    ]);
   });
 });

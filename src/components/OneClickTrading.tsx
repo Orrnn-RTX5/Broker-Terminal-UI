@@ -162,7 +162,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
 
     return (
         <div
-            className="absolute top-[10px] left-[10px] z-30 select-none drop-shadow-2xl"
+            className="rtx-oct absolute top-[10px] left-[10px] z-30 select-none drop-shadow-2xl"
             style={{ pointerEvents: 'auto', fontFamily: "'Inter', 'Segoe UI', Tahoma, sans-serif", display: 'inline-block', width: 'fit-content' }}
         >
             {/* ─── Header: Symbol + Timeframe ─── */}
@@ -189,7 +189,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                 </span>
             </div>
 
-            {/* ─── Main Body: BUY | Volume | SELL ─── */}
+            
             <div
                 style={{
                     display: 'flex',
@@ -221,21 +221,21 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         BUY
                     </span>
                     <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1, marginTop: 2 }}>
-                        <span style={{
-                            fontSize: 12, fontFamily: 'monospace', fontWeight: 500, color: '#fff',
+                        <span className="rtx-oct-digit-small" style={{
+                            color: '#fff',
                             textShadow: askFlash === 'up' ? '0 0 8px #6b9fff' : askFlash === 'down' ? '0 0 8px #ff6b6b' : 'none',
                         }}>
                             {askPrice.small}
                         </span>
-                        <span style={{
-                            fontSize: 28, fontFamily: 'monospace', fontWeight: 900, color: '#fff', lineHeight: 0.85,
+                        <span className="rtx-oct-digit-big" style={{
+                            color: '#fff',
                             textShadow: askFlash === 'up' ? '0 0 12px #6b9fff' : askFlash === 'down' ? '0 0 12px #ff6b6b' : '0 1px 3px rgba(0,0,0,0.5)',
                         }}>
                             {askPrice.big}
                         </span>
                         {askPrice.pip && (
-                            <span style={{
-                                fontSize: 14, fontFamily: 'monospace', fontWeight: 700, color: '#fff',
+                            <span className="rtx-oct-digit-pip" style={{
+                                color: '#fff',
                                 position: 'relative', top: -8,
                                 textShadow: askFlash === 'up' ? '0 0 8px #6b9fff' : askFlash === 'down' ? '0 0 8px #ff6b6b' : 'none',
                             }}>
@@ -329,21 +329,21 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         SELL
                     </span>
                     <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1, marginTop: 2 }}>
-                        <span style={{
-                            fontSize: 12, fontFamily: 'monospace', fontWeight: 500, color: '#fff',
+                        <span className="rtx-oct-digit-small" style={{
+                            color: '#fff',
                             textShadow: bidFlash === 'down' ? '0 0 8px #ff6b6b' : bidFlash === 'up' ? '0 0 8px #6bff6b' : 'none',
                         }}>
                             {bidPrice.small}
                         </span>
-                        <span style={{
-                            fontSize: 28, fontFamily: 'monospace', fontWeight: 900, color: '#fff', lineHeight: 0.85,
+                        <span className="rtx-oct-digit-big" style={{
+                            color: '#fff',
                             textShadow: bidFlash === 'down' ? '0 0 12px #ff6b6b' : bidFlash === 'up' ? '0 0 12px #6bff6b' : '0 1px 3px rgba(0,0,0,0.5)',
                         }}>
                             {bidPrice.big}
                         </span>
                         {bidPrice.pip && (
-                            <span style={{
-                                fontSize: 14, fontFamily: 'monospace', fontWeight: 700, color: '#fff',
+                            <span className="rtx-oct-digit-pip" style={{
+                                color: '#fff',
                                 position: 'relative', top: -8,
                                 textShadow: bidFlash === 'down' ? '0 0 8px #ff6b6b' : bidFlash === 'up' ? '0 0 8px #6bff6b' : 'none',
                             }}>

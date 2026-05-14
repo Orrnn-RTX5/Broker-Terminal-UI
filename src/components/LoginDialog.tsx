@@ -152,7 +152,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
             {/* Dialog */}
             <div
-                className="relative w-[420px] bg-[#2b2e3b] border border-[#555] rounded-lg shadow-2xl overflow-hidden"
+                className="rtx-login-dialog relative w-[420px] bg-[#2b2e3b] border border-[#555] rounded-lg shadow-2xl overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Title Bar */}

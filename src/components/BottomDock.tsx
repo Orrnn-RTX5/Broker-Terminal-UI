@@ -206,13 +206,13 @@ export function BottomDock({
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`px-4 py-1.5 text-[11px] font-semibold transition-all duration-300 whitespace-nowrap rounded-md relative overflow-hidden group
+                        className={`rtx-dock-tab px-4 py-1.5 text-[11px] font-semibold transition-all duration-300 whitespace-nowrap rounded-md relative overflow-hidden group
                         ${activeTab === tab.id
-                                ? 'text-white bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.1)] border border-white/20'
-                                : 'text-slate-400 border border-transparent hover:text-white hover:bg-white/5'}`}
+                                ? 'text-white bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.1)] border border-white/20 active-tab'
+                                : 'text-slate-400 border border-transparent'}`}
                     >
                         {activeTab === tab.id && (
-                            <span className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-500 shadow-[0_-2px_10px_rgba(99,102,241,0.5)]"></span>
+                            <span className="rtx-dock-tab-indicator absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-500 shadow-[0_-2px_10px_rgba(99,102,241,0.5)]"></span>
                         )}
                         <span className="relative z-10">{tab.id}</span>
                         <div className="absolute inset-0 bg-gradient-to-t from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -444,7 +444,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                     </thead>
                     <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[11px]">
                         {livePositions.map((pos: any, i: number) => (
-                            <tr key={pos.id ?? i} className={`${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-pointer`} onDoubleClick={() => setModifyPosition(pos)}>
+                            <tr key={pos.id ?? i} className={`rtx-trade-row ${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} transition-colors group cursor-pointer`} onDoubleClick={() => setModifyPosition(pos)}>
                                 <td className="p-1 pl-2 border-r border-zinc-800 font-bold text-zinc-100">{pos.symbol ?? '—'}</td>
                                 <td className="p-1 border-r border-zinc-800 text-zinc-500">{pos.id ?? '—'}</td>
                                 <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">{formatDate(pos.openTime ?? new Date().toISOString())}</td>
@@ -517,19 +517,19 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
             </div>
 
             {/* Footer Summary Row (Full Account Info) */}
-            <div className="bg-[#191a1e] border-t border-zinc-700 w-full overflow-hidden text-[11px] font-bold text-zinc-300 flex items-center px-2 py-1 gap-3 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+            <div className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full overflow-hidden text-[11px] font-bold text-zinc-300 flex items-center px-2 py-1 gap-3 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
                 <Icon name="plus-circle" size="xs" className="text-zinc-400 mr-1" />
-                <span className="flex gap-1"><span className="text-zinc-500">Balance:</span> <BlinkingText value={account?.balance || 0} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} /></span>
-                <span className="flex gap-1"><span className="text-zinc-500">Equity:</span> <BlinkingText value={liveEquity} formatFn={formatMoney} /></span>
-                <span className="flex gap-1"><span className="text-zinc-500">Margin:</span> <BlinkingText value={margin} formatFn={formatMoney} /></span>
-                <span className="flex gap-1"><span className="text-zinc-500">Free Margin:</span> <BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
-                <span className="flex gap-1"><span className="text-zinc-500">Margin Level:</span> <BlinkingText value={liveMarginLevel} formatFn={formatMoney} suffix=" %" /></span>
+                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Balance:</span> <BlinkingText value={account?.balance || 0} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} /></span>
+                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Equity:</span> <BlinkingText value={liveEquity} formatFn={formatMoney} /></span>
+                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Margin:</span> <BlinkingText value={margin} formatFn={formatMoney} /></span>
+                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Free Margin:</span> <BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
+                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Margin Level:</span> <BlinkingText value={liveMarginLevel} formatFn={formatMoney} suffix=" %" /></span>
                 <div className="flex-1"></div>
                 <button
                     type="button"
                     onClick={() => onCloseBulk?.('WINNERS')}
                     disabled={!onCloseBulk || livePositions.length === 0}
-                    className="px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="rtx-trade-bulk-close px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                     Close Winners
                 </button>
@@ -693,7 +693,7 @@ function HistoryTab({ formatMoney }: any) {
                 <div className="flex gap-1">
                     {(['today', 'week', 'month', 'all'] as const).map(f => (
                         <button key={f} onClick={() => setFilter(f)}
-                            className={`px-2 py-0.5 text-[10px] rounded capitalize transition-colors ${filter === f ? 'bg-zinc-600 text-white' : 'text-zinc-400 hover:bg-zinc-700'}`}>
+                            className={`rtx-journal-time-btn px-2 py-0.5 text-[10px] rounded capitalize transition-colors ${filter === f ? 'bg-zinc-600 text-white' : 'text-zinc-400'}`}>
                             {f}
                         </button>
                     ))}
@@ -740,7 +740,7 @@ function HistoryTab({ formatMoney }: any) {
                         <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[11px]">
                             {filteredOrders.map((o: any, i: number) => (
                                 <tr key={`${o.type}-${o.id}-${i}`}
-                                    className={`group transition-all duration-300 ease-in-out hover:bg-gradient-to-r hover:from-blue-500/10 hover:via-indigo-500/5 hover:to-transparent hover:shadow-[inset_2px_0_0_rgba(99,102,241,0.8)]`}>
+                                    className="rtx-history-row group transition-all duration-300 ease-in-out">
                                     <td className="p-1 pl-2 border-r border-zinc-800 text-zinc-500">{o.id ?? '-'}</td>
                                     <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">{formatTs(o.openTime)}</td>
                                     <td className={`p-1 border-r border-zinc-800 font-bold text-[10px] ${typeColor(o.side)}`}>{(o.side || o.type || '-').toUpperCase()}</td>

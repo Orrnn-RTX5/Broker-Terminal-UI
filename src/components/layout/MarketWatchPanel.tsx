@@ -58,7 +58,6 @@ const MarketWatchRow: React.FC<{
   showSpread: boolean;
   showDaily: boolean;
 }> = ({ symbol, tick, isSelected, onClick, contextMenuItems, showAsk, showSpread, showDaily }) => {
-
   const bidDirection = tick?.bidDirection ?? 'none';
   const bid = tick?.bid ?? 0;
   const ask = tick?.ask ?? 0;
@@ -103,7 +102,8 @@ const MarketWatchRow: React.FC<{
           opacity: hasData ? 1 : 0.45,
           boxShadow: isSelected ? 'inset 2px 0 0 rgba(200,200,210,0.5)' : 'none',
         }}
-        className={!isSelected ? 'mw-row' : ''}
+        className={`${!isSelected ? 'mw-row ' : ''}rtx-market-watch__row${isSelected ? ' rtx-market-watch__row--selected' : ''}${!hasData ? ' rtx-market-watch__row--stale' : ''}`}
+        aria-selected={isSelected}
       >
         {/* Symbol */}
         <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', maxWidth: 0 }}>
@@ -122,7 +122,7 @@ const MarketWatchRow: React.FC<{
             {(!hasData || bidDirection === 'none') && (
               <span style={{ width: 7, flexShrink: 0, display: 'inline-block' }} />
             )}
-            <span style={{
+            <span className="rtx-market-watch__symbol" style={{
               fontSize: 11,
               fontWeight: isSelected ? 600 : 500,
               color: isSelected ? '#e2e2e8' : '#b8b8c0',
@@ -138,9 +138,8 @@ const MarketWatchRow: React.FC<{
 
         {/* Bid — most important: bright, large, tabular */}
         <td style={{ padding: '3px 5px', textAlign: 'right' }}>
-          <span style={{
+          <span className={`rtx-market-watch__price rtx-market-watch__price--bid${bidFlash ? ` rtx-market-watch__price--${bidFlash}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
             display: 'inline-block',
-            fontFamily: '"JetBrains Mono", "Fira Code", "Roboto Mono", monospace',
             fontSize: 12,
             fontWeight: 600,
             color: hasData
@@ -153,6 +152,7 @@ const MarketWatchRow: React.FC<{
             background: 'transparent',
             transition: 'color 0.25s',
             letterSpacing: '0.01em',
+            fontVariantNumeric: 'tabular-nums',
             tabularNums: true,
           } as React.CSSProperties}>
             {hasData ? <PriceDisplay price={bid} symbol={symbol} /> : '—'}
@@ -162,9 +162,8 @@ const MarketWatchRow: React.FC<{
         {/* Ask — secondary, slightly softer */}
         {showAsk && (
           <td style={{ padding: '3px 5px', textAlign: 'right' }}>
-            <span style={{
+            <span className={`rtx-market-watch__price rtx-market-watch__price--ask${askFlash ? ` rtx-market-watch__price--${askFlash}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
               display: 'inline-block',
-              fontFamily: '"JetBrains Mono", "Fira Code", "Roboto Mono", monospace',
               fontSize: 12,
               fontWeight: 500,
               color: hasData
@@ -177,6 +176,7 @@ const MarketWatchRow: React.FC<{
               background: 'transparent',
               transition: 'color 0.25s',
               letterSpacing: '0.01em',
+              fontVariantNumeric: 'tabular-nums',
             }}>
               {hasData ? <PriceDisplay price={ask} symbol={symbol} /> : '—'}
             </span>
@@ -186,12 +186,12 @@ const MarketWatchRow: React.FC<{
         {/* Spread — pill badge style, easy to scan */}
         {showSpread && (
           <td style={{ padding: '3px 5px', textAlign: 'right' }}>
-            <span style={{
+            <span className={`rtx-market-watch__spread${!hasData ? ' rtx-market-watch__spread--empty' : ''}`} style={{
               fontSize: 10,
-              fontFamily: '"JetBrains Mono", "Fira Code", "Roboto Mono", monospace',
               fontWeight: 500,
               color: hasData ? '#888890' : '#36363e',
               letterSpacing: '0.01em',
+              fontVariantNumeric: 'tabular-nums',
             }}>
               {hasData ? spreadPips : '—'}
             </span>
@@ -201,16 +201,16 @@ const MarketWatchRow: React.FC<{
         {/* Daily Change — bold, clear positive/negative */}
         {showDaily && (
           <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-            <span style={{
+            <span className={`rtx-market-watch__daily${!hasData ? ' rtx-market-watch__daily--empty' : ''}${dailyPositive ? ' rtx-market-watch__daily--up' : ''}${dailyNegative ? ' rtx-market-watch__daily--down' : ''}`} style={{
               fontSize: 11,
               fontWeight: 600,
-              fontFamily: '"JetBrains Mono", "Fira Code", "Roboto Mono", monospace',
               color: !hasData ? '#36363e'
                 : !hasDailyData ? '#50505a'
                 : dailyPositive ? '#4ade80'
                 : dailyNegative ? '#f87171'
                 : '#606068',
               letterSpacing: '0.01em',
+              fontVariantNumeric: 'tabular-nums',
             }}>
               {!hasData ? '—'
                 : hasDailyData
@@ -504,19 +504,16 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   return (
     <>
       {/* Inline style for hover row and flash animation */}
+      {/* Inline style for hover row and flash animation */}
       <style>{`
-        .mw-row { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-        .mw-row:hover {
-          background: linear-gradient(90deg, rgba(59,130,246,0.15) 0%, rgba(59,130,246,0.05) 100%) !important;
-          box-shadow: inset 2px 0 0 rgba(96,165,250,0.8);
-        }
-        .mw-input { transition: all 0.3s ease; }
-        .mw-input::placeholder { color: #64748b; }
-        .mw-input:focus { border-color: rgba(59,130,246,0.5) !important; box-shadow: 0 0 15px rgba(59,130,246,0.25), inset 0 0 0 1px rgba(59,130,246,0.5) !important; background: rgba(15,23,42,0.6) !important; }
-        .mw-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-        .mw-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .mw-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-        .mw-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+        .rtx-market-watch .mw-row { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .rtx-market-watch .mw-input { transition: all 0.3s ease; }
+        .rtx-market-watch .mw-input::placeholder { color: #64748b; }
+        .rtx-market-watch .mw-input:focus { border-color: rgba(59,130,246,0.5) !important; box-shadow: 0 0 15px rgba(59,130,246,0.25), inset 0 0 0 1px rgba(59,130,246,0.5) !important; background: rgba(15,23,42,0.6) !important; }
+        .rtx-market-watch .mw-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .rtx-market-watch .mw-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .rtx-market-watch .mw-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .rtx-market-watch .mw-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
       `}</style>
 
       <div
@@ -546,20 +543,20 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             {/* Subtle accent dot */}
-            <span style={{ fontSize: 11, fontWeight: 500, color: '#808088', letterSpacing: '0.04em' }}>
+            <span className="rtx-market-watch__title" style={{ fontSize: 11, fontWeight: 500, color: '#808088', letterSpacing: '0.04em' }}>
               MARKET WATCH
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{
+            <span className="rtx-market-watch__time" style={{
               fontSize: 10,
-              fontFamily: '"JetBrains Mono", "Roboto Mono", monospace',
               color: '#8a8a8f',
               letterSpacing: '0.04em',
+              fontVariantNumeric: 'tabular-nums',
             }}>
               {timeStr}
             </span>
-            <span style={{
+            <span className="rtx-market-watch__count" style={{
               fontSize: 9,
               color: '#50505a',
               background: 'rgba(255,255,255,0.04)',
@@ -647,8 +644,8 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                       transition: 'background 0.1s',
                     }}
                   >
-                    <span style={{ color: idx === highlightIndex ? '#e2e2e8' : '#808088', fontWeight: 500 }}>{sym}</span>
-                    <span style={{
+                    <span className="rtx-market-watch__dropdown-symbol" style={{ color: idx === highlightIndex ? '#e2e2e8' : '#808088', fontWeight: 500 }}>{sym}</span>
+                    <span className="rtx-market-watch__category" style={{
                       fontSize: 9,
                       color: cat.color,
                       background: `${cat.color}18`,
@@ -679,7 +676,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '4px 10px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)',
             }}>
-              <span style={{ fontSize: 9, color: '#50505a', letterSpacing: '0.05em' }}>ALL SYMBOLS ({availableSymbols.length})</span>
+              <span className="rtx-market-watch__symbols-title" style={{ fontSize: 9, color: '#50505a', letterSpacing: '0.05em' }}>ALL SYMBOLS ({availableSymbols.length})</span>
               <button
                 onClick={() => setShowSymbolsPanel(false)}
                 style={{ background: 'none', border: 'none', color: '#50505a', cursor: 'pointer', fontSize: 11, padding: '0 2px', lineHeight: 1 }}
@@ -697,8 +694,8 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                   }}
                   className="mw-row"
                 >
-                  <span>{sym}</span>
-                  <span style={{ fontSize: 9, color: cat.color }}>{cat.label}</span>
+                  <span className="rtx-market-watch__symbol">{sym}</span>
+                  <span className="rtx-market-watch__category" style={{ fontSize: 9, color: cat.color }}>{cat.label}</span>
                 </div>
               );
             })}
@@ -715,10 +712,10 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
                 <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
               </svg>
-              <span style={{ fontSize: 11, color: '#50505a' }}>No symbols — type above to add</span>
+              <span className="rtx-market-watch__empty-text" style={{ fontSize: 11, color: '#50505a' }}>No symbols — type above to add</span>
             </div>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <table className="rtx-market-watch__grid" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               {/* Column sizing */}
               <colgroup>
                 <col />
@@ -731,11 +728,11 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               {/* Sticky header */}
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                  <th style={{ textAlign: 'left',  padding: '4px 8px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Symbol</th>
-                  <th style={{ textAlign: 'right', padding: '4px 5px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Bid</th>
-                  {showAsk    && <th style={{ textAlign: 'right', padding: '4px 5px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Ask</th>}
-                  {showSpread && <th style={{ textAlign: 'right', padding: '4px 5px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Sprd</th>}
-                  {showDaily  && <th style={{ textAlign: 'right', padding: '4px 8px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Daily</th>}
+                  <th className="rtx-market-watch__column-heading" style={{ textAlign: 'left',  padding: '4px 8px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Symbol</th>
+                  <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 5px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Bid</th>
+                  {showAsk    && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 5px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Ask</th>}
+                  {showSpread && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 5px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Sprd</th>}
+                  {showDaily  && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 8px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Daily</th>}
                 </tr>
               </thead>
 
@@ -784,6 +781,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         }}>
           <span
             onClick={() => inputRef.current?.focus()}
+            className="rtx-market-watch__footer-action"
             style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', color: '#50505a', fontSize: 10 }}
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -791,7 +789,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
             </svg>
             Add symbol
           </span>
-          <span style={{ fontSize: 9, color: '#36363e' }}>{rows.length} symbols</span>
+          <span className="rtx-market-watch__footer-count" style={{ fontSize: 9, color: '#36363e' }}>{rows.length} symbols</span>
         </div>
 
         {(symbolsError || quotesError || watchlistError) && (

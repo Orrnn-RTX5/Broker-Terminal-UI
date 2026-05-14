@@ -316,13 +316,8 @@ export const accountApi = {
 
 export const positionsApi = {
   async getPositions(login?: number): Promise<endpoints.Position[]> {
-    try {
-      const response = await endpoints.tradingApi.getPositions(resolveTradingLogin(login));
-      return unwrapList(response, 'positions').map(normalizeGatewayPositionForApp) as any;
-    } catch {
-      // Gateway may be unavailable — positions come from MT5 Sync WS instead
-      return [];
-    }
+    const response = await endpoints.tradingApi.getPositions(resolveTradingLogin(login));
+    return unwrapList(response, 'positions').map(normalizeGatewayPositionForApp) as any;
   },
 
   async closePosition(positionId: string): Promise<void> {

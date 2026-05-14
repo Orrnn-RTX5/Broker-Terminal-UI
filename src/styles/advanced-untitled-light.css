@@ -660,3 +660,375 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart .dock-re
   opacity: 0 !important;
   pointer-events: none !important;
 }
+
+/* === OneClickTrading Advanced Mode (Restored) === */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  border-radius: 0 !important; /* PERFECT SQUARE */
+  box-shadow: none !important;
+  padding: 8px 12px !important;
+}
+
+/* Header Text - "BTCUSD, M5:" Black */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > span:first-child {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+/* Header Text - "Bitcoin vs US Dollar" Gray */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > span:last-child {
+  color: #64748b !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-top: none !important;
+  border-radius: 0 !important; /* PERFECT SQUARE */
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Button Sizes (excluding middle arrows) */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div {
+  border-radius: 0 !important;
+  border: none !important;
+  height: 64px !important;
+  min-height: 64px !important;
+  max-height: 64px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button {
+  width: 120px !important;
+  min-width: 120px !important;
+  max-width: 120px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div {
+  width: 50px !important;
+  min-width: 50px !important;
+  background: #ffffff !important;
+}
+
+/* Buy Button - Blue */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button:first-child {
+  background: #2563eb !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button:first-child:hover:not(:disabled) {
+  background: #1d4ed8 !important;
+}
+
+/* Sell Button - Red */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button:last-child {
+  background: #dc2626 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button:last-child:hover:not(:disabled) {
+  background: #b91c1c !important;
+}
+
+/* Middle volume control */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct input {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 2px !important;
+  color: #101828 !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+  width: 46px !important;
+  height: 24px !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  text-align: center !important;
+}
+
+/* Hide native number input arrows */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct input::-webkit-outer-spin-button,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct input::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct input[type=number] {
+  -moz-appearance: textfield !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div button {
+  background: transparent !important;
+  color: #94a3b8 !important;
+  font-size: 10px !important;
+  height: auto !important;
+  min-height: unset !important;
+  max-height: unset !important;
+  padding: 1px 0 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div button:hover {
+  color: #475569 !important;
+}
+
+/* Ensure BUY/SELL text is white and bold */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button > span:first-child {
+  color: #ffffff !important;
+  font-weight: 800 !important;
+}
+
+/* Advanced Mode Fonts (Inter) */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-small { 
+  font-family: 'Inter', system-ui, sans-serif !important; color: #ffffff !important; text-shadow: none !important; font-weight: 600 !important; font-size: 15px !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-big { 
+  font-family: 'Inter', system-ui, sans-serif !important; color: #ffffff !important; text-shadow: none !important; font-weight: 800 !important; font-size: 34px !important; line-height: 0.8 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-pip { 
+  font-family: 'Inter', system-ui, sans-serif !important; color: #ffffff !important; text-shadow: none !important; font-weight: 600 !important; font-size: 15px !important;
+}
+
+/* Trade Footer + Time Range buttons Revert */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer {
+  background: #ffffff !important;
+  border-top-color: #e2e8f0 !important;
+  box-shadow: inset 0 1px 0 0 #f1f5f9 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer button {
+  border-color: #cbd5e1 !important; color: #64748b !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer button:hover {
+  background: #f1f5f9 !important; color: #101828 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer .text-zinc-500 { color: #64748b !important; }
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer .text-zinc-100,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer .text-zinc-300 { color: #7E57C2 !important; } /* PURPLE BALANCES */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer .text-zinc-400 { color: #94a3b8 !important; }
+
+/* Time ranges */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-time-btn:hover {
+  background: #F3E5F5 !important;
+  color: #101828 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-time-btn.bg-zinc-600 {
+  background: #7E57C2 !important;
+  color: #ffffff !important;
+}
+
+/* Market Watch text un-fade and bolding */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__symbol {
+  color: #101828 !important;
+  font-weight: 600 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price {
+  color: #101828 !important;
+  font-weight: 600 !important;
+}
+/* Specifically override the inline green/red so they pop in light mode */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: rgb(74, 222, 128)"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: #4ade80"] {
+  color: #16a34a !important; /* darker green */
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: rgb(248, 113, 113)"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: #f87171"] {
+  color: #dc2626 !important; /* darker red */
+}
+/* Bigger last two digits */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price .price-big {
+  font-size: 16px !important;
+  font-weight: 900 !important;
+}
+
+/* Advanced Mode row hovers */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-row:hover {
+  background: #F3E5F5 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-row[aria-selected="true"] {
+  background: #F3E5F5 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-row:hover td {
+  background: transparent !important;
+}
+
+/* === Context Menu Variables === */
+html.rtx-advanced-view.rtx-skin-untitled-light {
+  --ctx-bg: #ffffff;
+  --ctx-border: #e2e8f0;
+  --ctx-hover: #F3E5F5;
+  --ctx-active-bg: #7E57C2;
+  --ctx-active-fg: #ffffff;
+  --ctx-item-active-bg: #F3E5F5;
+  --ctx-item-active-fg: #7E57C2;
+  --ctx-text: #101828;
+  --ctx-muted: #64748b;
+  --ctx-header: #475569;
+  --ctx-disabled: rgba(148, 163, 184, 0.5);
+  --ctx-red: #dc2626;
+  --ctx-blue: #7E57C2;
+  --ctx-icon: #64748b;
+  --ctx-shadow: 0 12px 32px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0,0,0,0.02);
+}
+
+/* === Navigator Overrides === */
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel {
+  --navigator-tree-line: #e2e8f0 !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel__body::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel__header {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  padding: 8px 12px !important;
+  letter-spacing: 0.05em !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel__body {
+  padding: 8px !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row {
+  padding: 4px 6px !important;
+  border-radius: 6px !important;
+  margin-bottom: 2px !important;
+  transition: all 0.2s ease !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover {
+  background: #F3E5F5 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__chevron {
+  color: #94a3b8 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__icon {
+  color: #7E57C2 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__icon .text-amber-400,
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__icon .text-amber-300 {
+  color: #f59e0b !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .navigator-tree-item__chevron,
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .navigator-tree-item__icon {
+  color: #7E57C2 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .navigator-tree-item__label {
+  color: #101828 !important;
+  font-weight: 600 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__label {
+  color: #334155 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+/* === Login Dialog Overrides === */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #101828 !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog > div:first-child {
+  background-color: #f8fafc !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog > div:first-child span {
+  color: #101828 !important;
+  font-weight: 600 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog > div:first-child svg {
+  color: #64748b !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog .text-blue-400 {
+  color: #7E57C2 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog .bg-zinc-700\/30 {
+  background-color: #F3E5F5 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog label {
+  color: #475569 !important;
+  font-weight: 500 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog input {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #101828 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog input:focus {
+  border-color: #7E57C2 !important;
+  box-shadow: 0 0 0 1px #7E57C2 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog p {
+  color: #64748b !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog button[type="submit"] {
+  background-color: #7E57C2 !important;
+  border-color: #7E57C2 !important;
+  color: #ffffff !important;
+  font-weight: 500 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog button[type="submit"]:hover {
+  background-color: #6b46c1 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog button[type="button"] {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+  font-weight: 500 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog button[type="button"]:hover {
+  background-color: #f8fafc !important;
+  color: #101828 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog > div:first-child button:hover {
+  background-color: #f1f5f9 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog > div:first-child button:hover svg {
+  color: #ef4444 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog .text-red-400 {
+  color: #dc2626 !important;
+}
+
+/* === Bottom Dock Tabs Advanced Mode === */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs {
+  background: #ffffff !important;
+  border-top: 1px solid #e2e8f0 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab {
+  color: #64748b !important;
+}
+
+/* Bottom Dock Row Hovers */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-row:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-row:hover {
+  background: #F3E5F5 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-row:hover td,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-row:hover td {
+  background: transparent !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab:hover {
+  background: #f1f5f9 !important;
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab.active-tab {
+  background: #ffffff !important;
+  color: #7E57C2 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab-indicator {
+  background: #7E57C2 !important;
+  box-shadow: none !important;
+  height: 2px !important;
+}
+
+/* Explicit arrow button heights */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div button {
+  height: 16px !important;
+  min-height: 16px !important;
+  max-height: 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}

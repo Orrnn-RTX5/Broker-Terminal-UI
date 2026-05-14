@@ -33,10 +33,40 @@ describe('historyClient v2 history contract calls', () => {
     expect(chunk).toEqual({
       symbol: 'EUR/USD',
       date: '2025-10-10',
-      ticks: [{ symbol: 'EURUSD', bid: 1.1, ask: 1.2, timestamp: 1760054400 }],
+      ticks: [{ symbol: 'EURUSD', bid: 1.1, ask: 1.2, timestamp: 1760054400000 }],
       chunkIndex: 0,
       totalChunks: 1,
     });
+  });
+
+  it('derives downloader symbols from the supported v2 instruments endpoint', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([
+      { symbol: 'XAUUSD', enabled: true },
+      { symbol: 'EURUSD', enabled: true },
+      { symbol: 'DISABLED', enabled: false },
+    ]));
+
+    await expect(historyClient.getAvailableData()).resolves.toEqual([
+      {
+        symbol: 'EURUSD',
+        availableDates: [],
+        totalTicks: 0,
+        firstDate: '',
+        lastDate: '',
+        downloadedDates: [],
+        downloadProgress: 0,
+      },
+      {
+        symbol: 'XAUUSD',
+        availableDates: [],
+        totalTicks: 0,
+        firstDate: '',
+        lastDate: '',
+        downloadedDates: [],
+        downloadProgress: 0,
+      },
+    ]);
+    expect(lastFetchUrl()).toBe('https://backend.orrnn.com/api/v2/instruments');
   });
 
   it('exposes readable candle helpers through the Swagger history/v2 candle endpoints', async () => {
@@ -57,15 +87,6 @@ describe('historyClient v2 history contract calls', () => {
   });
 
   it('quarantines downloader-only metadata that has no S0 history/v2 mapping', async () => {
-    await expect(historyClient.getAvailableData()).rejects.toMatchObject({
-      name: 'HistoryApiError',
-      statusCode: 501,
-    } satisfies Partial<HistoryApiError>);
-
-    await expect(historyClient.getSymbolInfo('EURUSD')).rejects.toMatchObject({
-      statusCode: 501,
-    } satisfies Partial<HistoryApiError>);
-
     await expect(historyClient.verifyData('EURUSD', '2025-10-10')).rejects.toMatchObject({
       statusCode: 501,
     } satisfies Partial<HistoryApiError>);

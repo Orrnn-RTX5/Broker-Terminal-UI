@@ -7,10 +7,51 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RTX Terminal</title>
+  <style>
+    body { margin: 0; background-color: #ffffff; }
+    .rtx-preloader {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; z-index: 99999;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: #ffffff;
+    }
+    .rtx-infinity-svg {
+      width: 100px; height: 50px;
+      margin-bottom: 24px;
+    }
+    .rtx-infinity-bg {
+      fill: none; stroke: #F3E5F5; stroke-width: 6; stroke-linecap: round;
+    }
+    .rtx-infinity-trace {
+      fill: none; stroke: #7E57C2; stroke-width: 6; stroke-linecap: round;
+      stroke-dasharray: 200; stroke-dashoffset: 200;
+      animation: rtx-infinity-trace 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+    .rtx-preloader-logo {
+      font-size: 24px; font-weight: 700; color: #101828; letter-spacing: 2px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .rtx-preloader-logo span { color: #7E57C2; }
+    .rtx-preloader-text {
+      margin-top: 12px; font-size: 11px; color: #64748b; text-transform: uppercase;
+      letter-spacing: 2px; animation: rtx-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes rtx-infinity-trace { 0% { stroke-dashoffset: 200; } 100% { stroke-dashoffset: -200; } }
+    @keyframes rtx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  </style>
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div class="rtx-preloader">
+      <svg class="rtx-infinity-svg" viewBox="0 0 100 50">
+        <path class="rtx-infinity-bg" d="M 50 25 C 65 5, 95 5, 95 25 C 95 45, 65 45, 50 25 C 35 5, 5 5, 5 25 C 5 45, 35 45, 50 25 Z" />
+        <path class="rtx-infinity-trace" d="M 50 25 C 65 5, 95 5, 95 25 C 95 45, 65 45, 50 25 C 35 5, 5 5, 5 25 C 5 45, 35 45, 50 25 Z" />
+      </svg>
+      <div class="rtx-preloader-logo">RTX<span>5</span></div>
+      <div class="rtx-preloader-text">Initializing Terminal...</div>
+    </div>
+  </div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

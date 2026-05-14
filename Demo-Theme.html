@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>RTX 5 Manager — Theme Lab</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a0a0b; color: #e5e7eb; }
+  .page { max-width: 1400px; margin: 0 auto; padding: 32px 24px 80px; }
+  .page > h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .page > p.lede { color: #9ca3af; margin: 0 0 32px; font-size: 14px; }
+  .theme-section { margin-bottom: 48px; }
+  .theme-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 12px; padding: 0 4px; }
+  .theme-header h2 { margin: 0; font-size: 18px; font-weight: 600; color: #f3f4f6; }
+  .theme-header .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #1f2937; color: #9ca3af; font-family: ui-monospace, Consolas, monospace; }
+  .theme-header .note { color: #6b7280; font-size: 13px; margin-left: auto; }
+
+  /* ----- Shared demo frame ----- */
+  .demo { border-radius: 12px; overflow: hidden; box-shadow: 0 8px 24px -12px rgba(0,0,0,0.6); border: 1px solid #1f2937; }
+  .demo-inner { display: grid; grid-template-rows: auto auto 1fr auto; min-height: 520px; }
+
+  /* Compact reset for widgets inside each theme */
+  .demo * { box-sizing: border-box; }
+
+  /* Menubar shared structure */
+  .mbar { display: flex; align-items: center; gap: 0; padding: 0 12px; height: 32px; font-size: 13px; }
+  .mbar .brand { font-weight: 700; letter-spacing: -0.01em; margin-right: 16px; }
+  .mbar .m { padding: 4px 10px; cursor: default; }
+  .mbar .spacer { flex: 1; }
+  .mbar .status { font-family: ui-monospace, Consolas, monospace; font-size: 11px; opacity: 0.8; }
+
+  /* Toolbar shared */
+  .tbar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; }
+  .tbar .btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px; border-radius: 6px; cursor: default; }
+  .tbar .sep { width: 1px; height: 18px; margin: 0 4px; }
+  .tbar .search { flex: 1; display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; font-size: 12px; max-width: 260px; }
+  .tbar .search input { background: transparent; border: 0; outline: 0; font: inherit; color: inherit; width: 100%; }
+
+  /* Main split: table + right dock */
+  .main { display: grid; grid-template-columns: 1fr 280px; gap: 0; }
+  .content { padding: 12px; display: grid; grid-template-rows: auto 1fr; gap: 10px; min-width: 0; }
+  .content .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .kpi { padding: 10px 12px; border-radius: 8px; }
+  .kpi .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.6; }
+  .kpi .val { font-size: 18px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .kpi .delta { font-size: 11px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  /* Data grid */
+  table.grid { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  table.grid th { text-align: left; padding: 6px 10px; font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; position: sticky; top: 0; }
+  table.grid td { padding: 6px 10px; }
+  table.grid tr.sel td { /* theme-specific */ }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; }
+  .pl-pos { color: #10b981; }
+  .pl-neg { color: #ef4444; }
+
+  /* Right dock panel */
+  .dock { display: flex; flex-direction: column; min-height: 0; }
+  .dock .title { display: flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 12px; font-weight: 600; }
+  .dock .title .ctrls { margin-left: auto; display: flex; gap: 4px; opacity: 0.7; }
+  .dock .body { padding: 8px 10px; font-size: 12px; display: grid; gap: 8px; }
+  .dock .row { display: flex; justify-content: space-between; padding: 4px 0; font-variant-numeric: tabular-nums; }
+
+  /* Status bar */
+  .sbar { display: flex; align-items: center; gap: 12px; padding: 4px 12px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; }
+
+  /* Floating context menu + modal (always-visible demo overlays placed inline) */
+  .overlay-row { display: grid; grid-template-columns: 220px 320px; gap: 16px; padding: 12px; }
+  .ctxmenu { border-radius: 8px; padding: 4px; font-size: 12px; box-shadow: 0 12px 32px -8px rgba(0,0,0,0.5); }
+  .ctxmenu .item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 5px; cursor: default; }
+  .ctxmenu .item .kbd { margin-left: auto; font-family: ui-monospace, Consolas, monospace; font-size: 10px; opacity: 0.5; }
+  .ctxmenu .sep { height: 1px; margin: 4px 2px; }
+
+  .modal { border-radius: 10px; overflow: hidden; box-shadow: 0 20px 50px -10px rgba(0,0,0,0.6); }
+  .modal .mh { display: flex; align-items: center; padding: 10px 14px; font-size: 13px; font-weight: 600; }
+  .modal .mh .x { margin-left: auto; font-size: 14px; cursor: default; opacity: 0.6; }
+  .modal .mb { padding: 12px 14px; font-size: 12px; display: grid; gap: 8px; }
+  .modal .mf { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 14px; }
+  .modal .mb input, .modal .mb select { width: 100%; padding: 6px 10px; border-radius: 6px; font: inherit; }
+  .btn-primary, .btn-ghost { padding: 5px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; border: 1px solid transparent; cursor: default; }
+
+  /* ================================================================ */
+  /* THEME 1 — UNTITLED UI LIGHT (matches uploaded screenshot)          */
+  /* ================================================================ */
+  .t-untitled {
+    --bg: #fafafa; --surface: #ffffff; --surface-2: #f9fafb; --border: #e5e7eb; --border-2: #f3f4f6;
+    --text: #101828; --text-2: #475467; --muted: #98a2b3;
+    --accent: #7f56d9; --accent-soft: #f4ebff; --accent-border: #e9d7fe;
+    --ok: #12b76a; --danger: #f04438; --warn: #f79009;
+    --shadow: 0 1px 2px rgba(16,24,40,0.05), 0 1px 3px rgba(16,24,40,0.1);
+    background: var(--bg); color: var(--text);
+  }
+  .t-untitled .mbar { background: var(--surface); border-bottom: 1px solid var(--border); color: var(--text-2); }
+  .t-untitled .mbar .brand { color: var(--text); }
+  .t-untitled .mbar .m:hover { color: var(--text); }
+  .t-untitled .tbar { background: var(--surface); border-bottom: 1px solid var(--border); }
+  .t-untitled .tbar .btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-2); box-shadow: var(--shadow); }
+  .t-untitled .tbar .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .t-untitled .tbar .sep { background: var(--border); }
+  .t-untitled .tbar .search { background: var(--surface); border: 1px solid var(--border); color: var(--text-2); box-shadow: var(--shadow); }
+  .t-untitled .content { background: var(--bg); }
+  .t-untitled .kpi { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+  .t-untitled .kpi .lbl { color: var(--muted); }
+  .t-untitled .kpi .val { color: var(--text); }
+  .t-untitled table.grid { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .t-untitled table.grid th { background: var(--surface-2); color: var(--text-2); border-bottom: 1px solid var(--border); }
+  .t-untitled table.grid td { border-bottom: 1px solid var(--border-2); color: var(--text); }
+  .t-untitled table.grid tr:hover td { background: var(--surface-2); }
+  .t-untitled table.grid tr.sel td { background: var(--accent-soft); }
+  .t-untitled .badge.buy { background: #ecfdf3; color: #027a48; }
+  .t-untitled .badge.sell { background: #fef3f2; color: #b42318; }
+  .t-untitled .badge.active { background: var(--accent-soft); color: #6941c6; }
+  .t-untitled .main { background: var(--bg); }
+  .t-untitled .dock { background: var(--surface); border-left: 1px solid var(--border); }
+  .t-untitled .dock .title { background: var(--surface-2); border-bottom: 1px solid var(--border); color: var(--text); }
+  .t-untitled .dock .body { color: var(--text-2); }
+  .t-untitled .dock .row { border-bottom: 1px solid var(--border-2); }
+  .t-untitled .dock .row strong { color: var(--text); }
+  .t-untitled .sbar { background: var(--surface); border-top: 1px solid var(--border); color: var(--text-2); }
+  .t-untitled .ctxmenu { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+  .t-untitled .ctxmenu .item:hover, .t-untitled .ctxmenu .item.hl { background: var(--accent-soft); color: #6941c6; }
+  .t-untitled .ctxmenu .sep { background: var(--border); }
+  .t-untitled .modal { background: var(--surface); border: 1px solid var(--border); }
+  .t-untitled .modal .mh { border-bottom: 1px solid var(--border); color: var(--text); }
+  .t-untitled .modal .mb input, .t-untitled .modal .mb select { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+  .t-untitled .modal .mf { background: var(--surface-2); border-top: 1px solid var(--border); }
+  .t-untitled .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .t-untitled .btn-ghost { background: var(--surface); border-color: var(--border); color: var(--text); }
+
+  /* ================================================================ */
+  /* THEME 2 — BLOOMBERG TERMINAL                                       */
+  /* ================================================================ */
+  .t-bloomberg {
+    --bg: #000000; --surface: #0a0a0a; --surface-2: #111111; --border: #1f1f1f; --border-2: #2a2a2a;
+    --text: #ffb700; --text-2: #ff9500; --muted: #7a7a7a;
+    --accent: #ff9500; --accent-soft: #332200; --accent-border: #664400;
+    --ok: #00ff88; --danger: #ff3b30; --warn: #ffcc00;
+    font-family: ui-monospace, 'Consolas', 'Menlo', monospace;
+    background: var(--bg); color: var(--text);
+  }
+  .t-bloomberg .mbar { background: #1a1200; color: var(--text); border-bottom: 1px solid var(--accent); font-weight: 600; }
+  .t-bloomberg .mbar .brand { color: var(--text); }
+  .t-bloomberg .tbar { background: var(--surface); border-bottom: 1px solid var(--border); }
+  .t-bloomberg .tbar .btn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+  .t-bloomberg .tbar .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+  .t-bloomberg .tbar .sep { background: var(--border); }
+  .t-bloomberg .tbar .search { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+  .t-bloomberg .content { background: var(--bg); }
+  .t-bloomberg .kpi { background: var(--surface); border: 1px solid var(--border); }
+  .t-bloomberg .kpi .lbl { color: var(--muted); }
+  .t-bloomberg .kpi .val { color: var(--text); }
+  .t-bloomberg table.grid { background: var(--surface); }
+  .t-bloomberg table.grid th { background: #1a1200; color: var(--text); border-bottom: 1px solid var(--accent); }
+  .t-bloomberg table.grid td { border-bottom: 1px solid var(--border); color: var(--text); }
+  .t-bloomberg table.grid tr:hover td { background: var(--surface-2); }
+  .t-bloomberg table.grid tr.sel td { background: #332200; color: #fff; }
+  .t-bloomberg .badge.buy { background: #003311; color: var(--ok); border: 1px solid var(--ok); }
+  .t-bloomberg .badge.sell { background: #330000; color: var(--danger); border: 1px solid var(--danger); }
+  .t-bloomberg .badge.active { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+  .t-bloomberg .main { background: var(--bg); }
+  .t-bloomberg .dock { background: var(--surface); border-left: 1px solid var(--border); }
+  .t-bloomberg .dock .title { background: #1a1200; border-bottom: 1px solid var(--accent); color: var(--text); }
+  .t-bloomberg .dock .body { color: var(--text); }
+  .t-bloomberg .dock .row { border-bottom: 1px solid var(--border); }
+  .t-bloomberg .sbar { background: #1a1200; border-top: 1px solid var(--accent); color: var(--text); }
+  .t-bloomberg .ctxmenu { background: var(--surface); border: 1px solid var(--accent); color: var(--text); }
+  .t-bloomberg .ctxmenu .item:hover, .t-bloomberg .ctxmenu .item.hl { background: var(--accent); color: #000; }
+  .t-bloomberg .ctxmenu .sep { background: var(--border); }
+  .t-bloomberg .modal { background: var(--surface); border: 1px solid var(--accent); }
+  .t-bloomberg .modal .mh { border-bottom: 1px solid var(--accent); color: var(--text); background: #1a1200; }
+  .t-bloomberg .modal .mb input, .t-bloomberg .modal .mb select { background: #000; border: 1px solid var(--border); color: var(--text); font: inherit; }
+  .t-bloomberg .modal .mf { background: var(--surface-2); border-top: 1px solid var(--border); }
+  .t-bloomberg .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+  .t-bloomberg .btn-ghost { background: transparent; border-color: var(--border); color: var(--text); }
+
+  /* ================================================================ */
+  /* THEME 3 — MT5 CLASSIC MODERNIZED                                   */
+  /* ================================================================ */
+  .t-mt5 {
+    --bg: #f1f2f3; --surface: #ffffff; --surface-2: #e9ecef; --border: #c9cfd4; --border-2: #dee2e6;
+    --text: #1e2022; --text-2: #495057; --muted: #868e96;
+    --accent: #1e88e5; --accent-soft: #e3f2fd; --accent-border: #90caf9;
+    --ok: #2e7d32; --danger: #c62828; --warn: #ef6c00;
+    background: var(--bg); color: var(--text);
+  }
+  .t-mt5 .mbar { background: linear-gradient(to bottom, #f8f9fa, #e9ecef); border-bottom: 1px solid var(--border); color: var(--text); }
+  .t-mt5 .tbar { background: var(--surface); border-bottom: 1px solid var(--border); }
+  .t-mt5 .tbar .btn { background: linear-gradient(to bottom, #ffffff, #f1f3f5); border: 1px solid var(--border); color: var(--text); }
+  .t-mt5 .tbar .btn.primary { background: var(--accent); border-color: #1565c0; color: #fff; }
+  .t-mt5 .tbar .sep { background: var(--border); }
+  .t-mt5 .tbar .search { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+  .t-mt5 .content { background: var(--bg); }
+  .t-mt5 .kpi { background: var(--surface); border: 1px solid var(--border); }
+  .t-mt5 .kpi .lbl { color: var(--muted); }
+  .t-mt5 .kpi .val { color: var(--text); }
+  .t-mt5 table.grid { background: var(--surface); border: 1px solid var(--border); }
+  .t-mt5 table.grid th { background: var(--surface-2); color: var(--text); border-bottom: 1px solid var(--border); }
+  .t-mt5 table.grid td { border-bottom: 1px solid var(--border-2); color: var(--text); }
+  .t-mt5 table.grid tr:hover td { background: #f8f9fa; }
+  .t-mt5 table.grid tr.sel td { background: var(--accent-soft); }
+  .t-mt5 .badge.buy { background: #e8f5e9; color: var(--ok); }
+  .t-mt5 .badge.sell { background: #ffebee; color: var(--danger); }
+  .t-mt5 .badge.active { background: var(--accent-soft); color: #1565c0; }
+  .t-mt5 .main { background: var(--bg); }
+  .t-mt5 .dock { background: var(--surface); border-left: 1px solid var(--border); }
+  .t-mt5 .dock .title { background: var(--surface-2); border-bottom: 1px solid var(--border); color: var(--text); }
+  .t-mt5 .dock .body { color: var(--text-2); }
+  .t-mt5 .dock .row { border-bottom: 1px solid var(--border-2); }
+  .t-mt5 .dock .row strong { color: var(--text); }
+  .t-mt5 .sbar { background: var(--surface-2); border-top: 1px solid var(--border); color: var(--text-2); }
+  .t-mt5 .ctxmenu { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+  .t-mt5 .ctxmenu .item:hover, .t-mt5 .ctxmenu .item.hl { background: var(--accent); color: #fff; }
+  .t-mt5 .ctxmenu .sep { background: var(--border); }
+  .t-mt5 .modal { background: var(--surface); border: 1px solid var(--border); }
+  .t-mt5 .modal .mh { border-bottom: 1px solid var(--border); color: var(--text); background: var(--surface-2); }
+  .t-mt5 .modal .mb input, .t-mt5 .modal .mb select { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+  .t-mt5 .modal .mf { background: var(--surface-2); border-top: 1px solid var(--border); }
+  .t-mt5 .btn-primary { background: var(--accent); border-color: #1565c0; color: #fff; }
+  .t-mt5 .btn-ghost { background: var(--surface); border-color: var(--border); color: var(--text); }
+
+  /* ================================================================ */
+  /* THEME 4 — MODERN FINTECH DARK (Linear/Stripe vibe)                 */
+  /* ================================================================ */
+  .t-fintech {
+    --bg: #0b0f17; --surface: #101624; --surface-2: #0d1320; --border: #1e2838; --border-2: #172030;
+    --text: #e6edf7; --text-2: #9aa7bd; --muted: #5d6b82;
+    --accent: #22d3ee; --accent-soft: rgba(34,211,238,0.08); --accent-border: rgba(34,211,238,0.3);
+    --ok: #34d399; --danger: #f87171; --warn: #fbbf24;
+    background: var(--bg); color: var(--text);
+  }
+  .t-fintech .mbar { background: linear-gradient(to bottom, #0f1623, var(--bg)); border-bottom: 1px solid var(--border); color: var(--text-2); }
+  .t-fintech .mbar .brand { color: var(--text); }
+  .t-fintech .mbar .m:hover { color: var(--text); }
+  .t-fintech .tbar { background: var(--surface); border-bottom: 1px solid var(--border); }
+  .t-fintech .tbar .btn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+  .t-fintech .tbar .btn.primary { background: var(--accent); color: #0b0f17; border-color: var(--accent); font-weight: 600; }
+  .t-fintech .tbar .sep { background: var(--border); }
+  .t-fintech .tbar .search { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+  .t-fintech .content { background: var(--bg); }
+  .t-fintech .kpi { background: var(--surface); border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+  .t-fintech .kpi .lbl { color: var(--muted); }
+  .t-fintech .kpi .val { color: var(--text); }
+  .t-fintech table.grid { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .t-fintech table.grid th { background: var(--surface-2); color: var(--text-2); border-bottom: 1px solid var(--border); }
+  .t-fintech table.grid td { border-bottom: 1px solid var(--border-2); color: var(--text); }
+  .t-fintech table.grid tr:hover td { background: var(--surface-2); }
+  .t-fintech table.grid tr.sel td { background: var(--accent-soft); }
+  .t-fintech .badge.buy { background: rgba(52,211,153,0.12); color: var(--ok); border: 1px solid rgba(52,211,153,0.3); }
+  .t-fintech .badge.sell { background: rgba(248,113,113,0.12); color: var(--danger); border: 1px solid rgba(248,113,113,0.3); }
+  .t-fintech .badge.active { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); }
+  .t-fintech .main { background: var(--bg); }
+  .t-fintech .dock { background: var(--surface); border-left: 1px solid var(--border); }
+  .t-fintech .dock .title { background: var(--surface-2); border-bottom: 1px solid var(--border); color: var(--text); }
+  .t-fintech .dock .body { color: var(--text-2); }
+  .t-fintech .dock .row { border-bottom: 1px solid var(--border-2); }
+  .t-fintech .dock .row strong { color: var(--text); }
+  .t-fintech .sbar { background: var(--surface); border-top: 1px solid var(--border); color: var(--muted); }
+  .t-fintech .ctxmenu { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+  .t-fintech .ctxmenu .item:hover, .t-fintech .ctxmenu .item.hl { background: var(--accent-soft); color: var(--accent); }
+  .t-fintech .ctxmenu .sep { background: var(--border); }
+  .t-fintech .modal { background: var(--surface); border: 1px solid var(--border); }
+  .t-fintech .modal .mh { border-bottom: 1px solid var(--border); color: var(--text); background: var(--surface-2); }
+  .t-fintech .modal .mb input, .t-fintech .modal .mb select { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+  .t-fintech .modal .mf { background: var(--surface-2); border-top: 1px solid var(--border); }
+  .t-fintech .btn-primary { background: var(--accent); color: #0b0f17; border-color: var(--accent); font-weight: 600; }
+  .t-fintech .btn-ghost { background: transparent; border-color: var(--border); color: var(--text); }
+
+  /* ================================================================ */
+  /* THEME 5 — GLASS / NEUMORPHIC                                       */
+  /* ================================================================ */
+  .t-glass {
+    --bg: radial-gradient(1200px 600px at 20% -10%, #2a1b5c 0%, transparent 60%), radial-gradient(1000px 500px at 100% 20%, #0b3a6d 0%, transparent 55%), #0a0f1e;
+    --text: #e8ecf5; --text-2: #aab4c6; --muted: #6b7690;
+    --accent: #8b5cf6; --accent-soft: rgba(139,92,246,0.15); --accent-border: rgba(139,92,246,0.35);
+    --ok: #34d399; --danger: #f87171;
+    --glass: rgba(255,255,255,0.04); --glass-strong: rgba(255,255,255,0.08); --glass-border: rgba(255,255,255,0.08);
+    background: var(--bg); color: var(--text);
+  }
+  .t-glass .demo-inner { backdrop-filter: blur(0); }
+  .t-glass .mbar { background: var(--glass-strong); backdrop-filter: blur(12px); border-bottom: 1px solid var(--glass-border); color: var(--text-2); }
+  .t-glass .mbar .brand { color: var(--text); }
+  .t-glass .tbar { background: var(--glass); backdrop-filter: blur(12px); border-bottom: 1px solid var(--glass-border); }
+  .t-glass .tbar .btn { background: var(--glass-strong); border: 1px solid var(--glass-border); color: var(--text); backdrop-filter: blur(8px); }
+  .t-glass .tbar .btn.primary { background: linear-gradient(135deg, #8b5cf6, #6366f1); border-color: transparent; color: #fff; }
+  .t-glass .tbar .sep { background: var(--glass-border); }
+  .t-glass .tbar .search { background: var(--glass-strong); border: 1px solid var(--glass-border); color: var(--text-2); }
+  .t-glass .content { background: transparent; }
+  .t-glass .kpi { background: var(--glass-strong); border: 1px solid var(--glass-border); backdrop-filter: blur(12px); }
+  .t-glass .kpi .lbl { color: var(--muted); }
+  .t-glass .kpi .val { color: var(--text); }
+  .t-glass table.grid { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 10px; overflow: hidden; backdrop-filter: blur(12px); }
+  .t-glass table.grid th { background: var(--glass-strong); color: var(--text-2); border-bottom: 1px solid var(--glass-border); }
+  .t-glass table.grid td { border-bottom: 1px solid var(--glass-border); color: var(--text); }
+  .t-glass table.grid tr:hover td { background: var(--glass-strong); }
+  .t-glass table.grid tr.sel td { background: var(--accent-soft); }
+  .t-glass .badge.buy { background: rgba(52,211,153,0.15); color: var(--ok); border: 1px solid rgba(52,211,153,0.3); }
+  .t-glass .badge.sell { background: rgba(248,113,113,0.15); color: var(--danger); border: 1px solid rgba(248,113,113,0.3); }
+  .t-glass .badge.active { background: var(--accent-soft); color: #c4b5fd; border: 1px solid var(--accent-border); }
+  .t-glass .main { background: transparent; }
+  .t-glass .dock { background: var(--glass); border-left: 1px solid var(--glass-border); backdrop-filter: blur(12px); }
+  .t-glass .dock .title { background: var(--glass-strong); border-bottom: 1px solid var(--glass-border); color: var(--text); }
+  .t-glass .dock .body { color: var(--text-2); }
+  .t-glass .dock .row { border-bottom: 1px solid var(--glass-border); }
+  .t-glass .dock .row strong { color: var(--text); }
+  .t-glass .sbar { background: var(--glass-strong); border-top: 1px solid var(--glass-border); color: var(--muted); }
+  .t-glass .ctxmenu { background: rgba(20,24,40,0.85); backdrop-filter: blur(16px); border: 1px solid var(--glass-border); color: var(--text); }
+  .t-glass .ctxmenu .item:hover, .t-glass .ctxmenu .item.hl { background: var(--accent-soft); color: #c4b5fd; }
+  .t-glass .ctxmenu .sep { background: var(--glass-border); }
+  .t-glass .modal { background: rgba(20,24,40,0.85); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); }
+  .t-glass .modal .mh { border-bottom: 1px solid var(--glass-border); color: var(--text); background: var(--glass-strong); }
+  .t-glass .modal .mb input, .t-glass .modal .mb select { background: var(--glass); border: 1px solid var(--glass-border); color: var(--text); }
+  .t-glass .modal .mf { background: var(--glass-strong); border-top: 1px solid var(--glass-border); }
+  .t-glass .btn-primary { background: linear-gradient(135deg, #8b5cf6, #6366f1); border-color: transparent; color: #fff; }
+  .t-glass .btn-ghost { background: var(--glass-strong); border-color: var(--glass-border); color: var(--text); }
+
+  /* Pick panel */
+  .pick { position: fixed; right: 24px; bottom: 24px; background: #111827; border: 1px solid #374151; border-radius: 12px; padding: 14px 16px; font-size: 12px; color: #e5e7eb; max-width: 320px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+  .pick h3 { margin: 0 0 6px; font-size: 13px; }
+  .pick p { margin: 0 0 8px; color: #9ca3af; line-height: 1.4; }
+  .pick code { background: #1f2937; padding: 1px 6px; border-radius: 4px; color: #f9fafb; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>RTX 5 Manager — Theme Lab</h1>
+  <p class="lede">Same layout (menu bar · toolbar · KPIs · positions grid · right-click menu · docked panel · modal · status bar) rendered in 5 candidate themes. Scroll through, pick one, tell me its number.</p>
+
+
+  <section class="theme-section">
+    <div class="theme-header">
+      <h2>1. Untitled UI Light</h2>
+      <span class="tag">matches your screenshot</span>
+      <span class="note">White surfaces · purple accent · soft shadows · rounded</span>
+    </div>
+    <div class="demo t-untitled">
+      <div class="demo-inner">
+        <div class="mbar">
+          <span class="brand">RTX5</span>
+          <span class="m">File</span><span class="m">View</span><span class="m">Tools</span><span class="m">Window</span><span class="m">Help</span>
+          <span class="spacer"></span>
+          <span class="status">● Connected · 42ms · 3.2 KB/s</span>
+        </div>
+        <div class="tbar">
+          <span class="btn primary">+ New Account</span>
+          <span class="btn">Connect</span>
+          <span class="btn">Groups</span>
+          <span class="sep"></span>
+          <span class="btn">Filter</span>
+          <span class="btn">Export</span>
+          <span class="search">🔍 <input placeholder="Search by login, name, symbol…" value="login 500123" /></span>
+        </div>
+        <div class="main">
+          <div class="content">
+            <div class="kpis">
+              <div class="kpi"><div class="lbl">Real Accounts</div><div class="val">12,487</div><div class="delta pl-pos">▲ 2.4%</div></div>
+              <div class="kpi"><div class="lbl">Deposits (24h)</div><div class="val">$1.82M</div><div class="delta pl-pos">▲ 5.1%</div></div>
+              <div class="kpi"><div class="lbl">Open Positions</div><div class="val">3,214</div><div class="delta pl-neg">▼ 0.8%</div></div>
+              <div class="kpi"><div class="lbl">Equity</div><div class="val">$48.3M</div><div class="delta pl-pos">▲ 1.2%</div></div>
+            </div>
+            <table class="grid">
+              <thead><tr><th>Login</th><th>Symbol</th><th>Type</th><th>Volume</th><th>Open Price</th><th>S/L</th><th>T/P</th><th>Profit</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>500123</td><td>EURUSD</td><td><span class="badge buy">BUY</span></td><td>1.50</td><td>1.08421</td><td>1.08100</td><td>1.08900</td><td class="pl-pos">+$312.40</td><td><span class="badge active">Active</span></td></tr>
+                <tr class="sel"><td>500124</td><td>XAUUSD</td><td><span class="badge sell">SELL</span></td><td>0.80</td><td>2341.22</td><td>2355.00</td><td>2320.00</td><td class="pl-neg">-$184.60</td><td><span class="badge active">Active</span></td></tr>
+                <tr><td>500127</td><td>GBPJPY</td><td><span class="badge buy">BUY</span></td><td>2.00</td><td>192.314</td><td>191.800</td><td>193.200</td><td class="pl-pos">+$847.00</td><td><span class="badge active">Active</span></td></tr>
+                <tr><td>500128</td><td>US500</td><td><span class="badge sell">SELL</span></td><td>3.00</td><td>5312.40</td><td>5340.00</td><td>5270.00</td><td class="pl-neg">-$96.00</td><td><span class="badge active">Active</span></td></tr>
+                <tr><td>500131</td><td>BTCUSD</td><td><span class="badge buy">BUY</span></td><td>0.25</td><td>67,412</td><td>66,800</td><td>68,500</td><td class="pl-pos">+$1,204.00</td><td><span class="badge active">Active</span></td></tr>
+              </tbody>
+            </table>
+            <div class="overlay-row">
+              <div class="ctxmenu">
+                <div class="item hl">New Client <span class="kbd">Ctrl+Shift+N</span></div>
+                <div class="item">Client Details</div>
+                <div class="item">Email</div>
+                <div class="sep"></div>
+                <div class="item">Export</div>
+                <div class="item">Find <span class="kbd">Ctrl+F</span></div>
+                <div class="sep"></div>
+                <div class="item">Delete <span class="kbd">Ctrl+D</span></div>
+              </div>
+              <div class="modal">
+                <div class="mh">Modify Stop Loss <span class="x">✕</span></div>
+                <div class="mb">
+                  <label>Position #500124 — XAUUSD SELL 0.80</label>
+                  <input value="2355.00" />
+                  <select><option>Market</option><option>Pending</option></select>
+                </div>
+                <div class="mf"><span class="btn-ghost">Cancel</span><span class="btn-primary">Update</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="dock">
+            <div class="title">Margin Calls <span class="ctrls">◲ ✕</span></div>
+            <div class="body">
+              <div class="row"><span>500124</span><strong class="pl-neg">-184.60</strong></div>
+              <div class="row"><span>500128</span><strong class="pl-neg">-96.00</strong></div>
+              <div class="row"><span>500142</span><strong class="pl-neg">-32.18</strong></div>
+              <div class="row"><span>500149</span><strong class="pl-neg">-478.21</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="sbar"><span>Ready</span><span>·</span><span>Rows: 5 of 3,214</span><span>·</span><span>Server: demo-mt5.broker.com</span></div>
+      </div>
+    </div>
+  </section>
+
+
+
+
+</div>
+
+<div class="pick">
+  <h3>Pick a theme</h3>
+  <p>Tell me the number (1–5) or mix: e.g. <code>"1 but dark"</code> or <code>"4 with purple instead of cyan"</code>. I'll then wire the winning tokens into the real app.</p>
+</div>
+
+</body>
+</html>

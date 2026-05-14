@@ -578,3 +578,32 @@ tr:hover {
   background: var(--bg-quaternary);
   color: var(--text-secondary);
 }
+/* Default OneClickTrading Fonts (Normal Mode) */
+.rtx-oct-digit-small { font-size: 12px; font-family: monospace; font-weight: 500; }
+.rtx-oct-digit-big { font-size: 28px; font-family: monospace; font-weight: 900; line-height: 0.85; }
+.rtx-oct-digit-pip { font-size: 14px; font-family: monospace; font-weight: 700; }
+
+/* === Market Watch Big Digits === */
+.price-display {
+    font-family: var(--font-mono) !important;
+}
+
+.price-big {
+    font-size: inherit;
+    font-weight: inherit;
+}
+
+/* Advanced mode formatting for prices and symbols removed to retain monospace */
+
+/* Advanced mode: last 2 digit big style */
+html.rtx-advanced-view .price-big {
+    font-weight: 800; /* extrabold */
+}
+
+html.rtx-advanced-view .price-display[data-size="sm"] .price-big {
+    font-size: 13px;
+}
+
+html.rtx-advanced-view .price-display[data-size="lg"] .price-big {
+    font-size: 14px;
+}

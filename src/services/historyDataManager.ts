@@ -43,20 +43,13 @@ export class HistoryDataManager {
 
       // Merge with local cache info
       for (const symbolInfo of serverData) {
-        const downloadedDates = await ticksDB.getDownloadedDates(symbolInfo.symbol);
-        symbolInfo.downloadedDates = downloadedDates;
-
-        const downloadedCount = downloadedDates.length;
-        const totalCount = symbolInfo.availableDates?.length || 0;
-        symbolInfo.downloadProgress = totalCount > 0
-          ? (downloadedCount / totalCount) * 100
-          : 0;
+        await this.applyLocalCacheInfo(symbolInfo);
       }
 
       return serverData;
     } catch (error) {
       console.error('Failed to get available symbols:', error);
-      return [];
+      return this.getCachedSymbolInfo();
     }
   }
 
@@ -66,18 +59,12 @@ export class HistoryDataManager {
   async getSymbolInfo(symbol: string): Promise<SymbolDataInfo | null> {
     try {
       const symbolInfo = await historyClient.getSymbolInfo(symbol);
-      const downloadedDates = await ticksDB.getDownloadedDates(symbol);
-
-      symbolInfo.downloadedDates = downloadedDates;
-      const totalCount = symbolInfo.availableDates?.length || 0;
-      symbolInfo.downloadProgress = totalCount > 0
-        ? (downloadedDates.length / totalCount) * 100
-        : 0;
+      await this.applyLocalCacheInfo(symbolInfo);
 
       return symbolInfo;
     } catch (error) {
       console.error('Failed to get symbol info:', error);
-      return null;
+      return this.getCachedSymbolInfo(symbol);
     }
   }
 
@@ -287,7 +274,7 @@ export class HistoryDataManager {
       const dates = this.getDatesBetween(dateRange.from, dateRange.to);
       for (const date of dates) {
         const dateTicks = serverTicks.filter(tick => {
-          const tickDate = new Date(tick.timestamp).toISOString().split('T')[0];
+          const tickDate = new Date(this.toEpochMilliseconds(tick.timestamp)).toISOString().split('T')[0];
           return tickDate === date;
         });
 
@@ -370,6 +357,62 @@ export class HistoryDataManager {
     }
 
     return dates;
+  }
+
+  private async applyLocalCacheInfo(symbolInfo: SymbolDataInfo): Promise<void> {
+    const downloadedDates = await ticksDB.getDownloadedDates(symbolInfo.symbol);
+    symbolInfo.downloadedDates = downloadedDates;
+
+    if (!symbolInfo.firstDate && downloadedDates[0]) {
+      symbolInfo.firstDate = downloadedDates[0];
+    }
+
+    if (!symbolInfo.lastDate && downloadedDates.at(-1)) {
+      symbolInfo.lastDate = downloadedDates.at(-1)!;
+    }
+
+    const downloadedCount = downloadedDates.length;
+    const totalCount = symbolInfo.availableDates?.length || 0;
+    symbolInfo.downloadProgress = totalCount > 0
+      ? (downloadedCount / totalCount) * 100
+      : downloadedCount > 0
+        ? 100
+        : 0;
+  }
+
+  private async getCachedSymbolInfo(symbol: string): Promise<SymbolDataInfo | null>;
+  private async getCachedSymbolInfo(symbol?: undefined): Promise<SymbolDataInfo[]>;
+  private async getCachedSymbolInfo(symbol?: string): Promise<SymbolDataInfo[] | SymbolDataInfo | null> {
+    const stats = await ticksDB.getStorageStats();
+    const symbols = symbol ? [symbol] : Object.keys(stats.dateRanges).sort();
+    const cachedInfo: SymbolDataInfo[] = [];
+
+    for (const cachedSymbol of symbols) {
+      const dateRange = stats.dateRanges[cachedSymbol];
+      const downloadedDates = await ticksDB.getDownloadedDates(cachedSymbol);
+
+      if (!dateRange && downloadedDates.length === 0) {
+        continue;
+      }
+
+      cachedInfo.push({
+        symbol: cachedSymbol,
+        availableDates: downloadedDates,
+        totalTicks: 0,
+        firstDate: dateRange?.from || downloadedDates[0] || '',
+        lastDate: dateRange?.to || downloadedDates.at(-1) || '',
+        downloadedDates,
+        downloadProgress: downloadedDates.length > 0 ? 100 : 0
+      });
+    }
+
+    return symbol ? cachedInfo[0] ?? null : cachedInfo;
+  }
+
+  private toEpochMilliseconds(timestamp: number): number {
+    return Math.abs(timestamp) < 1_000_000_000_000
+      ? timestamp * 1000
+      : timestamp;
   }
 }
 

@@ -190,9 +190,9 @@ export function JournalTab() {
                         <button
                             key={t.label}
                             onClick={() => setTimeRange(t.hours)}
-                            className={`px-2 py-0.5 text-[10px] rounded transition-colors ${timeRange === t.hours
+                            className={`rtx-journal-time-btn px-2 py-0.5 text-[10px] rounded transition-colors ${timeRange === t.hours
                                 ? 'bg-zinc-600 text-white'
-                                : 'text-zinc-400 hover:bg-zinc-700'
+                                : 'text-zinc-400'
                                 }`}
                         >
                             {t.label}

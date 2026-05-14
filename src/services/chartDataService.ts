@@ -123,12 +123,21 @@ const toSeconds = (value: unknown): number => {
   return raw > 1_000_000_000_000 ? Math.floor(raw / 1000) : Math.floor(raw);
 };
 
+const findCandleArray = (payload: any): { candles: any[]; matched: boolean } => {
+  if (Array.isArray(payload)) return { candles: payload, matched: true };
+  if (Array.isArray(payload?.candles)) return { candles: payload.candles, matched: true };
+  if (Array.isArray(payload?.data?.candles)) return { candles: payload.data.candles, matched: true };
+  if (Array.isArray(payload?.data?.data)) return { candles: payload.data.data, matched: true };
+  if (Array.isArray(payload?.data)) return { candles: payload.data, matched: true };
+  if (Array.isArray(payload?.payload?.candles)) return { candles: payload.payload.candles, matched: true };
+  if (Array.isArray(payload?.payload?.data)) return { candles: payload.payload.data, matched: true };
+  if (Array.isArray(payload?.result?.candles)) return { candles: payload.result.candles, matched: true };
+  if (Array.isArray(payload?.result?.data)) return { candles: payload.result.data, matched: true };
+  return { candles: [], matched: false };
+};
+
 const extractCandles = (payload: any): any[] => {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.candles)) return payload.candles;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.payload?.candles)) return payload.payload.candles;
-  return [];
+  return findCandleArray(payload).candles;
 };
 
 const extractCandle = (payload: any): any | null =>
@@ -157,12 +166,22 @@ export class ChartDataService {
   }
 
   normalizeCandles(input: any, timeframe?: string): OHLCData[] {
+    return this.normalizeCandleItems(extractCandles(input), timeframe);
+  }
+
+  private normalizeCandleItems(items: any[], timeframe?: string): OHLCData[] {
     const byTime = new Map<number, OHLCData>();
-    for (const item of extractCandles(input)) {
+    for (const item of items) {
       const candle = this.normalizeCandle(item, timeframe);
       if (candle) byTime.set(candle.time, candle);
     }
     return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+  }
+
+  private normalizeCandleResponse(input: any, timeframe?: string): OHLCData[] {
+    const extracted = findCandleArray(input);
+    if (!extracted.matched) throw new Error('Malformed candle response');
+    return this.normalizeCandleItems(extracted.candles, timeframe);
   }
 
   mergeCandle(candles: OHLCData[], incoming: OHLCData, maxCandles?: number): OHLCData[] {
@@ -211,11 +230,13 @@ export class ChartDataService {
     })}`;
 
     const attempts = [
-      { url: coreUrl, headers: authHeaders },
-      { url: historyUrl, headers: undefined },
+      ...(token ? [{ url: coreUrl, headers: authHeaders, isAuthenticatedCore: true }] : []),
+      { url: historyUrl, headers: undefined, isAuthenticatedCore: false },
     ];
 
     let lastError: Error | null = null;
+    let authenticatedCoreContractError: Error | null = null;
+    let sawSuccessfulSource = false;
     for (const attempt of attempts) {
       try {
         const response = await fetch(attempt.url, {
@@ -223,13 +244,30 @@ export class ChartDataService {
           headers: attempt.headers,
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return this.normalizeCandles(await response.json(), apiTf);
+
+        let candles: OHLCData[];
+        try {
+          candles = this.normalizeCandleResponse(await response.json(), apiTf);
+        } catch (error) {
+          if ((error as Error).name === 'AbortError') throw error;
+          const normalizedError = error instanceof Error ? error : new Error('Malformed candle response');
+          if (attempt.isAuthenticatedCore) authenticatedCoreContractError = normalizedError;
+          lastError = normalizedError;
+          continue;
+        }
+
+        sawSuccessfulSource = true;
+        if (candles.length > 0) return candles;
       } catch (error) {
         if ((error as Error).name === 'AbortError') throw error;
         lastError = error instanceof Error ? error : new Error('Failed to load candles');
       }
     }
 
+    if (sawSuccessfulSource) {
+      if (authenticatedCoreContractError) throw authenticatedCoreContractError;
+      return [];
+    }
     throw lastError ?? new Error('Failed to load candles');
   }
 
