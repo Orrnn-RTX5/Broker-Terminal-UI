@@ -345,6 +345,7 @@ const MainToolbar = ({
     const [showUserMenu, setShowUserMenu] = useState(false);
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [showDrawingDropdown, setShowDrawingDropdown] = useState(false);
+    const [showCrosshair, setShowCrosshair] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
     const [advancedViewEnabled, setAdvancedViewEnabled] = useState(() => {
         try {
@@ -458,6 +459,28 @@ const MainToolbar = ({
         useAppStore.getState().logout();
         // Force full page reload to show login
         window.location.reload();
+    };
+
+    const getToolBtnClass = (isActive: boolean) => {
+        if (advancedViewEnabled) {
+            return isActive
+                ? 'bg-[#7E57C2] text-white'
+                : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]';
+        } else {
+            return isActive
+                ? 'bg-blue-500/15 text-blue-400'
+                : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300';
+        }
+    };
+
+    const getToolsContainerClass = () => {
+        return advancedViewEnabled
+            ? 'border-[#d0d5dd] bg-white'
+            : 'border-zinc-700/50 bg-[#16181d]';
+    };
+
+    const getDividerClass = () => {
+        return advancedViewEnabled ? 'bg-[#e5e7eb]' : 'bg-zinc-700/50';
     };
 
     return (
@@ -633,138 +656,154 @@ const MainToolbar = ({
                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                             </div>
                         </div>
-
-                        {/* Drawing Tools — Direct inline icon buttons, Advanced Mode only */}
-                        <div className="ml-2 flex items-center gap-[2px] border border-[#d0d5dd] rounded bg-white shadow-sm px-1">
-                            {/* Cursor */}
-                            <button
-                                onClick={() => handleToolSelect('cursor')}
-                                title="Cursor (Esc)"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${(toolbarState.activeTool === null || toolbarState.activeTool === 'cursor')
-                                        ? 'bg-[#7E57C2] text-white'
-                                        : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                    }`}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M3 2L3 13L6.5 10L8.5 14.5L10 13.8L8 9.3L12 9.3Z" fill="currentColor" stroke="currentColor" />
-                                </svg>
-                            </button>
-
-                            <div className="w-px h-4 bg-[#e5e7eb]" />
-
-                            {/* Trend Line */}
-                            <button
-                                onClick={() => handleToolSelect('trendline')}
-                                title="Trend Line"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'trendline'
-                                        ? 'bg-[#7E57C2] text-white'
-                                        : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                    }`}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                    <line x1="3" y1="13" x2="13" y2="3" />
-                                    <circle cx="3" cy="13" r="1.5" fill="currentColor" />
-                                    <circle cx="13" cy="3" r="1.5" fill="currentColor" />
-                                </svg>
-                            </button>
-
-                            {/* Horizontal Line */}
-                            <button
-                                onClick={() => handleToolSelect('hline')}
-                                title="Horizontal Line"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'hline'
-                                        ? 'bg-[#7E57C2] text-white'
-                                        : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                    }`}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                    <line x1="2" y1="8" x2="14" y2="8" />
-                                    <circle cx="4" cy="8" r="1.5" fill="currentColor" />
-                                    <circle cx="12" cy="8" r="1.5" fill="currentColor" />
-                                </svg>
-                            </button>
-
-                            {/* Vertical Line */}
-                            <button
-                                onClick={() => handleToolSelect('vline')}
-                                title="Vertical Line"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'vline'
-                                        ? 'bg-[#7E57C2] text-white'
-                                        : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                    }`}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                    <line x1="8" y1="2" x2="8" y2="14" />
-                                    <circle cx="8" cy="4" r="1.5" fill="currentColor" />
-                                    <circle cx="8" cy="12" r="1.5" fill="currentColor" />
-                                </svg>
-                            </button>
-
-                            {/* Equidistant Channel */}
-                            <button
-                                onClick={() => handleToolSelect('channel')}
-                                title="Equidistant Channel"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'channel'
-                                        ? 'bg-[#7E57C2] text-white'
-                                        : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                    }`}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-                                    <line x1="2" y1="11" x2="11" y2="3" />
-                                    <line x1="5" y1="14" x2="14" y2="6" />
-                                    <circle cx="2" cy="11" r="1.3" fill="currentColor" />
-                                    <circle cx="11" cy="3" r="1.3" fill="currentColor" />
-                                </svg>
-                            </button>
-
-                            {/* Fibonacci Retracement */}
-                            <button
-                                onClick={() => handleToolSelect('fibonacci')}
-                                title="Fibonacci Retracement"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'fibonacci'
-                                        ? 'bg-[#7E57C2] text-white'
-                                        : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                    }`}
-                            >
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-                                    <line x1="1" y1="3" x2="15" y2="3" />
-                                    <line x1="1" y1="6.5" x2="15" y2="6.5" />
-                                    <line x1="1" y1="10" x2="15" y2="10" />
-                                    <line x1="1" y1="13" x2="15" y2="13" />
-                                    <line x1="3" y1="13" x2="13" y2="3" />
-                                    <circle cx="3" cy="13" r="1.3" fill="currentColor" />
-                                    <circle cx="13" cy="3" r="1.3" fill="currentColor" />
-                                </svg>
-                            </button>
-                        </div>
-
-                        {/* Stamps dropdown — beside drawing tools */}
-                        <div className="ml-1 flex items-center border border-[#d0d5dd] rounded bg-white shadow-sm overflow-visible">
-                            <StampsPopover
-                                dispatchCommand={dispatchCommand}
-                                dispatchToolbar={dispatchToolbar}
-                                activeTool={toolbarState.activeTool}
-                            />
-                        </div>
-
-                        {/* Clear All Drawings button */}
-                        <button
-                            onClick={() => {
-                                drawingManager.clearAllDrawings();
-                                handleToolSelect('cursor');
-                            }}
-                            title="Clear All Drawings"
-                            className="ml-1 flex items-center justify-center w-[28px] h-[26px] rounded border border-[#fda29b] bg-white text-[#d92d20] hover:bg-[#fef3f2] hover:border-[#f97066] transition-colors shadow-sm"
-                        >
-                            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="2 4 4 4 14 4" />
-                                <path d="M5 4V2h6v2" />
-                                <path d="M6 7v5M10 7v5" />
-                                <path d="M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9" />
-                            </svg>
-                        </button>
                     </>
                 )}
+
+                <>
+                    {/* Crosshair toggle — before drawing tools */}
+                    <button
+                        onClick={() => {
+                            const next = !showCrosshair;
+                            setShowCrosshair(next);
+                            dispatchCommand({ type: 'TOGGLE_CROSSHAIR', payload: {} });
+                        }}
+                        title="Toggle Crosshair (C)"
+                        className={`ml-2 flex items-center justify-center w-[28px] h-[26px] rounded border transition-colors shadow-sm ${showCrosshair
+                                ? advancedViewEnabled ? 'bg-[#7E57C2] border-[#7E57C2] text-white' : 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
+                                : advancedViewEnabled ? 'bg-white border-[#d0d5dd] text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2] hover:border-[#7E57C2]' : 'bg-transparent border-transparent text-zinc-400 hover:bg-white/5 hover:text-blue-300'
+                            }`}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                            <line x1="8" y1="1" x2="8" y2="5" />
+                            <line x1="8" y1="11" x2="8" y2="15" />
+                            <line x1="1" y1="8" x2="5" y2="8" />
+                            <line x1="11" y1="8" x2="15" y2="8" />
+                            <circle cx="8" cy="8" r="2.5" />
+                        </svg>
+                    </button>
+
+                    {/* Drawing Tools — Direct inline icon buttons, Advanced Mode only */}
+                    <div className={`ml-2 flex items-center gap-[2px] border rounded shadow-sm px-1 ${getToolsContainerClass()}`}>
+                        {/* Cursor */}
+                        <button
+                            onClick={() => handleToolSelect('cursor')}
+                            title="Cursor (Esc)"
+                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === null || toolbarState.activeTool === 'cursor')
+                                }`}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 2L3 13L6.5 10L8.5 14.5L10 13.8L8 9.3L12 9.3Z" fill="currentColor" stroke="currentColor" />
+                            </svg>
+                        </button>
+
+                        <div className={`w-px h-4 ${getDividerClass()}`} />
+
+                        {/* Trend Line */}
+                        <button
+                            onClick={() => handleToolSelect('trendline')}
+                            title="Trend Line"
+                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'trendline')
+                                }`}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                                <line x1="3" y1="13" x2="13" y2="3" />
+                                <circle cx="3" cy="13" r="1.5" fill="currentColor" />
+                                <circle cx="13" cy="3" r="1.5" fill="currentColor" />
+                            </svg>
+                        </button>
+
+                        {/* Horizontal Line */}
+                        <button
+                            onClick={() => handleToolSelect('hline')}
+                            title="Horizontal Line"
+                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'hline')
+                                }`}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                                <line x1="2" y1="8" x2="14" y2="8" />
+                                <circle cx="4" cy="8" r="1.5" fill="currentColor" />
+                                <circle cx="12" cy="8" r="1.5" fill="currentColor" />
+                            </svg>
+                        </button>
+
+                        {/* Vertical Line */}
+                        <button
+                            onClick={() => handleToolSelect('vline')}
+                            title="Vertical Line"
+                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'vline')
+                                }`}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                                <line x1="8" y1="2" x2="8" y2="14" />
+                                <circle cx="8" cy="4" r="1.5" fill="currentColor" />
+                                <circle cx="8" cy="12" r="1.5" fill="currentColor" />
+                            </svg>
+                        </button>
+
+                        {/* Equidistant Channel */}
+                        <button
+                            onClick={() => handleToolSelect('channel')}
+                            title="Equidistant Channel"
+                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'channel')
+                                }`}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                                <line x1="2" y1="11" x2="11" y2="3" />
+                                <line x1="5" y1="14" x2="14" y2="6" />
+                                <circle cx="2" cy="11" r="1.3" fill="currentColor" />
+                                <circle cx="11" cy="3" r="1.3" fill="currentColor" />
+                            </svg>
+                        </button>
+
+                        {/* Fibonacci Retracement */}
+                        <button
+                            onClick={() => handleToolSelect('fibonacci')}
+                            title="Fibonacci Retracement"
+                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'fibonacci')
+                                }`}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                                <line x1="1" y1="3" x2="15" y2="3" />
+                                <line x1="1" y1="6.5" x2="15" y2="6.5" />
+                                <line x1="1" y1="10" x2="15" y2="10" />
+                                <line x1="1" y1="13" x2="15" y2="13" />
+                                <line x1="3" y1="13" x2="13" y2="3" />
+                                <circle cx="3" cy="13" r="1.3" fill="currentColor" />
+                                <circle cx="13" cy="3" r="1.3" fill="currentColor" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    {/* Stamps dropdown — beside drawing tools */}
+                    <div className={`ml-1 flex items-center border rounded shadow-sm overflow-visible ${getToolsContainerClass()}`}>
+                        <StampsPopover
+                            dispatchCommand={dispatchCommand}
+                            dispatchToolbar={dispatchToolbar}
+                            activeTool={toolbarState.activeTool}
+                            advancedViewEnabled={advancedViewEnabled}
+                        />
+                    </div>
+
+                    {/* Clear All Drawings button */}
+                    <button
+                        onClick={() => {
+                            drawingManager.clearAllDrawings();
+                            handleToolSelect('cursor');
+                        }}
+                        title="Clear All Drawings"
+                        className={`ml-1 flex items-center justify-center w-[28px] h-[26px] rounded border transition-colors shadow-sm ${advancedViewEnabled
+                                ? 'border-[#fda29b] bg-white text-[#d92d20] hover:bg-[#fef3f2] hover:border-[#f97066]'
+                                : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/50'
+                            }`}
+                    >
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="2 4 4 4 14 4" />
+                            <path d="M5 4V2h6v2" />
+                            <path d="M6 7v5M10 7v5" />
+                            <path d="M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9" />
+                        </svg>
+                    </button>
+                </>
 
                 {/* User Icon with Logout Dropdown */}
                 <div className="relative" ref={userMenuRef}>
@@ -873,71 +912,98 @@ const MT5Group = ({ children }: { children: React.ReactNode }) => (
 
 // ─── Stamps Popover ──────────────────────────────────────────────────────────
 const STAMP_OPTIONS = [
-    { subtype: 'thumbsUp',       label: 'Thumbs Up' },
-    { subtype: 'thumbsDown',     label: 'Thumbs Down' },
-    { subtype: 'arrowUp',        label: 'Arrow Up' },
-    { subtype: 'arrowDown',      label: 'Arrow Down' },
-    { subtype: 'stopSign',       label: 'Stop Sign' },
-    { subtype: 'checkSign',      label: 'Check Sign' },
-    { subtype: 'buy',            label: 'Buy' },
-    { subtype: 'sell',           label: 'Sell' },
+    { subtype: 'thumbsUp', label: 'Thumbs Up' },
+    { subtype: 'thumbsDown', label: 'Thumbs Down' },
+    { subtype: 'arrowUp', label: 'Arrow Up' },
+    { subtype: 'arrowDown', label: 'Arrow Down' },
+    { subtype: 'stopSign', label: 'Stop Sign' },
+    { subtype: 'checkSign', label: 'Check Sign' },
     { subtype: 'leftPriceLabel', label: 'Left Price Label' },
-    { subtype: 'rightPriceLabel',label: 'Right Price Label' },
+    { subtype: 'rightPriceLabel', label: 'Right Price Label' },
+    { subtype: 'buy', label: 'Buy' },
+    { subtype: 'sell', label: 'Sell' },
+    { subtype: 'arrow', label: 'Arrow' },
 ];
 
 const StampIcon = ({ subtype, size = 18 }: { subtype: string; size?: number }) => {
+    const stroke = '#2563eb'; // blue-600
     switch (subtype) {
         case 'thumbsUp':
-            return <span style={{ fontSize: size - 2, lineHeight: 1 }}>👍</span>;
+            return (
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+                </svg>
+            );
         case 'thumbsDown':
-            return <span style={{ fontSize: size - 2, lineHeight: 1 }}>👎</span>;
+            return (
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
+                </svg>
+            );
         case 'arrowUp':
             return (
-                <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="#22c55e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 13V3M3 8l5-5 5 5" />
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="19" x2="12" y2="5" />
+                    <polyline points="5 12 12 5 19 12" />
                 </svg>
             );
         case 'arrowDown':
             return (
-                <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M8 3v10M3 8l5 5 5-5" />
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <polyline points="19 12 12 19 5 12" />
                 </svg>
             );
         case 'stopSign':
-            return <span style={{ fontSize: size - 2, lineHeight: 1 }}>🛑</span>;
+            return (
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="8" y1="12" x2="16" y2="12" />
+                </svg>
+            );
         case 'checkSign':
             return (
-                <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="8" cy="8" r="6" />
-                    <path d="M5.5 8.5l2 2 3.5-4" />
-                </svg>
-            );
-        case 'buy':
-            return (
-                <svg width={size} height={size} viewBox="0 0 16 16">
-                    <polygon points="8,2 15,14 1,14" fill="#22c55e" />
-                </svg>
-            );
-        case 'sell':
-            return (
-                <svg width={size} height={size} viewBox="0 0 16 16">
-                    <polygon points="8,14 15,2 1,2" fill="#ef4444" />
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="9 12 11 14 15 10" />
                 </svg>
             );
         case 'leftPriceLabel':
             return (
-                <svg width={size} height={size} viewBox="0 0 18 14">
-                    <rect x="0" y="2" width="14" height="10" rx="2" fill="#2563eb" />
-                    <polygon points="14,7 18,4 18,10" fill="#2563eb" />
-                    <text x="7" y="10" fill="white" fontSize="6" fontFamily="monospace" textAnchor="middle">P</text>
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 6h12v12H8l-6-6 6-6z" />
+                    <path d="M12 10v4" />
+                    <path d="M12 10h3c1 0 1 4 0 4h-3" />
                 </svg>
             );
         case 'rightPriceLabel':
             return (
-                <svg width={size} height={size} viewBox="0 0 18 14">
-                    <rect x="4" y="2" width="14" height="10" rx="2" fill="#2563eb" />
-                    <polygon points="4,7 0,4 0,10" fill="#2563eb" />
-                    <text x="11" y="10" fill="white" fontSize="6" fontFamily="monospace" textAnchor="middle">P</text>
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 6H4v12h12l6-6-6-6z" />
+                    <path d="M8 10v4" />
+                    <path d="M8 10h3c1 0 1 4 0 4H8" />
+                </svg>
+            );
+        case 'buy':
+            return (
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="19" x2="12" y2="5" />
+                    <polyline points="5 12 12 5 19 12" />
+                </svg>
+            );
+        case 'sell':
+            return (
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <polyline points="19 12 12 19 5 12" />
+                </svg>
+            );
+        case 'arrow':
+            return (
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 4 6 12 18 12" />
+                    <rect x="5" y="15" width="6" height="6" />
+                    <circle cx="17" cy="18" r="3" />
                 </svg>
             );
         default:
@@ -949,7 +1015,8 @@ const StampsPopover: React.FC<{
     dispatchCommand: (cmd: any) => void;
     dispatchToolbar: (action: any) => void;
     activeTool?: string;
-}> = ({ dispatchCommand, dispatchToolbar, activeTool }) => {
+    advancedViewEnabled?: boolean;
+}> = ({ dispatchCommand, dispatchToolbar, activeTool, advancedViewEnabled = true }) => {
     const [open, setOpen] = useState(false);
     const [lastSubtype, setLastSubtype] = useState('thumbsUp');
     const ref = useRef<HTMLDivElement>(null);
@@ -983,11 +1050,10 @@ const StampsPopover: React.FC<{
         <div ref={ref} className="relative flex items-center h-[26px]">
             {/* Main button — icon only, re-uses last subtype */}
             <button
-                className={`flex items-center justify-center w-[28px] h-full rounded-l transition-colors ${
-                    isActive
-                        ? 'bg-[#7E57C2] text-white'
-                        : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                }`}
+                className={`flex items-center justify-center w-[28px] h-full rounded-l transition-colors ${isActive
+                        ? (advancedViewEnabled ? 'bg-[#7E57C2] text-white' : 'bg-blue-500/15 text-blue-400')
+                        : (advancedViewEnabled ? 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]' : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300')
+                    }`}
                 title={`Stamp: ${opt.label} — click on chart to place`}
                 onClick={() => selectStamp(lastSubtype)}
             >
@@ -996,11 +1062,11 @@ const StampsPopover: React.FC<{
 
             {/* Chevron — opens picker */}
             <button
-                className={`flex items-center justify-center px-1 h-full rounded-r border-l border-[#e5e7eb] transition-colors ${
-                    isActive || open
-                        ? 'bg-[#7E57C2] text-white border-[#7E57C2]'
-                        : 'text-[#667085] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                }`}
+                className={`flex items-center justify-center px-1 h-full rounded-r border-l transition-colors ${advancedViewEnabled ? 'border-[#e5e7eb]' : 'border-zinc-700/50'
+                    } ${isActive || open
+                        ? (advancedViewEnabled ? 'bg-[#7E57C2] text-white border-[#7E57C2]' : 'bg-blue-500/15 text-blue-400 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)]')
+                        : (advancedViewEnabled ? 'text-[#667085] hover:bg-[#F3E5F5] hover:text-[#7E57C2]' : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300')
+                    }`}
                 title="Choose stamp"
                 onClick={() => setOpen(o => !o)}
             >
@@ -1012,7 +1078,8 @@ const StampsPopover: React.FC<{
             {open && ReactDOM.createPortal(
                 <div
                     ref={portalRef}
-                    className="fixed bg-white border border-[#d0d5dd] rounded shadow-xl z-[9999] p-1.5"
+                    className={`fixed border rounded shadow-xl z-[9999] p-1.5 ${advancedViewEnabled ? 'bg-white border-[#d0d5dd]' : 'bg-[#1a1c23] border-zinc-700'
+                        }`}
                     style={{
                         top: (ref.current?.getBoundingClientRect().bottom ?? 0) + 4,
                         left: ref.current?.getBoundingClientRect().left ?? 0,
@@ -1024,11 +1091,10 @@ const StampsPopover: React.FC<{
                             <button
                                 key={o.subtype}
                                 title={o.label}
-                                className={`flex items-center justify-center w-8 h-8 rounded transition-colors ${
-                                    o.subtype === lastSubtype
-                                        ? 'bg-[#F3E5F5] ring-1 ring-[#7E57C2]'
-                                        : 'hover:bg-[#f3f4f6]'
-                                }`}
+                                className={`flex items-center justify-center w-8 h-8 rounded transition-colors ${o.subtype === lastSubtype
+                                        ? (advancedViewEnabled ? 'bg-[#F3E5F5] ring-1 ring-[#7E57C2]' : 'bg-blue-500/15 ring-1 ring-blue-500/50')
+                                        : (advancedViewEnabled ? 'hover:bg-[#f3f4f6]' : 'hover:bg-white/5')
+                                    }`}
                                 onClick={() => selectStamp(o.subtype)}
                             >
                                 <StampIcon subtype={o.subtype} size={18} />

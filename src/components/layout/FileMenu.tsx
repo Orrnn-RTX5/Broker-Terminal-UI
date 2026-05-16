@@ -425,7 +425,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
     return (
         <>
-            <div className="min-w-[240px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-xl py-1">
+            <div className="min-w-[240px] bg-[#18181b] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-xl py-1">
                 {/* New Chart - Click to open pairs panel directly */}
                 <div className="relative px-1">
                     <button

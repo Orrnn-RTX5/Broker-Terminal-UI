@@ -21,6 +21,7 @@ import {
 } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { useToolbarState } from '../hooks/useToolbarState';
+import { useCrosshair } from '../hooks/useCrosshair';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { drawingManager } from '../services/drawingManager';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
@@ -143,6 +144,19 @@ export const TradingChart = React.memo(function TradingChart({
   // Tracks current active drawing tool — used inside event-handler closures
   const activeToolRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+
+  // Custom crosshair
+  const [crosshairEnabled, setCrosshairEnabled] = useState(false);
+  const crosshairEnabledRef = useRef(false);
+  crosshairEnabledRef.current = crosshairEnabled;
+  const { vertLineRef, horizLineRef, centerRef, timeLabelRef, priceLabelRef } = useCrosshair({
+    chartRef,
+    seriesRef,
+    containerRef,
+    enabled: crosshairEnabled,
+    digits: getSymbolDigits(symbol),
+    timeframe,
+  });
 
   const [legend, setLegend] = useState({ o: 0, h: 0, l: 0, c: 0, v: 0 });
   const [isLoading, setIsLoading] = useState(true);
@@ -1471,7 +1485,7 @@ export const TradingChart = React.memo(function TradingChart({
           if (isDrawingFreehand) {
             drawingManager.addPoint(param.time as number, price);
           } else {
-            // For vline: compute pixelXOffset � same pattern as hline price offset
+            // For vline: compute pixelXOffset � same pattern as hline price offset
             const activeD2 = drawingManager.getActiveDrawing();
             if (activeD2 && activeD2.type === 'vline') {
               const rawX = (param.sourceEvent && containerRef.current)
@@ -1488,7 +1502,7 @@ export const TradingChart = React.memo(function TradingChart({
           }
         }
       }
-      // Note: param.time=null on mouse leave � updatePreviewPoint no-ops gracefully
+      // Note: param.time=null on mouse leave � updatePreviewPoint no-ops gracefully
     };
     chart.subscribeCrosshairMove(crosshairHandler);
 
@@ -2239,10 +2253,10 @@ export const TradingChart = React.memo(function TradingChart({
             handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true },
             handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: { time: false, price: true } },
             // Hide the crosshair lines — arrow mode shows no crosshair (MT5 style)
-            crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
+            ...(!crosshairEnabledRef.current && { crosshair: { vertLine: { visible: false }, horzLine: { visible: false } } }),
           });
         }
-        if (containerRef.current) {
+        if (containerRef.current && !crosshairEnabledRef.current) {
           containerRef.current.style.cursor = 'default';
           containerRef.current.querySelectorAll('canvas').forEach((c) => {
             (c as HTMLCanvasElement).style.cursor = 'default';
@@ -2258,10 +2272,10 @@ export const TradingChart = React.memo(function TradingChart({
             handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: false },
             handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: false },
             // Show crosshair so user can precisely place drawing points
-            crosshair: { vertLine: { visible: true }, horzLine: { visible: true } },
+            ...(!crosshairEnabledRef.current && { crosshair: { vertLine: { visible: true }, horzLine: { visible: true } } }),
           });
         }
-        if (containerRef.current) {
+        if (containerRef.current && !crosshairEnabledRef.current) {
           containerRef.current.style.cursor = 'cell';
           const wrapper = containerRef.current.parentElement;
           if (wrapper) wrapper.setAttribute('data-cursor', 'draw');
@@ -2316,18 +2330,11 @@ export const TradingChart = React.memo(function TradingChart({
   // Handle TOGGLE_CROSSHAIR command — toggles the crosshair button in the toolbar
   // When ON: show crosshair lines + set Magnet mode. When OFF: hide lines (arrow mode).
   useEffect(() => {
-    let crosshairOn = false; // local toggle state
     const unsubCrosshair = commandBus.subscribe('TOGGLE_CROSSHAIR', () => {
-      if (!chartRef.current) return;
-      crosshairOn = !crosshairOn;
-      chartRef.current.applyOptions({
-        crosshair: {
-          mode: crosshairOn ? CrosshairMode.Magnet : CrosshairMode.Normal,
-          vertLine: { visible: crosshairOn },
-          horzLine: { visible: crosshairOn },
-        },
-      });
-      console.log(`[Chart] Crosshair lines: ${crosshairOn ? 'ON (Magnet)' : 'OFF'}`);
+      const next = !crosshairEnabledRef.current;
+      crosshairEnabledRef.current = next;
+      setCrosshairEnabled(next);
+      console.log(`[Chart] Custom crosshair: ${next ? 'ON' : 'OFF'}`);
     });
 
     return () => {
@@ -3849,7 +3856,54 @@ export const TradingChart = React.memo(function TradingChart({
       {/* Drawing Overlay — always pointer-events:none so chart canvas receives all mouse events */}
       <div ref={overlayRef} className="chart-drawing-overlay absolute inset-0" style={{ pointerEvents: 'none', zIndex: 10 }} />
 
-      {/* Crosshair line/badge removed — only live price badge is shown */}
+      {/* ── Custom crosshair — 5 GPU-composited divs, all pointer-events:none ── */}
+      {/* Vertical line: 1px wide, full height, snapped to nearest candle X */}
+      <div ref={vertLineRef} style={{
+        position: 'absolute', left: 0, top: 0,
+        width: 1, height: '100%',
+        background: 'rgba(148,163,184,0.75)',
+        pointerEvents: 'none', zIndex: 14, opacity: 0,
+        willChange: 'transform',
+      }} />
+      {/* Horizontal line: 1px tall, full width, exact cursor Y */}
+      <div ref={horizLineRef} style={{
+        position: 'absolute', left: 0, top: 0,
+        width: '100%', height: 1,
+        background: 'rgba(148,163,184,0.75)',
+        pointerEvents: 'none', zIndex: 14, opacity: 0,
+        willChange: 'transform',
+      }} />
+      {/* Centre "+" marker: 12×12, two thin crossed lines */}
+      <div ref={centerRef} style={{
+        position: 'absolute', left: 0, top: 0,
+        width: 12, height: 12,
+        pointerEvents: 'none', zIndex: 15, opacity: 0,
+        willChange: 'transform',
+      }}>
+        <div style={{ position: 'absolute', left: 0, top: 5, width: 12, height: 1, background: 'rgba(148,163,184,0.95)' }} />
+        <div style={{ position: 'absolute', left: 5, top: 0, width: 1, height: 12, background: 'rgba(148,163,184,0.95)' }} />
+      </div>
+      {/* Time label: bottom of chart at snappedX */}
+      <div ref={timeLabelRef} style={{
+        position: 'absolute', left: 0, top: 0,
+        background: '#334155', color: '#e2e8f0',
+        fontSize: 10, fontFamily: "Consolas,'Courier New',monospace",
+        padding: '1px 5px', borderRadius: 2,
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none', zIndex: 15, opacity: 0,
+        willChange: 'transform',
+      }} />
+      {/* Price label: right edge at cursor Y */}
+      <div ref={priceLabelRef} style={{
+        position: 'absolute', left: 0, top: 0,
+        width: 54, textAlign: 'center',
+        background: '#334155', color: '#e2e8f0',
+        fontSize: 10, fontFamily: "Consolas,'Courier New',monospace",
+        padding: '1px 4px', borderRadius: 2,
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none', zIndex: 15, opacity: 0,
+        willChange: 'transform',
+      }} />
 
       {/* ── Live current-price line + badge (MT5 last-price indicator) ── */}
       <div

@@ -5,6 +5,9 @@ import { FileMenu } from './FileMenu';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { SymbolsDialog } from '../SymbolsDialog';
+import { commandBus } from '../../services/commandBus';
+import { useChartSettingsStore } from '../../store/useChartSettingsStore';
+import { drawingManager } from '../../services/drawingManager';
 
 // Local interface definition to avoid export issues
 interface MenuItem {
@@ -201,14 +204,14 @@ export const MenuBar = () => {
             { label: t('menu.view.chartsBar'), icon: <Icon name="layers" size="sm" /> },
             { divider: true, label: '' },
             { label: t('menu.view.symbols'), shortcut: 'Alt+U', action: () => { setIsSymbolsOpen(true); setActiveMenu(null); } },
-            { label: t('menu.view.depthOfMarket'), shortcut: 'Alt+B' },
+            { label: t('menu.view.depthOfMarket'), shortcut: 'Alt+B', action: () => { window.dispatchEvent(new CustomEvent('openDepthOfMarket')); setActiveMenu(null); } },
             { label: t('menu.view.marketWatch'), shortcut: 'Ctrl+M', icon: <Icon name="monitor" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'MarketWatch' })); setActiveMenu(null); } },
-            { label: t('menu.view.dataWindow'), shortcut: 'Ctrl+D' },
+            { label: t('menu.view.dataWindow'), shortcut: 'Ctrl+D', action: () => { window.dispatchEvent(new CustomEvent('openDataWindow')); setActiveMenu(null); } },
             { label: t('menu.view.navigator'), shortcut: 'Ctrl+N', action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
             { label: t('menu.view.toolbox'), shortcut: 'Ctrl+T', action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Terminal' })); setActiveMenu(null); } },
-            { label: t('menu.view.strategyTester'), shortcut: 'Ctrl+R' },
+            { label: t('menu.view.strategyTester'), shortcut: 'Ctrl+R', action: () => { window.dispatchEvent(new CustomEvent('toolbox-action', { detail: { action: 'strategy-tester' } })); setActiveMenu(null); } },
             { divider: true, label: '' },
-            { label: t('menu.view.fullScreen'), shortcut: 'F11' }
+            { label: t('menu.view.fullScreen'), shortcut: 'F11', action: () => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => { }); } else { document.exitFullscreen().catch(() => { }); } setActiveMenu(null); } }
         ],
         Insert: [
             { label: t('menu.insert.indicators'), children: [{ label: 'Trend' }, { label: 'Oscillators' }, { label: 'Volumes' }] },
@@ -217,8 +220,8 @@ export const MenuBar = () => {
             { label: t('menu.insert.scripts') }
         ],
         Charts: [
-            { label: t('menu.charts.depthOfMarket'), shortcut: 'Alt+B', icon: <Icon name="box" size="sm" /> },
-            { label: t('menu.charts.indicatorList'), shortcut: 'Ctrl+I', icon: <Icon name="line-chart" size="sm" /> },
+            { label: t('menu.charts.depthOfMarket'), shortcut: 'Alt+B', icon: <Icon name="box" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('openDepthOfMarket')); setActiveMenu(null); } },
+            { label: t('menu.charts.indicatorList'), shortcut: 'Ctrl+I', icon: <Icon name="line-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: {} }); setActiveMenu(null); } },
             {
                 label: t('menu.charts.objects'),
                 children: [
@@ -227,32 +230,32 @@ export const MenuBar = () => {
                     { divider: true, label: '' },
 
                     // Destructive Actions (Muted Red)
-                    { label: 'Delete Last', shortcut: 'Backspace', icon: <Icon name="x-close" size="sm" className="text-rose-400" /> },
-                    { label: 'Delete All Selected', shortcut: 'Del', icon: <Icon name="trash" size="sm" className="text-rose-400" /> },
+                    { label: 'Delete Last', shortcut: 'Backspace', icon: <Icon name="x-close" size="sm" className="text-rose-400" />, action: () => { commandBus.dispatch({ type: 'UNDO', payload: {} }); setActiveMenu(null); } },
+                    { label: 'Delete All Selected', shortcut: 'Del', icon: <Icon name="trash" size="sm" className="text-rose-400" />, action: () => { commandBus.dispatch({ type: 'DELETE_SELECTED_DRAWING', payload: {} }); setActiveMenu(null); } },
                     { label: 'Delete All Arrows', icon: <Icon name="minus" size="sm" className="text-rose-400" /> },
-                    { label: 'Delete All', icon: <Icon name="trash" size="sm" className="text-rose-500" /> },
+                    { label: 'Delete All', icon: <Icon name="trash" size="sm" className="text-rose-500" />, action: () => { drawingManager.clearAllDrawings(); setActiveMenu(null); } },
                     { divider: true, label: '' },
 
                     // Selection / Undo
                     { label: 'Unselect All', icon: <Icon name="cursor" size="sm" /> },
-                    { label: 'Undo Delete', shortcut: 'Ctrl+Z', icon: <Icon name="refresh" size="sm" /> }
+                    { label: 'Undo Delete', shortcut: 'Ctrl+Z', icon: <Icon name="refresh" size="sm" />, action: () => { commandBus.dispatch({ type: 'UNDO', payload: {} }); setActiveMenu(null); } }
                 ]
             },
             { divider: true, label: '' },
-            { label: t('menu.charts.barChart'), shortcut: 'Alt+1', icon: <Icon name="bar-chart" size="sm" /> },
-            { label: t('menu.charts.candlesticks'), shortcut: 'Alt+2', icon: <Icon name="candlestick" size="sm" /> },
-            { label: t('menu.charts.lineChart'), shortcut: 'Alt+3', icon: <Icon name="line-chart" size="sm" /> },
+            { label: t('menu.charts.barChart'), shortcut: 'Alt+1', icon: <Icon name="bar-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar' } }); setActiveMenu(null); } },
+            { label: t('menu.charts.candlesticks'), shortcut: 'Alt+2', icon: <Icon name="candlestick" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick' } }); setActiveMenu(null); } },
+            { label: t('menu.charts.lineChart'), shortcut: 'Alt+3', icon: <Icon name="line-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'area' } }); setActiveMenu(null); } },
             { divider: true, label: '' },
-            { label: t('menu.charts.grid'), shortcut: 'Ctrl+G', icon: <Icon name="grid-3x3" size="sm" /> },
-            { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" /> },
-            { label: t('menu.charts.chartShift'), icon: <Icon name="chart-shift" size="sm" /> },
-            { label: t('menu.charts.volumes'), shortcut: 'Ctrl+L', icon: <Icon name="bar-chart-3" size="sm" /> },
+            { label: t('menu.charts.grid'), shortcut: 'Ctrl+G', icon: <Icon name="grid-3x3" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('showGrid', !s.globalProperties.showGrid); setActiveMenu(null); } },
+            { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('chartAutoScroll', !s.globalProperties.chartAutoScroll); setActiveMenu(null); } },
+            { label: t('menu.charts.chartShift'), icon: <Icon name="chart-shift" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); const next = !s.globalProperties.chartShift; s.updateGlobalProperty('chartShift', next); window.dispatchEvent(new CustomEvent('rtx:chartShift', { detail: { enabled: next } })); setActiveMenu(null); } },
+            { label: t('menu.charts.volumes'), shortcut: 'Ctrl+L', icon: <Icon name="bar-chart-3" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('showTickVolumes', !s.globalProperties.showTickVolumes); setActiveMenu(null); } },
             { label: t('menu.charts.tickVolumes') },
             { divider: true, label: '' },
-            { label: t('menu.charts.zoomIn'), shortcut: '+' },
-            { label: t('menu.charts.zoomOut'), shortcut: '-' },
+            { label: t('menu.charts.zoomIn'), shortcut: '+', action: () => { commandBus.dispatch({ type: 'ZOOM_IN', payload: {} }); setActiveMenu(null); } },
+            { label: t('menu.charts.zoomOut'), shortcut: '-', action: () => { commandBus.dispatch({ type: 'ZOOM_OUT', payload: {} }); setActiveMenu(null); } },
             { divider: true, label: '' },
-            { label: t('menu.charts.properties'), shortcut: 'F8', icon: <Icon name="settings" size="sm" /> }
+            { label: t('menu.charts.properties'), shortcut: 'F8', icon: <Icon name="settings" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('openChartProperties')); setActiveMenu(null); } }
         ],
         Tools: [
             // Primary Trading
@@ -427,7 +430,7 @@ export const MenuBar = () => {
                                         hasUnsavedChanges={false}
                                     />
                                 ) : (
-                                    <div className="min-w-[240px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1">
+                                    <div className="min-w-[240px] bg-[#18181b] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1">
                                         {menuItems[key].map((item, index) => (
                                             <MenuItem
                                                 key={index}
@@ -497,7 +500,7 @@ const MenuItem = ({ item, onClose }: { item: MenuItem; onClose?: () => void }) =
 
             {/* Submenu Logic (Hover-based strict) */}
             {item.children && (
-                <div className={`absolute left-full top-0 ml-[-2px] mt-0 hidden min-w-[180px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1 z-[101]
+                <div className={`absolute left-full top-0 ml-[-2px] mt-0 hidden min-w-[180px] bg-[#18181b] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1 z-[101]
                     ${item.scrollableChildren ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}
                  `}>
                     {item.children.map((subItem, idx) => (
