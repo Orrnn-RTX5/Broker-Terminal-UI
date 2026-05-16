@@ -54,13 +54,53 @@ export function BottomDock({
     const history = useAppStore(s => s.trades);
     useTradeFacingData(undefined, 10000);
 
-    // Throttle account and positions updates to 500ms to prevent React layout thrashing/flickering
+    // Value-level caches — prevent setState when broker sends new objects with same field values
+    const cachedAccountSig = useRef<string>('');
+    const cachedPositionsSig = useRef<string>('');
+
+    const accountSig = (a: any) => !a ? '' : `${a.balance}|${a.equity}|${a.margin}|${a.freeMargin}|${a.marginLevel}`;
+    const positionsSig = (ps: any[]) => ps.map(p => `${p.id}:${p.side}:${p.volume}:${p.sl}:${p.tp}`).join('|');
+
+    // Subscribe to store — throttle to 500ms so WebSocket bursts don't flicker the UI.
+    // Only calls setState when the displayed field values actually changed.
     useEffect(() => {
-        const interval = setInterval(() => {
-            setAccount(useAppStore.getState().account);
-            setPositions(useAppStore.getState().positions);
-        }, 500);
-        return () => clearInterval(interval);
+        let lastFired = 0;
+        let pending: ReturnType<typeof setTimeout> | null = null;
+
+        const flush = () => {
+            const s = useAppStore.getState();
+            const aSig = accountSig(s.account);
+            const pSig = positionsSig(s.positions ?? []);
+            if (aSig !== cachedAccountSig.current) {
+                cachedAccountSig.current = aSig;
+                setAccount(s.account);
+            }
+            if (pSig !== cachedPositionsSig.current) {
+                cachedPositionsSig.current = pSig;
+                setPositions(s.positions);
+            }
+        };
+
+        const unsub = useAppStore.subscribe((state, prev) => {
+            if (state.account === prev.account && state.positions === prev.positions) return;
+            const now = Date.now();
+            const remaining = 500 - (now - lastFired);
+            if (remaining <= 0) {
+                lastFired = now;
+                flush();
+            } else if (!pending) {
+                pending = setTimeout(() => {
+                    lastFired = Date.now();
+                    pending = null;
+                    flush();
+                }, remaining);
+            }
+        });
+        return () => {
+            unsub();
+            if (pending) clearTimeout(pending);
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const [activeTab, setActiveTab] = useState<TabType>(() => {
@@ -355,14 +395,46 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
     // Local SL/TP overrides: track modified values since the Gateway API doesn't return them
     const [slTpOverrides, setSlTpOverrides] = useState<Record<number, { sl: number; tp: number }>>({});
 
-    // Use a throttled version of ticks to prevent violent UI flickering
-    const [throttledTicks, setThrottledTicks] = useState<any>({});
+    // Subscribe to tick changes — throttle to 500ms so price rows don't repaint on every quote.
+    // Uses functional update to keep the same reference when bid/ask values haven't changed,
+    // preventing useMemo from recomputing livePositions unnecessarily.
+    const [throttledTicks, setThrottledTicks] = useState<any>(() => useAppStore.getState().ticks);
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            setThrottledTicks(useAppStore.getState().ticks);
-        }, 500); // 500ms throttle for stable rendering
-        return () => clearInterval(interval);
+        let lastFired = 0;
+        let pending: ReturnType<typeof setTimeout> | null = null;
+
+        const flushTicks = () => {
+            setThrottledTicks((prev: any) => {
+                const next = useAppStore.getState().ticks;
+                const symbols = Object.keys(next);
+                const changed = symbols.some(sym => {
+                    const n = next[sym]; const p = prev[sym];
+                    return !p || n.bid !== p.bid || n.ask !== p.ask;
+                });
+                return changed ? next : prev; // same ref = useMemo won't recompute
+            });
+        };
+
+        const unsub = useAppStore.subscribe((state, prev) => {
+            if (state.ticks === prev.ticks) return;
+            const now = Date.now();
+            const remaining = 500 - (now - lastFired);
+            if (remaining <= 0) {
+                lastFired = now;
+                flushTicks();
+            } else if (!pending) {
+                pending = setTimeout(() => {
+                    lastFired = Date.now();
+                    pending = null;
+                    flushTicks();
+                }, remaining);
+            }
+        });
+        return () => {
+            unsub();
+            if (pending) clearTimeout(pending);
+        };
     }, []);
 
     useEffect(() => {

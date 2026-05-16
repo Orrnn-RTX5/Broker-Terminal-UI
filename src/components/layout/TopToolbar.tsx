@@ -926,7 +926,7 @@ const STAMP_OPTIONS = [
 ];
 
 const StampIcon = ({ subtype, size = 18 }: { subtype: string; size?: number }) => {
-    const stroke = '#2563eb'; // blue-600
+    const stroke = '#2563eb';
     switch (subtype) {
         case 'thumbsUp':
             return (
