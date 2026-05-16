@@ -271,7 +271,7 @@ const HeaderBar = ({ symbol, timeframe, server }: { symbol: string, timeframe: s
                     onClick={handleClose}
                     title="Close"
                 >
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-zinc-400 group-hover:text-white"><path d="M2 2l8 8M10 2l-8 8"/></svg>
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-zinc-400 group-hover:text-white"><path d="M2 2l8 8M10 2l-8 8" /></svg>
                 </button>
             </div>
 
@@ -530,15 +530,15 @@ const MainToolbar = ({
 
             {/* Group 6: Chart Shift */}
             <MT5Group>
-                <MT5Btn 
-                    icon={<Icon name="chart-shift" state={toolbarState.chartShiftEnabled ? 'active' : 'default'} />} 
-                    title="Chart Shift" 
-                    active={toolbarState.chartShiftEnabled} 
+                <MT5Btn
+                    icon={<Icon name="chart-shift" state={toolbarState.chartShiftEnabled ? 'active' : 'default'} />}
+                    title="Chart Shift"
+                    active={toolbarState.chartShiftEnabled}
                     onClick={() => {
                         dispatchToolbar({ type: 'TOGGLE_CHART_SHIFT' });
                         // Also fire a direct window event for TradingChart
                         window.dispatchEvent(new CustomEvent('rtx:chartShift', { detail: { enabled: !toolbarState.chartShiftEnabled } }));
-                    }} 
+                    }}
                 />
             </MT5Group>
 
@@ -546,7 +546,7 @@ const MainToolbar = ({
 
             {/* Group 7: Indicators */}
             <MT5Group>
-                <MT5Btn icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="2" width="13" height="12" rx="1"/><polyline points="3 11 5 7.5 7.5 9.5 10 5.5 13 7" strokeWidth="1.3"/><circle cx="12.5" cy="3.5" r="1" fill="#fbbf24" stroke="none"/></svg>} title="Indicators List" onClick={() => dispatchCommand({ type: 'OPEN_INDICATOR_LIST', payload: {} })} />
+                <MT5Btn icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="2" width="13" height="12" rx="1" /><polyline points="3 11 5 7.5 7.5 9.5 10 5.5 13 7" strokeWidth="1.3" /><circle cx="12.5" cy="3.5" r="1" fill="#fbbf24" stroke="none" /></svg>} title="Indicators List" onClick={() => dispatchCommand({ type: 'OPEN_INDICATOR_LIST', payload: {} })} />
             </MT5Group>
 
             <MT5Divider />
@@ -611,7 +611,7 @@ const MainToolbar = ({
                             className={`ml-2 px-2.5 py-1 text-[11px] font-semibold rounded shadow-sm transition-colors border ${advancedOptions.focusChart
                                 ? 'bg-[#7E57C2] text-white border-[#7E57C2]'
                                 : 'bg-white text-[#101828] border-[#d0d5dd] hover:bg-[#f9fafb]'
-                            }`}
+                                }`}
                             onClick={() => updateAdvancedOptions({ focusChart: !advancedOptions.focusChart })}
                             title="Toggle Focus Chart"
                         >
@@ -630,7 +630,7 @@ const MainToolbar = ({
                                 <option value="compact">Compact</option>
                             </select>
                             <div className="pointer-events-none px-1 text-[#667085]">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                             </div>
                         </div>
 
@@ -640,11 +640,10 @@ const MainToolbar = ({
                             <button
                                 onClick={() => handleToolSelect('cursor')}
                                 title="Cursor (Esc)"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${
-                                    (toolbarState.activeTool === null || toolbarState.activeTool === 'cursor')
+                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${(toolbarState.activeTool === null || toolbarState.activeTool === 'cursor')
                                         ? 'bg-[#7E57C2] text-white'
                                         : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                }`}
+                                    }`}
                             >
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M3 2L3 13L6.5 10L8.5 14.5L10 13.8L8 9.3L12 9.3Z" fill="currentColor" stroke="currentColor" />
@@ -657,16 +656,15 @@ const MainToolbar = ({
                             <button
                                 onClick={() => handleToolSelect('trendline')}
                                 title="Trend Line"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${
-                                    toolbarState.activeTool === 'trendline'
+                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'trendline'
                                         ? 'bg-[#7E57C2] text-white'
                                         : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                }`}
+                                    }`}
                             >
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                    <line x1="3" y1="13" x2="13" y2="3"/>
-                                    <circle cx="3" cy="13" r="1.5" fill="currentColor"/>
-                                    <circle cx="13" cy="3" r="1.5" fill="currentColor"/>
+                                    <line x1="3" y1="13" x2="13" y2="3" />
+                                    <circle cx="3" cy="13" r="1.5" fill="currentColor" />
+                                    <circle cx="13" cy="3" r="1.5" fill="currentColor" />
                                 </svg>
                             </button>
 
@@ -674,16 +672,15 @@ const MainToolbar = ({
                             <button
                                 onClick={() => handleToolSelect('hline')}
                                 title="Horizontal Line"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${
-                                    toolbarState.activeTool === 'hline'
+                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'hline'
                                         ? 'bg-[#7E57C2] text-white'
                                         : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                }`}
+                                    }`}
                             >
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                    <line x1="2" y1="8" x2="14" y2="8"/>
-                                    <circle cx="4" cy="8" r="1.5" fill="currentColor"/>
-                                    <circle cx="12" cy="8" r="1.5" fill="currentColor"/>
+                                    <line x1="2" y1="8" x2="14" y2="8" />
+                                    <circle cx="4" cy="8" r="1.5" fill="currentColor" />
+                                    <circle cx="12" cy="8" r="1.5" fill="currentColor" />
                                 </svg>
                             </button>
 
@@ -691,16 +688,15 @@ const MainToolbar = ({
                             <button
                                 onClick={() => handleToolSelect('vline')}
                                 title="Vertical Line"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${
-                                    toolbarState.activeTool === 'vline'
+                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'vline'
                                         ? 'bg-[#7E57C2] text-white'
                                         : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                }`}
+                                    }`}
                             >
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                    <line x1="8" y1="2" x2="8" y2="14"/>
-                                    <circle cx="8" cy="4" r="1.5" fill="currentColor"/>
-                                    <circle cx="8" cy="12" r="1.5" fill="currentColor"/>
+                                    <line x1="8" y1="2" x2="8" y2="14" />
+                                    <circle cx="8" cy="4" r="1.5" fill="currentColor" />
+                                    <circle cx="8" cy="12" r="1.5" fill="currentColor" />
                                 </svg>
                             </button>
 
@@ -708,17 +704,16 @@ const MainToolbar = ({
                             <button
                                 onClick={() => handleToolSelect('channel')}
                                 title="Equidistant Channel"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${
-                                    toolbarState.activeTool === 'channel'
+                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'channel'
                                         ? 'bg-[#7E57C2] text-white'
                                         : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                }`}
+                                    }`}
                             >
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-                                    <line x1="2" y1="11" x2="11" y2="3"/>
-                                    <line x1="5" y1="14" x2="14" y2="6"/>
-                                    <circle cx="2" cy="11" r="1.3" fill="currentColor"/>
-                                    <circle cx="11" cy="3" r="1.3" fill="currentColor"/>
+                                    <line x1="2" y1="11" x2="11" y2="3" />
+                                    <line x1="5" y1="14" x2="14" y2="6" />
+                                    <circle cx="2" cy="11" r="1.3" fill="currentColor" />
+                                    <circle cx="11" cy="3" r="1.3" fill="currentColor" />
                                 </svg>
                             </button>
 
@@ -726,22 +721,30 @@ const MainToolbar = ({
                             <button
                                 onClick={() => handleToolSelect('fibonacci')}
                                 title="Fibonacci Retracement"
-                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${
-                                    toolbarState.activeTool === 'fibonacci'
+                                className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${toolbarState.activeTool === 'fibonacci'
                                         ? 'bg-[#7E57C2] text-white'
                                         : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                                }`}
+                                    }`}
                             >
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-                                    <line x1="1" y1="3" x2="15" y2="3"/>
-                                    <line x1="1" y1="6.5" x2="15" y2="6.5"/>
-                                    <line x1="1" y1="10" x2="15" y2="10"/>
-                                    <line x1="1" y1="13" x2="15" y2="13"/>
-                                    <line x1="3" y1="13" x2="13" y2="3"/>
-                                    <circle cx="3" cy="13" r="1.3" fill="currentColor"/>
-                                    <circle cx="13" cy="3" r="1.3" fill="currentColor"/>
+                                    <line x1="1" y1="3" x2="15" y2="3" />
+                                    <line x1="1" y1="6.5" x2="15" y2="6.5" />
+                                    <line x1="1" y1="10" x2="15" y2="10" />
+                                    <line x1="1" y1="13" x2="15" y2="13" />
+                                    <line x1="3" y1="13" x2="13" y2="3" />
+                                    <circle cx="3" cy="13" r="1.3" fill="currentColor" />
+                                    <circle cx="13" cy="3" r="1.3" fill="currentColor" />
                                 </svg>
                             </button>
+                        </div>
+
+                        {/* Stamps dropdown — beside drawing tools */}
+                        <div className="ml-1 flex items-center border border-[#d0d5dd] rounded bg-white shadow-sm overflow-visible">
+                            <StampsPopover
+                                dispatchCommand={dispatchCommand}
+                                dispatchToolbar={dispatchToolbar}
+                                activeTool={toolbarState.activeTool}
+                            />
                         </div>
 
                         {/* Clear All Drawings button */}
@@ -754,10 +757,10 @@ const MainToolbar = ({
                             className="ml-1 flex items-center justify-center w-[28px] h-[26px] rounded border border-[#fda29b] bg-white text-[#d92d20] hover:bg-[#fef3f2] hover:border-[#f97066] transition-colors shadow-sm"
                         >
                             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="2 4 4 4 14 4"/>
-                                <path d="M5 4V2h6v2"/>
-                                <path d="M6 7v5M10 7v5"/>
-                                <path d="M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9"/>
+                                <polyline points="2 4 4 4 14 4" />
+                                <path d="M5 4V2h6v2" />
+                                <path d="M6 7v5M10 7v5" />
+                                <path d="M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9" />
                             </svg>
                         </button>
                     </>
@@ -870,30 +873,97 @@ const MT5Group = ({ children }: { children: React.ReactNode }) => (
 
 // ─── Stamps Popover ──────────────────────────────────────────────────────────
 const STAMP_OPTIONS = [
-    { subtype: 'thumbsUp',       label: 'Thumbs Up',         emoji: '👍' },
-    { subtype: 'thumbsDown',     label: 'Thumbs Down',       emoji: '👎' },
-    { subtype: 'arrowUp',        label: 'Arrow Up',          emoji: '↑'  },
-    { subtype: 'arrowDown',      label: 'Arrow Down',        emoji: '↓'  },
-    { subtype: 'stopSign',       label: 'Stop Sign',         emoji: '🛑' },
-    { subtype: 'checkSign',      label: 'Check Sign',        emoji: '✅' },
-    { subtype: 'buy',            label: 'Buy (▲)',           emoji: '▲'  },
-    { subtype: 'sell',           label: 'Sell (▼)',          emoji: '▼'  },
-    { subtype: 'leftPriceLabel', label: 'Left Price Label',  emoji: '⬤' },
-    { subtype: 'rightPriceLabel',label: 'Right Price Label', emoji: '⬤' },
+    { subtype: 'thumbsUp',       label: 'Thumbs Up' },
+    { subtype: 'thumbsDown',     label: 'Thumbs Down' },
+    { subtype: 'arrowUp',        label: 'Arrow Up' },
+    { subtype: 'arrowDown',      label: 'Arrow Down' },
+    { subtype: 'stopSign',       label: 'Stop Sign' },
+    { subtype: 'checkSign',      label: 'Check Sign' },
+    { subtype: 'buy',            label: 'Buy' },
+    { subtype: 'sell',           label: 'Sell' },
+    { subtype: 'leftPriceLabel', label: 'Left Price Label' },
+    { subtype: 'rightPriceLabel',label: 'Right Price Label' },
 ];
+
+const StampIcon = ({ subtype, size = 18 }: { subtype: string; size?: number }) => {
+    switch (subtype) {
+        case 'thumbsUp':
+            return <span style={{ fontSize: size - 2, lineHeight: 1 }}>👍</span>;
+        case 'thumbsDown':
+            return <span style={{ fontSize: size - 2, lineHeight: 1 }}>👎</span>;
+        case 'arrowUp':
+            return (
+                <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="#22c55e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 13V3M3 8l5-5 5 5" />
+                </svg>
+            );
+        case 'arrowDown':
+            return (
+                <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M8 3v10M3 8l5 5 5-5" />
+                </svg>
+            );
+        case 'stopSign':
+            return <span style={{ fontSize: size - 2, lineHeight: 1 }}>🛑</span>;
+        case 'checkSign':
+            return (
+                <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="8" cy="8" r="6" />
+                    <path d="M5.5 8.5l2 2 3.5-4" />
+                </svg>
+            );
+        case 'buy':
+            return (
+                <svg width={size} height={size} viewBox="0 0 16 16">
+                    <polygon points="8,2 15,14 1,14" fill="#22c55e" />
+                </svg>
+            );
+        case 'sell':
+            return (
+                <svg width={size} height={size} viewBox="0 0 16 16">
+                    <polygon points="8,14 15,2 1,2" fill="#ef4444" />
+                </svg>
+            );
+        case 'leftPriceLabel':
+            return (
+                <svg width={size} height={size} viewBox="0 0 18 14">
+                    <rect x="0" y="2" width="14" height="10" rx="2" fill="#2563eb" />
+                    <polygon points="14,7 18,4 18,10" fill="#2563eb" />
+                    <text x="7" y="10" fill="white" fontSize="6" fontFamily="monospace" textAnchor="middle">P</text>
+                </svg>
+            );
+        case 'rightPriceLabel':
+            return (
+                <svg width={size} height={size} viewBox="0 0 18 14">
+                    <rect x="4" y="2" width="14" height="10" rx="2" fill="#2563eb" />
+                    <polygon points="4,7 0,4 0,10" fill="#2563eb" />
+                    <text x="11" y="10" fill="white" fontSize="6" fontFamily="monospace" textAnchor="middle">P</text>
+                </svg>
+            );
+        default:
+            return <span style={{ fontSize: size - 2 }}>?</span>;
+    }
+};
 
 const StampsPopover: React.FC<{
     dispatchCommand: (cmd: any) => void;
     dispatchToolbar: (action: any) => void;
-}> = ({ dispatchCommand, dispatchToolbar }) => {
+    activeTool?: string;
+}> = ({ dispatchCommand, dispatchToolbar, activeTool }) => {
     const [open, setOpen] = useState(false);
     const [lastSubtype, setLastSubtype] = useState('thumbsUp');
     const ref = useRef<HTMLDivElement>(null);
+    const portalRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!open) return;
         const handler = (e: MouseEvent) => {
-            if (!ref.current?.contains(e.target as Node)) setOpen(false);
+            if (
+                !ref.current?.contains(e.target as Node) &&
+                !portalRef.current?.contains(e.target as Node)
+            ) {
+                setOpen(false);
+            }
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
@@ -906,43 +976,67 @@ const StampsPopover: React.FC<{
         dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'stamp', subtype } } as any);
     };
 
+    const isActive = activeTool === 'stamp';
     const opt = STAMP_OPTIONS.find(o => o.subtype === lastSubtype) || STAMP_OPTIONS[0];
 
     return (
-        <div ref={ref} className="relative flex items-center">
-            {/* Main button — re-selects last used subtype */}
+        <div ref={ref} className="relative flex items-center h-[26px]">
+            {/* Main button — icon only, re-uses last subtype */}
             <button
-                className="flex items-center gap-1 px-1.5 py-1 rounded text-xs text-zinc-300 hover:text-white hover:bg-zinc-700 transition-colors"
-                title={`Stamp: ${opt.label}`}
+                className={`flex items-center justify-center w-[28px] h-full rounded-l transition-colors ${
+                    isActive
+                        ? 'bg-[#7E57C2] text-white'
+                        : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
+                }`}
+                title={`Stamp: ${opt.label} — click on chart to place`}
                 onClick={() => selectStamp(lastSubtype)}
             >
-                <span className="text-base leading-none">{opt.emoji}</span>
-                <span className="hidden sm:inline text-[10px] font-medium">Stamp</span>
+                <StampIcon subtype={lastSubtype} size={17} />
             </button>
-            {/* Chevron — opens popover */}
+
+            {/* Chevron — opens picker */}
             <button
-                className="px-0.5 py-1 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
-                title="Choose stamp type"
+                className={`flex items-center justify-center px-1 h-full rounded-r border-l border-[#e5e7eb] transition-colors ${
+                    isActive || open
+                        ? 'bg-[#7E57C2] text-white border-[#7E57C2]'
+                        : 'text-[#667085] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
+                }`}
+                title="Choose stamp"
                 onClick={() => setOpen(o => !o)}
             >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                    <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                    <path d="M2 3.5l3 3 3-3" />
                 </svg>
             </button>
 
-            {open && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-[#131316] border border-zinc-800 rounded shadow-2xl z-[200] py-1 animate-in fade-in slide-in-from-top-1 duration-100">
-                    {STAMP_OPTIONS.map(o => (
-                        <button
-                            key={o.subtype}
-                            className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-zinc-800"
-                            onClick={() => selectStamp(o.subtype)}
-                        >
-                            <span className="text-base w-5 text-center">{o.emoji}</span>
-                            <span>{o.label}</span>
-                        </button>
-                    ))}
-                </div>
+            {open && ReactDOM.createPortal(
+                <div
+                    ref={portalRef}
+                    className="fixed bg-white border border-[#d0d5dd] rounded shadow-xl z-[9999] p-1.5"
+                    style={{
+                        top: (ref.current?.getBoundingClientRect().bottom ?? 0) + 4,
+                        left: ref.current?.getBoundingClientRect().left ?? 0,
+                    }}
+                >
+                    {/* 5-column icon grid */}
+                    <div className="grid grid-cols-5 gap-0.5">
+                        {STAMP_OPTIONS.map(o => (
+                            <button
+                                key={o.subtype}
+                                title={o.label}
+                                className={`flex items-center justify-center w-8 h-8 rounded transition-colors ${
+                                    o.subtype === lastSubtype
+                                        ? 'bg-[#F3E5F5] ring-1 ring-[#7E57C2]'
+                                        : 'hover:bg-[#f3f4f6]'
+                                }`}
+                                onClick={() => selectStamp(o.subtype)}
+                            >
+                                <StampIcon subtype={o.subtype} size={18} />
+                            </button>
+                        ))}
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     );
@@ -1043,7 +1137,7 @@ const MT5ToolWithDropdown = ({ icon, title, active, onMainClick, items }: MT5Too
                     }
                 `}
             >
-                <svg width="8" height="6" viewBox="0 0 8 6" fill="currentColor"><path d="M0 0 L8 0 L4 5 Z"/></svg>
+                <svg width="8" height="6" viewBox="0 0 8 6" fill="currentColor"><path d="M0 0 L8 0 L4 5 Z" /></svg>
             </button>
 
             {/* Dropdown submenu — rendered via portal to escape toolbar overflow clipping */}
@@ -1057,7 +1151,7 @@ const MT5ToolWithDropdown = ({ icon, title, active, onMainClick, items }: MT5Too
                             key={item.label}
                             onClick={() => { item.onClick(); setOpen(false); }}
                             className={`w-full flex items-center gap-3 px-3 py-[7px] text-[11.5px] transition-colors cursor-pointer
-                                ${ item.active
+                                ${item.active
                                     ? 'bg-blue-500/15 text-blue-300'
                                     : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
                                 }

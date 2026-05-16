@@ -29,7 +29,8 @@ export type DrawingType =
   | 'callout'
   | 'rectangle'
   | 'ellipse'
-  | 'shapes';
+  | 'shapes'
+  | 'stamp';
 
 export interface DrawingPoint {
   time: number;   // unix timestamp (seconds) — anchors bar after pan/zoom
@@ -65,6 +66,7 @@ const REQUIRED_POINTS: Record<DrawingType, number> = {
   vline: 1,
   text: 1,
   shapes: 1,
+  stamp: 1,
   trendline: 2,
   channel: 2,
   fibonacci: 2,
@@ -74,6 +76,57 @@ const REQUIRED_POINTS: Record<DrawingType, number> = {
   callout: 2,
   fib_extension: 3,
   freehand: 0, // special — continuous
+};
+
+interface StampIconDef {
+  kind?: 'icon' | 'label';
+  path?: string;
+  color: string;
+  size: number;
+  bg?: string;
+  side?: 'left' | 'right';
+  filled?: boolean;
+}
+
+const STAMP_ICONS: Record<string, StampIconDef> = {
+  thumbsUp: {
+    path: 'M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3',
+    color: '#22c55e', size: 24,
+  },
+  thumbsDown: {
+    path: 'M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17',
+    color: '#ef4444', size: 24,
+  },
+  arrowUp: {
+    path: 'M12 19V5M5 12l7-7 7 7',
+    color: '#22c55e', size: 24,
+  },
+  arrowDown: {
+    path: 'M12 5v14M19 12l-7 7-7-7',
+    color: '#ef4444', size: 24,
+  },
+  stopSign: {
+    path: 'M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z',
+    color: '#ef4444', size: 24,
+  },
+  checkSign: {
+    path: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3',
+    color: '#22c55e', size: 24,
+  },
+  buy: {
+    path: 'M12 3L23 21H1Z',
+    color: '#22c55e', size: 24, filled: true,
+  },
+  sell: {
+    path: 'M12 21L1 3H23Z',
+    color: '#ef4444', size: 24, filled: true,
+  },
+  leftPriceLabel: {
+    kind: 'label', color: '#2563eb', size: 24, bg: '#2563eb', side: 'left',
+  },
+  rightPriceLabel: {
+    kind: 'label', color: '#2563eb', size: 24, bg: '#2563eb', side: 'right',
+  },
 };
 
 // Fibonacci standard levels
@@ -215,9 +268,10 @@ export class DrawingManager {
   // ──────────────────────────────────────────────
   // Drawing Lifecycle
   // ──────────────────────────────────────────────
-  startDrawing(type: DrawingType, color = '#2196F3'): string {
+  startDrawing(type: DrawingType, color = '#2196F3', meta?: { subtype?: string }): string {
     const id = `d-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     this.activeDrawing = { id, type, points: [], color, lineWidth: 2 };
+    if (meta?.subtype) this.activeDrawing.subtype = meta.subtype;
     this.previewPoint = null;
     return id;
   }
@@ -485,7 +539,7 @@ export class DrawingManager {
     // Render cursor-following ghost BEFORE first click (vline, hline get a ghost from day 0)
     if (this.activeDrawing && this.activeDrawing.points.length === 0 && this.previewPoint) {
       const type = this.activeDrawing.type;
-      if (type === 'vline' || type === 'hline') {
+      if (type === 'vline' || type === 'hline' || type === 'stamp') {
         // Render a single ghost point as if it were placed
         const ghost: Drawing = {
           ...this.activeDrawing,
@@ -885,6 +939,116 @@ export class DrawingManager {
         const t = this.svgText(p2.x, p2.y + 4, text, color, 12);
         t.setAttribute('text-anchor', 'middle');
         g.appendChild(t);
+        break;
+      }
+
+      // ─── Stamp ───────────────────────────────────────────────────
+      case 'stamp': {
+        if (d.points.length < 1) break;
+        const p = this.px(d.points[0]);
+        if (!p) break;
+
+        const sub = d.subtype || 'thumbsUp';
+        const icon = STAMP_ICONS[sub];
+        if (!icon) break;
+
+        const size = icon.size;
+        const iconColor = d.color || icon.color;
+
+        if (icon.kind === 'label') {
+          const labelW = 72;
+          const labelH = 18;
+          const labelX = icon.side === 'left' ? 2 : W - labelW - 2;
+          const labelY = p.y - labelH / 2;
+
+          const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          bg.setAttribute('x', String(labelX));
+          bg.setAttribute('y', String(labelY));
+          bg.setAttribute('width', String(labelW));
+          bg.setAttribute('height', String(labelH));
+          bg.setAttribute('rx', '3');
+          bg.setAttribute('fill', icon.bg || iconColor);
+          bg.style.opacity = opacity;
+          if (!isPreview) {
+            bg.style.pointerEvents = 'all';
+            bg.style.cursor = 'pointer';
+            bg.addEventListener('pointerdown', e => this.beginDrag(e, d.id, 0));
+            bg.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
+          }
+          g.appendChild(bg);
+
+          const txt = this.svgText(labelX + labelW / 2, labelY + 12, d.points[0].price.toFixed(5), '#fff', 10);
+          txt.setAttribute('text-anchor', 'middle');
+          g.appendChild(txt);
+
+          if (d.selected && !isPreview) {
+            const sel = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            sel.setAttribute('x', String(labelX - 2));
+            sel.setAttribute('y', String(labelY - 2));
+            sel.setAttribute('width', String(labelW + 4));
+            sel.setAttribute('height', String(labelH + 4));
+            sel.setAttribute('rx', '4');
+            sel.setAttribute('fill', 'none');
+            sel.setAttribute('stroke', '#fff');
+            sel.setAttribute('stroke-width', '2');
+            g.appendChild(sel);
+          }
+        } else {
+          const scale = size / 24;
+          const gIcon = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          gIcon.setAttribute('transform', `translate(${p.x - size / 2}, ${p.y - size / 2})`);
+
+          const circ = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circ.setAttribute('cx', String(size / 2));
+          circ.setAttribute('cy', String(size / 2));
+          circ.setAttribute('r', String(size / 2 + 2));
+          circ.setAttribute('fill', 'rgba(0,0,0,0.35)');
+          gIcon.appendChild(circ);
+
+          if (icon.path) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', icon.path);
+            path.setAttribute('transform', `scale(${scale})`);
+            if (icon.filled) {
+              path.setAttribute('fill', iconColor);
+              path.setAttribute('stroke', 'none');
+            } else {
+              path.setAttribute('fill', 'none');
+              path.setAttribute('stroke', iconColor);
+              path.setAttribute('stroke-width', String(2 / scale));
+              path.setAttribute('stroke-linecap', 'round');
+              path.setAttribute('stroke-linejoin', 'round');
+            }
+            gIcon.appendChild(path);
+          }
+
+          if (d.selected && !isPreview) {
+            const sel = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            sel.setAttribute('cx', String(size / 2));
+            sel.setAttribute('cy', String(size / 2));
+            sel.setAttribute('r', String(size / 2 + 4));
+            sel.setAttribute('fill', 'none');
+            sel.setAttribute('stroke', '#fff');
+            sel.setAttribute('stroke-width', '2');
+            gIcon.appendChild(sel);
+          }
+
+          if (!isPreview) {
+            const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            hit.setAttribute('x', '0');
+            hit.setAttribute('y', '0');
+            hit.setAttribute('width', String(size));
+            hit.setAttribute('height', String(size));
+            hit.setAttribute('fill', 'transparent');
+            hit.style.pointerEvents = 'all';
+            hit.style.cursor = 'pointer';
+            hit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, 0));
+            hit.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
+            gIcon.appendChild(hit);
+          }
+
+          g.appendChild(gIcon);
+        }
         break;
       }
 
