@@ -1365,6 +1365,25 @@ export const TradingChart = React.memo(function TradingChart({
 
     let isDrawingFreehand = false;
 
+    /**
+     * coordinateToFractionalLogical -- pixel X to true fractional bar index.
+     * lightweight-charts' coordinateToLogical() always snaps to integers (bar centres).
+     * We fix this by measuring how far x falls between two adjacent bar pixel centres,
+     * then adding that fraction to the integer bar index.
+     * Example: cursor is 37pct of the way from bar 489 to bar 490 -- returns 489.37.
+     */
+    const coordinateToFractionalLogical = (x: number): number | null => {
+      const ts = chart.timeScale();
+      const intBar = ts.coordinateToLogical(x);
+      if (intBar === null) return null;
+      const c0 = ts.logicalToCoordinate(intBar);
+      const c1 = ts.logicalToCoordinate(intBar + 1);
+      if (c0 === null || c1 === null) return intBar;
+      const barWidth = c1 - c0;
+      if (Math.abs(barWidth) < 0.5) return intBar;
+      const fraction = (x - c0) / barWidth;
+      return intBar + fraction;
+    };
     const clickHandler = (param: any) => {
       if (!param.time || !param.point || !seriesRef.current) return;
       const activeDrawing = drawingManager.getActiveDrawing();
@@ -1392,7 +1411,18 @@ export const TradingChart = React.memo(function TradingChart({
             return;
           }
 
-          drawingManager.addPoint(param.time as number, price);
+          const rawX = (param.sourceEvent && containerRef.current)
+            ? (param.sourceEvent.clientX - containerRef.current.getBoundingClientRect().left)
+            : param.point.x;
+          // pixelXOffset = cursor pixel minus bar-centre pixel
+          // Mirrors how hline stores price offset — continuous, no integer snapping
+          const barCenterX = chart.timeScale().timeToCoordinate(param.time as any);
+          const pixelXOffset = barCenterX !== null ? rawX - barCenterX : 0;
+          console.log('[VLine][1-CLICK] rawX=', rawX,
+            '| barCenterX=', barCenterX,
+            '| pixelXOffset=', pixelXOffset,
+            '(decimal offset from bar centre)');
+          drawingManager.addPointWithLogical((param.time || Date.now() / 1000) as number, price, pixelXOffset);
         }
       }
     };
@@ -1408,6 +1438,7 @@ export const TradingChart = React.memo(function TradingChart({
     if (containerRef.current) {
       containerRef.current.addEventListener('pointerdown', handlePointerDown as EventListener);
     }
+
 
     const handlePointerUp = () => {
       if (isDrawingFreehand) {
@@ -1433,18 +1464,31 @@ export const TradingChart = React.memo(function TradingChart({
         });
       }
 
-      if (param.time && param.point && seriesRef.current) {
+      const activeD = drawingManager.getActiveDrawing();
+      if ((param.time || activeD) && param.point && seriesRef.current) {
         const price = seriesRef.current.coordinateToPrice(param.point.y);
         if (price !== null) {
           if (isDrawingFreehand) {
             drawingManager.addPoint(param.time as number, price);
           } else {
-            // Always update preview — even before first click (shows ghost line/dot)
-            drawingManager.updatePreviewPoint(param.time as number, price);
+            // For vline: compute pixelXOffset � same pattern as hline price offset
+            const activeD2 = drawingManager.getActiveDrawing();
+            if (activeD2 && activeD2.type === 'vline') {
+              const rawX = (param.sourceEvent && containerRef.current)
+                ? (param.sourceEvent.clientX - containerRef.current.getBoundingClientRect().left)
+                : param.point.x;
+              const barCenterX = param.time
+                ? chart.timeScale().timeToCoordinate(param.time as any)
+                : null;
+              const pixOff = barCenterX !== null ? rawX - barCenterX : 0;
+              drawingManager.updatePreviewPointWithLogical(param.time as number, price, pixOff);
+            } else {
+              drawingManager.updatePreviewPoint(param.time as number, price);
+            }
           }
         }
       }
-      // Note: param.time=null on mouse leave — updatePreviewPoint no-ops gracefully
+      // Note: param.time=null on mouse leave � updatePreviewPoint no-ops gracefully
     };
     chart.subscribeCrosshairMove(crosshairHandler);
 
@@ -2223,9 +2267,10 @@ export const TradingChart = React.memo(function TradingChart({
           if (wrapper) wrapper.setAttribute('data-cursor', 'draw');
         }
 
-        const validDrawingTypes = ['trendline', 'hline', 'vline', 'text', 'channel', 'fibonacci', 'shapes', 'rectangle', 'ellipse', 'fib_extension', 'measure', 'freehand', 'callout'];
+        const validDrawingTypes = ['trendline', 'hline', 'vline', 'text', 'channel', 'fibonacci', 'shapes', 'rectangle', 'ellipse', 'fib_extension', 'measure', 'freehand', 'callout', 'stamp'];
         if (validDrawingTypes.includes(tool)) {
-          drawingManager.startDrawing(tool as any, '#3b82f6');
+          const subtype = (payload as any).subtype as string | undefined;
+          drawingManager.startDrawing(tool as any, '#3b82f6', subtype ? { subtype } : undefined);
           console.log(`[Chart] Tool: ${tool} — drawing started, click on chart to place points`);
         } else {
           console.log(`[Chart] Tool: ${tool} — not a drawing tool`);

@@ -69,6 +69,7 @@ export function BottomDock({
         if (!saved || saved === 'Toolbox' || saved === 'Journal') return 'Trade';
         return saved as TabType;
     });
+    
     const [isResizing, setIsResizing] = useState(false);
 
     // Helpers

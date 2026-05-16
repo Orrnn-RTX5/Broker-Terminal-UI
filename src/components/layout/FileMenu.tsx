@@ -94,11 +94,11 @@ const YoForexPanel: React.FC<{
     })).filter(grp => grp.pairs.length > 0);
 
     return (
-        <div className="flex flex-col bg-[#131316] border border-zinc-700 rounded-md shadow-2xl overflow-hidden" style={{ width: 160, maxHeight: 420 }}>
+        <div className="flex flex-col bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-2xl overflow-hidden" style={{ width: 160, maxHeight: 420 }}>
             {/* Search */}
             <div className="px-2 pt-2 pb-1 flex-none">
-                <div className="flex items-center gap-1.5 bg-[#111] border border-zinc-700/60 rounded px-2 py-1">
-                    <svg className="w-3 h-3 text-zinc-500 flex-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="flex items-center gap-1.5 bg-[#111] [.rtx-advanced-view_&]:bg-gray-100 border border-zinc-700/60 [.rtx-advanced-view_&]:border-gray-200 rounded px-2 py-1">
+                    <svg className="w-3 h-3 text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 flex-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                     <input
@@ -106,7 +106,7 @@ const YoForexPanel: React.FC<{
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Search..."
-                        className="bg-transparent text-[11px] text-zinc-200 placeholder-zinc-600 outline-none w-full"
+                        className="bg-transparent text-[11px] text-zinc-200 [.rtx-advanced-view_&]:text-gray-900 placeholder-zinc-600 [.rtx-advanced-view_&]:placeholder-gray-400 outline-none w-full"
                         onClick={e => e.stopPropagation()}
                     />
                 </div>
@@ -115,7 +115,7 @@ const YoForexPanel: React.FC<{
             <div className="overflow-y-auto flex-1 pb-1 px-1" style={{ scrollbarWidth: 'none' }}>
                 {filtered.map(grp => (
                     <div key={grp.group}>
-                        <div className="px-2 pt-2 pb-0.5 text-[9px] font-bold tracking-widest text-zinc-600 uppercase">{grp.group}</div>
+                        <div className="px-2 pt-2 pb-0.5 text-[9px] font-bold tracking-widest text-zinc-600 [.rtx-advanced-view_&]:text-gray-500 uppercase">{grp.group}</div>
                         {grp.pairs.map(p => {
                             const isActive = activePair === p.symbol;
                             return (
@@ -124,11 +124,11 @@ const YoForexPanel: React.FC<{
                                     onClick={() => onSelect(p.symbol)}
                                     className={`w-full flex items-center gap-1.5 px-2 py-1 text-[12px] rounded text-left cursor-default transition-colors duration-75 ${
                                         isActive
-                                            ? 'text-emerald-400 bg-emerald-500/10'
-                                            : 'text-zinc-300 hover:bg-[#2a2e39] hover:text-white'
+                                            ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600 bg-emerald-500/10 [.rtx-advanced-view_&]:bg-emerald-50'
+                                            : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
                                     }`}
                                 >
-                                    <span className={`text-[10px] w-3 flex-none ${isActive ? 'text-emerald-400' : 'text-transparent'}`}>✓</span>
+                                    <span className={`text-[10px] w-3 flex-none ${isActive ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600' : 'text-transparent'}`}>✓</span>
                                     <span className="font-mono">{p.symbol}</span>
                                 </button>
                             );
@@ -136,7 +136,7 @@ const YoForexPanel: React.FC<{
                     </div>
                 ))}
                 {filtered.length === 0 && (
-                    <div className="px-3 py-3 text-center text-[11px] text-zinc-600">No pairs found</div>
+                    <div className="px-3 py-3 text-center text-[11px] text-zinc-600 [.rtx-advanced-view_&]:text-gray-500">No pairs found</div>
                 )}
             </div>
         </div>
@@ -160,15 +160,15 @@ const NewChartMenuItemRenderer: React.FC<{ item: NewChartMenuItem; depth: number
             <button
                 onClick={handleClick}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 text-[12px] rounded-sm text-left cursor-default group ${
-                    isActive ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-300 hover:bg-[#2a2e39] hover:text-white'
+                    isActive ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600 bg-emerald-500/10 [.rtx-advanced-view_&]:bg-emerald-50' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
                 }`}
             >
                 <span className="w-3 text-[10px] flex-none">{isActive ? '✓' : ''}</span>
                 <span className="flex-1 font-mono">{item.label}</span>
-                {hasChildren && <Icon name="chevron-right" size="xs" className="text-zinc-500" />}
+                {hasChildren && <Icon name="chevron-right" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-gray-700" />}
             </button>
             {hasChildren && (
-                <div className="submenu absolute left-full top-0 -ml-1 hidden min-w-[180px] bg-[#131316] border border-zinc-700 rounded-md shadow-xl py-1 z-[102] max-h-[400px] overflow-y-auto no-scrollbar">
+                <div className="submenu absolute left-full top-0 -ml-1 hidden min-w-[180px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-xl py-1 z-[102] max-h-[400px] overflow-y-auto no-scrollbar">
                     {item.children!.map((child, idx) => (
                         <NewChartMenuItemRenderer key={idx} item={child} depth={depth + 1} activePair={activePair} onClose={onClose} />
                     ))}
@@ -425,13 +425,13 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
     return (
         <>
-            <div className="min-w-[240px] bg-[#131316] border border-zinc-700 rounded-md shadow-xl py-1">
+            <div className="min-w-[240px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-xl py-1">
                 {/* New Chart - Click to open pairs panel directly */}
                 <div className="relative px-1">
                     <button
                         onClick={() => setNewChartOpen(o => !o)}
                         className={`w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left cursor-default group ${
-                            newChartOpen ? 'bg-[#2a2e39] text-white' : 'text-zinc-300 hover:bg-[#2a2e39] hover:text-white'
+                            newChartOpen ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827]' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
                         }`}
                         title="Open a new chart for a symbol"
                     >
@@ -439,14 +439,14 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                             <Icon name="plus-circle" size="sm" />
                         </div>
                         <span className="flex-1">{t('menu.file.newChart')}</span>
-                        <span className="text-[10px] text-zinc-500">{newChartOpen ? '▼' : '▶'}</span>
+                        <span className="text-[10px] text-zinc-500 [.rtx-advanced-view_&]:text-gray-400">{newChartOpen ? '▼' : '▶'}</span>
                     </button>
 
                     {/* Pairs panel — appears directly to the right, no intermediate submenu */}
                     {newChartOpen && (
                         <div className="absolute left-full top-0 -ml-0.5 z-[101]">
                             {isLoadingSymbols ? (
-                                <div className="w-[200px] bg-[#0f1117] border border-zinc-700 rounded-md shadow-2xl px-3 py-3 text-zinc-500 text-[12px] flex items-center gap-2">
+                                <div className="w-[200px] bg-[#0f1117] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-2xl px-3 py-3 text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 text-[12px] flex items-center gap-2">
                                     <Icon name="refresh" size="sm" className="animate-spin" />
                                     Connecting to broker...
                                 </div>
@@ -465,7 +465,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Open Deleted */}
                 <button
                     disabled
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-600 cursor-not-allowed"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
                     title="Restore deleted charts"
                 >
                     <div className="w-4 flex items-center justify-center">
@@ -498,7 +498,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Close */}
                 <button
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default group"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Close current chart"
                 >
                     <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
@@ -507,12 +507,12 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="text-[10px] text-zinc-500 font-mono tracking-tighter">Ctrl+F4</span>
                 </button>
 
-                <div className="h-[1px] bg-zinc-700/50 my-1 mx-2"></div>
+                <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
 
                 {/* Save */}
                 <button
                     onClick={handleSave}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default group"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Save workspace configuration"
                 >
                     <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
@@ -525,7 +525,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Save As Picture */}
                 <button
                     onClick={handleSaveAsPicture}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default group"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Export chart as image"
                 >
                     <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
@@ -534,12 +534,12 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="flex-1">{t('menu.file.saveAsPicture')}</span>
                 </button>
 
-                <div className="h-[1px] bg-zinc-700/50 my-1 mx-2"></div>
+                <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
 
                 {/* Open Data Folder */}
                 <button
                     onClick={handleOpenDataFolder}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default group"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Open application data directory"
                 >
                     <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
@@ -549,12 +549,12 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="text-[10px] text-zinc-500 font-mono tracking-tighter">Ctrl+Shift+D</span>
                 </button>
 
-                <div className="h-[1px] bg-zinc-700/50 my-1 mx-2"></div>
+                <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
 
                 {/* Print */}
                 <button
                     onClick={handlePrint}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default group"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Print chart"
                 >
                     <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
@@ -567,7 +567,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Print Preview */}
                 <button
                     onClick={handlePrintPreview}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default group"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Preview before printing"
                 >
                     <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
@@ -579,7 +579,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Print Setup */}
                 <button
                     onClick={handlePrintSetup}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default group"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Configure print settings"
                 >
                     <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
@@ -588,12 +588,12 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="flex-1">{t('menu.file.printSetup')}</span>
                 </button>
 
-                <div className="h-[1px] bg-zinc-700/50 my-1 mx-2"></div>
+                <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
 
                 {/* Open an Account */}
                 <button
                     onClick={() => setShowOpenAccountDialog(true)}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default group"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Register new trading account"
                 >
                     <div className="w-4 flex items-center justify-center">
@@ -605,7 +605,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Login to Trade Account */}
                 <button
                     disabled
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-600 cursor-not-allowed"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
                     title="Connect to trading account"
                 >
                     <div className="w-4 flex items-center justify-center">
@@ -617,7 +617,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Login to Web Trader */}
                 <button
                     disabled
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-600 cursor-not-allowed"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
                     title="Access web trading platform"
                 >
                     <div className="w-4 flex items-center justify-center">
@@ -629,7 +629,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Login to MQL5.community */}
                 <button
                     disabled
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-600 cursor-not-allowed"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
                     title="Connect to MQL5 community"
                 >
                     <div className="w-4 flex items-center justify-center">
@@ -643,7 +643,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Exit */}
                 <button
                     onClick={handleExit}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default group"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Close application"
                 >
                     <div className="w-4 flex items-center justify-center text-rose-400 group-hover:text-rose-300">

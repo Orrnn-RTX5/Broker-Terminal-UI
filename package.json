@@ -60,6 +60,7 @@
     "i18next-browser-languagedetector": "^8.2.0",
     "i18next-resources-to-backend": "^1.2.1",
     "install": "^0.13.0",
+    "klinecharts": "^10.0.0-beta1",
     "lightweight-charts": "^5.1.0",
     "lodash-es": "^4.17.23",
     "lucide-react": "^0.562.0",

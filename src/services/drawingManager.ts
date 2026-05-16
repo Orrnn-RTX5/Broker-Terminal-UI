@@ -32,8 +32,10 @@ export type DrawingType =
   | 'shapes';
 
 export interface DrawingPoint {
-  time: number;  // unix timestamp (seconds)
+  time: number;   // unix timestamp (seconds) — anchors bar after pan/zoom
   price: number;
+  logicalIndex?: number;  // kept for backward compat with saved drawings
+  pixelXOffset?: number;  // vline only: pixel offset from timeToCoordinate(time), sub-bar precise
 }
 
 export interface Drawing {
@@ -261,6 +263,25 @@ export class DrawingManager {
   }
 
   /**
+   * Called on chart click for vlines.
+   * pixelXOffset = rawX - timeToCoordinate(time), the within-bar pixel offset.
+   * Storing this (instead of logicalIndex) gives pixel-perfect drag just like hline uses price.
+   */
+  addPointWithLogical(time: number, price: number, pixelXOffset: number): boolean {
+    if (!this.activeDrawing) return false;
+    console.log('[VLine][2-STORE] pixelXOffset=', pixelXOffset, '(pixel offset from bar centre, should be a decimal)');
+    this.activeDrawing.points.push({ time, price, pixelXOffset });
+
+    const required = REQUIRED_POINTS[this.activeDrawing.type];
+    if (required > 0 && this.activeDrawing.points.length >= required) {
+      return this._completeDrawing() !== null;
+    }
+
+    this.renderAll();
+    return false;
+  }
+
+  /**
    * Called on every crosshair move while a drawing tool is active.
    * Always stores the latest cursor position so renderAll can draw the ghost preview.
    */
@@ -274,6 +295,19 @@ export class DrawingManager {
     }
     // Always update — both before first click (ghost preview) and after
     this.previewPoint = { time, price };
+    this.renderAll();
+  }
+
+  /** Like updatePreviewPoint but also stores pixelXOffset for vline pixel-precise ghost. */
+  updatePreviewPointWithLogical(time: number, price: number, pixelXOffset?: number): void {
+    if (!this.activeDrawing) {
+      if (this.previewPoint) {
+        this.previewPoint = null;
+        this.renderAll();
+      }
+      return;
+    }
+    this.previewPoint = { time, price, pixelXOffset };
     this.renderAll();
   }
 
@@ -295,10 +329,7 @@ export class DrawingManager {
     window.dispatchEvent(new CustomEvent('drawing:saved', { detail: completed }));
     return completed;
   }
-
-  // ──────────────────────────────────────────────
-  // Selection & Deletion
-  // ──────────────────────────────────────────────
+  
   selectDrawing(id: string, multi = false): void {
     if (!multi) this.drawings.forEach(d => (d.selected = false));
     const d = this.drawings.find(d => d.id === id);
@@ -354,9 +385,6 @@ export class DrawingManager {
     return this.activeDrawing ? { ...this.activeDrawing } : null;
   }
 
-  // ──────────────────────────────────────────────
-  // Undo / Redo
-  // ──────────────────────────────────────────────
   undo(): void {
     const entry = this.undoStack.pop();
     if (!entry) return;
@@ -399,20 +427,20 @@ export class DrawingManager {
     this.persistLocal();
   }
 
-  // ──────────────────────────────────────────────
-  // Update on chart scroll / zoom / resize
-  // ──────────────────────────────────────────────
   updateDrawingPositions(): void {
     if (!this.chart || !this.series) return;
     this.renderAll();
   }
 
-  // ──────────────────────────────────────────────
-  // Coordinate helpers
-  // ──────────────────────────────────────────────
   private px(point: DrawingPoint): { x: number; y: number } | null {
     if (!this.chart || !this.series) return null;
-    const x = this.chart.timeScale().timeToCoordinate(point.time as any);
+    let x = null;
+    if (point.logicalIndex !== undefined) {
+      x = this.chart.timeScale().logicalToCoordinate(point.logicalIndex as any);
+    }
+    if (x === null) {
+      x = this.chart.timeScale().timeToCoordinate(point.time as any);
+    }
     const y = this.series.priceToCoordinate(point.price);
     if (x === null || y === null) return null;
     return { x, y };
@@ -424,9 +452,7 @@ export class DrawingManager {
     return 'none';
   }
 
-  // ──────────────────────────────────────────────
-  // Render
-  // ──────────────────────────────────────────────
+
   renderAll(): void {
     // Self-heal: recreate SVG overlay if missing
     if (!this.svgOverlay) {
@@ -519,37 +545,73 @@ export class DrawingManager {
         break;
       }
 
-      // ─── Vertical Line ────────────────────────────────────────────
+    
       case 'vline': {
         if (d.points.length < 1) break;
-        const x = this.chart!.timeScale().timeToCoordinate(d.points[0].time as any);
+        const pt = d.points[0];
+        let x: number | null = null;
+
+        if (pt.pixelXOffset !== undefined) {
+          // NEW: pixel-space coordinate — identical pattern to hline's priceToCoordinate
+          // barX = where the bar centre sits now (updates automatically on pan/zoom)
+          // x    = barX + stored pixel offset from that centre
+          const barX = this.chart!.timeScale().timeToCoordinate(pt.time as any);
+          if (barX !== null) x = barX + pt.pixelXOffset;
+        } else if (pt.logicalIndex !== undefined) {
+          // Backward compat: old saved drawings that used logicalIndex
+          x = this.chart!.timeScale().logicalToCoordinate(pt.logicalIndex as any);
+        } else {
+          // Absolute fallback — snaps to bar centre
+          x = this.chart!.timeScale().timeToCoordinate(pt.time as any);
+        }
         if (x === null) break;
+
+        console.log('[VLine][3-RENDER] id=', d.id, '| x=', x,
+          '| pixelXOffset=', pt.pixelXOffset, '| time=', pt.time);
 
         const line = this.svgLine(x, -100, x, H + 100, color, lw, dash);
         line.style.opacity = opacity;
         g.appendChild(line);
+
+        // Invisible wide hit-zone for interaction
+        if (!isPreview) {
+          const hit = this.svgLine(x, -100, x, H + 100, 'transparent', 12, 'none');
+          hit.style.pointerEvents = 'stroke';
+          hit.style.cursor = 'ew-resize';
+          hit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, 0));
+          hit.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
+          g.appendChild(hit);
+
+          // Selection dot in middle
+          if (d.selected) {
+            const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            dot.setAttribute('cx', String(x));
+            dot.setAttribute('cy', String(H / 2));
+            dot.setAttribute('r', '5');
+            dot.setAttribute('fill', color);
+            dot.setAttribute('stroke', '#fff');
+            dot.setAttribute('stroke-width', '1.5');
+            g.appendChild(dot);
+          }
+        }
         break;
       }
 
-      // ─── Trend Line ───────────────────────────────────────────────
+      // ─── Trend Line (Segment) ─────────────────────────────────────────
       case 'trendline': {
         if (d.points.length < 2) break;
         const p1 = this.px(d.points[0]);
         const p2 = this.px(d.points[1]);
         if (!p1 || !p2) break;
 
-        // Extend line to full chart width via slope
-        const slope = (p2.y - p1.y) / (p2.x - p1.x || 1);
-        const extL = { x: -200, y: p1.y + slope * (-200 - p1.x) };
-        const extR = { x: W + 200, y: p1.y + slope * (W + 200 - p1.x) };
-
-        const line = this.svgLine(extL.x, extL.y, extR.x, extR.y, color, lw, dash);
+        // Draw finite segment between the two points
+        const line = this.svgLine(p1.x, p1.y, p2.x, p2.y, color, lw, dash);
         line.style.opacity = opacity;
         g.appendChild(line);
 
         // Clickable hit-zone (invisible wider line)
         if (!isPreview) {
-          const hit = this.svgLine(extL.x, extL.y, extR.x, extR.y, 'transparent', 12, 'none');
+          const hit = this.svgLine(p1.x, p1.y, p2.x, p2.y, 'transparent', 12, 'none');
           hit.style.pointerEvents = 'stroke';
           hit.style.cursor = 'pointer';
           hit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, null));
@@ -925,27 +987,95 @@ export class DrawingManager {
     const dx = e.clientX - this.dragStartX;
     const dy = e.clientY - this.dragStartY;
 
-    if (this.draggingNodeIndex !== null) {
-      // Move single node
-      const init = this.dragInitialPoints[this.draggingNodeIndex];
-      const ox = this.chart.timeScale().timeToCoordinate(init.time as any);
-      const oy = this.series.priceToCoordinate(init.price);
-      if (ox === null || oy === null) return;
+    /** coordinateToLogical returns integers — compute true fractional bar index instead. */
+    const fracLogical = (x: number): number | null => {
+      const ts = this.chart!.timeScale();
+      const intBar = ts.coordinateToLogical(x);
+      if (intBar === null) return null;
+      const c0 = ts.logicalToCoordinate(intBar as any);
+      const c1 = ts.logicalToCoordinate((intBar + 1) as any);
+      if (c0 === null || c1 === null) return intBar;
+      const bw = c1 - c0;
+      if (Math.abs(bw) < 0.5) return intBar;
+      return intBar + (x - c0) / bw;
+    };
 
-      const nt = this.chart.timeScale().coordinateToTime(ox + dx);
-      const np = this.series.coordinateToPrice(oy + dy);
-      if (nt !== null && np !== null) {
-        drawing.points[this.draggingNodeIndex] = { time: nt as number, price: np };
+    if (this.draggingNodeIndex !== null) {
+      // ── Single node drag ──────────────────────────────────────────────
+      const init = this.dragInitialPoints[this.draggingNodeIndex];
+
+      if (init.pixelXOffset !== undefined) {
+        // VLINE: pixel-perfect horizontal drag — same pattern as hline price arithmetic
+        // new pixelXOffset = old pixelXOffset + dx  (pure pixel addition, no snapping)
+        const newOffset = init.pixelXOffset + dx;
+        // Recompute anchor time from new absolute pixel position
+        const barX = this.chart.timeScale().timeToCoordinate(init.time as any);
+        const newAbsX = barX !== null ? barX + newOffset : null;
+        const newTime = newAbsX !== null
+          ? this.chart.timeScale().coordinateToTime(newAbsX)
+          : null;
+        // Also update Y (price) as usual
+        const oy = this.series.priceToCoordinate(init.price);
+        const np = oy !== null ? this.series.coordinateToPrice(oy + dy) : null;
+        console.log('[VLine][5-DRAG] pixelXOffset:', init.pixelXOffset, '→', newOffset, '| dx=', dx);
+        drawing.points[this.draggingNodeIndex] = {
+          time: (newTime ?? init.time) as number,
+          price: np ?? init.price,
+          pixelXOffset: newOffset,
+        };
+      } else {
+        // Non-vline nodes (trendline, rectangle, etc.)
+        const ox = init.logicalIndex !== undefined
+          ? this.chart.timeScale().logicalToCoordinate(init.logicalIndex as any)
+          : this.chart.timeScale().timeToCoordinate(init.time as any);
+        const oy = this.series.priceToCoordinate(init.price);
+        if (ox === null || oy === null) return;
+        const nt = this.chart.timeScale().coordinateToTime(ox + dx);
+        const nl = this.chart.timeScale().coordinateToLogical(ox + dx);
+        const np = this.series.coordinateToPrice(oy + dy);
+        if (nt !== null && np !== null) {
+          drawing.points[this.draggingNodeIndex] = {
+            time: nt as number,
+            price: np,
+            logicalIndex: init.logicalIndex !== undefined ? (nl ?? undefined) : undefined,
+          };
+        }
       }
     } else {
-      // Move entire drawing
+      // ── Whole drawing drag ────────────────────────────────────────────
       drawing.points = this.dragInitialPoints.map(pt => {
-        const ox = this.chart!.timeScale().timeToCoordinate(pt.time as any);
+        if (pt.pixelXOffset !== undefined) {
+          // VLINE: pure pixel offset addition
+          const newOffset = pt.pixelXOffset + dx;
+          const barX = this.chart!.timeScale().timeToCoordinate(pt.time as any);
+          const newAbsX = barX !== null ? barX + newOffset : null;
+          const newTime = newAbsX !== null
+            ? this.chart!.timeScale().coordinateToTime(newAbsX)
+            : null;
+          const oy = this.series!.priceToCoordinate(pt.price);
+          const np = oy !== null ? this.series!.coordinateToPrice(oy + dy) : null;
+          return {
+            time: (newTime ?? pt.time) as number,
+            price: np ?? pt.price,
+            pixelXOffset: newOffset,
+          };
+        }
+        // Non-vline fallback
+        const ox = pt.logicalIndex !== undefined
+          ? this.chart!.timeScale().logicalToCoordinate(pt.logicalIndex as any)
+          : this.chart!.timeScale().timeToCoordinate(pt.time as any);
         const oy = this.series!.priceToCoordinate(pt.price);
         if (ox === null || oy === null) return pt;
         const nt = this.chart!.timeScale().coordinateToTime(ox + dx);
+        const nl = this.chart!.timeScale().coordinateToLogical(ox + dx);
         const np = this.series!.coordinateToPrice(oy + dy);
-        if (nt !== null && np !== null) return { time: nt as number, price: np };
+        if (nt !== null && np !== null) {
+          return {
+            time: nt as number,
+            price: np,
+            logicalIndex: pt.logicalIndex !== undefined ? (nl ?? undefined) : undefined,
+          };
+        }
         return pt;
       });
     }
@@ -996,6 +1126,13 @@ export class DrawingManager {
     if (!this.currentSymbol) return;
     try {
       const key = `drawings-${this.currentSymbol}-${this.currentTimeframe}`;
+      const vlines = this.drawings.filter(d => d.type === 'vline');
+      vlines.forEach(d => {
+        const pt = d.points[0];
+        console.log('[VLine][4-PERSIST] id=', d.id,
+          '| logicalIndex=', pt?.logicalIndex,
+          '| will survive JSON?', pt?.logicalIndex !== undefined);
+      });
       localStorage.setItem(key, JSON.stringify(this.drawings));
     } catch {}
   }
@@ -1056,6 +1193,14 @@ export class DrawingManager {
         this.drawings = parsed.filter(
           d => d && typeof d.id === 'string' && typeof d.type === 'string' && Array.isArray(d.points),
         );
+        // Audit vlines for lost logicalIndex
+        this.drawings.filter(d => d.type === 'vline').forEach(d => {
+          const pt = d.points[0];
+          console.log('[VLine][4-RELOAD] id=', d.id,
+            '| logicalIndex=', pt?.logicalIndex,
+            '| recovered?', pt?.logicalIndex !== undefined,
+            '(undefined here means it was never saved or was stripped during JSON.parse)');
+        });
         this.renderAll();
       }
     } catch {}

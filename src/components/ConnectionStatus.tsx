@@ -121,7 +121,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
 
       {/* MT5-Style Dropdown Menu */}
       {showDropdown && (
-        <div className="absolute bottom-full right-0 mb-1 w-64 bg-[#1e222d] border border-[#3a3e4a] rounded shadow-2xl z-[100] text-[11px] text-zinc-200 overflow-hidden">
+        <div className="rtx-connection-dropdown absolute bottom-full right-0 mb-1 w-64 bg-[#1e222d] border border-[#3a3e4a] rounded shadow-2xl z-[100] text-[11px] text-zinc-200 overflow-hidden">
 
           {/* Menu Items */}
           <div className="border-b border-[#3a3e4a]">

@@ -597,23 +597,36 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-large :where(.r
   font-size: 13px !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact [data-dock-panel] > div > div[class*="h-[22px]"] {
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .rtx-header-bar {
+  height: 32px !important;
+  min-height: 32px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact [data-dock-panel] > div > div[class*="h-[22px]"],
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .h-\\[24px\\] {
   height: 18px !important;
   min-height: 18px !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact [data-dock-panel] > div > div[class*="h-[22px]"] span {
-  line-height: 18px !important;
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact [data-dock-panel] > div > div[class*="h-[22px]"] span,
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .h-\\[24px\\] span {
+  font-size: 10px !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :where(.rtx-bottom-dock__tabs button, .rtx-market-watch__header, .navigator-panel__header) {
-  padding-top: 2px !important;
-  padding-bottom: 2px !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :where(td, th) {
-  padding-top: 2px !important;
-  padding-bottom: 2px !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  height: 20px !important;
+  font-size: 10.5px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact tr {
+  height: 20px !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft {
@@ -1403,4 +1416,67 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .border-\[
 /* Settings background */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .bg-\[\#16161e\] {
   background: #fcfcfd !important;
+}
+
+/* === Connection Status Dropdown Advanced Mode === */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown {
+  background: #ffffff !important;
+  border-color: #d0d5dd !important;
+  color: #101828 !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .border-\[\#3a3e4a\] {
+  border-color: #f2f4f7 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .bg-\[\#161921\] {
+  background: #f9fafb !important;
+  border-top: 1px solid #f2f4f7 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown button:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .hover\:bg-\[\#2a3040\]:hover {
+  background: #f9fafb !important;
+}
+
+/* Icons and Text Colors inside Dropdown */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .text-zinc-200 {
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .text-zinc-400,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .text-zinc-500 {
+  color: #667085 !important;
+}
+
+/* Primary Purple instead of blue */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .text-blue-400 {
+  color: #7E57C2 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .text-cyan-400 {
+  color: #027a48 !important; /* Greenish/Teal for network rescan to fit light mode */
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .text-yellow-400 {
+  color: #b54708 !important; /* Darker yellow/orange for readability on white */
+}
+
+/* ===== Hide dark MT5 toolbar dividers in Advanced Light Mode ===== */
+/* They appear as dark | pipes on the white navbar background */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-mt5-divider {
+  display: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .text-green-400 {
+  color: #027a48 !important; /* Darker green */
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown button.hover\:bg-\[\#2962FF\]:hover {
+  background: #f4ebff !important; /* Light purple hover */
+  color: #7E57C2 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown button.hover\:bg-\[\#2962FF\]:hover svg {
+  color: #7E57C2 !important;
 }

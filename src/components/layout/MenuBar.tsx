@@ -373,7 +373,7 @@ export const MenuBar = () => {
 
     return (
         <>
-            <div className="h-6 bg-[#131316] border-b border-[#2a2e39] flex items-center px-1 select-none z-50 relative font-segoe" ref={menuRef}>
+            <div className="h-6 bg-[#131316] [.rtx-advanced-view_&]:bg-[#fcfcfc] border-b border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] flex items-center px-1 select-none z-50 relative font-segoe" ref={menuRef}>
                 {Object.keys(menuItems).map((key) => (
                     <div key={key} className="relative">
                         <button
@@ -381,8 +381,8 @@ export const MenuBar = () => {
                             onMouseEnter={() => activeMenu && setActiveMenu(key)}
                             className={`px-3 py-0.5 text-[12px] rounded-sm transition-colors cursor-default outline-none flex items-center border border-transparent
                                 ${activeMenu === key
-                                    ? 'bg-[#2a2e39] text-white shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]'
-                                    : 'text-zinc-300 hover:bg-white/5 hover:text-white'}`}
+                                    ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827] shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] [.rtx-advanced-view_&]:shadow-sm'
+                                    : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#4b5563] hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'}`}
                         >
                             {key}
                         </button>
@@ -427,7 +427,7 @@ export const MenuBar = () => {
                                         hasUnsavedChanges={false}
                                     />
                                 ) : (
-                                    <div className="min-w-[240px] bg-[#131316] border border-[#2a2e39] shadow-2xl py-1">
+                                    <div className="min-w-[240px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1">
                                         {menuItems[key].map((item, index) => (
                                             <MenuItem
                                                 key={index}
@@ -463,7 +463,7 @@ export const MenuBar = () => {
 
 const MenuItem = ({ item, onClose }: { item: MenuItem; onClose?: () => void }) => {
     if (item.divider) {
-        return <div className="h-[1px] bg-zinc-700/50 my-1 mx-2"></div>;
+        return <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>;
     }
 
     return (
@@ -477,10 +477,10 @@ const MenuItem = ({ item, onClose }: { item: MenuItem; onClose?: () => void }) =
                     }
                 }}
                 className={`w-full flex items-center gap-3 px-2 py-1.5 text-[12px] text-left border border-transparent rounded-[2px] transition-colors
-                    ${item.disabled ? 'text-zinc-600 cursor-not-allowed' : 'text-zinc-300 hover:bg-[#2a2e39] group-hover:bg-[#2a2e39] hover:text-white group-hover:text-white cursor-default group'}`}
+                    ${item.disabled ? 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] group-hover:bg-[#2a2e39] [.rtx-advanced-view_&]:group-hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-[#111827] cursor-default group'}`}
             >
                 {/* Icon Area */}
-                <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
+                <div className="w-4 flex items-center justify-center text-zinc-400 [.rtx-advanced-view_&]:text-gray-500 group-hover:text-zinc-200 [.rtx-advanced-view_&]:group-hover:text-gray-700">
                     {item.icon}
                 </div>
 
@@ -489,15 +489,15 @@ const MenuItem = ({ item, onClose }: { item: MenuItem; onClose?: () => void }) =
 
                 {/* Shortcut or Submenu Arrow */}
                 {item.children ? (
-                    <Icon name="chevron-right" size="xs" className="text-zinc-500 group-hover:text-white" />
+                    <Icon name="chevron-right" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-gray-700" />
                 ) : (
-                    item.shortcut && <span className="text-[11px] text-zinc-500 font-segoe pl-4">{item.shortcut}</span>
+                    item.shortcut && <span className="text-[11px] text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 font-segoe pl-4">{item.shortcut}</span>
                 )}
             </button>
 
             {/* Submenu Logic (Hover-based strict) */}
             {item.children && (
-                <div className={`absolute left-full top-0 ml-[-2px] mt-0 hidden min-w-[180px] bg-[#131316] border border-[#2a2e39] shadow-2xl py-1 z-[101]
+                <div className={`absolute left-full top-0 ml-[-2px] mt-0 hidden min-w-[180px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1 z-[101]
                     ${item.scrollableChildren ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}
                  `}>
                     {item.children.map((subItem, idx) => (
