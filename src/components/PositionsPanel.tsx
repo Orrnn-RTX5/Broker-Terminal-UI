@@ -2,6 +2,11 @@
  * Enhanced Positions/Orders Panel
  * Professional positions and orders management with inline editing
  * Features: SL/TP inline editing, close all, real-time P&L
+ *
+ * Positions are owned by useTradeFacingData → useAppStore.
+ * This panel is a pure consumer: no position polling, no position WS handler.
+ * Orders are fetched here independently (backend has no order-specific WS channel
+ * that useTradeFacingData exposes to the store).
  */
 
 import { Icon } from './ui/Icon';
@@ -10,23 +15,9 @@ import api from '../services/api';
 import { useCurrentTick, useMarketDataStore } from '../store/useMarketDataStore';
 import { useConfirmStore } from '../store/useConfirmStore';
 import { useAppStore } from '../store/useAppStore';
+import type { Position } from '../store/useAppStore';
 import { ModifyPositionDialog } from './ModifyPositionDialog';
 import { PriceDisplay } from './ui/PriceDisplay';
-
-interface Position {
-    id: number;
-    symbol: string;
-    side: 'BUY' | 'SELL';
-    volume: number;
-    openPrice: number;
-    currentPrice: number;
-    openTime: string;
-    sl: number;
-    tp: number;
-    swap: number;
-    commission: number;
-    unrealizedPnL: number;
-}
 
 interface PendingOrder {
     id: string;
@@ -46,7 +37,7 @@ type TabType = 'Positions' | 'Orders';
 
 interface PositionsPanelProps {
     accountId: string;
-    wsConnection: WebSocket | null;
+    wsConnection?: WebSocket | null;
 }
 
 interface EditingState {
@@ -58,41 +49,6 @@ interface EditingState {
 const toNumber = (value: unknown, fallback = 0): number => {
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
-};
-
-const POSITION_CLOSED_EVENTS = new Set(['close', 'closed', 'sl_hit', 'tp_hit']);
-
-const getPositionEventName = (message: any): string => {
-    const raw = message?.event ?? message?.type ?? message?.action ?? message?.data?.event ?? message?.data?.type ?? message?.data?.action ?? message?.data?.reason;
-    return String(raw ?? '').trim().toLowerCase();
-};
-
-const getPositionEventTicket = (message: any): number | null => {
-    const payload = message?.position ?? message?.data?.position ?? message?.data ?? message;
-    const ticket = Number.parseInt(String(payload?.ticket ?? payload?.id ?? payload?.position_ticket ?? message?.ticket ?? ''), 10);
-    return Number.isFinite(ticket) && ticket > 0 ? ticket : null;
-};
-
-const normalizePosition = (raw: Record<string, any>, index: number): Position => {
-    const parsedId = Number.parseInt(String(raw.ticket ?? raw.id ?? index + 1), 10);
-    const openPrice = toNumber(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.price, 0);
-    const currentPrice = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, openPrice);
-    const rawSide = String(raw.side ?? '').toUpperCase();
-
-    return {
-        id: Number.isFinite(parsedId) ? parsedId : index + 1,
-        symbol: String(raw.symbol ?? ''),
-        side: rawSide === 'SELL' || rawSide === 'SHORT' ? 'SELL' : 'BUY',
-        volume: toNumber(raw.quantity ?? raw.volume, 0),
-        openPrice,
-        currentPrice,
-        openTime: String(raw.opened_at ?? raw.openTime ?? (raw.time_create ? new Date(toNumber(raw.time_create) * 1000).toISOString() : new Date().toISOString())),
-        sl: toNumber(raw.price_sl ?? raw.sl, 0),
-        tp: toNumber(raw.price_tp ?? raw.tp, 0),
-        swap: toNumber(raw.swap, 0),
-        commission: toNumber(raw.commission, 0),
-        unrealizedPnL: toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0),
-    };
 };
 
 const normalizeOrder = (raw: Record<string, any>, index: number): PendingOrder => {
@@ -131,7 +87,7 @@ const getSymbolDigits = (symbol: string) => {
 
 // High-frequency live Total PnL component
 function LiveTotalPnL({ positions }: { positions: Position[] }) {
-    // Subscribe only to ticks, avoid re-rendering entire PositionsPanel
+
     const symbolsData = useMarketDataStore(state => state.symbolData);
 
     const liveTotalPnL = useMemo(() => {
@@ -194,15 +150,13 @@ function PositionRow({
     const tick = useCurrentTick(pos.symbol);
     const digits = getSymbolDigits(pos.symbol);
 
-    // If we have a live tick, recalculate the price
-    // BUY position closes at BID, SELL position closes at ASK
+
     const livePrice = tick ? (pos.side === 'BUY' ? tick.bid : tick.ask) : pos.currentPrice;
 
-    // Simple text color based on price direction (no blink)
+
     const priceColor = 'text-zinc-300';
 
-    // Use ratio to estimate live PnL if original PnL is non-zero
-    // (Actual MT5 PnL requires contract sizes, so ratio from live price change is safer)
+
     let livePnL = pos.unrealizedPnL;
     if (tick && pos.openPrice > 0) {
         let multiplier = 100000;
@@ -412,31 +366,24 @@ function PendingOrderRow({
 
 export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps) {
     const [activeTab, setActiveTab] = useState<TabType>('Positions');
-    const [positions, setPositions] = useState<Position[]>([]);
     const [orders, setOrders] = useState<PendingOrder[]>([]);
     const [editing, setEditing] = useState<EditingState | null>(null);
     const [showCloseAllConfirm, setShowCloseAllConfirm] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const closingTicketsRef = useRef<Set<number>>(new Set()); // synchronous guard vs double-click
+    const closingTicketsRef = useRef<Set<number>>(new Set());
+    const ordersInFlightRef = useRef(false);
     const [modifyPosition, setModifyPosition] = useState<Position | null>(null);
     const [modifyOrder, setModifyOrder] = useState<PendingOrder | null>(null);
 
-    // MT5 mode — use granular selectors to avoid re-renders on unrelated store updates
-    // Fetch positions
-    const fetchPositions = useCallback(async () => {
-        try {
-            const data = await api.positions.getPositions();
-            const list = Array.isArray(data) ? data : [];
-            setPositions(list.map((item: Record<string, any>, index: number) => normalizePosition(item, index)));
-        } catch (err) {
-            console.error('[PositionsPanel] Failed to fetch positions:', err);
-            setError((err as Error)?.message || 'Failed to fetch positions');
-        }
-    }, [accountId]);
+    // Positions come from the global store — populated and kept fresh by useTradeFacingData.
+    // No local fetch or polling here to avoid racing with that hook.
+    const positions = useAppStore(state => state.positions);
 
-    // Fetch pending orders
+    // Fetch pending orders (not managed by useTradeFacingData)
     const fetchOrders = useCallback(async () => {
+        if (ordersInFlightRef.current) return;
+        ordersInFlightRef.current = true;
         try {
             const data = await api.orders.getPendingOrders();
             const list = Array.isArray(data) ? data : [];
@@ -444,57 +391,26 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
         } catch (err) {
             console.error('[PositionsPanel] Failed to fetch orders:', err);
             setError((err as Error)?.message || 'Failed to fetch orders');
+        } finally {
+            ordersInFlightRef.current = false;
         }
     }, [accountId]);
 
-    // Fetch on mount and set intervals
+    // Fetch orders on mount and poll every 15s (orders change infrequently)
     useEffect(() => {
-        fetchPositions();
         fetchOrders();
+        const ordInterval = setInterval(fetchOrders, 15000);
+        return () => clearInterval(ordInterval);
+    }, [fetchOrders]);
 
-        // Real-time updates every 3 seconds (1s was too aggressive causing crashes)
-        const posInterval = setInterval(fetchPositions, 3000);
-        const ordInterval = setInterval(fetchOrders, 5000);
-
-        return () => {
-            clearInterval(posInterval);
-            clearInterval(ordInterval);
-        };
-    }, [fetchPositions, fetchOrders]);
-
-    // WebSocket updates
+    // WebSocket — orders only (positions are handled by useTradeFacingData's own WS)
     useEffect(() => {
         if (!wsConnection) return;
 
         const handleMessage = (event: MessageEvent) => {
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === 'position_update' || data.channel?.startsWith('positions.')) {
-                    const eventName = getPositionEventName(data);
-                    const ticket = getPositionEventTicket(data);
-                    if (POSITION_CLOSED_EVENTS.has(eventName) && ticket) {
-                        setPositions(prev => prev.filter(position => position.id !== ticket));
-                        useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== ticket));
-                        window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-                        return;
-                    }
-                    const payload = data.position || data.data?.position || data.data;
-                    if (Array.isArray(data.data?.positions)) {
-                        setPositions(data.data.positions.map((item: Record<string, any>, index: number) => normalizePosition(item, index)));
-                        return;
-                    }
-                    if (!payload) return;
-                    setPositions((prev) => {
-                        const normalized = normalizePosition(payload, prev.length);
-                        const index = prev.findIndex((p) => p.id === normalized.id);
-                        if (index >= 0) {
-                            const updated = [...prev];
-                            updated[index] = { ...updated[index], ...normalized };
-                            return updated;
-                        }
-                        return [...prev, normalized];
-                    });
-                } else if (data.type === 'order_update' || data.channel?.startsWith('orders.')) {
+                if (data.type === 'order_update' || data.channel?.startsWith('orders.')) {
                     if (Array.isArray(data.data?.orders)) {
                         setOrders(data.data.orders.map((item: Record<string, any>, index: number) => normalizeOrder(item, index)));
                     } else if (data.order || data.data?.order || data.data) {
@@ -523,14 +439,13 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
         return () => wsConnection.removeEventListener('message', handleMessage);
     }, [wsConnection]);
 
-    // Close position via MT5 Sync API
+    // Close position — optimistic store update then let useTradeFacingData re-sync
     const handleClosePosition = async (id: number) => {
         if (!(await useConfirmStore.getState().showConfirm('Close Position', `Close position #${id}?`))) return;
-        // Synchronous guard: prevents duplicate requests on rapid clicks
         if (closingTicketsRef.current.has(id)) return;
         closingTicketsRef.current.add(id);
 
-        // Optimistically remove from both stores immediately for fast UI feedback
+        // Optimistic removal so the UI responds immediately
         useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== id));
         window.dispatchEvent(new Event('rtx:force-refresh-positions'));
 
@@ -538,35 +453,35 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
             setLoading(true);
             setError(null);
             await api.positions.closePosition(String(id));
-            await fetchPositions();
+            // useTradeFacingData will re-fetch via the rtx:force-refresh-positions event above
         } catch (err) {
             console.error('[PositionsPanel] Close position failed:', err);
             setError((err as Error)?.message || 'Failed to close position');
+            // Re-sync on error so stale optimistic state doesn't linger
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
         } finally {
             closingTicketsRef.current.delete(id);
             setLoading(false);
         }
     };
 
-    // Close all positions via MT5 Sync API
+    // Close all positions
     const handleCloseAll = async () => {
         try {
             setLoading(true);
             setError(null);
-            const allPositions = positions;
-            
-            // Optimistically remove all from both stores immediately
+            const snapshot = useAppStore.getState().positions;
+
+            // Optimistic clear
             useAppStore.getState().setPositions([]);
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
 
-            await Promise.all(allPositions.map(pos =>
-                api.positions.closePosition(String(pos.id))
-            ));
-            await fetchPositions();
+            await Promise.all(snapshot.map(pos => api.positions.closePosition(String(pos.id))));
             setShowCloseAllConfirm(false);
         } catch (err) {
             console.error('[PositionsPanel] Close all failed:', err);
             setError((err as Error)?.message || 'Failed to close all positions');
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
         } finally {
             setLoading(false);
         }
@@ -584,9 +499,7 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
             setLoading(true);
             setError(null);
 
-            // Get current position to preserve the other SL/TP value
-            const allPositions = positions;
-            const pos = allPositions.find(p => p.id === positionId);
+            const pos = useAppStore.getState().positions.find(p => p.id === positionId);
             const currentSl = pos?.sl ?? 0;
             const currentTp = pos?.tp ?? 0;
 
@@ -595,17 +508,14 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
 
             await api.positions.modifyPosition(positionId, { price_sl: newSl, price_tp: newTp });
 
-            useAppStore.getState().setPositions(useAppStore.getState().positions.map(p =>
-                p.id === positionId ? { ...p, sl: newSl, tp: newTp } : p
-            ));
+            // Optimistic update then let useTradeFacingData confirm
+            useAppStore.getState().setPositions(
+                useAppStore.getState().positions.map(p =>
+                    p.id === positionId ? { ...p, sl: newSl, tp: newTp } : p
+                )
+            );
 
-            await fetchPositions();
-
-            // Dispatch refresh event so chart lines update
-            if (typeof window !== 'undefined') {
-                window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-            }
-
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
             setEditing(null);
         } catch (err) {
             console.error('[PositionsPanel] Modify SL/TP failed:', err);
@@ -623,7 +533,6 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
             setLoading(true);
             setError(null);
             await api.orders.cancelOrder(orderId);
-
             await fetchOrders();
         } catch (err) {
             console.error('[PositionsPanel] Cancel order failed:', err);
@@ -633,28 +542,13 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
         }
     };
 
-    // Format functions
     const formatMoney = (val: number | undefined | null) => {
         const v = val ?? 0;
         return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
     };
 
-    const formatDate = (dateStr: string) => {
-        try {
-            return new Date(dateStr).toLocaleString('en-US', {
-                year: 'numeric', month: '2-digit', day: '2-digit',
-                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-            }).replace(',', '');
-        } catch {
-            return dateStr;
-        }
-    };
-
-    // Use MT5 or B-Book positions/orders based on mode
-    // Ensure arrays - handle edge cases where data might not be an array
-    const displayPositions = Array.isArray(positions) ? positions : [];
+    const displayPositions = positions;
     const displayOrders = Array.isArray(orders) ? orders : [];
-
 
     return (
         <div className="h-full flex flex-col bg-[#131316]">
@@ -826,15 +720,11 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                 isOpen={modifyPosition !== null}
                 onClose={() => {
                     setModifyPosition(null);
-                    fetchPositions();
-                    // Dispatch refresh event so chart lines update
-                    if (typeof window !== 'undefined') {
-                        window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-                    }
+                    window.dispatchEvent(new Event('rtx:force-refresh-positions'));
                 }}
                 position={modifyPosition}
             />
-            {/* Modify Order Dialog (reuses same dialog for pending orders) */}
+            {/* Modify Order Dialog */}
             <ModifyPositionDialog
                 isOpen={modifyOrder !== null}
                 kind="pending-order"
@@ -850,7 +740,7 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                     openPrice: modifyOrder.price,
                     sl: modifyOrder.sl || 0,
                     tp: modifyOrder.tp || 0,
-                } : null}
+                } as Position : null}
             />
         </div>
     );

@@ -48,6 +48,13 @@ const removePosition = (positions: ReturnType<typeof useAppStore.getState>['posi
   return positions.filter((position) => positionId(position) !== id);
 };
 
+// Module-level singleton guard.
+// Only the first mounted instance that has a valid login creates a WebSocket and
+// starts the polling loop. All other instances are pure store consumers.
+// This prevents N concurrent WS connections and N competing REST polls when the
+// hook is called from multiple components simultaneously.
+let _activeTradeFacingInstanceId: symbol | null = null;
+
 export function useTradeFacingData(accountId?: string | number, pollMs = 10000, options: UseTradeFacingDataOptions = {}) {
   const enabled = options.enabled ?? true;
   const storeAccountId = useAppStore((state) => enabled ? state.accountId : undefined);
@@ -64,6 +71,10 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const refreshPendingRef = useRef(false);
   const [wsConnected, setWsConnected] = useState(false);
+
+  // Stable unique identity for this hook instance across re-renders.
+  const instanceId = useRef<symbol | null>(null);
+  if (!instanceId.current) instanceId.current = Symbol('useTradeFacingData');
 
   const login = useMemo(() => {
     const direct = Number.parseInt(String(accountId ?? storeAccountId ?? ''), 10);
@@ -127,8 +138,24 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
     await request;
   }, [applySnapshot, enabled, login, setTradeApiStatus]);
 
+  // Claim the singleton slot when this is the first instance with a valid login.
+  // On cleanup the slot is released so the next active instance can claim it.
+  useEffect(() => {
+    if (!enabled || !login) return;
+    if (_activeTradeFacingInstanceId !== null) return; // Another instance already owns the slot
+    _activeTradeFacingInstanceId = instanceId.current!;
+    return () => {
+      if (_activeTradeFacingInstanceId === instanceId.current) {
+        _activeTradeFacingInstanceId = null;
+      }
+    };
+  }, [enabled, login]);
+
+  // Polling — only runs for the singleton instance that claimed the slot above.
   useEffect(() => {
     if (!enabled) return;
+    if (_activeTradeFacingInstanceId !== instanceId.current) return;
+
     refresh();
     if (!login || pollMs <= 0) return;
 
@@ -141,8 +168,10 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
     };
   }, [enabled, login, pollMs, refresh]);
 
+  // WebSocket — only runs for the singleton instance.
   useEffect(() => {
     if (!enabled || !login || typeof window === 'undefined') return;
+    if (_activeTradeFacingInstanceId !== instanceId.current) return;
 
     const token = localStorage.getItem('auth_token');
     if (!token) return;
@@ -177,13 +206,35 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
         }
 
         if (channel.startsWith(`positions.${login}`)) {
+          const eventType = String(message.event ?? message.type ?? payload.event ?? payload.type ?? '').toLowerCase();
           const rawPositions = Array.isArray(payload) ? payload : payload.positions;
+
           if (Array.isArray(rawPositions)) {
-            applySnapshot({ positions: rawPositions.map(normalizePosition) });
+            if (eventType === 'pnl_update') {
+                const current = useAppStore.getState().positions;
+                const updated = [...current];
+                let changed = false;
+                for (const update of rawPositions) {
+                    const ticketId = Number(update.ticket ?? update.id ?? update.position_ticket ?? 0);
+                    if (!ticketId) continue;
+                    const idx = updated.findIndex((p) => positionId(p) === ticketId);
+                    if (idx >= 0) {
+                        const existing = updated[idx];
+                        const newPrice = Number(update.price_current ?? update.current_price ?? update.currentPrice ?? existing.currentPrice);
+                        const newPnL = Number(update.profit ?? update.unrealized_pl ?? update.unrealizedPnL ?? existing.unrealizedPnL);
+                        if (existing.currentPrice !== newPrice || existing.unrealizedPnL !== newPnL) {
+                            updated[idx] = { ...existing, currentPrice: newPrice, unrealizedPnL: newPnL };
+                            changed = true;
+                        }
+                    }
+                }
+                if (changed) applySnapshot({ positions: updated });
+            } else {
+                applySnapshot({ positions: rawPositions.map(normalizePosition) });
+            }
             return;
           }
 
-          const eventType = String(message.event ?? message.type ?? payload.event ?? payload.type ?? '').toLowerCase();
           const rawPosition = payload.position ?? payload.closed_position ?? payload;
           const current = useAppStore.getState().positions;
           const nextPositions = ['close', 'closed', 'sl_hit', 'tp_hit', 'stop_out'].some((type) => eventType.includes(type))

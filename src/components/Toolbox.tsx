@@ -118,13 +118,13 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
     const [isResizing, setIsResizing] = useState(false);
 
     // Data states
-    const [positions, setPositions] = useState<Position[]>([]);
     const [history, setHistory] = useState<HistoryTrade[]>([]);
     const [orders, setOrders] = useState<PendingOrder[]>([]);
     const [journal, setJournal] = useState<JournalEntry[]>([]);
 
-    // Get account from store
+    // Get account and positions from store (positions used only for badge count)
     const account = useAppStore((state) => state.account);
+    const storePositionCount = useAppStore((state) => state.positions.length);
     const activeAccountIdRef = useRef(accountId);
     const accountLogin = useMemo(() => {
         const login = Number.parseInt(String(accountId || ''), 10);
@@ -134,19 +134,6 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
 
     // Get alerts from alert store
     const { alerts } = useAlertStore();
-
-    const fetchPositions = useCallback(async (requestedAccountId = accountId) => {
-        const login = Number.parseInt(String(requestedAccountId || ''), 10);
-        if (!Number.isFinite(login) || login <= 0) {
-            if (activeAccountIdRef.current === requestedAccountId) setPositions([]);
-            return;
-        }
-
-        const data = await api.positions.getPositions(login);
-        if (activeAccountIdRef.current === requestedAccountId) {
-            setPositions((data || []) as unknown as Position[]);
-        }
-    }, [accountId]);
 
     const fetchOrders = useCallback(async (requestedAccountId = accountId) => {
         const login = Number.parseInt(String(requestedAccountId || ''), 10);
@@ -160,21 +147,6 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
             setOrders((data || []) as unknown as PendingOrder[]);
         }
     }, [accountId]);
-
-    // Fetch positions
-    useEffect(() => {
-        const refreshPositions = async () => {
-            try {
-                await fetchPositions(accountId);
-            } catch (err) {
-                console.error('[Toolbox] Failed to fetch positions:', err);
-            }
-        };
-
-        refreshPositions();
-        const interval = setInterval(refreshPositions, 10000); // Poll every 10s (rely on WS for real-time)
-        return () => clearInterval(interval);
-    }, [accountId, fetchPositions]);
 
     // Fetch order history from the trade API
     useEffect(() => {
@@ -232,19 +204,7 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'position_update') {
-                    // Update positions in real-time
-                    setPositions((prev) => {
-                        const index = prev.findIndex((p) => p.id === data.position.id);
-                        if (index >= 0) {
-                            const updated = [...prev];
-                            updated[index] = { ...updated[index], ...data.position };
-                            return updated;
-                        }
-                        return prev;
-                    });
-
-                    // Add journal entry
-                    addJournalEntry(`Position ${data.position.id} updated`, 'INFO');
+                    addJournalEntry(`Position ${data.position?.id} updated`, 'INFO');
                 } else if (data.type === 'order_filled') {
                     addJournalEntry(`Order filled: ${data.order.symbol} ${data.order.side} ${data.order.volume}`, 'SUCCESS');
                 } else if (data.type === 'alert_triggered') {
@@ -300,13 +260,9 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
 
     // Close position via the trade API
     const handleClosePosition = async (id: number) => {
-        const requestedAccountId = accountId;
         try {
             await api.positions.closePosition(String(id));
-
-            // Refresh positions
-            await fetchPositions(requestedAccountId);
-
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
             addJournalEntry(`Closed position #${id}`, 'SUCCESS');
         } catch (err) {
             console.error('[Toolbox] Close position failed:', err);
@@ -331,7 +287,7 @@ export function Toolbox({ accountId, wsConnection }: ToolboxProps) {
     };
 
     // Tab counts
-    const tradeBadge = positions.length > 0 ? ` (${positions.length})` : '';
+    const tradeBadge = storePositionCount > 0 ? ` (${storePositionCount})` : '';
     const ordersBadge = orders.length > 0 ? ` (${orders.length})` : '';
     const alertsBadge = alerts.filter(a => a.status === 'active').length > 0
         ? ` (${alerts.filter(a => a.status === 'active').length})`

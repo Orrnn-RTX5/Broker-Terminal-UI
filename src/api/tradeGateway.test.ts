@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
+import { RTX5_API_URL, WS_URL } from '../config/api';
 import {
   normalizeAccount,
   normalizeDeal,
@@ -19,9 +20,9 @@ describe('trade gateway normalization', () => {
   });
 
   it('uses the shared v2 REST and websocket authority helpers', () => {
-    expect(tradeGatewayApi.getWsUrl()).toBe('wss://backend.orrnn.com/ws/v2');
+    expect(tradeGatewayApi.getWsUrl()).toBe(`${WS_URL}`);
     expect(tradeGatewayApi.getHistoryUrl('EUR/USD', 'M5', 100)).toBe(
-      'https://backend.orrnn.com/history/candles/EUR%2FUSD?tf=M5&count=100'
+      `${RTX5_API_URL}/history/candles/EUR%2FUSD?tf=M5&count=100`
     );
   });
 

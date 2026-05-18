@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
-import { API_ENDPOINTS } from '../config/api';
+import { API_ENDPOINTS, RTX5_API_URL } from '../config/api';
 import { ApiError, removeToken, setToken } from './client';
 import {
   accountV2Api,
@@ -54,7 +54,7 @@ describe('trade v2 API contract calls', () => {
     });
 
     const request = lastFetchCall();
-    expect(request.url).toBe('https://backend.orrnn.com/api/v2/auth/login');
+    expect(request.url).toBe(`${RTX5_API_URL}/api/v2/auth/login`);
     expect(request.init.method).toBe('POST');
     expect(request.headers.Authorization).toBeUndefined();
     expect(request.body).toEqual({
@@ -86,7 +86,7 @@ describe('trade v2 API contract calls', () => {
     setToken('jwt-token');
 
     await marketV2Api.getQuotes(['EURUSD', 'XAUUSD']);
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/quotes?symbols=EURUSD%2CXAUUSD');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/quotes?symbols=EURUSD%2CXAUUSD`);
 
     await marketV2Api.getCandles('EUR/USD', {
       timeframe: 'M15',
@@ -97,7 +97,7 @@ describe('trade v2 API contract calls', () => {
 
     const candleRequest = lastFetchCall();
     expect(candleRequest.url).toBe(
-      'https://backend.orrnn.com/api/v2/candles/EUR%2FUSD?timeframe=M15&from=1760000000&to=1760000900&limit=50'
+      `${RTX5_API_URL}/api/v2/candles/EUR%2FUSD?timeframe=M15&from=1760000000&to=1760000900&limit=50`
     );
     expect(candleRequest.headers.Authorization).toBe('Bearer jwt-token');
   });
@@ -122,11 +122,11 @@ describe('trade v2 API contract calls', () => {
 
   it('covers broker bootstrap, calculators, history, and watchlist contract endpoints', async () => {
     await brokerV2Api.getServers();
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/broker/servers');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/broker/servers`);
     expect(lastFetchCall().headers.Authorization).toBeUndefined();
 
     await brokerV2Api.getConfig('test_broker');
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/broker/config?broker_id=test_broker');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/broker/config?broker_id=test_broker`);
 
     await marketV2Api.calculateMargin({
       account_login: 123456,
@@ -135,7 +135,7 @@ describe('trade v2 API contract calls', () => {
       volume: 0.1,
     });
     expect(lastFetchCall()).toMatchObject({
-      url: 'https://backend.orrnn.com/api/v2/calculate/margin',
+      url: `${RTX5_API_URL}/api/v2/calculate/margin`,
       body: { account_login: 123456, symbol: 'XAUUSD', side: 'buy', volume: 0.1 },
     });
 
@@ -146,31 +146,31 @@ describe('trade v2 API contract calls', () => {
       open_price: 2330,
       close_price: 2320,
     });
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/calculate/profit');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/calculate/profit`);
 
     await historyV2Api.getCandles('EUR/USD', { tf: 'H1', count: 500 });
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/history/candles/EUR%2FUSD?tf=H1&count=500');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/history/candles/EUR%2FUSD?tf=H1&count=500`);
     expect(lastFetchCall().headers.Authorization).toBeUndefined();
 
     await historyV2Api.getLatestCandle('EURUSD', 'M5');
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/history/candles/EURUSD/latest?tf=M5');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/history/candles/EURUSD/latest?tf=M5`);
 
     await historyV2Api.getTicks('EURUSD', { from: 1760000000, to: 1760000900, limit: 1000 });
     expect(lastFetchCall().url).toBe(
-      'https://backend.orrnn.com/history/ticks/EURUSD?from=1760000000&to=1760000900&limit=1000'
+      `${RTX5_API_URL}/history/ticks/EURUSD?from=1760000000&to=1760000900&limit=1000`
     );
 
     await watchlistV2Api.update(['EURUSD', 'XAUUSD']);
     expect(lastFetchCall()).toMatchObject({
-      url: 'https://backend.orrnn.com/api/v2/watchlist',
+      url: `${RTX5_API_URL}/api/v2/watchlist`,
       body: { symbols: ['EURUSD', 'XAUUSD'] },
     });
 
     await watchlistV2Api.add('EUR/USD');
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/watchlist/EUR%2FUSD');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/watchlist/EUR%2FUSD`);
 
     await watchlistV2Api.remove('EUR/USD');
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/watchlist/EUR%2FUSD');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/watchlist/EUR%2FUSD`);
     expect(lastFetchCall().init.method).toBe('DELETE');
   });
 
@@ -189,8 +189,8 @@ describe('trade v2 API contract calls', () => {
     });
 
     expect(vi.mocked(fetch).mock.calls.map(([url]) => String(url))).toEqual([
-      'https://backend.orrnn.com/history/candles/EURUSD/latest?tf=H1',
-      'https://backend.orrnn.com/api/v2/candles/EURUSD?timeframe=H1&limit=5',
+      `${RTX5_API_URL}/history/candles/EURUSD/latest?tf=H1`,
+      `${RTX5_API_URL}/api/v2/candles/EURUSD?timeframe=H1&limit=5`,
     ]);
     expect(lastFetchCall().headers.Authorization).toBe('Bearer jwt-token');
   });
@@ -208,7 +208,7 @@ describe('trade v2 API contract calls', () => {
     } satisfies Partial<ApiError>);
 
     expect(vi.mocked(fetch)).toHaveBeenCalledOnce();
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/history/candles/EURUSD/latest?tf=H1');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/history/candles/EURUSD/latest?tf=H1`);
   });
 
   it('propagates v2 candle history fallback failures after a 502 history latest error', async () => {
@@ -226,8 +226,8 @@ describe('trade v2 API contract calls', () => {
     } satisfies Partial<ApiError>);
 
     expect(vi.mocked(fetch).mock.calls.map(([url]) => String(url))).toEqual([
-      'https://backend.orrnn.com/history/candles/EURUSD/latest?tf=H1',
-      'https://backend.orrnn.com/api/v2/candles/EURUSD?timeframe=H1&limit=5',
+      `${RTX5_API_URL}/history/candles/EURUSD/latest?tf=H1`,
+      `${RTX5_API_URL}/api/v2/candles/EURUSD?timeframe=H1&limit=5`,
     ]);
   });
 
@@ -247,19 +247,19 @@ describe('trade v2 API contract calls', () => {
 
     await tradingV2Api.placeOrder(order);
     expect(lastFetchCall()).toMatchObject({
-      url: 'https://backend.orrnn.com/api/v2/orders',
+      url: `${RTX5_API_URL}/api/v2/orders`,
       body: order,
     });
 
     await tradingV2Api.modifyPosition(998877, { price_sl: 2320, price_tp: 2360 });
     expect(lastFetchCall()).toMatchObject({
-      url: 'https://backend.orrnn.com/api/v2/positions/998877',
+      url: `${RTX5_API_URL}/api/v2/positions/998877`,
       body: { price_sl: 2320, price_tp: 2360 },
     });
 
     await tradingV2Api.cancelPendingOrder(112233);
     expect(lastFetchCall()).toMatchObject({
-      url: 'https://backend.orrnn.com/api/v2/orders/pending/112233',
+      url: `${RTX5_API_URL}/api/v2/orders/pending/112233`,
     });
     expect(lastFetchCall().init.method).toBe('DELETE');
   });
@@ -270,7 +270,7 @@ describe('trade v2 API contract calls', () => {
       new_password: 'new-runtime-password',
     });
     expect(lastFetchCall()).toMatchObject({
-      url: 'https://backend.orrnn.com/api/v2/auth/change-password',
+      url: `${RTX5_API_URL}/api/v2/auth/change-password`,
       body: {
         current_password: 'old-runtime-password',
         new_password: 'new-runtime-password',
@@ -279,7 +279,7 @@ describe('trade v2 API contract calls', () => {
 
     await accountV2Api.setInvestorPassword(123456, { password: 'investor-runtime-password' });
     expect(lastFetchCall()).toMatchObject({
-      url: 'https://backend.orrnn.com/api/v2/accounts/123456/investor-password',
+      url: `${RTX5_API_URL}/api/v2/accounts/123456/investor-password`,
       body: { password: 'investor-runtime-password' },
     });
 
@@ -290,26 +290,26 @@ describe('trade v2 API contract calls', () => {
 
   it('uses account-scoped paths for account, positions, deals, pending orders, and OCO', async () => {
     await accountV2Api.get(123456);
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/account/123456');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/account/123456`);
 
     await accountV2Api.getBalanceHistory(123456, { limit: 25, offset: 50 });
     expect(lastFetchCall().url).toBe(
-      'https://backend.orrnn.com/api/v2/accounts/123456/history?limit=25&offset=50'
+      `${RTX5_API_URL}/api/v2/accounts/123456/history?limit=25&offset=50`
     );
 
     await tradingV2Api.getPositions(123456, { limit: 20, offset: 0 });
     expect(lastFetchCall().url).toBe(
-      'https://backend.orrnn.com/api/v2/positions/123456?limit=20&offset=0'
+      `${RTX5_API_URL}/api/v2/positions/123456?limit=20&offset=0`
     );
 
     await tradingV2Api.getDeals(123456);
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/deals/123456');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/deals/123456`);
 
     await tradingV2Api.getPendingOrders(123456);
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/orders/pending/123456');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/orders/pending/123456`);
 
     await tradingV2Api.getOcoPairs(123456);
-    expect(lastFetchCall().url).toBe('https://backend.orrnn.com/api/v2/orders/oco/123456');
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/orders/oco/123456`);
   });
 
   it('does not expose excluded non-trade v2 helper groups', () => {
@@ -341,7 +341,7 @@ describe('trade v2 API contract calls', () => {
     const response = await accountV2Api.closeAllPositions(123456);
 
     expect(lastFetchCall()).toMatchObject({
-      url: 'https://backend.orrnn.com/api/v2/accounts/123456/close-all',
+      url: `${RTX5_API_URL}/api/v2/accounts/123456/close-all`,
       body: {},
     });
     expect(response.closed_count).toBe(3);

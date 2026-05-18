@@ -431,7 +431,16 @@ export const useAppStore = create<AppState>()(
 
         setSelectedSymbol: (symbol) => set({ selectedSymbol: symbol }),
 
-        setPositions: (positions) => set({ positions }),
+        setPositions: (positions) =>
+          set((state) => ({
+            positions: positions.map((incoming) => {
+              // Partial WS streaming updates often omit the symbol field.
+              // Preserve the existing symbol so the UI never goes blank between REST polls.
+              if (incoming.symbol) return incoming;
+              const existing = state.positions.find((p) => p.id === incoming.id);
+              return existing ? { ...incoming, symbol: existing.symbol } : incoming;
+            }),
+          })),
 
         setOrders: (orders) => set({ orders }),
 

@@ -227,7 +227,7 @@ export interface ApiRequestOptions extends RequestInit {
 
 // Use the backend URL directly only in Electron; in the browser, use
 // relative paths so requests go through the Vite dev-server proxy and avoid CORS.
-const BACKEND_URL = 'https://rtxbackend.tradecopier.org';
+const BACKEND_URL = import.meta.env.VITE_API_URL as string;
 
 const isElectronEnv = (): boolean => {
   if (typeof window === 'undefined') return false;

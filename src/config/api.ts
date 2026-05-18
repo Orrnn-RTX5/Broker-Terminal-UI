@@ -1,20 +1,13 @@
-/**
- * Centralized API Configuration
- * All API endpoints and WebSocket URLs are defined here
- * Environment variables (VITE_*) are REQUIRED - no fallback defaults
- */
+const BACKEND = import.meta.env.VITE_BACKEND_URL as string;
 
-// Always use the backend directly — never the local Vite proxy
-const BACKEND = 'https://rtxbackend.tradecopier.org';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || BACKEND;
-const RTX5_API_URL = import.meta.env.VITE_RTX5_API_URL || import.meta.env.VITE_API_V2_URL || 'https://backend.orrnn.com';
-const API_V2_BASE_URL = `${RTX5_API_URL.replace(/\/$/, '')}/api/v2`;
-const API_HISTORY_BASE_URL = `${RTX5_API_URL.replace(/\/$/, '')}/history`;
-const FIX_API_URL = import.meta.env.VITE_FIX_API_URL || BACKEND;
-const FIX_WS_URL = import.meta.env.VITE_FIX_WS_URL || 'wss://fixapibackend.tradecopier.org/ws';
-const WS_URL = import.meta.env.VITE_WS_URL || 'wss://fixapibackend.tradecopier.org/ws';
-const RTX5_WS_URL = import.meta.env.VITE_RTX5_WS_URL || RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2';
+const API_BASE_URL = import.meta.env.VITE_API_URL as string || BACKEND;
+const RTX5_API_URL = import.meta.env.VITE_RTX5_API_URL as string || import.meta.env.VITE_API_V2_URL as string;
+const API_V2_BASE_URL = RTX5_API_URL ? `${RTX5_API_URL.replace(/\/$/, '')}/api/v2` : '';
+const API_HISTORY_BASE_URL = RTX5_API_URL ? `${RTX5_API_URL.replace(/\/$/, '')}/history` : '';
+const FIX_API_URL = import.meta.env.VITE_FIX_API_URL as string || BACKEND;
+const FIX_WS_URL = import.meta.env.VITE_FIX_WS_URL as string;
+const WS_URL = import.meta.env.VITE_WS_URL as string;
+const RTX5_WS_URL = import.meta.env.VITE_RTX5_WS_URL as string || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
 
 // Optional with undefined default
 const ADMIN_API_URL = import.meta.env.VITE_ADMIN_URL || API_BASE_URL;
@@ -23,7 +16,7 @@ const ADMIN_WS_URL = import.meta.env.VITE_ADMIN_WS_URL;
 
 // API Endpoints
 export const API_ENDPOINTS = {
-  // Auth
+
   login: `${API_BASE_URL}/api/login`,
   logout: `${API_BASE_URL}/api/logout`,
   refresh: `${API_BASE_URL}/api/refresh`,

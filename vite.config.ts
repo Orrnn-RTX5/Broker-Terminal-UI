@@ -16,14 +16,14 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'https://rtxbackend.tradecopier.org',
+        target: 'https://backend.orrnn.com',
         changeOrigin: true,
         secure: true,
         // NOTE: ws:true removed — it caused 503s by intercepting HTTP requests
         // as WebSocket upgrades. WS connections use /fix-ws proxy below.
       },
       '/fix-ws': {
-        target: 'wss://rtxbackend.tradecopier.org',
+        target: 'wss://backend.orrnn.com',
         changeOrigin: true,
         secure: false,
         ws: true,

@@ -2794,7 +2794,10 @@ export const TradingChart = React.memo(function TradingChart({
     const createTradeLabel = (side: TradeSide, price: number, time: number, text: string, borderColor: string) => {
       const label = document.createElement('div');
       label.textContent = text;
-      label.style.cssText = `position:absolute;padding:1px 5px;background:rgba(10,15,24,0.92);border:1px solid ${borderColor}66;border-radius:2px;color:#e7edf5;font-size:10px;line-height:1.25;font-family:Consolas,'Courier New',monospace;white-space:nowrap;z-index:15;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,0.35);`;
+      const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
+      const bg = isLight ? 'rgba(255, 255, 255, 0.92)' : 'rgba(10,15,24,0.92)';
+      const textCol = isLight ? '#101828' : '#e7edf5';
+      label.style.cssText = `position:absolute;padding:1px 5px;background:${bg};border:1px solid ${borderColor}66;border-radius:2px;color:${textCol};font-size:10px;line-height:1.25;font-family:Consolas,'Courier New',monospace;white-space:nowrap;z-index:15;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,0.35);`;
       appendOverlayNode(label, { kind: 'label', price, time, labelOffsetX: 10, labelOffsetY: side === 'BUY' ? 2 : -18 });
     };
 
@@ -2813,7 +2816,10 @@ export const TradingChart = React.memo(function TradingChart({
 
       const badge = document.createElement('div');
       badge.textContent = labelText;
-      badge.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:rgba(20,24,34,0.92);border:1px solid #3a4354;color:${color};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;white-space:nowrap;z-index:6;pointer-events:none;border-radius:2px;transform:translate(-50%, -50%);min-width:52px;text-align:center;`;
+      const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
+      const bg = isLight ? 'rgba(255, 255, 255, 0.92)' : 'rgba(20,24,34,0.92)';
+      const borderCol = isLight ? '#e5e7eb' : '#3a4354';
+      badge.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${bg};border:1px solid ${borderCol};color:${color};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;white-space:nowrap;z-index:6;pointer-events:none;border-radius:2px;transform:translate(-50%, -50%);min-width:52px;text-align:center;`;
       appendOverlayNode(badge, { kind: 'price-badge', price });
     };
 
@@ -3641,10 +3647,13 @@ export const TradingChart = React.memo(function TradingChart({
         dragState = { tradeObj: closestTrade, role: grabbedType === 'ENTRY' ? 'SL' : grabbedType, grabbedType }; 
         
         dragLineOverlay = document.createElement('div');
-        dragLineOverlay.style.cssText = `position:absolute;left:0;right:52px;height:0;border-top:1px dashed #ffffff;z-index:999;pointer-events:none;transform:translateY(${y}px)`;
+        dragLineOverlay.style.cssText = `position:absolute;left:0;right:52px;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translateY(${y}px)`;
         
         dragBadgeOverlay = document.createElement('div');
-        dragBadgeOverlay.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:#2a2a38;color:#fff;font-size:10px;font-family:Consolas,monospace;z-index:1000;pointer-events:none;transform:translate(-50%, calc(-50% + ${y}px));`;
+        const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
+        const badgeBg = isLight ? 'rgba(255, 255, 255, 0.92)' : '#2a2a38';
+        const borderCol = isLight ? '#e5e7eb' : 'transparent';
+        dragBadgeOverlay.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${badgeBg};border:1px solid ${borderCol};font-size:10px;font-family:Consolas,monospace;font-weight:600;z-index:1000;pointer-events:none;border-radius:2px;transform:translate(-50%, calc(-50% + ${y}px));`;
 
         overlayRef.current?.appendChild(dragLineOverlay);
         overlayRef.current?.appendChild(dragBadgeOverlay);
