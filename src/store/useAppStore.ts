@@ -141,6 +141,10 @@ interface AppState {
   isLoadingPositions: boolean;
   isPlacingOrder: boolean;
 
+  // Bootstrap (MT5-style post-login data loading)
+  isBootstrapping: boolean;
+  bootstrapStep: string;
+
   // Actions
   setAuthenticated: (isAuth: boolean, accountId?: string, authToken?: string, refreshToken?: string, expiresAt?: number) => void;
   setAuthTokens: (authToken: string, refreshToken?: string, expiresAt?: number) => void;
@@ -169,6 +173,7 @@ interface AppState {
     isLoadingPositions: boolean;
     isPlacingOrder: boolean;
   }>) => void;
+  setBootstrapping: (isBootstrapping: boolean, step?: string) => void;
   reset: () => void;
 }
 
@@ -201,6 +206,8 @@ const initialState = {
   isLoadingAccount: false,
   isLoadingPositions: false,
   isPlacingOrder: false,
+  isBootstrapping: false,
+  bootstrapStep: '',
 };
 
 const CREDENTIAL_STORAGE_KEYS = [
@@ -497,6 +504,9 @@ export const useAppStore = create<AppState>()(
           })),
 
         setLoadingStates: (states) => set(states),
+
+        setBootstrapping: (isBootstrapping, step = '') =>
+          set({ isBootstrapping, bootstrapStep: isBootstrapping ? step : '' }),
 
         reset: () => set(initialState),
       }),

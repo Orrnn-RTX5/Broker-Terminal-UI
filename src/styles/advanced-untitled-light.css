@@ -639,7 +639,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft {
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper {
   --bg-primary: #fbfaf6;
   --bg-secondary: #fffdf7;
-  --bg-tertiary: #f7f3ea;
+  --bg-tertiary: #f5f7ea;
   background: #fbfaf6;
 }
 
@@ -1479,4 +1479,339 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown button.h
 }
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown button.hover\:bg-\[\#2962FF\]:hover svg {
   color: #7E57C2 !important;
+}
+
+/* === Shortcut Help Dialog Advanced Mode === */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-shortcut-dialog {
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+/* Primary Purple (#7E57C2) for active tab */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-shortcut-dialog .bg-blue-600 {
+  background-color: #7E57C2 !important;
+  color: #ffffff !important;
+}
+
+/* Primary Purple for Keyboard Icon */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-shortcut-dialog .text-blue-400 {
+  color: #7E57C2 !important;
+}
+
+/* Secondary Light Purple (#F3E5F5) for inactive tab hover */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-shortcut-dialog .hover\:bg-zinc-700:hover {
+  background-color: #F3E5F5 !important;
+  color: #7E57C2 !important;
+}
+
+/* Secondary Light Purple for shortcut row hover */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-shortcut-dialog .hover\:bg-zinc-800\/50:hover {
+  background-color: #F3E5F5 !important;
+}
+
+/* Search bar focus ring with Primary/Secondary Purples */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-shortcut-dialog input:focus {
+  border-color: #7E57C2 !important;
+  box-shadow: 0 0 0 3px #F3E5F5 !important;
+}
+
+/* Category Headers in Status Text Purple (#9575CD) */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-shortcut-dialog h3 {
+  color: #9575CD !important;
+}
+
+/* === Positions Panel Row Highlighting === */
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-even {
+  background-color: #ffffff !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-odd {
+  background-color: #F3E5F5 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-even:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-odd:hover {
+  background-color: #F3E5F5 !important;
+}
+
+/* === Trade Tab (Bottom Dock) Deep & Semibold Text === */
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:nth-child(odd) {
+  background-color: #ffffff !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:nth-child(even) {
+  background-color: #F3E5F5 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:hover {
+  background-color: #F3E5F5 !important;
+}
+
+/* Force semibold font weight on Trade Tab rows */
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td {
+  font-weight: 600 !important;
+}
+
+/* Deepen faint gray texts to near-black (#101828) */
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-zinc-500,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-zinc-400,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td span.text-zinc-600 {
+  color: #101828 !important;
+}
+
+/* Ensure PriceDisplay inherits the deep color and bold weight */
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .price-display {
+  color: #101828 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .price-small {
+  font-weight: 600 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .price-big {
+  font-weight: 800 !important;
+}
+
+/* Deepen Profit & Loss text colors explicitly for readability in light mode */
+html.rtx-advanced-view.rtx-skin-untitled-light .text-\[\#4ade80\],
+html.rtx-advanced-view.rtx-skin-untitled-light .text-emerald-300,
+html.rtx-advanced-view.rtx-skin-untitled-light .text-emerald-400 {
+  color: #027a48 !important; /* Deep Green */
+  font-weight: 600 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .text-\[\#f87171\],
+html.rtx-advanced-view.rtx-skin-untitled-light .text-red-300,
+html.rtx-advanced-view.rtx-skin-untitled-light .text-red-400 {
+  color: #b42318 !important; /* Deep Red */
+  font-weight: 600 !important;
+}
+
+/* === Open Account Dialog Light Mode (Advanced Untitled) === */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-backdrop {
+  background: rgba(255, 255, 255, 0.4) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell {
+  background: #ffffff !important;
+  border: 1px solid #eaecf0 !important;
+  box-shadow: 0 20px 40px rgba(16, 24, 40, 0.08), 0 0 0 1px rgba(16, 24, 40, 0.05) !important;
+}
+
+/* Base text color overrides */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell h2,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell p,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell span:not(.rtx-oad-badge):not(.text-emerald-400),
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell div.text-zinc-600 {
+  color: #101828 !important;
+}
+
+/* Search input & form elements */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell input:not([type="radio"]):not([type="checkbox"]),
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell select {
+  background: #ffffff !important;
+  border: 1px solid #d0d5dd !important;
+  color: #101828 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell input:not([type="radio"]):not([type="checkbox"]):focus,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell select:focus {
+  border-color: #7E57C2 !important;
+  box-shadow: 0 0 0 4px #F3E5F5 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell input[type="radio"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-shell input[type="checkbox"] {
+  accent-color: #7E57C2 !important;
+}
+
+/* Divider line */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-divider {
+  background: linear-gradient(90deg, rgba(0,0,0,0.1), transparent) !important;
+}
+
+/* Available brokers badge */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-badge {
+  background: #F3E5F5 !important;
+  color: #7E57C2 !important;
+}
+
+/* Broker list items */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-item {
+  background: #ffffff !important;
+  border: 1px solid transparent !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-item:hover {
+  background: #f9fafb !important;
+  border-color: #eaecf0 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-item-selected {
+  background: #F3E5F5 !important;
+  border-color: #7E57C2 !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.05) !important;
+}
+
+/* Logo badges text fix */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-item .text-white {
+  color: #ffffff !important;
+}
+
+/* Info strip */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-info-strip {
+  background: #f9fafb !important;
+  border: 1px solid #eaecf0 !important;
+}
+
+/* Buttons */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-btn-cancel {
+  background: #ffffff !important;
+  border: 1px solid #d0d5dd !important;
+  color: #344054 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-btn-cancel:hover {
+  background: #f9fafb !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-btn-next {
+  background: #7E57C2 !important;
+  border: 1px solid #7E57C2 !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.05) !important;
+  color: #ffffff !important;
+}
+
+/* Chart Properties Dialog overrides for Advanced Light Theme */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell {
+  background: #ffffff !important;
+  border: 1px solid #eaecf0 !important;
+  box-shadow: 0 12px 24px -4px rgba(16, 24, 40, 0.08), 0 4px 8px -2px rgba(16, 24, 40, 0.03) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-header,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-footer {
+  border-color: #eaecf0 !important;
+  background: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-title {
+  color: #101828 !important;
+  font-weight: 600 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-btn-icon {
+  color: #667085 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-btn-icon:hover {
+  background: #f2f4f7 !important;
+  color: #344054 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-btn-close:hover {
+  background: #fee4e2 !important;
+  color: #d92d20 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-content {
+  background: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-box {
+  background: #f9fafb !important;
+  border-color: #eaecf0 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-inner {
+  background: #ffffff !important;
+  border-color: #eaecf0 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-text {
+  color: #667085 !important;
+  background: rgba(255, 255, 255, 0.8) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-grid {
+  border-color: #f2f4f7 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-tab {
+  color: #667085 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-tab:hover {
+  color: #101828 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-tab-active {
+  color: #7E57C2 !important;
+  border-bottom-color: #7E57C2 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-checkbox,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-radio {
+  background: #ffffff !important;
+  border: 1px solid #d0d5dd !important;
+  accent-color: #7E57C2 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-checkbox-row:hover {
+  background: #f9fafb !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-checkbox-label,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-radio-label,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-label {
+  color: #344054 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-checkbox-row:hover .rtx-cp-checkbox-label {
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-select,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-input {
+  background: #ffffff !important;
+  border: 1px solid #d0d5dd !important;
+  color: #101828 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-select:focus,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-input:focus {
+  border-color: #7E57C2 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-divider {
+  background: #eaecf0 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-color-picker {
+  background: #ffffff !important;
+  border-color: #d0d5dd !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-color-picker:hover {
+  border-color: #98a2b3 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-color-text {
+  color: #344054 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-fieldset {
+  border-color: #eaecf0 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-legend {
+  background: #ffffff !important;
+  color: #344054 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-btn {
+  background: #ffffff !important;
+  border: 1px solid #d0d5dd !important;
+  color: #344054 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-btn:hover {
+  background: #f9fafb !important;
+  color: #101828 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-btn:disabled {
+  background: #f2f4f7 !important;
+  color: #98a2b3 !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-btn-primary {
+  background: #7E57C2 !important;
+  border-color: #7E57C2 !important;
+  color: #ffffff !important;
+}
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-btn-primary:hover {
+  background: #6a49a8 !important;
+  border-color: #6a49a8 !important;
+  color: #ffffff !important;
 }

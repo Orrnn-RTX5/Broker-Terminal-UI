@@ -36,7 +36,7 @@ import type {
   PlaceOrderRequest,
   PlacePendingOrderRequest,
   Position,
-  ProfitCalcRequest,
+  ProfitCalcRequest, 
   ProfitCalcResponse,
   SetInvestorPasswordRequest,
   Tick,

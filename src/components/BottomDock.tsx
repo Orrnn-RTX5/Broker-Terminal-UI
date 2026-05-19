@@ -59,7 +59,7 @@ export function BottomDock({
     const cachedPositionsSig = useRef<string>('');
 
     const accountSig = (a: any) => !a ? '' : `${a.balance}|${a.equity}|${a.margin}|${a.freeMargin}|${a.marginLevel}`;
-    const positionsSig = (ps: any[]) => ps.map(p => `${p.id}:${p.side}:${p.volume}:${p.sl}:${p.tp}`).join('|');
+    const positionsSig = (ps: any[]) => ps.map(p => `${p.id}-${p.volume}-${p.sl}-${p.tp}-${p.currentPrice}-${p.unrealizedPnL}`).join('|');
 
     // Subscribe to store — throttle to 500ms so WebSocket bursts don't flicker the UI.
     // Only calls setState when the displayed field values actually changed.
@@ -395,47 +395,8 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
     // Local SL/TP overrides: track modified values since the Gateway API doesn't return them
     const [slTpOverrides, setSlTpOverrides] = useState<Record<number, { sl: number; tp: number }>>({});
 
-    // Subscribe to tick changes — throttle to 500ms so price rows don't repaint on every quote.
-    // Uses functional update to keep the same reference when bid/ask values haven't changed,
-    // preventing useMemo from recomputing livePositions unnecessarily.
-    const [throttledTicks, setThrottledTicks] = useState<any>(() => useAppStore.getState().ticks);
-
-    useEffect(() => {
-        let lastFired = 0;
-        let pending: ReturnType<typeof setTimeout> | null = null;
-
-        const flushTicks = () => {
-            setThrottledTicks((prev: any) => {
-                const next = useAppStore.getState().ticks;
-                const symbols = Object.keys(next);
-                const changed = symbols.some(sym => {
-                    const n = next[sym]; const p = prev[sym];
-                    return !p || n.bid !== p.bid || n.ask !== p.ask;
-                });
-                return changed ? next : prev; // same ref = useMemo won't recompute
-            });
-        };
-
-        const unsub = useAppStore.subscribe((state, prev) => {
-            if (state.ticks === prev.ticks) return;
-            const now = Date.now();
-            const remaining = 500 - (now - lastFired);
-            if (remaining <= 0) {
-                lastFired = now;
-                flushTicks();
-            } else if (!pending) {
-                pending = setTimeout(() => {
-                    lastFired = Date.now();
-                    pending = null;
-                    flushTicks();
-                }, remaining);
-            }
-        });
-        return () => {
-            unsub();
-            if (pending) clearTimeout(pending);
-        };
-    }, []);
+    // Subscribe to positions instead of ticks for highspeed socket data
+    // (Handled by the parent component, BottomDock, which passes throttled positions)
 
     useEffect(() => {
         const handleTradeModified = (e: any) => {
@@ -465,25 +426,10 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
     const livePositions = useMemo(() => {
         return positions.map((pos: any) => {
             const symbol = pos?.symbol ?? '';
-            const tick = symbol ? throttledTicks[symbol] : undefined;
             let livePrice = Number(pos?.currentPrice ?? 0);
             let livePnL = Number(pos?.unrealizedPnL ?? 0);
             const openPrice = Number(pos?.openPrice ?? 0);
             const volume = Number(pos?.volume ?? 0);
-
-            if (tick && openPrice > 0) {
-                livePrice = pos.side === 'BUY' ? tick.bid : tick.ask;
-
-                // PnL Calculation based on specific multipliers
-                let multiplier = 100000;
-                if (symbol.includes('JPY')) multiplier = 1000;
-                else if (symbol.startsWith('BTC') || symbol.startsWith('ETH')) multiplier = 1;
-                else if (symbol.startsWith('XAU')) multiplier = 100;
-                else if (symbol.startsWith('XAG')) multiplier = 5000;
-
-                const pipDiff = pos.side === 'BUY' ? (livePrice - openPrice) : (openPrice - livePrice);
-                livePnL = pipDiff * volume * multiplier;
-            }
 
             // Apply local SL/TP overrides (since Gateway API doesn't return these)
             const override = slTpOverrides[pos?.id];
@@ -501,7 +447,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                 livePnL
             };
         });
-    }, [positions, throttledTicks, slTpOverrides]);
+    }, [positions, slTpOverrides]);
 
     // Compute live account totals based on realtime positions
     const totalLivePnL = useMemo(() => livePositions.reduce((acc, pos) => acc + (pos.livePnL || 0), 0), [livePositions]);

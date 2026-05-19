@@ -37,7 +37,7 @@ export function ShortcutHelpDialog({ isOpen, onClose }: ShortcutHelpDialogProps)
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#131316] rounded-lg shadow-2xl border border-zinc-700 w-full max-w-4xl max-h-[80vh] flex flex-col animate-in zoom-in-95 duration-200">
+      <div className="rtx-shortcut-dialog bg-[#131316]/90 backdrop-blur-xl rounded-lg shadow-2xl border border-zinc-700 w-full max-w-4xl max-h-[80vh] flex flex-col animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700">
           <div className="flex items-center gap-3">
@@ -77,8 +77,8 @@ export function ShortcutHelpDialog({ isOpen, onClose }: ShortcutHelpDialogProps)
         )}
 
         {/* Category Tabs */}
-        <div className="px-6 py-3 border-b border-zinc-800 overflow-x-auto">
-          <div className="flex gap-2">
+        <div className="px-6 py-3 border-b border-zinc-800">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setSelectedCategory(null)}
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${selectedCategory === null

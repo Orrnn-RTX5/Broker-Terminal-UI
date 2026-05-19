@@ -492,6 +492,14 @@ declare global {
         openPath: (path: string) => Promise<string>;
         openExternal: (url: string) => Promise<void>;
       };
+      window: {
+        minimize: () => void;
+        maximize: () => void;
+        close: () => void;
+        isMaximized: () => Promise<boolean>;
+        setTitle: (title: string) => void;
+        onMaximizeChange: (callback: (isMaximized: boolean) => void) => () => void;
+      };
       ipcRenderer: {
         send: (channel: string, data?: unknown) => void;
         on: (channel: string, func: (...args: unknown[]) => void) => void;

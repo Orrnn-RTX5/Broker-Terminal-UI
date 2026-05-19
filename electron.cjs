@@ -145,6 +145,12 @@ ipcMain.handle('shell-open-external', async (_event, url) => {
     return shell.openExternal(url);
 });
 
+ipcMain.on('set-window-title', (_event, title) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setTitle(typeof title === 'string' ? title : 'RTX Terminal');
+    }
+});
+
 // ─── Window Creation ─────────────────────────────────────────────────────────
 function createWindow() {
     mainWindow = new BrowserWindow({

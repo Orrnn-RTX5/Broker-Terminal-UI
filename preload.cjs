@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electron', {
         maximize: () => ipcRenderer.send('window-maximize'),
         close: () => ipcRenderer.send('window-close'),
         isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+        setTitle: (title) => ipcRenderer.send('set-window-title', title),
         onMaximizeChange: (callback) => {
             const handler = (_event, isMaximized) => callback(isMaximized);
             ipcRenderer.on('window-maximized', handler);

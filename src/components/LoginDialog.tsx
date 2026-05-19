@@ -133,7 +133,13 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             if (onLoginSuccess) {
                 onLoginSuccess(String(accountId));
             } else {
-                window.location.reload();
+                const loginNum = parseInt(String(accountId), 10);
+                if (!isNaN(loginNum)) {
+                    const { bootstrapApp } = await import('../services/bootstrapApp');
+                    bootstrapApp(loginNum).catch(() => window.location.reload());
+                } else {
+                    window.location.reload();
+                }
             }
         } catch (err: any) {
             console.error('[LoginDialog] Auth error:', err);

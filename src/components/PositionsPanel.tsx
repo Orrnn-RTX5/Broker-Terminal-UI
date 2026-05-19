@@ -120,7 +120,7 @@ function LiveTotalPnL({ positions }: { positions: Position[] }) {
 
     return (
         <span>
-            Total P&L: <span className={`${liveTotalPnL >= 0 ? "text-[#4ade80]" : "text-[#f87171]"} font-bold px-1 rounded-sm`}>
+            Total P&L: <span className={`${liveTotalPnL >= 0 ? "text-[#4ade80]" : "text-[#f87171]"} font-semibold px-1 rounded-sm`}>
                 {formatMoney(liveTotalPnL)}
             </span>
         </span>
@@ -147,27 +147,13 @@ function PositionRow({
     loading: boolean,
     onDoubleClick: (pos: Position) => void
 }) {
-    const tick = useCurrentTick(pos.symbol);
     const digits = getSymbolDigits(pos.symbol);
 
-
-    const livePrice = tick ? (pos.side === 'BUY' ? tick.bid : tick.ask) : pos.currentPrice;
-
+    const livePrice = pos.currentPrice;
 
     const priceColor = 'text-zinc-300';
 
-
     let livePnL = pos.unrealizedPnL;
-    if (tick && pos.openPrice > 0) {
-        let multiplier = 100000;
-        if (pos.symbol.includes('JPY')) multiplier = 1000;
-        else if (pos.symbol.startsWith('BTC') || pos.symbol.startsWith('ETH')) multiplier = 1;
-        else if (pos.symbol.startsWith('XAU')) multiplier = 100;
-        else if (pos.symbol.startsWith('XAG')) multiplier = 5000;
-
-        const pipDiff = pos.side === 'BUY' ? (livePrice - pos.openPrice) : (pos.openPrice - livePrice);
-        livePnL = pipDiff * pos.volume * multiplier;
-    }
 
     // Plain PnL color (no blink)
     const pnlColor = '';
@@ -192,10 +178,10 @@ function PositionRow({
     };
 
     return (
-        <tr className={`${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-pointer`} onDoubleClick={() => onDoubleClick(pos)}>
+        <tr className={`font-semibold ${i % 2 === 0 ? 'bg-[#131316] rtx-row-even' : 'bg-[#0f0f12] rtx-row-odd'} hover:bg-[#191a1e] transition-colors group cursor-pointer`} onDoubleClick={() => onDoubleClick(pos)}>
             <td className="px-1 py-[2px] pl-2 text-zinc-500">{pos.id}</td>
-            <td className="px-1 py-[2px] font-bold text-zinc-100">{pos.symbol}</td>
-            <td className={`px-1 py-[2px] font-bold text-[10px] ${pos.side === 'BUY' ? 'text-blue-400' : 'text-red-400'}`}>
+            <td className="px-1 py-[2px] font-semibold text-zinc-100">{pos.symbol}</td>
+            <td className={`px-1 py-[2px] font-semibold text-[10px] ${pos.side === 'BUY' ? 'text-blue-400' : 'text-red-400'}`}>
                 <div className="flex items-center gap-1">
                     {pos.side === 'BUY' ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -205,7 +191,7 @@ function PositionRow({
                     <span>{pos.side}</span>
                 </div>
             </td>
-            <td className="px-1 py-[2px] text-right font-medium text-zinc-200">{pos.volume.toFixed(2)}</td>
+            <td className="px-1 py-[2px] text-right font-semibold text-zinc-200">{pos.volume.toFixed(2)}</td>
             <td className="px-1 py-[2px] text-right text-zinc-400"><PriceDisplay price={pos.openPrice} symbol={pos.symbol} /></td>
             <td className={`px-1 py-[2px] text-right ${priceColor}`}><PriceDisplay price={livePrice} symbol={pos.symbol} /></td>
             {/* SL - Inline Editing */}
@@ -262,7 +248,7 @@ function PositionRow({
                     </div>
                 )}
             </td>
-            <td className={`px-1 py-[2px] text-right font-bold ${livePnL >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'} ${pnlColor}`}>
+            <td className={`px-1 py-[2px] text-right font-semibold ${livePnL >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'} ${pnlColor}`}>
                 {formatMoney(livePnL)}
             </td>
             <td className="px-1 py-[2px] text-right text-zinc-500 text-[10px]">{formatMoney(pos.swap)}</td>
@@ -310,11 +296,11 @@ function PendingOrderRow({
     };
 
     return (
-        <tr className={`${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group`}>
+        <tr className={`font-semibold ${i % 2 === 0 ? 'bg-[#131316] rtx-row-even' : 'bg-[#0f0f12] rtx-row-odd'} hover:bg-[#191a1e] transition-colors group`}>
             <td className="px-1 py-[2px] pl-2 text-zinc-500">{order.id}</td>
-            <td className="px-1 py-[2px] font-bold text-zinc-100">{order.symbol}</td>
+            <td className="px-1 py-[2px] font-semibold text-zinc-100">{order.symbol}</td>
             <td className="px-1 py-[2px] text-zinc-400 text-[10px]">{order.type}</td>
-            <td className={`px-1 py-[2px] font-bold text-[10px] ${order.side === 'BUY' ? 'text-blue-400' : 'text-red-400'}`}>
+            <td className={`px-1 py-[2px] font-semibold text-[10px] ${order.side === 'BUY' ? 'text-blue-400' : 'text-red-400'}`}>
                 <div className="flex items-center gap-1">
                     {order.side === 'BUY' ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -324,7 +310,7 @@ function PendingOrderRow({
                     <span>{order.side}</span>
                 </div>
             </td>
-            <td className="px-1 py-[2px] text-right font-medium text-zinc-200">{order.volume.toFixed(2)}</td>
+            <td className="px-1 py-[2px] text-right font-semibold text-zinc-200">{order.volume.toFixed(2)}</td>
             <td className="px-1 py-[2px] text-right text-zinc-400"><PriceDisplay price={order.price} symbol={order.symbol} /></td>
             <td className="px-1 py-[2px] text-right">
                 <span className={order.sl && order.sl > 0 ? "text-red-300" : "text-zinc-600"}>

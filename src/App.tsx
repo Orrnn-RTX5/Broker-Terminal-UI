@@ -24,6 +24,7 @@ import { accountV2Api, tradingV2Api } from './api/trade';
 import { tradeGatewayApi } from './api/tradeGateway';
 import { OneClickTrading } from './components/OneClickTrading';
 import { getStoredBrokerServer } from './services/brokerServers';
+import { BootstrapLoader } from './components/BootstrapLoader';
 
 // Layout Components
 import { TopToolbar } from './components/layout/TopToolbar';
@@ -759,6 +760,9 @@ function App() {
           setIsAuthenticated(true);
           setAccountId(restoredAccountId);
           console.log('[Session] Restored via token for:', restoredAccountId);
+          // Trigger MT5-style boot sequence — fetch all data before showing the UI
+          const { bootstrapApp } = await import('./services/bootstrapApp');
+          bootstrapApp(loginId).catch(console.error);
           return;
         }
       } catch (err: any) {
@@ -1951,6 +1955,35 @@ function App() {
     };
   }, []);
 
+  // Dynamic window title — mirrors MT5: "AccountID - Server - Hedge/Netting - BrokerName - SYMBOL,TF"
+  const brokerConfigRef = useRef<{ brokerName: string; marginMode: string } | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (!brokerConfigRef.current) {
+      api.config.getConfig()
+        .then((cfg) => { brokerConfigRef.current = cfg; })
+        .catch(() => { brokerConfigRef.current = { brokerName: 'RTX', marginMode: 'HEDGING' }; });
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !accountId) return;
+
+    const tfLabel: Record<string, string> = {
+      '1m': 'M1', '5m': 'M5', '15m': 'M15', '30m': 'M30',
+      '1h': 'H1', '4h': 'H4', '1d': 'D1',
+    };
+    const server     = useAppStore.getState().savedAccounts.find((a) => a.login === Number(accountId))?.server
+                       || localStorage.getItem('rtx_broker_server') || 'RTX-Server';
+    const marginMode = brokerConfigRef.current?.marginMode === 'NETTING' ? 'Netting' : 'Hedge';
+    const broker     = brokerConfigRef.current?.brokerName || 'RTX Terminal';
+    const tf         = tfLabel[timeframe] ?? timeframe.toUpperCase();
+    const title      = `${accountId} - ${server} - ${marginMode} - ${broker} - ${selectedSymbol},${tf}`;
+
+    document.title = title;
+    window.electron?.window?.setTitle(title);
+  }, [isAuthenticated, accountId, selectedSymbol, timeframe]);
+
   // TODO: Replace with API call to /api/notifications
   // Fetch real notifications from backend
   useEffect(() => {
@@ -2673,6 +2706,9 @@ function App() {
           />
         </div>
       </KeyboardShortcutProvider>
+
+      {/* MT5-style post-login loading screen — covers UI while fetching account/positions/orders */}
+      <BootstrapLoader />
     </CommandBusProvider>
   );
 }

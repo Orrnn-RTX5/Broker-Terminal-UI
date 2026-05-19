@@ -10,9 +10,6 @@
     color: #333;
 }
 
-/* ============================================
-   MT5 Menubar
-   ============================================ */
 .mt-menubar {
     height: 22px;
     background: #FFFFFF;
@@ -35,9 +32,6 @@
     background: #E5E5E5;
 }
 
-/* ============================================
-   MT5 Dense Toolbar
-   ============================================ */
 .mt-toolbar {
     height: 34px;
     background: #FFFFFF;
@@ -119,9 +113,6 @@
     border-color: #1976D2;
 }
 
-/* ============================================
-   Chart Area & Overlays
-   ============================================ */
 .mt-chart-wrapper {
     flex: 1;
     position: relative;
@@ -139,7 +130,7 @@
     top: 6px;
     left: 8px;
     font-size: 11px;
-    font-weight: bold;
+    font-weight: bold; 
     color: #333;
     pointer-events: none;
     z-index: 5;
@@ -153,7 +144,7 @@
     font-size: 18px;
     font-weight: 900;
     color: #D1D1D1;
-    /* Faded bg price like institutional terminals */
+   
     font-family: 'JetBrains Mono', monospace;
     pointer-events: none;
     z-index: 4;
@@ -165,7 +156,7 @@
     box-sizing: border-box;
 }
 
-/* Specific styling for the wide New Order / Algo Trading buttons */
+
 .mt-tool-btn svg[viewBox="0 0 80 18"],
 .mt-tool-btn svg[viewBox="0 0 70 18"] {
     height: 20px;
@@ -180,9 +171,6 @@
     }
 }
 
-/* ============================================
-   Drawing Tools & Menus
-   ============================================ */
 .mt-dropdown-menu {
     position: absolute;
     top: 100%;

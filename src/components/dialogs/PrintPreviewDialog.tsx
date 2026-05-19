@@ -5,6 +5,7 @@
 
 import { Icon } from '../ui/Icon';
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { chartPrinter, type PrintPreferences, type ChartPrintData } from '../../services/chartPrinter';
 
 export interface PrintPreviewDialogProps {
@@ -88,21 +89,30 @@ export const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
     }
   };
 
-  return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]" onClick={onClose}>
+  return createPortal(
+        <div 
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" 
+            onClick={(e) => {
+                e.stopPropagation();
+                if (e.target === e.currentTarget) onClose();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+        >
             <div
-                className="bg-[#131316] border border-zinc-700 rounded-lg shadow-2xl w-[90vw] h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150"
+                className="bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-lg shadow-2xl w-[90vw] h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-150"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 bg-[#252528]">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#252528] [.rtx-advanced-view_&]:bg-gray-50">
                     <div className="flex items-center gap-2">
-                        <Icon name="print" size="md" className="text-blue-400" />
-                        <h2 className="text-sm font-semibold text-zinc-100">Print Preview</h2>
+                        <Icon name="print" size="md" className="text-blue-400 [.rtx-advanced-view_&]:text-indigo-600" />
+                        <h2 className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">Print Preview</h2>
                     </div>
                     <button
                         onClick={onClose}
-                        className="text-zinc-400 hover:text-zinc-100 transition-colors p-1 hover:bg-zinc-700/50 rounded"
+                        className="text-zinc-400 hover:text-zinc-100 [.rtx-advanced-view_&]:text-gray-500 [.rtx-advanced-view_&]:hover:text-gray-900 transition-colors p-1 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded"
                         aria-label="Close"
                     >
                         <Icon name="x-close" size="md" />
@@ -110,26 +120,26 @@ export const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                 </div>
 
                 {/* Toolbar */}
-                <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-700 bg-[#252528]">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#252528] [.rtx-advanced-view_&]:bg-gray-50">
                     <div className="flex items-center gap-2">
                         <button
                             onClick={handleZoomOut}
                             disabled={zoom <= 50}
-                            className="p-1.5 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-1.5 text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Zoom Out"
                         >
                             <Icon name="zoom-out" size="md" />
                         </button>
                         <button
                             onClick={handleZoomReset}
-                            className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors min-w-[50px] text-center"
+                            className="text-xs text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 transition-colors min-w-[50px] text-center"
                         >
                             {zoom}%
                         </button>
                         <button
                             onClick={handleZoomIn}
                             disabled={zoom >= 200}
-                            className="p-1.5 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-1.5 text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Zoom In"
                         >
                             <Icon name="zoom-in" size="md" />
@@ -138,7 +148,7 @@ export const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                 </div>
 
                 {/* Preview Area */}
-                <div className="flex-1 p-8 overflow-auto bg-zinc-900">
+                <div className="flex-1 p-8 overflow-auto bg-zinc-900 [.rtx-advanced-view_&]:bg-gray-100">
                     <div
                         ref={previewRef}
                         className="mx-auto shadow-2xl"
@@ -149,7 +159,7 @@ export const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                         }}
                     >
                         {/* Preview iframe */}
-                        <div className="bg-white">
+                        <div className="bg-white shadow-lg [.rtx-advanced-view_&]:shadow-md border border-transparent [.rtx-advanced-view_&]:border-gray-300">
                             <iframe
                                 srcDoc={previewHTML}
                                 className="w-full border-0"
@@ -164,17 +174,17 @@ export const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                 </div>
 
                 {/* Footer Info */}
-                <div className="px-6 py-3 bg-[#2a2a2a] border-t border-zinc-700">
-                    <div className="flex items-center justify-between text-xs text-zinc-400">
+                <div className="px-6 py-3 bg-[#2a2a2a] [.rtx-advanced-view_&]:bg-gray-100 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200">
+                    <div className="flex items-center justify-between text-xs text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">
                         <div className="flex items-center space-x-6">
                             <span>
-                                <span className="font-semibold">Symbol:</span> {chartData.symbol}
+                                <span className="font-semibold text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">Symbol:</span> {chartData.symbol}
                             </span>
                             <span>
-                                <span className="font-semibold">Timeframe:</span> {chartData.timeframe}
+                                <span className="font-semibold text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">Timeframe:</span> {chartData.timeframe}
                             </span>
                             <span>
-                                <span className="font-semibold">Page:</span> {preferences.pageSize} {preferences.orientation}
+                                <span className="font-semibold text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">Page:</span> {preferences.pageSize} {preferences.orientation}
                             </span>
                         </div>
                         <div>
@@ -193,8 +203,8 @@ export const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-700 bg-[#252528]">
-                    <div className="text-xs text-zinc-400">
+                <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#252528] [.rtx-advanced-view_&]:bg-gray-50">
+                    <div className="text-xs text-zinc-400 [.rtx-advanced-view_&]:text-gray-500">
                         <p>Review your chart before printing.</p>
                         <p className="mt-1">The preview may differ slightly from the actual print output.</p>
                     </div>
@@ -202,14 +212,14 @@ export const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                     <div className="flex items-center gap-2">
                         <button
                             onClick={onClose}
-                            className="px-4 py-1.5 text-xs text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 rounded transition-colors"
+                            className="px-4 py-1.5 text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={handlePrint}
                             disabled={isPrinting}
-                            className="px-4 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-4 py-1.5 text-xs bg-zinc-700 [.rtx-advanced-view_&]:bg-indigo-600 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-indigo-700 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isPrinting ? (
                                 <>
@@ -229,6 +239,8 @@ export const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
+

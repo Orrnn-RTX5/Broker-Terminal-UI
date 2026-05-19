@@ -5,6 +5,7 @@
 
 import { Icon } from '../ui/Icon';
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   chartPrinter,
   type PrintPreferences,
@@ -59,258 +60,275 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
     onConfirm(preferences);
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]" onClick={onCancel}>
-            <div
-                className="bg-[#131316] border border-zinc-700 rounded-lg shadow-2xl w-[480px] animate-in fade-in zoom-in-95 duration-150"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700">
-                    <div className="flex items-center gap-2">
-                        <Icon name="settings" size="md" className="text-blue-400" />
-                        <h2 className="text-sm font-semibold text-zinc-100">Print Setup</h2>
+  const inputClass = "w-full bg-[#252528] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-300 rounded px-2 py-1.5 text-xs text-zinc-100 [.rtx-advanced-view_&]:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 [.rtx-advanced-view_&]:focus:ring-indigo-500 [.rtx-advanced-view_&]:focus:border-indigo-500";
+  const labelClass = "block text-xs text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 mb-1.5";
+  const sectionTitleClass = "text-xs font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 pb-1";
+  const checkboxClass = "w-3.5 h-3.5 bg-[#252528] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-300 rounded text-blue-600 [.rtx-advanced-view_&]:text-indigo-600 focus:ring-2 focus:ring-blue-500 [.rtx-advanced-view_&]:focus:ring-indigo-500 accent-blue-600 [.rtx-advanced-view_&]:accent-indigo-600";
+  const checkboxLabelClass = "text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-700";
+
+  return createPortal(
+    <div
+        className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]"
+        onClick={(e) => {
+            e.stopPropagation();
+            if (e.target === e.currentTarget) onCancel();
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+    >
+        <div
+            className="bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-lg shadow-2xl w-[480px] animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+        >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 shrink-0">
+                <div className="flex items-center gap-2">
+                    <Icon name="settings" size="md" className="text-blue-400 [.rtx-advanced-view_&]:text-indigo-600" />
+                    <h2 className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">Print Setup</h2>
+                </div>
+                <button
+                    onClick={onCancel}
+                    className="text-zinc-400 hover:text-zinc-100 [.rtx-advanced-view_&]:text-gray-500 [.rtx-advanced-view_&]:hover:text-gray-900 transition-colors p-1 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-100 rounded"
+                    aria-label="Close"
+                >
+                    <Icon name="x-close" size="md" />
+                </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 space-y-4 overflow-y-auto min-h-0">
+                {/* Page Setup */}
+                <div className="space-y-3">
+                    <h3 className={sectionTitleClass}>
+                        Page Setup
+                    </h3>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className={labelClass}>Orientation</label>
+                            <select
+                                value={preferences.orientation}
+                                onChange={(e) => handleChange('orientation', e.target.value as PageOrientation)}
+                                className={inputClass}
+                            >
+                                <option value="portrait">Portrait</option>
+                                <option value="landscape">Landscape</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className={labelClass}>Paper Size</label>
+                            <select
+                                value={preferences.pageSize}
+                                onChange={(e) => handleChange('pageSize', e.target.value as PageSize)}
+                                className={inputClass}
+                            >
+                                <option value="A4">A4 (210 × 297 mm)</option>
+                                <option value="Letter">Letter (8.5 × 11 in)</option>
+                                <option value="Legal">Legal (8.5 × 14 in)</option>
+                                <option value="A3">A3 (297 × 420 mm)</option>
+                            </select>
+                        </div>
                     </div>
-                    <button
-                        onClick={onCancel}
-                        className="text-zinc-400 hover:text-zinc-100 transition-colors p-1 hover:bg-zinc-700/50 rounded"
-                        aria-label="Close"
-                    >
-                        <Icon name="x-close" size="md" />
-                    </button>
                 </div>
 
-                {/* Content */}
-                <div className="p-4 space-y-4 max-h-[500px] overflow-y-auto">
-                    {/* Page Setup */}
-                    <div className="space-y-3">
-                        <h3 className="text-xs font-semibold text-zinc-200 border-b border-zinc-700 pb-1">
-                            Page Setup
-                        </h3>
+                {/* Margins */}
+                <div className="space-y-3">
+                    <h3 className={sectionTitleClass}>
+                        Margins (mm)
+                    </h3>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="block text-xs text-zinc-400 mb-1.5">Orientation</label>
-                                <select
-                                    value={preferences.orientation}
-                                    onChange={(e) => handleChange('orientation', e.target.value as PageOrientation)}
-                                    className="w-full bg-[#252528] border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="portrait">Portrait</option>
-                                    <option value="landscape">Landscape</option>
-                                </select>
-                            </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className={labelClass}>Top</label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="50"
+                                value={preferences.marginTop}
+                                onChange={(e) => handleChange('marginTop', Number(e.target.value))}
+                                className={inputClass}
+                            />
+                        </div>
 
-                            <div>
-                                <label className="block text-xs text-zinc-400 mb-1.5">Paper Size</label>
-                                <select
-                                    value={preferences.pageSize}
-                                    onChange={(e) => handleChange('pageSize', e.target.value as PageSize)}
-                                    className="w-full bg-[#252528] border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="A4">A4 (210 × 297 mm)</option>
-                                    <option value="Letter">Letter (8.5 × 11 in)</option>
-                                    <option value="Legal">Legal (8.5 × 14 in)</option>
-                                    <option value="A3">A3 (297 × 420 mm)</option>
-                                </select>
-                            </div>
+                        <div>
+                            <label className={labelClass}>Right</label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="50"
+                                value={preferences.marginRight}
+                                onChange={(e) => handleChange('marginRight', Number(e.target.value))}
+                                className={inputClass}
+                            />
+                        </div>
+
+                        <div>
+                            <label className={labelClass}>Bottom</label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="50"
+                                value={preferences.marginBottom}
+                                onChange={(e) => handleChange('marginBottom', Number(e.target.value))}
+                                className={inputClass}
+                            />
+                        </div>
+
+                        <div>
+                            <label className={labelClass}>Left</label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="50"
+                                value={preferences.marginLeft}
+                                onChange={(e) => handleChange('marginLeft', Number(e.target.value))}
+                                className={inputClass}
+                            />
                         </div>
                     </div>
+                </div>
 
-                    {/* Margins */}
-                    <div className="space-y-3">
-                        <h3 className="text-xs font-semibold text-zinc-200 border-b border-zinc-700 pb-1">
-                            Margins (mm)
-                        </h3>
+                {/* Print Options */}
+                <div className="space-y-3">
+                    <h3 className={sectionTitleClass}>
+                        Print Options
+                    </h3>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="block text-xs text-zinc-400 mb-1.5">Top</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="50"
-                                    value={preferences.marginTop}
-                                    onChange={(e) => handleChange('marginTop', Number(e.target.value))}
-                                    className="w-full bg-[#252528] border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs text-zinc-400 mb-1.5">Right</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="50"
-                                    value={preferences.marginRight}
-                                    onChange={(e) => handleChange('marginRight', Number(e.target.value))}
-                                    className="w-full bg-[#252528] border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs text-zinc-400 mb-1.5">Bottom</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="50"
-                                    value={preferences.marginBottom}
-                                    onChange={(e) => handleChange('marginBottom', Number(e.target.value))}
-                                    className="w-full bg-[#252528] border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-xs text-zinc-400 mb-1.5">Left</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    max="50"
-                                    value={preferences.marginLeft}
-                                    onChange={(e) => handleChange('marginLeft', Number(e.target.value))}
-                                    className="w-full bg-[#252528] border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Print Options */}
-                    <div className="space-y-3">
-                        <h3 className="text-xs font-semibold text-zinc-200 border-b border-zinc-700 pb-1">
-                            Print Options
-                        </h3>
-
-                        <div className="space-y-2">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={preferences.includeHeader}
-                                    onChange={(e) => handleChange('includeHeader', e.target.checked)}
-                                    className="w-3.5 h-3.5 bg-[#252528] border border-zinc-700 rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
-                                />
-                                <span className="text-xs text-zinc-300">Include Header</span>
-                            </label>
-
-                            {preferences.includeHeader && (
-                              <input
-                                type="text"
-                                placeholder="Header text (optional)"
-                                value={preferences.headerText || ''}
-                                onChange={(e) => handleChange('headerText', e.target.value)}
-                                className="w-full ml-5 bg-[#252528] border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                            )}
-
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={preferences.includeFooter}
-                                    onChange={(e) => handleChange('includeFooter', e.target.checked)}
-                                    className="w-3.5 h-3.5 bg-[#252528] border border-zinc-700 rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
-                                />
-                                <span className="text-xs text-zinc-300">Include Footer</span>
-                            </label>
-
-                            {preferences.includeFooter && (
-                              <input
-                                type="text"
-                                placeholder="Footer text (optional)"
-                                value={preferences.footerText || ''}
-                                onChange={(e) => handleChange('footerText', e.target.value)}
-                                className="w-full ml-5 bg-[#252528] border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                            )}
-
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={preferences.includeGrid}
-                                    onChange={(e) => handleChange('includeGrid', e.target.checked)}
-                                    className="w-3.5 h-3.5 bg-[#252528] border border-zinc-700 rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
-                                />
-                                <span className="text-xs text-zinc-300">Include Grid Lines</span>
-                            </label>
-
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={preferences.includeIndicators}
-                                    onChange={(e) => handleChange('includeIndicators', e.target.checked)}
-                                    className="w-3.5 h-3.5 bg-[#252528] border border-zinc-700 rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
-                                />
-                                <span className="text-xs text-zinc-300">Include Indicators Legend</span>
-                            </label>
-
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={preferences.includeDrawings}
-                                    onChange={(e) => handleChange('includeDrawings', e.target.checked)}
-                                    className="w-3.5 h-3.5 bg-[#252528] border border-zinc-700 rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
-                                />
-                                <span className="text-xs text-zinc-300">Include Drawings Legend</span>
-                            </label>
-
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={preferences.scaleToFit}
-                                    onChange={(e) => handleChange('scaleToFit', e.target.checked)}
-                                    className="w-3.5 h-3.5 bg-[#252528] border border-zinc-700 rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
-                                />
-                                <span className="text-xs text-zinc-300">Scale to Fit Page</span>
-                            </label>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-3 pt-2">
-                            <div>
-                                <label className="block text-xs text-zinc-400 mb-1.5">Color Mode</label>
-                                <select
-                                    value={preferences.colorMode}
-                                    onChange={(e) => handleChange('colorMode', e.target.value as ColorMode)}
-                                    className="w-full bg-[#252528] border border-zinc-700 rounded px-2 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="color">Color</option>
-                                    <option value="grayscale">Black & White</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Save Preferences */}
-                    {accountId && (
-                      <div className="pt-4 border-t border-zinc-700">
+                    <div className="space-y-2">
                         <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={savePreferences}
-                            onChange={(e) => setSavePreferences(e.target.checked)}
-                            className="w-3.5 h-3.5 bg-[#252528] border border-zinc-700 rounded text-blue-600 focus:ring-2 focus:ring-blue-500"
-                          />
-                          <span className="text-xs text-zinc-300">Save these preferences as default</span>
+                            <input
+                                type="checkbox"
+                                checked={preferences.includeHeader}
+                                onChange={(e) => handleChange('includeHeader', e.target.checked)}
+                                className={checkboxClass}
+                            />
+                            <span className={checkboxLabelClass}>Include Header</span>
                         </label>
-                      </div>
-                    )}
+
+                        {preferences.includeHeader && (
+                          <input
+                            type="text"
+                            placeholder="Header text (optional)"
+                            value={preferences.headerText || ''}
+                            onChange={(e) => handleChange('headerText', e.target.value)}
+                            className={`${inputClass} ml-5 w-[calc(100%-1.25rem)]`}
+                          />
+                        )}
+
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={preferences.includeFooter}
+                                onChange={(e) => handleChange('includeFooter', e.target.checked)}
+                                className={checkboxClass}
+                            />
+                            <span className={checkboxLabelClass}>Include Footer</span>
+                        </label>
+
+                        {preferences.includeFooter && (
+                          <input
+                            type="text"
+                            placeholder="Footer text (optional)"
+                            value={preferences.footerText || ''}
+                            onChange={(e) => handleChange('footerText', e.target.value)}
+                            className={`${inputClass} ml-5 w-[calc(100%-1.25rem)]`}
+                          />
+                        )}
+
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={preferences.includeGrid}
+                                onChange={(e) => handleChange('includeGrid', e.target.checked)}
+                                className={checkboxClass}
+                            />
+                            <span className={checkboxLabelClass}>Include Grid Lines</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={preferences.includeIndicators}
+                                onChange={(e) => handleChange('includeIndicators', e.target.checked)}
+                                className={checkboxClass}
+                            />
+                            <span className={checkboxLabelClass}>Include Indicators Legend</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={preferences.includeDrawings}
+                                onChange={(e) => handleChange('includeDrawings', e.target.checked)}
+                                className={checkboxClass}
+                            />
+                            <span className={checkboxLabelClass}>Include Drawings Legend</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={preferences.scaleToFit}
+                                onChange={(e) => handleChange('scaleToFit', e.target.checked)}
+                                className={checkboxClass}
+                            />
+                            <span className={checkboxLabelClass}>Scale to Fit Page</span>
+                        </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 pt-2">
+                        <div>
+                            <label className={labelClass}>Color Mode</label>
+                            <select
+                                value={preferences.colorMode}
+                                onChange={(e) => handleChange('colorMode', e.target.value as ColorMode)}
+                                className={inputClass}
+                            >
+                                <option value="color">Color</option>
+                                <option value="grayscale">Black & White</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Footer */}
-                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-zinc-700 bg-[#252528]">
-                    <button
-                        onClick={onCancel}
-                        className="px-4 py-1.5 text-xs text-zinc-300 hover:text-zinc-100 hover:bg-zinc-700/50 rounded transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handlePrint}
-                        disabled={isSaving}
-                        className="px-4 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <Icon name="print" size="xs" />
-                        {isSaving ? 'Saving...' : 'OK'}
-                    </button>
-                </div>
+                {/* Save Preferences */}
+                {accountId && (
+                  <div className="pt-4 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={savePreferences}
+                        onChange={(e) => setSavePreferences(e.target.checked)}
+                        className={checkboxClass}
+                      />
+                      <span className={checkboxLabelClass}>Save these preferences as default</span>
+                    </label>
+                  </div>
+                )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#252528] [.rtx-advanced-view_&]:bg-gray-50 shrink-0">
+                <button
+                    onClick={onCancel}
+                    className="px-4 py-1.5 text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors"
+                >
+                    Cancel
+                </button>
+                <button
+                    onClick={handlePrint}
+                    disabled={isSaving}
+                    className="px-4 py-1.5 text-xs bg-zinc-700 [.rtx-advanced-view_&]:bg-indigo-600 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-indigo-700 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Icon name="print" size="xs" />
+                    {isSaving ? 'Saving...' : 'OK'}
+                </button>
             </div>
         </div>
-    );
+    </div>,
+    document.body
+  );
 };
+
