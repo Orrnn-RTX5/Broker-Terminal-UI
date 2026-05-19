@@ -294,19 +294,12 @@ export const TradingChart = React.memo(function TradingChart({
   const chartSettings = useChartSettingsStore(state =>
     state.symbolProperties[symbol] || state.globalProperties
   );
+  
   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
     if (typeof document === 'undefined') return false;
     const root = document.documentElement;
     return root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light');
   });
-  const chartColors = useMemo(() => isAdvancedUntitledLight
-    ? {
-      ...chartSettings.colors,
-      background: '#ffffff',
-      foreground: '#475467',
-      grid: '#e5e7eb',
-    }
-    : chartSettings.colors, [chartSettings.colors, isAdvancedUntitledLight]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -320,6 +313,18 @@ export const TradingChart = React.memo(function TradingChart({
     observer.observe(root, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
   }, []);
+
+  const chartColors = useMemo(() => {
+    if (isAdvancedUntitledLight && chartSettings.colorScheme === 'Green on Black') {
+      return {
+        ...chartSettings.colors,
+        background: '#ffffff',
+        foreground: '#475467',
+        grid: '#e5e7eb',
+      };
+    }
+    return chartSettings.colors;
+  }, [chartSettings.colors, chartSettings.colorScheme, isAdvancedUntitledLight]);
 
   const normalizeChartTimeToUnixSeconds = useCallback((time: Time): number | null => {
     if (typeof time === 'number') {

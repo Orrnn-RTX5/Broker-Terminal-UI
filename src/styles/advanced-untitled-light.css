@@ -678,65 +678,37 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart .dock-re
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child {
   background: #ffffff !important;
   border: 1px solid #e2e8f0 !important;
-  border-bottom: 1px solid #f1f5f9 !important;
-  border-radius: 0 !important; /* PERFECT SQUARE */
-  box-shadow: none !important;
-  padding: 8px 12px !important;
-}
-
-/* Header Text - "BTCUSD, M5:" Black */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > span:first-child {
-  color: #0f172a !important;
-  font-weight: 800 !important;
-}
-/* Header Text - "Bitcoin vs US Dollar" Gray */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > span:last-child {
-  color: #64748b !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  border-top: none !important;
   border-radius: 0 !important; /* PERFECT SQUARE */
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
 }
 
 /* Button Sizes (excluding middle arrows) */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button,
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > button,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > div {
   border-radius: 0 !important;
   border: none !important;
-  height: 64px !important;
-  min-height: 64px !important;
-  max-height: 64px !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button {
-  width: 120px !important;
-  min-width: 120px !important;
-  max-width: 120px !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > button {
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div {
-  width: 50px !important;
-  min-width: 50px !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > div {
   background: #ffffff !important;
 }
 
 /* Buy Button - Blue */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button:first-child {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > button:first-child {
   background: #2563eb !important;
 }
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button:first-child:hover:not(:disabled) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > button:first-child:hover:not(:disabled) {
   background: #1d4ed8 !important;
 }
 
 /* Sell Button - Red */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button:last-child {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > button:last-child {
   background: #dc2626 !important;
 }
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button:last-child:hover:not(:disabled) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > button:last-child:hover:not(:disabled) {
   background: #b91c1c !important;
 }
 
@@ -764,7 +736,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct input[type=number] {
   -moz-appearance: textfield !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div button {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > div button {
   background: transparent !important;
   color: #94a3b8 !important;
   font-size: 10px !important;
@@ -773,25 +745,25 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div
   max-height: unset !important;
   padding: 1px 0 !important;
 }
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > div button:hover {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > div button:hover {
   color: #475569 !important;
 }
 
 /* Ensure BUY/SELL text is white and bold */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:nth-child(2) > button > span:first-child {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct > div:first-child > button > span:first-child {
   color: #ffffff !important;
   font-weight: 800 !important;
 }
 
 /* Advanced Mode Fonts (Inter) */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-small { 
-  font-family: 'Inter', system-ui, sans-serif !important; color: #ffffff !important; text-shadow: none !important; font-weight: 600 !important; font-size: 15px !important;
+  font-family: 'Inter', system-ui, sans-serif !important; color: #ffffff !important; text-shadow: none !important; font-weight: 600 !important; font-size: 12px !important;
 }
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-big { 
-  font-family: 'Inter', system-ui, sans-serif !important; color: #ffffff !important; text-shadow: none !important; font-weight: 800 !important; font-size: 34px !important; line-height: 0.8 !important;
+  font-family: 'Inter', system-ui, sans-serif !important; color: #ffffff !important; text-shadow: none !important; font-weight: 800 !important; font-size: 24px !important; line-height: 0.8 !important;
 }
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-pip { 
-  font-family: 'Inter', system-ui, sans-serif !important; color: #ffffff !important; text-shadow: none !important; font-weight: 600 !important; font-size: 15px !important;
+  font-family: 'Inter', system-ui, sans-serif !important; color: #ffffff !important; text-shadow: none !important; font-weight: 600 !important; font-size: 12px !important;
 }
 
 /* Trade Footer + Time Range buttons Revert */
@@ -1578,9 +1550,25 @@ html.rtx-advanced-view.rtx-skin-untitled-light .text-emerald-400 {
 
 html.rtx-advanced-view.rtx-skin-untitled-light .text-\[\#f87171\],
 html.rtx-advanced-view.rtx-skin-untitled-light .text-red-300,
-html.rtx-advanced-view.rtx-skin-untitled-light .text-red-400 {
+html.rtx-advanced-view.rtx-skin-untitled-light .text-red-400,
+html.rtx-advanced-view.rtx-skin-untitled-light .text-red-500 {
   color: #b42318 !important; /* Deep Red */
   font-weight: 600 !important;
+}
+
+/* Explicitly override the default text color for BUY/SELL columns in Trade tab */
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-emerald-500,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-blue-400 {
+  color: #027a48 !important; /* Deep Green for BUY */
+  font-weight: 700 !important;
+  font-size: 11px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-red-500,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-red-400 {
+  color: #b42318 !important; /* Deep Red for SELL */
+  font-weight: 700 !important;
+  font-size: 11px !important;
 }
 
 /* === Open Account Dialog Light Mode (Advanced Untitled) === */

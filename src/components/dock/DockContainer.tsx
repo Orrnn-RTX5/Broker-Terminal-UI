@@ -473,7 +473,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
                 <PanelSlot
                   panel={panel}
                   isActive={isActive}
-                  showHeader={panel.component !== 'EmptyChartArea'}
+                  showHeader={panel.component !== 'EmptyChartArea' && panel.component !== 'Chart'}
                   isDragging={false}
                   dropTargetId={dropTargetId}
                   compassDir={compassDir}
@@ -530,6 +530,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
             <PanelSlot
               key={p.id}
               panel={p}
+              showHeader={p.component !== 'EmptyChartArea' && p.component !== 'Chart'}
               isDragging={isDragging}
               dropTargetId={dropTargetId}
               compassDir={compassDir}

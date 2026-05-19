@@ -18,6 +18,7 @@ interface IndicatorNavigatorProps {
   isOpen: boolean;
   onClose: () => void;
   onAddIndicator: (indicator: IndicatorInfo) => void;
+  initialCategory?: string;
 }
 
 const INDICATOR_CATEGORIES = {
@@ -151,9 +152,9 @@ const INDICATOR_CATEGORIES = {
   }
 };
 
-export function IndicatorNavigator({ isOpen, onClose, onAddIndicator }: IndicatorNavigatorProps) {
+export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCategory }: IndicatorNavigatorProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory ?? null);
 
   if (!isOpen) return null;
 

@@ -25,6 +25,8 @@ import { tradeGatewayApi } from './api/tradeGateway';
 import { OneClickTrading } from './components/OneClickTrading';
 import { getStoredBrokerServer } from './services/brokerServers';
 import { BootstrapLoader } from './components/BootstrapLoader';
+import { IndicatorNavigator } from './components/IndicatorNavigator';
+import type { IndicatorInfo } from './components/IndicatorNavigator';
 
 // Layout Components
 import { TopToolbar } from './components/layout/TopToolbar';
@@ -816,6 +818,10 @@ function App() {
   const [chartPropsSymbol, setChartPropsSymbol] = useState('');
   const [chartPropsTimeframe, setChartPropsTimeframe] = useState('M1');
 
+  // Indicator Navigator state
+  const [showIndicatorNavigator, setShowIndicatorNavigator] = useState(false);
+  const [indicatorNavCategory, setIndicatorNavCategory] = useState<string | undefined>(undefined);
+
   // Data Window state
   const [showDataWindow, setShowDataWindow] = useState(false);
   const [dataWindowPos, setDataWindowPos] = useState({ x: 620, y: 56 });
@@ -976,7 +982,11 @@ function App() {
         setTimeframe(tf as Timeframe);
       }
     });
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = commandBus.subscribe('OPEN_INDICATOR_LIST' as any, (payload: any) => {
+      setIndicatorNavCategory(payload?.category ?? undefined);
+      setShowIndicatorNavigator(true);
+    });
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, []);
 
   // Order Panel State
@@ -2696,6 +2706,20 @@ function App() {
 
           {/* Global Confirm Dialog */}
           <ConfirmDialog />
+
+          {/* Indicator Navigator (Insert > Indicators, toolbar button) */}
+          <IndicatorNavigator
+            isOpen={showIndicatorNavigator}
+            onClose={() => setShowIndicatorNavigator(false)}
+            initialCategory={indicatorNavCategory}
+            onAddIndicator={(indicator: IndicatorInfo) => {
+              commandBus.dispatch({
+                type: 'ADD_INDICATOR',
+                payload: { name: indicator.name, params: indicator.parameters ?? {} }
+              });
+              setShowIndicatorNavigator(false);
+            }}
+          />
 
           {/* Chart Properties Dialog (F8) */}
           <ChartPropertiesDialog

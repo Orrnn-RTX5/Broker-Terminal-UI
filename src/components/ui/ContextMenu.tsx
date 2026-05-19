@@ -487,7 +487,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu
     <>
       <div
         ref={menuRef}
-        className="fixed w-64 bg-[#131316] border border-zinc-600 shadow-2xl rounded-sm py-1 text-xs text-zinc-200 outline-none transition-opacity duration-100 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700"
+        className="fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-xs text-zinc-200 outline-none transition-opacity duration-100 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700"
         style={{
           left: `${adjustedPosition.x}px`,
           top: `${adjustedPosition.y}px`,
@@ -654,7 +654,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     <div ref={menuRef}>
       {triggerSymbol && (
         <div
-          className="fixed w-64 bg-[#131316] border border-zinc-600 shadow-2xl rounded-sm py-1 text-xs text-zinc-200"
+          className="fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-xs text-zinc-200"
           style={{
             top: position.y,
             left: position.x,

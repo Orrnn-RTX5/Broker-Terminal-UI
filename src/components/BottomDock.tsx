@@ -413,6 +413,16 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
         setEditTP(pos.tp || "");
     };
 
+    const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+    useEffect(() => {
+        const root = document.documentElement;
+        const check = () => setIsAdvancedMode(root.classList.contains('rtx-advanced-view'));
+        check();
+        const obs = new MutationObserver(check);
+        obs.observe(root, { attributes: true, attributeFilter: ['class'] });
+        return () => obs.disconnect();
+    }, []);
+
     const saveEdit = (pos: any) => {
         const newSL = parseFloat(editSL) || 0;
         const newTP = parseFloat(editTP) || 0;
@@ -484,7 +494,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                                 <td className="p-1 pl-2 border-r border-zinc-800 font-bold text-zinc-100">{pos.symbol ?? '—'}</td>
                                 <td className="p-1 border-r border-zinc-800 text-zinc-500">{pos.id ?? '—'}</td>
                                 <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">{formatDate(pos.openTime ?? new Date().toISOString())}</td>
-                                <td className={`p-1 border-r border-zinc-800 font-bold text-[10px] ${pos.side === 'BUY' ? 'text-blue-400' : 'text-red-400'}`}>
+                                <td className={`p-1 border-r border-zinc-800 font-bold ${pos.side === 'BUY' ? (isAdvancedMode ? 'text-emerald-500 text-[11px]' : 'text-blue-400 text-[10px]') : (isAdvancedMode ? 'text-red-500 text-[11px]' : 'text-red-400 text-[10px]')}`}>
                                     <div className="flex items-center gap-1">
                                         {pos.side === 'BUY' ? (
                                             <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -535,7 +545,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                                 <td className="p-1 border-r border-zinc-800 text-right">
                                     <BlinkingText value={Number(pos.livePrice ?? 0)} formatFn={(v: number) => <PriceDisplay price={v} symbol={pos.symbol ?? ''} />} defaultColor="text-zinc-300" />
                                 </td>
-                                <td className={`p-1 text-right font-bold pr-4`}>
+                                <td className={`p-1 text-right font-bold pr-4 ${isAdvancedMode ? 'text-[12px]' : ''}`}>
                                     <BlinkingText value={Number(pos.livePnL ?? 0)} formatFn={formatMoney} defaultColor={Number(pos.livePnL ?? 0) >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'} />
                                 </td>
                                 <td className="p-1 text-center">

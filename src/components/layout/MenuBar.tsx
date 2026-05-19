@@ -214,10 +214,59 @@ export const MenuBar = () => {
             { label: t('menu.view.fullScreen'), shortcut: 'F11', action: () => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => { }); } else { document.exitFullscreen().catch(() => { }); } setActiveMenu(null); } }
         ],
         Insert: [
-            { label: t('menu.insert.indicators'), children: [{ label: 'Trend' }, { label: 'Oscillators' }, { label: 'Volumes' }] },
-            { label: t('menu.insert.objects'), children: [{ label: 'Lines' }, { label: 'Channels' }, { label: 'Gann' }, { label: 'Fibonacci' }] },
-            { label: t('menu.insert.experts') },
-            { label: t('menu.insert.scripts') }
+            {
+                label: t('menu.insert.indicators'),
+                icon: <Icon name="line-chart" size="sm" />,
+                children: [
+                    { label: 'All Indicators', icon: <Icon name="activity" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: {} }); setActiveMenu(null); } },
+                    { divider: true, label: '' },
+                    { label: 'Trend', icon: <Icon name="trending-up" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: { category: 'Trend' } }); setActiveMenu(null); } },
+                    { label: 'Oscillators', icon: <Icon name="activity" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: { category: 'Oscillators' } }); setActiveMenu(null); } },
+                    { label: 'Volumes', icon: <Icon name="bar-chart-3" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: { category: 'Volume' } }); setActiveMenu(null); } },
+                    { label: 'Bill Williams', icon: <Icon name="zap" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: { category: 'Bill Williams' } }); setActiveMenu(null); } },
+                ]
+            },
+            {
+                label: t('menu.insert.objects'),
+                icon: <Icon name="pen-tool" size="sm" />,
+                children: [
+                    {
+                        label: 'Lines',
+                        children: [
+                            { label: 'Trend Line', shortcut: 'Alt+T', icon: <Icon name="diagonal-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'trendline' } }); setActiveMenu(null); } },
+                            { label: 'Horizontal Line', shortcut: 'Alt+H', icon: <Icon name="minus" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'hline' } }); setActiveMenu(null); } },
+                            { label: 'Vertical Line', shortcut: 'Alt+V', icon: <Icon name="vertical-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'vline' } }); setActiveMenu(null); } },
+                        ]
+                    },
+                    {
+                        label: 'Channels',
+                        children: [
+                            { label: 'Equidistant Channel', icon: <Icon name="layers" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'channel' } }); setActiveMenu(null); } },
+                        ]
+                    },
+                    {
+                        label: 'Fibonacci',
+                        children: [
+                            { label: 'Fibonacci Retracement', icon: <Icon name="git-branch" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'fibonacci' } }); setActiveMenu(null); } },
+                            { label: 'Fibonacci Extension', icon: <Icon name="git-branch" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'fib_extension' } }); setActiveMenu(null); } },
+                        ]
+                    },
+                    {
+                        label: 'Shapes',
+                        children: [
+                            { label: 'Rectangle', icon: <Icon name="square" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'rectangle' } }); setActiveMenu(null); } },
+                            { label: 'Ellipse', icon: <Icon name="circle" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'ellipse' } }); setActiveMenu(null); } },
+                        ]
+                    },
+                    { divider: true, label: '' },
+                    { label: 'Text', shortcut: 'Alt+X', icon: <Icon name="type" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'text' } }); setActiveMenu(null); } },
+                    { label: 'Callout', icon: <Icon name="message-square" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'callout' } }); setActiveMenu(null); } },
+                    { label: 'Measure', icon: <Icon name="ruler" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'measure' } }); setActiveMenu(null); } },
+                ]
+            },
+            { divider: true, label: '' },
+            { label: t('menu.insert.experts'), icon: <Icon name="cpu" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
+            { label: t('menu.insert.scripts'), icon: <Icon name="code" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
         ],
         Charts: [
             { label: t('menu.charts.depthOfMarket'), shortcut: 'Alt+B', icon: <Icon name="box" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('openDepthOfMarket')); setActiveMenu(null); } },

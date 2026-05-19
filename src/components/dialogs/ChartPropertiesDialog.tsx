@@ -12,7 +12,7 @@ interface ChartPropertiesDialogProps {
 export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ isOpen, onClose, symbol, timeframe }) => {
   const [activeTab, setActiveTab] = useState<'Common' | 'Show' | 'Colors'>('Common');
   
-  const { globalProperties, updateGlobalProperty, updateGlobalColor, applyPresetScheme } = useChartSettingsStore();
+  const { globalProperties, updateGlobalProperty, updateGlobalColor, applyPresetScheme, resetToDefaults } = useChartSettingsStore();
   const state = globalProperties;
 
   if (!isOpen) return null;
@@ -239,25 +239,27 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
         </div>
 
         {/* Footer Buttons */}
-        <div className="rtx-cp-footer flex justify-end gap-2 px-3 py-2 border-t border-[#333] rounded-b-lg">
+        <div className="rtx-cp-footer flex items-center justify-between px-3 py-2 border-t border-[#333] rounded-b-lg">
           <button 
-            onClick={onClose}
-            className="rtx-cp-btn px-6 py-1 text-xs bg-[#2b2b2b] hover:bg-[#333] bg-opacity-80 border border-[#444] hover:border-[#666] text-[#ccc] hover:text-white rounded-sm transition-colors"
+            onClick={() => resetToDefaults()}
+            className="rtx-cp-btn px-4 py-1 text-xs bg-[#2b2b2b] hover:bg-rose-500/20 border border-[#444] hover:border-rose-500/50 text-[#ccc] hover:text-rose-400 rounded-sm transition-colors"
           >
-            Cancel
+            Reset to Defaults
           </button>
-          <button 
-            onClick={onClose}
-            className="rtx-cp-btn rtx-cp-btn-primary px-7 py-1 text-xs bg-[#2b2b2b] hover:bg-[#333] bg-opacity-80 border border-[#444] hover:border-[#666] text-[#ccc] hover:text-white rounded-sm transition-colors"
-          >
-            OK
-          </button>
-          <button 
-            className="rtx-cp-btn px-5 py-1 text-xs bg-[#2b2b2b] border border-[#444] text-[#888] rounded-sm ml-1"
-            disabled
-          >
-            Help
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={onClose}
+              className="rtx-cp-btn px-6 py-1 text-xs bg-[#2b2b2b] hover:bg-[#333] bg-opacity-80 border border-[#444] hover:border-[#666] text-[#ccc] hover:text-white rounded-sm transition-colors"
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={onClose}
+              className="rtx-cp-btn rtx-cp-btn-primary px-7 py-1 text-xs bg-[#2b2b2b] hover:bg-[#333] bg-opacity-80 border border-[#444] hover:border-[#666] text-[#ccc] hover:text-white rounded-sm transition-colors"
+            >
+              OK
+            </button>
+          </div>
         </div>
       </div>
     </div>,

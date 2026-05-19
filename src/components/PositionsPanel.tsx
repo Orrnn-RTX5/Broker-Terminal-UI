@@ -145,7 +145,8 @@ function PositionRow({
     handleModifySLTP: (id: number, field: 'sl' | 'tp', value: string) => void,
     handleClosePosition: (id: number) => void,
     loading: boolean,
-    onDoubleClick: (pos: Position) => void
+    onDoubleClick: (pos: Position) => void,
+    isAdvancedMode: boolean
 }) {
     const digits = getSymbolDigits(pos.symbol);
 
@@ -181,7 +182,7 @@ function PositionRow({
         <tr className={`font-semibold ${i % 2 === 0 ? 'bg-[#131316] rtx-row-even' : 'bg-[#0f0f12] rtx-row-odd'} hover:bg-[#191a1e] transition-colors group cursor-pointer`} onDoubleClick={() => onDoubleClick(pos)}>
             <td className="px-1 py-[2px] pl-2 text-zinc-500">{pos.id}</td>
             <td className="px-1 py-[2px] font-semibold text-zinc-100">{pos.symbol}</td>
-            <td className={`px-1 py-[2px] font-semibold text-[10px] ${pos.side === 'BUY' ? 'text-blue-400' : 'text-red-400'}`}>
+            <td className={`px-1 py-[2px] font-semibold ${pos.side === 'BUY' ? (isAdvancedMode ? 'text-emerald-500 font-bold text-[11px]' : 'text-blue-400 text-[10px]') : (isAdvancedMode ? 'text-red-500 font-bold text-[11px]' : 'text-red-400 text-[10px]')}`}>
                 <div className="flex items-center gap-1">
                     {pos.side === 'BUY' ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -248,7 +249,7 @@ function PositionRow({
                     </div>
                 )}
             </td>
-            <td className={`px-1 py-[2px] text-right font-semibold ${livePnL >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'} ${pnlColor}`}>
+            <td className={`px-1 py-[2px] text-right font-semibold ${livePnL >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'} ${pnlColor} ${isAdvancedMode ? 'font-bold text-[12px]' : ''}`}>
                 {formatMoney(livePnL)}
             </td>
             <td className="px-1 py-[2px] text-right text-zinc-500 text-[10px]">{formatMoney(pos.swap)}</td>
@@ -280,7 +281,8 @@ function PendingOrderRow({
     i: number,
     handleCancelOrder: (id: string) => void,
     onModifyOrder: (order: PendingOrder) => void,
-    loading: boolean
+    loading: boolean,
+    isAdvancedMode: boolean
 }) {
     const digits = getSymbolDigits(order.symbol);
 
@@ -300,7 +302,7 @@ function PendingOrderRow({
             <td className="px-1 py-[2px] pl-2 text-zinc-500">{order.id}</td>
             <td className="px-1 py-[2px] font-semibold text-zinc-100">{order.symbol}</td>
             <td className="px-1 py-[2px] text-zinc-400 text-[10px]">{order.type}</td>
-            <td className={`px-1 py-[2px] font-semibold text-[10px] ${order.side === 'BUY' ? 'text-blue-400' : 'text-red-400'}`}>
+            <td className={`px-1 py-[2px] font-semibold ${order.side === 'BUY' ? (isAdvancedMode ? 'text-emerald-500 font-bold text-[11px]' : 'text-blue-400 text-[10px]') : (isAdvancedMode ? 'text-red-500 font-bold text-[11px]' : 'text-red-400 text-[10px]')}`}>
                 <div className="flex items-center gap-1">
                     {order.side === 'BUY' ? (
                         <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -361,6 +363,16 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
     const ordersInFlightRef = useRef(false);
     const [modifyPosition, setModifyPosition] = useState<Position | null>(null);
     const [modifyOrder, setModifyOrder] = useState<PendingOrder | null>(null);
+
+    const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+    useEffect(() => {
+        const root = document.documentElement;
+        const check = () => setIsAdvancedMode(root.classList.contains('rtx-advanced-view'));
+        check();
+        const obs = new MutationObserver(check);
+        obs.observe(root, { attributes: true, attributeFilter: ['class'] });
+        return () => obs.disconnect();
+    }, []);
 
     // Positions come from the global store — populated and kept fresh by useTradeFacingData.
     // No local fetch or polling here to avoid racing with that hook.
@@ -611,6 +623,7 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                                             handleClosePosition={handleClosePosition}
                                             loading={loading}
                                             onDoubleClick={(p) => setModifyPosition(p)}
+                                            isAdvancedMode={isAdvancedMode}
                                         />
                                     ))
                                 )}
@@ -653,6 +666,7 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                                             handleCancelOrder={handleCancelOrder}
                                             onModifyOrder={(o) => setModifyOrder(o)}
                                             loading={loading}
+                                            isAdvancedMode={isAdvancedMode}
                                         />
                                     ))
                                 )}

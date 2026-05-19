@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, ChevronRight, ExternalLink, Building2, Shield, Globe } from 'lucide-react';
+import { X, Search, ChevronRight, ExternalLink, Building2, Shield, Globe, CheckCircle2, Copy } from 'lucide-react';
+import { tradeApi } from '../../api/trade';
 
 interface Company {
     id: string;
@@ -42,7 +43,24 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [selected, setSelected] = useState<string>(COMPANIES[0]?.id ?? '');
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredId, setHoveredId] = useState<string | null>(null);
-    const [accountType, setAccountType] = useState<'demo' | 'real' | 'existing'>('real');
+    const [accountType, setAccountType] = useState<'demo' | 'real' | 'existing'>('demo');
+    const [formData, setFormData] = useState({
+        firstName: 'Jane',
+        lastName: 'Doe',
+        email: 'trader@example.com',
+        phone: '+1-555-0100',
+        country: 'US',
+        group: 'orrnn/demo-std',
+        currency: 'USD',
+        leverage: '100',
+        deposit: '10000',
+        masterPass: 'Strong-Pass-123',
+        investorPass: 'Read-Only-Pass',
+        comment: 'Public demo account',
+    });
+    const [createdAccount, setCreatedAccount] = useState<any>(null);
+    const [isCreating, setIsCreating] = useState(false);
+    const [createError, setCreateError] = useState('');
 
     if (!isOpen) return null;
 
@@ -54,14 +72,42 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
     const selectedCompany = COMPANIES.find(c => c.id === selected);
 
-    const handleNext = () => {
+    const handleNext = async () => {
         if (step < 3) {
             setStep(step + 1);
+        } else if (step === 3) {
+            try {
+                setIsCreating(true);
+                setCreateError('');
+                
+                const response = await tradeApi.account.create({
+                    name: `${formData.firstName} ${formData.lastName}`.trim(),
+                    currency: formData.currency,
+                    leverage: parseInt(formData.leverage, 10),
+                    group: formData.group,
+                    // Additional fields might be passed if backend supports it
+                    // @ts-ignore
+                    balance: parseFloat(formData.deposit),
+                    // @ts-ignore
+                    master_pass: formData.masterPass,
+                    // @ts-ignore
+                    investor_pass: formData.investorPass
+                });
+                
+                setCreatedAccount(response);
+                setStep(4);
+            } catch (err: any) {
+                setCreateError(err.message || 'Failed to create account');
+            } finally {
+                setIsCreating(false);
+            }
         } else {
-            // Finish
+            // Finish (Step 4)
             onClose();
-            // Reset step after closing
-            setTimeout(() => setStep(0), 300);
+            setTimeout(() => {
+                setStep(0);
+                setCreatedAccount(null);
+            }, 300);
         }
     };
 
@@ -275,29 +321,29 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">First name:</span>
-                    <input type="text" className="rtx-oad-input flex-1 bg-transparent border border-indigo-500 rounded px-2 py-1.5 text-[11px] text-white outline-none" defaultValue="Jane" />
+                    <input type="text" value={formData.firstName} onChange={e => setFormData(s => ({ ...s, firstName: e.target.value }))} className="rtx-oad-input flex-1 bg-transparent border border-indigo-500 rounded px-2 py-1.5 text-[11px] text-white outline-none" />
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Last name:</span>
-                    <input type="text" className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" defaultValue="Doe" />
+                    <input type="text" value={formData.lastName} onChange={e => setFormData(s => ({ ...s, lastName: e.target.value }))} className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
                 </div>
 
                 <div className="h-2"></div>
 
                 <div className="flex items-center gap-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Email:</span>
-                    <input type="email" className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" defaultValue="trader@example.com" />
+                    <input type="email" value={formData.email} onChange={e => setFormData(s => ({ ...s, email: e.target.value }))} className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Mobile Phone:</span>
-                    <input type="text" className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" defaultValue="+1-555-0100" />
+                    <input type="text" value={formData.phone} onChange={e => setFormData(s => ({ ...s, phone: e.target.value }))} className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
                 </div>
 
                 <div className="h-2"></div>
 
                 <div className="flex items-center gap-2 w-1/2 pr-2 mt-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Country:</span>
-                    <select className="rtx-oad-input flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
+                    <select value={formData.country} onChange={e => setFormData(s => ({ ...s, country: e.target.value }))} className="rtx-oad-input flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
                         <option value="US">United States (US)</option>
                         <option value="IN">India (IN)</option>
                     </select>
@@ -305,7 +351,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
                 <div className="flex items-center gap-2 w-1/2 pr-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Account group:</span>
-                    <select className="rtx-oad-input flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
+                    <select value={formData.group} onChange={e => setFormData(s => ({ ...s, group: e.target.value }))} className="rtx-oad-input flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
                         <option value="orrnn/demo-std">orrnn/demo-std</option>
                     </select>
                 </div>
@@ -326,14 +372,14 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 flex-1">
                         <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Currency:</span>
-                        <select className="rtx-oad-input flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
+                        <select value={formData.currency} onChange={e => setFormData(s => ({ ...s, currency: e.target.value }))} className="rtx-oad-input flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
                             <option value="USD">USD</option>
                             <option value="EUR">EUR</option>
                         </select>
                     </div>
                     <div className="flex items-center gap-2 flex-1">
                         <span className="text-[11px] text-zinc-400 w-16 text-right flex-shrink-0">Leverage:</span>
-                        <select className="rtx-oad-input flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
+                        <select value={formData.leverage} onChange={e => setFormData(s => ({ ...s, leverage: e.target.value }))} className="rtx-oad-input flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
                             <option value="100">1:100</option>
                             <option value="200">1:200</option>
                             <option value="500">1:500</option>
@@ -343,25 +389,25 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
                 <div className="flex items-center gap-2 w-1/2 pr-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Deposit:</span>
-                    <input type="number" className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" defaultValue={10000} />
+                    <input type="number" value={formData.deposit} onChange={e => setFormData(s => ({ ...s, deposit: e.target.value }))} className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
                 </div>
 
                 <div className="h-2"></div>
 
                 <div className="flex items-center gap-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Master password:</span>
-                    <input type="text" className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" defaultValue="Strong-Pass-123" />
+                    <input type="text" value={formData.masterPass} onChange={e => setFormData(s => ({ ...s, masterPass: e.target.value }))} className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Investor password:</span>
-                    <input type="text" className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" defaultValue="Read-Only-Pass" />
+                    <input type="text" value={formData.investorPass} onChange={e => setFormData(s => ({ ...s, investorPass: e.target.value }))} className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
                 </div>
 
                 <div className="h-2"></div>
 
                 <div className="flex items-center gap-2">
                     <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Comment:</span>
-                    <input type="text" className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" defaultValue="Public demo account" />
+                    <input type="text" value={formData.comment} onChange={e => setFormData(s => ({ ...s, comment: e.target.value }))} className="rtx-oad-input flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
                 </div>
 
                 <div className="h-4"></div>
@@ -373,14 +419,104 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         <a href="#" className="text-[11px] text-indigo-400 hover:text-indigo-300 mt-1 block">www.exness.eu</a>
                     </div>
                 </div>
+
+                {createError && (
+                    <div className="pl-[104px] mt-2 text-[11px] text-red-400 bg-red-500/10 p-2 rounded border border-red-500/20">
+                        {createError}
+                    </div>
+                )}
             </div>
         </div>
     );
 
+    const renderStep4 = () => {
+        if (!createdAccount) return null;
+        return (
+            <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col p-6 items-center">
+                <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/20">
+                    <CheckCircle2 className="w-7 h-7 text-emerald-400" />
+                </div>
+                <h3 className="text-white font-semibold text-[16px] mb-1">Registration Complete</h3>
+                <p className="text-zinc-400 text-[12px] mb-6 text-center">Your new demo account has been successfully created.<br/>Please save these credentials.</p>
+                
+                <div className="w-full bg-[#1a1c23] border border-zinc-700/50 rounded-xl p-5 flex flex-col gap-3">
+                    <div className="flex justify-between items-center pb-3 border-b border-zinc-800/80">
+                        <span className="text-zinc-500 text-[11px] font-medium uppercase tracking-wider">Login (Account)</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-emerald-400 font-mono text-[16px] font-bold tracking-tight">{createdAccount.login}</span>
+                            <button onClick={() => navigator.clipboard.writeText(String(createdAccount.login))} className="text-zinc-500 hover:text-white transition-colors">
+                                <Copy className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="flex justify-between items-center pb-3 border-b border-zinc-800/80">
+                        <span className="text-zinc-500 text-[11px] font-medium uppercase tracking-wider">Master Password</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-zinc-200 font-mono text-[13px]">{formData.masterPass}</span>
+                            <button onClick={() => navigator.clipboard.writeText(formData.masterPass)} className="text-zinc-500 hover:text-white transition-colors">
+                                <Copy className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pb-3 border-b border-zinc-800/80">
+                        <span className="text-zinc-500 text-[11px] font-medium uppercase tracking-wider">Investor Password</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-zinc-200 font-mono text-[13px]">{formData.investorPass}</span>
+                            <button onClick={() => navigator.clipboard.writeText(formData.investorPass)} className="text-zinc-500 hover:text-white transition-colors">
+                                <Copy className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {createdAccount.api_key && (
+                        <div className="flex justify-between items-center pb-3 border-b border-zinc-800/80">
+                            <span className="text-zinc-500 text-[11px] font-medium uppercase tracking-wider">API Key</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-zinc-200 font-mono text-[11px] truncate max-w-[200px]">{createdAccount.api_key}</span>
+                                <button onClick={() => navigator.clipboard.writeText(createdAccount.api_key)} className="text-zinc-500 hover:text-white transition-colors">
+                                    <Copy className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex justify-between items-center pb-3 border-b border-zinc-800/80">
+                        <span className="text-zinc-500 text-[11px]">Broker / Server</span>
+                        <span className="text-zinc-300 text-[12px] font-medium">{createdAccount.broker_id || selectedCompany?.shortName || 'Broker'}</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center pb-3 border-b border-zinc-800/80">
+                        <span className="text-zinc-500 text-[11px]">Group</span>
+                        <span className="text-zinc-300 text-[12px] font-medium">{createdAccount.group}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center pb-3 border-b border-zinc-800/80">
+                        <span className="text-zinc-500 text-[11px]">Balance</span>
+                        <span className="text-emerald-400 text-[13px] font-mono font-medium">{createdAccount.balance || formData.deposit} {createdAccount.currency || formData.currency}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                        <span className="text-zinc-500 text-[11px]">Leverage</span>
+                        <span className="text-zinc-300 text-[12px] font-medium">1:{createdAccount.leverage || formData.leverage}</span>
+                    </div>
+                </div>
+                
+                <div className="mt-5 text-[10.5px] leading-relaxed text-yellow-500/90 text-center bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20 w-full flex items-start gap-2">
+                    <Shield className="w-4 h-4 flex-shrink-0 mt-0.5 opacity-80" />
+                    <span className="text-left">Your password is securely hashed on the server. Please copy and save these credentials now, as they will not be shown again.</span>
+                </div>
+            </div>
+        );
+    };
+
     const getHeader = () => {
         if (step === 0) return { title: 'Open an Account', sub: 'Select a broker to get started' };
         if (step === 1) return { title: 'Open an account', sub: 'Trade real or virtual money and gain experience' };
-        return { title: 'Opening a real account', sub: 'A real account is required for live trading on financial markets' };
+        if (step === 2) return { title: 'Opening a real account', sub: 'A real account is required for live trading on financial markets' };
+        if (step === 3) return { title: 'Account Settings', sub: 'Configure currency, leverage and deposit for your new account' };
+        return { title: 'Registration Successful', sub: 'Your new account details' };
     };
     
     const header = getHeader();
@@ -454,6 +590,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 {step === 1 && renderStep1()}
                 {step === 2 && renderStep2()}
                 {step === 3 && renderStep3()}
+                {step === 4 && renderStep4()}
 
                 <div
                     className="flex items-center justify-between px-5 py-4 mt-auto"
@@ -479,16 +616,16 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         )}
                         <button
                             onClick={handleNext}
-                            disabled={!isStepValid}
+                            disabled={!isStepValid || isCreating}
                             className="rtx-oad-btn-next flex items-center gap-2 px-5 py-2 text-[12px] font-semibold text-white rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                             style={{
                                 background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
                                 boxShadow: '0 4px 20px rgba(180,180,190,0.4), inset 0 1px 0 rgba(255,255,255,0.15)',
                             }}
-                            onMouseEnter={e => { if (isStepValid) e.currentTarget.style.boxShadow = '0 6px 24px rgba(180,180,190,0.55), inset 0 1px 0 rgba(255,255,255,0.2)'; }}
+                            onMouseEnter={e => { if (isStepValid && !isCreating) e.currentTarget.style.boxShadow = '0 6px 24px rgba(180,180,190,0.55), inset 0 1px 0 rgba(255,255,255,0.2)'; }}
                             onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 4px 20px rgba(180,180,190,0.4), inset 0 1px 0 rgba(255,255,255,0.15)'; }}
                         >
-                            {step < 3 ? 'Next >' : 'Finish'}
+                            {isCreating ? 'Creating...' : step < 3 ? 'Next >' : step === 3 ? 'Register' : 'Finish'}
                         </button>
                         <button
                             onClick={onClose}

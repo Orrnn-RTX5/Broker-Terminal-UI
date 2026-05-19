@@ -62,6 +62,16 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
         prevAskRef.current = ask;
     }, [ask]);
 
+    const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+    useEffect(() => {
+        const root = document.documentElement;
+        const check = () => setIsAdvancedMode(root.classList.contains('rtx-advanced-view'));
+        check();
+        const obs = new MutationObserver(check);
+        obs.observe(root, { attributes: true, attributeFilter: ['class'] });
+        return () => obs.disconnect();
+    }, []);
+
     const digits = tick?.digits || getSymbolDigits(symbol);
 
     const formatPrice = useCallback((price: number, d: number) => {
@@ -139,6 +149,10 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
     };
     const desc = descriptions[symbol] || symbol;
 
+    const btnWidth = isAdvancedMode ? 95 : 90;
+    const btnHeight = isAdvancedMode ? 55 : 52;
+    const centerWidth = isAdvancedMode ? 48 : 48;
+
     // Shared button style for BUY and SELL — identical structure
     const sharedButtonStyle: React.CSSProperties = {
         display: 'flex',
@@ -146,12 +160,12 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
         alignItems: 'center',
         justifyContent: 'center',
         padding: '6px 8px',
-        width: 90,
-        minWidth: 90,
-        maxWidth: 90,
-        height: 52,
-        minHeight: 52,
-        maxHeight: 52,
+        width: btnWidth,
+        minWidth: btnWidth,
+        maxWidth: btnWidth,
+        height: btnHeight,
+        minHeight: btnHeight,
+        maxHeight: btnHeight,
         border: '1px solid rgba(255,255,255,0.1)',
         cursor: isPlacing || !isVolumeValid || !hasExecutablePrice ? 'not-allowed' : 'pointer',
         position: 'relative',
@@ -165,31 +179,6 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
             className="rtx-oct absolute top-[10px] left-[10px] z-30 select-none drop-shadow-2xl"
             style={{ pointerEvents: 'auto', fontFamily: "'Inter', 'Segoe UI', Tahoma, sans-serif", display: 'inline-block', width: 'fit-content' }}
         >
-            {/* ─── Header: Symbol + Timeframe ─── */}
-            <div
-                style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 12px',
-                    background: 'rgba(15, 23, 42, 0.65)',
-                    backdropFilter: 'blur(16px)',
-                    WebkitBackdropFilter: 'blur(16px)',
-                    borderRadius: '10px 10px 0 0',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderBottom: 'none',
-                    boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.05)'
-                }}
-            >
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc', letterSpacing: '0.5px' }}>
-                    {symbol}, {timeframe}:
-                </span>
-                <span style={{ fontSize: 10, color: '#94a3b8', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {desc}
-                </span>
-            </div>
-
-            
             <div
                 style={{
                     display: 'flex',
@@ -197,7 +186,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     backdropFilter: 'blur(16px)',
                     WebkitBackdropFilter: 'blur(16px)',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '0 0 10px 10px',
+                    borderRadius: '10px',
                     overflow: 'hidden',
                     boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.05), 0 10px 40px rgba(0,0,0,0.5)',
                 }}
@@ -253,10 +242,10 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         alignItems: 'center',
                         justifyContent: 'center',
                         padding: '3px 4px',
-                        minWidth: 48,
-                        height: 52,
-                        minHeight: 52,
-                        maxHeight: 52,
+                        minWidth: centerWidth,
+                        height: btnHeight,
+                        minHeight: btnHeight,
+                        maxHeight: btnHeight,
                         background: 'linear-gradient(180deg, #1f2937 0%, #111827 100%)',
                         borderLeft: '1px solid rgba(255,255,255,0.15)',
                         borderRight: '1px solid rgba(255,255,255,0.15)',

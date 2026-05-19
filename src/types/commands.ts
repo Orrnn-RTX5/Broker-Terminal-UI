@@ -158,7 +158,7 @@ export type Command =
   }
   | {
     type: 'OPEN_INDICATOR_LIST';
-    payload: Record<string, never>;
+    payload: { category?: string };
   };
 
 /**
