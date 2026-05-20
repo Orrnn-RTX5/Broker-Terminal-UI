@@ -7,7 +7,7 @@
 import type { Tick, OHLCV } from '../store/useMarketDataStore';
 
 interface WorkerMessage {
-  type: 'aggregate' | 'sma' | 'ema' | 'vwap' | 'indicators';
+  type: 'aggregate' | 'sma' | 'ema' | 'vwap' | 'indicators' | 'rsi' | 'bollinger' | 'macd';
   data: unknown;
   requestId: string;
 }
@@ -24,7 +24,7 @@ interface AggregateRequest {
   timeframeMs: number;
 }
 
-type AggregationCallback = (ohlcv: OHLCV[]) => void;
+type AggregationCallback = (result: any) => void;
 
 class AggregationWorkerManager {
   private worker: Worker | null = null;
@@ -65,8 +65,8 @@ class AggregationWorkerManager {
       return;
     }
 
-    if (type === 'success' && result) {
-      callback(result as OHLCV[]);
+    if (type === 'success' && result !== undefined) {
+      callback(result);
     } else if (type === 'error') {
       console.error('[WorkerManager] Worker error:', error);
     }
@@ -140,6 +140,118 @@ class AggregationWorkerManager {
           callback(results);
         }
       });
+    });
+  }
+
+  /**
+   * Calculate SMA in worker thread
+   */
+  calculateSMA(
+    prices: number[],
+    period: number,
+    callback: (sma: number[]) => void
+  ): void {
+    if (!this.worker) this.initialize();
+    if (!this.worker) return;
+
+    const requestId = `sma_${++this.requestId}`;
+    this.requestCallbacks.set(requestId, callback);
+
+    this.worker.postMessage({
+      type: 'sma',
+      data: { prices, period },
+      requestId,
+    });
+  }
+
+  /**
+   * Calculate EMA in worker thread
+   */
+  calculateEMA(
+    prices: number[],
+    period: number,
+    prevValue?: number | ((ema: number[]) => void),
+    callback?: (ema: number[]) => void
+  ): void {
+    const realCallback = typeof prevValue === 'function' ? (prevValue as any) : callback;
+    const realPrevVal = typeof prevValue === 'number' ? prevValue : undefined;
+
+    if (!this.worker) this.initialize();
+    if (!this.worker) return;
+
+    const requestId = `ema_${++this.requestId}`;
+    this.requestCallbacks.set(requestId, realCallback);
+
+    this.worker.postMessage({
+      type: 'ema',
+      data: { prices, period, prevValue: realPrevVal },
+      requestId,
+    });
+  }
+
+  /**
+   * Calculate RSI in worker thread
+   */
+  calculateRSI(
+    prices: number[],
+    period: number,
+    callback: (rsi: number[]) => void
+  ): void {
+    if (!this.worker) this.initialize();
+    if (!this.worker) return;
+
+    const requestId = `rsi_${++this.requestId}`;
+    this.requestCallbacks.set(requestId, callback);
+
+    this.worker.postMessage({
+      type: 'rsi',
+      data: { prices, period },
+      requestId,
+    });
+  }
+
+  /**
+   * Calculate Bollinger Bands in worker thread
+   */
+  calculateBollinger(
+    prices: number[],
+    period: number,
+    stdDev: number,
+    callback: (res: { upper: number[]; middle: number[]; lower: number[] }) => void
+  ): void {
+    if (!this.worker) this.initialize();
+    if (!this.worker) return;
+
+    const requestId = `bollinger_${++this.requestId}`;
+    this.requestCallbacks.set(requestId, callback);
+
+    this.worker.postMessage({
+      type: 'bollinger',
+      data: { prices, period, stdDev },
+      requestId,
+    });
+  }
+
+  /**
+   * Calculate MACD in worker thread
+   */
+  calculateMACD(
+    prices: number[],
+    fastPeriod: number,
+    slowPeriod: number,
+    signalPeriod: number,
+    callback: (res: { macd: number[]; signal: number[]; histogram: number[] }) => void
+  ): void {
+    if (!this.worker) this.initialize();
+    if (!this.worker) return;
+
+    const requestId = `macd_${++this.requestId}`;
+    this.requestCallbacks.set(requestId, callback);
+
+    this.worker.postMessage({
+      type: 'macd',
+      data: { prices, fastPeriod, slowPeriod, signalPeriod },
+      requestId,
     });
   }
 

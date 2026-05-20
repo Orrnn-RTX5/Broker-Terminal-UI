@@ -25,7 +25,7 @@ export interface OHLCV {
 }
 
 export interface WorkerMessage {
-  type: 'aggregate' | 'sma' | 'ema' | 'vwap' | 'indicators';
+  type: 'aggregate' | 'sma' | 'ema' | 'vwap' | 'indicators' | 'rsi' | 'bollinger' | 'macd';
   data: unknown;
   requestId: string;
 }
@@ -293,6 +293,24 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
       case 'vwap': {
         const { ticks } = data as VWAPRequest;
         result = calculateVWAP(ticks);
+        break;
+      }
+
+      case 'rsi': {
+        const { prices, period } = data as { prices: number[]; period?: number };
+        result = calculateRSI(prices, period ?? 14);
+        break;
+      }
+
+      case 'bollinger': {
+        const { prices, period, stdDev } = data as { prices: number[]; period?: number; stdDev?: number };
+        result = calculateBollingerBands(prices, period ?? 20, stdDev ?? 2);
+        break;
+      }
+
+      case 'macd': {
+        const { prices, fastPeriod, slowPeriod, signalPeriod } = data as { prices: number[]; fastPeriod?: number; slowPeriod?: number; signalPeriod?: number };
+        result = calculateMACD(prices, fastPeriod ?? 12, slowPeriod ?? 26, signalPeriod ?? 9);
         break;
       }
 

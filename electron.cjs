@@ -3,6 +3,15 @@ const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { exec } = require('child_process');
 
+// ─── GPU & Performance Optimization Switches ──────────────────────────────────
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-oop-rasterization');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('force-gpu-mem-available-mb', '2048');
+
+
 // ─── Updater Configuration ───────────────────────────────────────────────────
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;

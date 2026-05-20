@@ -158,7 +158,22 @@ export const TradingChart = React.memo(function TradingChart({
     timeframe,
   });
 
-  const [legend, setLegend] = useState({ o: 0, h: 0, l: 0, c: 0, v: 0 });
+  const ohlcOpenRef = useRef<HTMLSpanElement>(null);
+  const ohlcHighRef = useRef<HTMLSpanElement>(null);
+  const ohlcLowRef = useRef<HTMLSpanElement>(null);
+  const ohlcCloseRef = useRef<HTMLSpanElement>(null);
+  const ohlcVolumeRef = useRef<HTMLSpanElement>(null);
+  const countdownTextRef = useRef<HTMLSpanElement>(null);
+
+  const updateLegendDOM = useCallback((o: number, h: number, l: number, c: number, v: number) => {
+    const digits = getSymbolDigits(symbol);
+    if (ohlcOpenRef.current) ohlcOpenRef.current.textContent = o.toFixed(digits);
+    if (ohlcHighRef.current) ohlcHighRef.current.textContent = h.toFixed(digits);
+    if (ohlcLowRef.current) ohlcLowRef.current.textContent = l.toFixed(digits);
+    if (ohlcCloseRef.current) ohlcCloseRef.current.textContent = c.toFixed(digits);
+    if (ohlcVolumeRef.current) ohlcVolumeRef.current.textContent = Math.round(v).toLocaleString();
+  }, [symbol]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [showOneClick, setShowOneClick] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -181,7 +196,6 @@ export const TradingChart = React.memo(function TradingChart({
   const [localChartType, setLocalChartType] = useState<ChartType>(chartType);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateDialogMode, setTemplateDialogMode] = useState<'save' | 'load'>('save');
-  const [countdown, setCountdown] = useState<string>('');
   const [candlesLoadedRev, setCandlesLoadedRev] = useState(0);
   const [brokerTimeOffsetSec, setBrokerTimeOffsetSec] = useState(0);
 
@@ -509,6 +523,7 @@ export const TradingChart = React.memo(function TradingChart({
     });
 
     chartRef.current = chart;
+    indicatorManager.setChart(chart);
 
     // Initial setup handled by autoSize: true
 
@@ -791,13 +806,18 @@ export const TradingChart = React.memo(function TradingChart({
         const data = param.seriesData.get(seriesRef.current) as any;
         const volData = volumeRef.current ? param.seriesData.get(volumeRef.current) as any : null;
         if (data) {
-          setLegend({
-            o: data.open || 0,
-            h: data.high || 0,
-            l: data.low || 0,
-            c: data.close || data.value || 0,
-            v: (volData && volData.value) ? volData.value : 0,
-          });
+          updateLegendDOM(
+            data.open || 0,
+            data.high || 0,
+            data.low || 0,
+            data.close || data.value || 0,
+            (volData && volData.value) ? volData.value : 0
+          );
+        }
+      } else {
+        const c = currentCandleRef.current;
+        if (c) {
+          updateLegendDOM(c.open, c.high, c.low, c.close, c.volume);
         }
       }
     };
@@ -814,6 +834,7 @@ export const TradingChart = React.memo(function TradingChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeHandler);
 
     return () => {
+      indicatorManager.setChart(null);
       isDisposedRef.current = true;
       if (autoScrollTimer) clearTimeout(autoScrollTimer);
       if (wheelEndTimer) clearTimeout(wheelEndTimer);
@@ -932,6 +953,15 @@ export const TradingChart = React.memo(function TradingChart({
         const { offsetWidth, offsetHeight } = containerRef.current;
         chartRef.current.applyOptions({ width: offsetWidth, height: offsetHeight });
       }
+
+      indicatorManager.setOHLCData(sortedCandles.map(c => ({
+        time: c.time as Time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume
+      })));
 
       console.log('[Chart] Chart data updated successfully');
     } catch (e) {
@@ -1080,7 +1110,7 @@ export const TradingChart = React.memo(function TradingChart({
         const normalizedTime = alignTimeframeBoundarySeconds(last.time, activeTf as AggTimeframe, tfSec);
 
         currentCandleRef.current = { ...last, time: normalizedTime };
-        setLegend({ o: last.open, h: last.high, l: last.low, c: last.close, v: last.volume });
+        updateLegendDOM(last.open, last.high, last.low, last.close, last.volume);
         console.log(`[Chart] Last candle time: ${last.time} → normalized to TF boundary: ${normalizedTime} (${activeTf})`);
 
         // Advance the store candle cursor so the 100ms poll doesn't re-process
@@ -1804,7 +1834,7 @@ export const TradingChart = React.memo(function TradingChart({
             color: c.close >= c.open ? 'rgba(22,163,74,0.3)' : 'rgba(220,38,38,0.3)',
           });
         }
-        setLegend({ o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume });
+        updateLegendDOM(c.open, c.high, c.low, c.close, c.volume);
         if (isNewCandle && chartRef.current && !isDisposedRef.current) {
           try { chartRef.current.timeScale().scrollToRealTime(); } catch { }
         }
@@ -1845,15 +1875,23 @@ export const TradingChart = React.memo(function TradingChart({
       if (isDisposedRef.current || isRebuildingRef.current || !seriesRef.current) return;
       const activeTf = prevTimeframeRef.current || timeframe;
 
-      // Get the latest tick for this symbol (fuzzy match normalised symbol)
-      const state = useAppStore.getState();
-      const tick = state.ticks[symbol]
-        ?? state.ticks[symbol.toUpperCase()]
-        ?? (() => {
-          const key = Object.keys(state.ticks).find(k =>
-            k.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedSymbol);
-          return key ? state.ticks[key] : undefined;
-        })();
+      // Get the latest tick from window.rtxTickCache map first for high performance, fallback to Zustand store
+      let tick = typeof window !== 'undefined' && window.rtxTickCache
+        ? (window.rtxTickCache.get(symbol)
+          ?? window.rtxTickCache.get(symbol.toUpperCase())
+          ?? window.rtxTickCache.get(normalizedSymbol))
+        : undefined;
+
+      if (!tick) {
+        const state = useAppStore.getState();
+        tick = state.ticks[symbol]
+          ?? state.ticks[symbol.toUpperCase()]
+          ?? (() => {
+            const key = Object.keys(state.ticks).find(k =>
+              k.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedSymbol);
+            return key ? state.ticks[key] : undefined;
+          })();
+      }
 
       // ── MIGRATED: Local clock-based boundary check removed ──────────
       // Rollovers are now driven strictly by `tick.timestamp` crossing the
@@ -2117,19 +2155,23 @@ export const TradingChart = React.memo(function TradingChart({
         const s = remaining % 60;
         const h = Math.floor(m / 60);
 
+        let val = '';
         if (h > 0) {
-          const val = `${h.toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-          setCountdown(val);
+          val = `${h.toString().padStart(2, '0')}:${(m % 60).toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         } else {
-          const val = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-          setCountdown(val);
+          val = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+        if (countdownTextRef.current) {
+          countdownTextRef.current.textContent = val;
         }
 
         // We no longer trigger `window.location.reload()` here because Date.now() 
         // drifting from broker time causes infinite refresh loops.
         // We solely rely on tick timestamps now.
       } else {
-        setCountdown('');
+        if (countdownTextRef.current) {
+          countdownTextRef.current.textContent = '';
+        }
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -3936,6 +3978,21 @@ export const TradingChart = React.memo(function TradingChart({
         </div>
       )}
 
+
+      {/* Premium MT5 HTML HUD */}
+      <div style={{
+        position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
+        fontFamily: "Consolas, 'Courier New', monospace", fontSize: '11px', color: '#A1A1AA',
+        textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px'
+      }}>
+        <span style={{ fontWeight: 'bold', color: '#E4E4E7' }}>{symbol}, {timeframe}</span>
+        <span>O: <span ref={ohlcOpenRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
+        <span>H: <span ref={ohlcHighRef} style={{ color: '#22C55E' }}>0.00000</span></span>
+        <span>L: <span ref={ohlcLowRef} style={{ color: '#EF4444' }}>0.00000</span></span>
+        <span>C: <span ref={ohlcCloseRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
+        <span>V: <span ref={ohlcVolumeRef} style={{ color: '#E4E4E7' }}>0</span></span>
+        <span ref={countdownTextRef} style={{ marginLeft: '12px', color: '#F59E0B', fontWeight: 'bold' }}></span>
+      </div>
 
       {/* Chart Container - must have explicit dimensions for lightweight-charts */}
       <div ref={containerRef} className="absolute inset-0 w-full h-full" />

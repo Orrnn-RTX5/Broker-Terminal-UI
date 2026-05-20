@@ -7,6 +7,7 @@ import type {
   AuthLoginRequest,
   AuthTokenResponse,
   BalanceOp,
+  Broker,
   BrokerConfig,
   BrokerServer,
   Candle,
@@ -103,6 +104,9 @@ export const authV2Api = {
 export const brokerV2Api = {
   getServers: (options?: ApiRequestOptions) =>
     apiClient.get<BrokerServer[]>('/broker/servers', v2Options({ ...options, skipAuth: true })),
+
+  getBrokers: (options?: ApiRequestOptions) =>
+    apiClient.get<{ brokers: Broker[]; count: number }>('/brokers', v2Options({ ...options, skipAuth: true })),
 
   getConfig: (broker_id?: string, options?: ApiRequestOptions) =>
     apiClient.get<BrokerConfig>('/broker/config', v2Options({
@@ -280,6 +284,7 @@ export type {
   AccountMetrics,
   AuthLoginRequest,
   AuthTokenResponse,
+  Broker,
   BrokerConfig,
   BrokerServer,
   Candle,

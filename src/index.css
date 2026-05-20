@@ -55,6 +55,18 @@ button:active {
   background-color: transparent !important;
 }
 
+/* Prevent transparency on dropdown menus, submenus, dialogs, and popups in dark mode */
+html:not(.rtx-advanced-view) :is(.fixed, .absolute, .submenu, [class*="context-menu"], [class*="ContextMenu"], [class*="menu"], [class*="Menu"], [class*="dropdown"], [class*="Dropdown"], [class*="popover"], [class*="Popover"]) :is(.bg-\[\#131316\], .bg-\[\#0e0e12\], .bg-\[\#191a1e\], .bg-\[\#0f0f12\], .bg-\[\#252528\], .bg-\[\#18181b\], .bg-\[\#0f1117\]),
+html:not(.rtx-advanced-view) :is(.fixed, .absolute, .submenu, [class*="context-menu"], [class*="ContextMenu"], [class*="menu"], [class*="Menu"], [class*="dropdown"], [class*="Dropdown"], [class*="popover"], [class*="Popover"]).bg-\[\#131316\],
+html:not(.rtx-advanced-view) :is(.fixed, .absolute, .submenu, [class*="context-menu"], [class*="ContextMenu"], [class*="menu"], [class*="Menu"], [class*="dropdown"], [class*="Dropdown"], [class*="popover"], [class*="Popover"]).bg-\[\#0e0e12\],
+html:not(.rtx-advanced-view) :is(.fixed, .absolute, .submenu, [class*="context-menu"], [class*="ContextMenu"], [class*="menu"], [class*="Menu"], [class*="dropdown"], [class*="Dropdown"], [class*="popover"], [class*="Popover"]).bg-\[\#191a1e\],
+html:not(.rtx-advanced-view) :is(.fixed, .absolute, .submenu, [class*="context-menu"], [class*="ContextMenu"], [class*="menu"], [class*="Menu"], [class*="dropdown"], [class*="Dropdown"], [class*="popover"], [class*="Popover"]).bg-\[\#0f0f12\],
+html:not(.rtx-advanced-view) :is(.fixed, .absolute, .submenu, [class*="context-menu"], [class*="ContextMenu"], [class*="menu"], [class*="Menu"], [class*="dropdown"], [class*="Dropdown"], [class*="popover"], [class*="Popover"]).bg-\[\#252528\],
+html:not(.rtx-advanced-view) :is(.fixed, .absolute, .submenu, [class*="context-menu"], [class*="ContextMenu"], [class*="menu"], [class*="Menu"], [class*="dropdown"], [class*="Dropdown"], [class*="popover"], [class*="Popover"]).bg-\[\#18181b\],
+html:not(.rtx-advanced-view) :is(.fixed, .absolute, .submenu, [class*="context-menu"], [class*="ContextMenu"], [class*="menu"], [class*="Menu"], [class*="dropdown"], [class*="Dropdown"], [class*="popover"], [class*="Popover"]).bg-\[\#0f1117\] {
+  background-color: #131316 !important;
+}
+
 table thead th {
   background: rgba(2, 6, 23, 0.5) !important;
   backdrop-filter: blur(8px) !important;

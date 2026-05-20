@@ -20,6 +20,9 @@ import { NotificationCenter } from '../notifications/NotificationCenter';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
+import { brokerV2Api } from '../../api/trade';
+import { RTX5_API_URL } from '../../config/api';
+import { configApi } from '../../services/api';
 
 interface TopToolbarProps {
     chartType: ChartType;
@@ -55,10 +58,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         drawingManager.setMagnetEnabled(toolbarState.magnetEnabled);
     }, [toolbarState.magnetEnabled]);
 
-    // Active tool syncing is handled by TradingChart.tsx via the SELECT_TOOL command bus.
-    // Do NOT call drawingManager.startDrawing/cancelDrawing here — it conflicts.
 
-    // Auto-reset to cursor after drawing is completed
     useEffect(() => {
         const handleDrawingSaved = () => {
             dispatchToolbar({ type: 'SELECT_TOOL', tool: 'cursor' });
@@ -67,7 +67,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         return () => window.removeEventListener('drawing:saved', handleDrawingSaved);
     }, [dispatchToolbar]);
 
-    // Register keyboard shortcuts via the centralized manager
+
     useKeyboardShortcuts([
         {
             id: 'drawing.cursor',
@@ -175,7 +175,6 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             <HeaderBar
                 symbol={symbol}
                 timeframe={timeframe}
-                server="FlexyMarkets-Server"
             />
 
             {/* 2. Menu Bar (File, View, etc.) */}
@@ -201,9 +200,27 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
 // --- Sub-Components ---
 
-const HeaderBar = ({ symbol, timeframe, server }: { symbol: string, timeframe: string, server: string }) => {
+const getLogoUrl = (url?: string) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+        return url;
+    }
+    const base = (RTX5_API_URL || '').replace(/\/$/, '');
+    const path = url.startsWith('/') ? url : `/${url}`;
+    return `${base}${path}`;
+};
+
+const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string }) => {
     const accountId = useAppStore((s) => s.accountId) || '---';
+    const savedAccounts = useAppStore((s) => s.savedAccounts) || [];
+    const activeAccount = savedAccounts.find(a => String(a.login) === String(accountId));
+    const serverName = activeAccount?.server || localStorage.getItem('rtx_broker_server') || 'FlexyMarkets-Server';
+
     const [isMaximized, setIsMaximized] = React.useState(false);
+    const [logoUrl, setLogoUrl] = useState<string>('');
+    const [brokerName, setBrokerName] = useState<string>('Flexy Markets Limited');
+    const [marginMode, setMarginMode] = useState<string>('Hedge');
+    const [logoError, setLogoError] = useState<boolean>(false);
 
     // Sync initial maximize state and subscribe to changes
     React.useEffect(() => {
@@ -216,9 +233,76 @@ const HeaderBar = ({ symbol, timeframe, server }: { symbol: string, timeframe: s
         return cleanup;
     }, []);
 
+    React.useEffect(() => {
+        let active = true;
+
+        const fetchDetails = async () => {
+            try {
+                // Fetch config for marginMode and fallback brokerName
+                const [config, servers, brokersData] = await Promise.all([
+                    configApi.getConfig().catch(() => null),
+                    brokerV2Api.getServers().catch(() => []),
+                    brokerV2Api.getBrokers().catch(() => ({ brokers: [], count: 0 })),
+                ]);
+
+                if (!active) return;
+
+                // 1. Margin mode from config
+                if (config) {
+                    if (config.marginMode === 'NETTING') {
+                        setMarginMode('Netting');
+                    } else {
+                        setMarginMode('Hedge');
+                    }
+                    if (config.brokerName) {
+                        setBrokerName(config.brokerName);
+                    }
+                }
+
+                // 2. Find broker ID and name from server matching
+                const matchedServer = servers.find(
+                    (s: any) => s.server?.toLowerCase() === serverName.toLowerCase()
+                );
+
+                let finalLogoUrl = '';
+                if (matchedServer) {
+                    if (matchedServer.broker_name) {
+                        setBrokerName(matchedServer.broker_name);
+                    }
+                    if (matchedServer.logo_url) {
+                        finalLogoUrl = matchedServer.logo_url;
+                    }
+
+                    // If no logo_url on server, cross-reference with broker list using broker_id
+                    if (!finalLogoUrl && matchedServer.broker_id) {
+                        const brokersList = brokersData?.brokers || [];
+                        const matchedBroker = brokersList.find(
+                            (b: any) => b.broker_id === matchedServer.broker_id
+                        );
+                        if (matchedBroker?.logo_url) {
+                            finalLogoUrl = matchedBroker.logo_url;
+                        }
+                    }
+                }
+
+                setLogoUrl(finalLogoUrl);
+                setLogoError(false); // Reset error state on server/logo change
+            } catch (err) {
+                console.error('[HeaderBar] Error loading dynamic titlebar info:', err);
+            }
+        };
+
+        fetchDetails();
+        return () => {
+            active = false;
+        };
+    }, [accountId, serverName]);
+
     const handleMinimize = () => (window as any).electron?.window?.minimize();
     const handleMaximize = () => (window as any).electron?.window?.maximize();
     const handleClose = () => (window as any).electron?.window?.close();
+
+    const displayLogo = logoUrl && !logoError ? getLogoUrl(logoUrl) : './titlebar-icon.png';
 
     return (
         <div
@@ -227,8 +311,13 @@ const HeaderBar = ({ symbol, timeframe, server }: { symbol: string, timeframe: s
         >
             {/* Left: Standard Title */}
             <div className="flex items-center gap-2 px-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-                <img src="./titlebar-icon.png" alt="RTX Logo" className="w-4 h-4 object-contain ml-1 rounded-sm" />
-                <span>{accountId} - {server} - Hedge - Flexy Markets Limited - {symbol},{timeframe.toUpperCase()}</span>
+                <img
+                    src={displayLogo}
+                    alt="RTX Logo"
+                    className="w-4 h-4 object-contain ml-1 rounded-sm"
+                    onError={() => setLogoError(true)}
+                />
+                <span>{accountId} - {serverName} - {marginMode} - {brokerName} - {symbol},{timeframe.toUpperCase()}</span>
             </div>
 
             {/* Right: Window Controls — no-drag so clicks register */}
@@ -669,8 +758,8 @@ const MainToolbar = ({
                         }}
                         title="Toggle Crosshair (C)"
                         className={`ml-2 flex items-center justify-center w-[28px] h-[26px] rounded border transition-colors shadow-sm ${showCrosshair
-                                ? advancedViewEnabled ? 'bg-[#7E57C2] border-[#7E57C2] text-white' : 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
-                                : advancedViewEnabled ? 'bg-white border-[#d0d5dd] text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2] hover:border-[#7E57C2]' : 'bg-transparent border-transparent text-zinc-400 hover:bg-white/5 hover:text-blue-300'
+                            ? advancedViewEnabled ? 'bg-[#7E57C2] border-[#7E57C2] text-white' : 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
+                            : advancedViewEnabled ? 'bg-white border-[#d0d5dd] text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2] hover:border-[#7E57C2]' : 'bg-transparent border-transparent text-zinc-400 hover:bg-white/5 hover:text-blue-300'
                             }`}
                     >
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
@@ -792,8 +881,8 @@ const MainToolbar = ({
                         }}
                         title="Clear All Drawings"
                         className={`ml-1 flex items-center justify-center w-[28px] h-[26px] rounded border transition-colors shadow-sm ${advancedViewEnabled
-                                ? 'border-[#fda29b] bg-white text-[#d92d20] hover:bg-[#fef3f2] hover:border-[#f97066]'
-                                : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/50'
+                            ? 'border-[#fda29b] bg-white text-[#d92d20] hover:bg-[#fef3f2] hover:border-[#f97066]'
+                            : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/50'
                             }`}
                     >
                         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1051,8 +1140,8 @@ const StampsPopover: React.FC<{
             {/* Main button — icon only, re-uses last subtype */}
             <button
                 className={`flex items-center justify-center w-[28px] h-full rounded-l transition-colors ${isActive
-                        ? (advancedViewEnabled ? 'bg-[#7E57C2] text-white' : 'bg-blue-500/15 text-blue-400')
-                        : (advancedViewEnabled ? 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]' : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300')
+                    ? (advancedViewEnabled ? 'bg-[#7E57C2] text-white' : 'bg-blue-500/15 text-blue-400')
+                    : (advancedViewEnabled ? 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]' : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300')
                     }`}
                 title={`Stamp: ${opt.label} — click on chart to place`}
                 onClick={() => selectStamp(lastSubtype)}
@@ -1092,8 +1181,8 @@ const StampsPopover: React.FC<{
                                 key={o.subtype}
                                 title={o.label}
                                 className={`flex items-center justify-center w-8 h-8 rounded transition-colors ${o.subtype === lastSubtype
-                                        ? (advancedViewEnabled ? 'bg-[#F3E5F5] ring-1 ring-[#7E57C2]' : 'bg-blue-500/15 ring-1 ring-blue-500/50')
-                                        : (advancedViewEnabled ? 'hover:bg-[#f3f4f6]' : 'hover:bg-white/5')
+                                    ? (advancedViewEnabled ? 'bg-[#F3E5F5] ring-1 ring-[#7E57C2]' : 'bg-blue-500/15 ring-1 ring-blue-500/50')
+                                    : (advancedViewEnabled ? 'hover:bg-[#f3f4f6]' : 'hover:bg-white/5')
                                     }`}
                                 onClick={() => selectStamp(o.subtype)}
                             >

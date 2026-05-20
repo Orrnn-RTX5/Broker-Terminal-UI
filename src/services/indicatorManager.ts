@@ -1,10 +1,11 @@
 /**
  * Indicator Manager
- * Calculates and manages technical indicators
+ * Calculates and manages technical indicators using background Web Workers
  */
 
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { LineSeries } from 'lightweight-charts';
+import { getWorkerManager } from './aggregationWorkerManager';
 
 export interface IndicatorConfig {
   id: string;
@@ -55,10 +56,43 @@ export class IndicatorManager {
 
     this.indicators.set(config.id, config);
 
-    // Create series for the indicator
-    const series = this.createIndicatorSeries(config);
-    if (series) {
-      this.indicatorSeries.set(config.id, series);
+    if (config.type === 'bollinger' || config.type === 'bb') {
+      // Create middle (main) series
+      const middleSeries = this.createIndicatorSeries({
+        ...config,
+        name: `${config.name} (Middle)`
+      });
+      if (middleSeries) {
+        this.indicatorSeries.set(config.id, middleSeries);
+      }
+
+      // Create upper series
+      const upperSeries = this.createIndicatorSeries({
+        ...config,
+        id: `${config.id}_upper`,
+        name: `${config.name} (Upper)`,
+        color: config.parameters.upperColor || '#E91E63'
+      });
+      if (upperSeries) {
+        this.indicatorSeries.set(`${config.id}_upper`, upperSeries);
+      }
+
+      // Create lower series
+      const lowerSeries = this.createIndicatorSeries({
+        ...config,
+        id: `${config.id}_lower`,
+        name: `${config.name} (Lower)`,
+        color: config.parameters.lowerColor || '#E91E63'
+      });
+      if (lowerSeries) {
+        this.indicatorSeries.set(`${config.id}_lower`, lowerSeries);
+      }
+    } else {
+      // Standard single line indicator series
+      const series = this.createIndicatorSeries(config);
+      if (series) {
+        this.indicatorSeries.set(config.id, series);
+      }
     }
 
     // Calculate and display
@@ -75,6 +109,18 @@ export class IndicatorManager {
     if (series) {
       this.chart.removeSeries(series);
       this.indicatorSeries.delete(id);
+    }
+
+    // Also check for and clean up Bollinger Bands companion series
+    const upper = this.indicatorSeries.get(`${id}_upper`);
+    if (upper) {
+      this.chart.removeSeries(upper);
+      this.indicatorSeries.delete(`${id}_upper`);
+    }
+    const lower = this.indicatorSeries.get(`${id}_lower`);
+    if (lower) {
+      this.chart.removeSeries(lower);
+      this.indicatorSeries.delete(`${id}_lower`);
     }
 
     this.indicators.delete(id);
@@ -94,6 +140,18 @@ export class IndicatorManager {
       series.applyOptions({
         visible: config.visible
       });
+    }
+
+    // Toggle companion series for Bollinger Bands
+    if (config.type === 'bollinger' || config.type === 'bb') {
+      const upper = this.indicatorSeries.get(`${id}_upper`);
+      if (upper) {
+        upper.applyOptions({ visible: config.visible });
+      }
+      const lower = this.indicatorSeries.get(`${id}_lower`);
+      if (lower) {
+        lower.applyOptions({ visible: config.visible });
+      }
     }
   }
 
@@ -121,10 +179,12 @@ export class IndicatorManager {
   private createIndicatorSeries(config: IndicatorConfig): ISeriesApi<any> | null {
     if (!this.chart) return null;
 
+    const isCompanion = config.id.endsWith('_upper') || config.id.endsWith('_lower');
+
     // Most indicators use line series
     const series = this.chart.addSeries(LineSeries, {
       color: config.color || this.getDefaultColor(config.type),
-      lineWidth: 2,
+      lineWidth: isCompanion ? 1 : 2, // Thinner lines for Bollinger Band boundaries
       lastValueVisible: false, // Fix: Hide indicator price labels on Y-axis
       priceLineVisible: false, // Fix: Hide indicator horizontal lines
       title: config.name,
@@ -136,7 +196,7 @@ export class IndicatorManager {
   }
 
   /**
-   * Calculate indicator values
+   * Calculate indicator values asynchronously via Web Workers
    */
   private calculateIndicator(id: string): void {
     const config = this.indicators.get(id);
@@ -144,38 +204,120 @@ export class IndicatorManager {
 
     if (!config || !series || this.ohlcData.length === 0) return;
 
-    let data: any[] = [];
+    const currentOHLC = [...this.ohlcData];
+    const prices = currentOHLC.map(c => c.close);
+    const worker = getWorkerManager();
 
-    switch (config.type) {
+    switch (config.type.toLowerCase()) {
       case 'ma':
-      case 'sma':
-        data = this.calculateSMA(this.ohlcData, config.parameters.period || 20);
+      case 'sma': {
+        const period = config.parameters.period || 20;
+        worker.calculateSMA(prices, period, (smaValues) => {
+          if (!this.indicators.has(id)) return;
+          const data = smaValues
+            .map((value, index) => ({
+              time: currentOHLC[index]?.time,
+              value
+            }))
+            .filter(d => d.time !== undefined && !isNaN(d.value));
+          series.setData(data);
+        });
         break;
+      }
 
-      case 'ema':
-        data = this.calculateEMA(this.ohlcData, config.parameters.period || 12);
+      case 'ema': {
+        const period = config.parameters.period || 12;
+        worker.calculateEMA(prices, period, (emaValues) => {
+          if (!this.indicators.has(id)) return;
+          const data = emaValues
+            .map((value, index) => ({
+              time: currentOHLC[index]?.time,
+              value
+            }))
+            .filter(d => d.time !== undefined && !isNaN(d.value));
+          series.setData(data);
+        });
         break;
+      }
 
-      case 'rsi':
-        data = this.calculateRSI(this.ohlcData, config.parameters.period || 14);
+      case 'rsi': {
+        const period = config.parameters.period || 14;
+        worker.calculateRSI(prices, period, (rsiValues) => {
+          if (!this.indicators.has(id)) return;
+          const data = rsiValues
+            .map((value, index) => ({
+              time: currentOHLC[index]?.time,
+              value
+            }))
+            .filter(d => d.time !== undefined && !isNaN(d.value));
+          series.setData(data);
+        });
         break;
+      }
 
-      case 'macd':
-        // MACD requires multiple series (line, signal, histogram)
-        data = this.calculateMACD(
-          this.ohlcData,
-          config.parameters.fast || 12,
-          config.parameters.slow || 26,
-          config.parameters.signal || 9
-        );
+      case 'macd': {
+        const fast = config.parameters.fast || 12;
+        const slow = config.parameters.slow || 26;
+        const signal = config.parameters.signal || 9;
+        worker.calculateMACD(prices, fast, slow, signal, (res) => {
+          if (!this.indicators.has(id)) return;
+          const data = res.macd
+            .map((value, index) => ({
+              time: currentOHLC[index]?.time,
+              value
+            }))
+            .filter(d => d.time !== undefined && !isNaN(d.value));
+          series.setData(data);
+        });
         break;
+      }
+
+      case 'bollinger':
+      case 'bb': {
+        const period = config.parameters.period || 20;
+        const stdDev = config.parameters.stdDev || 2;
+        worker.calculateBollinger(prices, period, stdDev, (res) => {
+          if (!this.indicators.has(id)) return;
+
+          const middleSeries = this.indicatorSeries.get(id);
+          const upperSeries = this.indicatorSeries.get(`${id}_upper`);
+          const lowerSeries = this.indicatorSeries.get(`${id}_lower`);
+
+          if (middleSeries) {
+            const middleData = res.middle
+              .map((value, index) => ({
+                time: currentOHLC[index]?.time,
+                value
+              }))
+              .filter(d => d.time !== undefined && !isNaN(d.value));
+            middleSeries.setData(middleData);
+          }
+          if (upperSeries) {
+            const upperData = res.upper
+              .map((value, index) => ({
+                time: currentOHLC[index]?.time,
+                value
+              }))
+              .filter(d => d.time !== undefined && !isNaN(d.value));
+            upperSeries.setData(upperData);
+          }
+          if (lowerSeries) {
+            const lowerData = res.lower
+              .map((value, index) => ({
+                time: currentOHLC[index]?.time,
+                value
+              }))
+              .filter(d => d.time !== undefined && !isNaN(d.value));
+            lowerSeries.setData(lowerData);
+          }
+        });
+        break;
+      }
 
       default:
         console.warn(`Indicator type ${config.type} not implemented yet`);
         return;
     }
-
-    series.setData(data);
   }
 
   /**
@@ -185,134 +327,6 @@ export class IndicatorManager {
     this.indicators.forEach((_, id) => {
       this.calculateIndicator(id);
     });
-  }
-
-  /**
-   * Calculate Simple Moving Average
-   */
-  private calculateSMA(data: OHLCData[], period: number): Array<{ time: Time; value: number }> {
-    const result: Array<{ time: Time; value: number }> = [];
-
-    for (let i = period - 1; i < data.length; i++) {
-      let sum = 0;
-      for (let j = 0; j < period; j++) {
-        sum += data[i - j].close;
-      }
-      result.push({
-        time: data[i].time,
-        value: sum / period
-      });
-    }
-
-    return result;
-  }
-
-  /**
-   * Calculate Exponential Moving Average
-   */
-  private calculateEMA(data: OHLCData[], period: number): Array<{ time: Time; value: number }> {
-    const result: Array<{ time: Time; value: number }> = [];
-    const multiplier = 2 / (period + 1);
-
-    // Start with SMA for first value
-    let ema = 0;
-    for (let i = 0; i < period; i++) {
-      ema += data[i].close;
-    }
-    ema /= period;
-
-    result.push({
-      time: data[period - 1].time,
-      value: ema
-    });
-
-    // Calculate EMA for remaining values
-    for (let i = period; i < data.length; i++) {
-      ema = (data[i].close - ema) * multiplier + ema;
-      result.push({
-        time: data[i].time,
-        value: ema
-      });
-    }
-
-    return result;
-  }
-
-  /**
-   * Calculate Relative Strength Index
-   */
-  private calculateRSI(data: OHLCData[], period: number): Array<{ time: Time; value: number }> {
-    const result: Array<{ time: Time; value: number }> = [];
-
-    if (data.length < period + 1) return result;
-
-    let gains = 0;
-    let losses = 0;
-
-    // Calculate initial average gain and loss
-    for (let i = 1; i <= period; i++) {
-      const change = data[i].close - data[i - 1].close;
-      if (change >= 0) {
-        gains += change;
-      } else {
-        losses -= change;
-      }
-    }
-
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
-
-    // Calculate RSI
-    for (let i = period; i < data.length; i++) {
-      const change = data[i].close - data[i - 1].close;
-
-      const currentGain = change >= 0 ? change : 0;
-      const currentLoss = change < 0 ? -change : 0;
-
-      avgGain = (avgGain * (period - 1) + currentGain) / period;
-      avgLoss = (avgLoss * (period - 1) + currentLoss) / period;
-
-      const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-      const rsi = 100 - (100 / (1 + rs));
-
-      result.push({
-        time: data[i].time,
-        value: rsi
-      });
-    }
-
-    return result;
-  }
-
-  /**
-   * Calculate MACD
-   */
-  private calculateMACD(
-    data: OHLCData[],
-    fastPeriod: number,
-    slowPeriod: number,
-    _signalPeriod: number
-  ): Array<{ time: Time; value: number }> {
-    const fastEMA = this.calculateEMA(data, fastPeriod);
-    const slowEMA = this.calculateEMA(data, slowPeriod);
-
-    const macdLine: Array<{ time: Time; value: number }> = [];
-
-    // Calculate MACD line (fast EMA - slow EMA)
-    for (let i = 0; i < Math.min(fastEMA.length, slowEMA.length); i++) {
-      if (fastEMA[i].time === slowEMA[i].time) {
-        macdLine.push({
-          time: fastEMA[i].time,
-          value: fastEMA[i].value - slowEMA[i].value
-        });
-      }
-    }
-
-    // Calculate signal line (EMA of MACD)
-    // For simplicity, return just the MACD line
-    // In production, you'd create separate series for signal and histogram
-
-    return macdLine;
   }
 
   /**
@@ -334,6 +348,7 @@ export class IndicatorManager {
       'rsi': '#FF9800',
       'macd': '#4CAF50',
       'bb': '#E91E63',
+      'bollinger': '#E91E63',
       'stochastic': '#00BCD4',
       'cci': '#FFEB3B',
       'momentum': '#8BC34A'

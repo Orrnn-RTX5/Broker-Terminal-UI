@@ -22,6 +22,83 @@ const initials = (name: string) => {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
+import { RTX5_API_URL } from '../../config/api';
+
+const getLogoUrl = (url?: string) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+        return url;
+    }
+    const base = (RTX5_API_URL || '').replace(/\/$/, '');
+    const path = url.startsWith('/') ? url : `/${url}`;
+    return `${base}${path}`;
+};
+
+const BrokerAvatar: React.FC<{ broker: BrokerServer; index: number; isSelected: boolean }> = ({ broker, index, isSelected }) => {
+    const [hasError, setHasError] = useState(false);
+    const grad = GRADIENTS[index % GRADIENTS.length];
+    
+    if (broker.logo_url && !hasError) {
+        return (
+            <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden bg-white flex-shrink-0"
+                style={{
+                    border: isSelected ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.08)',
+                    boxShadow: isSelected ? '0 0 12px rgba(99,102,241,0.35)' : '0 4px 12px rgba(0,0,0,0.2)',
+                }}
+            >
+                <img
+                    src={getLogoUrl(broker.logo_url)}
+                    alt={broker.broker_name}
+                    className="w-full h-full object-contain p-1.5"
+                    onError={() => setHasError(true)}
+                />
+            </div>
+        );
+    }
+    
+    return (
+        <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
+            style={{
+                background: `linear-gradient(135deg, ${grad.from} 0%, ${grad.to} 100%)`,
+                boxShadow: isSelected ? `0 6px 20px ${grad.from}55` : '0 4px 12px rgba(0,0,0,0.3)',
+            }}
+        >
+            {initials(broker.broker_name)}
+        </div>
+    );
+};
+
+const DropdownBrokerLogo: React.FC<{ broker: BrokerServer; index: number }> = ({ broker, index }) => {
+    const [hasError, setHasError] = useState(false);
+    const grad = GRADIENTS[index % GRADIENTS.length];
+    
+    if (broker.logo_url && !hasError) {
+        return (
+            <div className="w-5 h-5 rounded bg-white flex items-center justify-center overflow-hidden flex-shrink-0 border border-white/10">
+                <img
+                    src={getLogoUrl(broker.logo_url)}
+                    alt={broker.broker_name}
+                    className="w-full h-full object-contain p-0.5"
+                    onError={() => setHasError(true)}
+                />
+            </div>
+        );
+    }
+    
+    return (
+        <div
+            className="w-5 h-5 rounded flex items-center justify-center text-white font-bold text-[8px] flex-shrink-0"
+            style={{
+                background: `linear-gradient(135deg, ${grad.from} 0%, ${grad.to} 100%)`,
+            }}
+        >
+            {initials(broker.broker_name)}
+        </div>
+    );
+};
+
 interface Props {
     isOpen: boolean;
     onClose: () => void;
@@ -65,9 +142,22 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     useEffect(() => {
         if (!isOpen) return;
         setLoadingBrokers(true);
-        brokerV2Api.getServers()
-            .then(servers => {
-                const enabled = servers.filter(s => s.enabled !== false);
+        Promise.all([
+            brokerV2Api.getServers(),
+            brokerV2Api.getBrokers().catch(err => {
+                console.warn('[OpenAccountDialog] Could not load broker details for logo lookup:', err);
+                return { brokers: [], count: 0 };
+            })
+        ])
+            .then(([servers, brokersData]) => {
+                const brokersList = brokersData?.brokers || [];
+                const logoMap = new Map(brokersList.map(b => [b.broker_id, b.logo_url]));
+                const enabled = servers
+                    .filter(s => s.enabled !== false)
+                    .map(s => ({
+                        ...s,
+                        logo_url: logoMap.get(s.broker_id) || s.logo_url
+                    }));
                 setBrokers(enabled);
                 if (!selected && enabled.length > 0) setSelected(String(enabled[0].id));
             })
@@ -201,20 +291,12 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 }}
                             >
                                 {/* Avatar */}
-                                <div
-                                    className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-[12px] flex-shrink-0"
-                                    style={{
-                                        background: `linear-gradient(135deg, ${grad.from} 0%, ${grad.to} 100%)`,
-                                        boxShadow: isSelected ? `0 6px 20px ${grad.from}55` : '0 4px 12px rgba(0,0,0,0.3)',
-                                    }}
-                                >
-                                    {initials(broker.broker_name)}
-                                </div>
+                                <BrokerAvatar broker={broker} index={i} isSelected={isSelected} />
 
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <span className={`text-[12px] font-semibold truncate ${isSelected ? 'text-white' : 'text-zinc-200'}`}>
+                                        <span className={`text-[14px] font-semibold truncate ${isSelected ? 'text-white' : 'text-zinc-200'}`}>
                                             {broker.broker_name}
                                         </span>
                                         {broker.region && (
@@ -227,10 +309,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                         )}
                                     </div>
                                     <div className="flex items-center gap-2 mt-0.5">
-                                        <span className="text-[10px] text-zinc-500 font-mono truncate">{broker.server}</span>
-                                        {broker.protocol && (
-                                            <span className="text-[9px] text-zinc-600 uppercase">{broker.protocol}</span>
-                                        )}
+                                        <span className="text-[11.5px] text-zinc-400 font-mono truncate">{broker.server}</span>
                                     </div>
                                 </div>
 
@@ -316,14 +395,20 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                         <button
                                             type="button"
                                             onClick={() => setExistingServerDropOpen(o => !o)}
-                                            className="w-full h-[28px] bg-[#1a1c23] border border-zinc-700 rounded px-2 text-[11px] text-left flex items-center justify-between gap-1 focus:border-indigo-500 outline-none"
+                                            className="w-full h-[32px] bg-[#1a1c23] border border-zinc-700 rounded px-2 text-[11px] text-left flex items-center justify-between gap-2 focus:border-indigo-500 outline-none"
                                         >
-                                            <span className="truncate flex-1 text-zinc-300">
-                                                {existingBroker
-                                                    ? <>{existingBroker.broker_name} <span className="text-zinc-600 font-mono text-[10px]">({existingBroker.server})</span></>
-                                                    : <span className="text-zinc-600">Select server…</span>
-                                                }
-                                            </span>
+                                            <div className="flex items-center gap-2 truncate flex-1">
+                                                {existingBroker ? (
+                                                    <>
+                                                        <DropdownBrokerLogo broker={existingBroker} index={0} />
+                                                        <span className="truncate text-zinc-300">
+                                                            {existingBroker.broker_name} <span className="text-zinc-600 font-mono text-[10px]">({existingBroker.server})</span>
+                                                        </span>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-zinc-600">Select server…</span>
+                                                )}
+                                            </div>
                                             <ChevronRight className={`w-3 h-3 text-zinc-500 flex-shrink-0 transition-transform ${existingServerDropOpen ? 'rotate-90' : ''}`} />
                                         </button>
                                         {existingServerDropOpen && (
@@ -340,15 +425,18 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                                     />
                                                 </div>
                                                 <div className="overflow-y-auto flex-1">
-                                                    {existingFilteredBrokers.map(b => (
+                                                    {existingFilteredBrokers.map((b, idx) => (
                                                         <button
                                                             key={b.id}
                                                             type="button"
                                                             onClick={() => { setExistingBroker(b); setExistingServerDropOpen(false); setExistingServerSearch(''); }}
-                                                            className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-zinc-700/60 transition-colors flex flex-col gap-0.5 ${existingBroker?.id === b.id ? 'bg-zinc-700/40 text-white' : 'text-zinc-300'}`}
+                                                            className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-zinc-700/60 transition-colors flex items-center gap-2 ${existingBroker?.id === b.id ? 'bg-zinc-700/40 text-white' : 'text-zinc-300'}`}
                                                         >
-                                                            <span className="font-medium truncate">{b.broker_name}</span>
-                                                            <span className="text-zinc-500 text-[9px] font-mono truncate">{b.server}</span>
+                                                            <DropdownBrokerLogo broker={b} index={idx} />
+                                                            <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                                                                <span className="font-medium truncate">{b.broker_name}</span>
+                                                                <span className="text-zinc-500 text-[9px] font-mono truncate">{b.server}</span>
+                                                            </div>
                                                         </button>
                                                     ))}
                                                 </div>
@@ -530,11 +618,13 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             <div
                 className="relative w-[580px] flex flex-col overflow-hidden transition-all duration-300"
                 style={{
-                    background: 'linear-gradient(145deg, #16181f 0%, #1c1e28 40%, #141620 100%)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'linear-gradient(145deg, rgba(22, 24, 31, 0.65) 0%, rgba(28, 30, 40, 0.6) 40%, rgba(20, 22, 32, 0.65) 100%)',
+                    border: '1px solid rgba(255,255,255,0.12)',
                     borderRadius: '12px',
-                    boxShadow: '0 40px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(180,180,190,0.08), inset 0 1px 0 rgba(255,255,255,0.05)',
+                    boxShadow: '0 40px 80px rgba(0,0,0,0.75), 0 0 0 1px rgba(180,180,190,0.1), inset 0 1px 0 rgba(255,255,255,0.05)',
                     maxHeight: '90vh',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
                 }}
             >
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-px opacity-60" style={{ background: 'linear-gradient(90deg, transparent, #6366f1, transparent)' }} />

@@ -273,9 +273,8 @@ paths:
         "101":
           description: Switching Protocols
 
-  # ===========================================================================
-  # CORE GATEWAY â€” Auth (port 8090)
-  # ===========================================================================
+
+
   /api/v2/auth/login:
     post:
       operationId: authLogin

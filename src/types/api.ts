@@ -80,6 +80,7 @@ export interface BrokerServer {
   protocol?: string;
   region?: string;
   enabled?: boolean;
+  logo_url?: string;
   created_at?: number;
 }
 
@@ -92,6 +93,17 @@ export interface BrokerConfig {
   domain?: string;
   terms_url?: string;
   privacy_url?: string;
+}
+
+export interface Broker {
+  broker_id: string;
+  license_plan: string;
+  logo_url: string;
+  modules_enabled: string[];
+  name: string;
+  status: string;
+  valid_from: number;
+  valid_until: number;
 }
 
 export interface ApiKey {
