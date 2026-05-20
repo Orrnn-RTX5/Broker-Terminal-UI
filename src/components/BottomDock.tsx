@@ -154,7 +154,7 @@ export function BottomDock({
             const currentAccount = useAppStore.getState().account;
             if (currentAccount) {
                 useAppStore.getState().setAccount({ ...currentAccount, equity: 0, balance: 0, freeMargin: 0, marginLevel: 0 });
-                console.log("💥 Simulated Account Blow Up! Equity is now 0. You should be navigated to the Journal tab.");
+                console.log("0000 Simulated Account Blow Up! Equity is now 0. You should be navigated to the Journal tab.");
             }
         };
 
@@ -461,6 +461,8 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
 
     // Compute live account totals based on realtime positions
     const totalLivePnL = useMemo(() => livePositions.reduce((acc, pos) => acc + (pos.livePnL || 0), 0), [livePositions]);
+    const totalSwap = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.swap) || 0), 0), [livePositions]);
+    const totalCommission = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.commission) || 0), 0), [livePositions]);
     const liveEquity = (account?.balance || 0) + totalLivePnL;
 
     // Use margin from WebSocket account data (same as balance) — server knows per-symbol margin rates
@@ -469,39 +471,58 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
     const liveFreeMargin = liveEquity - margin;
     const liveMarginLevel = margin > 0 ? (liveEquity / margin) * 100 : 0;
 
+    const fmtMT5Time = (dateStr: string) => {
+        try {
+            const d = new Date(dateStr);
+            const pad = (n: number) => String(n).padStart(2, '0');
+            return {
+                date: `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`,
+                time: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`,
+            };
+        } catch {
+            return { date: dateStr, time: '' };
+        }
+    };
+
     return (
         <div className="h-full flex flex-col relative bg-[#131316]">
             <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
-                <table className="w-full text-left border-collapse table-fixed">
+                <table className="w-full text-left border-collapse" style={{ minWidth: 920 }}>
                     <thead className="sticky top-0 bg-[#131316] text-[#a0a0a0] z-10 font-bold text-[10px] uppercase tracking-widest border-b border-zinc-700/50">
                         <tr>
-                            <th className="p-1 pl-2 w-[10%] text-left">Symbol</th>
-                            <th className="p-1 w-[9%] text-left">Ticket</th>
-                            <th className="p-1 w-[14%] text-left">Time</th>
-                            <th className="p-1 w-[6%] text-left">Type</th>
-                            <th className="p-1 w-[9%] text-right">Volume</th>
-                            <th className="p-1 w-[10%] text-right">Price</th>
-                            <th className="p-1 w-[10%] text-right">S / L</th>
-                            <th className="p-1 w-[10%] text-right">T / P</th>
-                            <th className="p-1 w-[10%] text-right">Price</th>
-                            <th className="p-1 pr-4 w-[10%] text-right">Profit</th>
+                            <th className="p-1 pl-2 text-left" style={{ minWidth: 90 }}>Time</th>
+                            <th className="p-1 text-left" style={{ minWidth: 70 }}>Order</th>
+                            <th className="p-1 text-left" style={{ minWidth: 90 }}>Symbol</th>
+                            <th className="p-1 text-left" style={{ minWidth: 50 }}>Type</th>
+                            <th className="p-1 text-right" style={{ minWidth: 60 }}>Volume</th>
+                            <th className="p-1 text-right" style={{ minWidth: 90 }}>Price <span className="normal-case text-zinc-600">(open)</span></th>
+                            <th className="p-1 text-right" style={{ minWidth: 80 }}>S / L</th>
+                            <th className="p-1 text-right" style={{ minWidth: 80 }}>T / P</th>
+                            <th className="p-1 text-right" style={{ minWidth: 90 }}>Price <span className="normal-case text-zinc-600">(cur)</span></th>
+                            <th className="p-1 text-right" style={{ minWidth: 80 }}>Profit</th>
                             <th className="w-8"></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[11px]">
-                        {livePositions.map((pos: any, i: number) => (
+                        {livePositions.map((pos: any, i: number) => {
+                            const t = fmtMT5Time(pos.openTime ?? new Date().toISOString());
+                            const isBuy = pos.side === 'BUY';
+                            return (
                             <tr key={pos.id ?? i} className={`rtx-trade-row ${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} transition-colors group cursor-pointer`} onDoubleClick={() => setModifyPosition(pos)}>
-                                <td className="p-1 pl-2 border-r border-zinc-800 font-bold text-zinc-100">{pos.symbol ?? '—'}</td>
+                                <td className="p-1 pl-2 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">
+                                    <div>{t.date}</div>
+                                    <div className="text-zinc-500">{t.time}</div>
+                                </td>
                                 <td className="p-1 border-r border-zinc-800 text-zinc-500">{pos.id ?? '—'}</td>
-                                <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">{formatDate(pos.openTime ?? new Date().toISOString())}</td>
-                                <td className={`p-1 border-r border-zinc-800 font-bold ${pos.side === 'BUY' ? (isAdvancedMode ? 'text-emerald-500 text-[11px]' : 'text-blue-400 text-[10px]') : (isAdvancedMode ? 'text-red-500 text-[11px]' : 'text-red-400 text-[10px]')}`}>
+                                <td className="p-1 border-r border-zinc-800 font-bold text-zinc-100">{pos.symbol ?? '—'}</td>
+                                <td className={`p-1 border-r border-zinc-800 font-bold ${isBuy ? 'text-[#4fc3f7]' : 'text-[#f87171]'} text-[10px]`}>
                                     <div className="flex items-center gap-1">
-                                        {pos.side === 'BUY' ? (
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                                        {isBuy ? (
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
                                         ) : (
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
                                         )}
-                                        <span>{pos.side ?? '—'}</span>
+                                        <span>{isBuy ? 'buy' : 'sell'}</span>
                                     </div>
                                 </td>
                                 <td className="p-1 border-r border-zinc-800 text-right font-medium text-zinc-200">{Number(pos.volume ?? 0).toFixed(2)}</td>
@@ -520,7 +541,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                                         />
                                     ) : (
                                         <span className={pos.sl > 0 ? "text-red-300 bg-red-900/20 px-1 rounded-sm" : "text-zinc-600"}>
-                                            {pos.sl > 0 ? <PriceDisplay price={Number(pos.sl)} symbol={pos.symbol ?? ''} /> : ''}
+                                            {pos.sl > 0 ? <PriceDisplay price={Number(pos.sl)} symbol={pos.symbol ?? ''} /> : '0.00'}
                                         </span>
                                     )}
                                 </td>
@@ -537,7 +558,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                                         />
                                     ) : (
                                         <span className={pos.tp > 0 ? "text-emerald-300 bg-emerald-900/20 px-1 rounded-sm" : "text-zinc-600"}>
-                                            {pos.tp > 0 ? <PriceDisplay price={Number(pos.tp)} symbol={pos.symbol ?? ''} /> : ''}
+                                            {pos.tp > 0 ? <PriceDisplay price={Number(pos.tp)} symbol={pos.symbol ?? ''} /> : '0.00'}
                                         </span>
                                     )}
                                 </td>
@@ -545,31 +566,35 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                                 <td className="p-1 border-r border-zinc-800 text-right">
                                     <BlinkingText value={Number(pos.livePrice ?? 0)} formatFn={(v: number) => <PriceDisplay price={v} symbol={pos.symbol ?? ''} />} defaultColor="text-zinc-300" />
                                 </td>
-                                <td className={`p-1 text-right font-bold pr-4 ${isAdvancedMode ? 'text-[12px]' : ''}`}>
+                                <td className={`p-1 text-right font-bold pr-2 ${isAdvancedMode ? 'text-[12px]' : ''}`}>
                                     <BlinkingText value={Number(pos.livePnL ?? 0)} formatFn={formatMoney} defaultColor={Number(pos.livePnL ?? 0) >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'} />
                                 </td>
                                 <td className="p-1 text-center">
                                     <button
                                         onClick={() => onClosePosition(pos.id)}
-                                        className="text-zinc-600 hover:text-white hover:bg-zinc-700 w-4 h-4 rounded flex items-center justify-center transition-colors"
+                                        className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-white hover:bg-zinc-700 w-4 h-4 rounded flex items-center justify-center transition-all"
                                     >
                                         ×
                                     </button>
                                 </td>
                             </tr>
-                        ))}
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
 
             {/* Footer Summary Row (Full Account Info) */}
-            <div className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full overflow-hidden text-[11px] font-bold text-zinc-300 flex items-center px-2 py-1 gap-3 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
-                <Icon name="plus-circle" size="xs" className="text-zinc-400 mr-1" />
-                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Balance:</span> <BlinkingText value={account?.balance || 0} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} /></span>
-                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Equity:</span> <BlinkingText value={liveEquity} formatFn={formatMoney} /></span>
-                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Margin:</span> <BlinkingText value={margin} formatFn={formatMoney} /></span>
-                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Free Margin:</span> <BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
-                <span className="flex gap-1"><span className="rtx-trade-metric-label text-zinc-500">Margin Level:</span> <BlinkingText value={liveMarginLevel} formatFn={formatMoney} suffix=" %" /></span>
+            <div className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full overflow-x-auto text-[11px] font-bold text-zinc-300 flex items-center px-2 py-1 gap-3 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">
+                <Icon name="plus-circle" size="xs" className="text-zinc-400 mr-1 shrink-0" />
+                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Positions:</span> <span>{livePositions.length}</span></span>
+                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Balance:</span> <BlinkingText value={account?.balance || 0} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} /></span>
+                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Equity:</span> <BlinkingText value={liveEquity} formatFn={formatMoney} /></span>
+                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Margin:</span> <BlinkingText value={margin} formatFn={formatMoney} /></span>
+                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Free Margin:</span> <BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
+                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Margin Level:</span> <BlinkingText value={liveMarginLevel} formatFn={formatMoney} suffix=" %" /></span>
+                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Swap:</span> <span className={totalSwap < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalSwap)}</span></span>
+                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Commission:</span> <span className={totalCommission < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalCommission)}</span></span>
                 <div className="flex-1"></div>
                 <button
                     type="button"
@@ -595,7 +620,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                 >
                     Close All
                 </button>
-                <span className="pr-4 font-bold text-zinc-100"><BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL >= 0 ? "text-emerald-400" : "text-red-400"} /></span>
+                <span className="flex gap-1 shrink-0 pr-2"><span className="text-zinc-500">Floating P/L:</span><BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL >= 0 ? "text-[#4ade80]" : "text-[#f87171]"} /></span>
             </div>
             {/* Modify Position Dialog */}
             <ModifyPositionDialog

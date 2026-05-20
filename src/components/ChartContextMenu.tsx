@@ -54,17 +54,17 @@ interface ChartContextMenuProps {
 
 // ─── CSS variables injected once ─────────────────────────────────────────────
 const MENU_FONT = "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif";
-const C_BG         = 'var(--ctx-bg, rgba(19, 19, 22, 0.85))';
-const C_BORDER     = 'var(--ctx-border, rgba(255, 255, 255, 0.08))';
-const C_HOVER      = 'var(--ctx-hover, rgba(255, 255, 255, 0.06))';
-const C_ACTIVE_BG  = 'var(--ctx-active-bg, rgb(59, 130, 246))';
-const C_ACTIVE_FG  = 'var(--ctx-active-fg, #ffffff)';
+const C_BG = 'var(--ctx-bg, rgba(19, 19, 22, 0.85))';
+const C_BORDER = 'var(--ctx-border, rgba(255, 255, 255, 0.08))';
+const C_HOVER = 'var(--ctx-hover, rgba(255, 255, 255, 0.06))';
+const C_ACTIVE_BG = 'var(--ctx-active-bg, rgb(59, 130, 246))';
+const C_ACTIVE_FG = 'var(--ctx-active-fg, #ffffff)';
 const C_ITEM_ACTIVE_BG = 'var(--ctx-item-active-bg, rgba(59, 130, 246, 0.15))';
 const C_ITEM_ACTIVE_FG = 'var(--ctx-item-active-fg, #60a5fa)';
-const C_TEXT       = 'var(--ctx-text, #e4e4e7)';
-const C_MUTED      = 'var(--ctx-muted, #71717a)';
-const C_HEADER     = 'var(--ctx-header, #a1a1aa)';
-const C_DISABLED   = 'var(--ctx-disabled, rgba(161, 161, 170, 0.3))';
+const C_TEXT = 'var(--ctx-text, #e4e4e7)';
+const C_MUTED = 'var(--ctx-muted, #71717a)';
+const C_HEADER = 'var(--ctx-header, #a1a1aa)';
+const C_DISABLED = 'var(--ctx-disabled, rgba(161, 161, 170, 0.3))';
 
 // ─── Keyboard shortcut label ──────────────────────────────────────────────────
 const Shortcut = ({ keys }: { keys: string }) => (
@@ -102,9 +102,9 @@ interface MenuItemProps {
 
 const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
     { icon, label, shortcut, onClick, hasSubmenu, active, checked, disabled }
-, ref) => {
-    const bg   = active  ? C_ITEM_ACTIVE_BG : 'transparent';
-    const fg   = disabled ? C_DISABLED : active ? C_ITEM_ACTIVE_FG : C_TEXT;
+    , ref) => {
+    const bg = active ? C_ITEM_ACTIVE_BG : 'transparent';
+    const fg = disabled ? C_DISABLED : active ? C_ITEM_ACTIVE_FG : C_TEXT;
 
     return (
         <div
@@ -274,7 +274,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     // Use known approximate menu dimensions so we can clamp in one render pass
     const MENU_W = 228;
     const MENU_H = 460;
-    const clampedX = Math.min(x, window.innerWidth  - MENU_W - 4);
+    const clampedX = Math.min(x, window.innerWidth - MENU_W - 4);
     const clampedY = Math.min(y, window.innerHeight - MENU_H - 4);
 
     // ── Close on Escape ──
@@ -530,31 +530,31 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 label="Templates"
                 icon={<Layers size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
             >
-                <MenuItem 
+                <MenuItem
                     icon={
                         <div style={{ width: 14, height: 14, borderRadius: '50%', border: '1.5px solid #3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
                         </div>
-                    } 
-                    label="Save Template..." 
-                    onClick={handleOpenSaveTemplate} 
+                    }
+                    label="Save Template..."
+                    onClick={handleOpenSaveTemplate}
                 />
-                <MenuItem 
+                <MenuItem
                     icon={
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                    } 
-                    label="Load Template..." 
-                    onClick={handleOpenLoadTemplate} 
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+                    }
+                    label="Load Template..."
+                    onClick={handleOpenLoadTemplate}
                 />
                 <Submenu
                     label="Remove Template"
                     disabled={templates.filter(t => !t.isDefault).length === 0}
                 >
                     {templates.filter(t => !t.isDefault).map(tpl => (
-                        <MenuItem 
-                            key={tpl.id} 
-                            label={tpl.name} 
-                            onClick={() => handleTemplateDelete(tpl.id, tpl.name)} 
+                        <MenuItem
+                            key={tpl.id}
+                            label={tpl.name}
+                            onClick={() => handleTemplateDelete(tpl.id, tpl.name)}
                         />
                     ))}
                 </Submenu>

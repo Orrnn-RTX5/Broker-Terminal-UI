@@ -43,6 +43,7 @@ export type GatewayPosition = {
   time_create?: number;
   time_ms?: number;
   time?: number;
+  comment?: string;
 };
 
 export type GatewayDeal = {
@@ -151,7 +152,7 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
   const side = String(raw.side ?? raw.action ?? '').toLowerCase();
   return {
     id: Number(raw.ticket ?? raw.position_id ?? 0),
-    symbol: raw.symbol ?? '',
+    symbol: (raw.symbol ?? '').toUpperCase(),
     side: side.includes('sell') || side === '1' ? 'SELL' : 'BUY',
     volume: Number(raw.volume_lots ?? raw.volume ?? 0),
     openPrice: Number(raw.price_open ?? raw.open_price ?? 0),
@@ -162,6 +163,7 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
     swap: Number(raw.swap ?? raw.storage ?? 0),
     commission: Number(raw.commission ?? 0),
     unrealizedPnL: Number(raw.profit ?? 0),
+    comment: raw.comment ?? '',
   };
 };
 

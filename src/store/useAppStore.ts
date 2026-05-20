@@ -44,6 +44,7 @@ export interface Position {
   swap: number;
   commission: number;
   unrealizedPnL: number;
+  comment?: string;
 }
 
 export interface Order {

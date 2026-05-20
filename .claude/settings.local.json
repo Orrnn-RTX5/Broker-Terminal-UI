@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "Bash(Get-Content \"c:\\\\Users\\\\YoForexTech\\\\Desktop\\\\RTX5 Desktop\\\\src\\\\api\\\\endpoints.ts\")",
+      "Bash(Select-String -Pattern \"getPositions|resolveTradingLogin|unwrapList\" -Context 2)"
     ]
   }
 }

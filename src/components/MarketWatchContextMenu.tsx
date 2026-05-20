@@ -167,9 +167,8 @@ const ContextMenuItem: React.FC<ContextMenuItemProps> = ({
     active
 }) => (
     <div
-        className={`flex items-center justify-between px-3 py-2 text-[12px] text-zinc-300 hover:bg-[#2d2d2d] hover:text-white cursor-pointer transition-colors ${
-            active ? 'bg-[#2d2d2d] text-white' : ''
-        }`}
+        className={`flex items-center justify-between px-3 py-2 text-[12px] text-zinc-300 hover:bg-[#2d2d2d] hover:text-white cursor-pointer transition-colors ${active ? 'bg-[#2d2d2d] text-white' : ''
+            }`}
         onClick={(e) => {
             e.stopPropagation();
             if (onClick) onClick();

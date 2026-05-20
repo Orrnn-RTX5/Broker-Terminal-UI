@@ -196,6 +196,8 @@ export const TradingChart = React.memo(function TradingChart({
   const lastStoreCandleSecRef = useRef(0);
   // Tracks whether the right-click context menu is open — read inside wheelHandler closure
   const ctxMenuOpenRef = useRef(false);
+  // Tracks current bar spacing (px/bar) for the time-axis zoom gesture
+  const pixelsPerBarRef = useRef(2);
 
   // ── Live crosshair line DOM refs (no React state, direct DOM for 60fps) ──
   const crosshairLineRef = useRef<HTMLDivElement | null>(null);
@@ -490,7 +492,7 @@ export const TradingChart = React.memo(function TradingChart({
       },
       rightPriceScale: {
         borderColor: chartColors.foreground,
-        scaleMargins: { top: 0.1, bottom: 0.2 },
+        scaleMargins: { top: 0.05, bottom: 0.32 },
         autoScale: !chartSettings.scaleFixOneToOne,
       },
       timeScale: {
@@ -498,8 +500,8 @@ export const TradingChart = React.memo(function TradingChart({
         timeVisible: true,
         secondsVisible: false,
         tickMarkMaxCharacterLength: getTradingChartTickMarkCharacterLength(timeframe),
-        barSpacing: 8,
-        minBarSpacing: 3,
+        barSpacing: 2,
+        minBarSpacing: 1,
         rightOffset: getTradingChartShiftRightOffset(timeframe, ctxChartShift),
         fixLeftEdge: false,
         fixRightEdge: !ctxChartShift,
@@ -619,6 +621,7 @@ export const TradingChart = React.memo(function TradingChart({
 
     const chartContainer = containerRef.current;
     let priceAxisCleanup: (() => void) | null = null;
+    let timeAxisCleanup: (() => void) | null = null;
 
     if (chartContainer) {
       // Track pointer/drag interactions for auto-scroll timer
@@ -701,6 +704,85 @@ export const TradingChart = React.memo(function TradingChart({
           priceAxisEl.removeEventListener('dblclick', handlePriceAxisDblClick);
         };
       }
+
+      // ── MT5-style time-axis drag-to-zoom (position-based) ──────────────────
+      // Avoids fragile DOM traversal — instead hit-tests clientY against the
+      // container's bounding rect to detect clicks in the time-axis strip.
+      // Drag left = zoom in (increase barSpacing), drag right = zoom out.
+      {
+        const TIME_AXIS_PX = 36; // height of the time-axis strip in px
+        const MIN_PX = 1;
+        const MAX_PX = 30;
+        const SENSITIVITY = 0.005;
+
+        const inTimeAxis = (e: MouseEvent) => {
+          const r = chartContainer.getBoundingClientRect();
+          return e.clientY >= r.bottom - TIME_AXIS_PX
+            && e.clientX >= r.left && e.clientX <= r.right;
+        };
+
+        const handleTimeAxisDown = (e: MouseEvent) => {
+          if (e.button !== 0 || !inTimeAxis(e)) return;
+          e.preventDefault();
+          e.stopPropagation();
+
+          let localSpacing = pixelsPerBarRef.current;
+          let pendingRaf = false;
+
+          const onMove = (me: MouseEvent) => {
+            if (me.movementX === 0) return;
+            const clamped = Math.max(MIN_PX, Math.min(MAX_PX,
+              localSpacing * Math.exp(-me.movementX * SENSITIVITY)));
+            if (clamped === localSpacing) return;
+            localSpacing = clamped;
+            pixelsPerBarRef.current = clamped;
+            if (!pendingRaf) {
+              pendingRaf = true;
+              requestAnimationFrame(() => {
+                if (!isDisposedRef.current && chartRef.current) {
+                  chartRef.current.timeScale().applyOptions({ barSpacing: localSpacing });
+                }
+                pendingRaf = false;
+              });
+            }
+          };
+
+          const onUp = () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+          };
+
+          document.body.style.cursor = 'ew-resize';
+          document.body.style.userSelect = 'none';
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        };
+
+        const handleTimeAxisDblClick = (e: MouseEvent) => {
+          if (!inTimeAxis(e)) return;
+          e.preventDefault();
+          pixelsPerBarRef.current = 2;
+          chart.timeScale().applyOptions({ barSpacing: 2 });
+          chart.timeScale().scrollToRealTime();
+        };
+
+        const handleTimeAxisHover = (e: MouseEvent) => {
+          chartContainer.style.cursor = inTimeAxis(e) ? 'ew-resize' : '';
+        };
+
+        chartContainer.addEventListener('mousedown', handleTimeAxisDown, { capture: true });
+        chartContainer.addEventListener('dblclick', handleTimeAxisDblClick);
+        chartContainer.addEventListener('mousemove', handleTimeAxisHover);
+
+        timeAxisCleanup = () => {
+          chartContainer.removeEventListener('mousedown', handleTimeAxisDown,
+            { capture: true } as EventListenerOptions);
+          chartContainer.removeEventListener('dblclick', handleTimeAxisDblClick);
+          chartContainer.removeEventListener('mousemove', handleTimeAxisHover);
+        };
+      }
     } // end if (chartContainer)
 
     // Crosshair move for legend
@@ -745,6 +827,7 @@ export const TradingChart = React.memo(function TradingChart({
         chartContainer.removeEventListener('touchend', handleInteractionEnd);
       }
       if (priceAxisCleanup) priceAxisCleanup();
+      if (timeAxisCleanup) timeAxisCleanup();
       chart.unsubscribeCrosshairMove(crosshairHandler);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeHandler);
 
@@ -1324,7 +1407,7 @@ export const TradingChart = React.memo(function TradingChart({
       lastValueVisible: false,
       priceLineVisible: false,
     });
-    volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+    volSeries.priceScale().applyOptions({ scaleMargins: { top: 0.68, bottom: 0 } });
     volumeRef.current = volSeries;
 
     // (price line removed — live DOM badge replaces it)
@@ -2090,28 +2173,18 @@ export const TradingChart = React.memo(function TradingChart({
     const handleZoomIn = () => {
       if (isDisposedRef.current || !chartRef.current) return;
       try {
-        const timeScale = chartRef.current.timeScale();
-        const visibleRange = timeScale.getVisibleLogicalRange();
-        if (!visibleRange) return;
-        const center = (visibleRange.from + visibleRange.to) / 2;
-        const half = (visibleRange.to - visibleRange.from) / 2;
-        // Zoom in = show 20% fewer bars (bigger candles)
-        const newHalf = Math.max(half * 0.8, 5);
-        timeScale.setVisibleLogicalRange({ from: center - newHalf, to: center + newHalf });
+        const newSpacing = Math.min(pixelsPerBarRef.current * 1.2, 30);
+        pixelsPerBarRef.current = newSpacing;
+        chartRef.current.timeScale().applyOptions({ barSpacing: newSpacing });
       } catch (e) { /* disposed */ }
     };
 
     const handleZoomOut = () => {
       if (isDisposedRef.current || !chartRef.current) return;
       try {
-        const timeScale = chartRef.current.timeScale();
-        const visibleRange = timeScale.getVisibleLogicalRange();
-        if (!visibleRange) return;
-        const center = (visibleRange.from + visibleRange.to) / 2;
-        const half = (visibleRange.to - visibleRange.from) / 2;
-        // Zoom out = show 25% more bars (smaller candles)
-        const newHalf = Math.min(half * 1.25, 2500);
-        timeScale.setVisibleLogicalRange({ from: center - newHalf, to: center + newHalf });
+        const newSpacing = Math.max(pixelsPerBarRef.current / 1.2, 1);
+        pixelsPerBarRef.current = newSpacing;
+        chartRef.current.timeScale().applyOptions({ barSpacing: newSpacing });
       } catch (e) { /* disposed */ }
     };
 
@@ -2785,8 +2858,8 @@ export const TradingChart = React.memo(function TradingChart({
     };
 
     const createArrowSvg = (side: TradeSide, color: string) => side === 'BUY'
-      ? `<svg width="12" height="16" viewBox="0 0 12 16" fill="none"><path d="M6 1L11 6H8V15H4V6H1L6 1Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`
-      : `<svg width="12" height="16" viewBox="0 0 12 16" fill="none"><path d="M6 15L1 10H4V1H8V10H11L6 15Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`;
+      ? `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 1L11 6H8V15H4V6H1L6 1Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`
+      : `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 15L1 10H4V1H8V10H11L6 15Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`;
 
     const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string) => {
       const marker = document.createElement('div');

@@ -118,16 +118,37 @@ function LiveTotalPnL({ positions }: { positions: Position[] }) {
         return parts.join('.');
     };
 
+    const sign = liveTotalPnL >= 0 ? '+' : '-';
+    const abs = Math.abs(liveTotalPnL).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
     return (
-        <span>
-            Total P&L: <span className={`${liveTotalPnL >= 0 ? "text-[#4ade80]" : "text-[#f87171]"} font-semibold px-1 rounded-sm`}>
-                {formatMoney(liveTotalPnL)}
-            </span>
+        <span className={`font-semibold ${liveTotalPnL >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>
+            {sign}{abs}
         </span>
     );
 }
 
-// Component to handle individual live row updates efficiently
+// MT5-style time formatter: 2025.05.19 15:54:32
+const fmtMT5Time = (dateStr: string) => {
+    try {
+        const d = new Date(dateStr);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const date = `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
+        const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        return { date, time };
+    } catch {
+        return { date: '—', time: '—' };
+    }
+};
+
+// MT5-style money formatter with sign
+const fmtMoney = (val: number | undefined | null, showSign = false) => {
+    const v = val ?? 0;
+    if (isNaN(v)) return '0.00';
+    const abs = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    if (showSign) return (v >= 0 ? '+' : '-') + abs;
+    return (v < 0 ? '-' : '') + abs;
+};
+
 function PositionRow({
     pos,
     i,
@@ -148,123 +169,109 @@ function PositionRow({
     onDoubleClick: (pos: Position) => void,
     isAdvancedMode: boolean
 }) {
-    const digits = getSymbolDigits(pos.symbol);
-
-    const livePrice = pos.currentPrice;
-
-    const priceColor = 'text-zinc-300';
-
-    let livePnL = pos.unrealizedPnL;
-
-    // Plain PnL color (no blink)
-    const pnlColor = '';
-
-    const formatMoney = (val: number | undefined | null) => {
-        const v = val ?? 0;
-        if (isNaN(v)) return '0.00';
-        const parts = v.toFixed(2).split('.');
-        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-        return parts.join('.');
-    };
-
-    const formatDate = (dateStr: string) => {
-        try {
-            return new Date(dateStr).toLocaleString('en-US', {
-                year: 'numeric', month: '2-digit', day: '2-digit',
-                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-            }).replace(',', '');
-        } catch {
-            return dateStr;
-        }
-    };
+    const isBuy = pos.side === 'BUY';
+    const pnl = pos.unrealizedPnL;
+    const { date, time } = fmtMT5Time(pos.openTime);
 
     return (
-        <tr className={`font-semibold ${i % 2 === 0 ? 'bg-[#131316] rtx-row-even' : 'bg-[#0f0f12] rtx-row-odd'} hover:bg-[#191a1e] transition-colors group cursor-pointer`} onDoubleClick={() => onDoubleClick(pos)}>
-            <td className="px-1 py-[2px] pl-2 text-zinc-500">{pos.id}</td>
-            <td className="px-1 py-[2px] font-semibold text-zinc-100">{pos.symbol}</td>
-            <td className={`px-1 py-[2px] font-semibold ${pos.side === 'BUY' ? (isAdvancedMode ? 'text-emerald-500 font-bold text-[11px]' : 'text-blue-400 text-[10px]') : (isAdvancedMode ? 'text-red-500 font-bold text-[11px]' : 'text-red-400 text-[10px]')}`}>
-                <div className="flex items-center gap-1">
-                    {pos.side === 'BUY' ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                    ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
-                    )}
-                    <span>{pos.side}</span>
+        <tr
+            className={`${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#1c1d22] transition-colors cursor-pointer group`}
+            onDoubleClick={() => onDoubleClick(pos)}
+        >
+            {/* Time — two lines like MT5 */}
+            <td className="px-2 py-[3px] text-zinc-400 whitespace-nowrap">
+                <div className="text-[10px] leading-[1.2] tabular-nums">
+                    <div>{date}</div>
+                    <div className="text-zinc-500">{time}</div>
                 </div>
             </td>
-            <td className="px-1 py-[2px] text-right font-semibold text-zinc-200">{pos.volume.toFixed(2)}</td>
-            <td className="px-1 py-[2px] text-right text-zinc-400"><PriceDisplay price={pos.openPrice} symbol={pos.symbol} /></td>
-            <td className={`px-1 py-[2px] text-right ${priceColor}`}><PriceDisplay price={livePrice} symbol={pos.symbol} /></td>
-            {/* SL - Inline Editing */}
-            <td className="px-1 py-[2px] text-right">
+
+            {/* Order (ticket) */}
+            <td className="px-1 py-[3px] text-zinc-400 tabular-nums text-[11px]">{pos.id}</td>
+
+            {/* Symbol */}
+            <td className="px-1 py-[3px] font-semibold text-zinc-100 text-[11px]">{pos.symbol}</td>
+
+            {/* Type — lowercase like MT5, blue=buy red=sell */}
+            <td className={`px-1 py-[3px] font-bold text-[11px] ${isBuy ? 'text-[#4fc3f7]' : 'text-[#f87171]'}`}>
+                <span className="flex items-center gap-[3px]">
+                    {isBuy
+                        ? <svg width="8" height="8" viewBox="0 0 10 10"><path d="M5 1L9 5H6.5V9H3.5V5H1Z" fill="currentColor"/></svg>
+                        : <svg width="8" height="8" viewBox="0 0 10 10"><path d="M5 9L1 5H3.5V1H6.5V5H9Z" fill="currentColor"/></svg>
+                    }
+                    {isBuy ? 'buy' : 'sell'}
+                </span>
+            </td>
+
+            {/* Volume */}
+            <td className="px-1 py-[3px] text-right text-zinc-200 text-[11px] tabular-nums">{pos.volume.toFixed(2)}</td>
+
+            {/* Open Price */}
+            <td className="px-1 py-[3px] text-right text-zinc-300 text-[11px] tabular-nums">
+                <PriceDisplay price={pos.openPrice} symbol={pos.symbol} />
+            </td>
+
+            {/* S/L — inline editable */}
+            <td className="px-1 py-[3px] text-right text-[11px]">
                 {editing?.positionId === pos.id && editing.field === 'sl' ? (
-                    <input
-                        type="number"
-                        step="0.00001"
-                        value={editing.value}
-                        onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                    <input type="number" step="0.00001" value={editing.value}
+                        onChange={e => setEditing({ ...editing, value: e.target.value })}
                         onBlur={() => handleModifySLTP(pos.id, 'sl', editing.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleModifySLTP(pos.id, 'sl', editing.value);
-                            if (e.key === 'Escape') setEditing(null);
-                        }}
-                        autoFocus
-                        className="w-full bg-zinc-800 text-zinc-100 px-1 py-0.5 rounded text-[11px] font-mono"
-                    />
+                        onKeyDown={e => { if (e.key === 'Enter') handleModifySLTP(pos.id, 'sl', editing.value); if (e.key === 'Escape') setEditing(null); }}
+                        autoFocus className="w-20 bg-zinc-800 text-zinc-100 px-1 py-0 rounded text-[11px] font-mono border border-zinc-600" />
                 ) : (
-                    <div
-                        onClick={() => setEditing({ positionId: pos.id, field: 'sl', value: pos.sl.toString() })}
-                        className="cursor-pointer hover:bg-zinc-700 rounded px-1"
-                    >
-                        <span className={pos.sl > 0 ? "text-red-300" : "text-zinc-600"}>
-                            {pos.sl > 0 ? <PriceDisplay price={pos.sl} symbol={pos.symbol} /> : '—'}
-                        </span>
-                    </div>
+                    <span onClick={() => setEditing({ positionId: pos.id, field: 'sl', value: String(pos.sl) })}
+                        className={`cursor-pointer px-1 rounded hover:bg-zinc-700/50 tabular-nums ${pos.sl > 0 ? 'text-[#f87171]' : 'text-zinc-600'}`}>
+                        {pos.sl > 0 ? <PriceDisplay price={pos.sl} symbol={pos.symbol} /> : '0.00'}
+                    </span>
                 )}
             </td>
-            {/* TP - Inline Editing */}
-            <td className="px-1 py-[2px] text-right">
+
+            {/* T/P — inline editable */}
+            <td className="px-1 py-[3px] text-right text-[11px]">
                 {editing?.positionId === pos.id && editing.field === 'tp' ? (
-                    <input
-                        type="number"
-                        step="0.00001"
-                        value={editing.value}
-                        onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                    <input type="number" step="0.00001" value={editing.value}
+                        onChange={e => setEditing({ ...editing, value: e.target.value })}
                         onBlur={() => handleModifySLTP(pos.id, 'tp', editing.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleModifySLTP(pos.id, 'tp', editing.value);
-                            if (e.key === 'Escape') setEditing(null);
-                        }}
-                        autoFocus
-                        className="w-full bg-zinc-800 text-zinc-100 px-1 py-0.5 rounded text-[11px] font-mono"
-                    />
+                        onKeyDown={e => { if (e.key === 'Enter') handleModifySLTP(pos.id, 'tp', editing.value); if (e.key === 'Escape') setEditing(null); }}
+                        autoFocus className="w-20 bg-zinc-800 text-zinc-100 px-1 py-0 rounded text-[11px] font-mono border border-zinc-600" />
                 ) : (
-                    <div
-                        onClick={() => setEditing({ positionId: pos.id, field: 'tp', value: pos.tp.toString() })}
-                        className="cursor-pointer hover:bg-zinc-700 rounded px-1"
-                    >
-                        <span className={pos.tp > 0 ? "text-emerald-300" : "text-zinc-600"}>
-                            {pos.tp > 0 ? <PriceDisplay price={pos.tp} symbol={pos.symbol} /> : '—'}
-                        </span>
-                    </div>
+                    <span onClick={() => setEditing({ positionId: pos.id, field: 'tp', value: String(pos.tp) })}
+                        className={`cursor-pointer px-1 rounded hover:bg-zinc-700/50 tabular-nums ${pos.tp > 0 ? 'text-[#4ade80]' : 'text-zinc-600'}`}>
+                        {pos.tp > 0 ? <PriceDisplay price={pos.tp} symbol={pos.symbol} /> : '0.00'}
+                    </span>
                 )}
             </td>
-            <td className={`px-1 py-[2px] text-right font-semibold ${livePnL >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'} ${pnlColor} ${isAdvancedMode ? 'font-bold text-[12px]' : ''}`}>
-                {formatMoney(livePnL)}
+
+            {/* Current Price */}
+            <td className="px-1 py-[3px] text-right text-zinc-200 text-[11px] tabular-nums font-medium">
+                <PriceDisplay price={pos.currentPrice} symbol={pos.symbol} />
             </td>
-            <td className="px-1 py-[2px] text-right text-zinc-500 text-[10px]">{formatMoney(pos.swap)}</td>
-            <td className="px-1 py-[2px] text-zinc-500 text-[10px]">{formatDate(pos.openTime).split(' ')[1]}</td>
-            <td className="px-1 py-[2px] pr-2">
-                <div className="flex items-center gap-1">
-                    <button
-                        onClick={() => handleClosePosition(pos.id)}
-                        className="text-zinc-600 hover:text-white hover:bg-zinc-700 w-5 h-5 rounded flex items-center justify-center transition-colors"
-                        title="Close Position"
-                        disabled={loading}
-                    >
-                        <Icon name="x-close" size="xs" />
-                    </button>
-                </div>
+
+            {/* Commission */}
+            <td className="px-1 py-[3px] text-right text-zinc-500 text-[11px] tabular-nums">
+                {fmtMoney(pos.commission)}
+            </td>
+
+            {/* Swap */}
+            <td className="px-1 py-[3px] text-right text-zinc-500 text-[11px] tabular-nums">
+                {fmtMoney(pos.swap)}
+            </td>
+
+            {/* Profit */}
+            <td className={`px-1 py-[3px] text-right font-semibold text-[11px] tabular-nums ${pnl >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>
+                {fmtMoney(pnl, true)}
+            </td>
+
+            {/* Comment (tooltip only — keeps table narrow) */}
+            {/* Close × */}
+            <td className="px-2 py-[3px] text-right">
+                <button
+                    onClick={() => handleClosePosition(pos.id)}
+                    className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-white hover:bg-red-600/30 w-4 h-4 rounded flex items-center justify-center transition-all text-[10px] font-bold"
+                    title={pos.comment ? `${pos.comment} — Close` : 'Close Position'}
+                    disabled={loading}
+                >✕</button>
             </td>
         </tr>
     );
@@ -587,27 +594,36 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                 )}
                 {activeTab === 'Positions' && (
                     <div className="h-full overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
-                        <table className="w-full text-left border-collapse">
-                            <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-bold text-[10px] uppercase tracking-wider border-b border-zinc-800/50">
+                        <table className="text-left border-collapse" style={{ minWidth: '900px', width: '100%' }}>
+                            <thead className="sticky top-0 bg-[#191a1e] text-zinc-500 z-10 text-[10px] uppercase tracking-wider border-b border-zinc-800/60 select-none">
                                 <tr>
-                                    <th className="px-1 py-[3px] pl-2">Ticket</th>
-                                    <th className="px-1 py-[3px]">Symbol</th>
-                                    <th className="px-1 py-[3px]">Type</th>
-                                    <th className="px-1 py-[3px] text-right">Volume</th>
-                                    <th className="px-1 py-[3px] text-right">Open</th>
-                                    <th className="px-1 py-[3px] text-right">Current</th>
-                                    <th className="px-1 py-[3px] text-right">S/L</th>
-                                    <th className="px-1 py-[3px] text-right">T/P</th>
-                                    <th className="px-1 py-[3px] text-right">P&L</th>
-                                    <th className="px-1 py-[3px] text-right">Swap</th>
-                                    <th className="px-1 py-[3px]">Time</th>
-                                    <th className="px-1 py-[3px] pr-2">Actions</th>
+                                    <th className="px-2 py-[4px] font-semibold whitespace-nowrap" style={{ minWidth: 110 }}>Time</th>
+                                    <th className="px-1 py-[4px] font-semibold" style={{ minWidth: 90 }}>Order</th>
+                                    <th className="px-1 py-[4px] font-semibold" style={{ minWidth: 65 }}>Symbol</th>
+                                    <th className="px-1 py-[4px] font-semibold" style={{ minWidth: 46 }}>Type</th>
+                                    <th className="px-1 py-[4px] font-semibold text-right" style={{ minWidth: 52 }}>Volume</th>
+                                    {/* First price = open price (when trade was entered) */}
+                                    <th className="px-1 py-[4px] font-semibold text-right" style={{ minWidth: 72 }}>
+                                        Price
+                                        <span className="normal-case text-[9px] text-zinc-600 ml-0.5">(open)</span>
+                                    </th>
+                                    <th className="px-1 py-[4px] font-semibold text-right" style={{ minWidth: 68 }}>S / L</th>
+                                    <th className="px-1 py-[4px] font-semibold text-right" style={{ minWidth: 68 }}>T / P</th>
+                                    {/* Second price = current market price */}
+                                    <th className="px-1 py-[4px] font-semibold text-right" style={{ minWidth: 72 }}>
+                                        Price
+                                        <span className="normal-case text-[9px] text-zinc-600 ml-0.5">(cur)</span>
+                                    </th>
+                                    <th className="px-1 py-[4px] font-semibold text-right" style={{ minWidth: 68 }}>Commission</th>
+                                    <th className="px-1 py-[4px] font-semibold text-right" style={{ minWidth: 60 }}>Swap</th>
+                                    <th className="px-1 py-[4px] font-semibold text-right" style={{ minWidth: 72 }}>Profit</th>
+                                    <th className="px-2 py-[4px]" style={{ minWidth: 24 }}></th>
                                 </tr>
                             </thead>
-                            <tbody className="text-zinc-300 font-mono text-[11px]">
+                            <tbody className="font-mono">
                                 {displayPositions.length === 0 ? (
                                     <tr>
-                                        <td colSpan={12} className="p-8 text-center text-zinc-600 text-xs italic">
+                                        <td colSpan={13} className="p-8 text-center text-zinc-600 text-xs italic">
                                             No open positions
                                         </td>
                                     </tr>
@@ -676,12 +692,31 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                 )}
             </div>
 
-            {/* Bottom Summary */}
+            {/* MT5-style Bottom Summary */}
             {activeTab === 'Positions' && displayPositions.length > 0 && (
-                <div className="bg-[#191a1e] border-t border-zinc-800/50 px-3 py-1 flex items-center gap-6 text-[11px] font-medium text-zinc-300 tabular-nums flex-shrink-0">
-                    <LiveTotalPnL positions={displayPositions} />
-                    <div className="flex-1"></div>
-                    <span className="text-zinc-500">{displayPositions.length} position{displayPositions.length !== 1 ? 's' : ''}</span>
+                <div className="bg-[#191a1e] border-t border-zinc-800/60 px-3 py-[3px] flex items-center gap-4 text-[11px] tabular-nums flex-shrink-0 flex-wrap">
+                    <span className="text-zinc-500 font-medium">
+                        Positions: <span className="text-zinc-300">{displayPositions.length}</span>
+                    </span>
+                    <span className="text-zinc-700">|</span>
+                    <span className="text-zinc-500 font-medium">
+                        Swap:{' '}
+                        <span className={displayPositions.reduce((s, p) => s + (p.swap ?? 0), 0) >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}>
+                            {fmtMoney(displayPositions.reduce((s, p) => s + (p.swap ?? 0), 0), true)}
+                        </span>
+                    </span>
+                    <span className="text-zinc-700">|</span>
+                    <span className="text-zinc-500 font-medium">
+                        Commission:{' '}
+                        <span className="text-zinc-400">
+                            {fmtMoney(displayPositions.reduce((s, p) => s + (p.commission ?? 0), 0))}
+                        </span>
+                    </span>
+                    <span className="text-zinc-700">|</span>
+                    <span className="text-zinc-500 font-medium">
+                        Floating P/L:{' '}
+                        <LiveTotalPnL positions={displayPositions} />
+                    </span>
                 </div>
             )}
 
