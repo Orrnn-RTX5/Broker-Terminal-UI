@@ -51,6 +51,10 @@ export interface Drawing {
   selected?: boolean;
   locked?: boolean;
   serverId?: string;
+  // Channel-specific fields
+  channelOffset?: number;   // signed price offset for parallel line (price units, zoom-invariant)
+  rayLeft?: boolean;        // extend lines leftward past anchor1
+  rayRight?: boolean;       // extend lines rightward past anchor2
 }
 
 interface DrawingHistory {
@@ -323,7 +327,6 @@ export class DrawingManager {
    */
   addPointWithLogical(time: number, price: number, pixelXOffset: number): boolean {
     if (!this.activeDrawing) return false;
-    console.log('[VLine][2-STORE] pixelXOffset=', pixelXOffset, '(pixel offset from bar centre, should be a decimal)');
     this.activeDrawing.points.push({ time, price, pixelXOffset });
 
     const required = REQUIRED_POINTS[this.activeDrawing.type];
@@ -369,6 +372,15 @@ export class DrawingManager {
     if (!this.activeDrawing) return null;
 
     const completed: Drawing = { ...this.activeDrawing, selected: false };
+
+    // Channel: set default channelOffset in price units if not yet set
+    if (completed.type === 'channel' && completed.channelOffset === undefined && completed.points.length >= 2) {
+      const priceDelta = Math.abs(completed.points[1].price - completed.points[0].price);
+      completed.channelOffset = priceDelta > 0 ? priceDelta * 0.2 : 0.001;
+      completed.rayLeft = false;
+      completed.rayRight = false;
+    }
+
     this.drawings.push(completed);
     this.activeDrawing = null;
     this.previewPoint = null;
@@ -383,7 +395,7 @@ export class DrawingManager {
     window.dispatchEvent(new CustomEvent('drawing:saved', { detail: completed }));
     return completed;
   }
-  
+
   selectDrawing(id: string, multi = false): void {
     if (!multi) this.drawings.forEach(d => (d.selected = false));
     const d = this.drawings.find(d => d.id === id);
@@ -599,7 +611,7 @@ export class DrawingManager {
         break;
       }
 
-    
+
       case 'vline': {
         if (d.points.length < 1) break;
         const pt = d.points[0];
@@ -619,9 +631,6 @@ export class DrawingManager {
           x = this.chart!.timeScale().timeToCoordinate(pt.time as any);
         }
         if (x === null) break;
-
-        console.log('[VLine][3-RENDER] id=', d.id, '| x=', x,
-          '| pixelXOffset=', pt.pixelXOffset, '| time=', pt.time);
 
         const line = this.svgLine(x, -100, x, H + 100, color, lw, dash);
         line.style.opacity = opacity;
@@ -675,36 +684,152 @@ export class DrawingManager {
         break;
       }
 
-      // ─── Channel ─────────────────────────────────────────────────
+      // ─── Equidistant Channel (MT5-correct) ──────────────────────
       case 'channel': {
         if (d.points.length < 2) break;
-        const p1 = this.px(d.points[0]);
-        const p2 = this.px(d.points[1]);
-        if (!p1 || !p2) break;
+        const chOffset = d.channelOffset ?? 0;
+        const rayL = d.rayLeft ?? false;
+        const rayR = d.rayRight ?? false;
 
-        const slope = (p2.y - p1.y) / (p2.x - p1.x || 1);
-        const dx = W + 200;
+        // Data-space → pixel-space for main line anchors
+        const mp1 = this.px(d.points[0]);
+        const mp2 = this.px(d.points[1]);
+        if (!mp1 || !mp2) break;
 
-        // Main line
-        const l1 = this.svgLine(-200, p1.y + slope * (-200 - p1.x), dx, p1.y + slope * (dx - p1.x), color, lw, dash);
-        g.appendChild(l1);
+        // Parallel line: same time anchors, price shifted by channelOffset
+        const pp1y = this.series!.priceToCoordinate(d.points[0].price + chOffset);
+        const pp2y = this.series!.priceToCoordinate(d.points[1].price + chOffset);
+        if (pp1y === null || pp2y === null) break;
+        const pp1 = { x: mp1.x, y: pp1y };
+        const pp2 = { x: mp2.x, y: pp2y };
 
-        // Parallel line (offset vertically by same delta if only 2 pts, otherwise use 3rd point)
-        const offset = p2.y - p1.y;
-        const l2 = this.svgLine(-200, p1.y + offset + slope * (-200 - p1.x), dx, p1.y + offset + slope * (dx - p1.x), color, lw, 'dashed');
-        g.appendChild(l2);
+        // Compute ray extensions (extend to chart edges if ray flag is on)
+        const dxLine = mp2.x - mp1.x;
+        const dyMain = mp2.y - mp1.y;
+        const dyPar = pp2.y - pp1.y;
 
-        // Channel fill
+        // Main line endpoints (bounded by default)
+        let mx1 = mp1.x, my1 = mp1.y, mx2 = mp2.x, my2 = mp2.y;
+        // Parallel line endpoints
+        let px1 = pp1.x, py1 = pp1.y, px2 = pp2.x, py2 = pp2.y;
+
+        if (Math.abs(dxLine) > 0.01) {
+          const slopeMain = dyMain / dxLine;
+          const slopePar = dyPar / dxLine;
+          if (rayL) {
+            const extL = -20;
+            my1 = mp1.y + slopeMain * (extL - mp1.x);
+            mx1 = extL;
+            py1 = pp1.y + slopePar * (extL - pp1.x);
+            px1 = extL;
+          }
+          if (rayR) {
+            const extR = W + 20;
+            my2 = mp1.y + slopeMain * (extR - mp1.x);
+            mx2 = extR;
+            py2 = pp1.y + slopePar * (extR - pp1.x);
+            px2 = extR;
+          }
+        }
+
+        // Clip helper
+        const clipX = (x: number) => Math.max(-2, Math.min(W + 2, x));
+        const clipY = (y: number) => Math.max(-2, Math.min(H + 2, y));
+
+        // Main line (solid)
+        const mainLine = this.svgLine(clipX(mx1), clipY(my1), clipX(mx2), clipY(my2), color, lw, dash);
+        mainLine.style.opacity = opacity;
+        g.appendChild(mainLine);
+
+        // Parallel line (dashed)
+        const parLine = this.svgLine(clipX(px1), clipY(py1), clipX(px2), clipY(py2), color, lw, '8 4');
+        parLine.style.opacity = opacity;
+        g.appendChild(parLine);
+
+        // Channel fill polygon
         const fillEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        const yL1 = p1.y + slope * (-200 - p1.x);
-        const yR1 = p1.y + slope * (dx - p1.x);
-        const yL2 = p1.y + offset + slope * (-200 - p1.x);
-        const yR2 = p1.y + offset + slope * (dx - p1.x);
-        fillEl.setAttribute('points', `-200,${yL1} ${dx},${yR1} ${dx},${yR2} -200,${yL2}`);
+        fillEl.setAttribute('points',
+          `${clipX(mx1)},${clipY(my1)} ${clipX(mx2)},${clipY(my2)} ${clipX(px2)},${clipY(py2)} ${clipX(px1)},${clipY(py1)}`);
         fillEl.setAttribute('fill', color);
         fillEl.setAttribute('fill-opacity', '0.06');
         fillEl.style.opacity = opacity;
         g.appendChild(fillEl);
+
+        // ── PREVIEW ONLY: Vertical guide lines at anchor1 and anchor2 ──
+        if (isPreview) {
+          const vline1 = this.svgLine(mp1.x, 0, mp1.x, H, color, 1, '4 3');
+          vline1.style.opacity = '0.5';
+          g.appendChild(vline1);
+
+          const vline2 = this.svgLine(mp2.x, 0, mp2.x, H, color, 1, '4 3');
+          vline2.style.opacity = '0.5';
+          g.appendChild(vline2);
+
+          // Measurement tooltip
+          const timeDiff = Math.abs(d.points[1].time - d.points[0].time);
+          const priceDiff = Math.abs(d.points[1].price - d.points[0].price);
+          const barCount = Math.round(timeDiff / 60);
+          const infoText = `${barCount} / ${priceDiff.toFixed(5)}`;
+          const labelX = mp2.x + 8;
+          const labelY = mp2.y - 8;
+          const label = this.svgText(labelX, labelY, infoText, '#ffffff', 11);
+          label.setAttribute('font-weight', 'bold');
+          g.appendChild(label);
+
+          const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('cx', String(mp2.x));
+          dot.setAttribute('cy', String(mp2.y));
+          dot.setAttribute('r', '3');
+          dot.setAttribute('fill', color);
+          dot.style.opacity = '0.8';
+          g.appendChild(dot);
+        }
+
+        // ── COMMITTED: Measurement label when selected ──
+        if (d.selected && !isPreview) {
+          const timeDiff = Math.abs(d.points[1].time - d.points[0].time);
+          const priceDiff = Math.abs(d.points[1].price - d.points[0].price);
+          const midX = (mp1.x + mp2.x) / 2;
+          const midY = Math.min(mp1.y, mp2.y) - 14;
+          const infoText = `${Math.round(timeDiff / 60)} / ${priceDiff.toFixed(5)}`;
+          const label = this.svgText(midX, midY, infoText, color, 10);
+          label.setAttribute('text-anchor', 'middle');
+          g.appendChild(label);
+        }
+
+        // ── Hit zones for interaction (committed only) ──
+        if (!isPreview) {
+          const mainHit = this.svgLine(mp1.x, mp1.y, mp2.x, mp2.y, 'transparent', 14, 'none');
+          mainHit.style.pointerEvents = 'stroke';
+          mainHit.style.cursor = 'move';
+          mainHit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, null));
+          mainHit.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
+          g.appendChild(mainHit);
+
+          const parHit = this.svgLine(pp1.x, pp1.y, pp2.x, pp2.y, 'transparent', 14, 'none');
+          parHit.style.pointerEvents = 'stroke';
+          parHit.style.cursor = 'ns-resize';
+          parHit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, -1));
+          parHit.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
+          g.appendChild(parHit);
+
+          // Channel width handle
+          if (d.selected) {
+            const parMidX = (pp1.x + pp2.x) / 2;
+            const parMidY = (pp1.y + pp2.y) / 2;
+            const widthHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            widthHandle.setAttribute('cx', String(parMidX));
+            widthHandle.setAttribute('cy', String(parMidY));
+            widthHandle.setAttribute('r', '5');
+            widthHandle.setAttribute('fill', '#f59e0b');
+            widthHandle.setAttribute('stroke', '#fff');
+            widthHandle.setAttribute('stroke-width', '1.5');
+            widthHandle.style.cursor = 'ns-resize';
+            widthHandle.style.pointerEvents = 'all';
+            widthHandle.addEventListener('pointerdown', e => this.beginDrag(e, d.id, -1));
+            g.appendChild(widthHandle);
+          }
+        }
         break;
       }
 
@@ -1056,11 +1181,32 @@ export class DrawingManager {
     }
 
     // ─── Selection handles & drag on completed drawings ──────────
-    if (!isPreview && d.selected && Array.isArray(d.points)) {
+    // Channel handles are rendered inline in the channel case above (3 handles: anchor1, anchor2, width)
+    if (!isPreview && d.selected && Array.isArray(d.points) && d.type !== 'channel') {
       d.points.forEach((point, i) => {
         const p = this.px(point);
         if (!p) return;
 
+        const handle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        handle.setAttribute('x', String(p.x - 4));
+        handle.setAttribute('y', String(p.y - 4));
+        handle.setAttribute('width', '8');
+        handle.setAttribute('height', '8');
+        handle.setAttribute('fill', '#ef4444');
+        handle.setAttribute('stroke', '#fff');
+        handle.setAttribute('stroke-width', '1');
+        handle.style.cursor = 'crosshair';
+        handle.style.pointerEvents = 'all';
+        handle.addEventListener('pointerdown', e => this.beginDrag(e, d.id, i));
+        g.appendChild(handle);
+      });
+    }
+
+    // Channel-specific anchor handles (rendered separately so they appear on top of hit zones)
+    if (!isPreview && d.selected && d.type === 'channel' && d.points.length >= 2) {
+      d.points.forEach((point, i) => {
+        const p = this.px(point);
+        if (!p) return;
         const handle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         handle.setAttribute('x', String(p.x - 4));
         handle.setAttribute('y', String(p.y - 4));
@@ -1140,7 +1286,7 @@ export class DrawingManager {
     this.dragInitialDrawingCopy = JSON.parse(JSON.stringify(drawing));
 
     this.onLockScroll?.();
-    try { (e.target as Element).setPointerCapture(e.pointerId); } catch {}
+    try { (e.target as Element).setPointerCapture(e.pointerId); } catch { }
   }
 
   private onGlobalPointerMove = (e: PointerEvent): void => {
@@ -1151,44 +1297,44 @@ export class DrawingManager {
     const dx = e.clientX - this.dragStartX;
     const dy = e.clientY - this.dragStartY;
 
-    /** coordinateToLogical returns integers — compute true fractional bar index instead. */
-    const fracLogical = (x: number): number | null => {
-      const ts = this.chart!.timeScale();
-      const intBar = ts.coordinateToLogical(x);
-      if (intBar === null) return null;
-      const c0 = ts.logicalToCoordinate(intBar as any);
-      const c1 = ts.logicalToCoordinate((intBar + 1) as any);
-      if (c0 === null || c1 === null) return intBar;
-      const bw = c1 - c0;
-      if (Math.abs(bw) < 0.5) return intBar;
-      return intBar + (x - c0) / bw;
-    };
-
-    if (this.draggingNodeIndex !== null) {
+    // ── Channel parallel-offset drag (sentinel nodeIndex = -1) ─────────
+    if (this.draggingNodeIndex === -1 && drawing.type === 'channel') {
+      // Only update channelOffset — main line stays fixed
+      const svgRect = this.svgOverlay?.getBoundingClientRect();
+      const cursorY = e.clientY - (svgRect?.top ?? 0);
+      const cursorPrice = this.series.coordinateToPrice(cursorY);
+      if (cursorPrice !== null && drawing.points.length >= 2) {
+        // Interpolate the main line price at cursor X position
+        const cursorX = e.clientX - (svgRect?.left ?? 0);
+        const p1x = this.chart.timeScale().timeToCoordinate(this.dragInitialPoints[0].time as any);
+        const p2x = this.chart.timeScale().timeToCoordinate(this.dragInitialPoints[1].time as any);
+        if (p1x !== null && p2x !== null) {
+          const t = Math.abs(p2x - p1x) > 0.01 ? (cursorX - p1x) / (p2x - p1x) : 0;
+          const mainPriceAtCursor = this.dragInitialPoints[0].price + t * (this.dragInitialPoints[1].price - this.dragInitialPoints[0].price);
+          drawing.channelOffset = cursorPrice - mainPriceAtCursor;
+        }
+      }
+    } else if (this.draggingNodeIndex !== null && this.draggingNodeIndex >= 0) {
       // ── Single node drag ──────────────────────────────────────────────
       const init = this.dragInitialPoints[this.draggingNodeIndex];
 
       if (init.pixelXOffset !== undefined) {
-        // VLINE: pixel-perfect horizontal drag — same pattern as hline price arithmetic
-        // new pixelXOffset = old pixelXOffset + dx  (pure pixel addition, no snapping)
+        // VLINE: pixel-perfect horizontal drag
         const newOffset = init.pixelXOffset + dx;
-        // Recompute anchor time from new absolute pixel position
         const barX = this.chart.timeScale().timeToCoordinate(init.time as any);
         const newAbsX = barX !== null ? barX + newOffset : null;
         const newTime = newAbsX !== null
           ? this.chart.timeScale().coordinateToTime(newAbsX)
           : null;
-        // Also update Y (price) as usual
         const oy = this.series.priceToCoordinate(init.price);
         const np = oy !== null ? this.series.coordinateToPrice(oy + dy) : null;
-        console.log('[VLine][5-DRAG] pixelXOffset:', init.pixelXOffset, '→', newOffset, '| dx=', dx);
         drawing.points[this.draggingNodeIndex] = {
           time: (newTime ?? init.time) as number,
           price: np ?? init.price,
           pixelXOffset: newOffset,
         };
       } else {
-        // Non-vline nodes (trendline, rectangle, etc.)
+        // Non-vline nodes
         const ox = init.logicalIndex !== undefined
           ? this.chart.timeScale().logicalToCoordinate(init.logicalIndex as any)
           : this.chart.timeScale().timeToCoordinate(init.time as any);
@@ -1298,7 +1444,7 @@ export class DrawingManager {
           '| will survive JSON?', pt?.logicalIndex !== undefined);
       });
       localStorage.setItem(key, JSON.stringify(this.drawings));
-    } catch {}
+    } catch { }
   }
 
   async saveToBackend(drawing: Drawing): Promise<void> {
@@ -1307,7 +1453,7 @@ export class DrawingManager {
       const serverId = await drawingApi.saveDrawing(drawing as unknown as ClientDrawing, this.currentSymbol);
       const idx = this.drawings.findIndex(d => d.id === drawing.id);
       if (idx !== -1) (this.drawings[idx] as Drawing).serverId = serverId;
-    } catch {}
+    } catch { }
   }
 
   async loadFromBackend(symbol: string): Promise<void> {
@@ -1317,7 +1463,7 @@ export class DrawingManager {
         const shouldPurge = !sessionStorage.getItem('drawings_purged_' + symbol);
         if (shouldPurge) {
           for (const d of drawings) {
-            if (d.serverId) await drawingApi.deleteDrawing(d.serverId).catch(() => {});
+            if (d.serverId) await drawingApi.deleteDrawing(d.serverId).catch(() => { });
           }
           sessionStorage.setItem('drawings_purged_' + symbol, '1');
           this.drawings = [];
@@ -1367,12 +1513,12 @@ export class DrawingManager {
         });
         this.renderAll();
       }
-    } catch {}
+    } catch { }
   }
 
   async deleteFromBackend(id: string, serverId?: string): Promise<void> {
     if (serverId) {
-      await drawingApi.deleteDrawing(serverId).catch(() => {});
+      await drawingApi.deleteDrawing(serverId).catch(() => { });
     }
     this.persistLocal();
   }
@@ -1381,7 +1527,7 @@ export class DrawingManager {
     try {
       const key = `drawings-${symbol}-${this.currentTimeframe}`;
       localStorage.setItem(key, JSON.stringify(this.drawings));
-    } catch {}
+    } catch { }
   }
 
   deleteByType(type: DrawingType): void {

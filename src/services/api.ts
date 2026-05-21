@@ -377,7 +377,7 @@ export const positionsApi = {
 
 export const ordersApi = {
   async placeMarketOrder(data: endpoints.CreateOrderRequest): Promise<endpoints.Position> {
-    return endpoints.tradingApi.placeOrder({
+    const result = await endpoints.tradingApi.placeOrder({
       login: resolveTradingLogin(data.login ?? data.account_login),
       symbol: requireSymbol(data.symbol),
       side: normalizeSideForApi(data.side),
@@ -389,6 +389,10 @@ export const ordersApi = {
       trailing_step: data.trailing_step,
       magic: data.magic,
     });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rtx:new-trade-placed'));
+    }
+    return result;
   },
 
   async placePendingOrder(data: endpoints.PendingOrderRequest): Promise<endpoints.Order> {
@@ -396,7 +400,7 @@ export const ordersApi = {
     if (!['buy_limit', 'sell_limit', 'buy_stop', 'sell_stop'].includes(type)) {
       throw new Error('Pending order type must be buy_limit, sell_limit, buy_stop, or sell_stop');
     }
-    return endpoints.tradingApi.placePendingOrder({
+    const result = await endpoints.tradingApi.placePendingOrder({
       login: resolveTradingLogin(data.login ?? data.account_login),
       symbol: requireSymbol(data.symbol),
       side: normalizeSideForApi(data.side),
@@ -411,6 +415,10 @@ export const ordersApi = {
       trailing_step: data.trailing_step,
       magic: data.magic,
     });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rtx:new-trade-placed'));
+    }
+    return result;
   },
 
   async getPendingOrders(login?: number): Promise<endpoints.Order[]> {

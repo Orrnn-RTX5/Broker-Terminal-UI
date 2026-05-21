@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import type { ChartType, Timeframe } from './TradingChart';
 import { indicatorManager } from '../services/indicatorManager';
+import { commandBus } from '../services/commandBus';
 import { useTemplates, useTemplateStore } from '../store/useTemplateStore';
 import type { ChartTemplate } from '../store/useTemplateStore';
 import {
@@ -153,7 +154,7 @@ const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
 });
 MenuItem.displayName = 'MenuItem';
 
-// ─── Submenu wrapper ──────────────────────────────────────────────────────────
+
 const Submenu = ({ children, label, icon, disabled }: {
     children: React.ReactNode;
     label: string;
@@ -332,7 +333,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     };
 
     const handleSelectDrawingTool = (tool: string) => {
-        window.dispatchEvent(new CustomEvent('drawing:select-tool', { detail: { tool } }));
+        commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool } });
         onClose();
     };
 

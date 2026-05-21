@@ -142,8 +142,8 @@ export function BottomDock({
         const handleTradeExecution = () => {
             setActiveTab('Trade');
         };
-        window.addEventListener('rtx:force-refresh-positions', handleTradeExecution);
-        return () => window.removeEventListener('rtx:force-refresh-positions', handleTradeExecution);
+        window.addEventListener('rtx:new-trade-placed', handleTradeExecution);
+        return () => window.removeEventListener('rtx:new-trade-placed', handleTradeExecution);
     }, []);
 
     // Auto-switch to Journal if the account equity hits 0 (margin call / account blown)
@@ -257,16 +257,18 @@ export function BottomDock({
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`rtx-dock-tab px-4 py-1.5 text-[11px] font-semibold transition-all duration-300 whitespace-nowrap rounded-md relative overflow-hidden group
+                        className={`rtx-dock-tab px-4 py-1.5 text-[11px] font-semibold transition-all duration-300 ease-out whitespace-nowrap rounded-md relative overflow-hidden group active:scale-[0.97]
                         ${activeTab === tab.id
                                 ? 'text-white bg-white/10 shadow-[0_0_15px_rgba(255,255,255,0.1)] border border-white/20 active-tab'
-                                : 'text-slate-400 border border-transparent'}`}
+                                : 'text-slate-400 hover:text-white hover:bg-white/[0.04] border border-transparent hover:border-white/10'}`}
                     >
-                        {activeTab === tab.id && (
+                        {activeTab === tab.id ? (
                             <span className="rtx-dock-tab-indicator absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-500 shadow-[0_-2px_10px_rgba(99,102,241,0.5)]"></span>
+                        ) : (
+                            <span className="absolute bottom-0 left-[15%] w-[70%] h-[1.5px] bg-gradient-to-r from-blue-400/50 via-indigo-500/50 to-purple-500/50 opacity-0 group-hover:opacity-100 transition-all duration-300 transform scale-x-50 group-hover:scale-x-100 shadow-[0_-1px_6px_rgba(99,102,241,0.3)]"></span>
                         )}
                         <span className="relative z-10">{tab.id}</span>
-                        <div className="absolute inset-0 bg-gradient-to-t from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                        <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.02] via-blue-500/[0.02] to-purple-500/[0.02] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     </button>
                 ))}
             </div>

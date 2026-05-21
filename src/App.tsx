@@ -1971,7 +1971,7 @@ function App() {
       .finally(() => setIsLoadingSymbols(false));
   }, []);
 
-  // PERFORMANCE FIX: Cleanup Web Worker on unmount
+
   useEffect(() => {
     return () => {
       terminateWorker();

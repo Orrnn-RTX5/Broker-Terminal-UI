@@ -1620,12 +1620,11 @@ export const TradingChart = React.memo(function TradingChart({
           }
         }
       }
-      // Note: param.time=null on mouse leave � updatePreviewPoint no-ops gracefully
+    
     };
     chart.subscribeCrosshairMove(crosshairHandler);
 
-    // Also enforce arrow cursor immediately after chart creates its canvas
-    // (lightweight-charts sets cursor:crosshair synchronously on init)
+
     setTimeout(() => {
       if (!activeToolRef.current && containerRef.current) {
         containerRef.current.querySelectorAll('canvas').forEach((c) => {
@@ -1650,6 +1649,26 @@ export const TradingChart = React.memo(function TradingChart({
 
     isRebuildingRef.current = false; // Safe to resume ticks and resizes
   }, [chartType, symbol, loadHistory, resetLiveQuotePriceGuard, updateChartData]); // Note: intentional omit chartSettings
+
+  // ── Drawing Tool Selection (Standalone effect) ───────────────────────
+  useEffect(() => {
+    const unsub = commandBus.subscribe('SELECT_TOOL', (payload: any) => {
+      console.log('[TradingChart] Received SELECT_TOOL:', payload.tool);
+      activeToolRef.current = payload.tool;
+      drawingManager.startDrawing(payload.tool);
+
+      if (containerRef.current) {
+        containerRef.current.querySelectorAll('canvas').forEach((c) => {
+          (c as HTMLElement).style.cursor = payload.tool ? 'crosshair' : 'default';
+        });
+      }
+    });
+    return () => {
+      unsub();
+      activeToolRef.current = null;
+    };
+  }, []);
+
 
   // ── Chart Shift (standalone effect) ───────────────────────────────────
   // Listens for rtx:chartShift window events and applies rightOffset directly.

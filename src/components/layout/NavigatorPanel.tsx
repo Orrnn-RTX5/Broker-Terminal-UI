@@ -27,8 +27,7 @@ export const NavigatorPanel: React.FC = () => {
         localStorage.removeItem('mt5_auto_login');
     }, []);
 
-    // Auto-add active account to savedAccounts if not already present,
-    // and fetch its real name from the backend APIs
+
     useEffect(() => {
         if (!accountId) return;
         const loginNum = parseInt(accountId, 10);
@@ -36,7 +35,7 @@ export const NavigatorPanel: React.FC = () => {
 
         const existing = savedAccounts.find(a => a.login === loginNum);
         const activeServer = existing?.server || getStoredBrokerServer();
-        // Add if missing (with empty name first so it shows up immediately)
+        
         if (!existing) {
             addSavedAccount({
                 login: loginNum,
@@ -47,7 +46,7 @@ export const NavigatorPanel: React.FC = () => {
             });
         }
 
-        // Fetch the real account name from account summary API
+   
         if (isAuthenticated && !existing?.name) {
             api.account.getAccountSummary(loginNum)
                 .then((data: any) => {

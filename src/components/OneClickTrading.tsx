@@ -176,7 +176,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
 
     return (
         <div
-            className="rtx-oct absolute top-[10px] left-[10px] z-30 select-none drop-shadow-2xl"
+            className="rtx-oct absolute top-[28px] left-[10px] z-30 select-none drop-shadow-2xl"
             style={{ pointerEvents: 'auto', fontFamily: "'Inter', 'Segoe UI', Tahoma, sans-serif", display: 'inline-block', width: 'fit-content' }}
         >
             <div
@@ -186,7 +186,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     backdropFilter: 'blur(16px)',
                     WebkitBackdropFilter: 'blur(16px)',
                     border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
+                    borderRadius: '0px',
                     overflow: 'hidden',
                     boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.05), 0 10px 40px rgba(0,0,0,0.5)',
                 }}
@@ -201,7 +201,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                             ? 'linear-gradient(180deg, rgba(30,58,138,0.8) 0%, rgba(30,58,138,0.9) 100%)'
                             : 'linear-gradient(180deg, rgba(37,99,235,0.85) 0%, rgba(29,78,216,0.85) 50%, rgba(30,64,175,0.95) 100%)',
                         borderRight: 'none',
-                        borderRadius: '0 0 0 10px'
+                        borderRadius: '0px'
                     }}
                     onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(59,130,246,0.9) 0%, rgba(37,99,235,0.9) 50%, rgba(29,78,216,0.95) 100%)'; }}
                     onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(37,99,235,0.85) 0%, rgba(29,78,216,0.85) 50%, rgba(30,64,175,0.95) 100%)'; }}
@@ -309,7 +309,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                             ? 'linear-gradient(180deg, rgba(153,27,27,0.8) 0%, rgba(127,29,29,0.9) 100%)'
                             : 'linear-gradient(180deg, rgba(220,38,38,0.85) 0%, rgba(185,28,28,0.85) 50%, rgba(153,27,27,0.95) 100%)',
                         borderLeft: 'none',
-                        borderRadius: '0 0 10px 0'
+                        borderRadius: '0px'
                     }}
                     onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.9) 50%, rgba(185,28,28,0.95) 100%)'; }}
                     onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(220,38,38,0.85) 0%, rgba(185,28,28,0.85) 50%, rgba(153,27,27,0.95) 100%)'; }}
