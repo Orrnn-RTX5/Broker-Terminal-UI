@@ -1,8 +1,3 @@
-/**
- * File Menu Component - MT5 Style
- * Complete File menu dropdown with exact MT5 behavior
- */
-
 import { Icon } from '../ui/Icon';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -122,11 +117,10 @@ const YoForexPanel: React.FC<{
                                 <button
                                     key={p.symbol}
                                     onClick={() => onSelect(p.symbol)}
-                                    className={`w-full flex items-center gap-1.5 px-2 py-1 text-[12px] rounded text-left cursor-default transition-colors duration-75 ${
-                                        isActive
+                                    className={`w-full flex items-center gap-1.5 px-2 py-1 text-[12px] rounded text-left cursor-default transition-colors duration-75 ${isActive
                                             ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600 bg-emerald-500/10 [.rtx-advanced-view_&]:bg-emerald-50'
                                             : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
-                                    }`}
+                                        }`}
                                 >
                                     <span className={`text-[10px] w-3 flex-none ${isActive ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600' : 'text-transparent'}`}>✓</span>
                                     <span className="font-mono">{p.symbol}</span>
@@ -159,9 +153,8 @@ const NewChartMenuItemRenderer: React.FC<{ item: NewChartMenuItem; depth: number
         <div className="relative group/sub px-1 [&:hover>div.submenu]:block">
             <button
                 onClick={handleClick}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[12px] rounded-sm text-left cursor-default group ${
-                    isActive ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600 bg-emerald-500/10 [.rtx-advanced-view_&]:bg-emerald-50' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
-                }`}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[12px] rounded-sm text-left cursor-default group ${isActive ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600 bg-emerald-500/10 [.rtx-advanced-view_&]:bg-emerald-50' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
+                    }`}
             >
                 <span className="w-3 text-[10px] flex-none">{isActive ? '✓' : ''}</span>
                 <span className="flex-1 font-mono">{item.label}</span>
@@ -430,9 +423,8 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 <div className="relative px-1">
                     <button
                         onClick={() => setNewChartOpen(o => !o)}
-                        className={`w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left cursor-default group ${
-                            newChartOpen ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827]' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
-                        }`}
+                        className={`w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left cursor-default group ${newChartOpen ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827]' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
+                            }`}
                         title="Open a new chart for a symbol"
                     >
                         <div className="w-4 flex items-center justify-center text-emerald-500">

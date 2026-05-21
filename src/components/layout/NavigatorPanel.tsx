@@ -13,6 +13,7 @@ export const NavigatorPanel: React.FC = () => {
     const savedAccounts = useAppStore(state => state.savedAccounts);
     const removeSavedAccount = useAppStore(state => state.removeSavedAccount);
     const addSavedAccount = useAppStore(state => state.addSavedAccount);
+    const isAuthenticated = useAppStore(state => state.isAuthenticated);
 
     const [loginDialogOpen, setLoginDialogOpen] = useState(false);
     const [selectedAccountForLogin, setSelectedAccountForLogin] = useState<SavedAccount | null>(null);
@@ -47,7 +48,7 @@ export const NavigatorPanel: React.FC = () => {
         }
 
         // Fetch the real account name from account summary API
-        if (!existing?.name) {
+        if (isAuthenticated && !existing?.name) {
             api.account.getAccountSummary(loginNum)
                 .then((data: any) => {
                     console.log('[Navigator] Account summary response:', data);
@@ -66,7 +67,7 @@ export const NavigatorPanel: React.FC = () => {
                     console.debug('[Navigator] account summary not available:', err);
                 });
         }
-    }, [accountId, addSavedAccount, savedAccounts]);
+    }, [accountId, addSavedAccount, savedAccounts, isAuthenticated]);
 
     // Group accounts by server
     const servers = Array.from(new Set(savedAccounts.map(a => a.server)));

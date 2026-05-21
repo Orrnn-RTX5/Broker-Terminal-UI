@@ -3,7 +3,7 @@ import { apiClient, ApiError } from '../api/client';
 import { API_V2_BASE_URL, MARKET_WS_URL } from '../config/api';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { enqueueLiveTick } from '../services/liveTickDispatcher';
-import type { Tick as AppTick } from '../store/useAppStore';
+import { useAppStore, type Tick as AppTick } from '../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../store/useMarketDataStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
 
@@ -173,8 +173,15 @@ export function useMarketInstruments() {
   const [symbols, setSymbols] = useState<MarketInstrument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
 
   const reload = useCallback(async () => {
+    if (!isAuthenticated) {
+      setSymbols([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -200,7 +207,7 @@ export function useMarketInstruments() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,9 +229,13 @@ export function useLiveQuotes(symbols: string[]) {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
 
   useEffect(() => {
-    if (normalizedSymbols.length === 0) return;
+    if (normalizedSymbols.length === 0 || !isAuthenticated) {
+      setError(null);
+      return;
+    }
 
     let cancelled = false;
     const loadQuotes = async () => {
@@ -252,10 +263,10 @@ export function useLiveQuotes(symbols: string[]) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [normalizedSymbols.join('|')]);
+  }, [normalizedSymbols.join('|'), isAuthenticated]);
 
   useEffect(() => {
-    if (normalizedSymbols.length === 0) return;
+    if (normalizedSymbols.length === 0 || !isAuthenticated) return;
 
     const ws = getEnhancedWebSocketService(MARKET_WS_URL);
     ws.connect();
@@ -277,7 +288,7 @@ export function useLiveQuotes(symbols: string[]) {
         useMarketDataStore.getState().unsubscribeSymbol(symbol);
       });
     };
-  }, [normalizedSymbols.join('|')]);
+  }, [normalizedSymbols.join('|'), isAuthenticated]);
 
   return { loading, error };
 }
@@ -287,9 +298,15 @@ export function useLiveOrderBook(symbol: string, depth: number) {
   const [orderBook, setOrderBook] = useState<LiveOrderBook | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
 
   const reload = useCallback(async () => {
-    if (!normalizedSymbol) return;
+    if (!normalizedSymbol || !isAuthenticated) {
+      setOrderBook(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -304,7 +321,7 @@ export function useLiveOrderBook(symbol: string, depth: number) {
     } finally {
       setLoading(false);
     }
-  }, [normalizedSymbol, depth]);
+  }, [normalizedSymbol, depth, isAuthenticated]);
 
   useEffect(() => {
     reload();
@@ -313,7 +330,7 @@ export function useLiveOrderBook(symbol: string, depth: number) {
   }, [reload]);
 
   useEffect(() => {
-    if (!normalizedSymbol) return;
+    if (!normalizedSymbol || !isAuthenticated) return;
 
     const ws = getEnhancedWebSocketService(MARKET_WS_URL);
     ws.connect();
@@ -326,7 +343,7 @@ export function useLiveOrderBook(symbol: string, depth: number) {
     return () => {
       unsubscribe();
     };
-  }, [normalizedSymbol]);
+  }, [normalizedSymbol, isAuthenticated]);
 
   return { orderBook, loading, error, reload };
 }
@@ -341,9 +358,14 @@ export function useRemoteWatchlistSync(watchlistId?: string) {
   const [error, setError] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
   const applyingRemoteRef = useRef(false);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
 
   const reload = useCallback(async () => {
-    if (!activeWatchlistId) return;
+    if (!activeWatchlistId || !isAuthenticated) {
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -361,12 +383,13 @@ export function useRemoteWatchlistSync(watchlistId?: string) {
       }
       hasLoadedRef.current = true;
     } catch (err) {
+      console.warn('[Watchlist Sync] Failed to load remote watchlist:', err);
       setError(err instanceof ApiError ? err.message : 'Failed to load watchlist');
       hasLoadedRef.current = true;
     } finally {
       setLoading(false);
     }
-  }, [activeWatchlistId]);
+  }, [activeWatchlistId, isAuthenticated]);
 
   useEffect(() => {
     hasLoadedRef.current = false;
@@ -375,16 +398,17 @@ export function useRemoteWatchlistSync(watchlistId?: string) {
   }, [reload]);
 
   useEffect(() => {
-    if (!activeWatchlistId || !hasLoadedRef.current || applyingRemoteRef.current) return;
+    if (!activeWatchlistId || !hasLoadedRef.current || applyingRemoteRef.current || !isAuthenticated) return;
     const cleanSymbols = Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean)));
     const timeout = window.setTimeout(() => {
       putJson('/api/v2/watchlist', { symbols: cleanSymbols }).catch((err) => {
+        console.warn('[Watchlist Sync] Failed to save remote watchlist:', err);
         setError(err instanceof ApiError ? err.message : 'Failed to save watchlist');
       });
     }, 500);
 
     return () => window.clearTimeout(timeout);
-  }, [activeWatchlistId, symbols.join('|')]);
+  }, [activeWatchlistId, symbols.join('|'), isAuthenticated]);
 
   return { loading, error, reload };
 }

@@ -695,6 +695,19 @@ function App() {
     return () => window.removeEventListener('rtx:logout', handleLogoutEvent);
   }, [clearLocalAccountState]);
 
+  // Listen for unauthorized/expired session events from API client
+  useEffect(() => {
+    const handleUnauthorizedEvent = () => {
+      console.warn('[App] Session expired or unauthorized request. Performing global logout.');
+      clearLocalAccountState();
+      setIsAuthenticated(false);
+      setAccountId('');
+      useAppStore.getState().clearAuth();
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorizedEvent);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorizedEvent);
+  }, [clearLocalAccountState]);
+
   // Session restore uses existing token state only; App must not decode or replay saved passwords.
   useEffect(() => {
     const restoreSession = async () => {

@@ -783,7 +783,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
           <span className="rtx-market-watch__footer-count" style={{ fontSize: 9, color: '#36363e' }}>{rows.length} symbols</span>
         </div>
 
-        {(symbolsError || quotesError || watchlistError) && (
+        {(symbolsError || quotesError) && (
           <div style={{
             padding: '5px 10px',
             borderTop: '1px solid rgba(248,113,113,0.16)',
@@ -792,7 +792,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
             fontSize: 10,
             lineHeight: 1.3,
           }}>
-            {symbolsError || quotesError || watchlistError}
+            {symbolsError || quotesError}
           </div>
         )}
         {(quotesLoading || watchlistLoading) && rows.length > 0 && liveTickCount === 0 && (

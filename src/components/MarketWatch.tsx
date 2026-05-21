@@ -208,9 +208,9 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                 </div>
 
                 <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white min-w-0">
-                    {(quotesError || symbolsError || watchlistError) && (
+                    {(quotesError || symbolsError) && (
                         <div className="px-2 py-1 text-[11px] text-red-700 bg-red-50 border-b border-red-200">
-                            {quotesError || symbolsError || watchlistError}
+                            {quotesError || symbolsError}
                         </div>
                     )}
                     {quotesLoading && symbols.length > 0 && Object.keys(liveTicks).length === 0 && (

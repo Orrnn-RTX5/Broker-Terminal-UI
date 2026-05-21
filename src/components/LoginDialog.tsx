@@ -27,6 +27,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
     const [password, setPassword] = useState('');
     const [brokers, setBrokers] = useState<BrokerServer[]>([]);
     const [selectedBroker, setSelectedBroker] = useState<BrokerServer | null>(null);
+    const [serverInput, setServerInput] = useState('');
     const [brokerSearch, setBrokerSearch] = useState('');
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -55,15 +56,21 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 if (!isMounted) return;
                 const enabled = servers.filter(s => s.enabled !== false);
                 setBrokers(enabled);
-                // Try to restore previously used broker
-                const storedServer = getStoredBrokerServer();
+                // Try to restore previously used broker or initialServer
+                const storedServer = initialServer || getStoredBrokerServer();
                 const match = enabled.find(s => s.server === storedServer || s.broker_id === storedServer);
                 const defaultBroker = enabled.find(s => s.broker_id === 'broker_3') ?? enabled[0] ?? null;
-                setSelectedBroker(match ?? defaultBroker);
+                const activeBroker = match ?? defaultBroker;
+                setSelectedBroker(activeBroker);
+                if (activeBroker) {
+                    setServerInput(activeBroker.server);
+                } else if (storedServer) {
+                    setServerInput(storedServer);
+                }
             })
             .catch((err) => console.warn('[LoginDialog] Could not load broker servers:', err));
         return () => { isMounted = false; };
-    }, [isOpen]);
+    }, [isOpen, initialServer]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -103,8 +110,8 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             setError('Login and password are required');
             return;
         }
-        if (!selectedBroker) {
-            setError('Please select a broker server');
+        if (!selectedBroker && !serverInput.trim()) {
+            setError('Please select a broker server or enter a server manually');
             return;
         }
 
@@ -119,11 +126,15 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             }).catch(() => { });
 
             // Persist broker selection
-            persistBrokerServer(selectedBroker.server);
+            if (selectedBroker) {
+                persistBrokerServer(selectedBroker.server);
+            } else if (serverInput.trim()) {
+                persistBrokerServer(serverInput.trim());
+            }
 
             const data = await api.auth.login(login.trim(), password, {
-                broker_id: selectedBroker.broker_id,
-                server: selectedBroker.server,
+                broker_id: selectedBroker?.broker_id,
+                server: selectedBroker?.server || serverInput.trim(),
             });
 
             const token = data.access_token;
@@ -149,7 +160,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 useAppStore.getState().addSavedAccount({
                     login: loginNum,
                     name: data.user?.username || data.username || '',
-                    server: selectedBroker.server,
+                    server: selectedBroker?.server || serverInput.trim(),
                     isLive: true,
                     lastUsed: Date.now(),
                 });
@@ -246,28 +257,43 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                     <div className="flex items-start gap-3 mb-4">
                         <label className="text-[12px] text-zinc-400 w-20 text-right flex-shrink-0 mt-1.5">Server:</label>
                         <div className="flex-1 relative" ref={dropdownRef}>
-                            {/* Trigger button */}
-                            <button
-                                type="button"
-                                onClick={() => setDropdownOpen(o => !o)}
-                                className="w-full h-[28px] px-2 bg-[#1a1c26] border border-[#555] rounded text-[12px] text-zinc-100 outline-none focus:border-zinc-600 transition-colors flex items-center justify-between gap-1 text-left"
-                            >
-                                <span className="truncate flex-1">
-                                    {selectedBroker
-                                        ? <><span className="text-zinc-200">{selectedBroker.broker_name}</span><span className="text-zinc-500 ml-1">({selectedBroker.server})</span></>
-                                        : <span className="text-zinc-500">Select broker server…</span>
-                                    }
-                                </span>
-                                <ChevronDown size={12} className={`text-zinc-400 flex-shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
+                            <div className="flex items-center w-full h-[28px] bg-[#1a1c26] border border-[#555] rounded text-[12px] text-zinc-100 focus-within:border-zinc-600 transition-colors">
+                                <input
+                                    type="text"
+                                    value={serverInput}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setServerInput(val);
+                                        const match = brokers.find(b => b.server.toLowerCase() === val.trim().toLowerCase());
+                                        if (match) {
+                                            setSelectedBroker(match);
+                                        } else {
+                                            setSelectedBroker(null);
+                                        }
+                                        if (!dropdownOpen) setDropdownOpen(true);
+                                    }}
+                                    onFocus={() => setDropdownOpen(true)}
+                                    className="flex-1 h-full px-2 bg-transparent text-[12px] text-zinc-100 outline-none border-none"
+                                    placeholder="Select or enter server manually..."
+                                />
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDropdownOpen(o => !o);
+                                    }}
+                                    className="h-full px-2 flex items-center justify-center hover:bg-white/5 transition-colors text-zinc-400 border-l border-zinc-700/50 cursor-pointer"
+                                >
+                                    <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                            </div>
 
                             {/* Dropdown panel */}
                             {dropdownOpen && (
-                                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#1e2030] border border-zinc-600/60 rounded shadow-xl max-h-[240px] flex flex-col">
+                                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#1e2030] border border-zinc-600/60 rounded shadow-xl max-h-[240px] flex flex-col font-sans">
                                     {/* Search */}
                                     <div className="px-2 pt-2 pb-1 border-b border-zinc-700/50">
                                         <input
-                                            autoFocus
                                             type="text"
                                             value={brokerSearch}
                                             onChange={e => setBrokerSearch(e.target.value)}
@@ -285,7 +311,12 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                                 <button
                                                     key={b.id}
                                                     type="button"
-                                                    onClick={() => { setSelectedBroker(b); setDropdownOpen(false); setBrokerSearch(''); }}
+                                                    onClick={() => {
+                                                        setSelectedBroker(b);
+                                                        setServerInput(b.server);
+                                                        setDropdownOpen(false);
+                                                        setBrokerSearch('');
+                                                    }}
                                                     className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-zinc-700/60 transition-colors flex flex-col gap-0.5 ${selectedBroker?.id === b.id ? 'bg-zinc-700/40 text-white' : 'text-zinc-300'}`}
                                                 >
                                                     <span className="font-medium truncate">{b.broker_name}</span>
