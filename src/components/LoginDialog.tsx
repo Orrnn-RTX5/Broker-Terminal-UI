@@ -7,12 +7,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useAppStore } from '../store/useAppStore';
-import { api } from '../services/api';
-import { API_V2_BASE_URL } from '../config/api';
-import { brokerV2Api } from '../api/trade';
-import type { BrokerServer } from '../types/api';
-import { getStoredBrokerServer, persistBrokerServer } from '../services/brokerServers';
+import { authV2Api } from '../api/trade';
+import { updateDynamicUrls } from '../config/api';
 import { User, X, HelpCircle, ChevronDown } from 'lucide-react';
+
+interface BrokerServerItem {
+    broker_id: string;
+    broker_name: string;
+    server_url: string;
+    logo_url: string;
+    region?: string;
+}
 
 interface LoginDialogProps {
     isOpen: boolean;
@@ -25,11 +30,12 @@ interface LoginDialogProps {
 export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = '', initialServer }: LoginDialogProps) {
     const [login, setLogin] = useState('');
     const [password, setPassword] = useState('');
-    const [brokers, setBrokers] = useState<BrokerServer[]>([]);
-    const [selectedBroker, setSelectedBroker] = useState<BrokerServer | null>(null);
-    const [serverInput, setServerInput] = useState('');
-    const [brokerSearch, setBrokerSearch] = useState('');
+    const [brokerList, setBrokerList] = useState<BrokerServerItem[]>([]);
+    const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(null);
+    const healthAbortRef = useRef<AbortController | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const loginInputRef = useRef<HTMLInputElement>(null);
@@ -42,30 +48,69 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             setLogin(accountId);
             setPassword('');
             setError(null);
-            setBrokerSearch('');
+            setSearchQuery('');
             setTimeout(() => loginInputRef.current?.select(), 100);
         }
-    }, [isOpen, initialLogin, initialServer]);
+    }, [isOpen, initialLogin]);
+
+    const runHealthCheck = async (serverUrl: string) => {
+        if (healthAbortRef.current) {
+            healthAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        healthAbortRef.current = controller;
+
+        setHealthStatus('checking');
+
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+        }, 3000);
+
+        try {
+            const cleanUrl = serverUrl.replace(/\/$/, '');
+            const response = await fetch(`${cleanUrl}/health`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (response.ok) {
+                setHealthStatus('online');
+            } else {
+                setHealthStatus('offline');
+            }
+        } catch (err: any) {
+            clearTimeout(timeoutId);
+            if (err.name !== 'AbortError') {
+                setHealthStatus('offline');
+            }
+        }
+    };
+
+    const handleSelectBroker = (item: BrokerServerItem) => {
+        setSelectedBroker(item);
+        setSearchQuery(item.broker_name);
+        setDropdownOpen(false);
+        runHealthCheck(item.server_url);
+    };
 
     // Fetch broker servers from API
     useEffect(() => {
         if (!isOpen) return;
         let isMounted = true;
-        brokerV2Api.getServers()
-            .then((servers) => {
+        fetch('https://testsuperbackend.orrnn.com/api/v1/broker/servers')
+            .then(res => res.json())
+            .then((data: BrokerServerItem[]) => {
                 if (!isMounted) return;
-                const enabled = servers.filter(s => s.enabled !== false);
-                setBrokers(enabled);
+                setBrokerList(data);
+
                 // Try to restore previously used broker or initialServer
-                const storedServer = initialServer || getStoredBrokerServer();
-                const match = enabled.find(s => s.server === storedServer || s.broker_id === storedServer);
-                const defaultBroker = enabled.find(s => s.broker_id === 'broker_3') ?? enabled[0] ?? null;
-                const activeBroker = match ?? defaultBroker;
-                setSelectedBroker(activeBroker);
-                if (activeBroker) {
-                    setServerInput(activeBroker.server);
-                } else if (storedServer) {
-                    setServerInput(storedServer);
+                const savedBrokerId = initialServer || localStorage.getItem('broker_id');
+                const savedBroker = data.find(b => b.broker_id === savedBrokerId || b.server_url === savedBrokerId);
+                if (savedBroker) {
+                    setSelectedBroker(savedBroker);
+                    setSearchQuery(savedBroker.broker_name);
+                    runHealthCheck(savedBroker.server_url);
+                } else if (data.length > 0) {
+                    setSelectedBroker(data[0]);
+                    setSearchQuery(data[0].broker_name);
+                    runHealthCheck(data[0].server_url);
                 }
             })
             .catch((err) => console.warn('[LoginDialog] Could not load broker servers:', err));
@@ -78,31 +123,47 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
         const handler = (e: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
                 setDropdownOpen(false);
+                if (selectedBroker) {
+                    setSearchQuery(selectedBroker.broker_name);
+                }
             }
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
-    }, [dropdownOpen]);
+    }, [dropdownOpen, selectedBroker]);
 
     // Handle ESC key
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                if (dropdownOpen) { setDropdownOpen(false); return; }
+                if (dropdownOpen) {
+                    setDropdownOpen(false);
+                    if (selectedBroker) {
+                        setSearchQuery(selectedBroker.broker_name);
+                    }
+                    return;
+                }
                 onClose();
             }
         };
         if (isOpen) document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose, dropdownOpen]);
+    }, [isOpen, onClose, dropdownOpen, selectedBroker]);
 
-    const filteredBrokers = brokerSearch.trim()
-        ? brokers.filter(b =>
-            b.broker_name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
-            b.server.toLowerCase().includes(brokerSearch.toLowerCase()) ||
-            b.broker_id.toLowerCase().includes(brokerSearch.toLowerCase())
-        )
-        : brokers;
+    // Clean up health probe abort ref on unmount
+    useEffect(() => {
+        return () => {
+            if (healthAbortRef.current) {
+                healthAbortRef.current.abort();
+            }
+        };
+    }, []);
+
+    const filteredBrokers = brokerList.filter(b =>
+        b.broker_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.broker_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (b.region && b.region.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
 
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -110,8 +171,8 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             setError('Login and password are required');
             return;
         }
-        if (!selectedBroker && !serverInput.trim()) {
-            setError('Please select a broker server or enter a server manually');
+        if (!selectedBroker) {
+            setError('Please select a broker server');
             return;
         }
 
@@ -119,25 +180,19 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
         setError(null);
 
         try {
-            // Logout current session (fire-and-forget)
-            fetch(`${API_V2_BASE_URL}/auth/logout`, {
-                method: 'POST',
-                headers: { 'accept': '*/*', 'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}` },
-            }).catch(() => { });
+            // Save broker details to localStorage & configure dynamic endpoints
+            localStorage.setItem('broker_id', selectedBroker.broker_id);
+            localStorage.setItem('server_url', selectedBroker.server_url);
+            localStorage.setItem('logo_url', selectedBroker.logo_url);
+            updateDynamicUrls();
 
-            // Persist broker selection
-            if (selectedBroker) {
-                persistBrokerServer(selectedBroker.server);
-            } else if (serverInput.trim()) {
-                persistBrokerServer(serverInput.trim());
-            }
-
-            const data = await api.auth.login(login.trim(), password, {
-                broker_id: selectedBroker?.broker_id,
-                server: selectedBroker?.server || serverInput.trim(),
+            const data = await authV2Api.login({
+                username: login.trim(),
+                password,
+                broker_id: selectedBroker.broker_id,
             });
 
-            const token = data.access_token;
+            const token = data.access_token || data.token;
             if (!token) throw new Error('No authentication token received');
 
             const accountId = data.account_login ?? login.trim();
@@ -160,7 +215,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 useAppStore.getState().addSavedAccount({
                     login: loginNum,
                     name: data.user?.username || data.username || '',
-                    server: selectedBroker?.server || serverInput.trim(),
+                    server: selectedBroker.broker_name || '',
                     isLive: true,
                     lastUsed: Date.now(),
                 });
@@ -195,7 +250,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
             {/* Dialog */}
             <div
-                className="rtx-login-dialog relative w-[420px] bg-[#2b2e3b] border border-[#555] rounded-lg shadow-2xl"
+                className="rtx-login-dialog relative w-[420px] bg-[#2b2e3b] border border-[#555] rounded-lg shadow-2xl overflow-visible"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Title Bar */}
@@ -257,74 +312,89 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                     <div className="flex items-start gap-3 mb-4">
                         <label className="text-[12px] text-zinc-400 w-20 text-right flex-shrink-0 mt-1.5">Server:</label>
                         <div className="flex-1 relative" ref={dropdownRef}>
-                            <div className="flex items-center w-full h-[28px] bg-[#1a1c26] border border-[#555] rounded text-[12px] text-zinc-100 focus-within:border-zinc-600 transition-colors">
+                            <div className="flex items-center w-full h-[28px] bg-[#1a1c26] border border-[#555] rounded text-[12px] text-zinc-100 focus-within:border-zinc-600 transition-colors relative">
+                                {selectedBroker?.logo_url && (
+                                    <img
+                                        src={selectedBroker.logo_url}
+                                        alt=""
+                                        className="absolute left-2 top-1/2 -translate-y-1/2 w-[16px] h-[16px] rounded object-contain z-10"
+                                    />
+                                )}
                                 <input
                                     type="text"
-                                    value={serverInput}
+                                    value={searchQuery}
                                     onChange={(e) => {
-                                        const val = e.target.value;
-                                        setServerInput(val);
-                                        const match = brokers.find(b => b.server.toLowerCase() === val.trim().toLowerCase());
-                                        if (match) {
-                                            setSelectedBroker(match);
-                                        } else {
-                                            setSelectedBroker(null);
-                                        }
-                                        if (!dropdownOpen) setDropdownOpen(true);
+                                        setSearchQuery(e.target.value);
+                                        setDropdownOpen(true);
                                     }}
                                     onFocus={() => setDropdownOpen(true)}
-                                    className="flex-1 h-full px-2 bg-transparent text-[12px] text-zinc-100 outline-none border-none"
-                                    placeholder="Select or enter server manually..."
-                                />
-                                <button
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDropdownOpen(o => !o);
+                                    className="flex-1 h-full bg-transparent text-[12px] text-zinc-100 outline-none border-none"
+                                    style={{
+                                        paddingLeft: selectedBroker?.logo_url ? '28px' : '8px',
+                                        paddingRight: '32px',
                                     }}
-                                    className="h-full px-2 flex items-center justify-center hover:bg-white/5 transition-colors text-zinc-400 border-l border-zinc-700/50 cursor-pointer"
-                                >
-                                    <ChevronDown size={12} className={`transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
-                                </button>
+                                    placeholder="Search broker..."
+                                />
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+                                    {healthStatus === 'checking' && (
+                                        <span className="w-2 h-2 rounded-full bg-yellow-500 shadow-[0_0_6px_#eab308]" />
+                                    )}
+                                    {healthStatus === 'online' && (
+                                        <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_6px_#22c55e]" />
+                                    )}
+                                    {healthStatus === 'offline' && (
+                                        <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444]" />
+                                    )}
+                                    <ChevronDown size={12} className={`text-zinc-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                                </div>
                             </div>
 
                             {/* Dropdown panel */}
                             {dropdownOpen && (
-                                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#1e2030] border border-zinc-600/60 rounded shadow-xl max-h-[240px] flex flex-col font-sans">
-                                    {/* Search */}
-                                    <div className="px-2 pt-2 pb-1 border-b border-zinc-700/50">
-                                        <input
-                                            type="text"
-                                            value={brokerSearch}
-                                            onChange={e => setBrokerSearch(e.target.value)}
-                                            placeholder="Search broker…"
-                                            className="w-full h-[24px] px-2 bg-[#131520] border border-zinc-600/40 rounded text-[11px] text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
-                                            onClick={e => e.stopPropagation()}
-                                        />
-                                    </div>
-                                    {/* List */}
-                                    <div className="overflow-y-auto flex-1">
-                                        {filteredBrokers.length === 0 ? (
-                                            <div className="py-4 text-center text-zinc-600 text-[11px]">No brokers found</div>
-                                        ) : (
-                                            filteredBrokers.map(b => (
-                                                <button
-                                                    key={b.id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSelectedBroker(b);
-                                                        setServerInput(b.server);
-                                                        setDropdownOpen(false);
-                                                        setBrokerSearch('');
-                                                    }}
-                                                    className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-zinc-700/60 transition-colors flex flex-col gap-0.5 ${selectedBroker?.id === b.id ? 'bg-zinc-700/40 text-white' : 'text-zinc-300'}`}
-                                                >
-                                                    <span className="font-medium truncate">{b.broker_name}</span>
-                                                    <span className="text-zinc-500 text-[10px] font-mono truncate">{b.server}</span>
-                                                </button>
-                                            ))
-                                        )}
-                                    </div>
+                                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#1e2030] border border-zinc-600/60 rounded shadow-xl max-h-[180px] overflow-y-auto flex flex-col font-sans">
+                                    {filteredBrokers.length === 0 ? (
+                                        <div className="py-3 px-3 text-zinc-500 text-[11px]">No brokers found</div>
+                                    ) : (
+                                        filteredBrokers.map(item => (
+                                            <button
+                                                key={item.broker_id}
+                                                type="button"
+                                                onMouseDown={() => handleSelectBroker(item)}
+                                                className={`w-full text-left px-3 py-2 text-[11px] hover:bg-zinc-700/60 transition-colors flex items-center justify-between gap-2 ${selectedBroker?.broker_id === item.broker_id ? 'bg-zinc-700/40 text-white font-semibold' : 'text-zinc-300'}`}
+                                            >
+                                                <div className="flex items-center gap-2 truncate">
+                                                    {item.logo_url ? (
+                                                        <img
+                                                            src={item.logo_url}
+                                                            alt=""
+                                                            className="w-[16px] h-[16px] rounded object-contain flex-shrink-0"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-[16px] h-[16px] rounded bg-white/5 flex items-center justify-center text-[10px] text-zinc-500 flex-shrink-0">
+                                                            B
+                                                        </div>
+                                                    )}
+                                                    <span className="truncate">{item.broker_name}</span>
+                                                </div>
+                                                {item.region && (
+                                                    <span className="text-[9px] text-green-400 bg-green-500/10 border border-green-500/20 px-1 py-0.5 rounded font-bold uppercase flex-shrink-0">
+                                                        {item.region}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                            )}
+
+                            {healthStatus === 'offline' && (
+                                <div className="mt-1.5 text-red-400 text-[11px] flex items-center gap-1">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                        <line x1="12" y1="9" x2="12" y2="13" />
+                                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                                    </svg>
+                                    <span>Broker temporarily unavailable</span>
                                 </div>
                             )}
                         </div>

@@ -1,5 +1,36 @@
 import { API_V2_BASE_URL } from '../config/api';
 
+export const getDynamicUrl = (url: string): string => {
+  if (typeof window === 'undefined') return url;
+  if (url.includes('testsuperbackend.orrnn.com')) {
+    return url;
+  }
+  const serverUrl = localStorage.getItem('server_url');
+  if (!serverUrl) return url;
+
+  try {
+    // If the URL is relative, prepend the serverUrl
+    if (url.startsWith('/')) {
+      const cleanServer = serverUrl.replace(/\/$/, '');
+      return `${cleanServer}${url}`;
+    }
+
+    // If it's a full URL, parse it
+    const parsedUrl = new URL(url);
+    const parsedServer = new URL(serverUrl);
+
+    // Replace the protocol, host (hostname + port)
+    parsedUrl.protocol = parsedServer.protocol;
+    parsedUrl.host = parsedServer.host;
+
+    return parsedUrl.toString();
+  } catch (e) {
+    console.error('[Dynamic URL] Failed to parse URL:', url, e);
+    return url;
+  }
+};
+
+
 // Custom error class for API errors
 export class ApiError extends Error {
   constructor(
@@ -55,6 +86,7 @@ const buildHeaders = (customHeaders?: Record<string, string>, skipAuth?: boolean
     const token = getToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+      headers['X-API-Key'] = token;
     }
   }
 
@@ -143,9 +175,9 @@ const handleResponse = async <T>(response: Response, originalRequest?: RequestIn
       isRefreshing = true;
 
       try {
-        const refreshEndpoint = response.url.includes('/api/v2/')
+        const refreshEndpoint = getDynamicUrl(response.url.includes('/api/v2/')
           ? `${API_V2_BASE_URL}/auth/refresh`
-          : `${getBaseUrl()}/api/refresh`;
+          : `${getBaseUrl()}/api/refresh`);
         const refreshResponse = await fetch(refreshEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -291,7 +323,7 @@ export const apiClient = {
     const baseUrl = options?.baseUrl || getBaseUrl();
     // Ensure endpoint starts with / for proper URL construction
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
+    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
     console.log('[API Client] GET URL:', url);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
@@ -314,7 +346,7 @@ export const apiClient = {
     const baseUrl = options?.baseUrl || getBaseUrl();
     // Ensure endpoint starts with / for proper URL construction
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
+    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
     console.log('[API Client] POST URL:', url);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
@@ -336,7 +368,7 @@ export const apiClient = {
   put: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
+    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -357,7 +389,7 @@ export const apiClient = {
   patch: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
+    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -378,7 +410,7 @@ export const apiClient = {
   delete: async <T>(endpoint: string, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
+    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);

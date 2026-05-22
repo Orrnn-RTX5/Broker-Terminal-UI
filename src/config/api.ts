@@ -2,17 +2,64 @@ const BACKEND = import.meta.env.VITE_BACKEND_URL as string;
 
 const API_BASE_URL = import.meta.env.VITE_API_URL as string || BACKEND;
 const RTX5_API_URL = import.meta.env.VITE_RTX5_API_URL as string || import.meta.env.VITE_API_V2_URL as string;
-const API_V2_BASE_URL = RTX5_API_URL ? `${RTX5_API_URL.replace(/\/$/, '')}/api/v2` : '';
-const API_HISTORY_BASE_URL = RTX5_API_URL ? `${RTX5_API_URL.replace(/\/$/, '')}/history` : '';
+
+const getInitialV2BaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const serverUrl = localStorage.getItem('server_url');
+    if (serverUrl) {
+      return `${serverUrl.replace(/\/$/, '')}/api/v2`;
+    }
+  }
+  return RTX5_API_URL ? `${RTX5_API_URL.replace(/\/$/, '')}/api/v2` : '';
+};
+
+const getInitialHistoryBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const serverUrl = localStorage.getItem('server_url');
+    if (serverUrl) {
+      return `${serverUrl.replace(/\/$/, '')}/history`;
+    }
+  }
+  return RTX5_API_URL ? `${RTX5_API_URL.replace(/\/$/, '')}/history` : '';
+};
+
+const getInitialWsUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const serverUrl = localStorage.getItem('server_url');
+    if (serverUrl) {
+      try {
+        const wsProtocol = serverUrl.startsWith('https') ? 'wss:' : 'ws:';
+        const parsed = new URL(serverUrl);
+        return `${wsProtocol}//${parsed.host}/ws/v2`;
+      } catch (e) {
+        const cleanUrl = serverUrl.replace(/^http/i, 'ws').replace(/\/$/, '');
+        return `${cleanUrl}/ws/v2`;
+      }
+    }
+  }
+  return import.meta.env.VITE_RTX5_WS_URL as string || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
+};
+
+export let API_V2_BASE_URL = getInitialV2BaseUrl();
+export let API_HISTORY_BASE_URL = getInitialHistoryBaseUrl();
+export let RTX5_WS_URL = getInitialWsUrl();
+
 const FIX_API_URL = import.meta.env.VITE_FIX_API_URL as string || BACKEND;
 const FIX_WS_URL = import.meta.env.VITE_FIX_WS_URL as string;
 const WS_URL = import.meta.env.VITE_WS_URL as string;
-const RTX5_WS_URL = import.meta.env.VITE_RTX5_WS_URL as string || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
 
 // Optional with undefined default
 const ADMIN_API_URL = import.meta.env.VITE_ADMIN_URL || API_BASE_URL;
-const MARKET_WS_URL = import.meta.env.VITE_MARKET_WS_URL || RTX5_WS_URL;
+export let MARKET_WS_URL = import.meta.env.VITE_MARKET_WS_URL || RTX5_WS_URL;
 const ADMIN_WS_URL = import.meta.env.VITE_ADMIN_WS_URL;
+
+export function updateDynamicUrls(): void {
+  API_V2_BASE_URL = getInitialV2BaseUrl();
+  API_HISTORY_BASE_URL = getInitialHistoryBaseUrl();
+  RTX5_WS_URL = getInitialWsUrl();
+  MARKET_WS_URL = import.meta.env.VITE_MARKET_WS_URL || RTX5_WS_URL;
+}
+
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -134,11 +181,11 @@ export const API_ENDPOINTS = {
 
 // WebSocket Endpoints
 export const WS_ENDPOINTS = {
-  market: MARKET_WS_URL,
+  get market() { return MARKET_WS_URL; },
   admin: ADMIN_WS_URL,
   general: WS_URL,
-  rtx5: RTX5_WS_URL,
-  v2: RTX5_WS_URL,
+  get rtx5() { return RTX5_WS_URL; },
+  get v2() { return RTX5_WS_URL; },
 };
 
 // Helper functions
@@ -185,7 +232,7 @@ export function buildApiV2WsUrl(token?: string): string {
 }
 
 // Export base URLs for backward compatibility
-export { API_BASE_URL, API_V2_BASE_URL, API_HISTORY_BASE_URL, RTX5_API_URL, RTX5_WS_URL, ADMIN_API_URL, FIX_API_URL, FIX_WS_URL, WS_URL, MARKET_WS_URL, ADMIN_WS_URL };
+export { API_BASE_URL, RTX5_API_URL, ADMIN_API_URL, FIX_API_URL, FIX_WS_URL, WS_URL, ADMIN_WS_URL };
 
 // Optional exports with undefined default
 export const ENABLE_DEBUG = import.meta.env.VITE_ENABLE_DEBUG === 'true';

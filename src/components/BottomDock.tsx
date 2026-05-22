@@ -103,12 +103,7 @@ export function BottomDock({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const [activeTab, setActiveTab] = useState<TabType>(() => {
-        const saved = localStorage.getItem('bottomdock-active-tab');
-        // If no saved value or it was the old default 'Toolbox', start on Journal
-        if (!saved || saved === 'Toolbox' || saved === 'Journal') return 'Trade';
-        return saved as TabType;
-    });
+    const [activeTab, setActiveTab] = useState<TabType>('Trade');
     
     const [isResizing, setIsResizing] = useState(false);
 

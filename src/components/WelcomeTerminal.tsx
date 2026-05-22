@@ -14,6 +14,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
 import { getStoredBrokerServer, loadBrokerServers, persistBrokerServer, resolveLoginBrokerTarget } from '../services/brokerServers';
+import { authV2Api } from '../api/trade';
+import { updateDynamicUrls } from '../config/api';
+
+interface BrokerServerItem {
+    broker_id: string;
+    broker_name: string;
+    server_url: string;
+    logo_url: string;
+    region?: string;
+}
 
 interface WelcomeTerminalProps {
     onLogin: (accountId: string) => void;
@@ -57,9 +67,15 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
     const [error, setError] = useState<string | null>(null);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [server, setServer] = useState(() => getStoredBrokerServer());
-    const [brokerServers, setBrokerServers] = useState<string[]>([]);
     const [rememberMe, setRememberMe] = useState(false);
+
+    // Searchable Typeahead & Health Probe State
+    const [brokerList, setBrokerList] = useState<BrokerServerItem[]>([]);
+    const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(null);
+    const healthAbortRef = useRef<AbortController | null>(null);
 
     const addSavedAccount = useAppStore(s => s.addSavedAccount);
     const setActiveAccount = useAppStore(s => s.setActiveAccount);
@@ -74,15 +90,94 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
         }
     }, []);
 
+    const runHealthCheck = async (serverUrl: string) => {
+        if (healthAbortRef.current) {
+            healthAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        healthAbortRef.current = controller;
+
+        setHealthStatus('checking');
+        setLines(prev => [
+            ...prev,
+            { time: now(), text: `Pinging broker server latency...`, type: 'info' }
+        ]);
+
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+        }, 3000);
+
+        try {
+            const cleanUrl = serverUrl.replace(/\/$/, '');
+            const response = await fetch(`${cleanUrl}/health`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (response.ok) {
+                setHealthStatus('online');
+                setLines(prev => [
+                    ...prev,
+                    { time: now(), text: `Ping health probe success (HTTP ${response.status})`, type: 'ok' }
+                ]);
+            } else {
+                setHealthStatus('offline');
+                setLines(prev => [
+                    ...prev,
+                    { time: now(), text: `Health check failed: HTTP ${response.status}`, type: 'err' }
+                ]);
+            }
+        } catch (err: any) {
+            clearTimeout(timeoutId);
+            if (err.name !== 'AbortError') {
+                setHealthStatus('offline');
+                setLines(prev => [
+                    ...prev,
+                    { time: now(), text: `Server unreachable: ${err.message || 'Connection timeout'}`, type: 'err' }
+                ]);
+            }
+        }
+    };
+
+    const handleSelectBroker = (item: BrokerServerItem) => {
+        setSelectedBroker(item);
+        setSearchQuery(item.broker_name);
+        setDropdownOpen(false);
+        runHealthCheck(item.server_url);
+    };
+
+    const filteredBrokers = brokerList.filter(b =>
+        b.broker_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.broker_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (b.region && b.region.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+
     useEffect(() => {
         let isMounted = true;
-        loadBrokerServers()
-            .then((servers) => {
-                if (!isMounted || servers.length === 0) return;
-                setBrokerServers(servers);
-                setServer(current => servers.includes(current) ? current : current || servers[0]);
+        fetch('https://testsuperbackend.orrnn.com/api/v1/broker/servers')
+            .then(res => res.json())
+            .then((data: BrokerServerItem[]) => {
+                if (!isMounted) return;
+                setBrokerList(data);
+
+                // Try to restore saved broker from localStorage, otherwise default to first
+                const savedBrokerId = localStorage.getItem('broker_id');
+                const savedBroker = data.find(b => b.broker_id === savedBrokerId);
+                if (savedBroker) {
+                    setSelectedBroker(savedBroker);
+                    setSearchQuery(savedBroker.broker_name);
+                    runHealthCheck(savedBroker.server_url);
+                } else if (data.length > 0) {
+                    setSelectedBroker(data[0]);
+                    setSearchQuery(data[0].broker_name);
+                    runHealthCheck(data[0].server_url);
+                }
             })
-            .catch((err) => console.warn('[WelcomeTerminal] Could not load broker servers:', err));
+            .catch(err => {
+                console.error('[WelcomeTerminal] Failed to fetch broker servers:', err);
+                setLines(prev => [
+                    ...prev,
+                    { time: now(), text: 'Error fetching centralized broker servers', type: 'err' }
+                ]);
+            });
+
         return () => {
             isMounted = false;
         };
@@ -113,13 +208,23 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
         setError(null);
 
         try {
-            const selectedServer = persistBrokerServer(server);
-            const loginTarget = resolveLoginBrokerTarget(selectedServer);
-            const data = await api.auth.login(username, password, {
-                broker_id: loginTarget.broker_id,
-                server: loginTarget.server,
+            if (!selectedBroker) {
+                throw new Error('Please select a broker server.');
+            }
+
+            // Save broker details to localStorage & configure dynamic endpoints
+            localStorage.setItem('broker_id', selectedBroker.broker_id);
+            localStorage.setItem('server_url', selectedBroker.server_url);
+            localStorage.setItem('logo_url', selectedBroker.logo_url);
+            updateDynamicUrls();
+
+            const data = await authV2Api.login({
+                username,
+                password,
+                broker_id: selectedBroker.broker_id,
             });
-            const token = data.access_token;
+
+            const token = data.access_token || data.token;
             if (!token) throw new Error('No authentication token received');
 
             const accountId = data.account_login ?? username;
@@ -143,7 +248,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 addSavedAccount({
                     login: loginNum,
                     name: data.user?.username || data.username || '',
-                    server: loginTarget.server || data.broker_server || loginTarget.displayValue,
+                    server: selectedBroker.broker_name || '',
                     isLive: true,
                     lastUsed: Date.now(),
                 });
@@ -154,23 +259,23 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             setLines(prev => [
                 ...prev,
                 { time: now(), text: `Connected — Account ${accountId}  [ ${data.user?.username || data.username || username} ]`, type: 'ok' },
-                { time: now(), text: 'Loading workspace...', type: 'info' },
             ]);
 
-            // Short pause for user to see the "Connected" message, then hand off
-            setTimeout(() => onLogin(String(accountId)), 600);
+            setTimeout(() => {
+                onLogin(String(accountId));
+            }, 1000);
+
         } catch (err: any) {
-            console.error('[WelcomeTerminal] Login error:', err);
+            console.error('[WelcomeTerminal] Auth error:', err);
             setError(err.message || 'Authentication failed');
             setLines(prev => [
                 ...prev,
-                { time: now(), text: `Login failed: ${err.message || 'Authentication error'}`, type: 'err' },
+                { time: now(), text: `Auth failed: ${err.message || 'Unknown error'}`, type: 'err' }
             ]);
         } finally {
             setLoading(false);
         }
     };
-
     // ── Colour helpers ──────────────────────────────────────────────────────
     const lineColor = (type: LogLine['type']) => {
         switch (type) {
@@ -369,25 +474,215 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                             />
                         </div>
 
-                        <div>
-                            <label style={labelStyle}>Server</label>
-                            <input
-                                type="text"
-                                placeholder="Server"
-                                required
-                                value={server}
-                                list="welcome-broker-servers"
-                                onChange={e => setServer(e.target.value)}
-                                style={inputStyle}
-                                onFocus={e => (e.target.style.borderColor = '#10b981')}
-                                onBlur={e => (e.target.style.borderColor = '#3f3f46')}
-                            />
-                            <datalist id="welcome-broker-servers">
-                                {brokerServers.map(serverName => (
-                                    <option key={serverName} value={serverName} />
-                                ))}
-                            </datalist>
+                        <div style={{ position: 'relative' }}>
+                            <label style={labelStyle}>Broker Server</label>
+                            <div style={{ position: 'relative' }}>
+                                {selectedBroker?.logo_url && (
+                                    <img
+                                        src={selectedBroker.logo_url}
+                                        alt=""
+                                        style={{
+                                            position: 'absolute',
+                                            left: 10,
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            width: 18,
+                                            height: 18,
+                                            borderRadius: 4,
+                                            objectFit: 'contain',
+                                            zIndex: 10
+                                        }}
+                                    />
+                                )}
+                                <input
+                                    type="text"
+                                    placeholder="Search broker..."
+                                    required
+                                    value={searchQuery}
+                                    onChange={e => {
+                                        setSearchQuery(e.target.value);
+                                        setDropdownOpen(true);
+                                    }}
+                                    onFocus={() => setDropdownOpen(true)}
+                                    onBlur={() => {
+                                        setTimeout(() => {
+                                            setDropdownOpen(false);
+                                            if (selectedBroker) {
+                                                setSearchQuery(selectedBroker.broker_name);
+                                            }
+                                        }, 200);
+                                    }}
+                                    style={{
+                                        ...inputStyle,
+                                        paddingLeft: selectedBroker?.logo_url ? 34 : 12,
+                                        paddingRight: 32,
+                                    }}
+                                />
+                                <div style={{
+                                    position: 'absolute',
+                                    right: 10,
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    pointerEvents: 'none',
+                                }}>
+                                    {healthStatus === 'checking' && (
+                                        <span style={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: '50%',
+                                            background: '#eab308',
+                                            boxShadow: '0 0 6px #eab308',
+                                        }} />
+                                    )}
+                                    {healthStatus === 'online' && (
+                                        <span style={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: '50%',
+                                            background: '#22c55e',
+                                            boxShadow: '0 0 6px #22c55e',
+                                        }} />
+                                    )}
+                                    {healthStatus === 'offline' && (
+                                        <span style={{
+                                            width: 8,
+                                            height: 8,
+                                            borderRadius: '50%',
+                                            background: '#ef4444',
+                                            boxShadow: '0 0 6px #ef4444',
+                                        }} />
+                                    )}
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{
+                                        transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                        transition: 'transform 0.2s',
+                                    }}>
+                                        <polyline points="6 9 12 15 18 9" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            {dropdownOpen && (
+                                <div style={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    right: 0,
+                                    top: '100%',
+                                    marginTop: 4,
+                                    background: 'rgba(20, 20, 24, 0.98)',
+                                    backdropFilter: 'blur(16px)',
+                                    WebkitBackdropFilter: 'blur(16px)',
+                                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                                    borderRadius: 6,
+                                    maxHeight: 180,
+                                    overflowY: 'auto',
+                                    zIndex: 1000,
+                                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)',
+                                }}>
+                                    {filteredBrokers.length === 0 ? (
+                                        <div style={{
+                                            padding: '10px 12px',
+                                            color: '#71717a',
+                                            fontSize: 12,
+                                            fontFamily: 'system-ui, sans-serif'
+                                        }}>
+                                            No brokers found
+                                        </div>
+                                    ) : (
+                                        filteredBrokers.map(item => (
+                                            <div
+                                                key={item.broker_id}
+                                                onMouseDown={() => handleSelectBroker(item)}
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '8px 12px',
+                                                    cursor: 'pointer',
+                                                    transition: 'background 0.15s',
+                                                    background: selectedBroker?.broker_id === item.broker_id ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = selectedBroker?.broker_id === item.broker_id ? 'rgba(255, 255, 255, 0.06)' : 'transparent'}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    {item.logo_url ? (
+                                                        <img
+                                                            src={item.logo_url}
+                                                            alt=""
+                                                            style={{
+                                                                width: 20,
+                                                                height: 20,
+                                                                borderRadius: 4,
+                                                                objectFit: 'contain'
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <div style={{
+                                                            width: 20,
+                                                            height: 20,
+                                                            borderRadius: 4,
+                                                            background: 'rgba(255,255,255,0.05)',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            color: '#71717a',
+                                                            fontSize: 10
+                                                        }}>
+                                                            B
+                                                        </div>
+                                                    )}
+                                                    <span style={{
+                                                        color: '#f4f4f5',
+                                                        fontSize: 12.5,
+                                                        fontWeight: selectedBroker?.broker_id === item.broker_id ? 600 : 400,
+                                                        fontFamily: 'system-ui, sans-serif'
+                                                    }}>
+                                                        {item.broker_name}
+                                                    </span>
+                                                </div>
+                                                {item.region && (
+                                                    <span style={{
+                                                        fontSize: 9,
+                                                        color: '#10b981',
+                                                        background: 'rgba(16, 185, 129, 0.1)',
+                                                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                                                        padding: '1px 5px',
+                                                        borderRadius: 4,
+                                                        fontWeight: 600,
+                                                        textTransform: 'uppercase',
+                                                        fontFamily: 'system-ui, sans-serif'
+                                                    }}>
+                                                        {item.region}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            )}
                         </div>
+
+                        {healthStatus === 'offline' && (
+                            <div style={{
+                                marginTop: 6,
+                                color: '#ef4444',
+                                fontSize: 11.5,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                fontFamily: 'system-ui, sans-serif'
+                            }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                    <line x1="12" y1="9" x2="12" y2="13" />
+                                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                                </svg>
+                                <span>Broker temporarily unavailable</span>
+                            </div>
+                        )}
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0' }}>
                             <input

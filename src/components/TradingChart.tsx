@@ -310,7 +310,7 @@ export const TradingChart = React.memo(function TradingChart({
   const chartSettings = useChartSettingsStore(state =>
     state.symbolProperties[symbol] || state.globalProperties
   );
-  
+
   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
     if (typeof document === 'undefined') return false;
     const root = document.documentElement;
@@ -1517,8 +1517,13 @@ export const TradingChart = React.memo(function TradingChart({
       return intBar + fraction;
     };
     const clickHandler = (param: any) => {
-      if (!param.time || !param.point || !seriesRef.current) return;
+      console.log(`[TradingChart] 🖱️ CLICK on chart: time=${param.time}, point=${!!param.point}, series=${!!seriesRef.current}, activeToolRef=${activeToolRef.current}`);
+      if (!param.time || !param.point || !seriesRef.current) {
+        console.log(`[TradingChart] ❌ Click rejected: time=${!!param.time}, point=${!!param.point}, series=${!!seriesRef.current}`);
+        return;
+      }
       const activeDrawing = drawingManager.getActiveDrawing();
+      console.log(`[TradingChart] 📐 activeDrawing=${!!activeDrawing}, type=${activeDrawing?.type}, points=${activeDrawing?.points?.length}`);
       if (activeDrawing && activeDrawing.type !== 'freehand') {
         const price = seriesRef.current.coordinateToPrice(param.point.y);
         if (price !== null) {
@@ -1603,9 +1608,9 @@ export const TradingChart = React.memo(function TradingChart({
           if (isDrawingFreehand) {
             drawingManager.addPoint(param.time as number, price);
           } else {
-            // For vline: compute pixelXOffset � same pattern as hline price offset
+            // For vline: compute pixelXOffset – same pattern as hline price offset
             const activeD2 = drawingManager.getActiveDrawing();
-            if (activeD2 && activeD2.type === 'vline') {
+            if (activeD2 && (activeD2.type === 'vline' || activeD2.type === 'channel')) {
               const rawX = (param.sourceEvent && containerRef.current)
                 ? (param.sourceEvent.clientX - containerRef.current.getBoundingClientRect().left)
                 : param.point.x;
@@ -1620,7 +1625,7 @@ export const TradingChart = React.memo(function TradingChart({
           }
         }
       }
-    
+
     };
     chart.subscribeCrosshairMove(crosshairHandler);
 
@@ -1981,7 +1986,7 @@ export const TradingChart = React.memo(function TradingChart({
         if (y !== null && y !== undefined) {
           const digits = getSymbolDigits(symbol);
           livePriceRef.current = tick.bid;
-          
+
           const badgeColor = '#5A5A66'; // MT5-style solid gray
 
           // Match exact price-scale width so badge overlays the axis labels 1:1
@@ -2058,7 +2063,7 @@ export const TradingChart = React.memo(function TradingChart({
           tradeAutoClosePendingRef.current.add(trade.key);
           const pId = trade.key.replace('trade:', '');
           console.log(`[Chart] 🛑 Auto-closing trade ${pId} due to SL/TP cross`);
-          
+
           api.positions.closePosition(String(pId)).then(() => {
             useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== Number(pId)));
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
@@ -2374,8 +2379,10 @@ export const TradingChart = React.memo(function TradingChart({
 
   // Handle SELECT_TOOL command — bridge toolbar buttons to drawingManager
   useEffect(() => {
+    console.log('[TradingChart] ✅ SELECT_TOOL subscriber REGISTERED, chartRef=', !!chartRef.current, 'containerRef=', !!containerRef.current);
     const unsubSelectTool = commandBus.subscribe('SELECT_TOOL', (payload) => {
       const tool = payload.tool;
+      console.log(`[TradingChart] 🎯 SELECT_TOOL received: tool=${tool}, chartRef=${!!chartRef.current}, seriesRef=${!!seriesRef.current}`);
 
       // Cancel any active drawing + clear inline text input
       drawingManager.cancelDrawing();
@@ -2424,7 +2431,8 @@ export const TradingChart = React.memo(function TradingChart({
         if (validDrawingTypes.includes(tool)) {
           const subtype = (payload as any).subtype as string | undefined;
           drawingManager.startDrawing(tool as any, '#3b82f6', subtype ? { subtype } : undefined);
-          console.log(`[Chart] Tool: ${tool} — drawing started, click on chart to place points`);
+          const activeAfter = drawingManager.getActiveDrawing();
+          console.log(`[Chart] Tool: ${tool} — drawing started, activeDrawing=${!!activeAfter}, type=${activeAfter?.type}`);
         } else {
           console.log(`[Chart] Tool: ${tool} — not a drawing tool`);
         }
@@ -3044,10 +3052,10 @@ export const TradingChart = React.memo(function TradingChart({
       nextActiveSnapshots.forEach((trade) => {
         const entryColor = getEntryColor(trade.side);
         createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor);
-        
+
         // Render MT5-style full horizontal line for active entry
         createPriceLevel(`${trade.side} ${trade.volume}`, trade.entryPrice, entryColor);
-        
+
         // Render SL / TP (apply optimistic overrides if any)
         const levels = tradeLevelOverridesRef.current.get(trade.key) ?? { sl: trade.sl, tp: trade.tp };
         if (levels.sl && levels.sl > 0) createPriceLevel('SL', levels.sl, TRADE_SELL_COLOR);
@@ -3262,7 +3270,7 @@ export const TradingChart = React.memo(function TradingChart({
     const createHistoryPath = (entryPrice: number, entryTime: number, exitPrice: number, exitTime: number, isBuy: boolean, volume: number) => {
       const overlayEl = overlayRef.current;
       if (!overlayEl || !seriesRef.current || !chartRef.current) return;
-      
+
       const isProfit = isBuy ? exitPrice >= entryPrice : entryPrice >= exitPrice;
       const color = isBuy ? '#2962FF' : '#ef5350';
 
@@ -3302,7 +3310,7 @@ export const TradingChart = React.memo(function TradingChart({
       exitArrow.style.cssText = `position: absolute; z-index: 12; pointer-events: none; filter: drop-shadow(0 0 3px ${isBuy ? '#ef5350' : '#2962FF'}99);`;
       overlayEl.appendChild(exitArrow);
       positionLabelsRef.current.push(exitArrow);
-      positionLabelDataRef.current.push({ price: exitPrice, time: exitTime, text: '', color: isBuy ? '#ef5350': '#2962FF', isPin: true, isBuyDeal: !isBuy });
+      positionLabelDataRef.current.push({ price: exitPrice, time: exitTime, text: '', color: isBuy ? '#ef5350' : '#2962FF', isPin: true, isBuyDeal: !isBuy });
     };
 
     const createExecutionPin = (text: string, color: string, price: number, time: number, _isBuy: boolean, yOffset = 0) => {
@@ -3312,7 +3320,7 @@ export const TradingChart = React.memo(function TradingChart({
       const pin = document.createElement('div');
       pin.className = 'rtx-execution-pin-arrow';
       pin.title = text;
-      
+
       pin.innerHTML = _isBuy
         ? `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="6,2 10,10 2,10" fill="#2962FF" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`
         : `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="2,2 10,2 6,10" fill="#ef5350" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
@@ -3512,7 +3520,7 @@ export const TradingChart = React.memo(function TradingChart({
       const historyConnections: { entryPrice: number; entryTime: number; exitPrice: number; exitTime: number; isBuy: boolean; volume: number }[] = [];
       const mt5HistoryDeals = Array.isArray(mt5State.history) ? mt5State.history : [];
       const historyByPosition = new Map<number, typeof mt5HistoryDeals>();
-      
+
       mt5HistoryDeals.filter(d => (d.symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedChartSymbol).forEach(d => {
         const pid = (d as any).position || (d as any).position_id;
         if (pid) {
@@ -3522,47 +3530,47 @@ export const TradingChart = React.memo(function TradingChart({
       });
 
       historyByPosition.forEach(deals => {
-         const inDeals = deals.filter((d: any) => d.entry === '0' || d.entry === 'IN' || d.entry === 0);
-         const outDeals = deals.filter((d: any) => d.entry === '1' || d.entry === 'OUT' || d.entry === 1);
-         if (inDeals.length > 0 && outDeals.length > 0) {
-            inDeals.forEach(inD => {
-               outDeals.forEach(outD => {
-                  const typeRaw = (inD as any).type;
-                  const isBuy = String(typeRaw).toUpperCase().includes('BUY') || typeRaw === 0 || typeRaw === '0';
-                  historyConnections.push({
-                     entryPrice: inD.price,
-                     entryTime: Math.floor(inD.time_ms / 1000), // assumed to be ms
-                     exitPrice: outD.price,
-                     exitTime: Math.floor(outD.time_ms / 1000),
-                     isBuy,
-                     volume: outD.volume
-                  });
-               });
+        const inDeals = deals.filter((d: any) => d.entry === '0' || d.entry === 'IN' || d.entry === 0);
+        const outDeals = deals.filter((d: any) => d.entry === '1' || d.entry === 'OUT' || d.entry === 1);
+        if (inDeals.length > 0 && outDeals.length > 0) {
+          inDeals.forEach(inD => {
+            outDeals.forEach(outD => {
+              const typeRaw = (inD as any).type;
+              const isBuy = String(typeRaw).toUpperCase().includes('BUY') || typeRaw === 0 || typeRaw === '0';
+              historyConnections.push({
+                entryPrice: inD.price,
+                entryTime: Math.floor(inD.time_ms / 1000), // assumed to be ms
+                exitPrice: outD.price,
+                exitTime: Math.floor(outD.time_ms / 1000),
+                isBuy,
+                volume: outD.volume
+              });
             });
-         }
+          });
+        }
       });
 
       const appTrades = Array.isArray(state.trades) ? state.trades : [];
       appTrades.filter((t: any) => (t.symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedChartSymbol).forEach((t: any) => {
-         if (t.closeTime && t.closePrice) {
-            const entryTs = typeof t.openTime === 'string' ? Math.floor(new Date(t.openTime).getTime()/1000) : t.openTime;
-            const exitTs = typeof t.closeTime === 'string' ? Math.floor(new Date(t.closeTime).getTime()/1000) : t.closeTime;
-            historyConnections.push({
-               entryPrice: t.openPrice,
-               entryTime: entryTs,
-               exitPrice: t.closePrice,
-               exitTime: exitTs,
-               isBuy: t.side === 'BUY',
-               volume: t.volume
-            });
-         }
+        if (t.closeTime && t.closePrice) {
+          const entryTs = typeof t.openTime === 'string' ? Math.floor(new Date(t.openTime).getTime() / 1000) : t.openTime;
+          const exitTs = typeof t.closeTime === 'string' ? Math.floor(new Date(t.closeTime).getTime() / 1000) : t.closeTime;
+          historyConnections.push({
+            entryPrice: t.openPrice,
+            entryTime: entryTs,
+            exitPrice: t.closePrice,
+            exitTime: exitTs,
+            isBuy: t.side === 'BUY',
+            volume: t.volume
+          });
+        }
       });
 
       historyConnections.forEach(hc => {
         if (hc.entryTime > 0 && hc.exitTime > 0) {
-           const entryTarget = getCandleBoundaryTime(hc.entryTime);
-           const exitTarget = getCandleBoundaryTime(hc.exitTime);
-           createHistoryPath(hc.entryPrice, entryTarget, hc.exitPrice, exitTarget, hc.isBuy, hc.volume);
+          const entryTarget = getCandleBoundaryTime(hc.entryTime);
+          const exitTarget = getCandleBoundaryTime(hc.exitTime);
+          createHistoryPath(hc.entryPrice, entryTarget, hc.exitPrice, exitTarget, hc.isBuy, hc.volume);
         }
       });
 
@@ -3782,12 +3790,12 @@ export const TradingChart = React.memo(function TradingChart({
             handleScale: { axisPressedMouseMove: { time: false, price: false } }
           });
         }
-        
-        dragState = { tradeObj: closestTrade, role: grabbedType === 'ENTRY' ? 'SL' : grabbedType, grabbedType }; 
-        
+
+        dragState = { tradeObj: closestTrade, role: grabbedType === 'ENTRY' ? 'SL' : grabbedType, grabbedType };
+
         dragLineOverlay = document.createElement('div');
         dragLineOverlay.style.cssText = `position:absolute;left:0;right:52px;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translateY(${y}px)`;
-        
+
         dragBadgeOverlay = document.createElement('div');
         const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
         const badgeBg = isLight ? 'rgba(255, 255, 255, 0.92)' : '#2a2a38';
@@ -3832,7 +3840,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       dragState.role = role;
       dragLineOverlay.style.transform = `translateY(${y}px)`;
-      
+
       dragBadgeOverlay.style.color = color;
       dragBadgeOverlay.textContent = `${role} ${price.toFixed(getSymbolDigits(tradeObj.symbol))}`;
       dragBadgeOverlay.style.transform = `translate(-50%, calc(-50% + ${y}px))`;
@@ -3840,38 +3848,38 @@ export const TradingChart = React.memo(function TradingChart({
 
     const handlePointerUp = (e: PointerEvent) => {
       if (!dragState) return;
-      
+
       if (seriesRef.current) {
         const y = getChartY(e);
         const finalPrice = seriesRef.current.coordinateToPrice(y as any);
         const { tradeObj, role } = dragState;
-        
-        if (finalPrice !== null) {
-           const ptDist = Math.abs(finalPrice - tradeObj.entryPrice);
-           const minDistance = 5 * Math.pow(10, -getSymbolDigits(tradeObj.symbol));
-           if (ptDist >= minDistance) {
-             const ticket = Number(tradeObj.key.replace('trade:', ''));
-             if (ticket) {
-               const existingOverrides = tradeLevelOverridesRef.current.get(tradeObj.key);
-               const currentSl = existingOverrides ? existingOverrides.sl : tradeObj.sl;
-               const currentTp = existingOverrides ? existingOverrides.tp : tradeObj.tp;
 
-               const sl = role === 'SL' ? finalPrice : currentSl;
-               const tp = role === 'TP' ? finalPrice : currentTp;
-               
-               // Optimistically set UI level overrides immediately
-               tradeLevelOverridesRef.current.set(tradeObj.key, { sl: sl || 0, tp: tp || 0 });
-               window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
-               window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
-               
-               api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 }).catch(err => {
-                 console.error('[Chart] Failed to modify SL/TP:', err);
-                 // On outright error, revert override
-                 tradeLevelOverridesRef.current.delete(tradeObj.key);
-                 window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); 
-               });
-             }
-           }
+        if (finalPrice !== null) {
+          const ptDist = Math.abs(finalPrice - tradeObj.entryPrice);
+          const minDistance = 5 * Math.pow(10, -getSymbolDigits(tradeObj.symbol));
+          if (ptDist >= minDistance) {
+            const ticket = Number(tradeObj.key.replace('trade:', ''));
+            if (ticket) {
+              const existingOverrides = tradeLevelOverridesRef.current.get(tradeObj.key);
+              const currentSl = existingOverrides ? existingOverrides.sl : tradeObj.sl;
+              const currentTp = existingOverrides ? existingOverrides.tp : tradeObj.tp;
+
+              const sl = role === 'SL' ? finalPrice : currentSl;
+              const tp = role === 'TP' ? finalPrice : currentTp;
+
+              // Optimistically set UI level overrides immediately
+              tradeLevelOverridesRef.current.set(tradeObj.key, { sl: sl || 0, tp: tp || 0 });
+              window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
+              window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
+
+              api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 }).catch(err => {
+                console.error('[Chart] Failed to modify SL/TP:', err);
+                // On outright error, revert override
+                tradeLevelOverridesRef.current.delete(tradeObj.key);
+                window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+              });
+            }
+          }
         }
       }
 
