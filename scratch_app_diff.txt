@@ -1,0 +1,75 @@
+﻿diff --git a/src/App.tsx b/src/App.tsx
+index f60c288..d279c81 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -22,6 +22,7 @@ import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
+ import { api } from './services/api';
+ import { accountV2Api, tradingV2Api } from './api/trade';
+ import { tradeGatewayApi } from './api/tradeGateway';
++import { brokerApi } from './api/brokerApi';
+ import { OneClickTrading } from './components/OneClickTrading';
+ import { getStoredBrokerServer } from './services/brokerServers';
+ import { BootstrapLoader } from './components/BootstrapLoader';
+@@ -794,6 +795,45 @@ function App() {
+     restoreSession();
+   }, []);
+ 
++  // Foreground Focus Handler: Catch window 'visibilitychange' & 'focus' events.
++  // Proactively refresh token if needed, trigger immediate WS reconnect & positions refresh.
++  useEffect(() => {
++    const handleForeground = async () => {
++      // Only execute if user is currently authenticated
++      if (!isAuthenticatedRef.current) return;
++
++      console.log('[App] App returned to foreground / focus. Checking token status...');
++      try {
++        // Proactively refresh token if expired or close to expiry (<60s)
++        await brokerApi.checkAndProactiveRefresh();
++
++        // Dispatch immediate reconnect event to trigger WS reconnect without waiting backoff
++        console.log('[App] Dispatching immediate WebSocket reconnection event...');
++        window.dispatchEvent(new CustomEvent('rtx:reconnect-ws'));
++
++        // Force a polling sync of all account position data
++        console.log('[App] Dispatching immediate position refresh event...');
++        window.dispatchEvent(new Event('rtx:force-refresh-positions'));
++      } catch (err) {
++        console.error('[App] Failed to refresh token or sync on foreground:', err);
++      }
++    };
++
++    const handleVisibilityChange = () => {
++      if (document.visibilityState === 'visible') {
++        handleForeground();
++      }
++    };
++
++    window.addEventListener('focus', handleForeground);
++    document.addEventListener('visibilitychange', handleVisibilityChange);
++
++    return () => {
++      window.removeEventListener('focus', handleForeground);
++      document.removeEventListener('visibilitychange', handleVisibilityChange);
++    };
++  }, []);
++
+   // Reactively read store accountId (changes when user clicks account in Navigator)
+   const storeAccountId = useAppStore(state => state.accountId);
+   const storeIsAuthenticated = useAppStore(state => state.isAuthenticated);
+@@ -1681,9 +1721,13 @@ function App() {
+           if (!loginId) return;
+           markTradeWsMessage();
+           refreshOrdersAndHistory(loginId).catch(err => console.error('[WS DEALS REFRESH ERROR]', err));
+-        } else if (data.type === 'tick' || isTickLikeUpdate || isLiveQuote || data.channel === 'prices') {
++        } else if (data.type === 'tick' || isTickLikeUpdate || isLiveQuote || data.channel?.startsWith('ticks.') || data.channel === 'prices') {
+           // Wrap live quote data if it comes in raw formats
+-          const tickPayload: any = (isLiveQuote || data.channel === 'prices') && data.data ? data.data : data;
++          const tickPayload: any = (isLiveQuote || data.channel?.startsWith('ticks.') || data.channel === 'prices') && data.data ? data.data : data;
++
++          if (data.channel?.startsWith('ticks.') && tickPayload && !tickPayload.symbol) {
++            tickPayload.symbol = data.channel.split('.')[1];
++          }
+ 
+           // Always log received ticks for debugging
+           if (data.type === 'tick' && data.symbol && WS_DEBUG) {
+           }}

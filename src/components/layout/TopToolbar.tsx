@@ -62,10 +62,11 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     useEffect(() => {
         const handleDrawingSaved = () => {
             dispatchToolbar({ type: 'SELECT_TOOL', tool: 'cursor' });
+            dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'cursor' } } as any);
         };
         window.addEventListener('drawing:saved', handleDrawingSaved);
         return () => window.removeEventListener('drawing:saved', handleDrawingSaved);
-    }, [dispatchToolbar]);
+    }, [dispatchToolbar, dispatchCommand]);
 
 
     useKeyboardShortcuts([

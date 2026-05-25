@@ -1,0 +1,12 @@
+# =========================================================================
+# 🚫 AI FENCE: ISOLATED DRAWING COMPONENT FILES
+# =========================================================================
+# Do not modify, read, or index these files when working on unrelated features.
+# Drawing tools are highly sensitive, and updates here easily break coordination.
+# Modify ONLY under explicit drawing-related tasks.
+# =========================================================================
+src/services/drawingManager.ts
+src/services/drawingApi.ts
+src/store/useDrawingStore.ts
+src/components/DrawingTools.tsx
+src/components/DrawingContextMenu.tsx

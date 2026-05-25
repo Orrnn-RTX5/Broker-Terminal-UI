@@ -1,11 +1,21 @@
 /**
+ * ============================================================================
+ * 🚫 AI FENCE: ISOLATED SYSTEM COMPONENT
+ * ============================================================================
+ * Do not modify, rewrite, or alter this file when processing other features.
+ * Drawing tools are self-contained and highly sensitive to state/prop updates.
+ * Any adjustments must be done ONLY under explicit drawing-specific requests.
+ * ============================================================================
+ */
+
+/**
  * DrawingTools Component
  * Professional chart drawing tools panel — light theme
  */
 
 import { Icon } from './ui/Icon';
 import type { IconName } from './ui/Icon';
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   useDrawingStore,
   type DrawingType,
@@ -13,6 +23,7 @@ import {
   type Point,
   type Drawing,
 } from '../store/useDrawingStore';
+import { commandBus } from '../services/commandBus';
 
 // Drawing tool categories for toolbar
 const TOOL_CATEGORIES = [
@@ -94,6 +105,43 @@ const COLORS = [
 
 const LINE_STYLES: LineStyle[] = ['solid', 'dashed', 'dotted'];
 
+const mapStoreToolToCommandTool = (storeTool: string | null): string => {
+  if (!storeTool) return 'cursor';
+  switch (storeTool) {
+    case 'trend-line': return 'trendline';
+    case 'horizontal-line': return 'hline';
+    case 'vertical-line': return 'vline';
+    case 'channel': return 'channel';
+    case 'parallel-channel': return 'channel';
+    case 'fib-retracement': return 'fibonacci';
+    case 'rectangle': return 'rectangle';
+    case 'ellipse': return 'ellipse';
+    case 'text-label': return 'text';
+    case 'callout': return 'callout';
+    case 'freehand': return 'freehand';
+    case 'crosshair-ruler': return 'measure';
+    case 'cursor': case 'pan': case 'crosshair': default: return 'cursor';
+  }
+};
+
+const mapCommandToolToStoreTool = (cmdTool: string | null): DrawingType => {
+  if (!cmdTool) return 'cursor';
+  switch (cmdTool) {
+    case 'trendline': return 'trend-line';
+    case 'hline': return 'horizontal-line';
+    case 'vline': return 'vertical-line';
+    case 'channel': return 'channel';
+    case 'fibonacci': return 'fib-retracement';
+    case 'rectangle': return 'rectangle';
+    case 'ellipse': return 'ellipse';
+    case 'text': return 'text-label';
+    case 'callout': return 'callout';
+    case 'freehand': return 'freehand';
+    case 'measure': return 'crosshair-ruler';
+    case 'cursor': default: return 'cursor';
+  }
+};
+
 export function DrawingTools() {
   const {
     drawings,
@@ -139,9 +187,25 @@ export function DrawingTools() {
 
   // Handle tool selection
   const handleToolSelect = useCallback((tool: DrawingType) => {
-    setActiveTool(activeTool === tool ? null : tool);
+    const nextTool = activeTool === tool ? null : tool;
+    setActiveTool(nextTool);
     setSelectedDrawing(null);
+
+    // Dispatch to the active chart via commandBus
+    const cmdTool = mapStoreToolToCommandTool(nextTool);
+    commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: cmdTool } } as any);
   }, [activeTool, setActiveTool, setSelectedDrawing]);
+
+  // Sync drawing tools state from the commandBus
+  useEffect(() => {
+    const unsub = commandBus.subscribe('SELECT_TOOL', (payload: any) => {
+      const storeTool = mapCommandToolToStoreTool(payload.tool);
+      if (useDrawingStore.getState().activeTool !== storeTool) {
+        setActiveTool(storeTool);
+      }
+    });
+    return unsub;
+  }, [setActiveTool]);
 
   // Handle canvas mouse events
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {

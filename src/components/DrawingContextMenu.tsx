@@ -1,4 +1,14 @@
 /**
+ * ============================================================================
+ * 🚫 AI FENCE: ISOLATED SYSTEM COMPONENT
+ * ============================================================================
+ * Do not modify, rewrite, or alter this file when processing other features.
+ * Drawing tools are self-contained and highly sensitive to state/prop updates.
+ * Any adjustments must be done ONLY under explicit drawing-specific requests.
+ * ============================================================================
+ */
+
+/**
  * MT5-Style Drawing Context Menu
  * Right-click context menu for chart drawing objects
  * Matches MetaTrader 5 UI exactly

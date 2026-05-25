@@ -1,4 +1,14 @@
 /**
+ * ============================================================================
+ * 🚫 AI FENCE: ISOLATED SYSTEM COMPONENT
+ * ============================================================================
+ * Do not modify, rewrite, or alter this file when processing other features.
+ * Drawing tools are self-contained and highly sensitive to state/prop updates.
+ * Any adjustments must be done ONLY under explicit drawing-specific requests.
+ * ============================================================================
+ */
+
+/**
  * Drawing API Service
  * Handles all HTTP communication with /api/fix/drawings endpoints
  */

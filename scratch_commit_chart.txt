@@ -1,0 +1,52 @@
+﻿commit 8daf97fea59298b989370594951aeb14264a8c9e
+Author: Debjyoti <debjyoti.yoforex@gmail.com>
+Date:   Thu May 21 18:09:34 2026 +0530
+
+    Drawing toools wired up
+
+diff --git a/src/components/TradingChart.tsx b/src/components/TradingChart.tsx
+index 123f93c..8fecb0c 100644
+--- a/src/components/TradingChart.tsx
++++ b/src/components/TradingChart.tsx
+@@ -1620,12 +1620,11 @@ export const TradingChart = React.memo(function TradingChart({
+           }
+         }
+       }
+-      // Note: param.time=null on mouse leave ∩┐╜ updatePreviewPoint no-ops gracefully
++    
+     };
+     chart.subscribeCrosshairMove(crosshairHandler);
+ 
+-    // Also enforce arrow cursor immediately after chart creates its canvas
+-    // (lightweight-charts sets cursor:crosshair synchronously on init)
++
+     setTimeout(() => {
+       if (!activeToolRef.current && containerRef.current) {
+         containerRef.current.querySelectorAll('canvas').forEach((c) => {
+@@ -1651,6 +1650,26 @@ export const TradingChart = React.memo(function TradingChart({
+     isRebuildingRef.current = false; // Safe to resume ticks and resizes
+   }, [chartType, symbol, loadHistory, resetLiveQuotePriceGuard, updateChartData]); // Note: intentional omit chartSettings
+ 
++  // ΓöÇΓöÇ Drawing Tool Selection (Standalone effect) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++  useEffect(() => {
++    const unsub = commandBus.subscribe('SELECT_TOOL', (payload: any) => {
++      console.log('[TradingChart] Received SELECT_TOOL:', payload.tool);
++      activeToolRef.current = payload.tool;
++      drawingManager.startDrawing(payload.tool);
++
++      if (containerRef.current) {
++        containerRef.current.querySelectorAll('canvas').forEach((c) => {
++          (c as HTMLElement).style.cursor = payload.tool ? 'crosshair' : 'default';
++        });
++      }
++    });
++    return () => {
++      unsub();
++      activeToolRef.current = null;
++    };
++  }, []);
++
++
+   // ΓöÇΓöÇ Chart Shift (standalone effect) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   // Listens for rtx:chartShift window events and applies rightOffset directly.
+   // Completely independent of command bus lifecycle.

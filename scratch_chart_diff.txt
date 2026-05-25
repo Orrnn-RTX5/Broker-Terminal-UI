@@ -1,0 +1,695 @@
+﻿diff --git a/src/components/TradingChart.tsx b/src/components/TradingChart.tsx
+index 8fecb0c..620ed65 100644
+--- a/src/components/TradingChart.tsx
++++ b/src/components/TradingChart.tsx
+@@ -66,6 +66,26 @@ import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
+ export type ChartType = 'candlestick' | 'bar' | 'line' | 'area';
+ export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
+ 
++// MT5-style "comfortable" candle width ΓÇö used to compute how many bars to fit
++// across the visible chart area on initial-load and on axis reset. Adapting to
++// container width keeps the look consistent whether the panel is narrow or wide.
++const TARGET_BAR_PX = 25;
++const MIN_ADAPTIVE_BARS = 30;
++const MAX_ADAPTIVE_BARS = 200;
++const computeAdaptiveVisibleBars = (
++  container: HTMLElement | null,
++  chart: IChartApi | null,
++  totalBars: number,
++  minBarsFloor: number,
++): number => {
++  const containerWidth = container?.offsetWidth || 1400;
++  const axisWidth = chart?.priceScale('right').width() || 60;
++  const chartWidth = Math.max(200, containerWidth - axisWidth);
++  const adaptive = Math.floor(chartWidth / TARGET_BAR_PX);
++  const floor = Math.max(MIN_ADAPTIVE_BARS, minBarsFloor);
++  return Math.min(totalBars, Math.max(floor, Math.min(MAX_ADAPTIVE_BARS, adaptive)));
++};
++
+ interface Candle {
+   time: number;
+   open: number;
+@@ -129,10 +149,12 @@ export const TradingChart = React.memo(function TradingChart({
+   chartType = 'candlestick',
+   panelId,
+ }: TradingChartProps) {
++  const authToken = useAppStore((state) => state.authToken);
++
+   // Debug: Log ACTUAL mount (not every re-render)
+   useEffect(() => {
+-    console.log(`[TradingChart] Γ£à MOUNTED: symbol=${symbol}, timeframe=${timeframe}`);
+-    return () => console.log(`[TradingChart] Γ¥î UNMOUNTED: symbol=${symbol}`);
++    console.log(`[TradingChart] MOUNTED: symbol=${symbol}, timeframe=${timeframe}`);
++    return () => console.log(`[TradingChart]  UNMOUNTED: symbol=${symbol}`);
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, []);
+   const containerRef = useRef<HTMLDivElement>(null); // Main chart refs
+@@ -310,7 +332,7 @@ export const TradingChart = React.memo(function TradingChart({
+   const chartSettings = useChartSettingsStore(state =>
+     state.symbolProperties[symbol] || state.globalProperties
+   );
+-  
++
+   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
+     if (typeof document === 'undefined') return false;
+     const root = document.documentElement;
+@@ -477,14 +499,8 @@ export const TradingChart = React.memo(function TradingChart({
+         attributionLogo: false,
+       },
+       grid: {
+-        vertLines: {
+-          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
+-          style: 2
+-        },
+-        horzLines: {
+-          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
+-          style: 2
+-        },
++        vertLines: { color: 'transparent' },
++        horzLines: { color: 'transparent' },
+       },
+       crosshair: {
+         mode: CrosshairMode.Normal,
+@@ -500,7 +516,7 @@ export const TradingChart = React.memo(function TradingChart({
+       },
+       handleScale: {
+         axisPressedMouseMove: { time: false, price: true },  // MT5-style: drag price axis to zoom vertically
+-        axisDoubleClickReset: { time: false, price: true },  // Double-click price axis to reset auto-scale
++        axisDoubleClickReset: { time: false, price: false },  // handled manually below
+         mouseWheel: false,      // wheel never zooms
+         pinch: false,
+       },
+@@ -662,6 +678,48 @@ export const TradingChart = React.memo(function TradingChart({
+         return null;
+       })();
+ 
++      // ΓöÇΓöÇ Shared reset helpers (MT5-style double-click defaults) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++      // These match the initial-load fit exactly so a reset truly returns the
++      // chart to its starting view ΓÇö not just changes one option in isolation.
++      const resetPriceScaleToDefault = () => {
++        if (isDisposedRef.current || !chartRef.current) return;
++        chartRef.current.priceScale('right').applyOptions({
++          autoScale: true,
++          scaleMargins: { top: 0.05, bottom: 0.32 },
++        });
++      };
++
++      const resetTimeScaleToDefault = () => {
++        if (isDisposedRef.current || !chartRef.current) return;
++        const tf = prevTimeframeRef.current || timeframe;
++        const ts = chartRef.current.timeScale();
++        ts.applyOptions({
++          rightOffset: getTradingChartShiftRightOffset(tf, ctxChartShift),
++        });
++        const totalBars = candlesRef.current.length;
++        if (totalBars > 0) {
++          const visibleBars = computeAdaptiveVisibleBars(
++            containerRef.current,
++            chartRef.current,
++            totalBars,
++            getTradingChartDefaultVisibleBars(tf),
++          );
++          const rightPadBars = getTradingChartDefaultRightPadBars(tf);
++          ts.setVisibleLogicalRange({
++            from: totalBars - visibleBars,
++            to: totalBars + rightPadBars,
++          });
++          // Keep pixelsPerBarRef in sync with the effective spacing so the next
++          // time-axis drag starts from the visible spacing, not the legacy "2".
++          const chartW = Math.max(200, (containerRef.current?.offsetWidth || 1400)
++            - (chartRef.current.priceScale('right').width() || 60));
++          pixelsPerBarRef.current = chartW / (visibleBars + rightPadBars);
++        } else {
++          pixelsPerBarRef.current = TARGET_BAR_PX;
++        }
++        ts.scrollToRealTime();
++      };
++
+       if (priceAxisEl) {
+         const handlePriceAxisDown = (e: MouseEvent) => {
+           if (e.button !== 0) return; // left click only
+@@ -699,35 +757,26 @@ export const TradingChart = React.memo(function TradingChart({
+           window.addEventListener('mouseup', onUp);
+         };
+ 
+-        const handlePriceAxisDblClick = (e: MouseEvent) => {
+-          // Double-click resets to auto-scale (MT5 behavior)
+-          e.preventDefault();
+-          e.stopPropagation();
+-          const priceScale = chart.priceScale('right');
+-          priceScale.applyOptions({
+-            autoScale: true,
+-            scaleMargins: { top: 0.1, bottom: 0.2 },
+-          });
+-        };
+-
+         priceAxisEl.style.cursor = 'ns-resize';
+         priceAxisEl.addEventListener('mousedown', handlePriceAxisDown);
+-        priceAxisEl.addEventListener('dblclick', handlePriceAxisDblClick);
+ 
+         priceAxisCleanup = () => {
+           priceAxisEl.removeEventListener('mousedown', handlePriceAxisDown);
+-          priceAxisEl.removeEventListener('dblclick', handlePriceAxisDblClick);
+         };
+       }
+ 
+-      // ΓöÇΓöÇ MT5-style time-axis drag-to-zoom (position-based) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-      // Avoids fragile DOM traversal ΓÇö instead hit-tests clientY against the
+-      // container's bounding rect to detect clicks in the time-axis strip.
+-      // Drag left = zoom in (increase barSpacing), drag right = zoom out.
++      // ΓöÇΓöÇ MT5-style time-axis drag-to-zoom + unified dblclick reset ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++      // Position-based hit-testing detects which region was double-clicked
++      // (time axis / price axis / chart body) and resets accordingly. This
++      // avoids the fragile DOM-selector approach for the price axis dblclick
++      // and adds the missing chart-body reset.
+       {
+         const TIME_AXIS_PX = 36; // height of the time-axis strip in px
+         const MIN_PX = 1;
+-        const MAX_PX = 30;
++        // Allow zoom-in well past the adaptive default (~25px) so users can
++        // stretch candles much wider ΓÇö matches MT5 where you can blow up a
++        // single candle to fill a big chunk of the screen.
++        const MAX_PX = 150;
+         const SENSITIVITY = 0.005;
+ 
+         const inTimeAxis = (e: MouseEvent) => {
+@@ -736,6 +785,13 @@ export const TradingChart = React.memo(function TradingChart({
+             && e.clientX >= r.left && e.clientX <= r.right;
+         };
+ 
++        const inPriceAxis = (e: MouseEvent) => {
++          const r = chartContainer.getBoundingClientRect();
++          const w = chartRef.current?.priceScale('right').width() || 60;
++          return e.clientX >= r.right - w
++            && e.clientY >= r.top && e.clientY < r.bottom - TIME_AXIS_PX;
++        };
++
+         const handleTimeAxisDown = (e: MouseEvent) => {
+           if (e.button !== 0 || !inTimeAxis(e)) return;
+           e.preventDefault();
+@@ -775,12 +831,21 @@ export const TradingChart = React.memo(function TradingChart({
+           window.addEventListener('mouseup', onUp);
+         };
+ 
+-        const handleTimeAxisDblClick = (e: MouseEvent) => {
+-          if (!inTimeAxis(e)) return;
++        const handleContainerDblClick = (e: MouseEvent) => {
++          if (!chartRef.current) return;
++          const onTime = inTimeAxis(e);
++          const onPrice = inPriceAxis(e);
+           e.preventDefault();
+-          pixelsPerBarRef.current = 2;
+-          chart.timeScale().applyOptions({ barSpacing: 2 });
+-          chart.timeScale().scrollToRealTime();
++          e.stopPropagation();
++          if (onTime && !onPrice) {
++            resetTimeScaleToDefault();
++          } else if (onPrice && !onTime) {
++            resetPriceScaleToDefault();
++          } else {
++            // Chart body OR corner (both axes) ΓÇö reset both
++            resetTimeScaleToDefault();
++            resetPriceScaleToDefault();
++          }
+         };
+ 
+         const handleTimeAxisHover = (e: MouseEvent) => {
+@@ -788,13 +853,13 @@ export const TradingChart = React.memo(function TradingChart({
+         };
+ 
+         chartContainer.addEventListener('mousedown', handleTimeAxisDown, { capture: true });
+-        chartContainer.addEventListener('dblclick', handleTimeAxisDblClick);
++        chartContainer.addEventListener('dblclick', handleContainerDblClick);
+         chartContainer.addEventListener('mousemove', handleTimeAxisHover);
+ 
+         timeAxisCleanup = () => {
+           chartContainer.removeEventListener('mousedown', handleTimeAxisDown,
+             { capture: true } as EventListenerOptions);
+-          chartContainer.removeEventListener('dblclick', handleTimeAxisDblClick);
++          chartContainer.removeEventListener('dblclick', handleContainerDblClick);
+           chartContainer.removeEventListener('mousemove', handleTimeAxisHover);
+         };
+       }
+@@ -935,11 +1000,17 @@ export const TradingChart = React.memo(function TradingChart({
+       seriesRef.current.setData(formatted);
+       volumeRef.current.setData(volumeData);
+ 
+-      // Auto-fit to show last ~80 candles for proper MT5-style candle sizing
++      // Auto-fit to a comfortable MT5-style spacing ΓÇö adapts to container width
++      // so candles render at ~25px wide regardless of panel size.
+       seriesRef.current.priceScale().applyOptions({ autoScale: true });
+       const totalBars = formatted.length;
+       if (totalBars > 0 && chartRef.current) {
+-        const visibleBars = Math.min(getTradingChartDefaultVisibleBars(activeTimeframe), totalBars);
++        const visibleBars = computeAdaptiveVisibleBars(
++          containerRef.current,
++          chartRef.current,
++          totalBars,
++          getTradingChartDefaultVisibleBars(activeTimeframe),
++        );
+         const rightPadBars = getTradingChartDefaultRightPadBars(activeTimeframe);
+         chartRef.current.timeScale().setVisibleLogicalRange({
+           from: totalBars - visibleBars,
+@@ -1509,7 +1580,7 @@ export const TradingChart = React.memo(function TradingChart({
+       const intBar = ts.coordinateToLogical(x);
+       if (intBar === null) return null;
+       const c0 = ts.logicalToCoordinate(intBar);
+-      const c1 = ts.logicalToCoordinate(intBar + 1);
++      const c1 = ts.logicalToCoordinate((intBar + 1) as any);
+       if (c0 === null || c1 === null) return intBar;
+       const barWidth = c1 - c0;
+       if (Math.abs(barWidth) < 0.5) return intBar;
+@@ -1517,8 +1588,13 @@ export const TradingChart = React.memo(function TradingChart({
+       return intBar + fraction;
+     };
+     const clickHandler = (param: any) => {
+-      if (!param.time || !param.point || !seriesRef.current) return;
++      console.log(`[TradingChart] ≡ƒû▒∩╕Å CLICK on chart: time=${param.time}, point=${!!param.point}, series=${!!seriesRef.current}, activeToolRef=${activeToolRef.current}`);
++      if (!param.time || !param.point || !seriesRef.current) {
++        console.log(`[TradingChart] Γ¥î Click rejected: time=${!!param.time}, point=${!!param.point}, series=${!!seriesRef.current}`);
++        return;
++      }
+       const activeDrawing = drawingManager.getActiveDrawing();
++      console.log(`[TradingChart] ≡ƒôÉ activeDrawing=${!!activeDrawing}, type=${activeDrawing?.type}, points=${activeDrawing?.points?.length}`);
+       if (activeDrawing && activeDrawing.type !== 'freehand') {
+         const price = seriesRef.current.coordinateToPrice(param.point.y);
+         if (price !== null) {
+@@ -1603,9 +1679,9 @@ export const TradingChart = React.memo(function TradingChart({
+           if (isDrawingFreehand) {
+             drawingManager.addPoint(param.time as number, price);
+           } else {
+-            // For vline: compute pixelXOffset ∩┐╜ same pattern as hline price offset
++            // For vline: compute pixelXOffset ΓÇô same pattern as hline price offset
+             const activeD2 = drawingManager.getActiveDrawing();
+-            if (activeD2 && activeD2.type === 'vline') {
++            if (activeD2 && (activeD2.type === 'vline' || activeD2.type === 'channel')) {
+               const rawX = (param.sourceEvent && containerRef.current)
+                 ? (param.sourceEvent.clientX - containerRef.current.getBoundingClientRect().left)
+                 : param.point.x;
+@@ -1620,7 +1696,7 @@ export const TradingChart = React.memo(function TradingChart({
+           }
+         }
+       }
+-    
++
+     };
+     chart.subscribeCrosshairMove(crosshairHandler);
+ 
+@@ -1747,12 +1823,8 @@ export const TradingChart = React.memo(function TradingChart({
+         textColor: chartColors.foreground,
+       },
+       grid: {
+-        vertLines: {
+-          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
+-        },
+-        horzLines: {
+-          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
+-        },
++        vertLines: { color: 'transparent' },
++        horzLines: { color: 'transparent' },
+       },
+       crosshair: {
+         vertLine: { color: chartColors.foreground },
+@@ -1763,7 +1835,7 @@ export const TradingChart = React.memo(function TradingChart({
+       },
+       handleScale: {
+         axisPressedMouseMove: { time: false, price: true },
+-        axisDoubleClickReset: { time: false, price: true },
++        axisDoubleClickReset: { time: false, price: false },
+       },
+       rightPriceScale: {
+         borderColor: chartColors.foreground,
+@@ -1981,7 +2053,7 @@ export const TradingChart = React.memo(function TradingChart({
+         if (y !== null && y !== undefined) {
+           const digits = getSymbolDigits(symbol);
+           livePriceRef.current = tick.bid;
+-          
++
+           const badgeColor = '#5A5A66'; // MT5-style solid gray
+ 
+           // Match exact price-scale width so badge overlays the axis labels 1:1
+@@ -2058,7 +2130,7 @@ export const TradingChart = React.memo(function TradingChart({
+           tradeAutoClosePendingRef.current.add(trade.key);
+           const pId = trade.key.replace('trade:', '');
+           console.log(`[Chart] ≡ƒ¢æ Auto-closing trade ${pId} due to SL/TP cross`);
+-          
++
+           api.positions.closePosition(String(pId)).then(() => {
+             useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== Number(pId)));
+             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+@@ -2154,7 +2226,7 @@ export const TradingChart = React.memo(function TradingChart({
+       candleStream.close();
+     };
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+-  }, [symbol, timeframe]);
++  }, [symbol, timeframe, authToken]);
+ 
+   // ΓöÇΓöÇ Candle Countdown Timer ΓöÇΓöÇ
+   useEffect(() => {
+@@ -2374,8 +2446,10 @@ export const TradingChart = React.memo(function TradingChart({
+ 
+   // Handle SELECT_TOOL command ΓÇö bridge toolbar buttons to drawingManager
+   useEffect(() => {
++    console.log('[TradingChart] Γ£à SELECT_TOOL subscriber REGISTERED, chartRef=', !!chartRef.current, 'containerRef=', !!containerRef.current);
+     const unsubSelectTool = commandBus.subscribe('SELECT_TOOL', (payload) => {
+       const tool = payload.tool;
++      console.log(`[TradingChart] ≡ƒÄ» SELECT_TOOL received: tool=${tool}, chartRef=${!!chartRef.current}, seriesRef=${!!seriesRef.current}`);
+ 
+       // Cancel any active drawing + clear inline text input
+       drawingManager.cancelDrawing();
+@@ -2424,7 +2498,8 @@ export const TradingChart = React.memo(function TradingChart({
+         if (validDrawingTypes.includes(tool)) {
+           const subtype = (payload as any).subtype as string | undefined;
+           drawingManager.startDrawing(tool as any, '#3b82f6', subtype ? { subtype } : undefined);
+-          console.log(`[Chart] Tool: ${tool} ΓÇö drawing started, click on chart to place points`);
++          const activeAfter = drawingManager.getActiveDrawing();
++          console.log(`[Chart] Tool: ${tool} ΓÇö drawing started, activeDrawing=${!!activeAfter}, type=${activeAfter?.type}`);
+         } else {
+           console.log(`[Chart] Tool: ${tool} ΓÇö not a drawing tool`);
+         }
+@@ -3044,10 +3119,10 @@ export const TradingChart = React.memo(function TradingChart({
+       nextActiveSnapshots.forEach((trade) => {
+         const entryColor = getEntryColor(trade.side);
+         createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor);
+-        
++
+         // Render MT5-style full horizontal line for active entry
+         createPriceLevel(`${trade.side} ${trade.volume}`, trade.entryPrice, entryColor);
+-        
++
+         // Render SL / TP (apply optimistic overrides if any)
+         const levels = tradeLevelOverridesRef.current.get(trade.key) ?? { sl: trade.sl, tp: trade.tp };
+         if (levels.sl && levels.sl > 0) createPriceLevel('SL', levels.sl, TRADE_SELL_COLOR);
+@@ -3262,7 +3337,7 @@ export const TradingChart = React.memo(function TradingChart({
+     const createHistoryPath = (entryPrice: number, entryTime: number, exitPrice: number, exitTime: number, isBuy: boolean, volume: number) => {
+       const overlayEl = overlayRef.current;
+       if (!overlayEl || !seriesRef.current || !chartRef.current) return;
+-      
++
+       const isProfit = isBuy ? exitPrice >= entryPrice : entryPrice >= exitPrice;
+       const color = isBuy ? '#2962FF' : '#ef5350';
+ 
+@@ -3302,7 +3377,7 @@ export const TradingChart = React.memo(function TradingChart({
+       exitArrow.style.cssText = `position: absolute; z-index: 12; pointer-events: none; filter: drop-shadow(0 0 3px ${isBuy ? '#ef5350' : '#2962FF'}99);`;
+       overlayEl.appendChild(exitArrow);
+       positionLabelsRef.current.push(exitArrow);
+-      positionLabelDataRef.current.push({ price: exitPrice, time: exitTime, text: '', color: isBuy ? '#ef5350': '#2962FF', isPin: true, isBuyDeal: !isBuy });
++      positionLabelDataRef.current.push({ price: exitPrice, time: exitTime, text: '', color: isBuy ? '#ef5350' : '#2962FF', isPin: true, isBuyDeal: !isBuy });
+     };
+ 
+     const createExecutionPin = (text: string, color: string, price: number, time: number, _isBuy: boolean, yOffset = 0) => {
+@@ -3312,7 +3387,7 @@ export const TradingChart = React.memo(function TradingChart({
+       const pin = document.createElement('div');
+       pin.className = 'rtx-execution-pin-arrow';
+       pin.title = text;
+-      
++
+       pin.innerHTML = _isBuy
+         ? `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="6,2 10,10 2,10" fill="#2962FF" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`
+         : `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="2,2 10,2 6,10" fill="#ef5350" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+@@ -3512,7 +3587,7 @@ export const TradingChart = React.memo(function TradingChart({
+       const historyConnections: { entryPrice: number; entryTime: number; exitPrice: number; exitTime: number; isBuy: boolean; volume: number }[] = [];
+       const mt5HistoryDeals = Array.isArray(mt5State.history) ? mt5State.history : [];
+       const historyByPosition = new Map<number, typeof mt5HistoryDeals>();
+-      
++
+       mt5HistoryDeals.filter(d => (d.symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedChartSymbol).forEach(d => {
+         const pid = (d as any).position || (d as any).position_id;
+         if (pid) {
+@@ -3522,47 +3597,47 @@ export const TradingChart = React.memo(function TradingChart({
+       });
+ 
+       historyByPosition.forEach(deals => {
+-         const inDeals = deals.filter((d: any) => d.entry === '0' || d.entry === 'IN' || d.entry === 0);
+-         const outDeals = deals.filter((d: any) => d.entry === '1' || d.entry === 'OUT' || d.entry === 1);
+-         if (inDeals.length > 0 && outDeals.length > 0) {
+-            inDeals.forEach(inD => {
+-               outDeals.forEach(outD => {
+-                  const typeRaw = (inD as any).type;
+-                  const isBuy = String(typeRaw).toUpperCase().includes('BUY') || typeRaw === 0 || typeRaw === '0';
+-                  historyConnections.push({
+-                     entryPrice: inD.price,
+-                     entryTime: Math.floor(inD.time_ms / 1000), // assumed to be ms
+-                     exitPrice: outD.price,
+-                     exitTime: Math.floor(outD.time_ms / 1000),
+-                     isBuy,
+-                     volume: outD.volume
+-                  });
+-               });
++        const inDeals = deals.filter((d: any) => d.entry === '0' || d.entry === 'IN' || d.entry === 0);
++        const outDeals = deals.filter((d: any) => d.entry === '1' || d.entry === 'OUT' || d.entry === 1);
++        if (inDeals.length > 0 && outDeals.length > 0) {
++          inDeals.forEach(inD => {
++            outDeals.forEach(outD => {
++              const typeRaw = (inD as any).type;
++              const isBuy = String(typeRaw).toUpperCase().includes('BUY') || typeRaw === 0 || typeRaw === '0';
++              historyConnections.push({
++                entryPrice: inD.price,
++                entryTime: Math.floor(inD.time_ms / 1000), // assumed to be ms
++                exitPrice: outD.price,
++                exitTime: Math.floor(outD.time_ms / 1000),
++                isBuy,
++                volume: outD.volume
++              });
+             });
+-         }
++          });
++        }
+       });
+ 
+       const appTrades = Array.isArray(state.trades) ? state.trades : [];
+       appTrades.filter((t: any) => (t.symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedChartSymbol).forEach((t: any) => {
+-         if (t.closeTime && t.closePrice) {
+-            const entryTs = typeof t.openTime === 'string' ? Math.floor(new Date(t.openTime).getTime()/1000) : t.openTime;
+-            const exitTs = typeof t.closeTime === 'string' ? Math.floor(new Date(t.closeTime).getTime()/1000) : t.closeTime;
+-            historyConnections.push({
+-               entryPrice: t.openPrice,
+-               entryTime: entryTs,
+-               exitPrice: t.closePrice,
+-               exitTime: exitTs,
+-               isBuy: t.side === 'BUY',
+-               volume: t.volume
+-            });
+-         }
++        if (t.closeTime && t.closePrice) {
++          const entryTs = typeof t.openTime === 'string' ? Math.floor(new Date(t.openTime).getTime() / 1000) : t.openTime;
++          const exitTs = typeof t.closeTime === 'string' ? Math.floor(new Date(t.closeTime).getTime() / 1000) : t.closeTime;
++          historyConnections.push({
++            entryPrice: t.openPrice,
++            entryTime: entryTs,
++            exitPrice: t.closePrice,
++            exitTime: exitTs,
++            isBuy: t.side === 'BUY',
++            volume: t.volume
++          });
++        }
+       });
+ 
+       historyConnections.forEach(hc => {
+         if (hc.entryTime > 0 && hc.exitTime > 0) {
+-           const entryTarget = getCandleBoundaryTime(hc.entryTime);
+-           const exitTarget = getCandleBoundaryTime(hc.exitTime);
+-           createHistoryPath(hc.entryPrice, entryTarget, hc.exitPrice, exitTarget, hc.isBuy, hc.volume);
++          const entryTarget = getCandleBoundaryTime(hc.entryTime);
++          const exitTarget = getCandleBoundaryTime(hc.exitTime);
++          createHistoryPath(hc.entryPrice, entryTarget, hc.exitPrice, exitTarget, hc.isBuy, hc.volume);
+         }
+       });
+ 
+@@ -3782,12 +3857,12 @@ export const TradingChart = React.memo(function TradingChart({
+             handleScale: { axisPressedMouseMove: { time: false, price: false } }
+           });
+         }
+-        
+-        dragState = { tradeObj: closestTrade, role: grabbedType === 'ENTRY' ? 'SL' : grabbedType, grabbedType }; 
+-        
++
++        dragState = { tradeObj: closestTrade, role: grabbedType === 'ENTRY' ? 'SL' : grabbedType, grabbedType };
++
+         dragLineOverlay = document.createElement('div');
+         dragLineOverlay.style.cssText = `position:absolute;left:0;right:52px;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translateY(${y}px)`;
+-        
++
+         dragBadgeOverlay = document.createElement('div');
+         const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
+         const badgeBg = isLight ? 'rgba(255, 255, 255, 0.92)' : '#2a2a38';
+@@ -3832,7 +3907,7 @@ export const TradingChart = React.memo(function TradingChart({
+ 
+       dragState.role = role;
+       dragLineOverlay.style.transform = `translateY(${y}px)`;
+-      
++
+       dragBadgeOverlay.style.color = color;
+       dragBadgeOverlay.textContent = `${role} ${price.toFixed(getSymbolDigits(tradeObj.symbol))}`;
+       dragBadgeOverlay.style.transform = `translate(-50%, calc(-50% + ${y}px))`;
+@@ -3840,38 +3915,38 @@ export const TradingChart = React.memo(function TradingChart({
+ 
+     const handlePointerUp = (e: PointerEvent) => {
+       if (!dragState) return;
+-      
++
+       if (seriesRef.current) {
+         const y = getChartY(e);
+         const finalPrice = seriesRef.current.coordinateToPrice(y as any);
+         const { tradeObj, role } = dragState;
+-        
++
+         if (finalPrice !== null) {
+-           const ptDist = Math.abs(finalPrice - tradeObj.entryPrice);
+-           const minDistance = 5 * Math.pow(10, -getSymbolDigits(tradeObj.symbol));
+-           if (ptDist >= minDistance) {
+-             const ticket = Number(tradeObj.key.replace('trade:', ''));
+-             if (ticket) {
+-               const existingOverrides = tradeLevelOverridesRef.current.get(tradeObj.key);
+-               const currentSl = existingOverrides ? existingOverrides.sl : tradeObj.sl;
+-               const currentTp = existingOverrides ? existingOverrides.tp : tradeObj.tp;
+-
+-               const sl = role === 'SL' ? finalPrice : currentSl;
+-               const tp = role === 'TP' ? finalPrice : currentTp;
+-               
+-               // Optimistically set UI level overrides immediately
+-               tradeLevelOverridesRef.current.set(tradeObj.key, { sl: sl || 0, tp: tp || 0 });
+-               window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
+-               window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
+-               
+-               api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 }).catch(err => {
+-                 console.error('[Chart] Failed to modify SL/TP:', err);
+-                 // On outright error, revert override
+-                 tradeLevelOverridesRef.current.delete(tradeObj.key);
+-                 window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); 
+-               });
+-             }
+-           }
++          const ptDist = Math.abs(finalPrice - tradeObj.entryPrice);
++          const minDistance = 5 * Math.pow(10, -getSymbolDigits(tradeObj.symbol));
++          if (ptDist >= minDistance) {
++            const ticket = Number(tradeObj.key.replace('trade:', ''));
++            if (ticket) {
++              const existingOverrides = tradeLevelOverridesRef.current.get(tradeObj.key);
++              const currentSl = existingOverrides ? existingOverrides.sl : tradeObj.sl;
++              const currentTp = existingOverrides ? existingOverrides.tp : tradeObj.tp;
++
++              const sl = role === 'SL' ? finalPrice : currentSl;
++              const tp = role === 'TP' ? finalPrice : currentTp;
++
++              // Optimistically set UI level overrides immediately
++              tradeLevelOverridesRef.current.set(tradeObj.key, { sl: sl || 0, tp: tp || 0 });
++              window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
++              window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
++
++              api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 }).catch(err => {
++                console.error('[Chart] Failed to modify SL/TP:', err);
++                // On outright error, revert override
++                tradeLevelOverridesRef.current.delete(tradeObj.key);
++                window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
++              });
++            }
++          }
+         }
+       }
+ 
+@@ -3998,24 +4073,90 @@ export const TradingChart = React.memo(function TradingChart({
+       )}
+ 
+ 
+-      {/* Premium MT5 HTML HUD */}
+-      <div style={{
+-        position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
+-        fontFamily: "Consolas, 'Courier New', monospace", fontSize: '11px', color: '#A1A1AA',
+-        textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px'
+-      }}>
+-        <span style={{ fontWeight: 'bold', color: '#E4E4E7' }}>{symbol}, {timeframe}</span>
+-        <span>O: <span ref={ohlcOpenRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
+-        <span>H: <span ref={ohlcHighRef} style={{ color: '#22C55E' }}>0.00000</span></span>
+-        <span>L: <span ref={ohlcLowRef} style={{ color: '#EF4444' }}>0.00000</span></span>
+-        <span>C: <span ref={ohlcCloseRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
+-        <span>V: <span ref={ohlcVolumeRef} style={{ color: '#E4E4E7' }}>0</span></span>
+-        <span ref={countdownTextRef} style={{ marginLeft: '12px', color: '#F59E0B', fontWeight: 'bold' }}></span>
+-      </div>
++      {/* Premium MT5 HTML HUD ΓÇö dark mode keeps original styling;
++          advanced/untitled-light mode gets sans font, semibold/bold mix,
++          theme-purple symbol with traditional H/L colors highlighted in soft pills. */}
++      {isAdvancedUntitledLight ? (
++        <div style={{
++          position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
++          fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
++          fontSize: '11px', letterSpacing: '0.01em',
++          display: 'flex', alignItems: 'center', gap: '8px'
++        }}>
++          <span style={{
++            fontWeight: 700, color: '#7f56d9',
++            background: 'rgba(127, 86, 217, 0.10)',
++            padding: '2px 8px', borderRadius: '4px',
++          }}>{symbol}, {timeframe}</span>
++          <span style={{ fontWeight: 500, color: '#475467' }}>
++            O: <span ref={ohlcOpenRef} style={{
++              fontWeight: 600, color: '#1d2939',
++              background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
++            }}>0.00000</span>
++          </span>
++          <span style={{ fontWeight: 500, color: '#475467' }}>
++            H: <span ref={ohlcHighRef} style={{
++              fontWeight: 600, color: '#16a34a',
++              background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
++            }}>0.00000</span>
++          </span>
++          <span style={{ fontWeight: 500, color: '#475467' }}>
++            L: <span ref={ohlcLowRef} style={{
++              fontWeight: 600, color: '#dc2626',
++              background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
++            }}>0.00000</span>
++          </span>
++          <span style={{ fontWeight: 500, color: '#475467' }}>
++            C: <span ref={ohlcCloseRef} style={{
++              fontWeight: 600, color: '#1d2939',
++              background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
++            }}>0.00000</span>
++          </span>
++          <span style={{ fontWeight: 500, color: '#475467' }}>
++            V: <span ref={ohlcVolumeRef} style={{
++              fontWeight: 600, color: '#1d2939',
++              background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
++            }}>0</span>
++          </span>
++          <span ref={countdownTextRef} style={{
++            marginLeft: '6px', fontWeight: 700, color: '#b45309',
++            background: 'rgba(245, 158, 11, 0.12)', padding: '1px 6px', borderRadius: '3px'
++          }}></span>
++        </div>
++      ) : (
++        <div style={{
++          position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
++          fontFamily: "Consolas, 'Courier New', monospace", fontSize: '11px', color: '#A1A1AA',
++          textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px'
++        }}>
++          <span style={{ fontWeight: 'bold', color: '#E4E4E7' }}>{symbol}, {timeframe}</span>
++          <span>O: <span ref={ohlcOpenRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
++          <span>H: <span ref={ohlcHighRef} style={{ color: '#22C55E' }}>0.00000</span></span>
++          <span>L: <span ref={ohlcLowRef} style={{ color: '#EF4444' }}>0.00000</span></span>
++          <span>C: <span ref={ohlcCloseRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
++          <span>V: <span ref={ohlcVolumeRef} style={{ color: '#E4E4E7' }}>0</span></span>
++          <span ref={countdownTextRef} style={{ marginLeft: '12px', color: '#F59E0B', fontWeight: 'bold' }}></span>
++        </div>
++      )}
+ 
+       {/* Chart Container - must have explicit dimensions for lightweight-charts */}
+       <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+ 
++      {/* Static background grid overlay (MT5-style: does not move with pan/scroll) */}
++      {chartSettings.showGrid && (
++        <div
++          className="absolute inset-0"
++          style={{
++            pointerEvents: 'none',
++            zIndex: 1,
++            backgroundImage:
++              `linear-gradient(to right, ${chartColors.grid} 1px, transparent 1px), ` +
++              `linear-gradient(to bottom, ${chartColors.grid} 1px, transparent 1px)`,
++            backgroundSize: '80px 50px',
++          }}
++        />
++      )}
++
+       {/* Drawing Overlay ΓÇö always pointer-events:none so chart canvas receives all mouse events */}
+       <div ref={overlayRef} className="chart-drawing-overlay absolute inset-0" style={{ pointerEvents: 'none', zIndex: 10 }} />
+ 

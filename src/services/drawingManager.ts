@@ -1,4 +1,14 @@
 /**
+ * ============================================================================
+ * 🚫 AI FENCE: ISOLATED SYSTEM COMPONENT
+ * ============================================================================
+ * Do not modify, rewrite, or alter this file when processing other features.
+ * Drawing tools are self-contained and highly sensitive to state/prop updates.
+ * Any adjustments must be done ONLY under explicit drawing-specific requests.
+ * ============================================================================
+ */
+
+/**
  * DrawingManager — SVG Overlay Based
  *
  * Architecture:
@@ -37,6 +47,14 @@ export interface DrawingPoint {
   price: number;
   logicalIndex?: number;  // kept for backward compat with saved drawings
   pixelXOffset?: number;  // vline only: pixel offset from timeToCoordinate(time), sub-bar precise
+}
+
+export interface ChartContext {
+  chart: IChartApi;
+  series: ISeriesApi<any>;
+  symbol: string;
+  timeframe: string;
+  svgOverlay: SVGSVGElement | null;
 }
 
 export interface Drawing {
@@ -149,17 +167,54 @@ const FIB_COLORS: Record<string, string> = {
 // Class
 // ──────────────────────────────────────────────
 export class DrawingManager {
-  private drawings: Drawing[] = [];
+  private drawingsBySymbol: Map<string, Drawing[]> = new Map();
   private activeDrawing: Drawing | null = null;
   private previewPoint: DrawingPoint | null = null;
   private magnetEnabled = false;
 
+  private chartContexts: Map<HTMLElement, ChartContext> = new Map();
+  private activeContainer: HTMLElement | null = null;
+
   private chart: IChartApi | null = null;
   private series: ISeriesApi<any> | null = null;
-  private svgOverlay: SVGSVGElement | null = null;
-  private overlayContainer: HTMLElement | null = null;  // stored for self-healing
   private currentSymbol: string | null = null;
   private currentTimeframe: string = 'M1'; // default matches app default timeframe
+
+  private get drawings(): Drawing[] {
+    if (!this.currentSymbol) return [];
+    let list = this.drawingsBySymbol.get(this.currentSymbol);
+    if (!list) {
+      list = [];
+      this.drawingsBySymbol.set(this.currentSymbol, list);
+    }
+    return list;
+  }
+
+  private set drawings(val: Drawing[]) {
+    if (this.currentSymbol) {
+      this.drawingsBySymbol.set(this.currentSymbol, val);
+    }
+  }
+
+  private get svgOverlay(): SVGSVGElement | null {
+    if (!this.activeContainer) return null;
+    return this.chartContexts.get(this.activeContainer)?.svgOverlay || null;
+  }
+
+  private set svgOverlay(val: SVGSVGElement | null) {
+    if (this.activeContainer) {
+      const ctx = this.chartContexts.get(this.activeContainer);
+      if (ctx) ctx.svgOverlay = val;
+    }
+  }
+
+  private get overlayContainer(): HTMLElement | null {
+    return this.activeContainer;
+  }
+
+  private set overlayContainer(val: HTMLElement | null) {
+    this.activeContainer = val;
+  }
 
   private undoStack: DrawingHistory[] = [];
   private redoStack: DrawingHistory[] = [];
@@ -198,50 +253,79 @@ export class DrawingManager {
     overlayContainer?: HTMLElement | null,
     timeframe?: string,
   ): void {
+    if (!overlayContainer) return;
+
+    if (!chart || !series) {
+      // Cleanup / dispose chart panel
+      const context = this.chartContexts.get(overlayContainer);
+      if (context?.svgOverlay) {
+        context.svgOverlay.remove();
+      }
+      this.chartContexts.delete(overlayContainer);
+      if (this.activeContainer === overlayContainer) {
+        this.activeContainer = null;
+      }
+      return;
+    }
+
+    this.activeContainer = overlayContainer;
     this.chart = chart;
     this.series = series;
-
-    // Detect changes BEFORE updating state
-    const symbolChanged = !!(symbol && symbol !== this.currentSymbol);
-    const timeframeChanged = !!(timeframe && timeframe !== this.currentTimeframe);
-
-    // Now update state
     if (symbol) this.currentSymbol = symbol;
     if (timeframe) this.currentTimeframe = timeframe;
 
-    // Store overlay container for self-healing
-    if (overlayContainer) {
-      this.overlayContainer = overlayContainer;
+    // Get or create context
+    let context = this.chartContexts.get(overlayContainer);
+    const symbolChanged = !context || context.symbol !== symbol;
+    const timeframeChanged = !context || context.timeframe !== timeframe;
+
+    if (!context) {
+      context = {
+        chart,
+        series,
+        symbol: symbol || '',
+        timeframe: timeframe || 'M1',
+        svgOverlay: null,
+      };
+      this.chartContexts.set(overlayContainer, context);
+    } else {
+      context.chart = chart;
+      context.series = series;
+      if (symbol) context.symbol = symbol;
+      if (timeframe) context.timeframe = timeframe;
     }
 
-    // Build or relocate the SVG overlay
-    this.ensureSvgOverlay();
+    // Build or relocate the SVG overlay for this container
+    this.ensureSvgOverlayForContainer(overlayContainer, context);
 
     if (symbolChanged || timeframeChanged) {
       this.drawings = [];
       this.renderAll();
-      if (this.currentSymbol) this.loadFromBackend(this.currentSymbol);
-    } else if (this.chart) {
+      if (this.currentSymbol) {
+        this.loadFromBackend(this.currentSymbol).then(() => {
+          this.renderAll();
+        });
+      }
+    } else {
       this.renderAll();
     }
   }
 
   /** Create or heal the SVG overlay. Tries stored container, then document.body as last resort. */
   private ensureSvgOverlay(): void {
-    const container = this.overlayContainer;
+    if (this.activeContainer) {
+      const ctx = this.chartContexts.get(this.activeContainer);
+      if (ctx) this.ensureSvgOverlayForContainer(this.activeContainer, ctx);
+    }
+  }
 
-    if (!container) {
-      // No container yet — can't create overlay
-      return;
+  private ensureSvgOverlayForContainer(container: HTMLElement, context: ChartContext): void {
+    if (context.svgOverlay && context.svgOverlay.parentElement !== container) {
+      context.svgOverlay.remove();
+      context.svgOverlay = null;
     }
 
-    // Remove old SVG if it's in a different parent
-    if (this.svgOverlay && this.svgOverlay.parentElement !== container) {
-      this.svgOverlay.remove();
-      this.svgOverlay = null;
-    }
-
-    if (!this.svgOverlay) {
+    if (!context.svgOverlay) {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'chart-svg-overlay');
       svg.style.cssText = [
@@ -255,7 +339,7 @@ export class DrawingManager {
         'z-index:10',
       ].join(';');
       container.appendChild(svg);
-      this.svgOverlay = svg;
+      context.svgOverlay = svg;
       console.log('[DrawingManager] SVG overlay created in', container.className || container.tagName);
     }
   }
@@ -520,60 +604,80 @@ export class DrawingManager {
 
 
   renderAll(): void {
-    // Self-heal: recreate SVG overlay if missing
-    if (!this.svgOverlay) {
-      this.ensureSvgOverlay();
-    }
-    const svg = this.svgOverlay;
-    if (!svg) return;
+    const origChart = this.chart;
+    const origSeries = this.series;
+    const origSymbol = this.currentSymbol;
 
-    // Clear all contents
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    try {
+      for (const [container, context] of this.chartContexts.entries()) {
+        if (!context.svgOverlay) {
+          this.ensureSvgOverlayForContainer(container, context);
+        }
+        const svg = context.svgOverlay;
+        if (!svg) continue;
 
-    if (!this.chart || !this.series) return;
+        // Clear all contents
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-    // Get chart container dimensions for full-span lines (hline, vline)
-    const parent = svg.parentElement;
-    const W = parent ? parent.clientWidth : 2000;
-    const H = parent ? parent.clientHeight : 1200;
+        if (!context.chart || !context.series) continue;
 
-    // Add defs for arrowhead
-    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    defs.innerHTML = `
-      <marker id="arr" markerWidth="7" markerHeight="7" refX="3" refY="3.5" orient="auto">
-        <polygon points="0 0, 7 3.5, 0 7" fill="#2196F3" />
-      </marker>`;
-    svg.appendChild(defs);
+        // Set active context temporarily for px() and rendering helpers
+        this.chart = context.chart;
+        this.series = context.series;
+        this.currentSymbol = context.symbol;
 
-    // Render all saved drawings
-    this.drawings.forEach(d => this.renderDrawing(svg, d, W, H));
+        // Get chart container dimensions for full-span lines (hline, vline)
+        const parent = svg.parentElement;
+        const W = parent ? parent.clientWidth : 2000;
+        const H = parent ? parent.clientHeight : 1200;
 
-    // Render cursor-following ghost BEFORE first click (vline, hline get a ghost from day 0)
-    if (this.activeDrawing && this.activeDrawing.points.length === 0 && this.previewPoint) {
-      const type = this.activeDrawing.type;
-      if (type === 'vline' || type === 'hline' || type === 'stamp') {
-        // Render a single ghost point as if it were placed
-        const ghost: Drawing = {
-          ...this.activeDrawing,
-          id: this.activeDrawing.id + '-ghost',
-          points: [this.previewPoint],
-          selected: false,
-          color: this.activeDrawing.color || '#2196F3',
-        };
-        this.renderDrawing(svg, ghost, W, H, true);
+        // Add defs for arrowhead
+        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        defs.innerHTML = `
+          <marker id="arr" markerWidth="7" markerHeight="7" refX="3" refY="3.5" orient="auto">
+            <polygon points="0 0, 7 3.5, 0 7" fill="#2196F3" />
+          </marker>`;
+        svg.appendChild(defs);
+
+        // Fetch drawings for this context's symbol
+        const symbolDrawings = this.drawingsBySymbol.get(context.symbol) || [];
+
+        // Render drawings for this symbol
+        symbolDrawings.forEach(d => this.renderDrawing(svg, d, W, H, false));
+
+        // Render cursor-following ghost BEFORE first click (vline, hline get a ghost from day 0)
+        // Only draw the active/preview drawings on the active container if it matches this context!
+        if (this.activeContainer === container && this.activeDrawing && this.activeDrawing.points.length === 0 && this.previewPoint) {
+          const type = this.activeDrawing.type;
+          if (type === 'vline' || type === 'hline' || type === 'stamp') {
+            const ghost: Drawing = {
+              ...this.activeDrawing,
+              id: this.activeDrawing.id + '-ghost',
+              points: [this.previewPoint],
+              selected: false,
+              color: this.activeDrawing.color || '#2196F3',
+            };
+            this.renderDrawing(svg, ghost, W, H, true);
+          }
+        }
+
+        // Render active drawing in progress with preview point appended
+        if (this.activeContainer === container && this.activeDrawing && this.activeDrawing.points.length > 0 && this.previewPoint) {
+          const preview: Drawing = {
+            ...this.activeDrawing,
+            id: this.activeDrawing.id + '-preview',
+            points: [...this.activeDrawing.points, this.previewPoint],
+            selected: false,
+            color: this.activeDrawing.color || '#2196F3',
+          };
+          this.renderDrawing(svg, preview, W, H, true);
+        }
       }
-    }
-
-    // Render active drawing in progress with preview point appended
-    if (this.activeDrawing && this.activeDrawing.points.length > 0 && this.previewPoint) {
-      const preview: Drawing = {
-        ...this.activeDrawing,
-        id: this.activeDrawing.id + '-preview',
-        points: [...this.activeDrawing.points, this.previewPoint],
-        selected: false,
-        color: this.activeDrawing.color || '#2196F3',
-      };
-      this.renderDrawing(svg, preview, W, H, true);
+    } finally {
+      // Restore original references
+      this.chart = origChart;
+      this.series = origSeries;
+      this.currentSymbol = origSymbol;
     }
   }
 
@@ -1245,7 +1349,7 @@ export class DrawingManager {
 
     // Make whole group clickable (select on click when not in drawing mode)
     if (!isPreview) {
-      g.style.pointerEvents = 'all';
+      g.style.pointerEvents = 'auto';
       g.style.cursor = 'pointer';
       g.addEventListener('click', e => {
         e.stopPropagation();
