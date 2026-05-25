@@ -61,7 +61,7 @@ export class TradeWebSocketClient {
         this.send({ action: 'auth', token });
       }
 
-      this.channels.forEach(channel => this.send({ action: 'subscribe', channel }));
+      this.channels.forEach(channel => this.send({ action: 'subscribe', channel, channels: [channel] }));
     };
 
     this.ws.onmessage = event => {
@@ -97,7 +97,7 @@ export class TradeWebSocketClient {
     }
 
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.send({ action: 'subscribe', channel: key });
+      this.send({ action: 'subscribe', channel: key, channels: [key] });
     }
 
     return () => this.unsubscribe(key, handler as TradeSocketHandler | undefined);
@@ -116,7 +116,7 @@ export class TradeWebSocketClient {
     this.channels.delete(key);
 
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.send({ action: 'unsubscribe', channel: key });
+      this.send({ action: 'unsubscribe', channel: key, channels: [key] });
     }
   }
 

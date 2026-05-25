@@ -45,8 +45,7 @@ export const initialToolbarState: ToolbarState = {
 export function toolbarReducer(state: ToolbarState, action: ToolbarAction): ToolbarState {
   switch (action.type) {
     case 'SELECT_TOOL':
-      // Only one drawing tool can be active at a time
-      // Selecting 'cursor' deselects all drawing tools
+     
       return {
         ...state,
         activeTool: action.tool === 'cursor' ? null : action.tool
@@ -101,8 +100,7 @@ export function toolbarReducer(state: ToolbarState, action: ToolbarAction): Tool
       };
 
     case 'ZOOM':
-      // Zoom by adjusting candle width
-      // Minimum: 2px, Maximum: 50px
+
       const newWidth = Math.max(2, Math.min(50, state.candleWidth + action.delta));
       return {
         ...state,

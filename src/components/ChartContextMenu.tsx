@@ -332,7 +332,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
         onClose();
     };
 
-    const handleSelectDrawingTool = (tool: string) => {
+    const handleSelectDrawingTool = (tool: any) => {
         commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool } });
         onClose();
     };

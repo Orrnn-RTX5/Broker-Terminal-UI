@@ -6,6 +6,7 @@ import { enqueueLiveTick } from '../services/liveTickDispatcher';
 import { useAppStore, type Tick as AppTick } from '../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../store/useMarketDataStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
+import { useQuoteSubscription } from './useQuoteSubscription';
 
 export interface MarketInstrument {
   symbol: string;
@@ -231,6 +232,10 @@ export function useLiveQuotes(symbols: string[]) {
   const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
 
+  // Section 2: Use QuoteSocketManager via useQuoteSubscription for /ws/feed
+  useQuoteSubscription(normalizedSymbols, 'live-quotes');
+
+  // REST polling fallback (still needed for initial quote snapshot)
   useEffect(() => {
     if (normalizedSymbols.length === 0 || !isAuthenticated) {
       setError(null);
@@ -265,25 +270,15 @@ export function useLiveQuotes(symbols: string[]) {
     };
   }, [normalizedSymbols.join('|'), isAuthenticated]);
 
+  // Subscribe in MarketDataStore for aggregation tracking
   useEffect(() => {
     if (normalizedSymbols.length === 0 || !isAuthenticated) return;
 
-    const ws = getEnhancedWebSocketService(MARKET_WS_URL);
-    ws.connect();
-
-    const unsubscribers: Array<() => void> = [];
-
     normalizedSymbols.forEach((symbol) => {
-      const channel = `ticks.${symbol}`;
-      unsubscribers.push(ws.subscribe(channel, (message) => {
-        const tick = normalizeTick(message, symbol);
-        if (tick) upsertTick(tick);
-      }));
       useMarketDataStore.getState().subscribeSymbol(symbol);
     });
 
     return () => {
-      unsubscribers.forEach((unsubscribe) => unsubscribe());
       normalizedSymbols.forEach((symbol) => {
         useMarketDataStore.getState().unsubscribeSymbol(symbol);
       });
@@ -299,6 +294,7 @@ export function useLiveOrderBook(symbol: string, depth: number) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
+  const authToken = useAppStore((state) => state.authToken);
 
   const reload = useCallback(async () => {
     if (!normalizedSymbol || !isAuthenticated) {
@@ -343,7 +339,7 @@ export function useLiveOrderBook(symbol: string, depth: number) {
     return () => {
       unsubscribe();
     };
-  }, [normalizedSymbol, isAuthenticated]);
+  }, [normalizedSymbol, isAuthenticated, authToken]);
 
   return { orderBook, loading, error, reload };
 }

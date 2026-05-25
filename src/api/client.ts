@@ -1,8 +1,16 @@
-import { API_V2_BASE_URL } from '../config/api';
+import { API_V2_BASE_URL, BROKER_DISCOVERY_URL } from '../config/api';
 
 export const getDynamicUrl = (url: string): string => {
   if (typeof window === 'undefined') return url;
-  if (url.includes('testsuperbackend.orrnn.com')) {
+  
+  let discoveryHost = 'testsuperbackend.orrnn.com';
+  try {
+    discoveryHost = new URL(BROKER_DISCOVERY_URL).hostname;
+  } catch (e) {
+    // fallback
+  }
+
+  if (url.includes(discoveryHost)) {
     return url;
   }
   const serverUrl = localStorage.getItem('server_url');

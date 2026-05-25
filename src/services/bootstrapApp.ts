@@ -1,5 +1,5 @@
 import { useAppStore } from '../store/useAppStore';
-import { api } from './api';
+import { brokerApi } from '../api/brokerApi';
 
 const toFinite = (v: unknown, fallback = 0): number => {
   const n = Number(v);
@@ -26,28 +26,61 @@ export async function bootstrapApp(login: number): Promise<void> {
   setOrders([]);
   useAppStore.getState().setTrades([]);
 
-  setBootstrapping(true, 'Connecting to server...');
+  setBootstrapping(true, 'Initializing dashboard in parallel...');
 
   try {
-    setBootstrapping(true, 'Loading account...');
-    const accountData = await api.account.getAccountSummary(login).catch(() => null);
-    if (accountData) {
-      useAppStore.getState().setAccount(normalizeBootstrapAccount(accountData) as any);
+    // Fire all dashboard APIs concurrently in parallel as requested
+    const [authMe, accounts, rawPositions, rawOrders, instruments, marketStatus] = await Promise.all([
+      brokerApi.get<any>('/auth/me').catch(err => { console.warn('[Bootstrap] /auth/me failed:', err); return null; }),
+      brokerApi.get<any>('/accounts').catch(err => { console.warn('[Bootstrap] /accounts failed:', err); return []; }),
+      brokerApi.get<any>(`/positions/${login}`).catch(err => { console.warn(`[Bootstrap] /positions/${login} failed:`, err); return []; }),
+      brokerApi.get<any>(`/orders/${login}`).catch(err => { console.warn(`[Bootstrap] /orders/${login} failed:`, err); return []; }),
+      brokerApi.get<any>('/instruments?favorites=true').catch(err => { console.warn('[Bootstrap] /instruments failed:', err); return []; }),
+      brokerApi.get<any>('/market/status').catch(err => { console.warn('[Bootstrap] /market/status failed:', err); return null; }),
+    ]);
+
+    // Handle Auth User
+    if (authMe) {
+      console.log('[Bootstrap] User profile successfully loaded:', authMe.username);
     }
 
-    setBootstrapping(true, 'Loading positions...');
-    const positions = await api.positions.getPositions(login).catch(() => []);
-    useAppStore.getState().setPositions(positions as any);
+    // Handle resolved Accounts list
+    const activeAccount = Array.isArray(accounts)
+      ? accounts.find((a: any) => Number(a.login) === login) || accounts[0]
+      : accounts;
+    if (activeAccount) {
+      setAccount(normalizeBootstrapAccount(activeAccount) as any);
+    } else {
+      // If /accounts didn't return this login, query it directly as a fallback
+      const singleAccount = await brokerApi.get<any>(`/account/${login}`).catch(() => null);
+      if (singleAccount) {
+        setAccount(normalizeBootstrapAccount(singleAccount) as any);
+      }
+    }
 
-    setBootstrapping(true, 'Loading pending orders...');
-    const orders = await api.orders.getPendingOrders(login).catch(() => []);
-    useAppStore.getState().setOrders(orders as any);
+    // Handle resolved Positions
+    const normalizedPositions = Array.isArray(rawPositions)
+      ? rawPositions
+      : (rawPositions?.positions || []);
+    setPositions(normalizedPositions);
+
+    // Handle resolved Orders
+    const normalizedOrders = Array.isArray(rawOrders)
+      ? rawOrders
+      : (rawOrders?.orders || []);
+    setOrders(normalizedOrders);
+
+    // Handle instruments / status logs
+    if (marketStatus) {
+      console.log(`[Bootstrap] Market status loaded: ${marketStatus.status || 'unknown'}`);
+    }
 
     setBootstrapping(true, 'All systems ready');
-    await new Promise<void>((resolve) => setTimeout(resolve, 700));
+    await new Promise<void>((resolve) => setTimeout(resolve, 300));
   } catch (err) {
-    console.error('[Bootstrap] Critical error during app initialization:', err);
+    console.error('[Bootstrap] Critical error during app parallel initialization:', err);
   } finally {
     useAppStore.getState().setBootstrapping(false);
   }
 }
+

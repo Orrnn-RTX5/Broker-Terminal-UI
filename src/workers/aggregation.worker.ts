@@ -50,9 +50,7 @@ export interface IndicatorsRequest {
   indicators: string[];
 }
 
-// ============================================
-// Aggregation Functions
-// ============================================
+
 
 function aggregateOHLCV(ticks: Tick[], timeframeMs: number): OHLCV[] {
   if (ticks.length === 0) return [];
@@ -113,7 +111,7 @@ function calculateEMA(prices: number[], period: number, prevEMA?: number): numbe
     }
 
     if (i === period - 1) {
-      // Use SMA for first EMA value
+      
       const slice = prices.slice(0, i + 1);
       const sum = slice.reduce((acc, price) => acc + price, 0);
       result.push(sum / period);
@@ -172,7 +170,7 @@ function calculateRSI(prices: number[], period = 14): number[] {
     }
   }
 
-  return [NaN, ...result]; // Prepend NaN for first price (no change)
+  return [NaN, ...result]; 
 }
 
 function calculateBollingerBands(
@@ -215,7 +213,7 @@ function calculateMACD(
   const macd = fastEMA.map((fast, i) => fast - slowEMA[i]);
   const signal = calculateEMA(macd.filter((v) => !isNaN(v)), signalPeriod);
 
-  // Pad signal array to match macd length
+ 
   const signalPadded = [...Array(macd.length - signal.length).fill(NaN), ...signal];
 
   const histogram = macd.map((m, i) => m - signalPadded[i]);
@@ -261,9 +259,7 @@ function calculateIndicators(ohlcv: OHLCV[], indicators: string[]): Record<strin
   return result;
 }
 
-// ============================================
-// Message Handler
-// ============================================
+
 
 self.onmessage = (event: MessageEvent<WorkerMessage>) => {
   const { type, data, requestId } = event.data;
@@ -338,5 +334,5 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
   }
 };
 
-// Export for TypeScript types
+
 export { };

@@ -732,7 +732,7 @@ export class DrawingManager {
         // Main line endpoints (bounded by default)
         let mx1 = mp1.x, my1 = mp1.y, mx2 = mp2.x, my2 = mp2.y;
         // Parallel line endpoints
-        let px1 = pp1.x, py1 = pp1.y, px2 = pp2.x, py2 = pp2.y;
+        let px1 = pp1.x, py1 = pp1.y as number, px2 = pp2.x, py2 = pp2.y as number;
 
         if (Math.abs(dxLine) > 0.01) {
           const slopeMain = dyMain / dxLine;

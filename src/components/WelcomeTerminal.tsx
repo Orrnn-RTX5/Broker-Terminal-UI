@@ -15,7 +15,7 @@ import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
 import { getStoredBrokerServer, loadBrokerServers, persistBrokerServer, resolveLoginBrokerTarget } from '../services/brokerServers';
 import { authV2Api } from '../api/trade';
-import { updateDynamicUrls } from '../config/api';
+import { updateDynamicUrls, BROKER_DISCOVERY_URL } from '../config/api';
 
 interface BrokerServerItem {
     broker_id: string;
@@ -151,7 +151,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
     useEffect(() => {
         let isMounted = true;
-        fetch('https://testsuperbackend.orrnn.com/api/v1/broker/servers')
+        fetch(`${BROKER_DISCOVERY_URL}/api/v1/broker/servers`)
             .then(res => res.json())
             .then((data: BrokerServerItem[]) => {
                 if (!isMounted) return;
@@ -237,7 +237,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             const { setToken, setRefreshToken } = await import('../api/client');
             setToken(token);
             if (data.refresh_token) setRefreshToken(data.refresh_token);
-            if (data.expires_at) localStorage.setItem('token_expires_at', data.expires_at);
+            if (data.expires_at) localStorage.setItem('token_expires_at', String(data.expires_at));
 
             // Update Zustand store
             useAppStore.getState().setAuthenticated(true, String(accountId), token, data.refresh_token);

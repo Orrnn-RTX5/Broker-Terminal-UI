@@ -104,6 +104,18 @@ export function useWebSocket<T = unknown>(
     };
   }, [autoConnect]);
 
+  // Handle dynamic URL changes (e.g. after login when broker server URL is set)
+  useEffect(() => {
+    const nextWs = getEnhancedWebSocketService(url);
+    if (nextWs !== wsService.current) {
+      console.log(`[useWebSocket] URL updated dynamically to ${url} — recreating WebSocket connection`);
+      wsService.current = nextWs;
+      if (autoConnect) {
+        nextWs.connect();
+      }
+    }
+  }, [url, autoConnect]);
+
   // Subscribe to channel if provided
   useEffect(() => {
     if (!channel) return;

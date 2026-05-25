@@ -228,14 +228,14 @@ export const MenuBar = () => {
             },
             {
                 label: t('menu.insert.objects'),
-                icon: <Icon name="pen-tool" size="sm" />,
+                icon: <Icon name="paintbrush" size="sm" />,
                 children: [
                     {
                         label: 'Lines',
                         children: [
-                            { label: 'Trend Line', shortcut: 'Alt+T', icon: <Icon name="diagonal-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'trendline' } }); setActiveMenu(null); } },
+                            { label: 'Trend Line', shortcut: 'Alt+T', icon: <Icon name="trend-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'trendline' } }); setActiveMenu(null); } },
                             { label: 'Horizontal Line', shortcut: 'Alt+H', icon: <Icon name="minus" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'hline' } }); setActiveMenu(null); } },
-                            { label: 'Vertical Line', shortcut: 'Alt+V', icon: <Icon name="vertical-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'vline' } }); setActiveMenu(null); } },
+                            { label: 'Vertical Line', shortcut: 'Alt+V', icon: <Icon name="v-line" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'vline' } }); setActiveMenu(null); } },
                         ]
                     },
                     {
@@ -247,21 +247,21 @@ export const MenuBar = () => {
                     {
                         label: 'Fibonacci',
                         children: [
-                            { label: 'Fibonacci Retracement', icon: <Icon name="git-branch" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'fibonacci' } }); setActiveMenu(null); } },
-                            { label: 'Fibonacci Extension', icon: <Icon name="git-branch" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'fib_extension' } }); setActiveMenu(null); } },
+                            { label: 'Fibonacci Retracement', icon: <Icon name="fibonacci" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'fibonacci' } }); setActiveMenu(null); } },
+                            { label: 'Fibonacci Extension', icon: <Icon name="fib-extension" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'fib_extension' } }); setActiveMenu(null); } },
                         ]
                     },
                     {
                         label: 'Shapes',
                         children: [
-                            { label: 'Rectangle', icon: <Icon name="square" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'rectangle' } }); setActiveMenu(null); } },
-                            { label: 'Ellipse', icon: <Icon name="circle" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'ellipse' } }); setActiveMenu(null); } },
+                            { label: 'Rectangle', icon: <Icon name="rectangle" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'rectangle' } }); setActiveMenu(null); } },
+                            { label: 'Ellipse', icon: <Icon name="ellipse" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'ellipse' } }); setActiveMenu(null); } },
                         ]
                     },
                     { divider: true, label: '' },
-                    { label: 'Text', shortcut: 'Alt+X', icon: <Icon name="type" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'text' } }); setActiveMenu(null); } },
-                    { label: 'Callout', icon: <Icon name="message-square" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'callout' } }); setActiveMenu(null); } },
-                    { label: 'Measure', icon: <Icon name="ruler" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'measure' } }); setActiveMenu(null); } },
+                    { label: 'Text', shortcut: 'Alt+X', icon: <Icon name="text" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'text' } }); setActiveMenu(null); } },
+                    { label: 'Callout', icon: <Icon name="callout" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'callout' } }); setActiveMenu(null); } },
+                    { label: 'Measure', icon: <Icon name="measure" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'measure' } }); setActiveMenu(null); } },
                 ]
             },
             { divider: true, label: '' },

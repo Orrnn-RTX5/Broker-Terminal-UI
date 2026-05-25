@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
-import { updateDynamicUrls } from '../config/api';
+import { updateDynamicUrls, BROKER_DISCOVERY_URL } from '../config/api';
 import { User, X, HelpCircle, ChevronDown } from 'lucide-react';
 
 interface BrokerServerItem {
@@ -45,8 +45,8 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
     useEffect(() => {
         if (isOpen) {
             const accountId = initialLogin || useAppStore.getState().accountId || '';
-            setLogin(accountId);
-            setPassword('');
+            setLogin(accountId || '900001');
+            setPassword(accountId ? '' : 'TestPass1234');
             setError(null);
             setSearchQuery('');
             setTimeout(() => loginInputRef.current?.select(), 100);
@@ -94,14 +94,14 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
     useEffect(() => {
         if (!isOpen) return;
         let isMounted = true;
-        fetch('https://testsuperbackend.orrnn.com/api/v1/broker/servers')
+        fetch(`${BROKER_DISCOVERY_URL}/api/v1/broker/servers`)
             .then(res => res.json())
             .then((data: BrokerServerItem[]) => {
                 if (!isMounted) return;
                 setBrokerList(data);
 
-                // Try to restore previously used broker or initialServer
-                const savedBrokerId = initialServer || localStorage.getItem('broker_id');
+                // Try to restore previously used broker or initialServer, or fallback to 'testorrnn'
+                const savedBrokerId = initialServer || localStorage.getItem('broker_id') || 'testorrnn';
                 const savedBroker = data.find(b => b.broker_id === savedBrokerId || b.server_url === savedBrokerId);
                 if (savedBroker) {
                     setSelectedBroker(savedBroker);
@@ -204,9 +204,20 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             const { setToken, setRefreshToken } = await import('../api/client');
             setToken(token);
             if (data.refresh_token) setRefreshToken(data.refresh_token);
-            if (data.expires_at) localStorage.setItem('token_expires_at', data.expires_at);
 
-            const expiresAt = data.expires_at ? new Date(data.expires_at).getTime() : undefined;
+            let expiresAt: number | undefined = undefined;
+            if (data.expires_at) {
+                if (typeof data.expires_at === 'number') {
+                    expiresAt = data.expires_at < 100000000000 ? data.expires_at * 1000 : data.expires_at;
+                } else if (/^\d+$/.test(data.expires_at)) {
+                    const num = parseInt(data.expires_at, 10);
+                    expiresAt = num < 100000000000 ? num * 1000 : num;
+                } else {
+                    expiresAt = Date.parse(data.expires_at);
+                }
+                localStorage.setItem('token_expires_at', String(expiresAt));
+            }
+
             useAppStore.getState().setAuthTokens(token, data.refresh_token, expiresAt);
             useAppStore.getState().setAuthenticated(true, String(accountId), token, data.refresh_token, expiresAt);
 

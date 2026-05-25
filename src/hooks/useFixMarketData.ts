@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import * as endpoints from '../api/endpoints';
-import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import {
   candleAggregationService,
   CandleData,
   Timeframe,
 } from '../services/candleAggregationService';
+import { getCandleSocketManager } from '../services/candleSocketManager';
 
 // Re-export CandleData for components using this hook
 export type { CandleData };
@@ -152,46 +152,6 @@ export function useFixMarketData({
     onCandleUpdateRef.current?.(latestCandle);
   }, [getCurrentTimeframe, normalizeCandle]);
 
-  const unwrapCandlePayload = useCallback((payload: any): { candles: any; isSnapshot: boolean } => {
-    if (!payload) return { candles: null, isSnapshot: false };
-    if (Array.isArray(payload)) return { candles: payload, isSnapshot: false };
-
-    if (payload.candle) return { candles: payload.candle, isSnapshot: false };
-    if (payload.candles) return { candles: payload.candles, isSnapshot: false };
-
-    const snapshot = payload.snapshot;
-    if (snapshot) {
-      if (Array.isArray(snapshot)) return { candles: snapshot, isSnapshot: true };
-      if (snapshot.candle) return { candles: snapshot.candle, isSnapshot: true };
-      if (snapshot.candles) return { candles: snapshot.candles, isSnapshot: true };
-      return { candles: snapshot, isSnapshot: true };
-    }
-
-    return { candles: payload, isSnapshot: false };
-  }, []);
-
-  const matchesCurrentSymbol = useCallback((payload: any, fallbackSymbol?: string): boolean => {
-    const incomingSymbol = payload?.symbol ?? fallbackSymbol;
-    return !incomingSymbol || incomingSymbol === symbolRef.current;
-  }, []);
-
-  const resolveMessageTimeframe = useCallback((
-    payload: any,
-    fallbackTimeframe?: string,
-    defaultTimeframe?: Timeframe,
-  ): Timeframe => {
-    const incomingTimeframe = payload?.timeframe ?? payload?.tf ?? fallbackTimeframe;
-    return incomingTimeframe ? toValidTimeframe(String(incomingTimeframe)) : defaultTimeframe ?? getCurrentTimeframe();
-  }, [getCurrentTimeframe]);
-
-  const matchesCurrentTimeframe = useCallback((
-    payload: any,
-    fallbackTimeframe?: string,
-    defaultTimeframe?: Timeframe,
-  ): boolean => {
-    return resolveMessageTimeframe(payload, fallbackTimeframe, defaultTimeframe) === getCurrentTimeframe();
-  }, [getCurrentTimeframe, resolveMessageTimeframe]);
-
   /**
    * Load historical data from API
    */
@@ -266,11 +226,11 @@ export function useFixMarketData({
    * Process incoming WebSocket tick
    */
   const processTick = useCallback((tickInfo: any) => {
-    if (!tickInfo.symbol || !tickInfo.bid) return;
+    if (!tickInfo.symbol && !tickInfo.bid) return;
 
     // Build tick object
     const tick = {
-      symbol: tickInfo.symbol,
+      symbol: tickInfo.symbol || symbolRef.current,
       bid: tickInfo.bid,
       ask: tickInfo.ask || tickInfo.bid,
       timestamp: tickInfo.timestamp || Date.now(),
@@ -314,7 +274,8 @@ export function useFixMarketData({
   }, [getCurrentTimeframe]);
 
   /**
-   * Connect to WebSocket
+   * Connect to WebSocket — uses CandleSocketManager (Section 3 of WS flow).
+   * Ref-counted: multiple chart instances with the same SYMBOL.TIMEFRAME share one subscription.
    */
   const connectWebSocket = useCallback(() => {
     try {
@@ -326,78 +287,38 @@ export function useFixMarketData({
 
       const currentSym = symbol;
       const currentTf = toValidTimeframe(timeframe);
-      const tickChannel = `ticks.${currentSym}`;
-      const candleChannel = `candles.${currentSym}.${currentTf}`;
 
-      console.log(`[useFixMarketData] Subscribing to ${tickChannel} and ${candleChannel}...`);
+      console.log(`[useFixMarketData] Subscribing via CandleSocketManager: ${currentSym}.${currentTf}`);
 
-      const wsService = getEnhancedWebSocketService();
-      setIsConnected(wsService.getState() === 'connected');
+      const manager = getCandleSocketManager();
+      setIsConnected(manager.isConnected());
 
-      const handleWsMessage = (msg: any) => {
+      // Candle callback — when server sends a completed or updated candle
+      const handleCandle = (candlePayload: any) => {
         if (!isMountedRef.current) return;
-
         try {
-          const payload = msg.data || msg;
-
-          if (msg.type === 'channel_message' && msg.channel === tickChannel) {
-            const tickInfo = payload?.tick ?? payload;
-            if (tickInfo.symbol === currentSym) {
-              processTick(tickInfo);
-            }
-          }
-
-          if (msg.type === 'channel_message' && msg.channel === candleChannel) {
-            const candlePayload = unwrapCandlePayload(payload);
-            applyServerCandles(candlePayload.candles, {
-              timeframe: currentTf,
-              isSnapshot: candlePayload.isSnapshot,
-            });
-          }
-
-          if (msg.type === 'tick' && matchesCurrentSymbol(msg)) {
-            processTick(msg);
-          }
-
-          if (msg.type === 'update' && msg.candle && matchesCurrentSymbol(msg)) {
-            const messageTimeframe = resolveMessageTimeframe(msg, undefined, 'M1');
-            if (messageTimeframe !== 'M1' && !matchesCurrentTimeframe(msg)) return;
-
-            const candlePayload = unwrapCandlePayload(msg);
-            applyServerCandles(candlePayload.candles, {
-              timeframe: messageTimeframe,
-              isSnapshot: candlePayload.isSnapshot,
-            });
-          }
+          applyServerCandles(candlePayload, {
+            timeframe: currentTf,
+            isSnapshot: false,
+          });
         } catch (err) {
-          console.error('[useFixMarketData] WS message error:', err);
+          console.error('[useFixMarketData] Candle handler error:', err);
         }
       };
 
-      // Subscribe to WebSocket
-      const unsubscribeTick = wsService.subscribe(tickChannel, handleWsMessage);
-      const unsubscribeCandles = wsService.subscribe(candleChannel, handleWsMessage);
-      unsubscribeRef.current = () => {
-        unsubscribeTick();
-        unsubscribeCandles();
-      };
-
-      // Monitor connection state
-      const unbindStatus = wsService.onStateChange((state) => {
-        setIsConnected(state === 'connected');
-
-        if (state === 'error') {
-          setStatus('Connection error');
+      // Tick callback — realtime ticks move the active candle
+      const handleTick = (tickInfo: any) => {
+        if (!isMountedRef.current) return;
+        try {
+          processTick(tickInfo);
+        } catch (err) {
+          console.error('[useFixMarketData] Tick handler error:', err);
         }
-
-      });
-
-      // Combined unsubscribe function
-      const originalUnsubscribe = unsubscribeRef.current;
-      unsubscribeRef.current = () => {
-        originalUnsubscribe?.();
-        unbindStatus();
       };
+
+      // Subscribe (ref-counted deduplication by SYMBOL.TIMEFRAME)
+      const { unsubscribe } = manager.subscribe(currentSym, currentTf, handleCandle, handleTick);
+      unsubscribeRef.current = unsubscribe;
 
     } catch (err) {
       console.error('[useFixMarketData] WS error:', err);
@@ -409,13 +330,9 @@ export function useFixMarketData({
     }
   }, [
     applyServerCandles,
-    matchesCurrentSymbol,
-    matchesCurrentTimeframe,
     processTick,
-    resolveMessageTimeframe,
     symbol,
     timeframe,
-    unwrapCandlePayload,
   ]);
 
   /**

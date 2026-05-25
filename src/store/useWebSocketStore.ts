@@ -20,10 +20,9 @@ export interface ConnectionMetrics {
 
 interface WebSocketStoreState {
   // Connection state
-  connectionState: ConnectionState; // The global UI indicator (mirrors fix_socket strictly)
-  legacyConnectionState: ConnectionState; // Actual state of MT5 socket
-  fixConnectionState: ConnectionState; // Actual state of FIX socket
-  isStale: boolean;
+  connectionState: ConnectionState; 
+  legacyConnectionState: ConnectionState; 
+  fixConnectionState: ConnectionState; 
   lastMessageTime: number | null;
 
   // Metrics
@@ -39,8 +38,6 @@ interface WebSocketStoreState {
   incrementReconnectAttempts: (source?: 'fix_socket' | 'legacy_mt5') => void;
 }
 
-// NOTE: Socket states are tracked INSIDE the Zustand store (fixConnectionState,
-// legacyConnectionState) so they survive Vite HMR module reloads.
 
 const initialMetrics: ConnectionMetrics = {
   messagesSent: 0,

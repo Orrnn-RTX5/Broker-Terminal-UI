@@ -62,6 +62,7 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
   const positions = useAppStore((state) => enabled ? state.positions : EMPTY_LIST);
   const trades = useAppStore((state) => enabled ? state.trades : EMPTY_LIST);
   const storeWsConnected = useAppStore((state) => state.wsConnected);
+  const authToken = useAppStore((state) => state.authToken);
   const setAccount = useAppStore((state) => state.setAccount);
   const setPositions = useAppStore((state) => state.setPositions);
   const setTrades = useAppStore((state) => state.setTrades);
@@ -168,105 +169,122 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
     };
   }, [enabled, login, pollMs, refresh]);
 
-  // WebSocket — only runs for the singleton instance.
+  // Reconnect state refs for Exponential Backoff
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<number | null>(null);
+
+  // Helper to determine contract size for a symbol (Forex default, custom indices/metals/cryptos)
+  const getContractSize = useCallback((symbol: string): number => {
+    const sym = String(symbol || '').trim().toUpperCase();
+    if (sym.startsWith('BTC') || sym.startsWith('ETH') || sym.startsWith('XRP') || sym.startsWith('SOL') || sym.startsWith('BNB')) {
+      return 1;
+    }
+    if (sym.startsWith('XAU')) {
+      return 100;
+    }
+    if (sym.startsWith('XAG')) {
+      return 5000;
+    }
+    if (sym.startsWith('WTI') || sym.startsWith('BCO') || sym.startsWith('NATGAS')) {
+      return 1000;
+    }
+    // Standard Forex
+    return 100000;
+  }, []);
+
+  // Recalculates account equity and margin levels locally based on latest ticks
+  const computeLocalEquityAndFreeMargin = useCallback(() => {
+    const store = useAppStore.getState();
+    const currentAccount = store.account;
+    if (!currentAccount) return;
+
+    const currentPositions = store.positions;
+    let totalFloatingPnL = 0;
+
+    const updatedPositions = currentPositions.map((pos) => {
+      const symbol = pos.symbol;
+      const direction = pos.side === 'SELL' ? -1 : 1;
+      const volume = pos.volume;
+      const contractSize = getContractSize(symbol);
+      const openPrice = pos.openPrice;
+
+      // Try to resolve latest tick prices
+      const tick = store.ticks[symbol];
+      let currentPrice = pos.currentPrice;
+      if (tick) {
+        currentPrice = pos.side === 'SELL' ? tick.ask : tick.bid;
+        if (!currentPrice || currentPrice <= 0) {
+          currentPrice = tick.bid || tick.last || pos.currentPrice;
+        }
+      }
+
+      if (currentPrice > 0 && openPrice > 0) {
+        const positionPnL = (currentPrice - openPrice) * direction * volume * contractSize;
+        totalFloatingPnL += positionPnL;
+        return {
+          ...pos,
+          currentPrice,
+          unrealizedPnL: Number(positionPnL.toFixed(2)),
+        };
+      }
+      return pos;
+    });
+
+    const balance = currentAccount.balance;
+    const equity = Number((balance + totalFloatingPnL).toFixed(2));
+    const margin = currentAccount.margin;
+    const freeMargin = Number((equity - margin).toFixed(2));
+    const marginLevel = margin > 0 ? Number(((equity / margin) * 100).toFixed(2)) : 0;
+
+    store.setAccount({
+      ...currentAccount,
+      equity,
+      freeMargin,
+      marginLevel,
+      unrealizedPL: Number(totalFloatingPnL.toFixed(2)),
+    });
+
+    store.setPositions(updatedPositions);
+  }, [getContractSize]);
+
+  // WebSocket — uses AccountSocketManager (Section 4 of WS flow).
+  // The AccountSocketManager handles auth, channel subscription, position/account
+  // normalization, and pushes directly to Zustand store. We just need to connect it.
   useEffect(() => {
     if (!enabled || !login || typeof window === 'undefined') return;
     if (_activeTradeFacingInstanceId !== instanceId.current) return;
 
-    const token = localStorage.getItem('auth_token');
-    if (!token) return;
+    let cleanupRef: (() => void) | null = null;
+    let disposed = false;
 
-    const ws = new WebSocket(`${tradeGatewayApi.getWsUrl()}?token=${encodeURIComponent(token)}`);
-    wsRef.current = ws;
+    console.log(`[TradeFacingData] WS effect fired — login=${login}, enabled=${enabled}`);
 
-    const subscribe = (channel: string) => {
-      const payload = { action: 'subscribe', channel };
-      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
-    };
+    // Dynamically import to avoid circular deps at module level
+    import('../services/accountSocketManager').then(({ getAccountSocketManager }) => {
+      if (disposed) return;
 
-    ws.onopen = () => {
-      setWsConnected(true);
-      ws.send(JSON.stringify({ action: 'auth', token }));
-      ['account', 'positions', 'orders', 'deals'].forEach((channel) => {
-        subscribe(`${channel}.${login}`);
-      });
-    };
+      const manager = getAccountSocketManager();
+      console.log(`[TradeFacingData] AccountSocketManager loaded — current login=${manager.getLogin()}, target login=${login}`);
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        const channel = String(message.channel ?? '');
-        const payload = readChannelPayload(message);
-
-        if (channel.startsWith(`account.${login}`)) {
-          const current = useAppStore.getState().account;
-          const account = normalizeAccount(payload.account ?? payload, current);
-          applySnapshot({ account });
-          return;
-        }
-
-        if (channel.startsWith(`positions.${login}`)) {
-          const eventType = String(message.event ?? message.type ?? payload.event ?? payload.type ?? '').toLowerCase();
-          const rawPositions = Array.isArray(payload) ? payload : payload.positions;
-
-          if (Array.isArray(rawPositions)) {
-            if (eventType === 'pnl_update') {
-                const current = useAppStore.getState().positions;
-                const updated = [...current];
-                let changed = false;
-                for (const update of rawPositions) {
-                    const ticketId = Number(update.ticket ?? update.id ?? update.position_ticket ?? 0);
-                    if (!ticketId) continue;
-                    const idx = updated.findIndex((p) => positionId(p) === ticketId);
-                    if (idx >= 0) {
-                        const existing = updated[idx];
-                        const newPrice = Number(update.price_current ?? update.current_price ?? update.currentPrice ?? existing.currentPrice);
-                        const newPnL = Number(update.profit ?? update.unrealized_pl ?? update.unrealizedPnL ?? existing.unrealizedPnL);
-                        if (existing.currentPrice !== newPrice || existing.unrealizedPnL !== newPnL) {
-                            updated[idx] = { ...existing, currentPrice: newPrice, unrealizedPnL: newPnL };
-                            changed = true;
-                        }
-                    }
-                }
-                if (changed) applySnapshot({ positions: updated });
-            } else {
-                applySnapshot({ positions: rawPositions.map(normalizePosition) });
-            }
-            return;
-          }
-
-          const rawPosition = payload.position ?? payload.closed_position ?? payload;
-          const current = useAppStore.getState().positions;
-          const nextPositions = ['close', 'closed', 'sl_hit', 'tp_hit', 'stop_out'].some((type) => eventType.includes(type))
-            ? removePosition(current, rawPosition)
-            : mergePosition(current, rawPosition);
-          applySnapshot({ positions: nextPositions });
-          return;
-        }
-
-        if (channel.startsWith(`deals.${login}`) || channel.startsWith(`orders.${login}`)) {
-          const rawDeals = Array.isArray(payload) ? payload : payload.deals ? payload.deals : [payload.deal ?? payload];
-          if (Array.isArray(rawDeals)) {
-            const incoming = rawDeals.map(normalizeDeal);
-            const current = useAppStore.getState().trades;
-            const ids = new Set(incoming.map((deal) => deal.id));
-            applySnapshot({ deals: [...incoming, ...current.filter((deal) => !ids.has(deal.id))].slice(0, 500) });
-          }
-        }
-      } catch (error) {
-        console.debug('[TradeFacingData] Ignoring malformed WS message:', error);
+      // Connect (or reconnect if login changed)
+      if (manager.getLogin() !== login) {
+        console.log(`[TradeFacingData] Calling manager.connect(${login})`);
+        manager.connect(login);
       }
-    };
 
-    ws.onclose = () => setWsConnected(false);
-    ws.onerror = () => setWsConnected(false);
+      cleanupRef = manager.onConnectionChange((connected) => {
+        if (!disposed) setWsConnected(connected);
+      });
+    }).catch(err => {
+      console.error('[TradeFacingData] Failed to load AccountSocketManager:', err);
+    });
 
     return () => {
+      disposed = true;
       setWsConnected(false);
-      ws.close(1000, 'trade-facing hook unmounted');
-      if (wsRef.current === ws) wsRef.current = null;
+      if (cleanupRef) cleanupRef();
     };
-  }, [applySnapshot, enabled, login]);
+  }, [enabled, login, authToken]);
 
   useEffect(() => {
     if (enabled) return;
@@ -284,3 +302,4 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
     wsConnected: enabled ? wsConnected : storeWsConnected,
   };
 }
+

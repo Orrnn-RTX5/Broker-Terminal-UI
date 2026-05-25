@@ -66,6 +66,26 @@ import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
 export type ChartType = 'candlestick' | 'bar' | 'line' | 'area';
 export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
 
+// MT5-style "comfortable" candle width — used to compute how many bars to fit
+// across the visible chart area on initial-load and on axis reset. Adapting to
+// container width keeps the look consistent whether the panel is narrow or wide.
+const TARGET_BAR_PX = 25;
+const MIN_ADAPTIVE_BARS = 30;
+const MAX_ADAPTIVE_BARS = 200;
+const computeAdaptiveVisibleBars = (
+  container: HTMLElement | null,
+  chart: IChartApi | null,
+  totalBars: number,
+  minBarsFloor: number,
+): number => {
+  const containerWidth = container?.offsetWidth || 1400;
+  const axisWidth = chart?.priceScale('right').width() || 60;
+  const chartWidth = Math.max(200, containerWidth - axisWidth);
+  const adaptive = Math.floor(chartWidth / TARGET_BAR_PX);
+  const floor = Math.max(MIN_ADAPTIVE_BARS, minBarsFloor);
+  return Math.min(totalBars, Math.max(floor, Math.min(MAX_ADAPTIVE_BARS, adaptive)));
+};
+
 interface Candle {
   time: number;
   open: number;
@@ -129,10 +149,12 @@ export const TradingChart = React.memo(function TradingChart({
   chartType = 'candlestick',
   panelId,
 }: TradingChartProps) {
+  const authToken = useAppStore((state) => state.authToken);
+
   // Debug: Log ACTUAL mount (not every re-render)
   useEffect(() => {
-    console.log(`[TradingChart] ✅ MOUNTED: symbol=${symbol}, timeframe=${timeframe}`);
-    return () => console.log(`[TradingChart] ❌ UNMOUNTED: symbol=${symbol}`);
+    console.log(`[TradingChart] MOUNTED: symbol=${symbol}, timeframe=${timeframe}`);
+    return () => console.log(`[TradingChart]  UNMOUNTED: symbol=${symbol}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const containerRef = useRef<HTMLDivElement>(null); // Main chart refs
@@ -477,14 +499,8 @@ export const TradingChart = React.memo(function TradingChart({
         attributionLogo: false,
       },
       grid: {
-        vertLines: {
-          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
-          style: 2
-        },
-        horzLines: {
-          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
-          style: 2
-        },
+        vertLines: { color: 'transparent' },
+        horzLines: { color: 'transparent' },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -500,7 +516,7 @@ export const TradingChart = React.memo(function TradingChart({
       },
       handleScale: {
         axisPressedMouseMove: { time: false, price: true },  // MT5-style: drag price axis to zoom vertically
-        axisDoubleClickReset: { time: false, price: true },  // Double-click price axis to reset auto-scale
+        axisDoubleClickReset: { time: false, price: false },  // handled manually below
         mouseWheel: false,      // wheel never zooms
         pinch: false,
       },
@@ -662,6 +678,48 @@ export const TradingChart = React.memo(function TradingChart({
         return null;
       })();
 
+      // ── Shared reset helpers (MT5-style double-click defaults) ──────────
+      // These match the initial-load fit exactly so a reset truly returns the
+      // chart to its starting view — not just changes one option in isolation.
+      const resetPriceScaleToDefault = () => {
+        if (isDisposedRef.current || !chartRef.current) return;
+        chartRef.current.priceScale('right').applyOptions({
+          autoScale: true,
+          scaleMargins: { top: 0.05, bottom: 0.32 },
+        });
+      };
+
+      const resetTimeScaleToDefault = () => {
+        if (isDisposedRef.current || !chartRef.current) return;
+        const tf = prevTimeframeRef.current || timeframe;
+        const ts = chartRef.current.timeScale();
+        ts.applyOptions({
+          rightOffset: getTradingChartShiftRightOffset(tf, ctxChartShift),
+        });
+        const totalBars = candlesRef.current.length;
+        if (totalBars > 0) {
+          const visibleBars = computeAdaptiveVisibleBars(
+            containerRef.current,
+            chartRef.current,
+            totalBars,
+            getTradingChartDefaultVisibleBars(tf),
+          );
+          const rightPadBars = getTradingChartDefaultRightPadBars(tf);
+          ts.setVisibleLogicalRange({
+            from: totalBars - visibleBars,
+            to: totalBars + rightPadBars,
+          });
+          // Keep pixelsPerBarRef in sync with the effective spacing so the next
+          // time-axis drag starts from the visible spacing, not the legacy "2".
+          const chartW = Math.max(200, (containerRef.current?.offsetWidth || 1400)
+            - (chartRef.current.priceScale('right').width() || 60));
+          pixelsPerBarRef.current = chartW / (visibleBars + rightPadBars);
+        } else {
+          pixelsPerBarRef.current = TARGET_BAR_PX;
+        }
+        ts.scrollToRealTime();
+      };
+
       if (priceAxisEl) {
         const handlePriceAxisDown = (e: MouseEvent) => {
           if (e.button !== 0) return; // left click only
@@ -699,41 +757,39 @@ export const TradingChart = React.memo(function TradingChart({
           window.addEventListener('mouseup', onUp);
         };
 
-        const handlePriceAxisDblClick = (e: MouseEvent) => {
-          // Double-click resets to auto-scale (MT5 behavior)
-          e.preventDefault();
-          e.stopPropagation();
-          const priceScale = chart.priceScale('right');
-          priceScale.applyOptions({
-            autoScale: true,
-            scaleMargins: { top: 0.1, bottom: 0.2 },
-          });
-        };
-
         priceAxisEl.style.cursor = 'ns-resize';
         priceAxisEl.addEventListener('mousedown', handlePriceAxisDown);
-        priceAxisEl.addEventListener('dblclick', handlePriceAxisDblClick);
 
         priceAxisCleanup = () => {
           priceAxisEl.removeEventListener('mousedown', handlePriceAxisDown);
-          priceAxisEl.removeEventListener('dblclick', handlePriceAxisDblClick);
         };
       }
 
-      // ── MT5-style time-axis drag-to-zoom (position-based) ──────────────────
-      // Avoids fragile DOM traversal — instead hit-tests clientY against the
-      // container's bounding rect to detect clicks in the time-axis strip.
-      // Drag left = zoom in (increase barSpacing), drag right = zoom out.
+      // ── MT5-style time-axis drag-to-zoom + unified dblclick reset ────────
+      // Position-based hit-testing detects which region was double-clicked
+      // (time axis / price axis / chart body) and resets accordingly. This
+      // avoids the fragile DOM-selector approach for the price axis dblclick
+      // and adds the missing chart-body reset.
       {
         const TIME_AXIS_PX = 36; // height of the time-axis strip in px
         const MIN_PX = 1;
-        const MAX_PX = 30;
+        // Allow zoom-in well past the adaptive default (~25px) so users can
+        // stretch candles much wider — matches MT5 where you can blow up a
+        // single candle to fill a big chunk of the screen.
+        const MAX_PX = 150;
         const SENSITIVITY = 0.005;
 
         const inTimeAxis = (e: MouseEvent) => {
           const r = chartContainer.getBoundingClientRect();
           return e.clientY >= r.bottom - TIME_AXIS_PX
             && e.clientX >= r.left && e.clientX <= r.right;
+        };
+
+        const inPriceAxis = (e: MouseEvent) => {
+          const r = chartContainer.getBoundingClientRect();
+          const w = chartRef.current?.priceScale('right').width() || 60;
+          return e.clientX >= r.right - w
+            && e.clientY >= r.top && e.clientY < r.bottom - TIME_AXIS_PX;
         };
 
         const handleTimeAxisDown = (e: MouseEvent) => {
@@ -775,12 +831,21 @@ export const TradingChart = React.memo(function TradingChart({
           window.addEventListener('mouseup', onUp);
         };
 
-        const handleTimeAxisDblClick = (e: MouseEvent) => {
-          if (!inTimeAxis(e)) return;
+        const handleContainerDblClick = (e: MouseEvent) => {
+          if (!chartRef.current) return;
+          const onTime = inTimeAxis(e);
+          const onPrice = inPriceAxis(e);
           e.preventDefault();
-          pixelsPerBarRef.current = 2;
-          chart.timeScale().applyOptions({ barSpacing: 2 });
-          chart.timeScale().scrollToRealTime();
+          e.stopPropagation();
+          if (onTime && !onPrice) {
+            resetTimeScaleToDefault();
+          } else if (onPrice && !onTime) {
+            resetPriceScaleToDefault();
+          } else {
+            // Chart body OR corner (both axes) — reset both
+            resetTimeScaleToDefault();
+            resetPriceScaleToDefault();
+          }
         };
 
         const handleTimeAxisHover = (e: MouseEvent) => {
@@ -788,13 +853,13 @@ export const TradingChart = React.memo(function TradingChart({
         };
 
         chartContainer.addEventListener('mousedown', handleTimeAxisDown, { capture: true });
-        chartContainer.addEventListener('dblclick', handleTimeAxisDblClick);
+        chartContainer.addEventListener('dblclick', handleContainerDblClick);
         chartContainer.addEventListener('mousemove', handleTimeAxisHover);
 
         timeAxisCleanup = () => {
           chartContainer.removeEventListener('mousedown', handleTimeAxisDown,
             { capture: true } as EventListenerOptions);
-          chartContainer.removeEventListener('dblclick', handleTimeAxisDblClick);
+          chartContainer.removeEventListener('dblclick', handleContainerDblClick);
           chartContainer.removeEventListener('mousemove', handleTimeAxisHover);
         };
       }
@@ -935,11 +1000,17 @@ export const TradingChart = React.memo(function TradingChart({
       seriesRef.current.setData(formatted);
       volumeRef.current.setData(volumeData);
 
-      // Auto-fit to show last ~80 candles for proper MT5-style candle sizing
+      // Auto-fit to a comfortable MT5-style spacing — adapts to container width
+      // so candles render at ~25px wide regardless of panel size.
       seriesRef.current.priceScale().applyOptions({ autoScale: true });
       const totalBars = formatted.length;
       if (totalBars > 0 && chartRef.current) {
-        const visibleBars = Math.min(getTradingChartDefaultVisibleBars(activeTimeframe), totalBars);
+        const visibleBars = computeAdaptiveVisibleBars(
+          containerRef.current,
+          chartRef.current,
+          totalBars,
+          getTradingChartDefaultVisibleBars(activeTimeframe),
+        );
         const rightPadBars = getTradingChartDefaultRightPadBars(activeTimeframe);
         chartRef.current.timeScale().setVisibleLogicalRange({
           from: totalBars - visibleBars,
@@ -1509,7 +1580,7 @@ export const TradingChart = React.memo(function TradingChart({
       const intBar = ts.coordinateToLogical(x);
       if (intBar === null) return null;
       const c0 = ts.logicalToCoordinate(intBar);
-      const c1 = ts.logicalToCoordinate(intBar + 1);
+      const c1 = ts.logicalToCoordinate((intBar + 1) as any);
       if (c0 === null || c1 === null) return intBar;
       const barWidth = c1 - c0;
       if (Math.abs(barWidth) < 0.5) return intBar;
@@ -1752,12 +1823,8 @@ export const TradingChart = React.memo(function TradingChart({
         textColor: chartColors.foreground,
       },
       grid: {
-        vertLines: {
-          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
-        },
-        horzLines: {
-          color: chartSettings.showGrid ? chartColors.grid : 'transparent',
-        },
+        vertLines: { color: 'transparent' },
+        horzLines: { color: 'transparent' },
       },
       crosshair: {
         vertLine: { color: chartColors.foreground },
@@ -1768,7 +1835,7 @@ export const TradingChart = React.memo(function TradingChart({
       },
       handleScale: {
         axisPressedMouseMove: { time: false, price: true },
-        axisDoubleClickReset: { time: false, price: true },
+        axisDoubleClickReset: { time: false, price: false },
       },
       rightPriceScale: {
         borderColor: chartColors.foreground,
@@ -2159,7 +2226,7 @@ export const TradingChart = React.memo(function TradingChart({
       candleStream.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, timeframe]);
+  }, [symbol, timeframe, authToken]);
 
   // ── Candle Countdown Timer ──
   useEffect(() => {
@@ -4006,23 +4073,89 @@ export const TradingChart = React.memo(function TradingChart({
       )}
 
 
-      {/* Premium MT5 HTML HUD */}
-      <div style={{
-        position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
-        fontFamily: "Consolas, 'Courier New', monospace", fontSize: '11px', color: '#A1A1AA',
-        textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px'
-      }}>
-        <span style={{ fontWeight: 'bold', color: '#E4E4E7' }}>{symbol}, {timeframe}</span>
-        <span>O: <span ref={ohlcOpenRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
-        <span>H: <span ref={ohlcHighRef} style={{ color: '#22C55E' }}>0.00000</span></span>
-        <span>L: <span ref={ohlcLowRef} style={{ color: '#EF4444' }}>0.00000</span></span>
-        <span>C: <span ref={ohlcCloseRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
-        <span>V: <span ref={ohlcVolumeRef} style={{ color: '#E4E4E7' }}>0</span></span>
-        <span ref={countdownTextRef} style={{ marginLeft: '12px', color: '#F59E0B', fontWeight: 'bold' }}></span>
-      </div>
+      {/* Premium MT5 HTML HUD — dark mode keeps original styling;
+          advanced/untitled-light mode gets sans font, semibold/bold mix,
+          theme-purple symbol with traditional H/L colors highlighted in soft pills. */}
+      {isAdvancedUntitledLight ? (
+        <div style={{
+          position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
+          fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+          fontSize: '11px', letterSpacing: '0.01em',
+          display: 'flex', alignItems: 'center', gap: '8px'
+        }}>
+          <span style={{
+            fontWeight: 700, color: '#7f56d9',
+            background: 'rgba(127, 86, 217, 0.10)',
+            padding: '2px 8px', borderRadius: '4px',
+          }}>{symbol}, {timeframe}</span>
+          <span style={{ fontWeight: 500, color: '#475467' }}>
+            O: <span ref={ohlcOpenRef} style={{
+              fontWeight: 600, color: '#1d2939',
+              background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
+            }}>0.00000</span>
+          </span>
+          <span style={{ fontWeight: 500, color: '#475467' }}>
+            H: <span ref={ohlcHighRef} style={{
+              fontWeight: 600, color: '#16a34a',
+              background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
+            }}>0.00000</span>
+          </span>
+          <span style={{ fontWeight: 500, color: '#475467' }}>
+            L: <span ref={ohlcLowRef} style={{
+              fontWeight: 600, color: '#dc2626',
+              background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
+            }}>0.00000</span>
+          </span>
+          <span style={{ fontWeight: 500, color: '#475467' }}>
+            C: <span ref={ohlcCloseRef} style={{
+              fontWeight: 600, color: '#1d2939',
+              background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
+            }}>0.00000</span>
+          </span>
+          <span style={{ fontWeight: 500, color: '#475467' }}>
+            V: <span ref={ohlcVolumeRef} style={{
+              fontWeight: 600, color: '#1d2939',
+              background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
+            }}>0</span>
+          </span>
+          <span ref={countdownTextRef} style={{
+            marginLeft: '6px', fontWeight: 700, color: '#b45309',
+            background: 'rgba(245, 158, 11, 0.12)', padding: '1px 6px', borderRadius: '3px'
+          }}></span>
+        </div>
+      ) : (
+        <div style={{
+          position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
+          fontFamily: "Consolas, 'Courier New', monospace", fontSize: '11px', color: '#A1A1AA',
+          textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px'
+        }}>
+          <span style={{ fontWeight: 'bold', color: '#E4E4E7' }}>{symbol}, {timeframe}</span>
+          <span>O: <span ref={ohlcOpenRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
+          <span>H: <span ref={ohlcHighRef} style={{ color: '#22C55E' }}>0.00000</span></span>
+          <span>L: <span ref={ohlcLowRef} style={{ color: '#EF4444' }}>0.00000</span></span>
+          <span>C: <span ref={ohlcCloseRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
+          <span>V: <span ref={ohlcVolumeRef} style={{ color: '#E4E4E7' }}>0</span></span>
+          <span ref={countdownTextRef} style={{ marginLeft: '12px', color: '#F59E0B', fontWeight: 'bold' }}></span>
+        </div>
+      )}
 
       {/* Chart Container - must have explicit dimensions for lightweight-charts */}
       <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+
+      {/* Static background grid overlay (MT5-style: does not move with pan/scroll) */}
+      {chartSettings.showGrid && (
+        <div
+          className="absolute inset-0"
+          style={{
+            pointerEvents: 'none',
+            zIndex: 1,
+            backgroundImage:
+              `linear-gradient(to right, ${chartColors.grid} 1px, transparent 1px), ` +
+              `linear-gradient(to bottom, ${chartColors.grid} 1px, transparent 1px)`,
+            backgroundSize: '80px 50px',
+          }}
+        />
+      )}
 
       {/* Drawing Overlay — always pointer-events:none so chart canvas receives all mouse events */}
       <div ref={overlayRef} className="chart-drawing-overlay absolute inset-0" style={{ pointerEvents: 'none', zIndex: 10 }} />

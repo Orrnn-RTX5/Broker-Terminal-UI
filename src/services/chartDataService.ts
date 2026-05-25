@@ -288,7 +288,7 @@ export class ChartDataService {
       ws.onopen = () => {
         if (!ws || closed) return;
         if (token) ws.send(JSON.stringify({ action: 'auth', token }));
-        ws.send(JSON.stringify({ action: 'subscribe', channel }));
+        ws.send(JSON.stringify({ action: 'subscribe', channel, channels: [channel] }));
       };
 
       ws.onmessage = (event) => {
@@ -321,7 +321,7 @@ export class ChartDataService {
       close: () => {
         closed = true;
         if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ action: 'unsubscribe', channel }));
+          ws.send(JSON.stringify({ action: 'unsubscribe', channel, channels: [channel] }));
         }
         ws?.close(1000, 'Chart candle subscription closed');
         ws = null;

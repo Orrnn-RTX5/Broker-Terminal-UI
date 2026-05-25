@@ -68,7 +68,7 @@ const billWilliamsIndicators: MenuItem[] = [
     item('Market Facilitation Index'),
 ];
 
-// --- OBJECTS STRUCTURE ---
+
 
 const lineObjects: MenuItem[] = [
     item('Vertical Line'),
@@ -116,7 +116,7 @@ const arrowObjects: MenuItem[] = [
     item('Check Sign'),
 ];
 
-// --- EXPERTS & SCRIPTS ---
+
 
 const expertsList: MenuItem[] = [
     item('Macd Sample', undefined, <Icon name="cpu" size="sm"  className = "text-zinc-500" />),
@@ -129,7 +129,7 @@ const scriptsList: MenuItem[] = [
     item('MQL5 \ Scripts \ ...', undefined, <Icon name="folder-open" size="sm"  className = "text-zinc-600" />),
 ];
 
-// --- MAIN MENU DATA ---
+
 
 export const getMenuItems = (
     languageList: MenuItem[]

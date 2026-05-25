@@ -103,8 +103,73 @@ export class EnhancedWebSocketService {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.handleOnline);
       window.addEventListener('offline', this.handleOffline);
+
+      // Section 5: Foreground reconnect — re-establish WS when tab becomes visible
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+
+      // Section 5: Session change reconnect — token rotation, broker URL change
+      import('./brokerSession').then(({ onSessionChange }) => {
+        onSessionChange((reason) => {
+          if (reason === 'logout') {
+            this.disconnect();
+          } else if (reason === 'token_rotation' || reason === 'broker_url_change') {
+            console.log(`[WS] Session change (${reason}) — forcing reconnect`);
+            this.forceReconnect();
+          }
+        });
+      }).catch(() => { /* brokerSession not available */ });
     }
   }
+
+  /**
+   * Section 5: Force reconnect — resets backoff, closes stale socket, rebuilds URL, reopens
+   */
+  public forceReconnect(): void {
+    console.log('[WS] Force reconnect triggered');
+    this.reconnectAttempts = 0;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    // Close the stale socket
+    if (this.ws) {
+      try { this.ws.close(1000, 'force reconnect'); } catch { /* ignore */ }
+      this.ws = null;
+    }
+    this.stopPingInterval();
+    this.stopFlushInterval();
+    // Reconnect immediately
+    this.connect();
+  }
+
+  /**
+   * Section 5: Update URL dynamically (e.g. broker switch) and reconnect
+   */
+  public updateUrl(newUrl: string): void {
+    const normalized = this.normalizeWsUrl(newUrl);
+    if (normalized === this.url) return;
+    console.log(`[WS] URL updated: ${this.url} → ${normalized}`);
+    this.url = normalized;
+    this.forceReconnect();
+  }
+
+  /**
+   * Section 5: Visibility change handler — reconnect on tab foreground
+   */
+  private handleVisibilityChange = (): void => {
+    if (document.visibilityState === 'visible') {
+      // Check if connection is stale (no data for 30+ seconds)
+      const staleThreshold = 30000;
+      const timeSinceLastData = Date.now() - this.lastDataTime;
+      if (
+        timeSinceLastData > staleThreshold &&
+        (!this.ws || this.ws.readyState !== WebSocket.OPEN)
+      ) {
+        console.log('[WS] Tab foregrounded with stale connection — reconnecting');
+        this.forceReconnect();
+      }
+    }
+  };
 
   /**
    * Connect to WebSocket server
@@ -118,12 +183,18 @@ export class EnhancedWebSocketService {
     this.updateState('connecting');
     this.connectStartTime = Date.now();
 
-    // Normalize URL at connect-time too (covers stale singleton/url overrides).
-    this.url = this.normalizeWsUrl(this.url);
+    // Dynamically resolve WebSocket URL from saved server_url at connect-time
+    const serverUrl = localStorage.getItem('server_url');
+    const isFixApiBackend = this.url.includes('fixapibackend');
+    if (!isFixApiBackend && serverUrl) {
+      const cleanServer = serverUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+      this.url = `wss://${cleanServer}/ws/v2`;
+    } else {
+      this.url = this.normalizeWsUrl(this.url);
+    }
 
     // Get auth token and add to URL (only for rtxbackend, not fixapibackend)
     const token = localStorage.getItem('auth_token');
-    const isFixApiBackend = this.url.includes('fixapibackend');
     const urlWithAuth = isFixApiBackend ? this.url : this.addTokenToUrl(this.url, token);
 
     console.log(`[WS] Connecting to ${this.url}...`);
@@ -232,6 +303,7 @@ export class EnhancedWebSocketService {
       this.sendMessage({
         action: 'subscribe',
         channel,
+        channels: [channel],
       });
     } else {
       console.log(`[WS] Queued subscribe for ${channel} (not connected yet)`);
@@ -247,6 +319,7 @@ export class EnhancedWebSocketService {
           this.sendMessage({
             action: 'unsubscribe',
             channel,
+            channels: [channel],
           });
         }
       }
@@ -480,6 +553,11 @@ export class EnhancedWebSocketService {
             const mt5Data = { ...data, type: 'mt5_account', account: accRecord };
             this.handleMT5Update(mt5Data);
           }
+        } else if (data.channel?.startsWith('ticks.') && payload) {
+          this.handleFixTick({
+            ...payload,
+            symbol: payload.symbol || data.channel.split('.')[1]
+          });
         }
       } catch (err) {
         console.error('[WS] Failed to map channel_message to store:', err);
@@ -838,6 +916,7 @@ export class EnhancedWebSocketService {
       this.sendMessage({
         action: 'subscribe',
         channel,
+        channels: [channel],
       });
     });
   }
@@ -936,13 +1015,6 @@ export class EnhancedWebSocketService {
     this.messageQueue = [];
   }
 
-  /**
-   * Normalize WebSocket URL to FIX stream endpoint where appropriate.
-   * - Preserves fixapibackend URLs (wss://fixapibackend.tradecopier.org/ws)
-   * - Migrates rtxbackend `/ws` path to `/fix-ws`
-   * - Rewrites ONLY Vite dev proxy URLs (localhost:5173) to backend FIX URL
-   * - Preserves explicit local FIX backends like ws://localhost:8081/ws
-   */
   private normalizeWsUrl(input: string): string {
     if (input?.includes('/ws/v2')) {
       return input;

@@ -282,7 +282,8 @@ function PendingOrderRow({
     i,
     handleCancelOrder,
     onModifyOrder,
-    loading
+    loading,
+    isAdvancedMode
 }: {
     order: PendingOrder,
     i: number,
