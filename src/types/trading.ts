@@ -231,6 +231,14 @@ export type Position = {
   openTime: string;
   updateTime: string;
   comment?: string;
+  // Backend wire-format aliases (snake_case). Optional so existing camelCase code is unaffected.
+  open_price?: number;
+  current_price?: number;
+  unrealized_pl?: number;
+  profit?: number;
+  quantity?: number;
+  time_create?: string;
+  time_update?: string;
 };
 
 // Account Types (Extended)

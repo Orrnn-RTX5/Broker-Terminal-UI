@@ -23,6 +23,7 @@ interface WebSocketStoreState {
   connectionState: ConnectionState;
   legacyConnectionState: ConnectionState;
   fixConnectionState: ConnectionState;
+  isStale: boolean;
   lastMessageTime: number | null;
 
   // Metrics

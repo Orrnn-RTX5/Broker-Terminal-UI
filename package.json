@@ -17,8 +17,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "electron:build": "npm run build && npx electron-builder --win",
-    "electron:publish": "npm run build && npx electron-builder --win --publish always"
+    "electron:build": "npm run typecheck && npm run build && npx electron-builder --win",
+    "electron:publish": "npm run typecheck && npm run build && npx electron-builder --win --publish always"
   },
   "build": {
     "appId": "com.rtx.terminal",
@@ -60,7 +60,6 @@
     "i18next-browser-languagedetector": "^8.2.0",
     "i18next-resources-to-backend": "^1.2.1",
     "install": "^0.13.0",
-    "klinecharts": "^10.0.0-beta1",
     "lightweight-charts": "^5.1.0",
     "lodash-es": "^4.17.23",
     "lucide-react": "^0.562.0",

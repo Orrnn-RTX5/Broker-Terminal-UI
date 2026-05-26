@@ -919,10 +919,20 @@ html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row {
   border-radius: 6px !important;
   margin-bottom: 2px !important;
   transition: all 0.2s ease !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:focus,
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover {
   background: #F3E5F5 !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__chevron {

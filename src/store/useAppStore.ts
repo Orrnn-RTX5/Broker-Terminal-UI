@@ -45,6 +45,14 @@ export interface Position {
   commission: number;
   unrealizedPnL: number;
   comment?: string;
+  // Backend wire-format aliases (snake_case). Optional — preserves existing defensive fallback logic.
+  open_price?: number;
+  current_price?: number;
+  unrealized_pl?: number;
+  profit?: number;
+  quantity?: number;
+  time_create?: string;
+  time_update?: string;
 }
 
 export interface Order {
@@ -552,7 +560,6 @@ export const useAppStore = create<AppState>()(
           chartType: state.chartType,
           timeframe: state.timeframe,
           orderVolume: state.orderVolume,
-          savedAccounts: sanitizeSavedAccounts(state.savedAccounts),
         }),
         merge: (persistedState, currentState) => {
           const persisted = persistedState as Partial<AppState> | undefined;
@@ -560,7 +567,7 @@ export const useAppStore = create<AppState>()(
           return {
             ...currentState,
             ...persisted,
-            savedAccounts: sanitizeSavedAccounts(persisted?.savedAccounts),
+            savedAccounts: [],
           };
         },
       }

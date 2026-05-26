@@ -1,5 +1,6 @@
 import { useAppStore } from '../store/useAppStore';
 import { brokerApi } from '../api/brokerApi';
+import { getStoredBrokerServer } from './brokerServers';
 
 const toFinite = (v: unknown, fallback = 0): number => {
   const n = Number(v);
@@ -25,6 +26,7 @@ export async function bootstrapApp(login: number): Promise<void> {
   setPositions([]);
   setOrders([]);
   useAppStore.getState().setTrades([]);
+  useAppStore.setState({ savedAccounts: [] });
 
   setBootstrapping(true, 'Initializing dashboard in parallel...');
 
@@ -70,10 +72,31 @@ export async function bootstrapApp(login: number): Promise<void> {
       : (rawOrders?.orders || []);
     setOrders(normalizedOrders);
 
-    // Handle instruments / status logs
-    if (marketStatus) {
-      console.log(`[Bootstrap] Market status loaded: ${marketStatus.status || 'unknown'}`);
+    // Populate saved accounts dynamically from fetched accounts or profile
+    const serverName = localStorage.getItem('broker_id') || getStoredBrokerServer();
+    let mappedAccounts: any[] = [];
+    if (Array.isArray(accounts) && accounts.length > 0) {
+      mappedAccounts = accounts.map((acc: any) => {
+        const loginNum = parseInt(acc.login ?? acc.account_login, 10);
+        return {
+          login: isNaN(loginNum) ? login : loginNum,
+          name: acc.name || acc.username || '',
+          server: acc.server || acc.broker_name || serverName,
+          isLive: acc.isLive !== false,
+          lastUsed: Date.now(),
+        };
+      });
+    } else {
+      const accountName = authMe?.username || authMe?.name || '';
+      mappedAccounts = [{
+        login,
+        name: accountName,
+        server: serverName,
+        isLive: true,
+        lastUsed: Date.now(),
+      }];
     }
+    useAppStore.setState({ savedAccounts: mappedAccounts });
 
     setBootstrapping(true, 'All systems ready');
     await new Promise<void>((resolve) => setTimeout(resolve, 300));

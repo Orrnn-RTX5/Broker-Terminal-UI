@@ -79,8 +79,9 @@ export class EnhancedWebSocketService {
   private messageQueue: QueuedMessage[] = [];
   private maxQueueSize = 1000;
   private flushInterval: ReturnType<typeof setInterval> | null = null;
-  // Keep flush loop effectively immediate for any buffered flows.
-  private updateThrottleMs = 1;
+  // Flush buffered ticks once per frame (~60fps). Avoids CPU spin from 1ms timers
+  // in Electron while still feeling instantaneous to the user.
+  private updateThrottleMs = 16;
 
   // Metrics tracking
   private metrics: ConnectionMetrics = {
@@ -1007,6 +1008,7 @@ export class EnhancedWebSocketService {
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.handleOnline);
       window.removeEventListener('offline', this.handleOffline);
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }
 
     this.subscribers.clear();

@@ -28,45 +28,6 @@ export const NavigatorPanel: React.FC = () => {
     }, []);
 
 
-    useEffect(() => {
-        if (!accountId) return;
-        const loginNum = parseInt(accountId, 10);
-        if (isNaN(loginNum)) return;
-
-        const existing = savedAccounts.find(a => a.login === loginNum);
-        const activeServer = existing?.server || getStoredBrokerServer();
-        
-        if (!existing) {
-            addSavedAccount({
-                login: loginNum,
-                name: '',
-                server: activeServer,
-                isLive: true,
-                lastUsed: Date.now(),
-            });
-        }
-
-   
-        if (isAuthenticated && !existing?.name) {
-            api.account.getAccountSummary(loginNum)
-                .then((data: any) => {
-                    console.log('[Navigator] Account summary response:', data);
-                    const accountName = data?.name || data?.account_name || data?.display_name || '';
-                    if (accountName) {
-                        addSavedAccount({
-                            login: loginNum,
-                            name: accountName,
-                            server: activeServer,
-                            isLive: true,
-                            lastUsed: Date.now(),
-                        });
-                    }
-                })
-                .catch((err) => {
-                    console.debug('[Navigator] account summary not available:', err);
-                });
-        }
-    }, [accountId, addSavedAccount, savedAccounts, isAuthenticated]);
 
     // Group accounts by server
     const servers = Array.from(new Set(savedAccounts.map(a => a.server)));
