@@ -7,6 +7,8 @@ Base URL: http://localhost:8090
 WebSocket URL: ws://localhost:8090
 
 
+Authentication
+Login to get a JWT token:
 
 
 
@@ -14,6 +16,28 @@ WebSocket URL: ws://localhost:8090
 
 
 
+
+POST /api/v2/auth/login
+Content-Type: application/json
+
+{
+  "username": "trader@example.com",
+  "password": "yourpassword",
+  "broker_id": "orrnn"
+}
+
+
+Response:
+
+
+
+
+
+{
+  "token": "eyJhbGci...",
+  "account_login": 1000123,
+  "role": "trader"
+}
 
 
 Store token and account_login. Send token on every request:

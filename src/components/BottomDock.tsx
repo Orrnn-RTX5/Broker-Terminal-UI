@@ -7,7 +7,7 @@ import { CodeBaseTab, ArticlesTab, ExpertsTab } from './layout/ResearchTabs';
 import { JournalTab } from './layout/JournalTab';
 import { HistoryDownloader } from './HistoryDownloader';
 import { useAppStore } from '../store/useAppStore';
-import { useTradeFacingData } from '../hooks/useTradeFacingData';
+import { useToolboxTradeData } from '../hooks/useToolboxTradeData';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 
 // BottomDock reads trading data from the store directly to avoid re-rendering
@@ -52,7 +52,7 @@ export function BottomDock({
     const [account, setAccount] = useState<any>(useAppStore.getState().account);
     const [positions, setPositions] = useState<any[]>(useAppStore.getState().positions);
     const history = useAppStore(s => s.trades);
-    useTradeFacingData(undefined, 10000);
+    const toolboxTrade = useToolboxTradeData();
 
     // Value-level caches — prevent setState when broker sends new objects with same field values
     const cachedAccountSig = useRef<string>('');
@@ -106,6 +106,32 @@ export function BottomDock({
     const [activeTab, setActiveTab] = useState<TabType>('Trade');
     
     const [isResizing, setIsResizing] = useState(false);
+
+    const refreshTradeSoon = () => {
+        window.setTimeout(() => {
+            void toolboxTrade.refresh();
+        }, 1500);
+    };
+
+    const handleTradeClosePosition = (id: number, volume?: number) => {
+        toolboxTrade.removePosition(Number(id));
+        const result = onClosePosition(id, volume) as unknown;
+        if (result && typeof (result as any).finally === 'function') {
+            (result as any).finally(refreshTradeSoon);
+        } else {
+            refreshTradeSoon();
+        }
+    };
+
+    const handleTradeCloseBulk = (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => {
+        toolboxTrade.removePositionsByMode(type);
+        const result = onCloseBulk?.(type, symbol) as unknown;
+        if (result && typeof (result as any).finally === 'function') {
+            (result as any).finally(refreshTradeSoon);
+        } else {
+            refreshTradeSoon();
+        }
+    };
 
     // Helpers
     const formatMoney = (val: number | undefined | null) => {
@@ -204,13 +230,21 @@ export function BottomDock({
                 )}
                 {activeTab === 'Trade' && (
                     <TradeTab
-                        positions={positions ?? []}
-                        account={account}
-                        onClosePosition={onClosePosition}
+                        positions={toolboxTrade.positions ?? []}
+                        account={toolboxTrade.account}
+                        onClosePosition={handleTradeClosePosition}
                         onModifyPosition={onModifyPosition}
-                        onCloseBulk={onCloseBulk}
+                        onCloseBulk={handleTradeCloseBulk}
                         formatMoney={formatMoney}
                         formatDate={formatDate}
+                        loading={toolboxTrade.loading}
+                        error={toolboxTrade.error}
+                        wsState={toolboxTrade.wsState}
+                        restBaseUrl={toolboxTrade.restBaseUrl}
+                        wsUrl={toolboxTrade.wsUrl}
+                        lastRestAt={toolboxTrade.lastRestAt}
+                        lastWsAt={toolboxTrade.lastWsAt}
+                        onRefresh={toolboxTrade.refresh}
                     />
                 )}
                 {activeTab === 'Exposure' && (
@@ -383,7 +417,17 @@ function BlinkingText({ value, formatFn, prefix = '', suffix = '', defaultColor 
     return <span className={`${defaultColor} px-0.5 rounded-sm inline-block`}>{prefix}{formatFn ? formatFn(value) : value}{suffix}</span>;
 }
 
-function TradeTab({ positions, account, onClosePosition, onModifyPosition, onCloseBulk, formatMoney, formatDate }: any) {
+function TradeTab({
+    positions,
+    account,
+    onClosePosition,
+    onModifyPosition,
+    onCloseBulk,
+    formatMoney,
+    formatDate,
+    loading,
+    error,
+}: any) {
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editSL, setEditSL] = useState("");
     const [editTP, setEditTP] = useState("");
@@ -456,17 +500,19 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
         });
     }, [positions, slTpOverrides]);
 
-    // Compute live account totals based on realtime positions
+    // Position totals come from rows. Account metrics use REST/WS account/metrics as source of truth.
     const totalLivePnL = useMemo(() => livePositions.reduce((acc, pos) => acc + (pos.livePnL || 0), 0), [livePositions]);
     const totalSwap = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.swap) || 0), 0), [livePositions]);
     const totalCommission = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.commission) || 0), 0), [livePositions]);
-    const liveEquity = (account?.balance || 0) + totalLivePnL;
+    const liveEquity = Number.isFinite(Number(account?.equity)) ? Number(account?.equity) : (account?.balance || 0) + totalLivePnL;
+    const margin = Number(account?.margin || 0);
+    const liveFreeMargin = Number.isFinite(Number(account?.freeMargin)) ? Number(account?.freeMargin) : liveEquity - margin;
+    const liveMarginLevel = Number.isFinite(Number(account?.marginLevel)) ? Number(account?.marginLevel) : (margin > 0 ? (liveEquity / margin) * 100 : 0);
 
-    // Use margin from WebSocket account data (same as balance) — server knows per-symbol margin rates
-    const margin = account?.margin || 0;
-    // Recompute freeMargin & marginLevel using live equity for real-time accuracy
-    const liveFreeMargin = liveEquity - margin;
-    const liveMarginLevel = margin > 0 ? (liveEquity / margin) * 100 : 0;
+    const formatMarginLevel = (value: number) => {
+        if (value <= 0 && livePositions.length === 0) return '\u221e';
+        return `${formatMoney(value)} %`;
+    };
 
     const fmtMT5Time = (dateStr: string) => {
         try {
@@ -515,6 +561,13 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[11px]">
+                        {livePositions.length === 0 && (
+                            <tr>
+                                <td colSpan={14} className="h-16 text-center text-zinc-600 text-xs italic">
+                                    {loading ? 'Loading open positions...' : error ? error : 'No open positions'}
+                                </td>
+                            </tr>
+                        )}
                         {livePositions.map((pos: any, i: number) => {
                             const isBuy = String(pos.side).toUpperCase() === 'BUY';
                             const pnl = pos.profit ?? pos.unrealizedPnL;
@@ -622,7 +675,7 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                 <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Equity:</span> <BlinkingText value={liveEquity} formatFn={formatMoney} /></span>
                 <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Margin:</span> <BlinkingText value={margin} formatFn={formatMoney} /></span>
                 <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Free Margin:</span> <BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
-                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Margin Level:</span> <BlinkingText value={liveMarginLevel} formatFn={formatMoney} suffix=" %" /></span>
+                <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Margin Level:</span> <span>{formatMarginLevel(liveMarginLevel)}</span></span>
                 <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Swap:</span> <span className={totalSwap < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalSwap)}</span></span>
                 <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Commission:</span> <span className={totalCommission < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalCommission)}</span></span>
                 <div className="flex-1"></div>

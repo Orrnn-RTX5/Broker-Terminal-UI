@@ -72,9 +72,9 @@ function normalizeAccount(raw: any, current?: any) {
   return {
     balance: toFinite(raw?.balance ?? current?.balance, 0),
     equity: toFinite(raw?.equity ?? current?.equity, 0),
-    margin: toFinite(raw?.margin ?? raw?.margin_used ?? current?.margin, 0),
+    margin: toFinite(raw?.used_margin ?? raw?.margin_used ?? raw?.margin ?? current?.margin, 0),
     freeMargin: toFinite(raw?.margin_free ?? raw?.freeMargin ?? raw?.free_margin ?? current?.freeMargin, 0),
-    unrealizedPL: toFinite(raw?.profit ?? raw?.unrealizedPL ?? raw?.unrealized_pl ?? current?.unrealizedPL, 0),
+    unrealizedPL: toFinite(raw?.floating_pnl ?? raw?.profit ?? raw?.unrealizedPL ?? raw?.unrealized_pl ?? current?.unrealizedPL, 0),
     marginLevel: toFinite(raw?.margin_level ?? raw?.marginLevel ?? current?.marginLevel, 0),
     currency: String(raw?.currency ?? current?.currency ?? 'USD'),
     leverage: toFinite(raw?.leverage ?? current?.leverage, 100),
@@ -155,17 +155,15 @@ class AccountSocketManager {
         this.startPing();
         this.notifyConnected(true);
 
-        // Step 1: Auth handshake
-        if (token) {
-          this.ws!.send(JSON.stringify({ action: 'auth', token }));
-        }
-
         // Step 4-5: Subscribe to login channels
         const channels = [
           `positions.${login}`,
+          `metrics.${login}`,
           `account.${login}`,
         ];
-        this.ws!.send(JSON.stringify({ action: 'subscribe', channels }));
+        channels.forEach((channel) => {
+          this.ws!.send(JSON.stringify({ action: 'subscribe', channel }));
+        });
         console.log('[AccountSocket] Subscribed to channels:', channels);
       };
 
@@ -207,14 +205,15 @@ class AccountSocketManager {
   private handleMessage(data: any): void {
     const { type, channel } = data;
 
-    if (type === 'pong') return;
+    if (type === 'pong' || type === 'subscribed') return;
 
-    // Channel message routing
-    if (type === 'channel_message' && channel) {
+    // Channel message routing. Broker /ws/v2 sends both direct
+    // {channel,data} messages and legacy {type:"channel_message"} envelopes.
+    if (channel) {
       const payload = data.data ?? data;
 
       // Step 6a: Account channel
-      if (channel.startsWith('account.')) {
+      if (channel.startsWith('account.') || channel.startsWith('metrics.')) {
         this.handleAccountUpdate(payload);
         return;
       }
@@ -241,12 +240,12 @@ class AccountSocketManager {
   // ─── Step 7: useLiveAccountState — update Zustand ────────────────────────
 
   private handleAccountUpdate(payload: any): void {
-    const accRecord = payload?.account ?? payload;
+    const accRecord = payload?.account ?? payload?.data?.account ?? payload?.data?.data ?? payload?.data ?? payload;
     if (!accRecord || accRecord.balance === undefined) return;
 
     // Filter: only accept data for our login
     if (this.login) {
-      const channelLogin = payload?.login ?? payload?.account_login;
+      const channelLogin = payload?.login ?? payload?.account_login ?? accRecord?.login ?? accRecord?.account_login;
       if (channelLogin && Number(channelLogin) !== this.login) return;
     }
 
@@ -262,32 +261,49 @@ class AccountSocketManager {
     // Array of positions (full snapshot)
     const rawPositions = Array.isArray(payload) ? payload : (payload?.positions ?? null);
     if (Array.isArray(rawPositions)) {
-      if (eventType === 'pnl_update') {
-        // Partial PnL update — only update price/profit fields
-        const current = store.positions;
-        const updated = [...current];
-        let changed = false;
+      const current = store.positions;
+      let updated = [...current];
+      let changed = false;
 
-        for (const update of rawPositions) {
-          const ticketId = Number(update.ticket ?? update.id ?? update.position_ticket ?? 0);
-          if (!ticketId) continue;
+      for (const update of rawPositions) {
+        const ticketId = Number(update.ticket ?? update.id ?? update.position_id ?? update.position_ticket ?? 0);
+        if (!ticketId) continue;
 
-          const idx = updated.findIndex((p) => p.id === ticketId);
-          if (idx >= 0) {
-            const existing = updated[idx];
-            const newPrice = toFinite(update.price_current ?? update.current_price ?? update.currentPrice, existing.currentPrice);
-            const newPnL = toFinite(update.profit ?? update.unrealized_pl ?? update.unrealizedPnL, existing.unrealizedPnL);
-            if (existing.currentPrice !== newPrice || existing.unrealizedPnL !== newPnL) {
-              updated[idx] = { ...existing, currentPrice: newPrice, unrealizedPnL: newPnL };
-              changed = true;
-            }
+        const idx = updated.findIndex((p) => p.id === ticketId);
+        if (idx >= 0) {
+          const existing = updated[idx];
+          const newPrice = toFinite(update.price_current ?? update.current_price ?? update.currentPrice, existing.currentPrice);
+          const newPnL = toFinite(update.profit ?? update.unrealized_pl ?? update.unrealizedPnL, existing.unrealizedPnL);
+          const next = {
+            ...existing,
+            currentPrice: newPrice,
+            current_price: newPrice,
+            price_current: newPrice,
+            unrealizedPnL: newPnL,
+            unrealized_pl: newPnL,
+            profit: newPnL,
+            swap: toFinite(update.swap ?? update.storage, existing.swap),
+            time_update: update.time_update ?? existing.time_update,
+          } as any;
+          if (
+            existing.currentPrice !== next.currentPrice ||
+            existing.unrealizedPnL !== next.unrealizedPnL ||
+            existing.swap !== next.swap ||
+            existing.time_update !== next.time_update
+          ) {
+            updated[idx] = next;
+            changed = true;
+          }
+        } else {
+          const normalized = normalizePosition(update);
+          if (normalized.id) {
+            updated = [normalized, ...updated];
+            changed = true;
           }
         }
-
-        if (changed) store.setPositions(updated);
-      } else {
-        store.setPositions(rawPositions.map(normalizePosition));
       }
+
+      if (changed) store.setPositions(updated);
       return;
     }
 

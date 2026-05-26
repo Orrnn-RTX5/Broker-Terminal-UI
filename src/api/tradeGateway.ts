@@ -140,9 +140,9 @@ const numberOr = (value: unknown, fallback: number): number => {
 export const normalizeAccount = (raw: GatewayAccount | any, previous?: Account | null): Account => ({
   balance: numberOr(raw?.balance, previous?.balance ?? 0),
   equity: numberOr(raw?.equity ?? raw?.balance, previous?.equity ?? previous?.balance ?? 0),
-  margin: numberOr(raw?.margin ?? raw?.margin_used, previous?.margin ?? 0),
+  margin: numberOr(raw?.used_margin ?? raw?.margin_used ?? raw?.margin, previous?.margin ?? 0),
   freeMargin: numberOr(raw?.margin_free ?? raw?.free_margin ?? raw?.margin_available, previous?.freeMargin ?? 0),
-  unrealizedPL: numberOr(raw?.floating ?? raw?.profit ?? raw?.unrealized_pl, previous?.unrealizedPL ?? 0),
+  unrealizedPL: numberOr(raw?.floating_pnl ?? raw?.floating ?? raw?.profit ?? raw?.unrealized_pl, previous?.unrealizedPL ?? 0),
   marginLevel: numberOr(raw?.margin_level ?? raw?.marginLevel, previous?.marginLevel ?? 0),
   currency: raw?.currency ?? previous?.currency ?? 'USD',
   leverage: numberOr(raw?.leverage, previous?.leverage ?? 100),
