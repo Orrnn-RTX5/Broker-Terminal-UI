@@ -3748,7 +3748,18 @@ export const TradingChart = React.memo(function TradingChart({
   // ── Context menu handlers ──────────────────────────────────────────────────
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); // Block the browser's native right-click menu
-    // Do NOT stopPropagation() — allowing propagation keeps chart scroll working
+
+    // If the right-click originated from a drawing SVG hit element, let the
+    // DrawingContextMenu handle it — don't show the chart menu on top.
+    let node: HTMLElement | null = e.target as HTMLElement;
+    while (node) {
+      // SVG drawing groups have data-id attribute; SVG overlay has class chart-svg-overlay
+      if (node.hasAttribute?.('data-id') || (node as any).classList?.contains?.('chart-svg-overlay')) {
+        return; // DrawingContextMenu will handle this right-click
+      }
+      node = node.parentElement;
+    }
+
     setCtxMenu({ visible: true, x: e.clientX, y: e.clientY });
   }, []);
 

@@ -176,6 +176,7 @@ const normalizeGatewayPositionForApp = (raw: any, index = 0) => {
   const openPrice = toFiniteNumber(raw?.price_open ?? raw?.open_price ?? raw?.openPrice ?? raw?.price, 0);
   const currentPrice = toFiniteNumber(raw?.price_current ?? raw?.current_price ?? raw?.currentPrice, openPrice);
   const side = String(raw?.side ?? '').toLowerCase() === 'sell' ? 'SELL' : 'BUY';
+  const unrealizedPnL = toFiniteNumber(raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL, 0);
 
   return {
     ...raw,
@@ -185,14 +186,17 @@ const normalizeGatewayPositionForApp = (raw: any, index = 0) => {
     side,
     volume: toFiniteNumber(raw?.volume ?? raw?.quantity, 0),
     quantity: toFiniteNumber(raw?.volume ?? raw?.quantity, 0),
+    openPrice,
     open_price: openPrice,
+    currentPrice,
     current_price: currentPrice,
     opened_at: raw?.opened_at ?? timestampToIso(raw?.time_create),
     sl: toFiniteNumber(raw?.price_sl ?? raw?.sl, 0),
     tp: toFiniteNumber(raw?.price_tp ?? raw?.tp, 0),
     swap: toFiniteNumber(raw?.swap, 0),
     commission: toFiniteNumber(raw?.commission, 0),
-    unrealized_pl: toFiniteNumber(raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL, 0),
+    unrealizedPnL,
+    unrealized_pl: unrealizedPnL,
   };
 };
 

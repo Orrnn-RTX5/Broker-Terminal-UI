@@ -1,8 +1,6 @@
 import {
   buildBrokerWsV2Uri,
   buildBrokerWsFeedUri,
-  buildBrokerApiV2,
-  getServerUrl,
 } from '../services/brokerSession';
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL as string;
@@ -37,8 +35,7 @@ const getInitialWsUrl = (): string => {
   if (typeof window !== 'undefined') {
     const serverUrl = localStorage.getItem('server_url');
     if (serverUrl) {
-      const cleanServer = serverUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-      return `wss://${cleanServer}/ws/v2`;
+      return buildBrokerWsV2Uri(null);
     }
   }
   return import.meta.env.VITE_RTX5_WS_URL as string || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
@@ -48,8 +45,7 @@ const getInitialMarketWsUrl = (): string => {
   if (typeof window !== 'undefined') {
     const serverUrl = localStorage.getItem('server_url');
     if (serverUrl) {
-      const cleanServer = serverUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-      return `wss://${cleanServer}/ws/v2`;
+      return buildBrokerWsV2Uri(null);
     }
   }
   return import.meta.env.VITE_MARKET_WS_URL as string || import.meta.env.VITE_RTX5_WS_URL as string || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
@@ -59,8 +55,7 @@ const getInitialFixWsUrl = (): string => {
   if (typeof window !== 'undefined') {
     const serverUrl = localStorage.getItem('server_url');
     if (serverUrl) {
-      const cleanServer = serverUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-      return `wss://${cleanServer}/ws/v2`;
+      return buildBrokerWsV2Uri(null);
     }
   }
   return import.meta.env.VITE_FIX_WS_URL as string || import.meta.env.VITE_RTX5_WS_URL as string || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
@@ -70,8 +65,7 @@ const getInitialGeneralWsUrl = (): string => {
   if (typeof window !== 'undefined') {
     const serverUrl = localStorage.getItem('server_url');
     if (serverUrl) {
-      const cleanServer = serverUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-      return `wss://${cleanServer}/ws/v2`;
+      return buildBrokerWsV2Uri(null);
     }
   }
   return import.meta.env.VITE_WS_URL as string || import.meta.env.VITE_RTX5_WS_URL as string || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
@@ -266,9 +260,7 @@ export function buildWsUrl(endpoint: string): string {
 }
 
 export function buildApiV2WsUrl(token?: string): string {
-  if (!token) return RTX5_WS_URL;
-  const separator = RTX5_WS_URL.includes('?') ? '&' : '?';
-  return `${RTX5_WS_URL}${separator}token=${encodeURIComponent(token)}`;
+  return buildBrokerWsV2Uri(token ?? null);
 }
 
 // Export base URLs for backward compatibility

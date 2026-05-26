@@ -361,16 +361,26 @@ export const accountApi = {
   },
 };
 
-// ====================
-// Trading Endpoints
-// ====================
+
 
 export const tradingApi = {
-  getPositions: (login?: number, params?: { limit?: number; offset?: number }): Promise<any> =>
-    apiClient.get<Position[]>(`/positions/${requireLogin(login, '/api/v2/positions/{login}')}`, {
-      baseUrl: API_V2_BASE_URL,
-      params,
-    }),
+  getPositions: (login?: number, params?: { limit?: number; offset?: number }): Promise<any> => {
+    const resolvedLogin = requireLogin(login, '/api/v2/positions/{login}');
+    const baseUrl = API_V2_BASE_URL;
+    const endpoint = `/positions/${resolvedLogin}`;
+    const url = `${baseUrl}${endpoint}`;
+    console.log("Calling Toolbox -> Trade API:", url);
+    return apiClient.get<Position[]>(endpoint, {
+      baseUrl,
+      params: {
+        limit: params?.limit ?? 50,
+        offset: params?.offset ?? 0,
+      },
+      headers: {
+        accept: 'application/json',
+      },
+    });
+  },
 
   getOrders: (login?: number, params?: { limit?: number }): Promise<any> =>
     apiClient.get<Order[]>(`/orders/${requireLogin(login, '/api/v2/orders/{login}')}`, {

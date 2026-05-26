@@ -328,6 +328,10 @@ export class DrawingManager {
     if (!context.svgOverlay) {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('class', 'chart-svg-overlay');
+      // Use the SVG *attribute* (not CSS) for pointer-events:none on the root SVG.
+      // This allows individual child elements (hit-zones) to override it with their
+      // own pointer-events attribute — CSS pointer-events:none on parent blocks children.
+      svg.setAttribute('pointer-events', 'none');
       svg.style.cssText = [
         'position:absolute',
         'top:0',
@@ -335,7 +339,6 @@ export class DrawingManager {
         'width:100%',
         'height:100%',
         'overflow:visible',
-        'pointer-events:none',
         'z-index:10',
       ].join(';');
       container.appendChild(svg);
@@ -743,7 +746,7 @@ export class DrawingManager {
         // Invisible wide hit-zone for interaction
         if (!isPreview) {
           const hit = this.svgLine(x, -100, x, H + 100, 'transparent', 12, 'none');
-          hit.style.pointerEvents = 'stroke';
+          hit.setAttribute('pointer-events', 'stroke');
           hit.style.cursor = 'ew-resize';
           hit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, 0));
           hit.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
@@ -779,7 +782,7 @@ export class DrawingManager {
         // Clickable hit-zone (invisible wider line)
         if (!isPreview) {
           const hit = this.svgLine(p1.x, p1.y, p2.x, p2.y, 'transparent', 12, 'none');
-          hit.style.pointerEvents = 'stroke';
+          hit.setAttribute('pointer-events', 'stroke');
           hit.style.cursor = 'pointer';
           hit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, null));
           hit.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
@@ -925,14 +928,14 @@ export class DrawingManager {
         // ── Hit zones for interaction (committed only) ──
         if (!isPreview) {
           const mainHit = this.svgLine(mp1.x, mp1.y, mp2.x, mp2.y, 'transparent', 14, 'none');
-          mainHit.style.pointerEvents = 'stroke';
+          mainHit.setAttribute('pointer-events', 'stroke');
           mainHit.style.cursor = 'move';
           mainHit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, null));
           mainHit.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
           g.appendChild(mainHit);
 
           const parHit = this.svgLine(pp1.x, pp1.y, pp2.x, pp2.y, 'transparent', 14, 'none');
-          parHit.style.pointerEvents = 'stroke';
+          parHit.setAttribute('pointer-events', 'stroke');
           parHit.style.cursor = 'ns-resize';
           parHit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, -1));
           parHit.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
@@ -950,7 +953,7 @@ export class DrawingManager {
             widthHandle.setAttribute('stroke', '#fff');
             widthHandle.setAttribute('stroke-width', '1.5');
             widthHandle.style.cursor = 'ns-resize';
-            widthHandle.style.pointerEvents = 'all';
+            widthHandle.setAttribute('pointer-events', 'all');
             widthHandle.addEventListener('pointerdown', e => this.beginDrag(e, d.id, -1));
             g.appendChild(widthHandle);
           }
@@ -1220,7 +1223,7 @@ export class DrawingManager {
           bg.setAttribute('fill', icon.bg || iconColor);
           bg.style.opacity = opacity;
           if (!isPreview) {
-            bg.style.pointerEvents = 'all';
+            bg.setAttribute('pointer-events', 'all');
             bg.style.cursor = 'pointer';
             bg.addEventListener('pointerdown', e => this.beginDrag(e, d.id, 0));
             bg.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
@@ -1290,7 +1293,7 @@ export class DrawingManager {
             hit.setAttribute('width', String(size));
             hit.setAttribute('height', String(size));
             hit.setAttribute('fill', 'transparent');
-            hit.style.pointerEvents = 'all';
+            hit.setAttribute('pointer-events', 'all');
             hit.style.cursor = 'pointer';
             hit.addEventListener('pointerdown', e => this.beginDrag(e, d.id, 0));
             hit.addEventListener('contextmenu', e => this.onContextMenu(e, d.id));
@@ -1321,7 +1324,7 @@ export class DrawingManager {
         handle.setAttribute('stroke', '#fff');
         handle.setAttribute('stroke-width', '1');
         handle.style.cursor = 'crosshair';
-        handle.style.pointerEvents = 'all';
+        handle.setAttribute('pointer-events', 'all');
         handle.addEventListener('pointerdown', e => this.beginDrag(e, d.id, i));
         g.appendChild(handle);
       });
@@ -1341,7 +1344,7 @@ export class DrawingManager {
         handle.setAttribute('stroke', '#fff');
         handle.setAttribute('stroke-width', '1');
         handle.style.cursor = 'crosshair';
-        handle.style.pointerEvents = 'all';
+        handle.setAttribute('pointer-events', 'all');
         handle.addEventListener('pointerdown', e => this.beginDrag(e, d.id, i));
         g.appendChild(handle);
       });
@@ -1349,7 +1352,7 @@ export class DrawingManager {
 
     // Make whole group clickable (select on click when not in drawing mode)
     if (!isPreview) {
-      g.style.pointerEvents = 'auto';
+      g.setAttribute('pointer-events', 'auto');
       g.style.cursor = 'pointer';
       g.addEventListener('click', e => {
         e.stopPropagation();
@@ -1387,7 +1390,7 @@ export class DrawingManager {
     el.setAttribute('fill', fill);
     el.setAttribute('font-size', String(size));
     el.setAttribute('font-family', 'monospace, sans-serif');
-    el.style.pointerEvents = 'none';
+    el.setAttribute('pointer-events', 'none');
     el.textContent = text;
     return el;
   }

@@ -411,21 +411,21 @@ export const useAppStore = create<AppState>()(
             }
 
             const nextTick = {
-                  // Preserve daily/high/low fields from previous tick if new tick doesn't include them
-                  // (broker often sends price-only ticks without dailyChange)
-                  dailyChange: prevTick?.dailyChange,
-                  high24h:     prevTick?.high24h,
-                  low24h:      prevTick?.low24h,
-                  high:        prevTick?.high,
-                  low:         prevTick?.low,
-                  // New tick data overrides everything above
-                  ...tick,
-                  // Computed fields always override
-                  prevBid: prevTick?.bid,
-                  prevAsk: prevTick?.ask,
-                  bidDirection,
-                  askDirection,
-                };
+              // Preserve daily/high/low fields from previous tick if new tick doesn't include them
+              // (broker often sends price-only ticks without dailyChange)
+              dailyChange: prevTick?.dailyChange,
+              high24h: prevTick?.high24h,
+              low24h: prevTick?.low24h,
+              high: prevTick?.high,
+              low: prevTick?.low,
+              // New tick data overrides everything above
+              ...tick,
+              // Computed fields always override
+              prevBid: prevTick?.bid,
+              prevAsk: prevTick?.ask,
+              bidDirection,
+              askDirection,
+            };
             return {
               ticks: {
                 ...state.ticks,
@@ -442,11 +442,41 @@ export const useAppStore = create<AppState>()(
         setPositions: (positions) =>
           set((state) => ({
             positions: positions.map((incoming) => {
-              // Partial WS streaming updates often omit the symbol field.
-              // Preserve the existing symbol so the UI never goes blank between REST polls.
-              if (incoming.symbol) return incoming;
               const existing = state.positions.find((p) => p.id === incoming.id);
-              return existing ? { ...incoming, symbol: existing.symbol } : incoming;
+              if (!existing) return incoming;
+
+              // A full update always has non-zero openPrice/open_price and volume/quantity.
+              const incomingOpen = Number(incoming.openPrice ?? incoming.open_price ?? 0);
+              const incomingVol = Number(incoming.volume ?? incoming.quantity ?? 0);
+              const isFullUpdate = incomingOpen > 0 && incomingVol > 0;
+
+              if (isFullUpdate) {
+                return {
+                  ...existing,
+                  ...incoming,
+                  symbol: incoming.symbol || existing.symbol,
+                };
+              } else {
+                // Partial P&L or quote updates — preserve all other existing properties!
+                return {
+                  ...existing,
+                  currentPrice: Number(incoming.currentPrice ?? incoming.current_price ?? 0) > 0
+                    ? Number(incoming.currentPrice ?? incoming.current_price)
+                    : existing.currentPrice,
+                  current_price: Number(incoming.currentPrice ?? incoming.current_price ?? 0) > 0
+                    ? Number(incoming.currentPrice ?? incoming.current_price)
+                    : existing.current_price,
+                  unrealizedPnL: incoming.unrealizedPnL !== undefined
+                    ? Number(incoming.unrealizedPnL)
+                    : (incoming.profit !== undefined ? Number(incoming.profit) : existing.unrealizedPnL),
+                  unrealized_pl: incoming.unrealized_pl !== undefined
+                    ? Number(incoming.unrealized_pl)
+                    : (incoming.profit !== undefined ? Number(incoming.profit) : existing.unrealized_pl),
+                  profit: incoming.profit !== undefined ? Number(incoming.profit) : existing.profit,
+                  time_update: incoming.time_update || existing.time_update,
+                  time_create: incoming.time_create || existing.time_create,
+                };
+              }
             }),
           })),
 

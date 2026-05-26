@@ -10,6 +10,7 @@
 
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
+import { buildBrokerWsV2Uri } from './brokerSession';
 
 const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
@@ -186,16 +187,16 @@ export class EnhancedWebSocketService {
     // Dynamically resolve WebSocket URL from saved server_url at connect-time
     const serverUrl = localStorage.getItem('server_url');
     const isFixApiBackend = this.url.includes('fixapibackend');
+    const token = localStorage.getItem('auth_token');
+    let urlWithAuth: string;
+
     if (!isFixApiBackend && serverUrl) {
-      const cleanServer = serverUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-      this.url = `wss://${cleanServer}/ws/v2`;
+      this.url = buildBrokerWsV2Uri(null);
+      urlWithAuth = token ? buildBrokerWsV2Uri(token) : this.url;
     } else {
       this.url = this.normalizeWsUrl(this.url);
+      urlWithAuth = isFixApiBackend ? this.url : this.addTokenToUrl(this.url, token);
     }
-
-    // Get auth token and add to URL (only for rtxbackend, not fixapibackend)
-    const token = localStorage.getItem('auth_token');
-    const urlWithAuth = isFixApiBackend ? this.url : this.addTokenToUrl(this.url, token);
 
     console.log(`[WS] Connecting to ${this.url}...`);
     if (isFixApiBackend) {

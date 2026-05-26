@@ -151,6 +151,7 @@ export const normalizeAccount = (raw: GatewayAccount | any, previous?: Account |
 export const normalizePosition = (raw: GatewayPosition): Position => {
   const side = String(raw.side ?? raw.action ?? '').toLowerCase();
   return {
+    ...raw,
     id: Number(raw.ticket ?? raw.position_id ?? 0),
     symbol: (raw.symbol ?? '').toUpperCase(),
     side: side.includes('sell') || side === '1' ? 'SELL' : 'BUY',
@@ -164,7 +165,7 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
     commission: Number(raw.commission ?? 0),
     unrealizedPnL: Number(raw.profit ?? 0),
     comment: raw.comment ?? '',
-  };
+  } as any;
 };
 
 export const normalizeDeal = (raw: GatewayDeal, index = 0): Trade => {
@@ -262,9 +263,19 @@ export const tradeGatewayApi = {
   },
 
   async getPositions(login: number): Promise<Position[]> {
+    const baseUrl = API_V2_BASE_URL;
+    const endpoint = `/positions/${login}`;
+    const url = `${baseUrl}${endpoint}`;
+    console.log("Calling Toolbox -> Trade API:", url);
     const data = await apiClient.get<GatewayPosition[] | { positions: GatewayPosition[] }>(
-      `/positions/${login}`,
-      { baseUrl: API_V2_BASE_URL, params: { limit: 500, offset: 0 } }
+      endpoint,
+      {
+        baseUrl,
+        params: { limit: 50, offset: 0 },
+        headers: {
+          accept: 'application/json',
+        },
+      }
     );
     return arrayFrom<GatewayPosition>(data, 'positions').map(normalizePosition);
   },

@@ -44,7 +44,7 @@ export function emitSessionChange(reason: SessionChangeReason): void {
 /** Step 1 — Broker server URL persisted after user selects broker + logs in. */
 export function getServerUrl(): string {
   if (typeof window === 'undefined') return '';
-  const url = (localStorage.getItem('server_url') || '').replace(/\/$/, '');
+  const url = (localStorage.getItem('server_url') || '').trim().replace(/\/+$/, '');
   return url;
 }
 
@@ -83,9 +83,48 @@ export function getAccountLogin(): number | null {
 
 /** Convert HTTP broker origin to WSS and append a path.
  *  e.g. https://broker.orrnn.com → wss://broker.orrnn.com/ws/v2 */
+export function getBrokerWsHost(serverUrl: string): string {
+  const trimmed = String(serverUrl || '').trim();
+  if (!trimmed) return '';
+
+  const authority = trimmed
+    .replace(/^[a-z][a-z\d+.-]*:\/\//i, '')
+    .replace(/^\/+/, '')
+    .split(/[/?#]/)[0];
+  const host = authority.includes('@') ? authority.slice(authority.lastIndexOf('@') + 1) : authority;
+  if (host) return host.replace(/\/+$/, '');
+
+  try {
+    const parsed = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
+    return parsed.host;
+  } catch {
+    return trimmed
+      .replace(/^https?:\/\//i, '')
+      .replace(/^\/+/, '')
+      .split(/[/?#]/)[0]
+      .replace(/\/+$/, '');
+  }
+}
+
+const appendTokenToWsUrl = (url: string, token: string): string => {
+  const hashIndex = url.indexOf('#');
+  const withoutHash = hashIndex >= 0 ? url.slice(0, hashIndex) : url;
+  const hash = hashIndex >= 0 ? url.slice(hashIndex) : '';
+  const queryIndex = withoutHash.indexOf('?');
+
+  if (queryIndex < 0) {
+    return `${withoutHash}?token=${encodeURIComponent(token)}${hash}`;
+  }
+
+  const base = withoutHash.slice(0, queryIndex);
+  const params = new URLSearchParams(withoutHash.slice(queryIndex + 1));
+  params.set('token', token);
+  return `${base}?${params.toString()}${hash}`;
+};
+
 function httpToWss(serverUrl: string): string {
-  const clean = serverUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
-  return `wss://${clean}`;
+  const host = getBrokerWsHost(serverUrl);
+  return host ? `wss://${host}` : '';
 }
 
 /** Build authenticated WebSocket URI for the /ws/v2 endpoint (candles, account, positions). */
@@ -93,10 +132,11 @@ export function buildBrokerWsV2Uri(token?: string | null): string {
   const server = getServerUrl();
   const activeToken = token !== undefined ? token : getAccessToken();
   const fallback = import.meta.env.VITE_RTX5_WS_URL as string || 'wss://backend.orrnn.com/ws/v2';
-  if (!server) return activeToken ? `${fallback}?token=${encodeURIComponent(activeToken)}` : fallback;
+  if (!server) return activeToken ? appendTokenToWsUrl(fallback, activeToken) : fallback;
 
-  const base = `${httpToWss(server)}/ws/v2`;
-  return activeToken ? `${base}?token=${encodeURIComponent(activeToken)}` : base;
+  const brokerOrigin = httpToWss(server);
+  const base = brokerOrigin ? `${brokerOrigin}/ws/v2` : fallback;
+  return activeToken ? appendTokenToWsUrl(base, activeToken) : base;
 }
 
 /** Build WebSocket URI for the /ws/feed endpoint (live bid/ask quotes). */

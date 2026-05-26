@@ -152,22 +152,30 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
     };
   }, [enabled, login]);
 
+  // Keep a stable ref to refresh to avoid interval teardown/re-execution on callback change
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+
   // Polling — only runs for the singleton instance that claimed the slot above.
   useEffect(() => {
     if (!enabled) return;
     if (_activeTradeFacingInstanceId !== instanceId.current) return;
 
-    refresh();
+    refreshRef.current();
     if (!login || pollMs <= 0) return;
 
-    const interval = window.setInterval(refresh, pollMs);
-    const forceRefresh = () => refresh();
+    const interval = window.setInterval(() => {
+      refreshRef.current();
+    }, pollMs);
+    const forceRefresh = () => refreshRef.current();
     window.addEventListener('rtx:force-refresh-positions', forceRefresh);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('rtx:force-refresh-positions', forceRefresh);
     };
-  }, [enabled, login, pollMs, refresh]);
+  }, [enabled, login, pollMs]);
 
   // Reconnect state refs for Exponential Backoff
   const reconnectAttemptsRef = useRef(0);

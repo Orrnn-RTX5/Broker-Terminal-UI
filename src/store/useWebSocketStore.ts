@@ -20,9 +20,9 @@ export interface ConnectionMetrics {
 
 interface WebSocketStoreState {
   // Connection state
-  connectionState: ConnectionState; 
-  legacyConnectionState: ConnectionState; 
-  fixConnectionState: ConnectionState; 
+  connectionState: ConnectionState;
+  legacyConnectionState: ConnectionState;
+  fixConnectionState: ConnectionState;
   lastMessageTime: number | null;
 
   // Metrics
@@ -98,7 +98,7 @@ export const useWebSocketStore = create<WebSocketStoreState>((set) => ({
   resetReconnectAttempts: (source) =>
     set((state) => {
       if (source === 'legacy_mt5') {
-         return { legacyMetrics: { ...state.legacyMetrics, reconnectAttempts: 0 } };
+        return { legacyMetrics: { ...state.legacyMetrics, reconnectAttempts: 0 } };
       }
       return { fixMetrics: { ...state.fixMetrics, reconnectAttempts: 0 } };
     }),
@@ -106,7 +106,7 @@ export const useWebSocketStore = create<WebSocketStoreState>((set) => ({
   incrementReconnectAttempts: (source) =>
     set((state) => {
       if (source === 'legacy_mt5') {
-         return { legacyMetrics: { ...state.legacyMetrics, reconnectAttempts: state.legacyMetrics.reconnectAttempts + 1 } };
+        return { legacyMetrics: { ...state.legacyMetrics, reconnectAttempts: state.legacyMetrics.reconnectAttempts + 1 } };
       }
       return { fixMetrics: { ...state.fixMetrics, reconnectAttempts: state.fixMetrics.reconnectAttempts + 1 } };
     }),

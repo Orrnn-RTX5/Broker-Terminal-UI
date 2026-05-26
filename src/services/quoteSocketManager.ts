@@ -224,7 +224,7 @@ class QuoteSocketManager {
     console.log(`[QuoteSocket] Opening WebSocket → ${this.wsUrl.replace(/token=[^&]+/, 'token=***')}`);
 
     try {
-      this.ws = new WebSocket(urlWithAuth);
+      this.ws = new WebSocket(this.wsUrl);
 
       this.ws.onopen = () => {
         console.log(`[QuoteSocket] Connected to ${this.wsUrl}`);

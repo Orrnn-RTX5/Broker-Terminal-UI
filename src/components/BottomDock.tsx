@@ -481,37 +481,57 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
         }
     };
 
+    const formatUnixTime = (ts?: number) => {
+        if (!ts || ts === 0) return '—';
+        try {
+            const d = new Date(ts * 1000);
+            const pad = (n: number) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        } catch {
+            return '—';
+        }
+    };
+
     return (
         <div className="h-full flex flex-col relative bg-[#131316]">
             <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
                 <table className="w-full text-left border-collapse" style={{ minWidth: 920 }}>
-                    <thead className="sticky top-0 bg-[#131316] text-[#a0a0a0] z-10 font-bold text-[10px] uppercase tracking-widest border-b border-zinc-700/50">
+                    <thead className="sticky top-0 bg-[#131316] text-[#a0a0a0] z-10 font-bold text-[10px] uppercase tracking-widest border-b border-zinc-700/50 select-none">
                         <tr>
-                            <th className="p-1 pl-2 text-left" style={{ minWidth: 90 }}>Time</th>
-                            <th className="p-1 text-left" style={{ minWidth: 70 }}>Order</th>
-                            <th className="p-1 text-left" style={{ minWidth: 90 }}>Symbol</th>
-                            <th className="p-1 text-left" style={{ minWidth: 50 }}>Type</th>
-                            <th className="p-1 text-right" style={{ minWidth: 60 }}>Volume</th>
-                            <th className="p-1 text-right" style={{ minWidth: 90 }}>Price <span className="normal-case text-zinc-600">(open)</span></th>
-                            <th className="p-1 text-right" style={{ minWidth: 80 }}>S / L</th>
-                            <th className="p-1 text-right" style={{ minWidth: 80 }}>T / P</th>
-                            <th className="p-1 text-right" style={{ minWidth: 90 }}>Price <span className="normal-case text-zinc-600">(cur)</span></th>
-                            <th className="p-1 text-right" style={{ minWidth: 80 }}>Profit</th>
+                            <th className="p-1 pl-2 text-left" style={{ minWidth: 90 }}>account_login</th>
+                            <th className="p-1 text-left" style={{ minWidth: 100 }}>ticket</th>
+                            <th className="p-1 text-left" style={{ minWidth: 70 }}>symbol</th>
+                            <th className="p-1 text-left" style={{ minWidth: 50 }}>side</th>
+                            <th className="p-1 text-right" style={{ minWidth: 60 }}>volume</th>
+                            <th className="p-1 text-right" style={{ minWidth: 90 }}>price_open</th>
+                            <th className="p-1 text-right" style={{ minWidth: 90 }}>price_current</th>
+                            <th className="p-1 text-right" style={{ minWidth: 90 }}>price_tp</th>
+                            <th className="p-1 text-right" style={{ minWidth: 70 }}>swap</th>
+                            <th className="p-1 text-right" style={{ minWidth: 80 }}>profit</th>
+                            <th className="p-1 text-left" style={{ minWidth: 130 }}>time_create</th>
+                            <th className="p-1 text-left" style={{ minWidth: 130 }}>time_update</th>
+                            <th className="p-1 text-left" style={{ minWidth: 120 }}>comment</th>
                             <th className="w-8"></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[11px]">
                         {livePositions.map((pos: any, i: number) => {
-                            const t = fmtMT5Time(pos.openTime ?? new Date().toISOString());
-                            const isBuy = pos.side === 'BUY';
+                            const isBuy = String(pos.side).toUpperCase() === 'BUY';
+                            const pnl = pos.profit ?? pos.unrealizedPnL;
                             return (
                             <tr key={pos.id ?? i} className={`rtx-trade-row ${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} transition-colors group cursor-pointer`} onDoubleClick={() => setModifyPosition(pos)}>
+                                {/* account_login */}
                                 <td className="p-1 pl-2 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">
-                                    <div>{t.date}</div>
-                                    <div className="text-zinc-500">{t.time}</div>
+                                    {pos.account_login ?? '—'}
                                 </td>
-                                <td className="p-1 border-r border-zinc-800 text-zinc-500">{pos.id ?? '—'}</td>
+
+                                {/* ticket */}
+                                <td className="p-1 border-r border-zinc-800 text-zinc-300 font-medium tabular-nums">{pos.ticket ?? pos.id}</td>
+
+                                {/* symbol */}
                                 <td className="p-1 border-r border-zinc-800 font-bold text-zinc-100">{pos.symbol ?? '—'}</td>
+
+                                {/* side */}
                                 <td className={`p-1 border-r border-zinc-800 font-bold ${isBuy ? 'text-[#4fc3f7]' : 'text-[#f87171]'} text-[10px]`}>
                                     <div className="flex items-center gap-1">
                                         {isBuy ? (
@@ -519,31 +539,26 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                                         ) : (
                                             <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
                                         )}
-                                        <span>{isBuy ? 'buy' : 'sell'}</span>
+                                        <span>{String(pos.side).toLowerCase()}</span>
                                     </div>
                                 </td>
-                                <td className="p-1 border-r border-zinc-800 text-right font-medium text-zinc-200">{Number(pos.volume ?? 0).toFixed(2)}</td>
-                                <td className="p-1 border-r border-zinc-800 text-right text-zinc-400"><PriceDisplay price={Number(pos.openPrice ?? 0)} symbol={pos.symbol ?? ''} /></td>
 
-                                {/* SL Edit */}
-                                <td className="p-1 border-r border-zinc-800 text-right" onDoubleClick={() => startEditing(pos)}>
-                                    {editingId === pos.id ? (
-                                        <input
-                                            className="w-full bg-zinc-800 text-white text-right px-1 text-[10px]"
-                                            value={editSL}
-                                            onChange={e => setEditSL(e.target.value)}
-                                            onBlur={() => saveEdit(pos)}
-                                            onKeyDown={e => e.key === 'Enter' && saveEdit(pos)}
-                                            autoFocus
-                                        />
-                                    ) : (
-                                        <span className={pos.sl > 0 ? "text-red-300 bg-red-900/20 px-1 rounded-sm" : "text-zinc-600"}>
-                                            {pos.sl > 0 ? <PriceDisplay price={Number(pos.sl)} symbol={pos.symbol ?? ''} /> : '0.00'}
-                                        </span>
-                                    )}
+                                {/* volume */}
+                                <td className="p-1 border-r border-zinc-800 text-right font-medium text-zinc-200">
+                                    {typeof pos.volume === 'number' ? pos.volume.toFixed(2) : pos.volume ?? '0.00'}
                                 </td>
 
-                                {/* TP Edit */}
+                                {/* price_open */}
+                                <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">
+                                    <PriceDisplay price={pos.price_open ?? pos.openPrice} symbol={pos.symbol ?? ''} />
+                                </td>
+
+                                {/* price_current */}
+                                <td className="p-1 border-r border-zinc-800 text-right text-zinc-300 font-medium">
+                                    <PriceDisplay price={pos.price_current ?? pos.currentPrice} symbol={pos.symbol ?? ''} />
+                                </td>
+
+                                {/* price_tp (SL/TP inline edits) */}
                                 <td className="p-1 border-r border-zinc-800 text-right" onDoubleClick={() => startEditing(pos)}>
                                     {editingId === pos.id ? (
                                         <input
@@ -554,18 +569,36 @@ function TradeTab({ positions, account, onClosePosition, onModifyPosition, onClo
                                             onKeyDown={e => e.key === 'Enter' && saveEdit(pos)}
                                         />
                                     ) : (
-                                        <span className={pos.tp > 0 ? "text-emerald-300 bg-emerald-900/20 px-1 rounded-sm" : "text-zinc-600"}>
-                                            {pos.tp > 0 ? <PriceDisplay price={Number(pos.tp)} symbol={pos.symbol ?? ''} /> : '0.00'}
+                                        <span className={(pos.price_tp ?? pos.tp) > 0 ? "text-emerald-300 bg-emerald-900/20 px-1 rounded-sm cursor-pointer" : "text-zinc-600 cursor-pointer"}>
+                                            {(pos.price_tp ?? pos.tp) > 0 ? <PriceDisplay price={pos.price_tp ?? pos.tp} symbol={pos.symbol ?? ''} /> : '0.00'}
                                         </span>
                                     )}
                                 </td>
 
-                                <td className="p-1 border-r border-zinc-800 text-right">
-                                    <BlinkingText value={Number(pos.livePrice ?? 0)} formatFn={(v: number) => <PriceDisplay price={v} symbol={pos.symbol ?? ''} />} defaultColor="text-zinc-300" />
+                                {/* swap */}
+                                <td className="p-1 border-r border-zinc-800 text-right text-zinc-500">{formatMoney(pos.swap)}</td>
+
+                                {/* profit */}
+                                <td className={`p-1 border-r border-zinc-800 text-right font-bold pr-2 ${pnl >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>
+                                    {formatMoney(pnl)}
                                 </td>
-                                <td className={`p-1 text-right font-bold pr-2 ${isAdvancedMode ? 'text-[12px]' : ''}`}>
-                                    <BlinkingText value={Number(pos.livePnL ?? 0)} formatFn={formatMoney} defaultColor={Number(pos.livePnL ?? 0) >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'} />
+
+                                {/* time_create */}
+                                <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">
+                                    {formatUnixTime(pos.time_create)}
                                 </td>
+
+                                {/* time_update */}
+                                <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">
+                                    {formatUnixTime(pos.time_update)}
+                                </td>
+
+                                {/* comment */}
+                                <td className="p-1 text-zinc-500 text-[10px] max-w-[120px] truncate" title={pos.comment}>
+                                    {pos.comment || '—'}
+                                </td>
+
+                                {/* Close Button */}
                                 <td className="p-1 text-center">
                                     <button
                                         onClick={() => onClosePosition(pos.id)}
