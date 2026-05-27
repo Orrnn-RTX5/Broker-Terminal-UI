@@ -1,12 +1,12 @@
 {
   "name": "rtx-terminal",
   "private": true,
-  "version": "1.0.10",
+  "version": "1.0.14",
   "description": "RTX Terminal - Professional Trading Terminal",
   "author": "RTX",
   "type": "module",
   "main": "electron.cjs",
-  "repository": "github:YoForex005/rtx-desktop-main",
+  "repository": "github:YoForex005/RTX-New",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc -b && vite build",
@@ -23,6 +23,7 @@
   "build": {
     "appId": "com.rtx.terminal",
     "productName": "RTX Terminal",
+    "artifactName": "RTX.Terminal.Setup.${version}.${ext}",
     "directories": {
       "output": "draft"
     },
@@ -46,7 +47,8 @@
     "publish": {
       "provider": "github",
       "owner": "YoForex005",
-      "repo": "rtx-desktop-main",
+      "repo": "RTX-New",
+      "private": true,
       "releaseType": "release"
     }
   },

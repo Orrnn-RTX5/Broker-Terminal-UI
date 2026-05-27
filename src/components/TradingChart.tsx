@@ -72,6 +72,16 @@ export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' 
 const TARGET_BAR_PX = 25;
 const MIN_ADAPTIVE_BARS = 30;
 const MAX_ADAPTIVE_BARS = 200;
+const TRADE_LEVEL_OVERRIDES_STORAGE_KEY = 'rtx-trade-level-overrides-v1';
+const TRADE_LEVEL_OVERRIDE_TTL_MS = 5 * 60 * 1000;
+
+type TradeLevelRole = 'ENTRY' | 'SL' | 'TP';
+
+interface TradeLevelOverride {
+  sl: number;
+  tp: number;
+}
+
 const computeAdaptiveVisibleBars = (
   container: HTMLElement | null,
   chart: IChartApi | null,
@@ -136,6 +146,13 @@ interface OverlayNodeData {
   resolveEndTime?: () => number | null;
 }
 
+interface PriceLevelOptions {
+  tradeKey?: string;
+  role?: TradeLevelRole;
+  badgeOffsetIndex?: number;
+  title?: string;
+}
+
 interface TradingChartProps {
   symbol: string;
   timeframe?: Timeframe;
@@ -196,7 +213,14 @@ export const TradingChart = React.memo(function TradingChart({
     if (ohlcVolumeRef.current) ohlcVolumeRef.current.textContent = Math.round(v).toLocaleString();
   }, [symbol]);
 
-  const [isLoading, setIsLoading] = useState(true);
+  type LoadingPhase = 'connecting' | 'receiving' | 'ready' | 'hidden';
+  const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>('connecting');
+  const [loadingMessageIdx, setLoadingMessageIdx] = useState(0);
+  const loadingMessages = useMemo(() => [
+    'Connecting to market data…',
+    `Receiving ${symbol} candles…`,
+    'Warming up the data feed…',
+  ], [symbol]);
   const [showOneClick, setShowOneClick] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
   // Inline text-input overlay for the text drawing tool (replaces browser prompt)
@@ -214,6 +238,10 @@ export const TradingChart = React.memo(function TradingChart({
   const [ctxChartShift, setCtxChartShift] = useState(() => {
     const state = useChartSettingsStore.getState();
     return state.symbolProperties[symbol]?.chartShift ?? state.globalProperties.chartShift;
+  });
+  const [ctxShowTradeLevels, setCtxShowTradeLevels] = useState(() => {
+    const state = useChartSettingsStore.getState();
+    return state.symbolProperties[symbol]?.showTradeLevels ?? state.globalProperties.showTradeLevels;
   });
   const [localChartType, setLocalChartType] = useState<ChartType>(chartType);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -332,6 +360,12 @@ export const TradingChart = React.memo(function TradingChart({
   const chartSettings = useChartSettingsStore(state =>
     state.symbolProperties[symbol] || state.globalProperties
   );
+  const chartSettingsRef = useRef(chartSettings);
+
+  useEffect(() => {
+    chartSettingsRef.current = chartSettings;
+    setCtxShowTradeLevels(chartSettings.showTradeLevels);
+  }, [chartSettings]);
 
   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
     if (typeof document === 'undefined') return false;
@@ -1081,7 +1115,7 @@ export const TradingChart = React.memo(function TradingChart({
       return;
     }
 
-    setIsLoading(true);
+    setLoadingPhase('connecting');
     setApiError(null);
     resetLiveQuotePriceGuard();
     const activeTf = prevTimeframeRef.current || timeframe;
@@ -1108,7 +1142,9 @@ export const TradingChart = React.memo(function TradingChart({
         // PC clock is faster than the MT5 broker, all incoming ticks will be trapped
         // in the 'future' candle and the chart will never rollover (infinite volume bug).
         console.warn(`[Chart] No history for ${symbol} on ${activeTf} — live-only mode (waiting for first live tick)`);
-        setIsLoading(false);
+        // Keep overlay up; advance phase so users see "Receiving candles…" instead of
+        // a single live-tick candle behind a dismissed loader.
+        setLoadingPhase('receiving');
         return;
       }
 
@@ -1120,7 +1156,7 @@ export const TradingChart = React.memo(function TradingChart({
         resetEmptyHistoryState(activeTf);
         if (seriesRef.current) seriesRef.current.setData([]);
         if (volumeRef.current) volumeRef.current.setData([]);
-        setIsLoading(false);
+        setLoadingPhase('receiving');
         return;
       }
 
@@ -1203,10 +1239,14 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }
 
+      // Full history rendered — let the overlay fade.
+      setLoadingPhase('ready');
     } catch (err: any) {
       console.warn('[Chart] Failed to load history:', err);
+      // REST failed: keep the overlay up, but advance the label so users know
+      // we're still waiting on the WS snapshot rather than stuck connecting.
+      setLoadingPhase(prev => (prev === 'connecting' ? 'receiving' : prev));
     } finally {
-      setIsLoading(false);
       setCandlesLoadedRev(r => r + 1);
     }
   }, [symbol, timeframe, reconcileCandlesWithLiveQuote, resetEmptyHistoryState, resetLiveQuotePriceGuard, updateChartData]);
@@ -1215,6 +1255,28 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     loadHistoryRef.current = loadHistory;
   }, [loadHistory]);
+
+  // Fade the loading overlay out after candles arrive. 'ready' starts the CSS
+  // opacity transition; after it finishes we unmount the overlay entirely.
+  useEffect(() => {
+    if (loadingPhase !== 'ready') return;
+    const timer = window.setTimeout(() => setLoadingPhase('hidden'), 400);
+    return () => window.clearTimeout(timer);
+  }, [loadingPhase]);
+
+  // Rotate the loading status text every 2.5s while the overlay is up, so all
+  // three honest progress messages are visible before the snapshot lands on a
+  // typical cold start. Index resets the moment we go ready/hidden.
+  useEffect(() => {
+    if (loadingPhase === 'ready' || loadingPhase === 'hidden') {
+      setLoadingMessageIdx(0);
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setLoadingMessageIdx(i => (i + 1) % 3);
+    }, 2500);
+    return () => window.clearInterval(interval);
+  }, [loadingPhase]);
 
   // Load more historical data (infinite scroll)
   const loadMoreHistory = useCallback(async () => {
@@ -2235,6 +2297,10 @@ export const TradingChart = React.memo(function TradingChart({
         ) as Candle[];
         updateChartData(candlesRef.current);
         currentCandleRef.current = candlesRef.current[candlesRef.current.length - 1] ?? currentCandleRef.current;
+        // Snapshot is the authoritative full bar set — dismiss the loader if we
+        // were still waiting on history (covers the cold-start path where REST
+        // returned empty and the WS catches up ~tens of seconds later).
+        setLoadingPhase(prev => (prev === 'connecting' || prev === 'receiving' ? 'ready' : prev));
       },
       onCandle: (candle) => applyServerCandle(candle),
       onError: (error) => setApiError(error.message),
@@ -2448,7 +2514,7 @@ export const TradingChart = React.memo(function TradingChart({
         if (volumeRef.current) {
           try { volumeRef.current.setData([]); } catch (e) { }
         }
-        setIsLoading(true);
+        setLoadingPhase('connecting');
         loadHistory();
       }
     });
@@ -2738,9 +2804,63 @@ export const TradingChart = React.memo(function TradingChart({
   const tradeHistoryRefreshTimerRef = useRef<number | null>(null);
   const tradeOverlayRafRef = useRef<number | null>(null);
   const tradeAutoClosePendingRef = useRef<Set<string>>(new Set());
-  const tradeLevelOverridesRef = useRef<Map<string, { sl: number; tp: number; }>>(new Map());
+  const tradeLevelOverridesRef = useRef<Map<string, TradeLevelOverride>>(new Map());
+  const tradeLevelOverridesHydratedRef = useRef(false);
+  const lastTradeOverlaySignatureRef = useRef('');
   const positionLabelsRef = overlayNodesRef;
   const positionLabelDataRef = useRef<any[]>([]);
+
+  const hydrateTradeLevelOverrides = useCallback(() => {
+    if (tradeLevelOverridesHydratedRef.current || typeof window === 'undefined') return;
+    tradeLevelOverridesHydratedRef.current = true;
+
+    try {
+      const raw = window.localStorage.getItem(TRADE_LEVEL_OVERRIDES_STORAGE_KEY);
+      if (!raw) return;
+
+      const rows = JSON.parse(raw);
+      if (!Array.isArray(rows)) return;
+
+      const now = Date.now();
+      rows.forEach((row) => {
+        const key = typeof row?.key === 'string' ? row.key : '';
+        const savedAt = Number(row?.savedAt ?? 0);
+        if (!key || !Number.isFinite(savedAt) || now - savedAt > TRADE_LEVEL_OVERRIDE_TTL_MS) return;
+
+        const sl = Number(row?.sl) || 0;
+        const tp = Number(row?.tp) || 0;
+        if (sl > 0 || tp > 0) {
+          tradeLevelOverridesRef.current.set(key, { sl, tp });
+        }
+      });
+    } catch {
+      // Ignore malformed local optimistic state.
+    }
+  }, []);
+
+  const persistTradeLevelOverrides = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const savedAt = Date.now();
+      const rows = Array.from(tradeLevelOverridesRef.current.entries())
+        .filter(([, levels]) => (levels.sl || 0) > 0 || (levels.tp || 0) > 0)
+        .map(([key, levels]) => ({
+          key,
+          sl: levels.sl || 0,
+          tp: levels.tp || 0,
+          savedAt,
+        }));
+
+      if (rows.length === 0) {
+        window.localStorage.removeItem(TRADE_LEVEL_OVERRIDES_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(TRADE_LEVEL_OVERRIDES_STORAGE_KEY, JSON.stringify(rows));
+      }
+    } catch {
+      // Local persistence is best-effort only.
+    }
+  }, []);
 
   const clearTradeOverlay = useCallback(() => {
     for (const node of overlayNodesRef.current) {
@@ -2752,6 +2872,7 @@ export const TradingChart = React.memo(function TradingChart({
     }
     overlayNodesRef.current = [];
     overlayNodeDataRef.current = [];
+    lastTradeOverlaySignatureRef.current = '';
   }, []);
 
   const getNearestCandleByTime = useCallback((time: number): Candle | null => {
@@ -2921,6 +3042,8 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     if (isDisposedRef.current || !seriesRef.current || !chartRef.current || !symbol) return;
 
+    hydrateTradeLevelOverrides();
+
     const normalizedChartSymbol = symbol.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
     const digits = getSymbolDigits(symbol);
 
@@ -2947,6 +3070,21 @@ export const TradingChart = React.memo(function TradingChart({
       }
       return null;
     };
+
+    const pickPositiveNumber = (...values: unknown[]): number => {
+      for (const value of values) {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric) && numeric > 0) return numeric;
+      }
+      return 0;
+    };
+
+    const getTradeTicketLabel = (tradeKey: string): string => {
+      const ticket = tradeKey.replace(/^trade:/, '');
+      return ticket ? `#${ticket.slice(-6)}` : '';
+    };
+
+    const priceTolerance = Math.max(Math.pow(10, -digits), Number.EPSILON);
 
     const resolveSymbolTick = (ticks: Record<string, any>) => {
       if (ticks[symbol]) return ticks[symbol];
@@ -3033,6 +3171,42 @@ export const TradingChart = React.memo(function TradingChart({
       }, 350);
     };
 
+    const resolveTradeLevels = (trade: ActiveTradeSnapshot): TradeLevelOverride => {
+      const override = tradeLevelOverridesRef.current.get(trade.key);
+      if (!override) return { sl: trade.sl || 0, tp: trade.tp || 0 };
+
+      const serverSl = trade.sl || 0;
+      const serverTp = trade.tp || 0;
+      const overrideSl = override.sl || 0;
+      const overrideTp = override.tp || 0;
+      const slSynced = overrideSl <= 0 || (serverSl > 0 && Math.abs(serverSl - overrideSl) <= priceTolerance);
+      const tpSynced = overrideTp <= 0 || (serverTp > 0 && Math.abs(serverTp - overrideTp) <= priceTolerance);
+
+      if (slSynced && tpSynced) {
+        tradeLevelOverridesRef.current.delete(trade.key);
+        persistTradeLevelOverrides();
+        return { sl: serverSl, tp: serverTp };
+      }
+
+      return {
+        sl: overrideSl > 0 ? overrideSl : serverSl,
+        tp: overrideTp > 0 ? overrideTp : serverTp,
+      };
+    };
+
+    const createCollisionOffsetFactory = () => {
+      const offsets = new Map<string, number>();
+
+      return (role: TradeLevelRole, price: number) => {
+        const key = `${role}:${price.toFixed(digits)}`;
+        const offsetIndex = offsets.get(key) ?? 0;
+        offsets.set(key, offsetIndex + 1);
+        return offsetIndex;
+      };
+    };
+
+    const formatSignaturePrice = (value?: number) => (Number(value) || 0).toFixed(digits);
+
     const appendOverlayNode = (element: HTMLElement, node: OverlayNodeData) => {
       overlayRef.current?.appendChild(element);
       overlayNodesRef.current.push(element);
@@ -3067,7 +3241,7 @@ export const TradingChart = React.memo(function TradingChart({
       appendOverlayNode(line, { kind: 'segment', price, time, endPrice, endTime, resolveEndPrice, resolveEndTime });
     };
 
-    const createPriceLevel = (labelText: string, price: number, color: string) => {
+    const createPriceLevel = (labelText: string, price: number, color: string, options: PriceLevelOptions = {}) => {
       if (!(price > 0)) return;
 
       const line = document.createElement('div');
@@ -3076,17 +3250,31 @@ export const TradingChart = React.memo(function TradingChart({
 
       const badge = document.createElement('div');
       badge.textContent = labelText;
+      badge.className = 'rtx-trade-level-badge';
+      if (options.title) badge.title = options.title;
+      if (options.tradeKey && options.role) {
+        badge.dataset.tradeKey = options.tradeKey;
+        badge.dataset.role = options.role;
+      }
       const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
       const bg = isLight ? 'rgba(255, 255, 255, 0.92)' : 'rgba(20,24,34,0.92)';
       const borderCol = isLight ? '#e5e7eb' : '#3a4354';
-      badge.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${bg};border:1px solid ${borderCol};color:${color};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;white-space:nowrap;z-index:6;pointer-events:none;border-radius:2px;transform:translate(-50%, -50%);min-width:52px;text-align:center;`;
+      const offsetIndex = options.badgeOffsetIndex ?? 0;
+      const offsetStep = Math.ceil(offsetIndex / 2) * 64;
+      const offsetDirection = offsetIndex % 2 === 0 ? 1 : -1;
+      const offsetX = offsetIndex === 0 ? 0 : offsetDirection * offsetStep;
+      const canDrag = Boolean(options.tradeKey && options.role);
+      badge.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${bg};border:1px solid ${borderCol};color:${color};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;white-space:nowrap;z-index:6;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'ns-resize' : 'default'};border-radius:2px;transform:translate(calc(-50% + ${offsetX}px), -50%);min-width:52px;text-align:center;`;
       appendOverlayNode(badge, { kind: 'price-badge', price });
     };
 
-    const renderTradeOverlay = () => {
+    const renderTradeOverlay = (force = false) => {
       if (isDisposedRef.current || !seriesRef.current || !overlayRef.current) return;
 
-      clearTradeOverlay();
+      const chartProperties = useChartSettingsStore.getState().symbolProperties[symbol]
+        || useChartSettingsStore.getState().globalProperties;
+      const showTradeLevels = chartProperties.showTradeLevels !== false;
+      const showTradeHistory = chartProperties.showTradeHistory !== false;
       const appState = useAppStore.getState();
       const appPositions = Array.isArray(appState.positions) ? appState.positions : [];
       const appTrades = Array.isArray(appState.trades) ? appState.trades : [];
@@ -3100,8 +3288,8 @@ export const TradingChart = React.memo(function TradingChart({
         openPrice: Number(position.openPrice) || 0,
         currentPrice: Number(position.currentPrice) || 0,
         rawOpenTime: normalizeUnixSeconds(position.openTime),
-        sl: Number(position.sl) || 0,
-        tp: Number(position.tp) || 0,
+        sl: pickPositiveNumber(position.sl, position.price_sl),
+        tp: pickPositiveNumber(position.tp, position.price_tp),
       }));
 
       const matchingPositions = normalizedAppPositions.filter((position) => {
@@ -3162,19 +3350,6 @@ export const TradingChart = React.memo(function TradingChart({
 
       activeTradeSnapshotsRef.current = nextActiveSnapshots;
 
-      nextActiveSnapshots.forEach((trade) => {
-        const entryColor = getEntryColor(trade.side);
-        createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor);
-
-        // Render MT5-style full horizontal line for active entry
-        createPriceLevel(`${trade.side} ${trade.volume}`, trade.entryPrice, entryColor);
-
-        // Render SL / TP (apply optimistic overrides if any)
-        const levels = tradeLevelOverridesRef.current.get(trade.key) ?? { sl: trade.sl, tp: trade.tp };
-        if (levels.sl && levels.sl > 0) createPriceLevel('SL', levels.sl, TRADE_SELL_COLOR);
-        if (levels.tp && levels.tp > 0) createPriceLevel('TP', levels.tp, TRADE_BUY_COLOR);
-      });
-
       const closedTrades = new Map<string, ClosedTradeSnapshot>();
       const registerClosedTrade = (trade: ClosedTradeSnapshot) => {
         if (trade.entryPrice > 0 && trade.exitPrice > 0 && trade.entryTime > 0 && trade.exitTime > 0) {
@@ -3183,40 +3358,131 @@ export const TradingChart = React.memo(function TradingChart({
         }
       };
 
-      appTrades.forEach((trade: any) => {
-        const tradeSymbol = String(trade.symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-        if (tradeSymbol !== normalizedChartSymbol || trade.closePrice == null || trade.closeTime == null) return;
+      if (showTradeHistory) {
+        appTrades.forEach((trade: any) => {
+          const tradeSymbol = String(trade.symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+          if (tradeSymbol !== normalizedChartSymbol || trade.closePrice == null || trade.closeTime == null) return;
 
-        registerClosedTrade({
-          key: `trade:${String(trade.id)}`,
-          symbol: normalizedChartSymbol,
-          side: trade.side === 'SELL' ? 'SELL' : 'BUY',
-          volume: Number(trade.volume) || 0,
-          entryPrice: Number(trade.openPrice) || 0,
-          entryTime: mapTradeTimestampToChartTime(trade.openTime) ?? (normalizeUnixSeconds(trade.openTime) || 0),
-          exitPrice: Number(trade.closePrice) || 0,
-          exitTime: mapTradeTimestampToChartTime(trade.closeTime) ?? (normalizeUnixSeconds(trade.closeTime) || 0),
-          profit: Number(trade.profit ?? 0),
-          source: 'app-history',
+          registerClosedTrade({
+            key: `trade:${String(trade.id)}`,
+            symbol: normalizedChartSymbol,
+            side: trade.side === 'SELL' ? 'SELL' : 'BUY',
+            volume: Number(trade.volume) || 0,
+            entryPrice: Number(trade.openPrice) || 0,
+            entryTime: mapTradeTimestampToChartTime(trade.openTime) ?? (normalizeUnixSeconds(trade.openTime) || 0),
+            exitPrice: Number(trade.closePrice) || 0,
+            exitTime: mapTradeTimestampToChartTime(trade.closeTime) ?? (normalizeUnixSeconds(trade.closeTime) || 0),
+            profit: Number(trade.profit ?? 0),
+            source: 'app-history',
+          });
         });
-      });
 
-      optimisticClosedTradesRef.current.forEach((trade) => {
-        if (trade.symbol === normalizedChartSymbol && !closedTrades.has(trade.key)) {
-          closedTrades.set(trade.key, trade);
-        }
-      });
+        optimisticClosedTradesRef.current.forEach((trade) => {
+          if (trade.symbol === normalizedChartSymbol && !closedTrades.has(trade.key)) {
+            closedTrades.set(trade.key, trade);
+          }
+        });
+      }
 
-      closedTrades.forEach((trade) => {
-        const entryColor = getEntryColor(trade.side);
-        const exitSide: TradeSide = trade.side === 'BUY' ? 'SELL' : 'BUY';
-        createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', trade.exitPrice, trade.exitTime);
-        createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor);
-        if (trade.source === 'optimistic') {
-          createTradeLabel(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.entryPrice.toFixed(digits)} | ${formatTradeTime(trade.entryTime)}`, entryColor);
-        }
-        createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} @ ${trade.exitPrice.toFixed(digits)}`, getExitColor(trade.side));
-      });
+      const activeSignature = showTradeLevels
+        ? Array.from(nextActiveSnapshots.values())
+          .sort((a, b) => a.key.localeCompare(b.key))
+          .map((trade) => {
+            const levels = resolveTradeLevels(trade);
+            return [
+              trade.key,
+              trade.side,
+              trade.volume,
+              trade.entryTime,
+              formatSignaturePrice(trade.entryPrice),
+              formatSignaturePrice(levels.sl),
+              formatSignaturePrice(levels.tp),
+            ].join(':');
+          }).join('|')
+        : '';
+      const closedSignature = showTradeHistory
+        ? Array.from(closedTrades.values())
+          .sort((a, b) => a.key.localeCompare(b.key))
+          .map((trade) => [
+            trade.key,
+            trade.side,
+            trade.volume,
+            trade.entryTime,
+            trade.exitTime,
+            formatSignaturePrice(trade.entryPrice),
+            formatSignaturePrice(trade.exitPrice),
+            trade.source,
+          ].join(':')).join('|')
+        : '';
+      const nextSignature = [
+        normalizedChartSymbol,
+        timeframe,
+        showTradeLevels ? 'levels:on' : 'levels:off',
+        showTradeHistory ? 'history:on' : 'history:off',
+        activeSignature,
+        closedSignature,
+      ].join('\n');
+
+      if (!force && nextSignature === lastTradeOverlaySignatureRef.current) {
+        queueTradeOverlayRelayout();
+        return;
+      }
+
+      clearTradeOverlay();
+      lastTradeOverlaySignatureRef.current = nextSignature;
+
+      if (showTradeLevels) {
+        const nextLevelOffset = createCollisionOffsetFactory();
+        nextActiveSnapshots.forEach((trade) => {
+          const entryColor = getEntryColor(trade.side);
+          const ticketLabel = getTradeTicketLabel(trade.key);
+          const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${trade.entryPrice.toFixed(digits)}`.trim();
+          createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, markerTitle, entryColor);
+
+          createPriceLevel(
+            `${trade.side} ${trade.volume} ${ticketLabel}`.trim(),
+            trade.entryPrice,
+            entryColor,
+            {
+              tradeKey: trade.key,
+              role: 'ENTRY',
+              badgeOffsetIndex: nextLevelOffset('ENTRY', trade.entryPrice),
+              title: `${markerTitle}. Drag above/below to create TP or SL.`,
+            },
+          );
+
+          const levels = resolveTradeLevels(trade);
+          if (levels.sl && levels.sl > 0) {
+            createPriceLevel(`SL ${ticketLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
+              tradeKey: trade.key,
+              role: 'SL',
+              badgeOffsetIndex: nextLevelOffset('SL', levels.sl),
+              title: `Stop Loss for ${ticketLabel || trade.key}`,
+            });
+          }
+          if (levels.tp && levels.tp > 0) {
+            createPriceLevel(`TP ${ticketLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
+              tradeKey: trade.key,
+              role: 'TP',
+              badgeOffsetIndex: nextLevelOffset('TP', levels.tp),
+              title: `Take Profit for ${ticketLabel || trade.key}`,
+            });
+          }
+        });
+      }
+
+      if (showTradeHistory) {
+        closedTrades.forEach((trade) => {
+          const entryColor = getEntryColor(trade.side);
+          const exitSide: TradeSide = trade.side === 'BUY' ? 'SELL' : 'BUY';
+          createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', trade.exitPrice, trade.exitTime);
+          createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor);
+          if (trade.source === 'optimistic') {
+            createTradeLabel(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.entryPrice.toFixed(digits)} | ${formatTradeTime(trade.entryTime)}`, entryColor);
+          }
+          createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} @ ${trade.exitPrice.toFixed(digits)}`, getExitColor(trade.side));
+        });
+      }
 
       queueTradeOverlayRelayout();
     };
@@ -3243,18 +3509,34 @@ export const TradingChart = React.memo(function TradingChart({
       }
     });
 
+    const unsubscribeChartSettings = useChartSettingsStore.subscribe((state, previousState) => {
+      const currentProperties = state.symbolProperties[symbol] || state.globalProperties;
+      const previousProperties = previousState.symbolProperties[symbol] || previousState.globalProperties;
+      if (
+        currentProperties.showTradeLevels !== previousProperties.showTradeLevels
+        || currentProperties.showTradeHistory !== previousProperties.showTradeHistory
+      ) {
+        renderTradeOverlay(true);
+      }
+    });
+
     const handleForceRefresh = () => {
       window.setTimeout(() => {
         renderTradeOverlay();
       }, 500);
     };
+    const handleRefreshTradeOverlay = () => renderTradeOverlay();
+    const handleFlushTradeOverlay = () => renderTradeOverlay(true);
     window.addEventListener('rtx:force-refresh-positions', handleForceRefresh);
-    window.addEventListener('rtx:flush-trade-overlay', renderTradeOverlay);
+    window.addEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
+    window.addEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
 
     return () => {
       unsubscribeAppStore();
+      unsubscribeChartSettings();
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
-      window.removeEventListener('rtx:flush-trade-overlay', renderTradeOverlay);
+      window.removeEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
+      window.removeEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
 
       if (tradeHistoryRefreshTimerRef.current !== null) {
         window.clearTimeout(tradeHistoryRefreshTimerRef.current);
@@ -3270,7 +3552,12 @@ export const TradingChart = React.memo(function TradingChart({
 
       clearTradeOverlay();
     };
-  }, [brokerTimeOffsetSec, candlesLoadedRev, clearTradeOverlay, getNearestCandleByTime, isLivePriceSafeForCandles, symbol, timeframe, updateLabelPositions]);
+  }, [brokerTimeOffsetSec, clearTradeOverlay, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, symbol, timeframe, updateLabelPositions]);
+
+  useEffect(() => {
+    if (candlesLoadedRev <= 0) return;
+    window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
+  }, [candlesLoadedRev]);
 
   // Subscribe to positions from the store and render price lines
   useEffect(() => {
@@ -3805,6 +4092,15 @@ export const TradingChart = React.memo(function TradingChart({
     });
   }, []);
 
+  const handleCtxToggleTradeLevels = useCallback(() => {
+    setCtxShowTradeLevels(prev => {
+      const next = !prev;
+      useChartSettingsStore.getState().updateGlobalProperty('showTradeLevels', next);
+      window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+      return next;
+    });
+  }, []);
+
   const handleCtxZoomIn = useCallback(() => {
     commandBus.dispatch({ type: 'ZOOM_IN', payload: {} });
   }, []);
@@ -3871,42 +4167,61 @@ export const TradingChart = React.memo(function TradingChart({
     const handlePointerDown = (e: PointerEvent) => {
       // Only trigger on left-click and if an active tool is not enabled (i.e. crosshair is active)
       if (e.button !== 0 || !seriesRef.current || activeToolRef.current !== null) return;
+      if (chartSettingsRef.current.showTradeLevels === false) return;
+
       const y = getChartY(e);
-      let closestTrade = null;
+      let closestTrade: ActiveTradeSnapshot | null = null;
       let grabbedType: 'ENTRY' | 'SL' | 'TP' = 'ENTRY';
       let minDistance = 10; // 10px snap bounds
 
-      activeTradeSnapshotsRef.current.forEach(trade => {
-        const entryY = seriesRef.current!.priceToCoordinate(trade.entryPrice);
-        if (entryY !== null) {
-          const dist = Math.abs(entryY - y);
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestTrade = trade;
-            grabbedType = 'ENTRY';
-          }
+      const targetBadge = e.target instanceof Element
+        ? e.target.closest('.rtx-trade-level-badge') as HTMLElement | null
+        : null;
+      const targetTradeKey = targetBadge?.dataset.tradeKey;
+      const targetRole = targetBadge?.dataset.role as TradeLevelRole | undefined;
+      if (targetTradeKey && (targetRole === 'ENTRY' || targetRole === 'SL' || targetRole === 'TP')) {
+        const directTrade = activeTradeSnapshotsRef.current.get(targetTradeKey);
+        if (directTrade) {
+          closestTrade = directTrade;
+          grabbedType = targetRole;
         }
-        const currentSl = tradeLevelOverridesRef.current.get(trade.key)?.sl || trade.sl;
-        if (currentSl && currentSl > 0) {
-          const slY = seriesRef.current!.priceToCoordinate(currentSl);
-          if (slY !== null && Math.abs(slY - y) < minDistance) {
-            minDistance = Math.abs(slY - y);
-            closestTrade = trade;
-            grabbedType = 'SL';
+      }
+
+      if (!closestTrade) {
+        activeTradeSnapshotsRef.current.forEach(trade => {
+          const entryY = seriesRef.current!.priceToCoordinate(trade.entryPrice);
+          if (entryY !== null) {
+            const dist = Math.abs(entryY - y);
+            if (dist < minDistance) {
+              minDistance = dist;
+              closestTrade = trade;
+              grabbedType = 'ENTRY';
+            }
           }
-        }
-        const currentTp = tradeLevelOverridesRef.current.get(trade.key)?.tp || trade.tp;
-        if (currentTp && currentTp > 0) {
-          const tpY = seriesRef.current!.priceToCoordinate(currentTp);
-          if (tpY !== null && Math.abs(tpY - y) < minDistance) {
-            minDistance = Math.abs(tpY - y);
-            closestTrade = trade;
-            grabbedType = 'TP';
+          const override = tradeLevelOverridesRef.current.get(trade.key);
+          const currentSl = override && override.sl > 0 ? override.sl : trade.sl;
+          if (currentSl && currentSl > 0) {
+            const slY = seriesRef.current!.priceToCoordinate(currentSl);
+            if (slY !== null && Math.abs(slY - y) < minDistance) {
+              minDistance = Math.abs(slY - y);
+              closestTrade = trade;
+              grabbedType = 'SL';
+            }
           }
-        }
-      });
+          const currentTp = override && override.tp > 0 ? override.tp : trade.tp;
+          if (currentTp && currentTp > 0) {
+            const tpY = seriesRef.current!.priceToCoordinate(currentTp);
+            if (tpY !== null && Math.abs(tpY - y) < minDistance) {
+              minDistance = Math.abs(tpY - y);
+              closestTrade = trade;
+              grabbedType = 'TP';
+            }
+          }
+        });
+      }
 
       if (closestTrade) {
+        e.preventDefault();
         e.stopPropagation();
         if (chartRef.current) {
           chartRef.current.applyOptions({
@@ -3985,23 +4300,29 @@ export const TradingChart = React.memo(function TradingChart({
             const ticket = Number(tradeObj.key.replace('trade:', ''));
             if (ticket) {
               const existingOverrides = tradeLevelOverridesRef.current.get(tradeObj.key);
-              const currentSl = existingOverrides ? existingOverrides.sl : tradeObj.sl;
-              const currentTp = existingOverrides ? existingOverrides.tp : tradeObj.tp;
+              const currentSl = existingOverrides && existingOverrides.sl > 0 ? existingOverrides.sl : tradeObj.sl;
+              const currentTp = existingOverrides && existingOverrides.tp > 0 ? existingOverrides.tp : tradeObj.tp;
 
               const sl = role === 'SL' ? finalPrice : currentSl;
               const tp = role === 'TP' ? finalPrice : currentTp;
 
               // Optimistically set UI level overrides immediately
               tradeLevelOverridesRef.current.set(tradeObj.key, { sl: sl || 0, tp: tp || 0 });
+              persistTradeLevelOverrides();
               window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
               window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
 
-              api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 }).catch(err => {
-                console.error('[Chart] Failed to modify SL/TP:', err);
-                // On outright error, revert override
-                tradeLevelOverridesRef.current.delete(tradeObj.key);
-                window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
-              });
+              api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 })
+                .then(() => {
+                  window.setTimeout(() => window.dispatchEvent(new Event('rtx:force-refresh-positions')), 250);
+                })
+                .catch(err => {
+                  console.error('[Chart] Failed to modify SL/TP:', err);
+                  // On outright error, revert override
+                  tradeLevelOverridesRef.current.delete(tradeObj.key);
+                  persistTradeLevelOverrides();
+                  window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+                });
             }
           }
         }
@@ -4015,7 +4336,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       if (chartRef.current) {
         chartRef.current.applyOptions({
-          handleScroll: { pressedMouseMove: !chartSettings.chartAutoScroll, horzTouchDrag: true },
+          handleScroll: { pressedMouseMove: !chartSettingsRef.current.chartAutoScroll, horzTouchDrag: true },
           handleScale: { axisPressedMouseMove: { time: false, price: true } }
         });
       }
@@ -4032,7 +4353,7 @@ export const TradingChart = React.memo(function TradingChart({
       if (dragLineOverlay) dragLineOverlay.remove();
       if (dragBadgeOverlay) dragBadgeOverlay.remove();
     };
-  }, []);
+  }, [persistTradeLevelOverrides]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -4122,10 +4443,32 @@ export const TradingChart = React.memo(function TradingChart({
 
       {/* API Error banner — suppressed, errors only logged to console */}
 
-      {/* Loading */}
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20">
-          <div className="text-white text-sm">Loading {symbol}...</div>
+      {/* Loading — phased status: connecting → receiving → fades out on ready */}
+      {loadingPhase !== 'hidden' && (
+        <div
+          className={`absolute inset-0 flex flex-col items-center justify-center bg-[#0a0a0f]/95 z-20 pointer-events-none transition-opacity duration-300 ${loadingPhase === 'ready' ? 'opacity-0' : 'opacity-100'}`}
+        >
+          <div className="flex items-end gap-1 mb-5 opacity-30" aria-hidden="true">
+            {Array.from({ length: 14 }).map((_, i) => (
+              <div
+                key={i}
+                className="w-2 bg-white/40 rounded-sm animate-pulse"
+                style={{
+                  height: `${22 + ((i * 17) % 56)}px`,
+                  animationDelay: `${i * 80}ms`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-3 text-white/90">
+            <div className="w-4 h-4 border-2 border-white/25 border-t-white rounded-full animate-spin" />
+            <div
+              key={loadingMessageIdx}
+              className="text-sm tracking-wide transition-opacity duration-300"
+            >
+              {loadingPhase === 'ready' ? 'Ready' : loadingMessages[loadingMessageIdx]}
+            </div>
+          </div>
         </div>
       )}
 
@@ -4325,6 +4668,7 @@ export const TradingChart = React.memo(function TradingChart({
         showVolumes={chartSettings.showTickVolumes}
         autoScroll={ctxAutoScroll}
         chartShift={ctxChartShift}
+        showTradeLevels={ctxShowTradeLevels}
         onChangeChartType={handleCtxChartTypeChange}
         onChangeTimeframe={handleCtxTimeframeChange}
         onToggleOneClickTrading={() => setShowOneClick(prev => !prev)}
@@ -4332,6 +4676,7 @@ export const TradingChart = React.memo(function TradingChart({
         onToggleVolumes={handleCtxToggleVolumes}
         onToggleAutoScroll={handleCtxToggleAutoScroll}
         onToggleChartShift={handleCtxToggleChartShift}
+        onToggleTradeLevels={handleCtxToggleTradeLevels}
         onOpenProperties={handleCtxOpenProperties}
         onSaveAsPicture={handleCtxSaveAsPicture}
         onPrintChart={() => window.print()}

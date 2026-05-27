@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, ChevronRight, ExternalLink, Building2, Shield, Globe, CheckCircle2, Copy, Loader2 } from 'lucide-react';
-import { tradeApi, brokerV2Api } from '../../api/trade';
+import { tradeApi } from '../../api/trade';
+import { BROKER_DISCOVERY_URL } from '../../config/api';
 import type { BrokerServer } from '../../types/api';
 
 // Palette cycling for broker avatar gradients
@@ -22,14 +23,12 @@ const initials = (name: string) => {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
-import { RTX5_API_URL } from '../../config/api';
-
 const getLogoUrl = (url?: string) => {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
         return url;
     }
-    const base = (RTX5_API_URL || '').replace(/\/$/, '');
+    const base = (BROKER_DISCOVERY_URL || '').replace(/\/$/, '');
     const path = url.startsWith('/') ? url : `/${url}`;
     return `${base}${path}`;
 };
@@ -138,28 +137,25 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [isCreating, setIsCreating] = useState(false);
     const [createError, setCreateError] = useState('');
 
-    // Fetch brokers on open
+    // Fetch brokers on open — use discovery endpoint (same as LoginDialog) so logos resolve properly
     useEffect(() => {
         if (!isOpen) return;
         setLoadingBrokers(true);
-        Promise.all([
-            brokerV2Api.getServers(),
-            brokerV2Api.getBrokers().catch(err => {
-                console.warn('[OpenAccountDialog] Could not load broker details for logo lookup:', err);
-                return { brokers: [], count: 0 };
-            })
-        ])
-            .then(([servers, brokersData]) => {
-                const brokersList = brokersData?.brokers || [];
-                const logoMap = new Map(brokersList.map(b => [b.broker_id, b.logo_url]));
-                const enabled = servers
-                    .filter(s => s.enabled !== false)
-                    .map(s => ({
-                        ...s,
-                        logo_url: logoMap.get(s.broker_id) || s.logo_url
-                    }));
-                setBrokers(enabled);
-                if (!selected && enabled.length > 0) setSelected(String(enabled[0].id));
+        fetch(`${BROKER_DISCOVERY_URL}/api/v1/broker/servers`)
+            .then(res => res.json())
+            .then((data: any[]) => {
+                const list = Array.isArray(data) ? data : [];
+                const mapped: BrokerServer[] = list.map((b, idx) => ({
+                    id: b.broker_id || idx,
+                    broker_id: b.broker_id,
+                    broker_name: b.broker_name,
+                    server: b.server_url || b.server || '',
+                    region: b.region,
+                    logo_url: b.logo_url,
+                    enabled: true,
+                }));
+                setBrokers(mapped);
+                if (!selected && mapped.length > 0) setSelected(String(mapped[0].id));
             })
             .catch(err => console.warn('[OpenAccountDialog] Could not load brokers:', err))
             .finally(() => setLoadingBrokers(false));
@@ -178,7 +174,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const existingFilteredBrokers = existingServerSearch.trim()
         ? brokers.filter(b =>
             b.broker_name.toLowerCase().includes(existingServerSearch.toLowerCase()) ||
-            b.server.toLowerCase().includes(existingServerSearch.toLowerCase())
+            b.broker_id.toLowerCase().includes(existingServerSearch.toLowerCase())
         )
         : brokers;
 
@@ -309,7 +305,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                         )}
                                     </div>
                                     <div className="flex items-center gap-2 mt-0.5">
-                                        <span className="text-[11.5px] text-zinc-400 font-mono truncate">{broker.server}</span>
+                                        <span className="text-[11.5px] text-zinc-400 font-mono truncate">{broker.broker_id}</span>
                                     </div>
                                 </div>
 
@@ -329,7 +325,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     <p className="text-[10px] text-zinc-500">
                         Clicking <span className="text-zinc-400 font-semibold">Next</span> will proceed with{' '}
                         <span className="text-zinc-300">{selectedBroker.broker_name}</span>
-                        <span className="text-zinc-600 font-mono ml-1">({selectedBroker.server})</span>
+                        <span className="text-zinc-600 font-mono ml-1">({selectedBroker.broker_id})</span>
                     </p>
                 </div>
             )}
@@ -402,7 +398,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                                     <>
                                                         <DropdownBrokerLogo broker={existingBroker} index={0} />
                                                         <span className="truncate text-zinc-300">
-                                                            {existingBroker.broker_name} <span className="text-zinc-600 font-mono text-[10px]">({existingBroker.server})</span>
+                                                            {existingBroker.broker_name} <span className="text-zinc-600 font-mono text-[10px]">({existingBroker.broker_id})</span>
                                                         </span>
                                                     </>
                                                 ) : (
@@ -435,7 +431,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                                             <DropdownBrokerLogo broker={b} index={idx} />
                                                             <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                                                                 <span className="font-medium truncate">{b.broker_name}</span>
-                                                                <span className="text-zinc-500 text-[9px] font-mono truncate">{b.server}</span>
+                                                                <span className="text-zinc-500 text-[9px] font-mono truncate">{b.broker_id}</span>
                                                             </div>
                                                         </button>
                                                     ))}
@@ -541,7 +537,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     <input type="checkbox" className="mt-0.5 accent-indigo-500 w-3 h-3" defaultChecked />
                     <div>
                         <span className="text-[11px] text-zinc-300 block">I agree with the terms and conditions for opening an account and the data protection policy</span>
-                        <a href="#" className="text-[11px] text-indigo-400 hover:text-indigo-300 mt-1 block">www.exness.eu</a>
+                        <a href="https://rtx5.orrnn.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="text-[11px] text-indigo-400 hover:text-indigo-300 mt-1 block">www.rtx5.orrnn.com</a>
                     </div>
                 </div>
                 {createError && (

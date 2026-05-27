@@ -1,3 +1,7 @@
+// Embedded GitHub token for OTA from private repo (YoForex005/RTX-New).
+// Must be set before requiring electron-updater so the GitHub provider picks it up.
+process.env.GH_TOKEN = process.env.GH_TOKEN || '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';
+
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');

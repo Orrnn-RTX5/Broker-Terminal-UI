@@ -6,7 +6,7 @@ import { useAppStore } from '../store/useAppStore';
 
 type TradeWsState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
-export type ToolboxTradePosition = Position & {
+export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'> & {
   account_login?: number;
   ticket?: number;
   price_open?: number;
@@ -14,8 +14,8 @@ export type ToolboxTradePosition = Position & {
   price_sl?: number;
   price_tp?: number;
   profit?: number;
-  time_create?: number;
-  time_update?: number;
+  time_create?: number | string;
+  time_update?: number | string;
 };
 
 export type ToolboxTradeDebugEvent = {

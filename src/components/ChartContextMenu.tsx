@@ -16,6 +16,7 @@ import {
     Activity, Crosshair, AlignJustify, Volume2, Layers,
     Save, FolderOpen, Trash2, FileText, TrendingUp,
     ArrowUpDown, Type, Shapes, MoveHorizontal, MoveVertical,
+    Eye, EyeOff,
 } from 'lucide-react';
 
 interface ChartContextMenuProps {
@@ -30,6 +31,7 @@ interface ChartContextMenuProps {
     showVolumes?: boolean;
     autoScroll?: boolean;
     chartShift?: boolean;
+    showTradeLevels?: boolean;
     onChangeChartType: (type: ChartType) => void;
     onChangeTimeframe: (tf: Timeframe) => void;
     onToggleOneClickTrading: () => void;
@@ -37,6 +39,7 @@ interface ChartContextMenuProps {
     onToggleVolumes: () => void;
     onToggleAutoScroll: () => void;
     onToggleChartShift: () => void;
+    onToggleTradeLevels?: () => void;
     onOpenProperties: () => void;
     onSaveAsPicture: () => void;
     onPrintChart: () => void;
@@ -246,6 +249,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     showVolumes = true,
     autoScroll = false,
     chartShift = false,
+    showTradeLevels = true,
     onChangeChartType,
     onChangeTimeframe,
     onToggleOneClickTrading,
@@ -253,6 +257,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     onToggleVolumes,
     onToggleAutoScroll,
     onToggleChartShift,
+    onToggleTradeLevels,
     onOpenProperties,
     onSaveAsPicture,
     onPrintChart,
@@ -447,6 +452,16 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 shortcut="Alt+T"
                 checked={oneClickTrading}
                 onClick={() => { onToggleOneClickTrading(); onClose(); }}
+            />
+
+            <MenuItem
+                icon={showTradeLevels
+                    ? <Eye size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />
+                    : <EyeOff size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
+                label={showTradeLevels ? 'Hide Trade Levels' : 'Show Trade Levels'}
+                checked={showTradeLevels}
+                disabled={!onToggleTradeLevels}
+                onClick={() => { onToggleTradeLevels?.(); onClose(); }}
             />
 
             <MenuSeparator />

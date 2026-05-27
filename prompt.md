@@ -120,20 +120,6 @@ All messages follow this shape:
 
 positions.{login} — fires on every price tick
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 {
   "channel": "positions.1000123",
   "data": {
@@ -157,21 +143,6 @@ Action: find position by ticket, update only profit and price_current. Do not re
 metrics.{login} — fires on every tick and every trade event
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 {
   "channel": "metrics.1000123",
   "data": {
@@ -189,21 +160,8 @@ metrics.{login} — fires on every tick and every trade event
     }
   }
 }
-
-
 Action: update the account summary bar. margin_level = 0 means no positions — display as ∞.
-
-
 ticks.{SYMBOL} — fires on every price update
-
-
-
-
-
-
-
-
-
 {
   "channel": "ticks.XAUUSD",
   "data": {
