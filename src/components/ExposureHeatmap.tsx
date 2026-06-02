@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { WS_ENDPOINTS } from '../config/api';
+import { WS_ENDPOINTS, buildApiUrl } from '../config/api';
 
 // ============================================
 // Types
@@ -251,7 +251,7 @@ export const ExposureHeatmap = () => {
     try {
       // TODO: Replace with actual API endpoint
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/analytics/exposure/heatmap?interval=${timeInterval}`
+        `${buildApiUrl(`/api/analytics/exposure/heatmap?interval=${timeInterval}`)}`
       );
 
       if (!response.ok) throw new Error('Failed to fetch exposure data');

@@ -6,7 +6,7 @@
 
 import type { Position, Order, Account, Trade, Tick } from '../store/useAppStore';
 import { useAppStore } from '../store/useAppStore';
-import { API_V2_BASE_URL } from '../config/api';
+import { API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
 
 // ============================================
 // API Response Types
@@ -112,6 +112,7 @@ import { API_BASE_URL } from '../config/api';
 import { ApiError, apiClient } from '../api/client';
 import * as endpoints from '../api/endpoints';
 import { getStoredBrokerServer, resolveLoginBrokerTarget } from './brokerServers';
+import { persistBrokerSessionDiscovery } from './brokerSession';
 
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
 const DEFAULT_BROKER_ID = 'broker_3';
@@ -240,29 +241,21 @@ export const authApi = {
     const explicitBrokerId = normalizeLoginOption(loginOptions?.broker_id);
     const explicitServer = normalizeLoginOption(loginOptions?.server);
     const storedTarget = resolveLoginBrokerTarget(getStoredBrokerServer());
-    const loginTarget = explicitBrokerId
-      ? { displayValue: explicitBrokerId, broker_id: explicitBrokerId }
-      : explicitServer
-        ? resolveLoginBrokerTarget(explicitServer)
-        : storedTarget.server
-          ? storedTarget
-          : {
-            displayValue: storedTarget.displayValue,
-            broker_id: storedTarget.broker_id || storedBrokerId || DEFAULT_BROKER_ID,
-          };
-    const numericLogin = Number.parseInt(username, 10);
-    const identifier = Number.isFinite(numericLogin) && String(numericLogin) === username.trim()
-      ? { login: numericLogin }
-      : username.includes('@')
-        ? { email: username }
-        : { username };
+    const resolvedExplicitServer = explicitServer ? resolveLoginBrokerTarget(explicitServer) : undefined;
+    const loginTarget = {
+      displayValue: resolvedExplicitServer?.displayValue || explicitBrokerId || storedTarget.displayValue,
+      broker_id: explicitBrokerId || resolvedExplicitServer?.broker_id || storedTarget.broker_id || storedBrokerId || DEFAULT_BROKER_ID,
+      server: resolvedExplicitServer?.server || storedTarget.server,
+    };
+    const normalizedUsername = normalizeLoginOption(username);
+    const loginBaseUrl = normalizeLoginOption(loginOptions?.baseUrl) || loginTarget.server;
     const result = await endpoints.authApi.login(
-      { ...identifier, password, ...(loginTarget.server ? { server: loginTarget.server } : { broker_id: loginTarget.broker_id || DEFAULT_BROKER_ID }) },
-      loginOptions?.baseUrl ? { baseUrl: loginOptions.baseUrl } : undefined
+      { username: normalizedUsername, password, broker_id: loginTarget.broker_id || DEFAULT_BROKER_ID },
+      loginBaseUrl ? { baseUrl: normalizeBrokerServerUrl(loginBaseUrl) } : undefined
     );
     const accessToken = result.token || result.access_token;
     const resolvedBrokerId = result.broker_id || loginTarget.broker_id;
-    const resolvedBrokerServer = loginTarget.server || result.broker_server || loginTarget.displayValue;
+    const resolvedBrokerServer = result.server_url || result.backend_url || loginTarget.server || result.broker_server || loginTarget.displayValue;
 
     // Store tokens in Zustand store after successful login
     if (accessToken) {
@@ -273,13 +266,13 @@ export const authApi = {
       );
     }
     if (typeof window !== 'undefined') {
-      if (resolvedBrokerId) {
-        localStorage.setItem('rtx_broker_id', resolvedBrokerId);
-        localStorage.setItem('broker_id', resolvedBrokerId);
-      }
-      if (resolvedBrokerServer) {
-        localStorage.setItem('rtx_broker_server', resolvedBrokerServer);
-      }
+      persistBrokerSessionDiscovery({
+        ...result,
+        access_token: accessToken,
+        broker_id: resolvedBrokerId,
+        server_url: resolvedBrokerServer,
+        backend_url: result.backend_url,
+      });
     }
 
     return { ...result, access_token: accessToken, broker_id: resolvedBrokerId, broker_server: resolvedBrokerServer };

@@ -11,6 +11,7 @@ import { useMarketDataStore } from '../store/useMarketDataStore';
 import { useWebSocketStore, type ConnectionState } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
 import { MARKET_WS_URL } from '../config/api';
+import { buildBrokerWsV2Uri } from './brokerSession';
 
 const FIX_SOCKET_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
@@ -73,7 +74,7 @@ export class FixMarketDataSocket {
   private readonly ACTIVITY_TIMEOUT_MS = 120_000; // 120 s
 
   constructor(url?: string) {
-    this.url = url || MARKET_WS_URL || 'wss://fixapibackend.tradecopier.org/ws';
+    this.url = url || MARKET_WS_URL || buildBrokerWsV2Uri(null);
   }
 
   /**

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { API_ENDPOINTS, RTX5_API_URL } from '../config/api';
 import { ApiError, removeToken, setToken } from './client';
+import { marketApi } from './endpoints';
 import {
   accountV2Api,
   authV2Api,
@@ -30,14 +31,17 @@ const lastFetchCall = () => {
   };
 };
 
+type TestWindow = Window & { electronAPI?: unknown };
+
 describe('trade v2 API contract calls', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ ok: true }))));
+    delete (window as TestWindow).electronAPI;
     localStorage.clear();
     removeToken();
   });
 
-  it('posts login credentials to the public v2 auth endpoint and persists returned tokens', async () => {
+  it('posts direct broker login credentials to the public v2 auth endpoint and persists returned tokens', async () => {
     const runtimePassword = crypto.randomUUID();
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       token: 'jwt-token',
@@ -66,6 +70,47 @@ describe('trade v2 API contract calls', () => {
     expect(localStorage.getItem('refresh_token')).toBe('refresh-token');
   });
 
+  it('does not retry direct broker login with legacy user/server credentials', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 'MT_RET_ERR_PARAMS',
+      message: 'Login and password are required',
+    }, { status: 400 }));
+
+    await expect(authV2Api.login({
+      username: '900001',
+      password: 'TestPass1234',
+      broker_id: 'gta_broker',
+    })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 400,
+    } satisfies Partial<ApiError>);
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledOnce();
+    expect(lastFetchCall().body).toEqual({
+      username: '900001',
+      password: 'TestPass1234',
+      broker_id: 'gta_broker',
+    });
+    expect(localStorage.getItem('auth_token')).toBeNull();
+  });
+
+  it('does not clear a newer token when an older protected request returns 401 late', async () => {
+    let unauthorizedEvents = 0;
+    window.addEventListener('auth:unauthorized', () => {
+      unauthorizedEvents += 1;
+    });
+    setToken('old-token');
+    vi.mocked(fetch).mockImplementationOnce(() => {
+      setToken('new-token');
+      return Promise.resolve(jsonResponse({ message: 'expired' }, { status: 401 }));
+    });
+
+    await expect(marketV2Api.getStatus()).rejects.toThrow(ApiError);
+
+    expect(localStorage.getItem('auth_token')).toBe('new-token');
+    expect(unauthorizedEvents).toBe(0);
+  });
+
   it('also persists access_token-only login responses', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       access_token: 'access-jwt-token',
@@ -77,9 +122,56 @@ describe('trade v2 API contract calls', () => {
       password: crypto.randomUUID(),
     });
 
+    expect(lastFetchCall().body).toMatchObject({
+      username: 123456,
+    });
     expect(response.token).toBe('access-jwt-token');
     expect(response.access_token).toBe('access-jwt-token');
     expect(localStorage.getItem('auth_token')).toBe('access-jwt-token');
+  });
+
+  it('does not add legacy login aliases to direct broker login payloads', async () => {
+    const runtimePassword = crypto.randomUUID();
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      access_token: 'access-jwt-token',
+    }));
+
+    await authV2Api.login({
+      username: '900001',
+      broker_id: 'testorrnn',
+      password: runtimePassword,
+    });
+
+    expect(lastFetchCall().body).toEqual({
+      username: '900001',
+      broker_id: 'testorrnn',
+      password: runtimePassword,
+    });
+  });
+
+  it('preserves an explicit auth login baseUrl when a stale dynamic server is stored', async () => {
+    (window as TestWindow).electronAPI = {};
+    localStorage.setItem('server_url', 'https://stale-broker.example');
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      access_token: 'access-jwt-token',
+    }));
+
+    await authV2Api.login({
+      login: 900001,
+      email: 'ignored@example.com',
+      broker_id: 'testorrnn',
+      password: 'TestPass1234',
+    }, { baseUrl: 'https://selected-broker.example/api/v2' });
+
+    const request = lastFetchCall();
+    expect(request.url).toBe('https://selected-broker.example/api/v2/auth/login');
+    expect(request.body).toEqual({
+      username: 900001,
+      password: 'TestPass1234',
+      broker_id: 'testorrnn',
+    });
+    expect(request.body).not.toHaveProperty('login');
+    expect(request.body).not.toHaveProperty('email');
   });
 
   it('uses v2 market-data paths and query names from the contract', async () => {
@@ -100,6 +192,59 @@ describe('trade v2 API contract calls', () => {
       `${RTX5_API_URL}/api/v2/candles/EUR%2FUSD?timeframe=M15&from=1760000000&to=1760000900&limit=50`
     );
     expect(candleRequest.headers.Authorization).toBe('Bearer jwt-token');
+  });
+
+  it('normalizes fallback instrument identity and trading flags', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      symbols: [
+        {
+          id: 101,
+          name: 'XAUUSD',
+          description: 'Gold vs US Dollar',
+          category: 'Metals',
+          digits: 2,
+          bid: 2330.12,
+          ask: 2330.45,
+          trading_enabled: false,
+        },
+      ],
+    }));
+
+    await expect(marketV2Api.getInstruments()).resolves.toEqual([
+      expect.objectContaining({
+        symbol: 'XAUUSD',
+        name: 'XAUUSD',
+        id: 101,
+        description: 'Gold vs US Dollar',
+        category: 'Metals',
+        digits: 2,
+        bid: 2330.12,
+        ask: 2330.45,
+        enabled: false,
+      }),
+    ]);
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/symbols`);
+  });
+
+  it('normalizes legacy market symbols with snake_case trading flags', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      symbols: [
+        {
+          symbol: 'XAGUSD',
+          description: 'Silver vs US Dollar',
+          trading_enabled: false,
+        },
+      ],
+    }));
+
+    await expect(marketApi.getSymbols()).resolves.toEqual([
+      expect.objectContaining({
+        id: 'XAGUSD',
+        name: 'XAGUSD',
+        tradingEnabled: false,
+      }),
+    ]);
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/symbols`);
   });
 
   it('preserves protected auth, api key, and JSON content headers over custom headers', async () => {

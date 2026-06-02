@@ -4,7 +4,7 @@ import { Search, ChevronRight, ChevronDown, FolderOpen, Folder, X, Minus, Square
 import { useWatchlistStore } from '../store/useWatchlistStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
-import { API_ENDPOINTS, MARKET_WS_URL } from '../config/api';
+import { API_ENDPOINTS, API_V2_BASE_URL, MARKET_WS_URL } from '../config/api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -18,6 +18,8 @@ interface SymbolSpec {
   contractSize: number;
   marginRate: number;
   tradingEnabled: boolean;
+  bid?: number;
+  ask?: number;
   symbol?: string;
   // Extended spec fields
   sector?: string;
@@ -129,13 +131,27 @@ const asArray = <T,>(payload: unknown, keys: string[] = []): T[] => {
   return [];
 };
 
+const getApiRootBaseUrl = (): string => API_V2_BASE_URL.replace(/\/api\/v2\/?$/, '');
+
+const buildSymbolEndpointUrl = (endpoint: string): string =>
+  endpoint.startsWith('/api/v2')
+    ? `${API_V2_BASE_URL}${endpoint.replace(/^\/api\/v2(?=\/|$)/, '') || '/'}`
+    : `${getApiRootBaseUrl()}${endpoint}`;
+
+const SYMBOL_ENDPOINTS = ['/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols', '/api/v2/instruments'];
+
+const extractInstrumentRows = (payload: unknown): any[] =>
+  asArray<any>(payload, ['symbols', 'instruments', 'data', 'result']);
+
 const normalizeInstrument = (raw: any): SymbolSpec | null => {
-  const name = String(raw?.symbol ?? raw?.name ?? '').trim();
+  const name = String(raw?.symbol ?? raw?.name ?? raw?.id ?? '').trim();
   if (!name) return null;
   const sector = getSymbolSector(name);
   const digits = Number(raw?.digits ?? 5);
   const tickSize = Number(raw?.tick_size ?? raw?.tickSize ?? (digits > 0 ? 1 / Math.pow(10, digits) : 0.00001));
   const contractSize = Number(raw?.contract_size ?? raw?.contractSize ?? 0);
+  const bid = Number(raw?.bid);
+  const ask = Number(raw?.ask);
 
   return {
     id: String(raw?.id ?? name),
@@ -147,7 +163,9 @@ const normalizeInstrument = (raw: any): SymbolSpec | null => {
     tickSize: Number.isFinite(tickSize) ? tickSize : 0.00001,
     contractSize: Number.isFinite(contractSize) ? contractSize : 0,
     marginRate: Number(raw?.margin_rate ?? raw?.marginRate ?? 0),
-    tradingEnabled: Boolean(raw?.enabled ?? raw?.tradingEnabled ?? true),
+    tradingEnabled: Boolean(raw?.enabled ?? raw?.trading_enabled ?? raw?.tradingEnabled ?? true),
+    bid: Number.isFinite(bid) ? bid : undefined,
+    ask: Number.isFinite(ask) ? ask : undefined,
     ...sector,
     spread: raw?.spread ?? 'floating',
     stopsLevel: Number(raw?.stops_level ?? raw?.stopsLevel ?? 0),
@@ -402,25 +420,46 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
     setLoading(true);
     setSymbolsError(null);
 
-    fetchJson<unknown>(API_ENDPOINTS.v2.market.instruments)
-      .then(payload => {
-        const instruments = asArray<any>(payload, ['instruments', 'data']);
-        const normalized = instruments
-          .map(normalizeInstrument)
-          .filter((symbol): symbol is SymbolSpec => Boolean(symbol));
+    const loadSymbols = async () => {
+      let lastError: unknown = null;
+
+      for (const endpoint of SYMBOL_ENDPOINTS) {
+        try {
+          const payload = await fetchJson<unknown>(buildSymbolEndpointUrl(endpoint));
+          const instruments = extractInstrumentRows(payload);
+          const normalized = instruments
+            .map(normalizeInstrument)
+            .filter((symbol): symbol is SymbolSpec => Boolean(symbol));
+
+          if (normalized.length === 0) {
+            lastError = new Error(`No symbols returned by ${endpoint}.`);
+            continue;
+          }
+
+          return { endpoint, normalized };
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      throw lastError instanceof Error ? lastError : new Error('Failed to load symbols.');
+    };
+
+    loadSymbols()
+      .then(({ endpoint, normalized }) => {
         setAllSymbols(normalized);
         setSelectedSymbol(current => {
           if (current && normalized.some(sym => (sym.symbol || sym.name) === (current.symbol || current.name))) return current;
           return normalized[0] || null;
         });
         if (normalized.length === 0) {
-          setSymbolsError('No instruments returned by /api/v2/instruments.');
+          setSymbolsError(`No symbols returned by ${endpoint}.`);
         }
       })
       .catch(err => {
         setAllSymbols([]);
         setSelectedSymbol(null);
-        setSymbolsError(err instanceof Error ? err.message : 'Failed to load instruments.');
+        setSymbolsError(err instanceof Error ? err.message : 'Failed to load symbols.');
       })
       .finally(() => setLoading(false));
   }, [isOpen, symbolsFetchTrigger]);

@@ -1,26 +1,43 @@
-import { API_V2_BASE_URL, BROKER_DISCOVERY_URL } from '../config/api';
+import {
+  API_V2_BASE_URL,
+  BROKER_DISCOVERY_URL,
+  DEV_BROKER_API_PROXY_PREFIX,
+  DEV_BROKER_DISCOVERY_PROXY_PREFIX,
+  normalizeBrokerServerUrl,
+  toLocalDevProxyUrl,
+} from '../config/api';
+
+const getDiscoveryHost = (): string => {
+  try {
+    return new URL(BROKER_DISCOVERY_URL).hostname || '';
+  } catch {
+    return '';
+  }
+};
 
 export const getDynamicUrl = (url: string): string => {
   if (typeof window === 'undefined') return url;
-  
-  let discoveryHost = 'testsuperbackend.orrnn.com';
-  try {
-    discoveryHost = new URL(BROKER_DISCOVERY_URL).hostname;
-  } catch (e) {
-    // fallback
-  }
-
-  if (url.includes(discoveryHost)) {
+  if (url.startsWith(DEV_BROKER_API_PROXY_PREFIX) || url.startsWith(DEV_BROKER_DISCOVERY_PROXY_PREFIX)) {
     return url;
   }
-  const serverUrl = localStorage.getItem('server_url');
+
+  const proxiedUrl = toLocalDevProxyUrl(url);
+  if (proxiedUrl !== url) {
+    return proxiedUrl;
+  }
+
+  const discoveryHost = getDiscoveryHost();
+  if (discoveryHost && url.includes(discoveryHost)) {
+    return url;
+  }
+  const serverUrl = normalizeBrokerServerUrl(localStorage.getItem('server_url') || '');
   if (!serverUrl) return url;
 
   try {
     // If the URL is relative, prepend the serverUrl
     if (url.startsWith('/')) {
       const cleanServer = serverUrl.replace(/\/$/, '');
-      return `${cleanServer}${url}`;
+      return toLocalDevProxyUrl(`${cleanServer}${url}`);
     }
 
     // If it's a full URL, parse it
@@ -31,7 +48,7 @@ export const getDynamicUrl = (url: string): string => {
     parsedUrl.protocol = parsedServer.protocol;
     parsedUrl.host = parsedServer.host;
 
-    return parsedUrl.toString();
+    return toLocalDevProxyUrl(parsedUrl.toString());
   } catch (e) {
     console.error('[Dynamic URL] Failed to parse URL:', url, e);
     return url;
@@ -94,7 +111,9 @@ const buildHeaders = (customHeaders?: Record<string, string>, skipAuth?: boolean
     const token = getToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
-      headers['X-API-Key'] = token;
+      if (!headers['X-API-Key']) {
+        headers['X-API-Key'] = token;
+      }
     }
   }
 
@@ -125,6 +144,37 @@ let failedQueue: Array<{
   reject: (reason?: any) => void;
   config: RequestInit & { url: string };
 }> = [];
+
+const getHeaderValue = (headers: HeadersInit | undefined, key: string): string | null => {
+  if (!headers) return null;
+  if (headers instanceof Headers) return headers.get(key);
+  if (Array.isArray(headers)) {
+    const found = headers.find(([name]) => name.toLowerCase() === key.toLowerCase());
+    return found?.[1] ?? null;
+  }
+  return headers[key] ?? headers[key.toLowerCase()] ?? null;
+};
+
+const getRequestBearerToken = (request?: RequestInit): string | null => {
+  const authHeader = getHeaderValue(request?.headers, 'Authorization');
+  const match = authHeader?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] ?? null;
+};
+
+const isStaleUnauthorized = (request?: RequestInit): boolean => {
+  const requestToken = getRequestBearerToken(request);
+  const currentToken = getToken();
+  return Boolean(requestToken && currentToken && requestToken !== currentToken);
+};
+
+const dispatchUnauthorized = (request?: RequestInit): void => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('auth:unauthorized', {
+    detail: {
+      requestToken: getRequestBearerToken(request),
+    },
+  }));
+};
 
 const processQueue = (error: Error | null, token: string | null = null) => {
   failedQueue.forEach(prom => {
@@ -162,10 +212,14 @@ const handleResponse = async <T>(response: Response, originalRequest?: RequestIn
 
       const refreshToken = getRefreshToken();
 
+      if (isStaleUnauthorized(originalRequest)) {
+        throw new ApiError(response.status, 'Stale unauthorized response ignored');
+      }
+
       // If we don't have a refresh token or we failed on a refresh call itself
       if (!refreshToken || response.url.includes('/api/refresh')) {
         removeToken();
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        dispatchUnauthorized(originalRequest);
         throw new ApiError(response.status, 'Unauthorized / Session Expired');
       }
 
@@ -225,7 +279,7 @@ const handleResponse = async <T>(response: Response, originalRequest?: RequestIn
       } catch (err) {
         processQueue(err as Error, null);
         removeToken();
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        dispatchUnauthorized(originalRequest);
         throw new ApiError(401, 'Session Expired');
       } finally {
         isRefreshing = false;
@@ -263,6 +317,8 @@ export interface ApiRequestOptions extends RequestInit {
   apiKey?: string;
   /** If true, do NOT attach the stored Bearer token to this request */
   skipAuth?: boolean;
+  /** If true, use the provided baseUrl exactly without proxying or replacing its host from localStorage.server_url */
+  skipDynamicUrl?: boolean;
 }
 
 // Use the backend URL directly only in Electron; in the browser, use
@@ -299,8 +355,24 @@ const withApiKey = (headers: Record<string, string> | undefined, apiKey?: string
 
 const toRequestInit = (options?: ApiRequestOptions): RequestInit => {
   if (!options) return {};
-  const { params: _params, baseUrl: _baseUrl, apiKey: _apiKey, skipAuth: _skipAuth, ...requestInit } = options;
+  const {
+    params: _params,
+    baseUrl: _baseUrl,
+    apiKey: _apiKey,
+    skipAuth: _skipAuth,
+    skipDynamicUrl: _skipDynamicUrl,
+    ...requestInit
+  } = options;
   return requestInit;
+};
+
+const buildRequestUrl = (
+  baseUrl: string,
+  normalizedEndpoint: string,
+  options?: ApiRequestOptions
+): string => {
+  const rawUrl = `${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`;
+  return options?.skipDynamicUrl ? rawUrl : getDynamicUrl(rawUrl);
 };
 
 const buildRequestConfig = (
@@ -331,7 +403,7 @@ export const apiClient = {
     const baseUrl = options?.baseUrl || getBaseUrl();
     // Ensure endpoint starts with / for proper URL construction
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
+    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
     console.log('[API Client] GET URL:', url);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
@@ -354,7 +426,7 @@ export const apiClient = {
     const baseUrl = options?.baseUrl || getBaseUrl();
     // Ensure endpoint starts with / for proper URL construction
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
+    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
     console.log('[API Client] POST URL:', url);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
@@ -376,7 +448,7 @@ export const apiClient = {
   put: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
+    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -397,7 +469,7 @@ export const apiClient = {
   patch: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
+    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -418,7 +490,7 @@ export const apiClient = {
   delete: async <T>(endpoint: string, options?: ApiRequestOptions): Promise<T> => {
     const baseUrl = options?.baseUrl || getBaseUrl();
     const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = getDynamicUrl(`${baseUrl}${normalizedEndpoint}${buildQueryString(options?.params)}`);
+    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);

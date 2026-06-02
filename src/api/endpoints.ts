@@ -1,9 +1,9 @@
 import { apiClient } from './client';
-import { API_HISTORY_BASE_URL, API_V2_BASE_URL } from '../config/api';
+import { API_HISTORY_BASE_URL, API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
 
 const resolveV2BaseUrl = (baseUrl?: string): string => {
   if (!baseUrl) return API_V2_BASE_URL;
-  const trimmed = baseUrl.replace(/\/$/, '');
+  const trimmed = normalizeBrokerServerUrl(baseUrl).replace(/\/$/, '');
   return trimmed.endsWith('/api/v2') ? trimmed : `${trimmed}/api/v2`;
 };
 
@@ -12,6 +12,24 @@ const resolveStoredLogin = (): number | undefined => {
   const raw = localStorage.getItem('rtx_saved_username') || localStorage.getItem('rtx_last_login');
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const getApiRootBaseUrl = (): string => API_V2_BASE_URL.replace(/\/api\/v2\/?$/, '');
+
+const SYMBOL_ENDPOINTS = ['/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols', '/api/v2/instruments'];
+
+const resolveSymbolEndpoint = (endpoint: string): { endpoint: string; baseUrl: string } =>
+  endpoint.startsWith('/api/v2')
+    ? { endpoint: endpoint.replace(/^\/api\/v2(?=\/|$)/, '') || '/', baseUrl: API_V2_BASE_URL }
+    : { endpoint, baseUrl: getApiRootBaseUrl() };
+
+const extractInstrumentRows = (payload: any): any[] => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.symbols)) return payload.symbols;
+  if (Array.isArray(payload?.instruments)) return payload.instruments;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.result)) return payload.result;
+  return [];
 };
 
 const requireLogin = (login: unknown, context: string): number => {
@@ -85,6 +103,13 @@ export interface LoginResponse {
   broker_id?: string;
   broker_name?: string;
   broker_server?: string;
+  backend_url?: string;
+  market_api_url?: string;
+  server_url?: string;
+  ws_url?: string;
+  feed_url?: string;
+  feed_ws_url?: string;
+  feed_status_url?: string;
 }
 
 export interface User {
@@ -252,6 +277,8 @@ export interface Symbol {
   contractSize: number;
   marginRate: number;
   tradingEnabled: boolean;
+  bid?: number;
+  ask?: number;
 }
 
 export interface Quote {
@@ -296,9 +323,28 @@ export interface EconomicEvent {
 // Auth Endpoints
 // ====================
 
+type LoginPayload = {
+  username?: string | number;
+  password: string;
+  broker_id?: string;
+};
+
+const normalizeLoginCredentials = (credentials: LoginCredentials): LoginPayload => {
+  const username = credentials.username ?? credentials.login ?? credentials.email;
+
+  return {
+    ...(username !== undefined ? { username } : {}),
+    password: credentials.password,
+    ...(credentials.broker_id ? { broker_id: credentials.broker_id } : {}),
+  };
+};
+
 export const authApi = {
   login: (credentials: LoginCredentials, options?: { baseUrl?: string }) =>
-    apiClient.post<LoginResponse>('/auth/login', credentials, { baseUrl: resolveV2BaseUrl(options?.baseUrl) }),
+    apiClient.post<LoginResponse>('/auth/login', normalizeLoginCredentials(credentials), {
+      baseUrl: resolveV2BaseUrl(options?.baseUrl),
+      skipDynamicUrl: Boolean(options?.baseUrl),
+    }),
 
   logout: () =>
     apiClient.post<void>('/auth/logout', {}, { baseUrl: API_V2_BASE_URL }),
@@ -417,20 +463,44 @@ export const tradingApi = {
 
 export const marketApi = {
   getSymbols: async () => {
-    const response = await apiClient.get<any[]>('/instruments', {
-      baseUrl: API_V2_BASE_URL,
-    });
-    return (response || []).map((instrument) => ({
-      id: instrument.symbol,
-      name: instrument.symbol,
-      description: instrument.description || instrument.symbol,
-      category: instrument.category || 'Forex',
-      digits: instrument.digits,
-      tickSize: instrument.tick_size ?? Math.pow(10, -Number(instrument.digits || 5)),
-      contractSize: instrument.contract_size,
-      marginRate: instrument.margin_rate ?? 0.01,
-      tradingEnabled: instrument.enabled !== false
-    })) as unknown as Symbol[];
+    let lastError: unknown = null;
+    let instruments: any[] = [];
+
+    for (const endpoint of SYMBOL_ENDPOINTS) {
+      try {
+        const request = resolveSymbolEndpoint(endpoint);
+        const response = await apiClient.get<unknown>(request.endpoint, {
+          baseUrl: request.baseUrl,
+        });
+        instruments = extractInstrumentRows(response);
+        if (instruments.length > 0) break;
+        lastError = new Error(`No symbols returned by ${endpoint}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (instruments.length === 0 && lastError) {
+      throw lastError;
+    }
+
+    return instruments.map((instrument) => {
+      const symbol = String(instrument.symbol ?? instrument.name ?? instrument.id ?? '').trim();
+
+      return {
+        id: symbol,
+        name: symbol,
+        description: instrument.description || symbol,
+        category: instrument.category || 'Forex',
+        digits: instrument.digits,
+        tickSize: instrument.tick_size ?? Math.pow(10, -Number(instrument.digits || 5)),
+        contractSize: instrument.contract_size,
+        marginRate: instrument.margin_rate ?? 0.01,
+        tradingEnabled: Boolean(instrument.enabled ?? instrument.trading_enabled ?? instrument.tradingEnabled ?? true),
+        bid: instrument.bid,
+        ask: instrument.ask,
+      };
+    }) as unknown as Symbol[];
   },
 
   getQuote: (symbol: string) =>

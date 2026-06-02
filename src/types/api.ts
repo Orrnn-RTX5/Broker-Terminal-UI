@@ -14,7 +14,6 @@ export interface AuthLoginRequest {
   email?: string;
   password: string;
   broker_id?: string;
-  server?: string;
 }
 
 export interface AuthRegisterRequest {
@@ -54,6 +53,13 @@ export interface AuthTokenResponse {
   broker_id?: string;
   broker_name?: string;
   broker_server?: string;
+  backend_url?: string;
+  market_api_url?: string;
+  server_url?: string;
+  ws_url?: string;
+  feed_url?: string;
+  feed_ws_url?: string;
+  feed_status_url?: string;
   expires_at?: number | string;
 }
 
@@ -75,8 +81,15 @@ export interface BrokerServer {
   broker_id: string;
   broker_name: string;
   server: string;
+  server_url?: string;
+  backend_url?: string;
+  market_api_url?: string;
   server_ip?: string;
   server_port?: number;
+  ws_url?: string;
+  feed_url?: string;
+  feed_ws_url?: string;
+  feed_status_url?: string;
   protocol?: string;
   region?: string;
   enabled?: boolean;
@@ -124,7 +137,9 @@ export interface Session {
 }
 
 export interface Instrument {
-  symbol: string;
+  symbol?: string;
+  name?: string;
+  id?: string | number;
   description?: string;
   category?: string;
   digits?: number;
@@ -133,10 +148,14 @@ export interface Instrument {
   max_volume?: number;
   volume_step?: number;
   spread?: number;
+  bid?: number;
+  ask?: number;
   swap_long?: number;
   swap_short?: number;
   commission?: number;
   enabled?: boolean;
+  trading_enabled?: boolean;
+  tradingEnabled?: boolean;
 }
 
 export interface Tick {

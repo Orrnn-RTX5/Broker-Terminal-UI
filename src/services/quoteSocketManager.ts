@@ -20,10 +20,8 @@
 
 import {
   buildBrokerWsFeedUri,
-  buildBrokerWsV2Uri,
   getAccessToken,
   onSessionChange,
-  isSessionReady,
 } from './brokerSession';
 import { enqueueLiveTick, type LiveTick } from './liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
@@ -61,10 +59,62 @@ const normalizeSymbol = (v: unknown): string =>
 
 // ─── Step 9-10: processIncomingPayload ───────────────────────────────────────
 
-function processIncomingPayload(raw: any): NormalizedQuoteTick | null {
-  const payload = raw?.data ?? raw?.tick ?? raw?.quote ?? raw;
-  const channelSymbol = raw?.channel?.startsWith('ticks.') ? raw.channel.split('.')[1] : undefined;
-  const symbol = normalizeSymbol(payload?.symbol ?? raw?.symbol ?? channelSymbol);
+const QUOTE_PAYLOAD_KEYS = ['data', 'tick', 'quote', 'price', 'payload', 'message', 'prices', 'ticks'] as const;
+
+const isRecord = (v: unknown): v is Record<string, any> =>
+  typeof v === 'object' && v !== null;
+
+const hasQuotePriceFields = (v: unknown): boolean =>
+  isRecord(v) && (v.bid !== undefined || v.ask !== undefined);
+
+const getChannelSymbol = (v: unknown): string | undefined => {
+  if (!isRecord(v) || typeof v.channel !== 'string') return undefined;
+  return v.channel.startsWith('ticks.') ? v.channel.split('.')[1] : undefined;
+};
+
+const hasQuoteIdentityFields = (v: unknown): boolean =>
+  isRecord(v) && (normalizeSymbol(v.symbol) !== '' || getChannelSymbol(v) !== undefined);
+
+const getDescendantEnvelope = (raw: unknown, envelope: unknown): unknown =>
+  hasQuoteIdentityFields(raw) ? raw : envelope;
+
+function collectQuotePayloads(raw: unknown, envelope: unknown = raw): Array<{ payload: Record<string, any>; envelope: unknown }> {
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return collectQuotePayloads(parsed, envelope);
+    } catch {
+      return [];
+    }
+  }
+
+  if (Array.isArray(raw)) {
+    return raw.flatMap((item) => collectQuotePayloads(item, isRecord(envelope) ? envelope : item));
+  }
+
+  if (!isRecord(raw)) return [];
+
+  if (hasQuotePriceFields(raw)) {
+    return [{ payload: raw, envelope: getDescendantEnvelope(raw, envelope) }];
+  }
+
+  const descendantEnvelope = getDescendantEnvelope(raw, envelope);
+
+  return QUOTE_PAYLOAD_KEYS.flatMap((key) => {
+    if (!(key in raw)) return [];
+    const value = raw[key];
+
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => collectQuotePayloads(item, descendantEnvelope));
+    }
+
+    return collectQuotePayloads(value, descendantEnvelope);
+  });
+}
+
+function normalizeQuotePayload(payload: Record<string, any>, envelope: unknown): NormalizedQuoteTick | null {
+  const channelSymbol = getChannelSymbol(envelope) ?? getChannelSymbol(payload);
+  const symbol = normalizeSymbol(payload?.symbol ?? (isRecord(envelope) ? envelope.symbol : undefined) ?? channelSymbol);
   if (!symbol) return null;
 
   const bid = toNumber(payload?.bid);
@@ -104,11 +154,18 @@ function processIncomingPayload(raw: any): NormalizedQuoteTick | null {
   };
 }
 
+function processIncomingPayload(raw: any): NormalizedQuoteTick[] {
+  return collectQuotePayloads(raw)
+    .map(({ payload, envelope }) => normalizeQuotePayload(payload, envelope))
+    .filter((tick): tick is NormalizedQuoteTick => tick !== null);
+}
+
 // ─── QuoteSocketManager Singleton ────────────────────────────────────────────
 
 class QuoteSocketManager {
   private ws: WebSocket | null = null;
   private wsUrl: string = '';
+  private wildcardSubscribed = false;
 
   // Step 5: Demand sources — each keyed by sourceId (e.g. "watchlist", "chart-main", "depth-panel")
   private demandSources: Map<string, Set<string>> = new Map();
@@ -137,7 +194,7 @@ class QuoteSocketManager {
     this.unsubSessionChange = onSessionChange((reason) => {
       if (reason === 'logout') {
         this.close();
-      } else if (reason === 'token_rotation' || reason === 'broker_url_change') {
+      } else if (reason === 'token_rotation' || reason === 'broker_url_change' || reason === 'login') {
         // Rebuild URL and reconnect
         this.reconnect();
       }
@@ -198,8 +255,9 @@ class QuoteSocketManager {
       this.sendSubscribe(added);
     }
 
-    // Send unsubscribe for removed
-    if (removed.length > 0) {
+    // Wildcard feed subscriptions are socket-scoped. Per-symbol unsubscribe can
+    // cancel delivery for symbols that may be demanded again on the same socket.
+    if (!this.wildcardSubscribed && removed.length > 0) {
       this.sendUnsubscribe(removed);
     }
   }
@@ -210,7 +268,8 @@ class QuoteSocketManager {
     console.log(`[QuoteSocket] connect() called — disposed=${this.disposed}, activeSymbols=${[...this.activeSymbols].join(',')}`);
 
     if (this.disposed) return;
-    if (!isSessionReady()) {
+    const nextWsUrl = buildBrokerWsFeedUri();
+    if (!nextWsUrl || !getAccessToken()) {
       console.warn('[QuoteSocket] Session not ready, deferring connect');
       return;
     }
@@ -218,15 +277,17 @@ class QuoteSocketManager {
     // Close any existing connection
     this.closeSocket();
 
-    const token = getAccessToken();
-    this.wsUrl = buildBrokerWsV2Uri(token);
+    this.wsUrl = nextWsUrl;
 
     console.log(`[QuoteSocket] Opening WebSocket → ${this.wsUrl.replace(/token=[^&]+/, 'token=***')}`);
 
     try {
-      this.ws = new WebSocket(this.wsUrl);
+      const socket = new WebSocket(this.wsUrl);
+      this.ws = socket;
 
-      this.ws.onopen = () => {
+      socket.onopen = () => {
+        if (this.ws !== socket) return;
+
         console.log(`[QuoteSocket] Connected to ${this.wsUrl}`);
         this.reconnectAttempts = 0;
 
@@ -235,13 +296,15 @@ class QuoteSocketManager {
           useWebSocketStore.getState().setConnectionState('connected', 'fix_socket');
         } catch { /* store not ready */ }
 
-        // Step 8: Send subscribe for all active symbols
+        // Step 8: The feed endpoint expects a wildcard quote subscription.
         if (this.activeSymbols.size > 0) {
-          this.sendSubscribe([...this.activeSymbols]);
+          this.sendSubscribe();
         }
       };
 
-      this.ws.onmessage = (event) => {
+      socket.onmessage = (event) => {
+        if (this.ws !== socket) return;
+
         try {
           const data = JSON.parse(event.data);
           this.handleMessage(data);
@@ -250,11 +313,15 @@ class QuoteSocketManager {
         }
       };
 
-      this.ws.onerror = (err) => {
+      socket.onerror = (err) => {
+        if (this.ws !== socket) return;
+
         console.error('[QuoteSocket] Error:', err);
       };
 
-      this.ws.onclose = (event) => {
+      socket.onclose = (event) => {
+        if (this.ws !== socket) return;
+
         console.log(`[QuoteSocket] Closed (code: ${event.code}, reason: ${event.reason})`);
 
         try {
@@ -280,34 +347,30 @@ class QuoteSocketManager {
 
   // ─── Step 8: Send subscribe message ──────────────────────────────────────
 
-  private sendSubscribe(symbols: string[]): void {
+  private sendSubscribe(_symbols: string[] = []): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.wildcardSubscribed) return;
 
-    symbols.forEach((symbol) => {
-      const channel = `ticks.${symbol}`;
-      const message = {
-        action: 'subscribe',
-        channel,
-        channels: [channel],
-      };
-      console.log(`[QuoteSocket] Subscribing to channel: ${channel}`);
-      this.ws.send(JSON.stringify(message));
-    });
+    const subscriptionSymbols = ['*'];
+    const message = {
+      type: 'subscribe',
+      symbols: subscriptionSymbols,
+    };
+    console.log(`[QuoteSocket] Subscribing to symbols: ${subscriptionSymbols.join(', ')}`);
+    this.ws.send(JSON.stringify(message));
+    this.wildcardSubscribed = true;
   }
 
   private sendUnsubscribe(symbols: string[]): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-    symbols.forEach((symbol) => {
-      const channel = `ticks.${symbol}`;
-      const message = {
-        action: 'unsubscribe',
-        channel,
-        channels: [channel],
-      };
-      console.log(`[QuoteSocket] Unsubscribing from channel: ${channel}`);
-      this.ws.send(JSON.stringify(message));
-    });
+    const unsubscribeSymbols = symbols.length > 0 ? symbols : ['*'];
+    const message = {
+      type: 'unsubscribe',
+      symbols: unsubscribeSymbols,
+    };
+    console.log(`[QuoteSocket] Unsubscribing from symbols: ${unsubscribeSymbols.join(', ')}`);
+    this.ws.send(JSON.stringify(message));
   }
 
   // ─── Step 9-13: Handle incoming tick payloads ────────────────────────────
@@ -322,24 +385,26 @@ class QuoteSocketManager {
       return;
     }
 
-    // Step 9-10: Normalize tick
-    const tick = processIncomingPayload(data);
-    if (!tick) return;
+    // Step 9-10: Normalize ticks
+    const ticks = processIncomingPayload(data);
+    if (ticks.length === 0) return;
 
-    // Step 14: Batched store path — enqueue for rAF-batched Zustand update
-    enqueueLiveTick(tick.symbol, tick as LiveTick);
+    ticks.forEach((tick) => {
+      // Step 14: Batched store path — enqueue for rAF-batched Zustand update
+      enqueueLiveTick(tick.symbol, tick as LiveTick);
 
-    // Step 11: Immediate per-symbol listeners (for quote row UI)
-    const callbacks = this.symbolListeners.get(tick.symbol);
-    if (callbacks) {
-      callbacks.forEach((cb) => {
-        try { cb(tick); } catch (e) { console.error('[QuoteSocket] listener error:', e); }
+      // Step 11: Immediate per-symbol listeners (for quote row UI)
+      const callbacks = this.symbolListeners.get(tick.symbol);
+      if (callbacks) {
+        callbacks.forEach((cb) => {
+          try { cb(tick); } catch (e) { console.error('[QuoteSocket] listener error:', e); }
+        });
+      }
+
+      // Global listeners
+      this.globalListeners.forEach((cb) => {
+        try { cb(tick); } catch (e) { console.error('[QuoteSocket] global listener error:', e); }
       });
-    }
-
-    // Global listeners
-    this.globalListeners.forEach((cb) => {
-      try { cb(tick); } catch (e) { console.error('[QuoteSocket] global listener error:', e); }
     });
   }
 
@@ -407,9 +472,11 @@ class QuoteSocketManager {
 
   private closeSocket(): void {
     if (this.ws) {
-      try { this.ws.close(1000, 'QuoteSocketManager closing'); } catch { /* ignore */ }
+      const socket = this.ws;
       this.ws = null;
+      try { socket.close(1000, 'QuoteSocketManager closing'); } catch { /* ignore */ }
     }
+    this.wildcardSubscribed = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

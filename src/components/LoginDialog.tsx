@@ -8,13 +8,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
-import { updateDynamicUrls, BROKER_DISCOVERY_URL } from '../config/api';
+import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL } from '../config/api';
+import { persistBrokerSessionDiscovery } from '../services/brokerSession';
 import { User, X, HelpCircle, ChevronDown } from 'lucide-react';
 
 interface BrokerServerItem {
     broker_id: string;
     broker_name: string;
+    server?: string;
+    server_ip?: string;
+    server_port?: number;
     server_url: string;
+    backend_url?: string;
+    market_api_url?: string;
+    ws_url?: string;
+    feed_url?: string;
+    feed_ws_url?: string;
+    feed_status_url?: string;
     logo_url: string;
     region?: string;
 }
@@ -26,6 +36,8 @@ interface LoginDialogProps {
     initialLogin?: string;
     initialServer?: string;
 }
+
+const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
 
 export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = '', initialServer }: LoginDialogProps) {
     const [login, setLogin] = useState('');
@@ -67,7 +79,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
         }, 3000);
 
         try {
-            const cleanUrl = serverUrl.replace(/\/$/, '');
+            const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
             const response = await fetch(`${cleanUrl}/health`, { signal: controller.signal });
             clearTimeout(timeoutId);
             if (response.ok) {
@@ -84,10 +96,14 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
     };
 
     const handleSelectBroker = (item: BrokerServerItem) => {
-        setSelectedBroker(item);
+        const normalizedServerUrl = normalizeBrokerServerUrl(item.market_api_url || item.backend_url || item.server_url);
+        setSelectedBroker({
+            ...item,
+            server_url: normalizedServerUrl,
+        });
         setSearchQuery(item.broker_name);
         setDropdownOpen(false);
-        runHealthCheck(item.server_url);
+        runHealthCheck(normalizedServerUrl);
     };
 
     // Fetch broker servers from API
@@ -104,13 +120,19 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 const savedBrokerId = initialServer || localStorage.getItem('broker_id') || 'testorrnn';
                 const savedBroker = data.find(b => b.broker_id === savedBrokerId || b.server_url === savedBrokerId);
                 if (savedBroker) {
-                    setSelectedBroker(savedBroker);
+                    setSelectedBroker({
+                        ...savedBroker,
+                        server_url: normalizeBrokerServerUrl(savedBroker.market_api_url || savedBroker.backend_url || savedBroker.server_url),
+                    });
                     setSearchQuery(savedBroker.broker_name);
-                    runHealthCheck(savedBroker.server_url);
+                    runHealthCheck(normalizeBrokerServerUrl(savedBroker.market_api_url || savedBroker.backend_url || savedBroker.server_url));
                 } else if (data.length > 0) {
-                    setSelectedBroker(data[0]);
+                    setSelectedBroker({
+                        ...data[0],
+                        server_url: normalizeBrokerServerUrl(data[0].market_api_url || data[0].backend_url || data[0].server_url),
+                    });
                     setSearchQuery(data[0].broker_name);
-                    runHealthCheck(data[0].server_url);
+                    runHealthCheck(normalizeBrokerServerUrl(data[0].market_api_url || data[0].backend_url || data[0].server_url));
                 }
             })
             .catch((err) => console.warn('[LoginDialog] Could not load broker servers:', err));
@@ -180,20 +202,47 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
         setError(null);
 
         try {
-            // Save broker details to localStorage & configure dynamic endpoints
-            localStorage.setItem('broker_id', selectedBroker.broker_id);
-            localStorage.setItem('server_url', selectedBroker.server_url);
-            localStorage.setItem('logo_url', selectedBroker.logo_url);
+            // Save selected broker details before login so the request targets the broker backend.
+            const brokerServerUrl = normalizeBrokerServerUrl(selectedBroker.market_api_url || selectedBroker.backend_url || selectedBroker.server_url);
+            persistBrokerSessionDiscovery({
+                broker_id: selectedBroker.broker_id,
+                backend_url: selectedBroker.backend_url,
+                market_api_url: selectedBroker.market_api_url,
+                server_url: brokerServerUrl,
+                ws_url: selectedBroker.ws_url,
+                feed_url: selectedBroker.feed_url || selectedBroker.feed_ws_url,
+                feed_ws_url: selectedBroker.feed_ws_url,
+                feed_status_url: selectedBroker.feed_status_url,
+                logo_url: selectedBroker.logo_url,
+            });
             updateDynamicUrls();
 
             const data = await authV2Api.login({
                 username: login.trim(),
                 password,
                 broker_id: selectedBroker.broker_id,
+            }, {
+                baseUrl: buildBrokerApiV2BaseUrl(brokerServerUrl),
+                skipDynamicUrl: true,
             });
 
             const token = data.access_token || data.token;
             if (!token) throw new Error('No authentication token received');
+
+            persistBrokerSessionDiscovery({
+                ...data,
+                access_token: token,
+                broker_id: data.broker_id || selectedBroker.broker_id,
+                backend_url: data.backend_url || selectedBroker.backend_url,
+                market_api_url: data.market_api_url || selectedBroker.market_api_url,
+                server_url: data.server_url || data.broker_server || brokerServerUrl,
+                ws_url: data.ws_url || selectedBroker.ws_url,
+                feed_url: data.feed_url || selectedBroker.feed_url || selectedBroker.feed_ws_url,
+                feed_ws_url: data.feed_ws_url || selectedBroker.feed_ws_url,
+                feed_status_url: data.feed_status_url || selectedBroker.feed_status_url,
+                logo_url: selectedBroker.logo_url,
+            });
+            updateDynamicUrls();
 
             const accountId = data.account_login ?? login.trim();
 

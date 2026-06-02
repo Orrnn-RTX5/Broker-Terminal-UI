@@ -66,9 +66,11 @@ export interface ClientDrawing {
 
 class DrawingApiService {
   // Use relative URL in dev (Vite proxy handles it), absolute in production
-  private baseUrl = import.meta.env.DEV
-    ? '/api/fix/drawings'
-    : `${FIX_API_URL}/api/fix/drawings`;
+  private get baseUrl() {
+    return import.meta.env.DEV
+      ? '/api/fix/drawings'
+      : `${FIX_API_URL}/api/fix/drawings`;
+  }
 
   /**
    * Get auth headers with Bearer token

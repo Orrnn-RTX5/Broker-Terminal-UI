@@ -1,17 +1,17 @@
 /**
- * useQuoteSubscription — React hook for Section 2 (Quotes /ws/feed)
+ * useQuoteSubscription - React hook for Section 2 (Quotes /ws/feed)
  *
  * Registers demand with QuoteSocketManager. On mount, symbols are added to the
- * merged demand set. On unmount, they're removed (triggering unsubscribe if
- * no other consumer needs them).
+ * merged demand set. On unmount, they're removed when no other consumer needs them.
  *
  * Usage:
  *   const { isConnected } = useQuoteSubscription(['EURUSD', 'GBPUSD'], 'watchlist-main');
  */
 
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getQuoteSocketManager } from '../services/quoteSocketManager';
 import { useAppStore } from '../store/useAppStore';
+import { getAccessToken, getServerUrl, onSessionChange } from '../services/brokerSession';
 
 const normalizeSymbol = (v: unknown): string =>
   typeof v === 'string' ? v.trim().toUpperCase() : '';
@@ -20,13 +20,21 @@ export interface UseQuoteSubscriptionReturn {
   isConnected: boolean;
 }
 
+const hasReadyStoredBrokerSession = (): boolean =>
+  Boolean(getServerUrl() && getAccessToken());
+
 export function useQuoteSubscription(
   symbols: string[],
   sourceId: string,
 ): UseQuoteSubscriptionReturn {
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const storeAuthToken = useAppStore((s) => s.authToken);
+  const [sessionRevision, setSessionRevision] = useState(0);
 
-  // Stable normalized symbol list
+  useEffect(() => {
+    return onSessionChange(() => setSessionRevision((revision) => revision + 1));
+  }, []);
+
   const normalizedSymbols = useMemo(
     () => Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -34,12 +42,13 @@ export function useQuoteSubscription(
   );
 
   const managerRef = useRef(getQuoteSocketManager());
+  const storedBrokerSessionReady = hasReadyStoredBrokerSession();
+  const canSubscribe = isAuthenticated || storedBrokerSessionReady;
 
-  // Register/update demand when symbols change
   useEffect(() => {
-    console.log(`[useQuoteSubscription] effect — isAuthenticated=${isAuthenticated}, symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
+    console.log(`[useQuoteSubscription] effect - isAuthenticated=${isAuthenticated}, storedSession=${storedBrokerSessionReady}, symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
 
-    if (!isAuthenticated || normalizedSymbols.length === 0) {
+    if (!canSubscribe || normalizedSymbols.length === 0) {
       managerRef.current.removeDemand(sourceId);
       return;
     }
@@ -50,7 +59,7 @@ export function useQuoteSubscription(
       managerRef.current.removeDemand(sourceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedSymbols.join('|'), sourceId, isAuthenticated]);
+  }, [normalizedSymbols.join('|'), sourceId, canSubscribe, storeAuthToken, sessionRevision]);
 
   return {
     isConnected: managerRef.current.isConnected(),

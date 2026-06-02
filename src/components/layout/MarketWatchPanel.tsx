@@ -14,7 +14,10 @@ interface MarketWatchPanelProps {
   className?: string;
 }
 
-const normalizeSymbol = (value: string): string => value.trim().toUpperCase();
+const normalizeSymbol = (value: unknown): string => String(value ?? '').trim().toUpperCase();
+
+const uniqueSymbols = (symbols: unknown[]): string[] =>
+  Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean)));
 
 // Price flash hook — returns 'up' | 'down' | null briefly when price changes
 function usePriceFlash(value: number): 'up' | 'down' | null {
@@ -61,7 +64,8 @@ const MarketWatchRow: React.FC<{
   showAsk: boolean;
   showSpread: boolean;
   showDaily: boolean;
-}> = ({ symbol, isSelected, onClick, contextMenuItems, showAsk, showSpread, showDaily }) => {
+  rowRef?: (node: HTMLTableRowElement | null) => void;
+}> = ({ symbol, isSelected, onClick, contextMenuItems, showAsk, showSpread, showDaily, rowRef }) => {
   const tick = useTick(symbol);
   const bidDirection = tick?.bidDirection ?? 'none';
   const bid = tick?.bid ?? 0;
@@ -91,6 +95,7 @@ const MarketWatchRow: React.FC<{
   return (
     <ContextMenu items={contextMenuItems}>
       <tr
+        ref={rowRef}
         draggable={true}
         onDragStart={(e) => {
           e.dataTransfer.setData('text/plain', symbol);
@@ -237,9 +242,11 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   onSymbolSelect,
   className,
 }) => {
-  const liveTickCount = useAppStore((state) => Object.keys(state.ticks).length);
+  const liveTicks = useAppStore((state) => state.ticks);
+  const liveTickCount = Object.keys(liveTicks).length;
   const {
     symbols: marketInstruments,
+    disabledSymbols,
     loading: isLoadingSymbols,
     error: symbolsError,
   } = useMarketInstruments();
@@ -261,8 +268,12 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
   const [panelWidth, setPanelWidth] = useState(999);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [hiddenSymbols, setHiddenSymbols] = useState<Set<string>>(() => new Set());
+  const [manualSymbols, setManualSymbols] = useState<string[] | null>(null);
+  const [sortMethod, setSortMethod] = useState<'name' | 'name-desc' | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -284,68 +295,124 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   const showSpread = panelWidth >= 300;
   const showDaily  = panelWidth >= 380;
 
+  const liveTickSymbols = useMemo(() => {
+    return uniqueSymbols(Object.keys(liveTicks));
+  }, [liveTicks]);
+
+  const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols(disabledSymbols)), [disabledSymbols]);
+
   const availableSymbols = useMemo(() => {
     const fromProps = (Array.isArray(allSymbols) ? allSymbols : [])
       .map((item) => normalizeSymbol(String(item?.symbol ?? item?.name ?? item?.id ?? item)))
       .filter(Boolean);
-    const fromApi = marketInstruments.map((item) => item.symbol);
-    return Array.from(new Set([...fromApi, ...fromProps])).sort((a, b) => a.localeCompare(b));
-  }, [allSymbols, marketInstruments]);
+    const fromApi = marketInstruments.map((item) => normalizeSymbol(item.symbol));
+    return uniqueSymbols([...fromApi, ...fromProps, ...liveTickSymbols])
+      .filter((symbol) => !disabledSymbolSet.has(symbol))
+      .sort((a, b) => a.localeCompare(b));
+  }, [allSymbols, disabledSymbolSet, liveTickSymbols, marketInstruments]);
+
+  const defaultSymbols = useMemo(() => {
+    return availableSymbols.length > 0
+      ? availableSymbols
+      : uniqueSymbols(watchlistSymbols).filter((symbol) => !disabledSymbolSet.has(symbol));
+  }, [availableSymbols, disabledSymbolSet, watchlistSymbols]);
+
+  const rows = useMemo(() => {
+    const sourceSymbols = manualSymbols ?? defaultSymbols;
+    const visible = uniqueSymbols(sourceSymbols)
+      .filter((symbol) => !hiddenSymbols.has(symbol) && !disabledSymbolSet.has(symbol));
+
+    if (sortMethod === 'name') {
+      return [...visible].sort((a, b) => a.localeCompare(b));
+    }
+    if (sortMethod === 'name-desc') {
+      return [...visible].sort((a, b) => b.localeCompare(a));
+    }
+
+    return visible;
+  }, [defaultSymbols, disabledSymbolSet, hiddenSymbols, manualSymbols, sortMethod]);
+
+  const visibleSymbolSet = useMemo(() => new Set(rows), [rows]);
 
   const filteredSymbols = useMemo(() => {
     if (!search.trim()) return [];
     const q = search.trim().toUpperCase();
     return availableSymbols
-      .filter((s) => s.includes(q) && !watchlistSymbols.includes(s))
+      .filter((s) => s.includes(q))
       .slice(0, 15);
-  }, [search, availableSymbols, watchlistSymbols]);
+  }, [search, availableSymbols]);
+
+  const scrollSymbolIntoView = useCallback((symbol: string) => {
+    window.requestAnimationFrame(() => {
+      rowRefs.current.get(symbol)?.scrollIntoView({ block: 'center' });
+    });
+  }, []);
 
   const handleSelectSymbol = useCallback((symbol: string) => {
     const next = normalizeSymbol(symbol);
-    if (!next || !activeWatchlist) return;
-    if (!watchlistSymbols.includes(next)) {
+    if (!next) return;
+    const isVisible = visibleSymbolSet.has(next);
+    const isDefaultSymbol = defaultSymbols.includes(next);
+    if (!isVisible && !isDefaultSymbol && activeWatchlist && !watchlistSymbols.includes(next)) {
       useWatchlistStore.getState().addSymbolToWatchlist(activeWatchlist.id, next);
       useMarketDataStore.getState().subscribeSymbol(next);
     }
+    setHiddenSymbols((prev) => {
+      if (!prev.has(next)) return prev;
+      const updated = new Set(prev);
+      updated.delete(next);
+      return updated;
+    });
+    setManualSymbols((prev) => {
+      if (prev) return uniqueSymbols([...prev, next]);
+      return defaultSymbols.includes(next) ? prev : uniqueSymbols([...rows, next]);
+    });
     setSearch('');
     setShowDropdown(false);
     setHighlightIndex(-1);
+    onSymbolSelect(next);
+    scrollSymbolIntoView(next);
     
     // Automatically open chart for the newly searched/selected pair as a NEW TAB
     window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: next, newTab: true } }));
-  }, [onSymbolSelect, activeWatchlist, watchlistSymbols]);
+  }, [activeWatchlist, defaultSymbols, onSymbolSelect, rows, scrollSymbolIntoView, visibleSymbolSet, watchlistSymbols]);
 
   const handleHideSymbol = useCallback((symbol: string) => {
-    if (!activeWatchlist) return;
-    useWatchlistStore.getState().removeSymbolFromWatchlist(activeWatchlist.id, symbol);
-  }, [activeWatchlist]);
+    const next = normalizeSymbol(symbol);
+    if (!next) return;
+    if (manualSymbols !== null) {
+      setManualSymbols((prev) => prev?.filter((s) => normalizeSymbol(s) !== next) ?? prev);
+    } else {
+      setHiddenSymbols((prev) => {
+        if (prev.has(next)) return prev;
+        const updated = new Set(prev);
+        updated.add(next);
+        return updated;
+      });
+    }
+  }, [manualSymbols]);
 
   const handleHideAll = useCallback(() => {
-    if (!activeWatchlist) return;
-    useWatchlistStore.getState().reorderSymbols(activeWatchlist.id, []);
-  }, [activeWatchlist]);
+    setManualSymbols([]);
+    setHiddenSymbols(new Set());
+  }, []);
 
   const handleShowAll = useCallback(() => {
-    if (!activeWatchlist || availableSymbols.length === 0) return;
-    useWatchlistStore.getState().reorderSymbols(activeWatchlist.id, availableSymbols);
-  }, [activeWatchlist, availableSymbols]);
+    setManualSymbols(null);
+    setHiddenSymbols(new Set());
+  }, []);
 
   const handleSort = useCallback((method: 'name' | 'name-desc') => {
-    if (!activeWatchlist) return;
-    const sorted = [...watchlistSymbols].sort((a, b) => {
-      if (method === 'name') return a.localeCompare(b);
-      return b.localeCompare(a);
-    });
-    useWatchlistStore.getState().reorderSymbols(activeWatchlist.id, sorted);
-  }, [activeWatchlist, watchlistSymbols]);
+    setSortMethod(method);
+  }, []);
 
   const handleExport = useCallback(() => {
-    const data = watchlistSymbols.map(sym => {
+    const data = rows.map(sym => {
       const tick = getTickSnapshot(sym);
       return `${sym}\t${tick?.bid ?? '-'}\t${tick?.ask ?? '-'}\t${tick?.spread ?? '-'}`;
     }).join('\n');
     navigator.clipboard.writeText(`Symbol\tBid\tAsk\tSpread\n${data}`);
-  }, [watchlistSymbols]);
+  }, [rows]);
 
   const getContextMenuItems = useCallback((symbol: string): ContextMenuItemConfig[] => {
     return [
@@ -499,9 +566,6 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const rows = useMemo(() => {
-    return watchlistSymbols.map(normalizeSymbol).filter(Boolean);
-  }, [watchlistSymbols]);
   const { loading: quotesLoading, error: quotesError } = useLiveQuotes(rows);
 
   const timeStr = currentTime.toLocaleTimeString('en-US', { hour12: false });
@@ -687,7 +751,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                 style={{ background: 'none', border: 'none', color: '#50505a', cursor: 'pointer', fontSize: 11, padding: '0 2px', lineHeight: 1 }}
               >✕</button>
             </div>
-            {availableSymbols.filter(s => !watchlistSymbols.includes(s)).map((sym) => {
+            {availableSymbols.map((sym) => {
               const cat = getCategory(sym);
               return (
                 <div
@@ -753,6 +817,13 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                       showAsk={showAsk}
                       showSpread={showSpread}
                       showDaily={showDaily}
+                      rowRef={(node) => {
+                        if (node) {
+                          rowRefs.current.set(symbol, node);
+                        } else {
+                          rowRefs.current.delete(symbol);
+                        }
+                      }}
                     />
                   );
                 })}
@@ -783,7 +854,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
           <span className="rtx-market-watch__footer-count" style={{ fontSize: 9, color: '#36363e' }}>{rows.length} symbols</span>
         </div>
 
-        {(symbolsError || quotesError) && (
+        {(symbolsError || watchlistError || quotesError) && (
           <div style={{
             padding: '5px 10px',
             borderTop: '1px solid rgba(248,113,113,0.16)',
@@ -792,7 +863,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
             fontSize: 10,
             lineHeight: 1.3,
           }}>
-            {symbolsError || quotesError}
+            {symbolsError || watchlistError || quotesError}
           </div>
         )}
         {(quotesLoading || watchlistLoading) && rows.length > 0 && liveTickCount === 0 && (

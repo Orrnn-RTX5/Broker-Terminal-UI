@@ -25,6 +25,7 @@ import {
 } from './endpoints';
 import { getStoredBrokerServer, persistBrokerServer, resolveLoginBrokerTarget } from '../services/brokerServers';
 import { useAppStore } from '../store/useAppStore';
+import { normalizeBrokerServerUrl } from '../config/api';
 
 // ====================
 // Generic Types
@@ -134,15 +135,21 @@ export const useLogin = () => {
     setError(null);
     try {
       const selectedServer = credentials.server || getStoredBrokerServer();
-      const loginTarget = credentials.broker_id
-        ? { displayValue: credentials.broker_id, broker_id: credentials.broker_id }
-        : resolveLoginBrokerTarget(selectedServer);
-      const response = await authApi.login({
-        ...credentials,
-        broker_id: loginTarget.broker_id,
-        server: loginTarget.server,
-      });
-      persistBrokerServer(response.broker_server || loginTarget.displayValue);
+      const loginTarget = resolveLoginBrokerTarget(selectedServer);
+      const brokerId = credentials.broker_id || loginTarget.broker_id;
+      const { server: _server, broker_id: _brokerId, ...loginPayload } = credentials;
+      const response = await authApi.login(
+        {
+          ...loginPayload,
+          ...(brokerId ? { broker_id: brokerId } : {}),
+        },
+        loginTarget.server ? { baseUrl: normalizeBrokerServerUrl(loginTarget.server) } : undefined
+      );
+      const resolvedServer = response.broker_server || loginTarget.server || loginTarget.displayValue;
+      persistBrokerServer(resolvedServer);
+      if (loginTarget.server && typeof window !== 'undefined') {
+        localStorage.setItem('server_url', normalizeBrokerServerUrl(loginTarget.server));
+      }
       const accessToken = response.access_token || response.token;
       if (accessToken) {
         setToken(accessToken);

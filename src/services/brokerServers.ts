@@ -28,17 +28,26 @@ export const persistBrokerServer = (server: string): string => {
 
 const toServerName = (server: BrokerServer | string): string => {
   if (typeof server === 'string') return normalizeServerName(server);
-  return normalizeServerName(server.server);
+  return normalizeServerName(server.server || server.broker_name || server.server_url || server.broker_id);
 };
 
 const rememberBrokerServer = (server: BrokerServer): void => {
   const values = [
     server.server,
+    server.server_url,
     server.broker_id,
     server.broker_name,
   ].map(normalizeServerName).filter(Boolean);
 
   values.forEach((value) => brokerServerRegistry.set(value.toLowerCase(), server));
+};
+
+const getBrokerServerUrl = (server: BrokerServer): string => {
+  const explicitUrl = normalizeServerName(server.server_url);
+  if (explicitUrl) return explicitUrl;
+
+  const serverValue = normalizeServerName(server.server);
+  return looksLikeBrokerServerAddress(serverValue) ? serverValue : '';
 };
 
 export const normalizeBrokerServers = (servers: Array<BrokerServer | string>): string[] => {
@@ -77,7 +86,12 @@ export const resolveLoginBrokerTarget = (serverInput: string): LoginBrokerTarget
   const registeredServer = brokerServerRegistry.get(displayValue.toLowerCase());
 
   if (registeredServer?.broker_id) {
-    return { displayValue, broker_id: normalizeServerName(registeredServer.broker_id) };
+    const server = getBrokerServerUrl(registeredServer);
+    return {
+      displayValue,
+      broker_id: normalizeServerName(registeredServer.broker_id),
+      ...(server ? { server } : {}),
+    };
   }
 
   return { displayValue, broker_id: displayValue };

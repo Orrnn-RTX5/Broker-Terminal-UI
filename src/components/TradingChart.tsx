@@ -6,7 +6,7 @@
  * - Proper candle aggregation
  */
 
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
 import {
   createChart,
   createSeriesMarkers,
@@ -22,6 +22,7 @@ import {
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { useToolbarState } from '../hooks/useToolbarState';
 import { useCrosshair } from '../hooks/useCrosshair';
+import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { drawingManager } from '../services/drawingManager';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
@@ -167,6 +168,14 @@ export const TradingChart = React.memo(function TradingChart({
   panelId,
 }: TradingChartProps) {
   const authToken = useAppStore((state) => state.authToken);
+  const chartInstanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const [activeTimeframe, setActiveTimeframe] = useState<Timeframe>(timeframe);
+  const chartQuoteSourceId = useMemo(() => {
+    const normalizedSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'UNKNOWN';
+    return `chart:${panelId || chartInstanceId}:${normalizedSymbol}`;
+  }, [chartInstanceId, panelId, symbol]);
+
+  useQuoteSubscription(symbol ? [symbol] : [], chartQuoteSourceId);
 
   // Debug: Log ACTUAL mount (not every re-render)
   useEffect(() => {
@@ -249,6 +258,10 @@ export const TradingChart = React.memo(function TradingChart({
   const [candlesLoadedRev, setCandlesLoadedRev] = useState(0);
   const [brokerTimeOffsetSec, setBrokerTimeOffsetSec] = useState(0);
 
+  const markCandlesReady = useCallback(() => {
+    setApiError(null);
+    setLoadingPhase(prev => (prev === 'connecting' || prev === 'receiving' ? 'ready' : prev));
+  }, []);
 
   const candlesRef = useRef<Candle[]>([]);
   const currentCandleRef = useRef<Candle | null>(null);
@@ -1388,6 +1401,10 @@ export const TradingChart = React.memo(function TradingChart({
   const prevSymbolRef = useRef<string>(symbol);
   const prevTimeframeRef = useRef<Timeframe>(timeframe);
 
+  useEffect(() => {
+    setActiveTimeframe(timeframe);
+  }, [timeframe]);
+
   // Create series when chart type, symbol, or timeframe changes
   useEffect(() => {
     if (isDisposedRef.current || !chartRef.current) return;
@@ -2007,6 +2024,7 @@ export const TradingChart = React.memo(function TradingChart({
           });
         }
         updateLegendDOM(c.open, c.high, c.low, c.close, c.volume);
+        markCandlesReady();
         if (isNewCandle && chartRef.current && !isDisposedRef.current) {
           try { chartRef.current.timeScale().scrollToRealTime(); } catch { }
         }
@@ -2240,6 +2258,7 @@ export const TradingChart = React.memo(function TradingChart({
         // authoritative server correction and repaint the full sorted set instead.
         candlesRef.current = chartDataService.mergeCandle(candlesRef.current, c, 1000) as Candle[];
         updateChartData(candlesRef.current);
+        if (candlesRef.current.length > 0) markCandlesReady();
         return;
       }
 
@@ -2259,7 +2278,21 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       // 3. Server is telling us about a TRULY NEW candle (c.time > current.time)
-      if (!currentCandleRef.current || c.time > currentCandleRef.current.time) {
+      if (!currentCandleRef.current) {
+        currentCandleRef.current = {
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+        };
+        candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
+        push(currentCandleRef.current, true);
+        return;
+      }
+
+      if (c.time > currentCandleRef.current.time) {
         // Let the idempotent rollover handle creating it
         rollover(c.time, c.open);
 
@@ -2282,15 +2315,16 @@ export const TradingChart = React.memo(function TradingChart({
       }
     };
 
+    const streamTimeframe = prevTimeframeRef.current || activeTimeframe;
     const candleStream = chartDataService.subscribeCandles({
       symbol,
-      timeframe,
+      timeframe: streamTimeframe,
       onSnapshot: (snapshot) => {
         if (isDisposedRef.current || isRebuildingRef.current || snapshot.length === 0) return;
         const reconciledSnapshot = reconcileCandlesWithLiveQuote(snapshot as Candle[], 'stream snapshot');
         if (reconciledSnapshot.length === 0) return;
         const latestClose = reconciledSnapshot[reconciledSnapshot.length - 1]?.close;
-        if (latestClose && !normalizeRenderedCandlesToLivePrice(latestClose, prevTimeframeRef.current || timeframe)) return;
+        if (latestClose && !normalizeRenderedCandlesToLivePrice(latestClose, prevTimeframeRef.current || streamTimeframe)) return;
         candlesRef.current = reconciledSnapshot.reduce(
           (acc, candle) => chartDataService.mergeCandle(acc, candle, 1000),
           candlesRef.current,
@@ -2311,7 +2345,7 @@ export const TradingChart = React.memo(function TradingChart({
       candleStream.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, timeframe, authToken]);
+  }, [symbol, activeTimeframe, authToken, markCandlesReady]);
 
   // ── Candle Countdown Timer ──
   useEffect(() => {
@@ -2505,6 +2539,7 @@ export const TradingChart = React.memo(function TradingChart({
       if (newTimeframe && newTimeframe !== prevTimeframeRef.current) {
         console.log(`[Chart] Timeframe changing from ${prevTimeframeRef.current} to ${newTimeframe}`);
         prevTimeframeRef.current = newTimeframe;
+        setActiveTimeframe(newTimeframe as Timeframe);
         // Clear existing data and reload
         candlesRef.current = [];
         currentCandleRef.current = null;

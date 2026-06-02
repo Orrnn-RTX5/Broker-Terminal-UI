@@ -5,6 +5,7 @@
  */
 
 import { useAppStore } from '../store/useAppStore';
+import { normalizeBrokerServerUrl, normalizeServerUrl, toLocalDevProxyUrl } from '../config/api';
 
 export interface BrokerApiRequestOptions extends RequestInit {
   params?: Record<string, any>;
@@ -50,10 +51,23 @@ export class BrokerAPI {
   // Resolve base server URL from localStorage dynamically
   private getBaseUrl(): string {
     const url = localStorage.getItem('server_url');
-    if (!url) {
-      return 'https://backend.orrnn.com'; // fallback default
+    if (url) {
+      return toLocalDevProxyUrl(normalizeBrokerServerUrl(url));
     }
-    return url.replace(/\/$/, '');
+
+    const brokerServer = localStorage.getItem('rtx_broker_server');
+    if (brokerServer) {
+      return toLocalDevProxyUrl(normalizeBrokerServerUrl(brokerServer));
+    }
+
+    const fallback = localStorage.getItem('api_base_url')
+      || import.meta.env.VITE_RTX5_API_URL as string
+      || import.meta.env.VITE_API_V2_URL as string
+      || import.meta.env.VITE_API_URL as string
+      || import.meta.env.VITE_BACKEND_URL as string
+      || '';
+
+    return toLocalDevProxyUrl(normalizeServerUrl(fallback));
   }
 
   // Prepend base URL to relative endpoints, append query params

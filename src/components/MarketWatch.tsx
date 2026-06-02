@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { resolveTickFromLookup, useAppStore } from '../store/useAppStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
 import { MarketWatchContextMenu } from './MarketWatchContextMenu';
 import { SymbolInfo } from './SymbolInfo';
@@ -27,16 +27,21 @@ interface TickData {
     askDirection?: 'up' | 'down' | 'none';
 }
 
+const normalizeSymbol = (value: unknown): string =>
+    String(value ?? '').trim().toUpperCase();
+
+const uniqueSymbols = (symbols: unknown[]): string[] =>
+    Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean)));
+
 export const MarketWatch: React.FC<MarketWatchProps> = ({
     onSelectSymbol,
     selectedSymbol,
     watchlist,
     onOpenOrderEntry
 }) => {
-    const normalizeSymbol = (value: string): string => value.trim().toUpperCase();
-
     // Subscribe to ticks from global store (populated by WebSocket)
     const liveTicks = useAppStore((state) => state.ticks);
+    const tickLookup = useAppStore((state) => state.tickLookup);
 
     // Get symbols from WatchlistStore
     const activeWatchlist = useWatchlistStore((s) => {
@@ -49,12 +54,12 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         error: watchlistError,
     } = useRemoteWatchlistSync(activeWatchlist?.id);
 
-    // Use watchlist prop if provided, otherwise use WatchlistStore
-    const symbols = watchlist && watchlist.length > 0
-        ? watchlist.map((s) => normalizeSymbol(String(s))).filter(Boolean)
-        : watchlistSymbols;
-    const { loading: quotesLoading, error: quotesError } = useLiveQuotes(symbols);
-    const { symbols: availableInstruments, loading: symbolsLoading, error: symbolsError } = useMarketInstruments();
+    const {
+        symbols: availableInstruments,
+        disabledSymbols,
+        loading: symbolsLoading,
+        error: symbolsError,
+    } = useMarketInstruments();
 
     const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; symbol: string } | null>(null);
     const [columnVisibility, setColumnVisibility] = useState({
@@ -66,6 +71,33 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     const [symbolInfoDialog, setSymbolInfoDialog] = useState<{ isOpen: boolean; symbol: string }>({ isOpen: false, symbol: '' });
     const [addingSymbol, setAddingSymbol] = useState(false);
     const [addSymbolInput, setAddSymbolInput] = useState('');
+    const [hiddenSymbols, setHiddenSymbols] = useState<Set<string>>(() => new Set());
+    const [manualSymbols, setManualSymbols] = useState<string[] | null>(null);
+
+    const propSymbols = useMemo(() => uniqueSymbols(watchlist ?? []), [watchlist]);
+    const storeSymbols = useMemo(() => uniqueSymbols(watchlistSymbols), [watchlistSymbols]);
+    const liveTickSymbols = useMemo(() => {
+        return uniqueSymbols(Object.keys(liveTicks));
+    }, [liveTicks]);
+    const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols(disabledSymbols)), [disabledSymbols]);
+    const fallbackSymbols = useMemo(() => {
+        const source = propSymbols.length > 0 ? propSymbols : storeSymbols;
+        return uniqueSymbols(source).filter((symbol) => !disabledSymbolSet.has(symbol));
+    }, [disabledSymbolSet, propSymbols, storeSymbols]);
+    const availableSymbols = useMemo(() => {
+        return uniqueSymbols([...availableInstruments.map((item) => item.symbol), ...liveTickSymbols])
+            .filter((symbol) => !disabledSymbolSet.has(symbol))
+            .sort((a, b) => a.localeCompare(b));
+    }, [availableInstruments, disabledSymbolSet, liveTickSymbols]);
+    const defaultSymbols = useMemo(() => {
+        return availableSymbols.length > 0 ? availableSymbols : fallbackSymbols;
+    }, [availableSymbols, fallbackSymbols]);
+    const symbols = useMemo(() => {
+        const sourceSymbols = manualSymbols ?? defaultSymbols;
+        return uniqueSymbols(sourceSymbols)
+            .filter((symbol) => !hiddenSymbols.has(symbol) && !disabledSymbolSet.has(symbol));
+    }, [defaultSymbols, disabledSymbolSet, hiddenSymbols, manualSymbols]);
+    const { loading: quotesLoading, error: quotesError } = useLiveQuotes(symbols);
 
     // Build display data from live ticks only (no fallback)
     const displayData = useMemo(() => {
@@ -73,7 +105,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
 
         symbols.forEach(symbol => {
             const normalized = normalizeSymbol(symbol);
-            const tick = liveTicks[normalized];
+            const tick = resolveTickFromLookup(liveTicks, tickLookup, normalized);
 
             if (tick && typeof tick.bid === 'number' && typeof tick.ask === 'number') {
                 data[symbol] = {
@@ -101,7 +133,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         });
 
         return data;
-    }, [liveTicks, symbols]);
+    }, [liveTicks, symbols, tickLookup]);
 
     const handleContextMenu = (e: React.MouseEvent, symbol: string) => {
         e.preventDefault();
@@ -139,14 +171,25 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     };
 
     const handleHideSymbol = (symbol: string) => {
-        // Remove from active watchlist
-        if (activeWatchlist) {
-            useWatchlistStore.getState().removeSymbolFromWatchlist(activeWatchlist.id, symbol);
+        const normalized = normalizeSymbol(symbol);
+        if (!normalized) return;
+
+        if (manualSymbols !== null) {
+            setManualSymbols(prev => prev?.filter((s) => normalizeSymbol(s) !== normalized) ?? prev);
+        } else {
+            setHiddenSymbols(prev => {
+                if (prev.has(normalized)) return prev;
+                const updated = new Set(prev);
+                updated.add(normalized);
+                return updated;
+            });
         }
+
     };
 
     const handleShowAllSymbols = () => {
-        // No-op — user must manually add symbols back
+        setManualSymbols(null);
+        setHiddenSymbols(new Set());
     };
 
     const handleToggleColumn = (column: string) => {
@@ -186,10 +229,22 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
 
     const handleAddSymbolConfirm = () => {
         const sym = addSymbolInput.trim();
-        if (sym && activeWatchlist) {
+        if (sym) {
             const normalized = normalizeSymbol(sym);
-            if (normalized && !symbols.includes(normalized)) {
+            if (normalized && activeWatchlist && !watchlistSymbols.includes(normalized)) {
                 useWatchlistStore.getState().addSymbolToWatchlist(activeWatchlist.id, normalized);
+            }
+            if (normalized) {
+                setHiddenSymbols(prev => {
+                    if (!prev.has(normalized)) return prev;
+                    const updated = new Set(prev);
+                    updated.delete(normalized);
+                    return updated;
+                });
+                setManualSymbols(prev => {
+                    if (prev) return uniqueSymbols([...prev, normalized]);
+                    return defaultSymbols.includes(normalized) ? prev : uniqueSymbols([...symbols, normalized]);
+                });
             }
         }
         setAddingSymbol(false);
@@ -208,9 +263,9 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                 </div>
 
                 <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white min-w-0">
-                    {(quotesError || symbolsError) && (
+                    {(quotesError || symbolsError || watchlistError) && (
                         <div className="px-2 py-1 text-[11px] text-red-700 bg-red-50 border-b border-red-200">
-                            {quotesError || symbolsError}
+                            {quotesError || symbolsError || watchlistError}
                         </div>
                     )}
                     {quotesLoading && symbols.length > 0 && Object.keys(liveTicks).length === 0 && (

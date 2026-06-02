@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveLoginBrokerTarget } from './brokerServers';
+import { normalizeBrokerServers, resolveLoginBrokerTarget } from './brokerServers';
 
 describe('resolveLoginBrokerTarget', () => {
   it('treats URL-like broker targets with hostnames as server values without requiring ports', () => {
@@ -31,6 +31,28 @@ describe('resolveLoginBrokerTarget', () => {
     expect(resolveLoginBrokerTarget('example.com:443')).toEqual({
       displayValue: 'example.com:443',
       server: 'example.com:443',
+    });
+  });
+
+  it('resolves registered broker ids and names to broker_id plus direct server_url', () => {
+    normalizeBrokerServers([{
+      id: 1,
+      broker_id: 'testorrnn',
+      broker_name: 'Test Broker',
+      server: 'TestBroker-Live',
+      server_url: 'https://testbroker.example',
+    }]);
+
+    expect(resolveLoginBrokerTarget('testorrnn')).toEqual({
+      displayValue: 'testorrnn',
+      broker_id: 'testorrnn',
+      server: 'https://testbroker.example',
+    });
+
+    expect(resolveLoginBrokerTarget('Test Broker')).toEqual({
+      displayValue: 'Test Broker',
+      broker_id: 'testorrnn',
+      server: 'https://testbroker.example',
     });
   });
 });

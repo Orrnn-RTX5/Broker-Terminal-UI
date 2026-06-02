@@ -3,7 +3,7 @@ import { apiClient, ApiError } from '../api/client';
 import { API_V2_BASE_URL, MARKET_WS_URL } from '../config/api';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { enqueueLiveTick } from '../services/liveTickDispatcher';
-import { useAppStore, type Tick as AppTick } from '../store/useAppStore';
+import { resolveTickFromLookup, useAppStore, type Tick as AppTick } from '../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../store/useMarketDataStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
 import { useQuoteSubscription } from './useQuoteSubscription';
@@ -13,6 +13,8 @@ export interface MarketInstrument {
   description?: string;
   category?: string;
   digits?: number;
+  bid?: number;
+  ask?: number;
   contractSize?: number;
   tradingEnabled?: boolean;
 }
@@ -40,6 +42,11 @@ const toNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(next) ? next : fallback;
 };
 
+const toOptionalNumber = (value: unknown): number | undefined => {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : undefined;
+};
+
 const timestampToMs = (value: unknown): number => {
   const raw = toNumber(value, Date.now());
   return raw > 1_000_000_000_000 ? raw : raw * 1000;
@@ -58,6 +65,44 @@ const getSpreadPips = (symbol: string, spread: number): number => {
   return spread * pipFactor;
 };
 
+const TRUE_VALUES = new Set(['1', 'true', 'yes', 'y', 'on', 'enabled', 'enable', 'active', 'available', 'tradable', 'trading']);
+const FALSE_VALUES = new Set(['0', 'false', 'no', 'n', 'off', 'disabled', 'disable', 'inactive', 'suspended', 'halted', 'blocked', 'readonly', 'read_only', 'deleted', 'delisted', 'expired', 'close_only']);
+
+const hasOwn = (value: unknown, key: string): boolean =>
+  Boolean(value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, key));
+
+const parseBooleanish = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return undefined;
+    if (value === 0) return false;
+    if (value === 1) return true;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (!normalized) return undefined;
+    if (TRUE_VALUES.has(normalized)) return true;
+    if (FALSE_VALUES.has(normalized)) return false;
+  }
+  return undefined;
+};
+
+export const normalizeInstrumentEnabled = (raw: any): boolean | undefined => {
+  const enabledKeys = ['trading_enabled', 'tradingEnabled', 'enabled', 'is_enabled', 'isEnabled'];
+
+  for (const key of enabledKeys) {
+    if (!hasOwn(raw, key)) continue;
+    const parsed = parseBooleanish(raw?.[key]);
+    if (parsed !== undefined) return parsed;
+  }
+
+  if (hasOwn(raw, 'status')) {
+    return parseBooleanish(raw?.status);
+  }
+
+  return undefined;
+};
+
 const normalizeInstrument = (raw: any): MarketInstrument | null => {
   const symbol = normalizeSymbol(raw?.symbol ?? raw?.name ?? raw?.id ?? raw);
   if (!symbol) return null;
@@ -66,9 +111,11 @@ const normalizeInstrument = (raw: any): MarketInstrument | null => {
     symbol,
     description: raw?.description ?? raw?.display_name ?? raw?.name,
     category: raw?.category ?? raw?.asset_class ?? raw?.type,
-    digits: raw?.digits !== undefined ? toNumber(raw.digits) : undefined,
-    contractSize: raw?.contract_size !== undefined ? toNumber(raw.contract_size) : toNumber(raw?.contractSize, undefined as any),
-    tradingEnabled: raw?.trading_enabled ?? raw?.tradingEnabled ?? raw?.enabled,
+    digits: toOptionalNumber(raw?.digits),
+    bid: toOptionalNumber(raw?.bid),
+    ask: toOptionalNumber(raw?.ask),
+    contractSize: toOptionalNumber(raw?.contract_size ?? raw?.contractSize),
+    tradingEnabled: normalizeInstrumentEnabled(raw),
   };
 };
 
@@ -158,11 +205,49 @@ const upsertTick = (tick: Tick & Partial<AppTick>): void => {
   enqueueLiveTick(tick.symbol, tick);
 };
 
+const hasUsablePrice = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0;
+
+const upsertInstrumentTickSnapshot = (instrument: MarketInstrument): void => {
+  if (!hasUsablePrice(instrument.bid) && !hasUsablePrice(instrument.ask)) return;
+
+  const appState = useAppStore.getState();
+  const existingTick = resolveTickFromLookup(appState.ticks, appState.tickLookup, instrument.symbol);
+  if (existingTick && (existingTick.bid > 0 || existingTick.ask > 0)) return;
+
+  const bid = hasUsablePrice(instrument.bid) ? instrument.bid : instrument.ask!;
+  const ask = hasUsablePrice(instrument.ask) ? instrument.ask : instrument.bid!;
+
+  upsertTick({
+    symbol: instrument.symbol,
+    bid,
+    ask,
+    spread: Math.max(0, ask - bid),
+    timestamp: Date.now(),
+    volume: 1,
+    digits: instrument.digits,
+  });
+};
+
+const upsertInstrumentTickSnapshots = (instruments: MarketInstrument[]): void => {
+  instruments.forEach(upsertInstrumentTickSnapshot);
+};
+
 const toV2Endpoint = (endpoint: string): string =>
   endpoint.replace(/^\/api\/v2(?=\/|$)/, '') || '/';
 
+const getApiRootBaseUrl = (): string => API_V2_BASE_URL.replace(/\/api\/v2\/?$/, '');
+
+const resolveRestEndpoint = (endpoint: string): { baseUrl: string; endpoint: string } =>
+  endpoint.startsWith('/api/v2')
+    ? { baseUrl: API_V2_BASE_URL, endpoint: toV2Endpoint(endpoint) }
+    : { baseUrl: getApiRootBaseUrl(), endpoint };
+
 const fetchJson = async <T,>(endpoint: string, params?: Record<string, unknown>): Promise<T> =>
-  apiClient.get<T>(toV2Endpoint(endpoint), { baseUrl: API_V2_BASE_URL, params });
+  {
+    const request = resolveRestEndpoint(endpoint);
+    return apiClient.get<T>(request.endpoint, { baseUrl: request.baseUrl, params });
+  };
 
 const putJson = async <T,>(endpoint: string, body: unknown): Promise<T> =>
   apiClient.put<T>(toV2Endpoint(endpoint), body, { baseUrl: API_V2_BASE_URL });
@@ -170,8 +255,35 @@ const putJson = async <T,>(endpoint: string, body: unknown): Promise<T> =>
 const sameSymbols = (a: string[], b: string[]): boolean =>
   a.length === b.length && a.every((symbol, index) => symbol === b[index]);
 
+export const LIVE_QUOTES_REST_BATCH_SIZE = 50;
+export const LIVE_QUOTES_REST_POLL_INTERVAL_MS = 15000;
+
+export const getLiveQuoteRestBatches = (
+  symbols: string[],
+  batchSize = LIVE_QUOTES_REST_BATCH_SIZE
+): string[][] => {
+  const size = Math.max(1, Math.floor(batchSize));
+  const batches: string[][] = [];
+
+  for (let index = 0; index < symbols.length; index += size) {
+    batches.push(symbols.slice(index, index + size));
+  }
+
+  return batches;
+};
+
+const extractInstrumentRows = (response: any): any[] => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.symbols)) return response.symbols;
+  if (Array.isArray(response?.instruments)) return response.instruments;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.result)) return response.result;
+  return [];
+};
+
 export function useMarketInstruments() {
   const [symbols, setSymbols] = useState<MarketInstrument[]>([]);
+  const [disabledSymbols, setDisabledSymbols] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
@@ -179,6 +291,7 @@ export function useMarketInstruments() {
   const reload = useCallback(async () => {
     if (!isAuthenticated) {
       setSymbols([]);
+      setDisabledSymbols([]);
       setError(null);
       setLoading(false);
       return;
@@ -186,15 +299,21 @@ export function useMarketInstruments() {
     setLoading(true);
     setError(null);
 
-    const endpoints = ['/api/v2/instruments'];
+    const endpoints = ['/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols', '/api/v2/instruments'];
     try {
       for (const endpoint of endpoints) {
         try {
           const response = await fetchJson<any>(endpoint);
-          const raw = Array.isArray(response) ? response : response?.symbols ?? response?.instruments ?? [];
-          const next = raw.map(normalizeInstrument).filter(Boolean) as MarketInstrument[];
-          if (next.length > 0) {
+          const raw = extractInstrumentRows(response);
+          const normalized = raw.map(normalizeInstrument).filter(Boolean) as MarketInstrument[];
+          if (normalized.length > 0) {
+            const disabled = normalized
+              .filter((instrument) => instrument.tradingEnabled === false)
+              .map((instrument) => instrument.symbol);
+            const next = normalized.filter((instrument) => instrument.tradingEnabled !== false);
+            setDisabledSymbols(disabled);
             setSymbols(next);
+            upsertInstrumentTickSnapshots(next);
             return;
           }
         } catch (err) {
@@ -205,6 +324,7 @@ export function useMarketInstruments() {
       }
 
       setSymbols([]);
+      setDisabledSymbols([]);
     } finally {
       setLoading(false);
     }
@@ -220,7 +340,7 @@ export function useMarketInstruments() {
     };
   }, [reload]);
 
-  return { symbols, loading, error, reload };
+  return { symbols, disabledSymbols, loading, error, reload };
 }
 
 export function useLiveQuotes(symbols: string[]) {
@@ -243,12 +363,21 @@ export function useLiveQuotes(symbols: string[]) {
     }
 
     let cancelled = false;
-    const loadQuotes = async () => {
+    let batchIndex = 0;
+    let inFlight = false;
+    const batches = getLiveQuoteRestBatches(normalizedSymbols);
+
+    const loadNextQuoteBatch = async () => {
+      if (cancelled || inFlight || batches.length === 0) return;
+      const batch = batches[batchIndex % batches.length];
+      batchIndex = (batchIndex + 1) % batches.length;
+
+      inFlight = true;
       setLoading(true);
       setError(null);
       try {
         const response = await fetchJson<any>('/api/v2/quotes', {
-          symbols: normalizedSymbols.join(','),
+          symbols: batch.join(','),
         });
         const quotes = Array.isArray(response) ? response : response?.quotes ?? [];
         quotes.forEach((quote: any) => {
@@ -258,12 +387,15 @@ export function useLiveQuotes(symbols: string[]) {
       } catch (err) {
         if (!cancelled) setError(err instanceof ApiError ? err.message : 'Failed to load quotes');
       } finally {
+        inFlight = false;
         if (!cancelled) setLoading(false);
       }
     };
 
-    loadQuotes();
-    const interval = window.setInterval(loadQuotes, 15000);
+    void loadNextQuoteBatch();
+    const interval = window.setInterval(() => {
+      void loadNextQuoteBatch();
+    }, LIVE_QUOTES_REST_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(interval);

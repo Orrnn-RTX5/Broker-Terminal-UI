@@ -21,7 +21,7 @@ import { useNotificationStore } from '../../store/useNotificationStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
 import { brokerV2Api } from '../../api/trade';
-import { RTX5_API_URL } from '../../config/api';
+import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
 import { configApi } from '../../services/api';
 
 interface TopToolbarProps {
@@ -40,6 +40,16 @@ import { ChartTemplateManager } from '../ChartTemplateManager';
 import { indicatorManager } from '../../services/indicatorManager';
 import { drawingManager } from '../../services/drawingManager';
 import { captureFullPage } from '../../services/screenshotService';
+
+const getLogoutBase = (): string => {
+  const fallback = normalizeServerUrl(RTX5_API_URL || import.meta.env.VITE_API_URL || '');
+  if (typeof window === 'undefined') return fallback;
+
+  const serverUrl = normalizeBrokerServerUrl(localStorage.getItem('server_url') || localStorage.getItem('rtx_broker_server') || '');
+  if (serverUrl) return serverUrl;
+  if (fallback) return fallback;
+  return '';
+};
 
 export const TopToolbar: React.FC<TopToolbarProps> = ({
     chartType,
@@ -537,7 +547,8 @@ const MainToolbar = ({
 
     const handleLogout = () => {
         // Fire-and-forget the backend logout API (don't wait)
-        fetch('https://rtxbackend.tradecopier.org/api/logout', {
+        const logoutBase = getLogoutBase().replace(/\/$/, '');
+        fetch(`${logoutBase}/api/logout`, {
             method: 'POST',
             headers: {
                 'accept': '*/*',

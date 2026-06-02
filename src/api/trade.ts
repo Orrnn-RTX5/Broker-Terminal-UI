@@ -61,6 +61,54 @@ const historyOptions = (options?: ApiRequestOptions): ApiRequestOptions => ({
   skipAuth: options?.skipAuth ?? true,
 });
 
+const getApiRootBaseUrl = (): string => API_V2_BASE_URL.replace(/\/api\/v2\/?$/, '');
+
+const symbolEndpointOptions = (endpoint: string, options?: ApiRequestOptions): { endpoint: string; options: ApiRequestOptions } => {
+  if (endpoint.startsWith('/api/v2')) {
+    return {
+      endpoint: endpoint.replace(/^\/api\/v2(?=\/|$)/, '') || '/',
+      options: v2Options(options),
+    };
+  }
+
+  return {
+    endpoint,
+    options: {
+      ...options,
+      baseUrl: options?.baseUrl || getApiRootBaseUrl(),
+    },
+  };
+};
+
+const extractInstrumentRows = (payload: any): Instrument[] => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.symbols)) return payload.symbols;
+  if (Array.isArray(payload?.instruments)) return payload.instruments;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.result)) return payload.result;
+  return [];
+};
+
+const normalizeInstrumentRow = (instrument: Instrument): Instrument | null => {
+  const symbol = String(instrument.symbol ?? instrument.name ?? instrument.id ?? '').trim();
+  if (!symbol) return null;
+
+  return {
+    ...instrument,
+    symbol,
+    name: instrument.name ?? symbol,
+    id: instrument.id ?? symbol,
+    description: instrument.description ?? symbol,
+    category: instrument.category,
+    digits: instrument.digits,
+    bid: instrument.bid,
+    ask: instrument.ask,
+    enabled: instrument.enabled ?? instrument.trading_enabled ?? instrument.tradingEnabled ?? true,
+  };
+};
+
+const SYMBOL_ENDPOINTS = ['/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols', '/api/v2/instruments'];
+
 const persistAuth = (response: AuthTokenResponse): AuthTokenResponse => {
   const token = response.access_token || response.token;
 
@@ -83,10 +131,26 @@ const persistAuth = (response: AuthTokenResponse): AuthTokenResponse => {
   };
 };
 
+const normalizeLoginRequest = (credentials: AuthLoginRequest): AuthLoginRequest => {
+  const username = credentials.username ?? credentials.login ?? credentials.email;
+
+  return {
+    ...(username !== undefined ? { username } : {}),
+    password: credentials.password,
+    ...(credentials.broker_id ? { broker_id: credentials.broker_id } : {}),
+  };
+};
+
 export const authV2Api = {
-  login: (credentials: AuthLoginRequest, options?: ApiRequestOptions) =>
-    apiClient.post<AuthTokenResponse>('/auth/login', credentials, v2Options({ ...options, skipAuth: true }))
-      .then(persistAuth),
+  login: async (credentials: AuthLoginRequest, options?: ApiRequestOptions) => {
+    const shouldSkipDynamicUrl = Boolean(options?.baseUrl) || Boolean(options?.skipDynamicUrl);
+    const response = await apiClient.post<AuthTokenResponse>(
+      '/auth/login',
+      normalizeLoginRequest(credentials),
+      v2Options({ ...options, skipAuth: true, skipDynamicUrl: shouldSkipDynamicUrl })
+    );
+    return persistAuth(response);
+  },
 
   me: (options?: ApiRequestOptions) =>
     apiClient.get<ApiUser>('/auth/me', v2Options(options)),
@@ -122,8 +186,26 @@ export const marketV2Api = {
   getSymbolStatus: (symbol: string, options?: ApiRequestOptions) =>
     apiClient.get<MarketStatus>(`/market/status/${encodeURIComponent(symbol)}`, v2Options(options)),
 
-  getInstruments: (options?: ApiRequestOptions) =>
-    apiClient.get<Instrument[]>('/instruments', v2Options(options)),
+  getInstruments: async (options?: ApiRequestOptions) => {
+    let lastError: unknown = null;
+
+    for (const endpoint of SYMBOL_ENDPOINTS) {
+      try {
+        const request = symbolEndpointOptions(endpoint, options);
+        const payload = await apiClient.get<unknown>(request.endpoint, request.options);
+        const instruments = extractInstrumentRows(payload);
+        const normalized = instruments
+          .map(normalizeInstrumentRow)
+          .filter((instrument): instrument is Instrument => Boolean(instrument));
+        if (normalized.length > 0) return normalized;
+        lastError = new ApiError(0, `No symbols returned by ${endpoint}`);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new ApiError(0, 'Failed to fetch symbols');
+  },
 
   getQuotes: (symbols?: string[] | string, options?: ApiRequestOptions) =>
     apiClient.get<Tick[]>('/quotes', v2Options({

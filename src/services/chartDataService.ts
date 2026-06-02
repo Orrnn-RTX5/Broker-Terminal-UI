@@ -4,7 +4,17 @@
  */
 
 import type { TickData } from '../types/history';
-import { RTX5_API_URL, RTX5_WS_URL } from '../config/api';
+import {
+  API_HISTORY_BASE_URL,
+  API_V2_BASE_URL,
+  RTX5_API_URL,
+  RTX5_WS_URL,
+  toLocalDevProxyUrl,
+} from '../config/api';
+import {
+  buildBrokerApiV2,
+  buildBrokerWsV2Uri,
+} from './brokerSession';
 
 export type OHLCData = {
   time: number;
@@ -96,7 +106,27 @@ const normalizeTimeForApiTimeframe = (time: number, timeframe?: ApiTimeframe): n
   return Math.floor(time / intervalSeconds) * intervalSeconds;
 };
 
-const runtimeApiBaseUrl = (): string => RTX5_API_URL.replace(/\/$/, '');
+const runtimeApiV2BaseUrl = (): string => {
+  const brokerBase = toLocalDevProxyUrl(buildBrokerApiV2()).replace(/\/$/, '');
+  if (brokerBase) return brokerBase;
+  const apiV2Base = API_V2_BASE_URL.replace(/\/$/, '');
+  if (apiV2Base) return apiV2Base;
+  const configBase = RTX5_API_URL.replace(/\/$/, '');
+  return configBase ? `${configBase}/api/v2` : '';
+};
+
+const runtimeHistoryBaseUrl = (): string => {
+  const apiV2Base = runtimeApiV2BaseUrl();
+  const hasRuntimeBrokerServer = typeof window !== 'undefined'
+    && Boolean((localStorage.getItem('server_url') || '').trim());
+  if (hasRuntimeBrokerServer && apiV2Base) {
+    return `${apiV2Base.replace(/\/api\/v2$/i, '')}/history`;
+  }
+
+  const historyBase = API_HISTORY_BASE_URL.replace(/\/$/, '');
+  if (historyBase) return historyBase;
+  return `${apiV2Base.replace(/\/api\/v2$/i, '')}/history`;
+};
 
 const getAuthToken = (): string | null => {
   if (typeof window === 'undefined') return null;
@@ -123,16 +153,41 @@ const toSeconds = (value: unknown): number => {
   return raw > 1_000_000_000_000 ? Math.floor(raw / 1000) : Math.floor(raw);
 };
 
-const findCandleArray = (payload: any): { candles: any[]; matched: boolean } => {
+const CANDLE_ARRAY_KEYS = [
+  'candles',
+  'bars',
+  'ohlc',
+  'ohlcv',
+  'rates',
+  'history',
+  'items',
+  'rows',
+  'values',
+  'data',
+] as const;
+
+const CANDLE_WRAPPER_KEYS = [
+  'data',
+  'payload',
+  'result',
+  'response',
+  'body',
+  'history',
+] as const;
+
+const findCandleArray = (payload: any, depth = 0): { candles: any[]; matched: boolean } => {
   if (Array.isArray(payload)) return { candles: payload, matched: true };
-  if (Array.isArray(payload?.candles)) return { candles: payload.candles, matched: true };
-  if (Array.isArray(payload?.data?.candles)) return { candles: payload.data.candles, matched: true };
-  if (Array.isArray(payload?.data?.data)) return { candles: payload.data.data, matched: true };
-  if (Array.isArray(payload?.data)) return { candles: payload.data, matched: true };
-  if (Array.isArray(payload?.payload?.candles)) return { candles: payload.payload.candles, matched: true };
-  if (Array.isArray(payload?.payload?.data)) return { candles: payload.payload.data, matched: true };
-  if (Array.isArray(payload?.result?.candles)) return { candles: payload.result.candles, matched: true };
-  if (Array.isArray(payload?.result?.data)) return { candles: payload.result.data, matched: true };
+  if (!payload || typeof payload !== 'object' || depth > 4) return { candles: [], matched: false };
+
+  for (const key of CANDLE_ARRAY_KEYS) {
+    if (Array.isArray(payload[key])) return { candles: payload[key], matched: true };
+  }
+
+  for (const key of CANDLE_WRAPPER_KEYS) {
+    const nested = findCandleArray(payload[key], depth + 1);
+    if (nested.matched) return nested;
+  }
+
   return { candles: [], matched: false };
 };
 
@@ -152,13 +207,44 @@ export class ChartDataService {
   normalizeCandle(input: any, timeframe?: string): OHLCData | null {
     if (!input) return null;
     const tf = timeframe ? this.normalizeTimeframe(timeframe) : undefined;
-    const rawTime = toSeconds(input.time ?? input.Time ?? input.timestamp ?? input.open_time ?? input.openTime);
+    const row = Array.isArray(input) ? {
+      time: input[0],
+      open: input[1],
+      high: input[2],
+      low: input[3],
+      close: input[4],
+      volume: input[5],
+    } : input;
+    const rawTime = toSeconds(
+      row.time
+      ?? row.Time
+      ?? row.TIME
+      ?? row.timestamp
+      ?? row.Timestamp
+      ?? row.t
+      ?? row.date
+      ?? row.datetime
+      ?? row.open_time
+      ?? row.openTime
+    );
     const time = normalizeTimeForApiTimeframe(rawTime, tf);
-    const open = Number(input.open ?? input.Open);
-    const high = Number(input.high ?? input.High);
-    const low = Number(input.low ?? input.Low);
-    const close = Number(input.close ?? input.Close);
-    const volume = Number(input.volume ?? input.Volume ?? input.tick_count ?? input.tickCount ?? 0);
+    const open = Number(row.open ?? row.Open ?? row.OPEN ?? row.o);
+    const high = Number(row.high ?? row.High ?? row.HIGH ?? row.h);
+    const low = Number(row.low ?? row.Low ?? row.LOW ?? row.l);
+    const close = Number(row.close ?? row.Close ?? row.CLOSE ?? row.c);
+    const volume = Number(
+      row.volume
+      ?? row.Volume
+      ?? row.VOLUME
+      ?? row.v
+      ?? row.tick_count
+      ?? row.tickCount
+      ?? row.tick_volume
+      ?? row.tickVolume
+      ?? row.real_volume
+      ?? row.realVolume
+      ?? 0
+    );
 
     if (!time || ![open, high, low, close].every(Number.isFinite)) return null;
 
@@ -181,7 +267,11 @@ export class ChartDataService {
   private normalizeCandleResponse(input: any, timeframe?: string): OHLCData[] {
     const extracted = findCandleArray(input);
     if (!extracted.matched) throw new Error('Malformed candle response');
-    return this.normalizeCandleItems(extracted.candles, timeframe);
+    const candles = this.normalizeCandleItems(extracted.candles, timeframe);
+    if (extracted.candles.length > 0 && candles.length === 0) {
+      throw new Error('Malformed candle response');
+    }
+    return candles;
   }
 
   mergeCandle(candles: OHLCData[], incoming: OHLCData, maxCandles?: number): OHLCData[] {
@@ -211,18 +301,19 @@ export class ChartDataService {
   async fetchCandles(options: FetchCandlesOptions): Promise<OHLCData[]> {
     const { symbol, timeframe, count = 500, from, to, signal } = options;
     const apiTf = this.normalizeTimeframe(timeframe);
-    const baseUrl = runtimeApiBaseUrl();
+    const apiV2BaseUrl = runtimeApiV2BaseUrl();
+    const historyBaseUrl = runtimeHistoryBaseUrl();
     const token = getAuthToken();
     const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
 
-    const coreUrl = `${baseUrl}/api/v2/candles/${encodeURIComponent(symbol)}${buildQuery({
+    const coreUrl = `${apiV2BaseUrl}/candles/${encodeURIComponent(symbol)}${buildQuery({
       timeframe: apiTf,
       limit: count,
       from,
       to,
     })}`;
 
-    const historyUrl = `${baseUrl}/history/candles/${encodeURIComponent(symbol)}${buildQuery({
+    const historyUrl = `${historyBaseUrl}/candles/${encodeURIComponent(symbol)}${buildQuery({
       tf: apiTf,
       count,
       from,
@@ -231,6 +322,7 @@ export class ChartDataService {
 
     const attempts = [
       ...(token ? [{ url: coreUrl, headers: authHeaders, isAuthenticatedCore: true }] : []),
+      ...(token ? [{ url: historyUrl, headers: authHeaders, isAuthenticatedCore: false }] : []),
       { url: historyUrl, headers: undefined, isAuthenticatedCore: false },
     ];
 
@@ -275,10 +367,11 @@ export class ChartDataService {
     const apiTf = this.normalizeTimeframe(options.timeframe);
     const symbol = normalizeSymbol(options.symbol);
     const channel = `candles.${symbol}.${apiTf}`;
-    const wsBase = RTX5_WS_URL.replace(/\/$/, '');
     const token = getAuthToken();
+    const brokerUrl = buildBrokerWsV2Uri(token);
+    const wsBase = brokerUrl || RTX5_WS_URL.replace(/\/$/, '');
     const separator = wsBase.includes('?') ? '&' : '?';
-    const url = `${wsBase}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}`;
+    const url = brokerUrl || `${wsBase}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}`;
     let closed = false;
     let ws: WebSocket | null = null;
 

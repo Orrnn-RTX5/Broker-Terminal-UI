@@ -13,7 +13,7 @@ import { useMarketDataStore } from './store/useMarketDataStore';
 import { useWatchlistStore } from './store/useWatchlistStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
 import { enqueueLiveTick } from './services/liveTickDispatcher';
-import { API_BASE_URL, WS_ENDPOINTS } from './config/api';
+import { API_BASE_URL, WS_ENDPOINTS, updateDynamicUrls } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
 
 import { LastSymbolPanel } from './components/LastSymbolPanel';
@@ -200,9 +200,6 @@ const fetchOrderHistory = async (login: number): Promise<OrderHistoryRefreshResu
       : null,
   };
 };
-
-// Market data must come from FIX API backend (no mock market feed)
-const FIX_MARKET_API_BASE = (import.meta.env.VITE_MARKET_DATA_API_URL || 'https://rtxbackend.tradecopier.org').replace(/\/$/, '');
 
 const toTimestampMs = (value: unknown): number => {
   const numeric = Number(value);
@@ -698,15 +695,22 @@ function App() {
 
   // Listen for unauthorized/expired session events from API client
   useEffect(() => {
-    const handleUnauthorizedEvent = () => {
+    const handleUnauthorizedEvent = (event: Event) => {
+      const requestToken = (event as CustomEvent<{ requestToken?: string | null }>).detail?.requestToken;
+      const currentToken = localStorage.getItem('auth_token');
+      if (requestToken && currentToken && requestToken !== currentToken) {
+        console.warn('[App] Ignoring stale unauthorized response for an older session token.');
+        return;
+      }
+
       console.warn('[App] Session expired or unauthorized request. Performing global logout.');
       clearLocalAccountState();
       setIsAuthenticated(false);
       setAccountId('');
       useAppStore.getState().clearAuth();
     };
-    window.addEventListener('auth:unauthorized', handleUnauthorizedEvent);
-    return () => window.removeEventListener('auth:unauthorized', handleUnauthorizedEvent);
+    window.addEventListener('auth:unauthorized', handleUnauthorizedEvent as EventListener);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorizedEvent as EventListener);
   }, [clearLocalAccountState]);
 
   // Session restore uses existing token state only; App must not decode or replay saved passwords.
@@ -714,6 +718,7 @@ function App() {
     const restoreSession = async () => {
       setIsAutoAuthenticating(true);
       setAutoAuthError(null);
+      updateDynamicUrls();
 
       const token = localStorage.getItem('auth_token');
       const refreshToken = localStorage.getItem('refresh_token');

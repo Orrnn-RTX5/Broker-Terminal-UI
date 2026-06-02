@@ -11,6 +11,7 @@
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
 import { buildBrokerWsV2Uri } from './brokerSession';
+import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
 
 const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
@@ -1023,7 +1024,7 @@ export class EnhancedWebSocketService {
       return input;
     }
 
-    const fallback = import.meta.env.VITE_RTX5_WS_URL || 'wss://backend.orrnn.com/ws/v2';
+    const fallback = normalizeRuntimeWsUrl(buildBrokerWsV2Uri(null));
     if (!input) return fallback;
 
     try {
@@ -1065,11 +1066,11 @@ export const getEnhancedWebSocketService = (url?: string): EnhancedWebSocketServ
     if (!url) return undefined;
     if (url.includes('/ws/v2')) return url;
     if (url.includes('fixapibackend.tradecopier.org')) {
-      return import.meta.env.VITE_RTX5_WS_URL || 'wss://backend.orrnn.com/ws/v2';
+      return normalizeRuntimeWsUrl(buildBrokerWsV2Uri(null));
     }
     // Only rewrite known production legacy endpoint, not explicit local test endpoints.
     if (url.includes('rtxbackend') && url.includes('/ws') && !url.includes('fixapi')) {
-      return import.meta.env.VITE_RTX5_WS_URL || 'wss://backend.orrnn.com/ws/v2';
+      return normalizeRuntimeWsUrl(buildBrokerWsV2Uri(null));
     }
     return url;
   })();
