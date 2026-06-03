@@ -45,7 +45,7 @@ managed_include="${managed_dir}/*.conf"
 vhost_path="${managed_dir}/${domain}.conf"
 env_dir="/etc/rtx5/env"
 env_file="${env_dir}/${broker_id}.env"
-docker_env_args=()
+docker_env_file_arg=""
 
 if ! command -v docker >/dev/null 2>&1; then
   apt-get update
@@ -165,50 +165,46 @@ fi
 
 if jq -e '.env? | type == "object"' <<<"$broker_json" >/dev/null; then
   mkdir -p "$env_dir"
-  : > "$env_file"
-
-  env_entries="$(
-    jq -r '
-      .env
-      | to_entries[]
-      | select(.value != null)
-      | if ((.value | type) == "array" or (.value | type) == "object") then
-          error("arrays and objects are not supported in broker env values")
-        elif ((.value | tostring) | test("[\r\n]")) then
-          error("multiline broker env values are not supported")
-        else
-          [.key, (.value | tostring)] | @tsv
-        end
-    ' <<<"$broker_json"
-  )"
-
-  while IFS=$'\t' read -r key value; do
-    if [ -z "$key" ]; then
-      continue
-    fi
-    if [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-      echo "Invalid broker env key for ${broker_id}: ${key}" >&2
-      exit 1
-    fi
-    printf '%s=%s\n' "$key" "$value" >> "$env_file"
-  done <<<"$env_entries"
-
+  jq -r '
+    .env
+    | to_entries[]
+    | select(.value != null)
+    | if ((.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) | not) then
+        error("invalid broker env key: " + .key)
+      elif ((.value | type) == "array" or (.value | type) == "object") then
+        error("arrays and objects are not supported in broker env values")
+      elif ((.value | tostring) | test("[\r\n]")) then
+        error("multiline broker env values are not supported")
+      else
+        .key + "=" + (.value | tostring)
+      end
+  ' <<<"$broker_json" > "$env_file"
   chmod 600 "$env_file"
-  docker_env_args+=(--env-file "$env_file")
+  docker_env_file_arg="$env_file"
 else
   rm -f "$env_file"
 fi
 
 docker pull "$IMAGE_REF"
 docker rm -f "$container_name" >/dev/null 2>&1 || true
-docker run -d \
-  --name "$container_name" \
-  --restart unless-stopped \
-  --label "rtx5.broker_id=${broker_id}" \
-  --label "rtx5.domain=${domain}" \
-  "${docker_env_args[@]}" \
-  -p "${listen_host}:${listen_port}:80" \
-  "$IMAGE_REF"
+if [ -n "$docker_env_file_arg" ]; then
+  docker run -d \
+    --name "$container_name" \
+    --restart unless-stopped \
+    --label "rtx5.broker_id=${broker_id}" \
+    --label "rtx5.domain=${domain}" \
+    --env-file "$docker_env_file_arg" \
+    -p "${listen_host}:${listen_port}:80" \
+    "$IMAGE_REF"
+else
+  docker run -d \
+    --name "$container_name" \
+    --restart unless-stopped \
+    --label "rtx5.broker_id=${broker_id}" \
+    --label "rtx5.domain=${domain}" \
+    -p "${listen_host}:${listen_port}:80" \
+    "$IMAGE_REF"
+fi
 
 nginx -t
 systemctl reload nginx
