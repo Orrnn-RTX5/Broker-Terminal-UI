@@ -4,8 +4,8 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
-RUN --mount=type=bind,source=.npmrc,target=/tmp/.npmrc,required=false \
-    if [ -f /tmp/.npmrc ]; then cp /tmp/.npmrc .npmrc; fi && \
+RUN --mount=type=bind,source=.,target=/context,readonly \
+    if [ -f /context/.npmrc ]; then cp /context/.npmrc .npmrc; fi && \
     npm ci && \
     rm -f .npmrc
 
