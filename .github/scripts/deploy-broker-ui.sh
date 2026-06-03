@@ -231,6 +231,34 @@ EOF
   fi
 }
 
+disable_conflicting_vhosts() {
+  local primary_domain="$1"
+  local secondary_domain="${2:-}"
+  local backup_dir="/etc/nginx/rtx5-disabled-conflicts/$(date +%Y%m%d%H%M%S)"
+  local file
+  local domain_pattern
+
+  domain_pattern="$(printf '%s' "$primary_domain" | sed 's/\./\\./g')"
+  if [ -n "$secondary_domain" ]; then
+    domain_pattern="${domain_pattern}|$(printf '%s' "$secondary_domain" | sed 's/\./\\./g')"
+  fi
+
+  for file in /etc/nginx/conf.d/*.conf /etc/nginx/sites-enabled/* /etc/nginx/rtx5-managed/*.conf; do
+    [ -e "$file" ] || continue
+
+    if grep -Eq "server_name[[:space:]][^;]*(${domain_pattern})" "$file"; then
+      mkdir -p "$backup_dir"
+      if [ -L "$file" ]; then
+        echo "Removing stale nginx vhost symlink: $file"
+        rm -f "$file"
+      else
+        echo "Disabling stale nginx vhost file: $file"
+        mv "$file" "$backup_dir/$(basename "$file").disabled"
+      fi
+    fi
+  done
+}
+
 if ! command -v docker >/dev/null 2>&1; then
   apt-get update
   apt-get install -y ca-certificates curl gnupg
@@ -273,6 +301,8 @@ services_domain="$(jq -r '.services.backend.domain // .services_domain // empty'
 if [ -z "$services_domain" ] && [ -n "$backend_url" ]; then
   services_domain="$(extract_hostname "$backend_url")"
 fi
+
+disable_conflicting_vhosts "$domain" "$services_domain"
 
 if [ -n "$services_domain" ] && [ "$services_domain" != "$domain" ]; then
   gateway_host="$(jq -r '.services.backend.gateway_host // .backend_host // "127.0.0.1"' <<<"$broker_json")"
