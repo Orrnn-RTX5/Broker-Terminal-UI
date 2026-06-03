@@ -21,6 +21,7 @@ import {
     resolveBrokerBackendUrl,
     resolveBrokerExtApiUrl,
 } from '../config/backendTarget.js';
+import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
 
 interface BrokerServerItem {
@@ -166,17 +167,18 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
     };
 
     const filteredBrokers = brokerList.filter(b =>
-        b.broker_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.broker_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (b.region && b.region.toLowerCase().includes(searchQuery.toLowerCase()))
+        String(b.broker_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(b.broker_id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(b.region || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     useEffect(() => {
         let isMounted = true;
         fetch(`${BROKER_DISCOVERY_URL}/api/v1/broker/servers`)
             .then(res => res.json())
-            .then((data: BrokerServerItem[]) => {
+            .then((payload: unknown) => {
                 if (!isMounted) return;
+                const data = extractBrokerDiscoveryList(payload) as BrokerServerItem[];
                 setBrokerList(data);
 
                 // Try to restore saved broker from localStorage, otherwise default to first

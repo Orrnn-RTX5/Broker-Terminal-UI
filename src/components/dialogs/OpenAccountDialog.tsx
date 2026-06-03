@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Search, ChevronRight, ExternalLink, Building2, Shield, Globe, CheckCircle2, Copy, Loader2 } from 'lucide-react';
 import { tradeApi } from '../../api/trade';
 import { BROKER_DISCOVERY_URL } from '../../config/api';
+import { extractBrokerDiscoveryList } from '../../services/brokerDiscovery';
 import type { BrokerServer } from '../../types/api';
 
 // Palette cycling for broker avatar gradients
@@ -143,17 +144,17 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         setLoadingBrokers(true);
         fetch(`${BROKER_DISCOVERY_URL}/api/v1/broker/servers`)
             .then(res => res.json())
-            .then((data: any[]) => {
-                const list = Array.isArray(data) ? data : [];
+            .then((payload: unknown) => {
+                const list = extractBrokerDiscoveryList(payload);
                 const mapped: BrokerServer[] = list.map((b, idx) => ({
-                    id: b.broker_id || idx,
-                    broker_id: b.broker_id,
-                    broker_name: b.broker_name,
-                    server: b.server_url || b.server || '',
-                    region: b.region,
-                    logo_url: b.logo_url,
+                    id: b.broker_id || b.id || idx,
+                    broker_id: String(b.broker_id || b.id || ''),
+                    broker_name: String(b.broker_name || b.name || b.broker_id || b.id || ''),
+                    server: String(b.server_url || b.server || b.backend_url || ''),
+                    region: typeof b.region === 'string' ? b.region : undefined,
+                    logo_url: typeof b.logo_url === 'string' ? b.logo_url : undefined,
                     enabled: true,
-                }));
+                })).filter((broker) => Boolean(broker.broker_id && broker.broker_name));
                 setBrokers(mapped);
                 if (!selected && mapped.length > 0) setSelected(String(mapped[0].id));
             })
@@ -165,16 +166,16 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
     const filteredBrokers = searchQuery.trim()
         ? brokers.filter(b =>
-            b.broker_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            b.server.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            b.broker_id.toLowerCase().includes(searchQuery.toLowerCase())
+            String(b.broker_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            String(b.server || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            String(b.broker_id || '').toLowerCase().includes(searchQuery.toLowerCase())
         )
         : brokers;
 
     const existingFilteredBrokers = existingServerSearch.trim()
         ? brokers.filter(b =>
-            b.broker_name.toLowerCase().includes(existingServerSearch.toLowerCase()) ||
-            b.broker_id.toLowerCase().includes(existingServerSearch.toLowerCase())
+            String(b.broker_name || '').toLowerCase().includes(existingServerSearch.toLowerCase()) ||
+            String(b.broker_id || '').toLowerCase().includes(existingServerSearch.toLowerCase())
         )
         : brokers;
 
