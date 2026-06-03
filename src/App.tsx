@@ -2000,6 +2000,12 @@ function App() {
   const [allSymbols, setAllSymbols] = useState<any[]>([]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setAllSymbols([]);
+      setIsLoadingSymbols(false);
+      return;
+    }
+
     setIsLoadingSymbols(true);
     api.market.getSymbols()
       .then(data => {
@@ -2018,7 +2024,7 @@ function App() {
         setAllSymbols([]);
       })
       .finally(() => setIsLoadingSymbols(false));
-  }, []);
+  }, [isAuthenticated, selectedSymbol]);
 
 
   useEffect(() => {

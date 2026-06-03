@@ -47,6 +47,190 @@ env_dir="/etc/rtx5/env"
 env_file="${env_dir}/${broker_id}.env"
 docker_env_file_arg=""
 
+extract_hostname() {
+  local value="$1"
+  value="${value#http://}"
+  value="${value#https://}"
+  value="${value%%/*}"
+  value="${value%%:*}"
+  printf '%s' "$value"
+}
+
+write_services_vhost() {
+  local services_domain="$1"
+  local with_ssl="$2"
+  local gateway_origin="$3"
+  local manager_origin="$4"
+  local feed_origin="$5"
+  local services_vhost_path="${managed_dir}/${services_domain}.conf"
+
+  if [ "$with_ssl" = "true" ]; then
+    cat > "$services_vhost_path" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${services_domain};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name ${services_domain};
+
+    ssl_certificate /etc/letsencrypt/live/${services_domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${services_domain}/privkey.pem;
+
+    set \$cors_origin "";
+    if (\$http_origin ~* "^https://(webterminal|manager|admin)\\.growtradingacademy\\.com$") {
+        set \$cors_origin \$http_origin;
+    }
+
+    proxy_hide_header Access-Control-Allow-Origin;
+    proxy_hide_header Access-Control-Allow-Credentials;
+    proxy_hide_header Access-Control-Allow-Methods;
+    proxy_hide_header Access-Control-Allow-Headers;
+    proxy_hide_header Access-Control-Max-Age;
+    proxy_hide_header Vary;
+
+    add_header Access-Control-Allow-Origin \$cors_origin always;
+    add_header Access-Control-Allow-Credentials "true" always;
+    add_header Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS" always;
+    add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-API-Key, X-Requested-With, Accept, Origin" always;
+    add_header Vary "Origin" always;
+
+    if (\$request_method = OPTIONS) {
+        return 204;
+    }
+
+    location = /health {
+        proxy_pass ${gateway_origin}/health;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location = /api/config {
+        proxy_pass ${gateway_origin}/api/v2/broker/config;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
+        proxy_set_header X-API-Key \$http_x_api_key;
+    }
+
+    location = /api/v2/symbols {
+        proxy_pass ${gateway_origin}/api/v2/instruments;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
+        proxy_set_header X-API-Key \$http_x_api_key;
+    }
+
+    location = /api/v1/symbols {
+        proxy_pass ${gateway_origin}/api/v2/instruments;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
+        proxy_set_header X-API-Key \$http_x_api_key;
+    }
+
+    location = /manager/api/v2/symbols {
+        proxy_pass ${gateway_origin}/api/v2/instruments;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
+        proxy_set_header X-API-Key \$http_x_api_key;
+    }
+
+    location /api/v2/ {
+        proxy_pass ${gateway_origin};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
+        proxy_set_header X-API-Key \$http_x_api_key;
+    }
+
+    location /manager/ {
+        proxy_pass ${manager_origin}/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Authorization \$http_authorization;
+        proxy_set_header X-API-Key \$http_x_api_key;
+    }
+
+    location = /ws/v2 {
+        proxy_pass ${gateway_origin}/ws/v2;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
+    location /ws/feed {
+        proxy_pass ${feed_origin}/ws/feed;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+EOF
+  else
+    cat > "$services_vhost_path" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${services_domain};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        proxy_pass ${gateway_origin};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+EOF
+  fi
+}
+
 if ! command -v docker >/dev/null 2>&1; then
   apt-get update
   apt-get install -y ca-certificates curl gnupg
@@ -82,6 +266,39 @@ if ! grep -RqsF "$managed_include" /etc/nginx/nginx.conf /etc/nginx/conf.d/*.con
     }
   ' /etc/nginx/nginx.conf > /etc/nginx/nginx.conf.rtx5
   mv /etc/nginx/nginx.conf.rtx5 /etc/nginx/nginx.conf
+fi
+
+backend_url="$(jq -r '.backend_url // .env.API_HOST // .env.VITE_API_HOST // empty' <<<"$broker_json")"
+services_domain="$(jq -r '.services.backend.domain // .services_domain // empty' <<<"$broker_json")"
+if [ -z "$services_domain" ] && [ -n "$backend_url" ]; then
+  services_domain="$(extract_hostname "$backend_url")"
+fi
+
+if [ -n "$services_domain" ] && [ "$services_domain" != "$domain" ]; then
+  gateway_host="$(jq -r '.services.backend.gateway_host // .backend_host // "127.0.0.1"' <<<"$broker_json")"
+  gateway_port="$(jq -r '.services.backend.gateway_port // .gateway_port // 8090' <<<"$broker_json")"
+  manager_host="$(jq -r '.services.backend.manager_host // .manager_backend_host // "127.0.0.1"' <<<"$broker_json")"
+  manager_port="$(jq -r '.services.backend.manager_port // .manager_backend_port // .backend_port // 8091' <<<"$broker_json")"
+  feed_host="$(jq -r '.services.backend.feed_host // .feed_backend_host // "127.0.0.1"' <<<"$broker_json")"
+  feed_port="$(jq -r '.services.backend.feed_port // .feed_backend_port // 8094' <<<"$broker_json")"
+  gateway_origin="http://${gateway_host}:${gateway_port}"
+  manager_origin="http://${manager_host}:${manager_port}"
+  feed_origin="http://${feed_host}:${feed_port}"
+
+  if [ -d "/etc/letsencrypt/live/${services_domain}" ]; then
+    write_services_vhost "$services_domain" "true" "$gateway_origin" "$manager_origin" "$feed_origin"
+  else
+    write_services_vhost "$services_domain" "false" "$gateway_origin" "$manager_origin" "$feed_origin"
+  fi
+
+  nginx -t
+  systemctl enable --now nginx
+  systemctl reload nginx
+
+  if [ ! -d "/etc/letsencrypt/live/${services_domain}" ]; then
+    certbot --nginx --non-interactive --agree-tos --redirect --register-unsafely-without-email -d "$services_domain"
+    write_services_vhost "$services_domain" "true" "$gateway_origin" "$manager_origin" "$feed_origin"
+  fi
 fi
 
 cat > "$vhost_path" <<EOF

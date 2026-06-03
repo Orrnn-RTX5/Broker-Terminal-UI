@@ -204,9 +204,16 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     // Dynamic symbol loading for New Chart menu
     const [availableSymbols, setAvailableSymbols] = useState<SymbolData[]>([]);
     const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
+    const isAuthenticated = useAppStore(state => state.isAuthenticated);
 
     // Fetch symbols on mount
     useEffect(() => {
+        if (!isAuthenticated) {
+            setAvailableSymbols([]);
+            setIsLoadingSymbols(false);
+            return;
+        }
+
         const fetchSymbols = async () => {
             try {
                 const { default: api } = await import('../../services/api');
@@ -227,7 +234,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         };
 
         fetchSymbols();
-    }, []);
+    }, [isAuthenticated]);
 
     // Build nested menu structure from flat symbol list
     const buildNestedMenu = (symbols: SymbolData[]): NewChartMenuItem[] => {

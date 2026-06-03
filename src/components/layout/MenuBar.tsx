@@ -8,6 +8,7 @@ import { SymbolsDialog } from '../SymbolsDialog';
 import { commandBus } from '../../services/commandBus';
 import { useChartSettingsStore } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
+import { useAppStore } from '../../store/useAppStore';
 
 // Local interface definition to avoid export issues
 interface MenuItem {
@@ -55,8 +56,15 @@ export const MenuBar = () => {
     // Dynamic Symbol Loading
     const [availableSymbols, setAvailableSymbols] = useState<any[]>([]);
     const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
+    const isAuthenticated = useAppStore(state => state.isAuthenticated);
 
     useEffect(() => {
+        if (!isAuthenticated) {
+            setAvailableSymbols([]);
+            setIsLoadingSymbols(false);
+            return;
+        }
+
         const fetchSymbols = async () => {
             try {
                 // Dynamically import API to avoid circular deps if any, or just use global
@@ -75,7 +83,7 @@ export const MenuBar = () => {
         };
 
         fetchSymbols();
-    }, []);
+    }, [isAuthenticated]);
 
     const languageList: MenuItem[] = [
         // Western / Latin - Fully Translated
