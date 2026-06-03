@@ -1,0 +1,11 @@
+node_modules
+dist
+draft
+jscpd-report
+build
+*.log
+.git
+.claude
+.codex
+.agents
+docker-compose*.yml

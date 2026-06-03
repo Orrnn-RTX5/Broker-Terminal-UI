@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { normalizeBrokerServers, resolveLoginBrokerTarget } from './brokerServers';
 
+type RuntimeWindow = Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
+
 describe('resolveLoginBrokerTarget', () => {
+  beforeEach(() => {
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { backendTarget: 'desktop' };
+  });
+
   it('treats URL-like broker targets with hostnames as server values without requiring ports', () => {
     expect(resolveLoginBrokerTarget('https://example.com')).toEqual({
       displayValue: 'https://example.com',

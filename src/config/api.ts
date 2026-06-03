@@ -2,6 +2,13 @@ import {
   buildBrokerWsV2Uri,
   buildBrokerWsFeedUri,
 } from '../services/brokerSession';
+import {
+  getBackendTarget,
+  getRuntimeDiscoveryBaseUrl,
+  isDesktopBackendTarget,
+  normalizeBrokerInfoForTarget,
+  trimTrailingSlash,
+} from './backendTarget.js';
 
 export const FORCE_HTTP_ONLY = import.meta.env.VITE_FORCE_HTTP_ONLY === 'true';
 
@@ -30,13 +37,13 @@ const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 const isElectronRuntime = (): boolean => {
   if (typeof window === 'undefined') return false;
-  return Boolean((window as any).electronAPI)
+  return Boolean((window as Window & { electronAPI?: unknown }).electronAPI)
     || window.location?.protocol === 'file:'
     || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron'));
 };
 
 export const isLocalViteDevServer = (): boolean => {
-  if (!import.meta.env.DEV || typeof window === 'undefined' || isElectronRuntime()) return false;
+  if (!import.meta.env.DEV || import.meta.env.MODE === 'test' || typeof window === 'undefined' || isElectronRuntime()) return false;
   const protocol = window.location?.protocol || '';
   const hostname = window.location?.hostname || '';
   return protocol.startsWith('http') && LOCAL_DEV_HOSTS.has(hostname);
@@ -98,7 +105,7 @@ const normalizeDynamicServerUrl = (value: string): string => {
   const trimmed = String(value || '').trim().replace(/\/+$/, '');
   if (!trimmed) return '';
 
-  return normalizeBrokerServerUrl(trimmed);
+  return isDesktopBackendTarget() ? normalizeBrokerServerUrl(trimmed) : normalizeServerUrl(trimmed);
 };
 
 export const normalizeWsUrl = (value: string): string => {
@@ -117,22 +124,32 @@ export const normalizeWsUrl = (value: string): string => {
   return `${getRuntimeWsProtocol()}//${trimmed}`;
 };
 
-const BACKEND = normalizeServerUrl(import.meta.env.VITE_BACKEND_URL as string);
+const BACKEND = normalizeServerUrl(getBackendTarget() || (import.meta.env.VITE_BACKEND_URL as string) || '');
 
 const RTX5_API_URL = normalizeServerUrl(
-  import.meta.env.VITE_RTX5_API_URL as string || import.meta.env.VITE_API_V2_URL as string || ''
+  getBackendTarget() || (import.meta.env.VITE_RTX5_API_URL as string) || (import.meta.env.VITE_API_V2_URL as string) || ''
 );
 
 const getDynamicServerUrl = (): string => {
   if (typeof window === 'undefined') return '';
-  return normalizeDynamicServerUrl(localStorage.getItem('server_url') || '');
+  const normalizedBroker = normalizeBrokerInfoForTarget({
+    broker_id: localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '',
+    broker_name: localStorage.getItem('broker_name') || '',
+    backend_url: localStorage.getItem('backend_url') || '',
+    market_api_url: localStorage.getItem('market_api_url') || '',
+    server_url: localStorage.getItem('server_url') || localStorage.getItem('rtx_broker_server') || '',
+    ws_url: localStorage.getItem('ws_url') || '',
+    feed_url: localStorage.getItem('feed_url') || '',
+    feed_ws_url: localStorage.getItem('feed_url') || '',
+  });
+  return normalizeDynamicServerUrl(normalizedBroker.server_url || '');
 };
 
 const getRuntimeApiBase = (): string => {
   const brokerServer = getDynamicServerUrl();
   if (brokerServer) return toLocalDevProxyUrl(brokerServer);
 
-  return toLocalDevProxyUrl(normalizeServerUrl(import.meta.env.VITE_API_URL as string || BACKEND));
+  return toLocalDevProxyUrl(normalizeServerUrl(BACKEND || (import.meta.env.VITE_API_URL as string)));
 };
 
 const getRuntimeBrokerApiBase = (): string => {
@@ -141,7 +158,7 @@ const getRuntimeBrokerApiBase = (): string => {
 
   return toLocalDevProxyUrl(
     RTX5_API_URL
-    || normalizeServerUrl(import.meta.env.VITE_API_URL as string || BACKEND)
+    || normalizeServerUrl(BACKEND || (import.meta.env.VITE_API_URL as string))
   );
 };
 
@@ -149,7 +166,7 @@ const getRuntimeFixApiBase = (): string => {
   const brokerServer = getDynamicServerUrl();
   if (brokerServer) return toLocalDevProxyUrl(brokerServer);
 
-  return toLocalDevProxyUrl(normalizeServerUrl(import.meta.env.VITE_FIX_API_URL as string || BACKEND));
+  return toLocalDevProxyUrl(normalizeServerUrl(BACKEND || (import.meta.env.VITE_FIX_API_URL as string)));
 };
 
 /** /ws/feed endpoint for live bid/ask quotes (Section 2 of WS flow). */
@@ -172,6 +189,9 @@ const getInitialWsUrl = (): string => {
       return buildBrokerWsV2Uri(null);
     }
   }
+  const runtimeWsUrl = buildBrokerWsV2Uri(null);
+  if (runtimeWsUrl) return runtimeWsUrl;
+
   const fallback = import.meta.env.VITE_RTX5_WS_URL as string || (RTX5_API_URL
     ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2'
     : '');
@@ -185,6 +205,9 @@ const getInitialMarketWsUrl = (): string => {
       return buildBrokerWsV2Uri(null);
     }
   }
+  const runtimeWsUrl = buildBrokerWsV2Uri(null);
+  if (runtimeWsUrl) return runtimeWsUrl;
+
   const fallback = import.meta.env.VITE_MARKET_WS_URL as string
     || import.meta.env.VITE_RTX5_WS_URL as string
     || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
@@ -198,6 +221,9 @@ const getInitialFixWsUrl = (): string => {
       return buildBrokerWsV2Uri(null);
     }
   }
+  const runtimeWsUrl = buildBrokerWsV2Uri(null);
+  if (runtimeWsUrl) return runtimeWsUrl;
+
   const fallback = import.meta.env.VITE_FIX_WS_URL as string
     || import.meta.env.VITE_RTX5_WS_URL as string
     || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
@@ -211,6 +237,9 @@ const getInitialGeneralWsUrl = (): string => {
       return buildBrokerWsV2Uri(null);
     }
   }
+  const runtimeWsUrl = buildBrokerWsV2Uri(null);
+  if (runtimeWsUrl) return runtimeWsUrl;
+
   const fallback = import.meta.env.VITE_WS_URL as string
     || import.meta.env.VITE_RTX5_WS_URL as string
     || (RTX5_API_URL ? RTX5_API_URL.replace(/^http/i, 'ws').replace(/\/$/, '') + '/ws/v2' : '');
@@ -424,10 +453,9 @@ export function buildApiV2WsUrl(token?: string): string {
 export { API_BASE_URL, RTX5_API_URL, ADMIN_API_URL, FIX_API_URL, FIX_WS_URL, WS_URL, ADMIN_WS_URL };
 
 export const BROKER_DISCOVERY_URL = toLocalDevProxyUrl(
-  normalizeServerUrl(
-    import.meta.env.VITE_BROKER_DISCOVERY_URL as string
-    || 'https://testsuperbackend.orrnn.com'
-  ).replace(/\/$/, ''),
+  trimTrailingSlash(normalizeServerUrl(
+    getRuntimeDiscoveryBaseUrl(import.meta.env.VITE_BROKER_DISCOVERY_URL as string || getBackendTarget())
+  )),
   DEV_BROKER_DISCOVERY_PROXY_PREFIX
 );
 

@@ -1,0 +1,108 @@
+name: Deploy RTX5 Web Terminal
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  build-push-deploy:
+    name: Build, push, and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build:web
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ github.token }}
+
+      - name: Build and push runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          build-args: |
+            VITE_MODE=web
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+
+      - name: Load broker metadata
+        id: brokers
+        shell: bash
+        env:
+          BROKERS_JSON_SECRET: ${{ secrets.BROKERS_JSON }}
+        run: |
+          if [ -n "$BROKERS_JSON_SECRET" ]; then
+            printf '%s' "$BROKERS_JSON_SECRET" > /tmp/brokers.json
+          else
+            cp brokers.json /tmp/brokers.json
+          fi
+
+          jq -e '.brokers | type == "array"' /tmp/brokers.json >/dev/null
+          count="$(jq '[.brokers[] | select(.enabled == true)] | length' /tmp/brokers.json)"
+          echo "enabled_count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Install SSH key
+        if: steps.brokers.outputs.enabled_count != '0'
+        shell: bash
+        env:
+          BROKER_SSH_PRIVATE_KEY: ${{ secrets.BROKER_SSH_PRIVATE_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$BROKER_SSH_PRIVATE_KEY" > ~/.ssh/broker_deploy_key
+          chmod 600 ~/.ssh/broker_deploy_key
+
+      - name: Deploy enabled brokers
+        if: steps.brokers.outputs.enabled_count != '0'
+        shell: bash
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ github.token }}
+          IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          jq -c '.brokers[] | select(.enabled == true)' /tmp/brokers.json | while IFS= read -r broker; do
+            broker_id="$(jq -r '.id' <<<"$broker")"
+            ssh_host="$(jq -r '.ssh.host' <<<"$broker")"
+            ssh_port="$(jq -r '.ssh.port // 22' <<<"$broker")"
+            ssh_user="$(jq -r '.ssh.user // "root"' <<<"$broker")"
+            broker_json_b64="$(printf '%s' "$broker" | base64 -w0)"
+
+            echo "Deploying ${broker_id} to ${ssh_user}@${ssh_host}:${ssh_port}"
+            ssh \
+              -i ~/.ssh/broker_deploy_key \
+              -p "$ssh_port" \
+              -o StrictHostKeyChecking=accept-new \
+              -o ServerAliveInterval=30 \
+              "${ssh_user}@${ssh_host}" \
+              "BROKER_JSON_B64='${broker_json_b64}' GHCR_USERNAME='${GHCR_USERNAME}' GHCR_TOKEN='${GHCR_TOKEN}' IMAGE_REF='${IMAGE_REF}' bash -s" \
+              < .github/scripts/deploy-broker-ui.sh
+          done

@@ -7,6 +7,11 @@
 import type { Position, Order, Account, Trade, Tick } from '../store/useAppStore';
 import { useAppStore } from '../store/useAppStore';
 import { API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
+import {
+  normalizeBrokerInfoForTarget,
+  resolveBrokerBackendUrl,
+  resolveBrokerExtApiUrl,
+} from '../config/backendTarget.js';
 
 // ============================================
 // API Response Types
@@ -247,15 +252,20 @@ export const authApi = {
       broker_id: explicitBrokerId || resolvedExplicitServer?.broker_id || storedTarget.broker_id || storedBrokerId || DEFAULT_BROKER_ID,
       server: resolvedExplicitServer?.server || storedTarget.server,
     };
+    const targetBroker = normalizeBrokerInfoForTarget({
+      broker_id: loginTarget.broker_id,
+      broker_name: loginTarget.displayValue,
+      server_url: normalizeLoginOption(loginOptions?.baseUrl) || loginTarget.server || loginTarget.displayValue,
+    });
     const normalizedUsername = normalizeLoginOption(username);
-    const loginBaseUrl = normalizeLoginOption(loginOptions?.baseUrl) || loginTarget.server;
+    const loginBaseUrl = resolveBrokerExtApiUrl(targetBroker);
     const result = await endpoints.authApi.login(
       { username: normalizedUsername, password, broker_id: loginTarget.broker_id || DEFAULT_BROKER_ID },
       loginBaseUrl ? { baseUrl: normalizeBrokerServerUrl(loginBaseUrl) } : undefined
     );
     const accessToken = result.token || result.access_token;
     const resolvedBrokerId = result.broker_id || loginTarget.broker_id;
-    const resolvedBrokerServer = result.server_url || result.backend_url || loginTarget.server || result.broker_server || loginTarget.displayValue;
+    const resolvedBrokerServer = result.server_url || result.backend_url || resolveBrokerBackendUrl(targetBroker) || result.broker_server || loginTarget.displayValue;
 
     // Store tokens in Zustand store after successful login
     if (accessToken) {
@@ -271,7 +281,8 @@ export const authApi = {
         access_token: accessToken,
         broker_id: resolvedBrokerId,
         server_url: resolvedBrokerServer,
-        backend_url: result.backend_url,
+        backend_url: result.backend_url || resolvedBrokerServer,
+        market_api_url: result.market_api_url || loginBaseUrl,
       });
     }
 

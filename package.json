@@ -6,10 +6,18 @@
   "author": "RTX",
   "type": "module",
   "main": "electron.cjs",
-  "repository": "github:YoForex005/RTX-New",
+  "repository": "github:rtx5-orrnn/rtx5-broker-webterminal-ui",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173",
-    "build": "tsc -b && vite build",
+    "dev": "vite --mode web",
+    "dev:web": "vite --mode web",
+    "dev:normal": "vite --mode normal",
+    "dev:electron": "vite --mode electron",
+    "dev:desktop": "vite --mode desktop",
+    "build": "tsc -b && vite build --mode web",
+    "build:web": "tsc -b && vite build --mode web",
+    "build:normal": "tsc -b && vite build --mode normal",
+    "build:electron": "tsc -b && vite build --mode electron",
+    "build:desktop": "tsc -b && vite build --mode desktop",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
@@ -17,8 +25,9 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "electron:build": "npm run typecheck && npm run build && npx electron-builder --win",
-    "electron:publish": "npm run typecheck && npm run build && npx electron-builder --win --publish always"
+    "electron:dev": "electron .",
+    "electron:build": "npm run build:electron && npx electron-builder --win",
+    "electron:publish": "npm run build:electron && npx electron-builder --win --publish always"
   },
   "build": {
     "appId": "com.rtx.terminal",
@@ -46,8 +55,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "YoForex005",
-      "repo": "RTX-New",
+      "owner": "rtx5-orrnn",
+      "repo": "rtx5-broker-webterminal-ui",
       "private": true,
       "releaseType": "release"
     }

@@ -1,0 +1,26 @@
+{
+  "brokers": [
+    {
+      "id": "grow-trading-academy",
+      "name": "Grow Trading Academy",
+      "enabled": true,
+      "domain": "webterminal.growtradingacademy.com",
+      "app_port": "127.0.0.1:8081",
+      "ssh": {
+        "host": "webterminal.growtradingacademy.com",
+        "port": 22,
+        "user": "root"
+      },
+      "services": {
+        "frontend": {
+          "container_name": "rtx5-webterminal-grow-trading-academy",
+          "health_path": "/"
+        },
+        "backend_env": {
+          "VITE_APP_MODE": "web-terminal",
+          "VITE_BROKER_ID": "grow-trading-academy"
+        }
+      }
+    }
+  ]
+}

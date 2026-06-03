@@ -6,6 +6,7 @@
 
 import { useAppStore } from '../store/useAppStore';
 import { normalizeBrokerServerUrl, normalizeServerUrl, toLocalDevProxyUrl } from '../config/api';
+import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
 
 export interface BrokerApiRequestOptions extends RequestInit {
   params?: Record<string, any>;
@@ -50,14 +51,18 @@ export class BrokerAPI {
 
   // Resolve base server URL from localStorage dynamically
   private getBaseUrl(): string {
-    const url = localStorage.getItem('server_url');
-    if (url) {
-      return toLocalDevProxyUrl(normalizeBrokerServerUrl(url));
-    }
-
-    const brokerServer = localStorage.getItem('rtx_broker_server');
-    if (brokerServer) {
-      return toLocalDevProxyUrl(normalizeBrokerServerUrl(brokerServer));
+    const targetBroker = normalizeBrokerInfoForTarget({
+      backend_url: localStorage.getItem('backend_url') || '',
+      market_api_url: localStorage.getItem('market_api_url') || '',
+      server_url: localStorage.getItem('server_url') || localStorage.getItem('rtx_broker_server') || '',
+      ws_url: localStorage.getItem('ws_url') || '',
+      feed_url: localStorage.getItem('feed_url') || '',
+    }) as any;
+    if (targetBroker.server_url) {
+      const normalized = isDesktopBackendTarget()
+        ? normalizeBrokerServerUrl(targetBroker.server_url)
+        : normalizeServerUrl(targetBroker.server_url);
+      return toLocalDevProxyUrl(normalized);
     }
 
     const fallback = localStorage.getItem('api_base_url')
@@ -65,6 +70,7 @@ export class BrokerAPI {
       || import.meta.env.VITE_API_V2_URL as string
       || import.meta.env.VITE_API_URL as string
       || import.meta.env.VITE_BACKEND_URL as string
+      || getBackendTarget()
       || '';
 
     return toLocalDevProxyUrl(normalizeServerUrl(fallback));

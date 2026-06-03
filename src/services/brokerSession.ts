@@ -16,6 +16,8 @@
 
 // ─── Session Change Event Bus ────────────────────────────────────────────────
 
+import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
+
 export type SessionChangeReason =
   | 'token_rotation'
   | 'login'
@@ -114,7 +116,8 @@ export function emitSessionChange(reason: SessionChangeReason): void {
 
 const normalizeOptionalHttpUrl = (value: string | null | undefined): string => {
   const trimmed = String(value || '').trim();
-  return trimmed ? normalizeBrokerServerUrl(trimmed) : '';
+  if (!trimmed) return '';
+  return isDesktopBackendTarget() ? normalizeBrokerServerUrl(trimmed) : normalizeServerUrl(trimmed);
 };
 
 const isUrlLikeParsedHost = (parsed: URL): boolean => {
@@ -162,7 +165,7 @@ const isUrlLikeWsEndpointValue = (value: string | null | undefined): boolean => 
 const normalizeOptionalMarketHttpUrl = (value: string | null | undefined): string => {
   const trimmed = String(value || '').trim();
   if (!trimmed || !isUrlLikeHttpOriginValue(trimmed)) return '';
-  return normalizeBrokerServerUrl(trimmed);
+  return isDesktopBackendTarget() ? normalizeBrokerServerUrl(trimmed) : normalizeServerUrl(trimmed);
 };
 
 const pickFirstMarketHttpUrl = (...values: Array<string | null | undefined>): string => {
@@ -221,6 +224,18 @@ const isPort8091Url = (value: string): boolean => {
 };
 
 const isValidMarketOrigin = (value: string): boolean => Boolean(value && !isPort8091Url(value));
+
+const isPublicServicesWsUrl = (value: string): boolean => {
+  const normalized = normalizeOptionalWsUrl(value);
+  if (!normalized) return false;
+
+  try {
+    const parsed = new URL(normalized);
+    return parsed.hostname.toLowerCase() === 'services.growtradingacademy.com';
+  } catch {
+    return false;
+  }
+};
 
 const getHttpOriginFromHttpUrl = (value: string | null | undefined): string => {
   const normalized = normalizeOptionalMarketHttpUrl(value);
@@ -374,22 +389,23 @@ const pickPersistedWsUrl = (
 export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput): void {
   if (typeof window === 'undefined') return;
 
-  const token = String(input.access_token || input.token || '').trim();
-  const brokerId = String(input.broker_id || '').trim();
+  const normalizedInput = normalizeBrokerInfoForTarget(input) as BrokerSessionDiscoveryInput;
+  const token = String(normalizedInput.access_token || normalizedInput.token || '').trim();
+  const brokerId = String(normalizedInput.broker_id || '').trim();
   const hasToken = Boolean(token);
   const sameBroker = isSameOrUnknownBroker(brokerId);
   const currentMarketOrigin = getCurrentValidMarketOrigin();
-  const explicitMarketUrl = pickFirstMarketHttpUrl(input.market_api_url, input.backend_url);
+  const explicitMarketUrl = pickFirstMarketHttpUrl(normalizedInput.market_api_url, normalizedInput.backend_url);
   const hasExplicitValidMarketUrl = isValidMarketOrigin(explicitMarketUrl);
   const backendCandidateUrl = explicitMarketUrl;
-  const serverCandidateUrl = explicitMarketUrl || pickFirstMarketHttpUrl(input.server_url, input.broker_server);
-  const wsCandidateUrl = normalizeOptionalWsUrl(input.ws_url);
+  const serverCandidateUrl = explicitMarketUrl || pickFirstMarketHttpUrl(normalizedInput.server_url, normalizedInput.broker_server);
+  const wsCandidateUrl = normalizeOptionalWsUrl(normalizedInput.ws_url);
   const backendUrl = pickPersistedMarketOrigin(backendCandidateUrl, hasToken, hasExplicitValidMarketUrl, currentMarketOrigin, sameBroker);
   const serverUrl = pickPersistedMarketOrigin(serverCandidateUrl, hasToken, hasExplicitValidMarketUrl, currentMarketOrigin, sameBroker);
   const wsUrl = pickPersistedWsUrl(wsCandidateUrl, hasToken, hasExplicitValidMarketUrl, currentMarketOrigin, sameBroker);
-  const feedUrl = pickPersistedFeedUrl(normalizeOptionalWsUrl(input.feed_url || input.feed_ws_url), wsUrl, Boolean(token));
-  const feedStatusUrl = normalizeOptionalHttpUrl(input.feed_status_url);
-  const logoUrl = String(input.logo_url || '').trim();
+  const feedUrl = pickPersistedFeedUrl(normalizeOptionalWsUrl(normalizedInput.feed_url || normalizedInput.feed_ws_url), wsUrl, Boolean(token));
+  const feedStatusUrl = normalizeOptionalHttpUrl(normalizedInput.feed_status_url);
+  const logoUrl = String(normalizedInput.logo_url || '').trim();
   const brokerChangedWithoutToken = !token && hasBrokerServerChanged(serverUrl);
 
   if (token) {
@@ -419,6 +435,8 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
 /** Step 1 — Broker server URL persisted after user selects broker + logs in. */
 export function getServerUrl(): string {
   if (typeof window === 'undefined') return '';
+  if (!isDesktopBackendTarget()) return getBackendTarget();
+
   const raw = (localStorage.getItem('server_url') || '').trim().replace(/\/+$/, '');
   if (!raw) return getCurrentValidMarketOrigin();
 
@@ -581,6 +599,8 @@ function normalizeWsUrlToV2(wsUrl: string): string {
 }
 
 const getRuntimeMarketOrigin = (): string => {
+  if (!isDesktopBackendTarget()) return getBackendTarget();
+
   const currentMarketOrigin = getCurrentValidMarketOrigin();
   if (isValidMarketOrigin(currentMarketOrigin)) return currentMarketOrigin;
 
@@ -591,6 +611,7 @@ const canUseStoredWsUrl = (candidate: string, marketOrigin: string): boolean =>
   Boolean(
     candidate
     && isUrlLikeWsEndpointValue(candidate)
+    && (isDesktopBackendTarget() || isPublicServicesWsUrl(candidate))
     && !(isPort8091Url(candidate) && isValidMarketOrigin(marketOrigin))
   );
 

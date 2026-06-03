@@ -1,4 +1,10 @@
 import { brokerV2Api } from '../api/trade';
+import {
+  normalizeBrokerInfo,
+  normalizeBrokerInfoForTarget,
+  resolveBrokerBackendUrl,
+  resolveBrokerDefaultMt5Server,
+} from '../config/backendTarget.js';
 import type { BrokerServer } from '../types/api';
 
 export const DEFAULT_BROKER_SERVER = 'FlexyMarkets-Server';
@@ -19,31 +25,38 @@ export const getStoredBrokerServer = (): string => {
 };
 
 export const persistBrokerServer = (server: string): string => {
-  const resolvedServer = normalizeServerName(server) || DEFAULT_BROKER_SERVER;
+  const normalized = normalizeBrokerInfoForTarget({ server_url: server, server });
+  const resolvedServer = normalizeServerName(normalized.broker_server || normalized.server_url || server) || DEFAULT_BROKER_SERVER;
   if (typeof window !== 'undefined') {
     localStorage.setItem(BROKER_SERVER_STORAGE_KEY, resolvedServer);
+    if (normalized.server_url) localStorage.setItem('server_url', normalized.server_url);
+    if (normalized.backend_url) localStorage.setItem('backend_url', normalized.backend_url);
+    if (normalized.market_api_url) localStorage.setItem('market_api_url', normalized.market_api_url);
   }
   return resolvedServer;
 };
 
 const toServerName = (server: BrokerServer | string): string => {
   if (typeof server === 'string') return normalizeServerName(server);
-  return normalizeServerName(server.server || server.broker_name || server.server_url || server.broker_id);
+  return normalizeServerName(resolveBrokerDefaultMt5Server(server));
 };
 
 const rememberBrokerServer = (server: BrokerServer): void => {
+  const normalizedServer = normalizeBrokerInfo(server) as BrokerServer;
   const values = [
-    server.server,
-    server.server_url,
-    server.broker_id,
-    server.broker_name,
+    normalizedServer.server,
+    normalizedServer.server_url,
+    normalizedServer.backend_url,
+    normalizedServer.market_api_url,
+    normalizedServer.broker_id,
+    normalizedServer.broker_name,
   ].map(normalizeServerName).filter(Boolean);
 
-  values.forEach((value) => brokerServerRegistry.set(value.toLowerCase(), server));
+  values.forEach((value) => brokerServerRegistry.set(value.toLowerCase(), normalizedServer));
 };
 
 const getBrokerServerUrl = (server: BrokerServer): string => {
-  const explicitUrl = normalizeServerName(server.server_url);
+  const explicitUrl = normalizeServerName(resolveBrokerBackendUrl(server));
   if (explicitUrl) return explicitUrl;
 
   const serverValue = normalizeServerName(server.server);

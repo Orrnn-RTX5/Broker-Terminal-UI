@@ -6,6 +6,17 @@ import {
   normalizeBrokerServerUrl,
   toLocalDevProxyUrl,
 } from '../config/api';
+import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
+
+type DynamicBrokerTarget = {
+  backend_url?: string;
+  market_api_url?: string;
+  server_url?: string;
+  ws_url?: string;
+  feed_url?: string;
+};
+
+type QueryParams = object;
 
 const getDiscoveryHost = (): string => {
   try {
@@ -30,7 +41,16 @@ export const getDynamicUrl = (url: string): string => {
   if (discoveryHost && url.includes(discoveryHost)) {
     return url;
   }
-  const serverUrl = normalizeBrokerServerUrl(localStorage.getItem('server_url') || '');
+  const targetBroker = normalizeBrokerInfoForTarget({
+    backend_url: localStorage.getItem('backend_url') || '',
+    market_api_url: localStorage.getItem('market_api_url') || '',
+    server_url: localStorage.getItem('server_url') || localStorage.getItem('rtx_broker_server') || '',
+    ws_url: localStorage.getItem('ws_url') || '',
+    feed_url: localStorage.getItem('feed_url') || '',
+  }) as DynamicBrokerTarget;
+  const serverUrl = isDesktopBackendTarget()
+    ? normalizeBrokerServerUrl(targetBroker.server_url || '')
+    : String(targetBroker.server_url || '').trim().replace(/\/+$/, '');
   if (!serverUrl) return url;
 
   try {
@@ -125,7 +145,7 @@ const buildHeaders = (customHeaders?: Record<string, string>, skipAuth?: boolean
 const AUTH_ENDPOINTS = ['/api/login', '/api/refresh', '/api/v2/auth/login', '/api/v2/auth/refresh', '/auth/login', '/auth/refresh'];
 
 // Build query string from params object
-const buildQueryString = (params?: Record<string, any>): string => {
+const buildQueryString = (params?: QueryParams): string => {
   if (!params || Object.keys(params).length === 0) return '';
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -140,8 +160,8 @@ const buildQueryString = (params?: Record<string, any>): string => {
 // Token Refresh State
 let isRefreshing = false;
 let failedQueue: Array<{
-  resolve: (value?: any) => void;
-  reject: (reason?: any) => void;
+  resolve: (value: Response | PromiseLike<Response>) => void;
+  reject: (reason?: unknown) => void;
   config: RequestInit & { url: string };
 }> = [];
 
@@ -311,7 +331,7 @@ const RETRY_ATTEMPTS = 3;
 
 // Main API client
 export interface ApiRequestOptions extends RequestInit {
-  params?: Record<string, any>;
+  params?: QueryParams;
   headers?: Record<string, string>;
   baseUrl?: string;
   apiKey?: string;
@@ -323,20 +343,14 @@ export interface ApiRequestOptions extends RequestInit {
 
 // Use the backend URL directly only in Electron; in the browser, use
 // relative paths so requests go through the Vite dev-server proxy and avoid CORS.
-const BACKEND_URL = import.meta.env.VITE_API_URL as string;
-
-const isElectronEnv = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  return !!(window as any).electronAPI || window.location.protocol === 'file:' || navigator.userAgent.includes('Electron');
-};
+const BACKEND_URL = import.meta.env.VITE_API_URL as string || getBackendTarget();
 
 const getBaseUrl = (): string => {
   if (typeof window === 'undefined') return BACKEND_URL;
   // Use URL stored by Login (setBaseUrl) if available
   const stored = localStorage.getItem('api_base_url');
   if (stored) return stored;
-  // In Electron, call backend directly; in browser, use Vite proxy (empty base)
-  return isElectronEnv() ? BACKEND_URL : '';
+  return getBackendTarget();
 };
 
 // Set base URL in localStorage
@@ -355,14 +369,12 @@ const withApiKey = (headers: Record<string, string> | undefined, apiKey?: string
 
 const toRequestInit = (options?: ApiRequestOptions): RequestInit => {
   if (!options) return {};
-  const {
-    params: _params,
-    baseUrl: _baseUrl,
-    apiKey: _apiKey,
-    skipAuth: _skipAuth,
-    skipDynamicUrl: _skipDynamicUrl,
-    ...requestInit
-  } = options;
+  const requestInit: ApiRequestOptions = { ...options };
+  delete requestInit.params;
+  delete requestInit.baseUrl;
+  delete requestInit.apiKey;
+  delete requestInit.skipAuth;
+  delete requestInit.skipDynamicUrl;
   return requestInit;
 };
 

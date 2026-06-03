@@ -9,9 +9,12 @@ import {
   persistBrokerSessionDiscovery,
 } from './brokerSession';
 
+type RuntimeWindow = Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
+
 describe('broker websocket URL builder', () => {
   beforeEach(() => {
     localStorage.clear();
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { backendTarget: 'desktop' };
   });
 
   it('normalizes saved HTTPS default-port broker server_url for HTTP-only runtime', () => {
@@ -44,6 +47,59 @@ describe('broker websocket URL builder', () => {
     expect(buildApiV2WsUrl('jwt-token')).toBe(
       'ws://69.197.178.27:8090/ws/v2?token=jwt-token'
     );
+  });
+
+  it('uses public services URLs in web mode even when stale direct broker storage exists', () => {
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { VITE_BACKEND_TARGET: 'web' };
+    localStorage.setItem('backend_url', 'http://103.91.186.142:8091');
+    localStorage.setItem('server_url', 'http://103.91.186.142:8091');
+    localStorage.setItem('ws_url', 'ws://103.91.186.142:8091/ws/v2');
+    localStorage.setItem('feed_url', 'ws://103.91.186.142:8091/ws/feed');
+
+    expect(getServerUrl()).toBe('https://services.growtradingacademy.com');
+    expect(buildBrokerApiV2()).toBe('https://services.growtradingacademy.com/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://services.growtradingacademy.com/ws/feed');
+    expect(buildBrokerWsV2Uri('access-token')).toBe(
+      'wss://services.growtradingacademy.com/ws/v2?token=access-token'
+    );
+  });
+
+  it('ignores stale direct IP websocket storage in web mode even when it is not :8091', () => {
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'web' };
+    localStorage.setItem('backend_url', 'http://69.197.178.27:8090');
+    localStorage.setItem('server_url', 'http://69.197.178.27:8090');
+    localStorage.setItem('ws_url', 'ws://69.197.178.27:8090/ws/v2');
+    localStorage.setItem('feed_url', 'ws://69.197.178.27/ws/feed');
+
+    expect(getServerUrl()).toBe('https://services.growtradingacademy.com');
+    expect(buildBrokerApiV2()).toBe('https://services.growtradingacademy.com/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://services.growtradingacademy.com/ws/feed');
+    expect(buildBrokerWsV2Uri('access-token')).toBe(
+      'wss://services.growtradingacademy.com/ws/v2?token=access-token'
+    );
+    expect([
+      buildBrokerWsFeedUri(),
+      buildBrokerWsV2Uri('access-token'),
+    ].join('\n')).not.toContain('69.197.178.27');
+  });
+
+  it('persists public services routing for web discovery that includes direct broker endpoints', () => {
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { BACKEND_MODE: 'browser' };
+
+    persistBrokerSessionDiscovery({
+      access_token: 'access-token',
+      broker_id: 'gta_broker',
+      backend_url: 'http://103.91.186.142:8091',
+      market_api_url: 'http://103.91.186.142:8090',
+      server_url: 'http://103.91.186.142:8091',
+      ws_url: 'ws://103.91.186.142:8091/ws/v2',
+      feed_url: 'ws://103.91.186.142:8091/ws/feed',
+    });
+
+    expect(localStorage.getItem('backend_url')).toBe('https://services.growtradingacademy.com');
+    expect(localStorage.getItem('server_url')).toBe('https://services.growtradingacademy.com');
+    expect(localStorage.getItem('ws_url')).toBe('wss://services.growtradingacademy.com/ws/v2');
+    expect(localStorage.getItem('feed_url')).toBe('wss://services.growtradingacademy.com/ws/feed');
   });
 
   it('extracts only host and port when server_url contains a path', () => {
