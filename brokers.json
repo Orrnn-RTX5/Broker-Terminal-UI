@@ -4,11 +4,26 @@
       "id": "grow-trading-academy",
       "name": "Grow Trading Academy",
       "enabled": true,
+      "host": "103.91.186.142",
+      "user": "root",
+      "port": 40111,
       "domain": "webterminal.growtradingacademy.com",
+      "backend_url": "https://services.growtradingacademy.com",
+      "server_ip": "103.91.186.142",
+      "server_port": 8091,
       "app_port": "127.0.0.1:8081",
+      "env": {
+        "BACKEND_TARGET": "web",
+        "API_HOST": "https://services.growtradingacademy.com",
+        "API_HOST_EXT": "https://services.growtradingacademy.com",
+        "WS_HOST": "wss://services.growtradingacademy.com",
+        "DEFAULT_MT5_SERVER": "FlexyMarkets-Server",
+        "DISCOVERY_BASE_URL": "https://superbackend.orrnn.com",
+        "USE_MOCK_DISCOVERY": "false"
+      },
       "ssh": {
-        "host": "webterminal.growtradingacademy.com",
-        "port": 22,
+        "host": "103.91.186.142",
+        "port": 40111,
         "user": "root"
       },
       "services": {

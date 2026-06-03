@@ -91,10 +91,15 @@ jobs:
 
           jq -c '.brokers[] | select(.enabled == true)' /tmp/brokers.json | while IFS= read -r broker; do
             broker_id="$(jq -r '.id' <<<"$broker")"
-            ssh_host="$(jq -r '.ssh.host' <<<"$broker")"
-            ssh_port="$(jq -r '.ssh.port // 22' <<<"$broker")"
-            ssh_user="$(jq -r '.ssh.user // "root"' <<<"$broker")"
+            ssh_host="$(jq -r '.ssh.host // .host // empty' <<<"$broker")"
+            ssh_port="$(jq -r '.ssh.port // .port // 22' <<<"$broker")"
+            ssh_user="$(jq -r '.ssh.user // .user // "root"' <<<"$broker")"
             broker_json_b64="$(printf '%s' "$broker" | base64 -w0)"
+
+            if [ -z "$ssh_host" ]; then
+              echo "Broker ${broker_id} is missing an SSH host. Set .ssh.host or top-level .host in brokers.json." >&2
+              exit 1
+            fi
 
             echo "Deploying ${broker_id} to ${ssh_user}@${ssh_host}:${ssh_port}"
             ssh \
