@@ -929,7 +929,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
             {/* Tree header */}
             <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[#3a3e52]">
               <FolderOpen size={14} className="text-yellow-400" />
-              <span className="text-[11px] text-zinc-400 font-medium">Flexy Markets MT5</span>
+              <span className="text-[11px] text-zinc-400 font-medium">RTX 5 Web Terminal</span>
             </div>
             <div className="flex-1 overflow-y-auto no-scrollbar py-1">
               {loading ? (

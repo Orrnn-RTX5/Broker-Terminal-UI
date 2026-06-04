@@ -126,7 +126,7 @@ export function Login({ onLogin }: LoginProps) {
                     <div className="login-logo-container">
                         <Icon name="shield" size="xl" className="text-white" />
                     </div>
-                    <h1 className="login-title">RTX Terminal</h1>
+                    <h1 className="login-title">RTX 5 Web Terminal</h1>
                     {/* <p className="login-subtitle">Institutional Trading Environment</p> */}
                 </div>
 

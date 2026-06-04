@@ -41,6 +41,9 @@ import { indicatorManager } from '../../services/indicatorManager';
 import { drawingManager } from '../../services/drawingManager';
 import { captureFullPage } from '../../services/screenshotService';
 
+const WEB_TERMINAL_TITLE = 'RTX 5 Web Terminal';
+const DEFAULT_BROKER_SERVER = 'FlexyMarkets-Server';
+
 const getLogoutBase = (): string => {
   const fallback = normalizeServerUrl(RTX5_API_URL || import.meta.env.VITE_API_URL || '');
   if (typeof window === 'undefined') return fallback;
@@ -225,11 +228,10 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
     const accountId = useAppStore((s) => s.accountId) || '---';
     const savedAccounts = useAppStore((s) => s.savedAccounts) || [];
     const activeAccount = savedAccounts.find(a => String(a.login) === String(accountId));
-    const serverName = activeAccount?.server || localStorage.getItem('rtx_broker_server') || 'FlexyMarkets-Server';
+    const serverName = activeAccount?.server || localStorage.getItem('rtx_broker_server') || DEFAULT_BROKER_SERVER;
 
     const [isMaximized, setIsMaximized] = React.useState(false);
     const [logoUrl, setLogoUrl] = useState<string>('');
-    const [brokerName, setBrokerName] = useState<string>('Flexy Markets Limited');
     const [marginMode, setMarginMode] = useState<string>('Hedge');
     const [logoError, setLogoError] = useState<boolean>(false);
 
@@ -249,7 +251,7 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
 
         const fetchDetails = async () => {
             try {
-                // Fetch config for marginMode and fallback brokerName
+                // Fetch config for marginMode and broker logo.
                 const [config, servers, brokersData] = await Promise.all([
                     configApi.getConfig().catch(() => null),
                     brokerV2Api.getServers().catch(() => []),
@@ -265,21 +267,15 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
                     } else {
                         setMarginMode('Hedge');
                     }
-                    if (config.brokerName) {
-                        setBrokerName(config.brokerName);
-                    }
                 }
 
-                // 2. Find broker ID and name from server matching
+                // 2. Find broker ID and logo from server matching
                 const matchedServer = servers.find(
                     (s: any) => s.server?.toLowerCase() === serverName.toLowerCase()
                 );
 
                 let finalLogoUrl = '';
                 if (matchedServer) {
-                    if (matchedServer.broker_name) {
-                        setBrokerName(matchedServer.broker_name);
-                    }
                     if (matchedServer.logo_url) {
                         finalLogoUrl = matchedServer.logo_url;
                     }
@@ -314,6 +310,7 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
     const handleClose = () => (window as any).electron?.window?.close();
 
     const displayLogo = logoUrl && !logoError ? getLogoUrl(logoUrl) : './titlebar-icon.png';
+    const terminalTitle = `${WEB_TERMINAL_TITLE} - ${accountId} - ${marginMode} - ${symbol},${timeframe.toUpperCase()}`;
 
     return (
         <div
@@ -328,7 +325,7 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
                     className="w-4 h-4 object-contain ml-1 rounded-sm"
                     onError={() => setLogoError(true)}
                 />
-                <span>{accountId} - {serverName} - {marginMode} - {brokerName} - {symbol},{timeframe.toUpperCase()}</span>
+                <span>{terminalTitle}</span>
             </div>
 
             {/* Right: Window Controls — no-drag so clicks register */}

@@ -48,7 +48,7 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5 border-r border-zinc-400 pr-4">
                     <Icon name="server" size="xs" className="text-zinc-500" />
-                    <span className="font-medium text-black">Common</span>
+                    <span className="font-medium text-black">RTX 5 Web Terminal</span>
                 </div>
                 {/* Connection Status Indicator (Live) */}
                 {wsRef && (
