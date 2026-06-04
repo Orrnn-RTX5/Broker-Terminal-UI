@@ -271,6 +271,7 @@ if ! command -v docker >/dev/null 2>&1; then
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 
+if [ "${MANAGE_NGINX_ON_DEPLOY:-false}" = "true" ]; then
 apt-get update
 apt-get install -y nginx certbot python3-certbot-nginx
 
@@ -405,6 +406,9 @@ systemctl reload nginx
 if [ ! -d "/etc/letsencrypt/live/${domain}" ]; then
   certbot --nginx --non-interactive --agree-tos --redirect --register-unsafely-without-email -d "$domain"
 fi
+else
+  echo "Nginx management skipped during WebTerminal deploy; infra repo owns /etc/nginx/rtx5-managed."
+fi
 
 if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
   printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
@@ -453,8 +457,10 @@ else
     "$IMAGE_REF"
 fi
 
-nginx -t
-systemctl reload nginx
+if [ "${MANAGE_NGINX_ON_DEPLOY:-false}" = "true" ]; then
+  nginx -t
+  systemctl reload nginx
+fi
 
 for attempt in 1 2 3 4 5; do
   if curl -fsS "http://${app_port}${health_path}" >/dev/null; then

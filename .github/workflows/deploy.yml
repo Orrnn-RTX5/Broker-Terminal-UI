@@ -34,6 +34,9 @@ jobs:
       - name: Build frontend
         run: npm run build:web
 
+      - name: Resolve image name
+        run: echo "IMAGE_NAME=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -53,61 +56,31 @@ jobs:
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
             ${{ env.IMAGE_NAME }}:latest
 
-      - name: Load broker metadata
-        id: brokers
+      - name: Trigger broker infra deploy
         shell: bash
         env:
-          BROKERS_JSON_SECRET: ${{ secrets.BROKERS_JSON }}
-        run: |
-          if [ -n "$BROKERS_JSON_SECRET" ]; then
-            printf '%s' "$BROKERS_JSON_SECRET" > /tmp/brokers.json
-          else
-            cp brokers.json /tmp/brokers.json
-          fi
-
-          jq -e '.brokers | type == "array"' /tmp/brokers.json >/dev/null
-          count="$(jq '[.brokers[] | select(.enabled == true)] | length' /tmp/brokers.json)"
-          echo "enabled_count=$count" >> "$GITHUB_OUTPUT"
-
-      - name: Install SSH key
-        if: steps.brokers.outputs.enabled_count != '0'
-        shell: bash
-        env:
-          BROKER_SSH_PRIVATE_KEY: ${{ secrets.BROKER_SSH_PRIVATE_KEY }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$BROKER_SSH_PRIVATE_KEY" > ~/.ssh/broker_deploy_key
-          chmod 600 ~/.ssh/broker_deploy_key
-
-      - name: Deploy enabled brokers
-        if: steps.brokers.outputs.enabled_count != '0'
-        shell: bash
-        env:
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ github.token }}
+          INFRA_REPO: ${{ github.repository_owner }}/ORRNN-RTX5-Broker-Infra
+          INFRA_TOKEN: ${{ secrets.INFRA_REPO_DISPATCH_TOKEN }}
           IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ github.sha }}
         run: |
           set -euo pipefail
+          if [[ -z "$INFRA_TOKEN" ]]; then
+            echo "INFRA_REPO_DISPATCH_TOKEN is required to trigger $INFRA_REPO" >&2
+            exit 1
+          fi
 
-          jq -c '.brokers[] | select(.enabled == true)' /tmp/brokers.json | while IFS= read -r broker; do
-            broker_id="$(jq -r '.id' <<<"$broker")"
-            ssh_host="$(jq -r '.ssh.host // .host // empty' <<<"$broker")"
-            ssh_port="$(jq -r '.ssh.port // .port // 22' <<<"$broker")"
-            ssh_user="$(jq -r '.ssh.user // .user // "root"' <<<"$broker")"
-            broker_json_b64="$(printf '%s' "$broker" | base64 -w0)"
+          payload="$(jq -n \
+            --arg component "webterminal" \
+            --arg image_ref "$IMAGE_REF" \
+            --arg broker "myprop-trade" \
+            --arg source_repo "$GITHUB_REPOSITORY" \
+            --arg source_sha "$GITHUB_SHA" \
+            '{event_type:"deploy-broker-component",client_payload:{component:$component,image_ref:$image_ref,broker:$broker,source_repo:$source_repo,source_sha:$source_sha}}')"
 
-            if [ -z "$ssh_host" ]; then
-              echo "Broker ${broker_id} is missing an SSH host. Set .ssh.host or top-level .host in brokers.json." >&2
-              exit 1
-            fi
-
-            echo "Deploying ${broker_id} to ${ssh_user}@${ssh_host}:${ssh_port}"
-            ssh \
-              -i ~/.ssh/broker_deploy_key \
-              -p "$ssh_port" \
-              -o StrictHostKeyChecking=accept-new \
-              -o ServerAliveInterval=30 \
-              "${ssh_user}@${ssh_host}" \
-              "BROKER_JSON_B64='${broker_json_b64}' GHCR_USERNAME='${GHCR_USERNAME}' GHCR_TOKEN='${GHCR_TOKEN}' IMAGE_REF='${IMAGE_REF}' bash -s" \
-              < .github/scripts/deploy-broker-ui.sh
-          done
+          curl --fail-with-body -sS \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $INFRA_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$INFRA_REPO/dispatches" \
+            -d "$payload"
