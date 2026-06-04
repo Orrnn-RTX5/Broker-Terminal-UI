@@ -225,13 +225,23 @@ const isPort8091Url = (value: string): boolean => {
 
 const isValidMarketOrigin = (value: string): boolean => Boolean(value && !isPort8091Url(value));
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+const isPublicServicesHostname = (hostname: string): boolean => {
+  const normalized = hostname.toLowerCase();
+  return normalized.startsWith('services.')
+    && !LOCAL_HOSTS.has(normalized)
+    && !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized)
+    && !normalized.includes(':');
+};
+
 const isPublicServicesWsUrl = (value: string): boolean => {
   const normalized = normalizeOptionalWsUrl(value);
   if (!normalized) return false;
 
   try {
     const parsed = new URL(normalized);
-    return parsed.hostname.toLowerCase() === 'services.growtradingacademy.com';
+    return isPublicServicesHostname(parsed.hostname);
   } catch {
     return false;
   }

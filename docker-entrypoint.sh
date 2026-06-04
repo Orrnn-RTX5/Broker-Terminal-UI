@@ -30,10 +30,10 @@ js_bool() {
 }
 
 backend_target="$(resolve_backend_target)"
-api_host="${API_HOST:-${VITE_API_HOST:-${VITE_API_URL:-${VITE_BACKEND_URL:-https://services.growtradingacademy.com}}}}"
+api_host="${API_HOST:-${VITE_API_HOST:-${VITE_API_URL:-${VITE_BACKEND_URL:-https://services.myprop.trade}}}}"
 api_host_ext="${API_HOST_EXT:-${VITE_API_HOST_EXT:-${VITE_API_URL_EXT:-${VITE_BACKEND_URL_EXT:-$api_host}}}}"
-ws_host="${WS_HOST:-${VITE_WS_HOST:-${VITE_WS_URL:-wss://services.growtradingacademy.com}}}"
-default_mt5_server="${DEFAULT_MT5_SERVER:-${VITE_DEFAULT_MT5_SERVER:-FlexyMarkets-Server}}"
+ws_host="${WS_HOST:-${VITE_WS_HOST:-${VITE_WS_URL:-wss://services.myprop.trade}}}"
+default_mt5_server="${DEFAULT_MT5_SERVER:-${VITE_DEFAULT_MT5_SERVER:-MyProp-Server}}"
 discovery_base_url="${DISCOVERY_BASE_URL:-${VITE_DISCOVERY_BASE_URL:-${VITE_BROKER_DISCOVERY_URL:-https://superbackend.orrnn.com}}}"
 use_mock_discovery="${USE_MOCK_DISCOVERY:-${VITE_USE_MOCK_DISCOVERY:-false}}"
 

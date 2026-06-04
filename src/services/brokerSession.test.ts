@@ -56,11 +56,11 @@ describe('broker websocket URL builder', () => {
     localStorage.setItem('ws_url', 'ws://103.91.186.142:8091/ws/v2');
     localStorage.setItem('feed_url', 'ws://103.91.186.142:8091/ws/feed');
 
-    expect(getServerUrl()).toBe('https://services.growtradingacademy.com');
-    expect(buildBrokerApiV2()).toBe('https://services.growtradingacademy.com/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('wss://services.growtradingacademy.com/ws/feed');
+    expect(getServerUrl()).toBe('https://services.myprop.trade');
+    expect(buildBrokerApiV2()).toBe('https://services.myprop.trade/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://services.myprop.trade/ws/feed');
     expect(buildBrokerWsV2Uri('access-token')).toBe(
-      'wss://services.growtradingacademy.com/ws/v2?token=access-token'
+      'wss://services.myprop.trade/ws/v2?token=access-token'
     );
   });
 
@@ -71,11 +71,11 @@ describe('broker websocket URL builder', () => {
     localStorage.setItem('ws_url', 'ws://69.197.178.27:8090/ws/v2');
     localStorage.setItem('feed_url', 'ws://69.197.178.27/ws/feed');
 
-    expect(getServerUrl()).toBe('https://services.growtradingacademy.com');
-    expect(buildBrokerApiV2()).toBe('https://services.growtradingacademy.com/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('wss://services.growtradingacademy.com/ws/feed');
+    expect(getServerUrl()).toBe('https://services.myprop.trade');
+    expect(buildBrokerApiV2()).toBe('https://services.myprop.trade/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://services.myprop.trade/ws/feed');
     expect(buildBrokerWsV2Uri('access-token')).toBe(
-      'wss://services.growtradingacademy.com/ws/v2?token=access-token'
+      'wss://services.myprop.trade/ws/v2?token=access-token'
     );
     expect([
       buildBrokerWsFeedUri(),
@@ -96,10 +96,10 @@ describe('broker websocket URL builder', () => {
       feed_url: 'ws://103.91.186.142:8091/ws/feed',
     });
 
-    expect(localStorage.getItem('backend_url')).toBe('https://services.growtradingacademy.com');
-    expect(localStorage.getItem('server_url')).toBe('https://services.growtradingacademy.com');
-    expect(localStorage.getItem('ws_url')).toBe('wss://services.growtradingacademy.com/ws/v2');
-    expect(localStorage.getItem('feed_url')).toBe('wss://services.growtradingacademy.com/ws/feed');
+    expect(localStorage.getItem('backend_url')).toBe('https://services.myprop.trade');
+    expect(localStorage.getItem('server_url')).toBe('https://services.myprop.trade');
+    expect(localStorage.getItem('ws_url')).toBe('wss://services.myprop.trade/ws/v2');
+    expect(localStorage.getItem('feed_url')).toBe('wss://services.myprop.trade/ws/feed');
   });
 
   it('extracts only host and port when server_url contains a path', () => {

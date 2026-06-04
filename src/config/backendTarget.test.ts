@@ -46,10 +46,10 @@ describe('backend target resolver', () => {
       ws_url: 'ws://103.91.186.142:8091/ws/v2',
     });
 
-    expect(broker.server_url).toBe('https://services.growtradingacademy.com');
-    expect(broker.market_api_url).toBe('https://services.growtradingacademy.com');
-    expect(broker.ws_url).toBe('wss://services.growtradingacademy.com/ws/v2');
-    expect(broker.feed_url).toBe('wss://services.growtradingacademy.com/ws/feed');
+    expect(broker.server_url).toBe(WEB_BACKEND_FALLBACK);
+    expect(broker.market_api_url).toBe(WEB_BACKEND_FALLBACK);
+    expect(broker.ws_url).toBe('wss://services.myprop.trade/ws/v2');
+    expect(broker.feed_url).toBe('wss://services.myprop.trade/ws/feed');
   });
 
   it('uses safe runtime services API and derives web websocket paths from runtime WS origin', () => {
@@ -72,7 +72,7 @@ describe('backend target resolver', () => {
     };
 
     expect(getBackendTarget()).toBe(WEB_BACKEND_FALLBACK);
-    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://services.growtradingacademy.com/ws/v2');
+    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://services.myprop.trade/ws/v2');
   });
 
   it('honors uppercase runtime target and mode keys', () => {

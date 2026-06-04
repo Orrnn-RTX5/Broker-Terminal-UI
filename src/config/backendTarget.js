@@ -1,8 +1,8 @@
-export const WEB_BACKEND_FALLBACK = 'https://services.growtradingacademy.com';
+export const WEB_BACKEND_FALLBACK = 'https://services.myprop.trade';
 export const DESKTOP_BACKEND_FALLBACK = 'http://103.91.186.142:8091';
 
 const URL_SCHEME_RE = /^[a-z][a-z\d+.-]*:\/\//i;
-const PUBLIC_SERVICES_HOST = 'services.growtradingacademy.com';
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 export const trimTrailingSlash = (value) => String(value || '').trim().replace(/\/+$/, '');
 
@@ -85,7 +85,13 @@ const isPublicServicesUrl = (value, normalize) => {
 
   try {
     const parsed = new URL(normalized);
-    return parsed.hostname.toLowerCase() === PUBLIC_SERVICES_HOST;
+    const hostname = parsed.hostname.toLowerCase();
+    const protocol = parsed.protocol.toLowerCase();
+    return ['http:', 'https:', 'ws:', 'wss:'].includes(protocol)
+      && !LOCAL_HOSTS.has(hostname)
+      && !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
+      && !hostname.includes(':')
+      && hostname.startsWith('services.');
   } catch {
     return false;
   }
@@ -105,13 +111,19 @@ const runtimeFirst = (...keys) => {
 };
 
 export const getPublicBackendTarget = () => {
-  const candidate = runtimeFirst(
-    'API_HOST',
-    'API_HOST_EXT',
-    'VITE_API_HOST',
-    'VITE_API_HOST_EXT',
-    'VITE_API_URL',
-    'VITE_BACKEND_URL'
+  const candidate = first(
+    runtimeFirst(
+      'API_HOST',
+      'API_HOST_EXT',
+      'VITE_API_HOST',
+      'VITE_API_HOST_EXT',
+      'VITE_API_URL',
+      'VITE_BACKEND_URL'
+    ),
+    envValue('VITE_API_HOST'),
+    envValue('VITE_API_HOST_EXT'),
+    envValue('VITE_API_URL'),
+    envValue('VITE_BACKEND_URL')
   );
   return isPublicServicesUrl(candidate, normalizeHttpUrl)
     ? normalizeHttpUrl(candidate, 'https')
@@ -119,12 +131,18 @@ export const getPublicBackendTarget = () => {
 };
 
 export const getPublicWsTarget = () => {
-  const candidate = runtimeFirst(
-    'WS_HOST',
-    'VITE_WS_HOST',
-    'VITE_WS_URL',
-    'VITE_RTX5_WS_URL',
-    'VITE_MARKET_WS_URL'
+  const candidate = first(
+    runtimeFirst(
+      'WS_HOST',
+      'VITE_WS_HOST',
+      'VITE_WS_URL',
+      'VITE_RTX5_WS_URL',
+      'VITE_MARKET_WS_URL'
+    ),
+    envValue('VITE_WS_HOST'),
+    envValue('VITE_WS_URL'),
+    envValue('VITE_RTX5_WS_URL'),
+    envValue('VITE_MARKET_WS_URL')
   );
   return isPublicServicesUrl(candidate, normalizeWsUrl)
     ? normalizeWsUrl(candidate, 'wss')
