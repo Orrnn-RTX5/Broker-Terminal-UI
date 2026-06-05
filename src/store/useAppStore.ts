@@ -344,6 +344,7 @@ export const useAppStore = create<AppState>()(
             if (authToken) localStorage.setItem('auth_token', authToken);
             if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
             if (expiresAt) localStorage.setItem('token_expires_at', new Date(expiresAt).toISOString());
+            window.dispatchEvent(new Event('auth:token-updated'));
           }
           set((state) => ({
             authToken,

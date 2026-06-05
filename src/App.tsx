@@ -69,6 +69,33 @@ const getAuthHeaders = (): Record<string, string> => {
   return token ? { 'Authorization': `Bearer ${token}` } : {};
 };
 
+const parseStoredTokenExpiryMs = (expiresAt: unknown): number | null => {
+  if (expiresAt === undefined || expiresAt === null || expiresAt === '') return null;
+
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+    return expiresAt < 100000000000 ? expiresAt * 1000 : expiresAt;
+  }
+
+  const raw = String(expiresAt).trim();
+  if (/^\d+$/.test(raw)) {
+    const numeric = Number(raw);
+    return numeric < 100000000000 ? numeric * 1000 : numeric;
+  }
+
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getStoredTokenExpiryMs = (): number | null => {
+  if (typeof window === 'undefined') return null;
+  return parseStoredTokenExpiryMs(localStorage.getItem('token_expires_at'));
+};
+
+const hasTokenExpiryElapsed = (expiresAt: unknown): boolean => {
+  const expiryMs = parseStoredTokenExpiryMs(expiresAt);
+  return Boolean(expiryMs && expiryMs <= Date.now());
+};
+
 const SELECTED_SYMBOL_STORAGE_KEY = 'rtx5_selected_symbol';
 
 const normalizeSymbolName = (value: unknown): string => String(value ?? '').trim().toUpperCase();
@@ -531,10 +558,17 @@ function App() {
   // Start closed and restore only after a validated token or active authenticated store session.
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     const state = useAppStore.getState();
-    return Boolean(state.isAuthenticated && parsePositiveInt(state.accountId || undefined));
+    const expiryMs = state.tokenExpiresAt || getStoredTokenExpiryMs();
+    return Boolean(
+      state.isAuthenticated &&
+      parsePositiveInt(state.accountId || undefined) &&
+      !hasTokenExpiryElapsed(expiryMs)
+    );
   });
   const [isAutoAuthenticating, setIsAutoAuthenticating] = useState(false);
   const [autoAuthError, setAutoAuthError] = useState<string | null>(null);
+  const [tokenSessionVersion, setTokenSessionVersion] = useState(0);
+  const storeTokenExpiresAt = useAppStore(state => state.tokenExpiresAt);
   const [selectedSymbol, setSelectedSymbol] = useState<string>('');
   const [positions, setPositions] = useState<Position[]>([]);
   const [account, setAccount] = useState<Account | null>(null);
@@ -590,6 +624,14 @@ function App() {
     useAppStore.getState().setOrders([] as any);
     useAppStore.getState().setTrades([] as any);
   }, []);
+
+  const performSessionExpiredLogout = useCallback((reason = 'session_expired') => {
+    console.warn(`[App] Logging out session: ${reason}`);
+    clearLocalAccountState();
+    setIsAuthenticated(false);
+    setAccountId('');
+    useAppStore.getState().logout();
+  }, [clearLocalAccountState]);
 
   const getLiveTradingLogin = useCallback(() => {
     const state = useAppStore.getState();
@@ -701,13 +743,11 @@ function App() {
   // Listen for logout event from toolbar
   useEffect(() => {
     const handleLogoutEvent = () => {
-      clearLocalAccountState();
-      setIsAuthenticated(false);
-      setAccountId('');
+      performSessionExpiredLogout('manual_logout');
     };
     window.addEventListener('rtx:logout', handleLogoutEvent);
     return () => window.removeEventListener('rtx:logout', handleLogoutEvent);
-  }, [clearLocalAccountState]);
+  }, [performSessionExpiredLogout]);
 
   // Listen for unauthorized/expired session events from API client
   useEffect(() => {
@@ -720,14 +760,39 @@ function App() {
       }
 
       console.warn('[App] Session expired or unauthorized request. Performing global logout.');
-      clearLocalAccountState();
-      setIsAuthenticated(false);
-      setAccountId('');
-      useAppStore.getState().clearAuth();
+      performSessionExpiredLogout((event as CustomEvent<{ reason?: string }>).detail?.reason || 'unauthorized');
     };
     window.addEventListener('auth:unauthorized', handleUnauthorizedEvent as EventListener);
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorizedEvent as EventListener);
-  }, [clearLocalAccountState]);
+  }, [performSessionExpiredLogout]);
+
+  useEffect(() => {
+    const handleTokenUpdated = () => {
+      setTokenSessionVersion((value) => value + 1);
+    };
+    window.addEventListener('auth:token-updated', handleTokenUpdated);
+    return () => window.removeEventListener('auth:token-updated', handleTokenUpdated);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+
+    const expiryMs = parseStoredTokenExpiryMs(storeTokenExpiresAt) || getStoredTokenExpiryMs();
+    if (!expiryMs) return undefined;
+
+    const delay = expiryMs - Date.now();
+    if (delay <= 0) {
+      performSessionExpiredLogout('token_expired');
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(
+      () => performSessionExpiredLogout('token_expired'),
+      Math.min(delay, 2147483647)
+    );
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isAuthenticated, performSessionExpiredLogout, storeTokenExpiresAt, tokenSessionVersion]);
 
   // Session restore uses existing token state only; App must not decode or replay saved passwords.
   useEffect(() => {
@@ -750,6 +815,13 @@ function App() {
         } as any);
       }
       const lastAccountId = storeState.accountId;
+      const restoredExpiryMs = storeState.tokenExpiresAt || getStoredTokenExpiryMs();
+
+      if (hasTokenExpiryElapsed(restoredExpiryMs)) {
+        performSessionExpiredLogout('token_expired');
+        setIsAutoAuthenticating(false);
+        return;
+      }
 
       if (storeState.isAuthenticated) {
         const authenticatedLogin = parsePositiveInt(lastAccountId || undefined);
@@ -804,9 +876,7 @@ function App() {
         }
       } catch (err: any) {
         console.log('[Session] Restore failed:', err.message);
-        setIsAuthenticated(false);
-        setAccountId('');
-        useAppStore.getState().clearAuth();
+        performSessionExpiredLogout('restore_failed');
         setAutoAuthError(err.message || 'Session restore failed');
       } finally {
         setIsAutoAuthenticating(false);
@@ -814,7 +884,7 @@ function App() {
     };
 
     restoreSession();
-  }, []);
+  }, [performSessionExpiredLogout]);
 
   // Foreground Focus Handler: Catch window 'visibilitychange' & 'focus' events.
   // Proactively refresh token if needed, trigger immediate WS reconnect & positions refresh.
@@ -837,6 +907,7 @@ function App() {
         window.dispatchEvent(new Event('rtx:force-refresh-positions'));
       } catch (err) {
         console.error('[App] Failed to refresh token or sync on foreground:', err);
+        performSessionExpiredLogout('refresh_failed');
       }
     };
 
@@ -853,7 +924,7 @@ function App() {
       window.removeEventListener('focus', handleForeground);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [performSessionExpiredLogout]);
 
   // Reactively read store accountId (changes when user clicks account in Navigator)
   const storeAccountId = useAppStore(state => state.accountId);

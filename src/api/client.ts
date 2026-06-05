@@ -101,15 +101,49 @@ const getRefreshToken = (): string | null => {
   return localStorage.getItem('refresh_token');
 };
 
+export const parseTokenExpiresAt = (expiresAt: unknown): number | null => {
+  if (expiresAt === undefined || expiresAt === null || expiresAt === '') return null;
+
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+    return expiresAt < 100000000000 ? expiresAt * 1000 : expiresAt;
+  }
+
+  const raw = String(expiresAt).trim();
+  if (/^\d+$/.test(raw)) {
+    const numeric = Number(raw);
+    return numeric < 100000000000 ? numeric * 1000 : numeric;
+  }
+
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+export const getStoredTokenExpiresAt = (): number | null => {
+  if (typeof window === 'undefined') return null;
+  return parseTokenExpiresAt(localStorage.getItem('token_expires_at'));
+};
+
+export const isStoredTokenExpired = (skewMs = 0): boolean => {
+  const expiresAt = getStoredTokenExpiresAt();
+  return Boolean(expiresAt && expiresAt <= Date.now() + skewMs);
+};
+
+const dispatchTokenUpdated = (): void => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event('auth:token-updated'));
+};
+
 // Set auth token in localStorage
 export const setToken = (token: string): void => {
   if (typeof window === 'undefined') return;
   localStorage.setItem('auth_token', token);
+  dispatchTokenUpdated();
 };
 
 export const setRefreshToken = (token: string): void => {
   if (typeof window === 'undefined') return;
   localStorage.setItem('refresh_token', token);
+  dispatchTokenUpdated();
 };
 
 // Remove auth tokens from localStorage
@@ -118,6 +152,7 @@ export const removeToken = (): void => {
   localStorage.removeItem('auth_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('token_expires_at');
+  dispatchTokenUpdated();
 };
 
 // Build request headers
@@ -280,8 +315,15 @@ const handleResponse = async <T>(response: Response, originalRequest?: RequestIn
             setRefreshToken(data.refresh_token);
           }
           if (data.expires_at) {
-            localStorage.setItem('token_expires_at', data.expires_at);
+            const expiresAt = parseTokenExpiresAt(data.expires_at);
+            localStorage.setItem('token_expires_at', String(expiresAt || data.expires_at));
+          } else if (data.expires_in) {
+            const expiresIn = Number(data.expires_in);
+            if (Number.isFinite(expiresIn)) {
+              localStorage.setItem('token_expires_at', String(Date.now() + expiresIn * 1000));
+            }
           }
+          dispatchTokenUpdated();
 
           processQueue(null, accessToken);
 
@@ -394,6 +436,12 @@ const buildRequestConfig = (
   signal: AbortSignal,
   body?: unknown
 ): RequestInit => {
+  if (!shouldSkipAuth && getToken() && isStoredTokenExpired()) {
+    removeToken();
+    dispatchUnauthorized();
+    throw new ApiError(401, 'Session Expired');
+  }
+
   const requestInit = toRequestInit(options);
   const config: RequestInit = {
     ...requestInit,

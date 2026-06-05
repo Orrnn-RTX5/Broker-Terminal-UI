@@ -46,6 +46,23 @@ export function mapBrokerError(errorStrOrCode: string): string {
   }
 }
 
+const parseTokenExpiryMs = (expiresAt: unknown): number | null => {
+  if (expiresAt === undefined || expiresAt === null || expiresAt === '') return null;
+
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+    return expiresAt < 100000000000 ? expiresAt * 1000 : expiresAt;
+  }
+
+  const raw = String(expiresAt).trim();
+  if (/^\d+$/.test(raw)) {
+    const numeric = Number(raw);
+    return numeric < 100000000000 ? numeric * 1000 : numeric;
+  }
+
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
 export class BrokerAPI {
   private refreshPromise: Promise<string> | null = null;
 
@@ -109,16 +126,15 @@ export class BrokerAPI {
       return accessToken;
     }
 
-    let expiresAtMs = 0;
-    if (/^\d+$/.test(expiresAtStr)) {
-      const num = parseInt(expiresAtStr, 10);
-      // Check if stored in seconds or milliseconds
-      expiresAtMs = num < 100000000000 ? num * 1000 : num;
-    } else {
-      expiresAtMs = Date.parse(expiresAtStr);
-    }
+    const expiresAtMs = parseTokenExpiryMs(expiresAtStr);
+    if (!expiresAtMs) return accessToken;
 
     const timeRemaining = expiresAtMs - Date.now();
+    if (timeRemaining <= 0) {
+      this.forceLogout('token_expired');
+      throw new Error('Session expired. Please log in again.');
+    }
+
     if (timeRemaining < 60 * 1000) {
       console.log(`[BrokerAPI] Proactive token refresh triggered. Time remaining: ${Math.round(timeRemaining / 1000)}s`);
       return this.coalesceRefresh(refreshToken);
@@ -157,21 +173,20 @@ export class BrokerAPI {
         if (data.refresh_token) {
           localStorage.setItem('refresh_token', data.refresh_token);
         }
-        if (data.expires_at) {
-          localStorage.setItem('token_expires_at', String(data.expires_at));
-        } else if (data.expires_in) {
-          localStorage.setItem('token_expires_at', String(Date.now() + data.expires_in * 1000));
+        const nextExpiresAt = parseTokenExpiryMs(data.expires_at) ||
+          (data.expires_in ? Date.now() + Number(data.expires_in) * 1000 : null);
+        if (nextExpiresAt) {
+          localStorage.setItem('token_expires_at', String(nextExpiresAt));
         }
 
         // Update global Zustand store
-        const expiresAtNum = data.expires_at ? (typeof data.expires_at === 'number' ? data.expires_at : Date.parse(data.expires_at)) : undefined;
-        useAppStore.getState().setAuthTokens(nextToken, data.refresh_token, expiresAtNum);
+        useAppStore.getState().setAuthTokens(nextToken, data.refresh_token, nextExpiresAt || undefined);
 
         console.log('[BrokerAPI] Proactive token refresh succeeded');
         return nextToken;
       } catch (err) {
         console.error('[BrokerAPI] Token refresh failed. Logging out...', err);
-        this.forceLogout();
+        this.forceLogout('refresh_failed');
         throw err;
       } finally {
         this.refreshPromise = null;
@@ -181,12 +196,12 @@ export class BrokerAPI {
     return this.refreshPromise;
   }
 
-  private forceLogout() {
+  private forceLogout(reason = 'session_expired') {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('token_expires_at');
     useAppStore.getState().logout();
-    window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: { reason } }));
   }
 
   // Handle Response Parsing & Error Code Mapping
