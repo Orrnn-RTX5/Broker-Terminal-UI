@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-// WelcomeTerminal removed — login gate eliminated, terminal opens directly
+import { WelcomeTerminal } from './components/WelcomeTerminal';
 
 import { TradingChart } from './components/TradingChart';
 import { DockWorkspace } from './components/dock/DockWorkspace';
@@ -89,6 +89,11 @@ const parseStoredTokenExpiryMs = (expiresAt: unknown): number | null => {
 const getStoredTokenExpiryMs = (): number | null => {
   if (typeof window === 'undefined') return null;
   return parseStoredTokenExpiryMs(localStorage.getItem('token_expires_at'));
+};
+
+const getStoredAuthToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
 };
 
 const hasTokenExpiryElapsed = (expiresAt: unknown): boolean => {
@@ -593,6 +598,7 @@ function App() {
   const activeAccountDataRef = useRef<number | null>(null);
   const accountIdRef = useRef(accountId);
   const isAuthenticatedRef = useRef(isAuthenticated);
+  const lastObservedAuthTokenRef = useRef<string | null>(getStoredAuthToken());
   const refreshPositionsInFlightRef = useRef<Promise<void> | null>(null);
   const refreshPositionsPendingRef = useRef<PendingPositionsRefresh | null>(null);
   const refreshHistoryInFlightRef = useRef<Promise<void> | null>(null);
@@ -627,11 +633,64 @@ function App() {
 
   const performSessionExpiredLogout = useCallback((reason = 'session_expired') => {
     console.warn(`[App] Logging out session: ${reason}`);
+    lastObservedAuthTokenRef.current = null;
     clearLocalAccountState();
     setIsAuthenticated(false);
     setAccountId('');
     useAppStore.getState().logout();
   }, [clearLocalAccountState]);
+
+  const validateStoredAuthSession = useCallback((reason = 'auth_token_missing'): boolean => {
+    const token = getStoredAuthToken();
+    if (token) {
+      lastObservedAuthTokenRef.current = token;
+      const expiryMs = parseStoredTokenExpiryMs(useAppStore.getState().tokenExpiresAt) || getStoredTokenExpiryMs();
+      if (hasTokenExpiryElapsed(expiryMs)) {
+        performSessionExpiredLogout('token_expired');
+        return false;
+      }
+      return true;
+    }
+
+    const storeState = useAppStore.getState();
+    const hadActiveSession = Boolean(
+      isAuthenticatedRef.current ||
+      storeState.isAuthenticated ||
+      lastObservedAuthTokenRef.current
+    );
+
+    if (hadActiveSession) {
+      performSessionExpiredLogout(reason);
+      return false;
+    }
+
+    return true;
+  }, [performSessionExpiredLogout]);
+
+  const handleLoginSuccess = useCallback((nextAccountId: string) => {
+    const loginId = parsePositiveInt(nextAccountId);
+    const token = getStoredAuthToken();
+
+    if (!loginId || !token) {
+      performSessionExpiredLogout('login_missing_token');
+      return;
+    }
+
+    lastObservedAuthTokenRef.current = token;
+    setIsAuthenticated(true);
+    setAccountId(String(loginId));
+
+    const storeState = useAppStore.getState();
+    if (!storeState.isAuthenticated || storeState.accountId !== String(loginId)) {
+      const refreshToken = localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token') || undefined;
+      const expiresAt = getStoredTokenExpiryMs() || undefined;
+      storeState.setAuthenticated(true, String(loginId), token, refreshToken, expiresAt);
+    }
+
+    import('./services/bootstrapApp')
+      .then(({ bootstrapApp }) => bootstrapApp(loginId))
+      .catch(console.error);
+  }, [performSessionExpiredLogout]);
 
   const getLiveTradingLogin = useCallback(() => {
     const state = useAppStore.getState();
@@ -769,10 +828,37 @@ function App() {
   useEffect(() => {
     const handleTokenUpdated = () => {
       setTokenSessionVersion((value) => value + 1);
+      validateStoredAuthSession('auth_token_missing');
     };
     window.addEventListener('auth:token-updated', handleTokenUpdated);
     return () => window.removeEventListener('auth:token-updated', handleTokenUpdated);
-  }, []);
+  }, [validateStoredAuthSession]);
+
+  useEffect(() => {
+    const authStorageKeys = new Set(['auth_token', 'refresh_token', 'token_expires_at']);
+    const handleStorage = (event: StorageEvent) => {
+      if (event.storageArea !== localStorage && event.storageArea !== sessionStorage) return;
+      if (event.key && !authStorageKeys.has(event.key)) return;
+
+      setTokenSessionVersion((value) => value + 1);
+      validateStoredAuthSession(event.key === 'auth_token' && !event.newValue
+        ? 'auth_token_removed'
+        : 'auth_storage_changed');
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [validateStoredAuthSession]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      validateStoredAuthSession('auth_token_removed');
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isAuthenticated, tokenSessionVersion, validateStoredAuthSession]);
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
@@ -892,11 +978,16 @@ function App() {
     const handleForeground = async () => {
       // Only execute if user is currently authenticated
       if (!isAuthenticatedRef.current) return;
+      if (!validateStoredAuthSession('auth_token_removed')) return;
 
       console.log('[App] App returned to foreground / focus. Checking token status...');
       try {
         // Proactively refresh token if expired or close to expiry (<60s)
-        await brokerApi.checkAndProactiveRefresh();
+        const activeToken = await brokerApi.checkAndProactiveRefresh();
+        if (!activeToken) {
+          performSessionExpiredLogout('auth_token_missing');
+          return;
+        }
 
         // Dispatch immediate reconnect event to trigger WS reconnect without waiting backoff
         console.log('[App] Dispatching immediate WebSocket reconnection event...');
@@ -924,7 +1015,7 @@ function App() {
       window.removeEventListener('focus', handleForeground);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [performSessionExpiredLogout]);
+  }, [performSessionExpiredLogout, validateStoredAuthSession]);
 
   // Reactively read store accountId (changes when user clicks account in Navigator)
   const storeAccountId = useAppStore(state => state.accountId);
@@ -2951,6 +3042,10 @@ function App() {
 
           {/* Global Confirm Dialog */}
           <ConfirmDialog />
+
+          {!isAuthenticated && !isAutoAuthenticating && (
+            <WelcomeTerminal onLogin={handleLoginSuccess} />
+          )}
 
           {/* Indicator Navigator (Insert > Indicators, toolbar button) */}
           <IndicatorNavigator

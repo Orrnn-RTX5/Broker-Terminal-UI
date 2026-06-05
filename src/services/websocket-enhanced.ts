@@ -254,7 +254,13 @@ export class EnhancedWebSocketService {
         if (event.code === 1008 || event.code === 401) {
           console.error('[WS] Authentication failed - clearing token');
           localStorage.removeItem('auth_token');
+          localStorage.removeItem('refresh_token');
+          localStorage.removeItem('token_expires_at');
+          sessionStorage.removeItem('auth_token');
+          sessionStorage.removeItem('refresh_token');
+          sessionStorage.removeItem('token_expires_at');
           window.dispatchEvent(new CustomEvent('ws-auth-failed'));
+          window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: { reason: 'websocket_auth_failed' } }));
           return;
         }
 

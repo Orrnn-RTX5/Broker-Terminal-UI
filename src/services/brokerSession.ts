@@ -29,6 +29,28 @@ type SessionChangeCallback = (reason: SessionChangeReason) => void;
 
 const sessionChangeListeners = new Set<SessionChangeCallback>();
 
+const emitAuthTokenUpdated = (): void => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event('auth:token-updated'));
+};
+
+const getBrowserStorage = (kind: 'localStorage' | 'sessionStorage'): Storage | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const storage = window[kind];
+    return storage && typeof storage.getItem === 'function' ? storage : null;
+  } catch {
+    return null;
+  }
+};
+
+const getLocalStorageItem = (key: string): string | null => getBrowserStorage('localStorage')?.getItem(key) ?? null;
+const setLocalStorageItem = (key: string, value: string): void => getBrowserStorage('localStorage')?.setItem(key, value);
+const removeLocalStorageItem = (key: string): void => getBrowserStorage('localStorage')?.removeItem(key);
+const getSessionStorageItem = (key: string): string | null => getBrowserStorage('sessionStorage')?.getItem(key) ?? null;
+const removeSessionStorageItem = (key: string): void => getBrowserStorage('sessionStorage')?.removeItem(key);
+
 const FORCE_HTTP_ONLY = import.meta.env.VITE_FORCE_HTTP_ONLY === 'true';
 const hasUrlScheme = (value: string): boolean => /^[a-z][a-z\d+.-]*:\/\//i.test(value);
 
@@ -38,7 +60,7 @@ const getRuntimePageProtocol = (): string => {
 };
 
 const shouldForceHttpProtocol = (): boolean =>
-  FORCE_HTTP_ONLY && getRuntimePageProtocol() !== 'https:';
+  (FORCE_HTTP_ONLY || isDesktopBackendTarget()) && getRuntimePageProtocol() !== 'https:';
 
 const getRuntimeProtocol = (): string => {
   if (shouldForceHttpProtocol()) return 'http:';
@@ -191,7 +213,7 @@ const getStoredUrlByKeys = (keys: string[]): string => {
   if (typeof window === 'undefined') return '';
 
   for (const key of keys) {
-    const value = (localStorage.getItem(key) || '').trim();
+    const value = (getLocalStorageItem(key) || '').trim();
     if (value) return value;
   }
 
@@ -200,15 +222,15 @@ const getStoredUrlByKeys = (keys: string[]): string => {
 
 const setOrRemove = (key: string, value: string): void => {
   if (value) {
-    localStorage.setItem(key, value);
+    setLocalStorageItem(key, value);
   } else {
-    localStorage.removeItem(key);
+    removeLocalStorageItem(key);
   }
 };
 
 const hasBrokerServerChanged = (nextServerUrl: string): boolean => {
   if (!nextServerUrl || typeof window === 'undefined') return false;
-  const currentServerUrl = normalizeOptionalMarketHttpUrl(localStorage.getItem('server_url'));
+  const currentServerUrl = normalizeOptionalMarketHttpUrl(getLocalStorageItem('server_url'));
   return Boolean(currentServerUrl && currentServerUrl !== nextServerUrl);
 };
 
@@ -294,9 +316,9 @@ const getCurrentValidMarketOrigin = (): string => {
   if (typeof window === 'undefined') return '';
 
   const httpCandidates = [
-    getHttpOriginFromHttpUrl(localStorage.getItem('backend_url')),
-    getHttpOriginFromHttpUrl(localStorage.getItem('server_url')),
-    getHttpOriginFromStoredHttpUrl(localStorage.getItem('rtx_broker_server')),
+    getHttpOriginFromHttpUrl(getLocalStorageItem('backend_url')),
+    getHttpOriginFromHttpUrl(getLocalStorageItem('server_url')),
+    getHttpOriginFromStoredHttpUrl(getLocalStorageItem('rtx_broker_server')),
   ];
 
   for (const candidate of httpCandidates) {
@@ -304,8 +326,8 @@ const getCurrentValidMarketOrigin = (): string => {
   }
 
   const wsCandidates = [
-    getHttpOriginFromWsUrl(localStorage.getItem('feed_url')),
-    getHttpOriginFromWsUrl(localStorage.getItem('ws_url')),
+    getHttpOriginFromWsUrl(getLocalStorageItem('feed_url')),
+    getHttpOriginFromWsUrl(getLocalStorageItem('ws_url')),
   ];
 
   for (const candidate of wsCandidates) {
@@ -318,8 +340,8 @@ const getCurrentValidMarketOrigin = (): string => {
 const isSameOrUnknownBroker = (nextBrokerId: string): boolean => {
   if (typeof window === 'undefined') return true;
   const currentBrokerId = String(
-    localStorage.getItem('broker_id')
-    || localStorage.getItem('rtx_broker_id')
+    getLocalStorageItem('broker_id')
+    || getLocalStorageItem('rtx_broker_id')
     || ''
   ).trim();
   return !currentBrokerId || !nextBrokerId || currentBrokerId === nextBrokerId;
@@ -358,7 +380,7 @@ const pickPersistedMarketOrigin = (
 const pickPersistedFeedUrl = (nextFeedUrl: string, nextWsUrl: string, hasToken: boolean): string => {
   if (typeof window === 'undefined') return nextFeedUrl;
 
-  const currentFeedUrl = normalizeOptionalWsUrl(localStorage.getItem('feed_url'));
+  const currentFeedUrl = normalizeOptionalWsUrl(getLocalStorageItem('feed_url'));
   const hasValidDiscoveryFeed = Boolean(currentFeedUrl && !isPort8091Url(currentFeedUrl));
   const nextLooksLikeBadLoginFeed = Boolean(
     (nextFeedUrl && isPort8091Url(nextFeedUrl))
@@ -383,12 +405,12 @@ const pickPersistedWsUrl = (
     return nextWsUrl;
   }
 
-  const currentWsUrl = normalizeOptionalWsUrl(localStorage.getItem('ws_url'));
+  const currentWsUrl = normalizeOptionalWsUrl(getLocalStorageItem('ws_url'));
   if (isValidMarketOrigin(currentWsUrl)) {
     return normalizeWsUrlToV2(currentWsUrl);
   }
 
-  const currentFeedUrl = normalizeOptionalWsUrl(localStorage.getItem('feed_url'));
+  const currentFeedUrl = normalizeOptionalWsUrl(getLocalStorageItem('feed_url'));
   if (isValidMarketOrigin(currentFeedUrl)) {
     return normalizeWsUrlToV2(currentFeedUrl);
   }
@@ -419,23 +441,26 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   const brokerChangedWithoutToken = !token && hasBrokerServerChanged(serverUrl);
 
   if (token) {
-    localStorage.setItem('auth_token', token);
+    setLocalStorageItem('auth_token', token);
+    emitAuthTokenUpdated();
   } else if (brokerChangedWithoutToken) {
-    localStorage.removeItem('auth_token');
+    removeLocalStorageItem('auth_token');
+    removeSessionStorageItem('auth_token');
+    emitAuthTokenUpdated();
   }
   if (brokerId) {
-    localStorage.setItem('broker_id', brokerId);
-    localStorage.setItem('rtx_broker_id', brokerId);
+    setLocalStorageItem('broker_id', brokerId);
+    setLocalStorageItem('rtx_broker_id', brokerId);
   }
-  if (backendUrl) localStorage.setItem('backend_url', backendUrl);
+  if (backendUrl) setLocalStorageItem('backend_url', backendUrl);
   if (serverUrl) {
-    localStorage.setItem('server_url', serverUrl);
-    localStorage.setItem('rtx_broker_server', serverUrl);
+    setLocalStorageItem('server_url', serverUrl);
+    setLocalStorageItem('rtx_broker_server', serverUrl);
   }
   setOrRemove('ws_url', wsUrl);
   setOrRemove('feed_url', feedUrl);
   setOrRemove('feed_status_url', feedStatusUrl);
-  if (logoUrl) localStorage.setItem('logo_url', logoUrl);
+  if (logoUrl) setLocalStorageItem('logo_url', logoUrl);
 
   emitSessionChange(token ? 'login' : 'broker_url_change');
 }
@@ -447,7 +472,7 @@ export function getServerUrl(): string {
   if (typeof window === 'undefined') return '';
   if (!isDesktopBackendTarget()) return getBackendTarget();
 
-  const raw = (localStorage.getItem('server_url') || '').trim().replace(/\/+$/, '');
+  const raw = (getLocalStorageItem('server_url') || '').trim().replace(/\/+$/, '');
   if (!raw) return getCurrentValidMarketOrigin();
 
   const normalized = normalizeOptionalMarketHttpUrl(raw);
@@ -464,7 +489,7 @@ export function getServerUrl(): string {
 /** Step 3 — Access token stored after successful login. */
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token') || null;
+  return getLocalStorageItem('auth_token') || getSessionStorageItem('auth_token') || null;
 }
 
 /** Current account login (numeric MT5 login). */
@@ -472,7 +497,7 @@ export function getAccountLogin(): number | null {
   if (typeof window === 'undefined') return null;
 
   // Zustand persists accountId in localStorage under 'trading-app-storage'
-  const storeRaw = localStorage.getItem('trading-app-storage');
+  const storeRaw = getLocalStorageItem('trading-app-storage');
   if (storeRaw) {
     try {
       const parsed = JSON.parse(storeRaw);
@@ -484,7 +509,7 @@ export function getAccountLogin(): number | null {
   // Fallback: direct keys
   const directKeys = ['rtx_saved_username', 'rtx_last_login'];
   for (const key of directKeys) {
-    const raw = localStorage.getItem(key);
+    const raw = getLocalStorageItem(key);
     const parsed = Number.parseInt(String(raw ?? ''), 10);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
   }
@@ -638,10 +663,10 @@ export function buildBrokerWsV2Uri(token?: string | null): string {
   const server = getRuntimeMarketOrigin();
   const activeToken = token !== undefined ? token : getAccessToken();
   const storedWsCandidate = typeof window !== 'undefined'
-    ? normalizeWsUrlToV2(localStorage.getItem('ws_url') || '')
+    ? normalizeWsUrlToV2(getLocalStorageItem('ws_url') || '')
     : '';
   const storedFeedCandidate = typeof window !== 'undefined'
-    ? normalizeWsUrlToV2(localStorage.getItem('feed_url') || '')
+    ? normalizeWsUrlToV2(getLocalStorageItem('feed_url') || '')
     : '';
   const storedWsUrl = pickStoredWsUrl([storedWsCandidate, storedFeedCandidate], server);
   const fallback = normalizeWsUrlToV2(

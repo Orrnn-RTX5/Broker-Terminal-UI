@@ -35,6 +35,17 @@ export const DEV_BROKER_DISCOVERY_PROXY_PREFIX = '/__broker_discovery';
 
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
+const getLocalStorageItem = (key: string): string | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const storage = window.localStorage;
+    return storage && typeof storage.getItem === 'function' ? storage.getItem(key) : null;
+  } catch {
+    return null;
+  }
+};
+
 const isElectronRuntime = (): boolean => {
   if (typeof window === 'undefined') return false;
   return Boolean((window as Window & { electronAPI?: unknown }).electronAPI)
@@ -133,14 +144,14 @@ const RTX5_API_URL = normalizeServerUrl(
 const getDynamicServerUrl = (): string => {
   if (typeof window === 'undefined') return '';
   const normalizedBroker = normalizeBrokerInfoForTarget({
-    broker_id: localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '',
-    broker_name: localStorage.getItem('broker_name') || '',
-    backend_url: localStorage.getItem('backend_url') || '',
-    market_api_url: localStorage.getItem('market_api_url') || '',
-    server_url: localStorage.getItem('server_url') || localStorage.getItem('rtx_broker_server') || '',
-    ws_url: localStorage.getItem('ws_url') || '',
-    feed_url: localStorage.getItem('feed_url') || '',
-    feed_ws_url: localStorage.getItem('feed_url') || '',
+    broker_id: getLocalStorageItem('broker_id') || getLocalStorageItem('rtx_broker_id') || '',
+    broker_name: getLocalStorageItem('broker_name') || '',
+    backend_url: getLocalStorageItem('backend_url') || '',
+    market_api_url: getLocalStorageItem('market_api_url') || '',
+    server_url: getLocalStorageItem('server_url') || getLocalStorageItem('rtx_broker_server') || '',
+    ws_url: getLocalStorageItem('ws_url') || '',
+    feed_url: getLocalStorageItem('feed_url') || '',
+    feed_ws_url: getLocalStorageItem('feed_url') || '',
   });
   return normalizeDynamicServerUrl(normalizedBroker.server_url || '');
 };
@@ -184,7 +195,7 @@ const getInitialHistoryBaseUrl = (): string => {
 
 const getInitialWsUrl = (): string => {
   if (typeof window !== 'undefined') {
-    const serverUrl = localStorage.getItem('server_url');
+    const serverUrl = getLocalStorageItem('server_url');
     if (serverUrl) {
       return buildBrokerWsV2Uri(null);
     }
@@ -200,7 +211,7 @@ const getInitialWsUrl = (): string => {
 
 const getInitialMarketWsUrl = (): string => {
   if (typeof window !== 'undefined') {
-    const serverUrl = localStorage.getItem('server_url');
+    const serverUrl = getLocalStorageItem('server_url');
     if (serverUrl) {
       return buildBrokerWsV2Uri(null);
     }
@@ -216,7 +227,7 @@ const getInitialMarketWsUrl = (): string => {
 
 const getInitialFixWsUrl = (): string => {
   if (typeof window !== 'undefined') {
-    const serverUrl = localStorage.getItem('server_url');
+    const serverUrl = getLocalStorageItem('server_url');
     if (serverUrl) {
       return buildBrokerWsV2Uri(null);
     }
@@ -232,7 +243,7 @@ const getInitialFixWsUrl = (): string => {
 
 const getInitialGeneralWsUrl = (): string => {
   if (typeof window !== 'undefined') {
-    const serverUrl = localStorage.getItem('server_url');
+    const serverUrl = getLocalStorageItem('server_url');
     if (serverUrl) {
       return buildBrokerWsV2Uri(null);
     }

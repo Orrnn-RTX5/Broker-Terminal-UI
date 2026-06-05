@@ -230,6 +230,11 @@ const clearLegacyCredentialStorage = () => {
   CREDENTIAL_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
 };
 
+const dispatchAuthTokenUpdated = () => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event('auth:token-updated'));
+};
+
 const sanitizeSavedAccount = (account: SavedAccount | (SavedAccount & { password?: unknown })): SavedAccount | null => {
   if (!account || typeof account !== 'object') return null;
   const { password: _password, ...safeAccount } = account as SavedAccount & { password?: unknown };
@@ -344,7 +349,7 @@ export const useAppStore = create<AppState>()(
             if (authToken) localStorage.setItem('auth_token', authToken);
             if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
             if (expiresAt) localStorage.setItem('token_expires_at', new Date(expiresAt).toISOString());
-            window.dispatchEvent(new Event('auth:token-updated'));
+            dispatchAuthTokenUpdated();
           }
           set((state) => ({
             authToken,
@@ -355,11 +360,30 @@ export const useAppStore = create<AppState>()(
 
         setIsRefreshing: (isRefreshing) => set({ isRefreshing }),
 
-        setAuthToken: (token) =>
-          set({ authToken: token }),
+        setAuthToken: (token) => {
+          if (typeof window !== 'undefined') {
+            if (token) {
+              localStorage.setItem('auth_token', token);
+            } else {
+              localStorage.removeItem('auth_token');
+            }
+            dispatchAuthTokenUpdated();
+          }
+          set({ authToken: token });
+        },
 
-        clearAuth: () =>
-          set({ isAuthenticated: false, accountId: null, authToken: null, refreshToken: null, tokenExpiresAt: null }),
+        clearAuth: () => {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('token_expires_at');
+            sessionStorage.removeItem('auth_token');
+            sessionStorage.removeItem('refresh_token');
+            sessionStorage.removeItem('token_expires_at');
+          }
+          set({ isAuthenticated: false, accountId: null, authToken: null, refreshToken: null, tokenExpiresAt: null });
+          dispatchAuthTokenUpdated();
+        },
 
         logout: () => {
           // Clear local storage items related to auth session only
@@ -367,6 +391,9 @@ export const useAppStore = create<AppState>()(
             localStorage.removeItem('auth_token');
             localStorage.removeItem('refresh_token');
             localStorage.removeItem('token_expires_at');
+            sessionStorage.removeItem('auth_token');
+            sessionStorage.removeItem('refresh_token');
+            sessionStorage.removeItem('token_expires_at');
             localStorage.removeItem('rtx_user');
             localStorage.removeItem('rtx_last_login');
             localStorage.removeItem('rtx_saved_username');
@@ -387,6 +414,7 @@ export const useAppStore = create<AppState>()(
             tradeApiStatus: initialState.tradeApiStatus,
             // savedAccounts intentionally NOT cleared — they persist across logout
           });
+          dispatchAuthTokenUpdated();
         },
 
         setTick: (symbol, tick) =>

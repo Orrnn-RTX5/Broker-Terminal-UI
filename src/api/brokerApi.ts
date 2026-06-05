@@ -118,9 +118,9 @@ export class BrokerAPI {
   public async checkAndProactiveRefresh(): Promise<string | null> {
     if (typeof window === 'undefined') return null;
 
-    const expiresAtStr = localStorage.getItem('token_expires_at');
-    const refreshToken = localStorage.getItem('refresh_token');
-    const accessToken = localStorage.getItem('auth_token');
+    const expiresAtStr = localStorage.getItem('token_expires_at') || sessionStorage.getItem('token_expires_at');
+    const refreshToken = localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
+    const accessToken = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
 
     if (!expiresAtStr || !refreshToken || !accessToken) {
       return accessToken;
@@ -200,6 +200,9 @@ export class BrokerAPI {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('token_expires_at');
+    sessionStorage.removeItem('auth_token');
+    sessionStorage.removeItem('refresh_token');
+    sessionStorage.removeItem('token_expires_at');
     useAppStore.getState().logout();
     window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: { reason } }));
   }
@@ -281,7 +284,7 @@ export class BrokerAPI {
       // Reactive 401 Handling & Retry Exactly Once
       if (response.status === 401 && !skipAuth) {
         console.warn(`[BrokerAPI] 401 Unauthorized received on ${endpoint}. Attempting reactive refresh...`);
-        const refreshToken = localStorage.getItem('refresh_token');
+        const refreshToken = localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
         if (refreshToken) {
           try {
             await this.coalesceRefresh(refreshToken);

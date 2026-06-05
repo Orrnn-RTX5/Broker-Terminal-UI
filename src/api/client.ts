@@ -91,14 +91,14 @@ export class ApiError extends Error {
 // Get auth token from localStorage
 const getToken = (): string | null => {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
+  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
 };
 
 export const getAuthToken = getToken;
 
 const getRefreshToken = (): string | null => {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('refresh_token');
+  return localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
 };
 
 export const parseTokenExpiresAt = (expiresAt: unknown): number | null => {
@@ -120,7 +120,7 @@ export const parseTokenExpiresAt = (expiresAt: unknown): number | null => {
 
 export const getStoredTokenExpiresAt = (): number | null => {
   if (typeof window === 'undefined') return null;
-  return parseTokenExpiresAt(localStorage.getItem('token_expires_at'));
+  return parseTokenExpiresAt(localStorage.getItem('token_expires_at') || sessionStorage.getItem('token_expires_at'));
 };
 
 export const isStoredTokenExpired = (skewMs = 0): boolean => {
@@ -152,6 +152,9 @@ export const removeToken = (): void => {
   localStorage.removeItem('auth_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('token_expires_at');
+  sessionStorage.removeItem('auth_token');
+  sessionStorage.removeItem('refresh_token');
+  sessionStorage.removeItem('token_expires_at');
   dispatchTokenUpdated();
 };
 

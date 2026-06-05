@@ -2,6 +2,59 @@ import '@testing-library/jest-dom'
 import { expect, afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
+const hasUsableStorage = (value: unknown): value is Storage => Boolean(
+  value &&
+  typeof (value as Storage).getItem === 'function' &&
+  typeof (value as Storage).setItem === 'function' &&
+  typeof (value as Storage).removeItem === 'function' &&
+  typeof (value as Storage).clear === 'function'
+)
+
+const createMemoryStorage = (): Storage => {
+  const store = new Map<string, string>()
+  return {
+    get length() {
+      return store.size
+    },
+    clear: vi.fn(() => store.clear()),
+    getItem: vi.fn((key: string) => store.get(String(key)) ?? null),
+    key: vi.fn((index: number) => Array.from(store.keys())[index] ?? null),
+    removeItem: vi.fn((key: string) => {
+      store.delete(String(key))
+    }),
+    setItem: vi.fn((key: string, value: string) => {
+      store.set(String(key), String(value))
+    }),
+  } as Storage
+}
+
+const installWindowStorageGlobal = (key: 'localStorage' | 'sessionStorage') => {
+  try {
+    const storage = hasUsableStorage(window[key]) ? window[key] : createMemoryStorage()
+    const current = (globalThis as Record<string, unknown>)[key]
+
+    if (!hasUsableStorage(window[key])) {
+      Object.defineProperty(window, key, {
+        value: storage,
+        configurable: true,
+      })
+    }
+
+    if (!hasUsableStorage(current)) {
+      Object.defineProperty(globalThis, key, {
+        value: storage,
+        configurable: true,
+      })
+      vi.stubGlobal(key, storage)
+    }
+  } catch {
+    // Ignore unavailable browser storage in non-browser test environments.
+  }
+}
+
+installWindowStorageGlobal('localStorage')
+installWindowStorageGlobal('sessionStorage')
+
 // Cleanup after each test
 afterEach(() => {
   cleanup()
