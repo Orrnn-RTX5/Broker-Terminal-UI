@@ -61,7 +61,7 @@ jobs:
         env:
           INFRA_REPO: ${{ github.repository_owner }}/ORRNN-RTX5-Broker-Infra
           INFRA_TOKEN: ${{ secrets.INFRA_REPO_DISPATCH_TOKEN }}
-          BROKER_ID: myprop-trade
+          BROKER_IDS: "myprop-trade grow-trading-academy"
           COMPONENT: webterminal
           IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           BROKER_SSH_PRIVATE_KEY: ${{ secrets.BROKER_SSH_PRIVATE_KEY }}
@@ -91,24 +91,27 @@ jobs:
           api_get scripts/deploy-broker.sh | jq -r '.content' | base64 -d > /tmp/deploy-broker.sh
           chmod +x /tmp/deploy-broker.sh
 
-          broker="$(jq -c --arg broker_id "$BROKER_ID" '.brokers[] | select(.id == $broker_id and .enabled == true)' /tmp/brokers.json)"
-          if [[ -z "$broker" ]]; then
-            echo "Broker '$BROKER_ID' is missing or disabled in $INFRA_REPO/brokers.json" >&2
-            exit 1
-          fi
-
-          host="$(jq -r '.ssh.host' <<<"$broker")"
-          user="$(jq -r '.ssh.user // "root"' <<<"$broker")"
-          port="$(jq -r '.ssh.port // 22' <<<"$broker")"
-          broker_b64="$(printf '%s' "$broker" | base64 -w0)"
-
           install -m 700 -d ~/.ssh
           printf '%s\n' "$BROKER_SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-          ssh_opts=(-i ~/.ssh/deploy_key -p "$port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30)
-          scp_opts=(-i ~/.ssh/deploy_key -P "$port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30)
-          ssh "${ssh_opts[@]}" "$user@$host" "mkdir -p /opt/rtx5-infra/scripts"
-          scp "${scp_opts[@]}" /tmp/deploy-broker.sh "$user@$host:/opt/rtx5-infra/scripts/deploy-broker.sh"
-          ssh "${ssh_opts[@]}" "$user@$host" \
-            "chmod +x /opt/rtx5-infra/scripts/deploy-broker.sh && BROKER_JSON_B64='$broker_b64' COMPONENT='$COMPONENT' IMAGE_REF='$IMAGE_REF' DRY_RUN='false' GHCR_USERNAME='$GHCR_USERNAME' GHCR_TOKEN='$GHCR_TOKEN' LETSENCRYPT_EMAIL='$LETSENCRYPT_EMAIL' /opt/rtx5-infra/scripts/deploy-broker.sh"
+          for broker_id in $BROKER_IDS; do
+            echo "Deploying $COMPONENT to broker=$broker_id"
+            broker="$(jq -c --arg broker_id "$broker_id" '.brokers[] | select(.id == $broker_id and .enabled == true)' /tmp/brokers.json)"
+            if [[ -z "$broker" ]]; then
+              echo "Broker '$broker_id' is missing or disabled in $INFRA_REPO/brokers.json" >&2
+              exit 1
+            fi
+
+            host="$(jq -r '.ssh.host' <<<"$broker")"
+            user="$(jq -r '.ssh.user // "root"' <<<"$broker")"
+            port="$(jq -r '.ssh.port // 22' <<<"$broker")"
+            broker_b64="$(printf '%s' "$broker" | base64 -w0)"
+
+            ssh_opts=(-i ~/.ssh/deploy_key -p "$port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30)
+            scp_opts=(-i ~/.ssh/deploy_key -P "$port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30)
+            ssh "${ssh_opts[@]}" "$user@$host" "mkdir -p /opt/rtx5-infra/scripts"
+            scp "${scp_opts[@]}" /tmp/deploy-broker.sh "$user@$host:/opt/rtx5-infra/scripts/deploy-broker.sh"
+            ssh "${ssh_opts[@]}" "$user@$host" \
+              "chmod +x /opt/rtx5-infra/scripts/deploy-broker.sh && BROKER_JSON_B64='$broker_b64' COMPONENT='$COMPONENT' IMAGE_REF='$IMAGE_REF' DRY_RUN='false' GHCR_USERNAME='$GHCR_USERNAME' GHCR_TOKEN='$GHCR_TOKEN' LETSENCRYPT_EMAIL='$LETSENCRYPT_EMAIL' /opt/rtx5-infra/scripts/deploy-broker.sh"
+          done
