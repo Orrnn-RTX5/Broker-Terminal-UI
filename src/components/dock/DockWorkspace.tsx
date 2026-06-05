@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { DockContainer, FloatingPanelsLayer, GlobalEdgeIndicators } from './DockContainer';
 import { TradingChart } from '../TradingChart';
@@ -17,7 +17,7 @@ import type { DockContainer as IDockContainer } from '../../services/dockManager
 interface DockWorkspaceProps {
     globalChartType: ChartType;
     globalTimeframe: Timeframe;
-    allSymbols: any[];
+    allSymbols: unknown[];
     selectedSymbol: string;
     onSymbolSelect: (symbol: string) => void;
     onClosePosition: (id: string | number) => void;
@@ -25,6 +25,16 @@ interface DockWorkspaceProps {
     onCancelOrder: (id: string | number) => void;
     onCloseBulk: (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => void;
 }
+
+const normalizeSymbolName = (value: unknown): string => String(value ?? '').trim().toUpperCase();
+
+const getInstrumentSymbolName = (instrument: unknown): string => {
+    if (instrument && typeof instrument === 'object') {
+        const record = instrument as Record<string, unknown>;
+        return normalizeSymbolName(record.symbol ?? record.name ?? record.id);
+    }
+    return normalizeSymbolName(instrument);
+};
 
 export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     globalChartType,
@@ -38,6 +48,15 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     onCloseBulk
 }) => {
     const [isInitialized, setIsInitialized] = useState(false);
+    const allowedSymbolSet = useMemo(() => {
+        return new Set((Array.isArray(allSymbols) ? allSymbols : []).map(getInstrumentSymbolName).filter(Boolean));
+    }, [allSymbols]);
+
+    const resolveAllowedSymbol = useCallback((value: unknown): string => {
+        const symbol = normalizeSymbolName(value);
+        if (!symbol || allowedSymbolSet.size === 0) return '';
+        return allowedSymbolSet.has(symbol) ? symbol : '';
+    }, [allowedSymbolSet]);
 
     useEffect(() => {
         setIsInitialized(true);
@@ -47,7 +66,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
 
     const renderPanel = useCallback((panel: DockPanelConfig, isActive: boolean) => {
         if (panel.component === 'Chart') {
-            const chartSymbol = panel.props?.symbol || 'BTCUSD';
+            const chartSymbol = resolveAllowedSymbol(panel.props?.symbol) || resolveAllowedSymbol(selectedSymbol);
             // Show placeholder when not authenticated
             if (!isAuthenticated) {
                 return (
@@ -71,7 +90,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                     onDrop={e => {
                         e.preventDefault();
                         e.currentTarget.style.background = '#0e0e12';
-                        const draggedSymbol = e.dataTransfer.getData('text/plain');
+                        const draggedSymbol = resolveAllowedSymbol(e.dataTransfer.getData('text/plain'));
                         if (draggedSymbol && draggedSymbol !== chartSymbol) {
                             useDockLayoutStore.getState().updatePanelProps(panel.id, {
                                 props: { ...panel.props, symbol: draggedSymbol },
@@ -80,17 +99,21 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                         }
                     }}
                 >
-                    <div className="rtx-chart-panel__canvas flex-1 w-full h-full relative" style={{ pointerEvents: 'auto' }}>
-                        <ErrorBoundary>
-                            <TradingChart
-                                key={`chart-${panel.id}-${chartSymbol}`}
-                                symbol={chartSymbol}
-                                timeframe={panel.props?.timeframe || globalTimeframe}
-                                chartType={globalChartType}
-                                panelId={panel.id}
-                            />
-                        </ErrorBoundary>
-                    </div>
+                    {chartSymbol ? (
+                        <div className="rtx-chart-panel__canvas flex-1 w-full h-full relative" style={{ pointerEvents: 'auto' }}>
+                            <ErrorBoundary>
+                                <TradingChart
+                                    key={`chart-${panel.id}-${chartSymbol}`}
+                                    symbol={chartSymbol}
+                                    timeframe={panel.props?.timeframe || globalTimeframe}
+                                    chartType={globalChartType}
+                                    panelId={panel.id}
+                                />
+                            </ErrorBoundary>
+                        </div>
+                    ) : (
+                        <div className="flex-1 w-full h-full min-h-0 min-w-0 bg-[#0e0e12]" />
+                    )}
                 </div>
             );
         }
@@ -139,7 +162,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => {
                         e.preventDefault();
-                        const draggedSymbol = e.dataTransfer.getData('text/plain');
+                        const draggedSymbol = resolveAllowedSymbol(e.dataTransfer.getData('text/plain'));
                         if (draggedSymbol) {
                             window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: draggedSymbol } }));
                         }
@@ -152,7 +175,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     }, [
         isAuthenticated,
         globalChartType, globalTimeframe,
-        allSymbols, selectedSymbol, onSymbolSelect,
+        allSymbols, selectedSymbol, onSymbolSelect, resolveAllowedSymbol,
         onClosePosition, onModifyPosition, onCancelOrder, onCloseBulk
     ]);
 

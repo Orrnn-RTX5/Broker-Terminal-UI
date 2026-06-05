@@ -295,10 +295,6 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   const showSpread = panelWidth >= 300;
   const showDaily  = panelWidth >= 380;
 
-  const liveTickSymbols = useMemo(() => {
-    return uniqueSymbols(Object.keys(liveTicks));
-  }, [liveTicks]);
-
   const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols(disabledSymbols)), [disabledSymbols]);
 
   const availableSymbols = useMemo(() => {
@@ -306,21 +302,20 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
       .map((item) => normalizeSymbol(String(item?.symbol ?? item?.name ?? item?.id ?? item)))
       .filter(Boolean);
     const fromApi = marketInstruments.map((item) => normalizeSymbol(item.symbol));
-    return uniqueSymbols([...fromApi, ...fromProps, ...liveTickSymbols])
+    return uniqueSymbols([...fromApi, ...fromProps])
       .filter((symbol) => !disabledSymbolSet.has(symbol))
       .sort((a, b) => a.localeCompare(b));
-  }, [allSymbols, disabledSymbolSet, liveTickSymbols, marketInstruments]);
+  }, [allSymbols, disabledSymbolSet, marketInstruments]);
 
   const defaultSymbols = useMemo(() => {
-    return availableSymbols.length > 0
-      ? availableSymbols
-      : uniqueSymbols(watchlistSymbols).filter((symbol) => !disabledSymbolSet.has(symbol));
-  }, [availableSymbols, disabledSymbolSet, watchlistSymbols]);
+    return availableSymbols;
+  }, [availableSymbols]);
+  const availableSymbolSet = useMemo(() => new Set(availableSymbols), [availableSymbols]);
 
   const rows = useMemo(() => {
     const sourceSymbols = manualSymbols ?? defaultSymbols;
     const visible = uniqueSymbols(sourceSymbols)
-      .filter((symbol) => !hiddenSymbols.has(symbol) && !disabledSymbolSet.has(symbol));
+      .filter((symbol) => availableSymbolSet.has(symbol) && !hiddenSymbols.has(symbol) && !disabledSymbolSet.has(symbol));
 
     if (sortMethod === 'name') {
       return [...visible].sort((a, b) => a.localeCompare(b));
@@ -330,7 +325,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     }
 
     return visible;
-  }, [defaultSymbols, disabledSymbolSet, hiddenSymbols, manualSymbols, sortMethod]);
+  }, [availableSymbolSet, defaultSymbols, disabledSymbolSet, hiddenSymbols, manualSymbols, sortMethod]);
 
   const visibleSymbolSet = useMemo(() => new Set(rows), [rows]);
 

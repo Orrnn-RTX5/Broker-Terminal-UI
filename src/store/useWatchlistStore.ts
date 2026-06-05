@@ -28,6 +28,7 @@ interface WatchlistState {
   removeSymbolFromWatchlist: (watchlistId: string, symbol: string) => void;
   reorderSymbols: (watchlistId: string, symbols: string[]) => void;
   moveSymbol: (fromWatchlistId: string, toWatchlistId: string, symbol: string) => void;
+  sanitizeSymbols: (allowedSymbols: string[]) => void;
   getActiveWatchlist: () => Watchlist | undefined;
   getWatchlistById: (id: string) => Watchlist | undefined;
 }
@@ -37,7 +38,7 @@ const DEFAULT_WATCHLISTS: Watchlist[] = [
   {
     id: 'majors',
     name: 'Majors',
-    symbols: ['EURCAD', 'GBPUSD', 'XAUUSD', 'BTCUSD'],
+    symbols: [],
     isDefault: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -45,7 +46,7 @@ const DEFAULT_WATCHLISTS: Watchlist[] = [
   {
     id: 'minors',
     name: 'Minors',
-    symbols: ['EURGBP', 'EURJPY', 'EURCHF', 'GBPJPY', 'AUDNZD', 'NZDUSD', 'AUDCAD', 'GBPAUD'],
+    symbols: [],
     isDefault: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -53,7 +54,7 @@ const DEFAULT_WATCHLISTS: Watchlist[] = [
   {
     id: 'crypto',
     name: 'Crypto',
-    symbols: ['BTCUSD', 'ETHUSD', 'XRPUSD', 'SOLUSD', 'BNBUSD'],
+    symbols: [],
     isDefault: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -61,7 +62,7 @@ const DEFAULT_WATCHLISTS: Watchlist[] = [
   {
     id: 'metals',
     name: 'Metals',
-    symbols: ['XAUUSD', 'XAGUSD', 'XPTUSD', 'XPDUSD'],
+    symbols: [],
     isDefault: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -205,6 +206,22 @@ export const useWatchlistStore = create<WatchlistState>()(
               }),
             };
           });
+        },
+
+        sanitizeSymbols: (allowedSymbols) => {
+          const allowedSet = new Set(
+            allowedSymbols
+              .map((symbol) => String(symbol || '').trim().toUpperCase())
+              .filter(Boolean)
+          );
+
+          set((state) => ({
+            watchlists: state.watchlists.map((watchlist) => ({
+              ...watchlist,
+              symbols: watchlist.symbols.filter((symbol) => allowedSet.has(String(symbol || '').trim().toUpperCase())),
+              updatedAt: Date.now(),
+            })),
+          }));
         },
 
         getActiveWatchlist: () => {

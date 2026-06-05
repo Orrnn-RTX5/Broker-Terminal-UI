@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 // WelcomeTerminal removed — login gate eliminated, terminal opens directly
 
 import { TradingChart } from './components/TradingChart';
@@ -67,6 +67,22 @@ import { useAlertStore } from './store/useAlertStore';
 const getAuthHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('auth_token');
   return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
+const SELECTED_SYMBOL_STORAGE_KEY = 'rtx5_selected_symbol';
+
+const normalizeSymbolName = (value: unknown): string => String(value ?? '').trim().toUpperCase();
+
+const getInstrumentSymbolName = (instrument: unknown): string => {
+  if (instrument && typeof instrument === 'object') {
+    const record = instrument as Record<string, unknown>;
+    return normalizeSymbolName(record.symbol ?? record.name ?? record.id);
+  }
+  return normalizeSymbolName(instrument);
+};
+
+const getAllowedSymbolNames = (symbols: unknown[]): string[] => {
+  return Array.from(new Set((Array.isArray(symbols) ? symbols : []).map(getInstrumentSymbolName).filter(Boolean)));
 };
 
 interface Tick {
@@ -519,9 +535,7 @@ function App() {
   });
   const [isAutoAuthenticating, setIsAutoAuthenticating] = useState(false);
   const [autoAuthError, setAutoAuthError] = useState<string | null>(null);
-  const [selectedSymbol, setSelectedSymbol] = useState<string>(() => {
-    return localStorage.getItem('rtx5_selected_symbol') || 'BTCUSD';
-  });
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('');
   const [positions, setPositions] = useState<Position[]>([]);
   const [account, setAccount] = useState<Account | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
@@ -555,6 +569,8 @@ function App() {
   const localTradeDataVersionRef = useRef(0);
   const optimisticClosedTicketsRef = useRef<Set<number>>(new Set());
   const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
+  const [hasLoadedSymbols, setHasLoadedSymbols] = useState(false);
+  const [allSymbols, setAllSymbols] = useState<unknown[]>([]);
 
   const [enableHistoricalData] = useState(true);
 
@@ -1000,21 +1016,36 @@ function App() {
     return null;
   }, []);
 
+  const allowedSymbolNames = useMemo(() => getAllowedSymbolNames(allSymbols), [allSymbols]);
+  const allowedSymbolsKey = allowedSymbolNames.join(',');
+  const allowedSymbolSet = useMemo(() => new Set(allowedSymbolNames), [allowedSymbolNames]);
+
+  const getAllowedSymbol = useCallback((symbol: unknown): string => {
+    const normalized = normalizeSymbolName(symbol);
+    if (!normalized || !hasLoadedSymbols || allowedSymbolNames.length === 0) return '';
+    return allowedSymbolSet.has(normalized) ? normalized : '';
+  }, [allowedSymbolNames.length, allowedSymbolSet, hasLoadedSymbols]);
+
   // Symbol select handler: dispatch openChart event for consistent MT5 behavior
   const handleSymbolSelect = useCallback((symbol: string) => {
-    setSelectedSymbol(symbol);
+    const allowedSymbol = getAllowedSymbol(symbol);
+    if (!allowedSymbol) return;
+    setSelectedSymbol(allowedSymbol);
     // Dispatch openChart. If the symbol already has a tab, we switch to it.
     // If not, we add it as a new tab.
-    window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol, newTab: true } }));
-  }, [timeframe]);
+    window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: allowedSymbol, newTab: true } }));
+  }, [getAllowedSymbol]);
 
   // Multi-Chart State (Now managed by DockManager)
   useEffect(() => {
     // Sync selected symbol to persistence
-    if (selectedSymbol) {
-      localStorage.setItem('rtx5_selected_symbol', selectedSymbol);
+    if (!hasLoadedSymbols) return;
+    if (selectedSymbol && allowedSymbolSet.has(normalizeSymbolName(selectedSymbol))) {
+      localStorage.setItem(SELECTED_SYMBOL_STORAGE_KEY, selectedSymbol);
+    } else {
+      localStorage.removeItem(SELECTED_SYMBOL_STORAGE_KEY);
     }
-  }, [selectedSymbol]);
+  }, [allowedSymbolSet, hasLoadedSymbols, selectedSymbol]);
 
   useEffect(() => {
     localStorage.setItem('rtx5_timeframe', timeframe);
@@ -1588,13 +1619,12 @@ function App() {
     const unsubscribers: Array<() => void> = [];
 
     const subscribeTimeout = setTimeout(() => {
-      const ALWAYS_SUBSCRIBED = ['EURCAD', 'GBPUSD', 'XAUUSD', 'BTCUSD'];
       const activeWatchlist = useWatchlistStore.getState().getActiveWatchlist();
       const watchlistSymbols = activeWatchlist?.symbols || [];
 
-      const symbolsToSubscribe = [...new Set([...ALWAYS_SUBSCRIBED, ...watchlistSymbols, selectedSymbol].filter(Boolean))]
+      const symbolsToSubscribe = [...new Set([...watchlistSymbols, selectedSymbol].filter(Boolean))]
         .map(symbol => String(symbol).trim().toUpperCase())
-        .filter(Boolean);
+        .filter(symbol => Boolean(symbol) && allowedSymbolSet.has(symbol));
 
       console.log(`[WS] Connected! Subscribing to ${symbolsToSubscribe.length} v2 market channels from watchlist: ${activeWatchlist?.name || 'default'}`);
 
@@ -1604,8 +1634,8 @@ function App() {
           useMarketDataStore.getState().subscribeSymbol(symbol);
         });
 
-        const selected = String(selectedSymbol || '').trim().toUpperCase();
-        if (selected) {
+        const selected = normalizeSymbolName(selectedSymbol);
+        if (selected && allowedSymbolSet.has(selected)) {
           unsubscribers.push(subscribe(`candles.${selected}.${toV2Timeframe(timeframe as string)}`, () => undefined));
           unsubscribers.push(subscribe(`depth.${selected}`, () => undefined));
         }
@@ -1626,6 +1656,8 @@ function App() {
     subscribe,
     selectedSymbol,
     timeframe,
+    allowedSymbolsKey,
+    allowedSymbolSet,
     useWatchlistStore.getState().activeWatchlistId,
     useWatchlistStore.getState().getActiveWatchlist()?.symbols.join(',')
   ]);
@@ -1955,7 +1987,8 @@ function App() {
     setOrderLoading(true);
     try {
       const side = order.type.toUpperCase() as 'BUY' | 'SELL';
-      const submitSymbol = order.symbol || orderPanelSymbol || selectedSymbol;
+      const submitSymbol = getAllowedSymbol(order.symbol) || getAllowedSymbol(orderPanelSymbol) || selectedSymbol;
+      if (!submitSymbol) return;
       const loginId = getLiveTradingLogin();
       if (!loginId) return;
 
@@ -1974,7 +2007,7 @@ function App() {
     } finally {
       setOrderLoading(false);
     }
-  }, [getLiveTradingLogin, orderPanelSymbol, selectedSymbol, refreshPositions, refreshOrdersAndHistory]);
+  }, [getAllowedSymbol, getLiveTradingLogin, orderPanelSymbol, selectedSymbol, refreshPositions, refreshOrdersAndHistory]);
 
   const closePosition = useCallback(async (tradeId: number, volume?: number) => {
     if (volume !== undefined) {
@@ -1997,34 +2030,95 @@ function App() {
   }, [clearOptimisticClosedTickets, getLiveTradingLogin, markLocalTradeMutation, refreshPositions]);
 
   // Fetch symbols from backend
-  const [allSymbols, setAllSymbols] = useState<any[]>([]);
-
   useEffect(() => {
     if (!isAuthenticated) {
       setAllSymbols([]);
       setIsLoadingSymbols(false);
+      setHasLoadedSymbols(false);
       return;
     }
 
     setIsLoadingSymbols(true);
+    setHasLoadedSymbols(false);
     api.market.getSymbols()
       .then(data => {
-        const symbols = Array.isArray(data) ? data : [];
+        const symbols = (Array.isArray(data) ? data : []).filter(item => Boolean(getInstrumentSymbolName(item)));
+        const nextAllowedSymbols = getAllowedSymbolNames(symbols);
+        const nextAllowedSet = new Set(nextAllowedSymbols);
         if (symbols.length > 0) {
           setAllSymbols(symbols);
-          if (!selectedSymbol) {
-            setSelectedSymbol(symbols[0].name);
-          }
+          useWatchlistStore.getState().sanitizeSymbols(nextAllowedSymbols);
+          setSelectedSymbol(prev => {
+            const current = normalizeSymbolName(prev);
+            if (current && nextAllowedSet.has(current)) return current;
+
+            const saved = normalizeSymbolName(localStorage.getItem(SELECTED_SYMBOL_STORAGE_KEY));
+            if (saved && nextAllowedSet.has(saved)) return saved;
+
+            localStorage.removeItem(SELECTED_SYMBOL_STORAGE_KEY);
+            return nextAllowedSymbols[0] || '';
+          });
         } else {
           setAllSymbols([]);
+          setSelectedSymbol('');
+          localStorage.removeItem(SELECTED_SYMBOL_STORAGE_KEY);
         }
       })
       .catch(err => {
         console.error('Failed to fetch symbols:', err);
         setAllSymbols([]);
+        setSelectedSymbol('');
+        localStorage.removeItem(SELECTED_SYMBOL_STORAGE_KEY);
       })
-      .finally(() => setIsLoadingSymbols(false));
-  }, [isAuthenticated, selectedSymbol]);
+      .finally(() => {
+        setHasLoadedSymbols(true);
+        setIsLoadingSymbols(false);
+      });
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!hasLoadedSymbols || allowedSymbolNames.length === 0) return;
+
+    const fallbackSymbol = allowedSymbolSet.has(normalizeSymbolName(selectedSymbol))
+      ? normalizeSymbolName(selectedSymbol)
+      : allowedSymbolNames[0];
+    if (!fallbackSymbol) return;
+
+    const store = useDockLayoutStore.getState();
+    const layout = store.layout;
+    const updates: Array<{ id: string; props: Record<string, unknown>; title: string }> = [];
+
+    const collectInvalidChartPanels = (container: any) => {
+      if (!container?.children) return;
+      for (const child of container.children) {
+        if (child?.children) {
+          collectInvalidChartPanels(child);
+          continue;
+        }
+
+        if (child?.component !== 'Chart') continue;
+        const chartSymbol = normalizeSymbolName(child.props?.symbol ?? child.title?.split(',')[0]);
+        if (chartSymbol && allowedSymbolSet.has(chartSymbol)) continue;
+
+        const nextTimeframe = child.props?.timeframe || timeframe;
+        updates.push({
+          id: child.id,
+          props: { ...child.props, symbol: fallbackSymbol, timeframe: nextTimeframe },
+          title: `${fallbackSymbol},${nextTimeframe}`,
+        });
+      }
+    };
+
+    collectInvalidChartPanels(layout.root);
+    layout.floatingPanels?.forEach(collectInvalidChartPanels);
+
+    updates.forEach(update => {
+      store.updatePanelProps(update.id, {
+        props: update.props,
+        title: update.title,
+      });
+    });
+  }, [allowedSymbolNames, allowedSymbolSet, hasLoadedSymbols, selectedSymbol, timeframe]);
 
 
   useEffect(() => {
@@ -2092,13 +2186,16 @@ function App() {
 
   // Keyboard shortcut handlers
   const handleOpenOrderPanel = useCallback((symbol: string, price: { bid: number; ask: number }) => {
+    const requestedSymbol = normalizeSymbolName(symbol);
+    const allowedSymbol = requestedSymbol ? getAllowedSymbol(requestedSymbol) : selectedSymbol;
+    if (!allowedSymbol) return;
     setOrderPanelOpen(prev => {
       if (prev) return false;
-      setOrderPanelSymbol(symbol);
+      setOrderPanelSymbol(allowedSymbol);
       setOrderPanelPrice(price);
       return true;
     });
-  }, []);
+  }, [getAllowedSymbol, selectedSymbol]);
 
   const handleQuickBuy = useCallback(() => {
     if (selectedSymbol && !orderLoading) {
@@ -2113,9 +2210,12 @@ function App() {
   }, [selectedSymbol, orderLoading, placeOrder]);
 
   const handleOpenDOM = useCallback((symbolOrEvent: string | CustomEvent) => {
-    const symbol = typeof symbolOrEvent === 'string' 
+    const requestedSymbol = typeof symbolOrEvent === 'string'
       ? symbolOrEvent 
       : (symbolOrEvent.detail?.symbol || selectedSymbol);
+    const hasRequestedSymbol = Boolean(normalizeSymbolName(requestedSymbol));
+    const symbol = hasRequestedSymbol ? getAllowedSymbol(requestedSymbol) : selectedSymbol;
+    if (!symbol) return;
     
     if (showDOM && domSymbol === symbol) {
       setShowDOM(false);
@@ -2124,7 +2224,7 @@ function App() {
       setDomPos({ x: 620, y: 56 }); // Enforce fixed MT5 position
       setShowDOM(true);
     }
-  }, [selectedSymbol, showDOM, domSymbol]);
+  }, [getAllowedSymbol, selectedSymbol, showDOM, domSymbol]);
 
   // Workspace handlers
   const handleSaveWorkspace = useCallback(() => {
@@ -2184,7 +2284,7 @@ function App() {
       }
 
       const chartData = {
-        symbol: selectedSymbol || 'BTCUSD',
+        symbol: selectedSymbol,
         timeframe: timeframe as string || 'M1',
         dateRange: {
           from: new Date(Date.now() - 24 * 60 * 60 * 1000),
@@ -2223,7 +2323,8 @@ function App() {
 
     // 2. Chart & Navigation Handlers
     const handleOpenChart = (e: CustomEvent) => {
-      const { symbol } = e.detail;
+      const symbol = getAllowedSymbol(e.detail?.symbol);
+      if (!symbol) return;
       const newTab = e.detail?.newTab === true;
       const store = useDockLayoutStore.getState();
       const layout = store.layout;
@@ -2339,9 +2440,11 @@ function App() {
     };
 
     const handleOpenOrderDialog = (e: CustomEvent) => {
-      const { symbol } = e.detail;
+      const requestedSymbol = normalizeSymbolName(e.detail?.symbol);
+      const symbol = requestedSymbol ? getAllowedSymbol(requestedSymbol) : selectedSymbol;
+      if (!symbol) return;
       const tick = useAppStore.getState().ticks[symbol];
-      setOrderPanelSymbol(symbol || selectedSymbol);
+      setOrderPanelSymbol(symbol);
       setOrderPanelPrice({ bid: tick?.bid || 0, ask: tick?.ask || 0 });
       setOrderPanelOpen(true);
     };
@@ -2363,7 +2466,8 @@ function App() {
 
     const handleChartSymbolChanged = (e: CustomEvent) => {
       const { symbol: sym, timeframe: tf } = e.detail || {};
-      if (sym) setSelectedSymbol(sym);
+      const allowedSymbol = getAllowedSymbol(sym);
+      if (sym && allowedSymbol) setSelectedSymbol(allowedSymbol);
       if (tf) setTimeframe(tf);
     };
 
@@ -2446,7 +2550,9 @@ function App() {
 
     const handleQuickTrade = (e: CustomEvent) => {
       const { side, symbol: tradeSymbol } = e.detail;
-      if (tradeSymbol) setSelectedSymbol(tradeSymbol);
+      const allowedSymbol = getAllowedSymbol(tradeSymbol);
+      if (tradeSymbol && !allowedSymbol) return;
+      if (allowedSymbol) setSelectedSymbol(allowedSymbol);
       placeOrder(side);
     };
 
@@ -2514,7 +2620,7 @@ function App() {
     };
   }, [
     selectedSymbol, timeframe, placeOrder, handleOpenDOM, 
-    handleSaveWorkspace, handleOpenDataFolder, handlePrintChart
+    handleSaveWorkspace, handleOpenDataFolder, handlePrintChart, getAllowedSymbol
   ]);
 
 

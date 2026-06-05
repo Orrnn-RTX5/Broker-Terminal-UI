@@ -110,11 +110,11 @@ export class DockManager {
             children: [
               // Charts area (75% of center main)
               {
-                id: 'chart-btcusd-container', 
+                id: 'chart-default-container',
                 type: 'panel',
-                title: `BTCUSD,${DEFAULT_CHART_TIMEFRAME}`,
+                title: `Chart,${DEFAULT_CHART_TIMEFRAME}`,
                 component: 'Chart',
-                props: { symbol: 'BTCUSD', timeframe: DEFAULT_CHART_TIMEFRAME },
+                props: { timeframe: DEFAULT_CHART_TIMEFRAME },
                 ratio: 0.75,
                 closable: true,
                 floatable: true,
@@ -786,7 +786,7 @@ export class DockManager {
 
               if (child?.component !== 'Chart') continue;
 
-              const symbol = child.props?.symbol || child.title?.split(',')[0] || 'BTCUSD';
+              const symbol = child.props?.symbol || child.title?.split(',')[0] || '';
               const currentTimeframe = child.props?.timeframe;
 
               if (!currentTimeframe || currentTimeframe === 'M1') {
@@ -796,7 +796,9 @@ export class DockManager {
                 };
 
                 if (!child.title || /,M1$/i.test(child.title)) {
-                  child.title = `${symbol},${DEFAULT_CHART_TIMEFRAME}`;
+                  child.title = symbol
+                    ? `${symbol},${DEFAULT_CHART_TIMEFRAME}`
+                    : `Chart,${DEFAULT_CHART_TIMEFRAME}`;
                 }
               }
             }
