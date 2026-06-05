@@ -131,7 +131,7 @@ const ServerTab = () => {
                 <label className="text-right text-zinc-400">Server:</label>
                 <input
                     type="text"
-                    value="FlexyMarkets-Server"
+                    value={server.serverName || "RTX 5 Web Terminal"}
                     readOnly
                     className="w-full bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none cursor-not-allowed opacity-80 text-zinc-400"
                 />

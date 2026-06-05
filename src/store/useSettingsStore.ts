@@ -157,7 +157,7 @@ type SettingsStore = SettingsState & SettingsActions;
 // Default Settings
 const defaultSettings: SettingsState = {
   server: {
-    serverName: 'FlexyMarkets-Server',
+    serverName: 'RTX 5 Web Terminal',
     proxyEnabled: false,
     keepPersonalSettings: true,
     enableNews: true,

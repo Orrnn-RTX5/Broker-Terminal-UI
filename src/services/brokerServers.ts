@@ -7,10 +7,12 @@ import {
 } from '../config/backendTarget.js';
 import type { BrokerServer } from '../types/api';
 
-export const DEFAULT_BROKER_SERVER = 'FlexyMarkets-Server';
+export const DEFAULT_BROKER_SERVER = 'RTX 5 Web Terminal';
 export const BROKER_SERVER_STORAGE_KEY = 'rtx_broker_server';
 
 const normalizeServerName = (value: unknown): string => String(value || '').trim();
+const isDefaultDisplayServer = (value: string): boolean =>
+  normalizeServerName(value).toLowerCase() === DEFAULT_BROKER_SERVER.toLowerCase();
 const brokerServerRegistry = new Map<string, BrokerServer>();
 
 export interface LoginBrokerTarget {
@@ -91,6 +93,10 @@ const looksLikeBrokerServerAddress = (value: string): boolean => {
 
 export const resolveLoginBrokerTarget = (serverInput: string): LoginBrokerTarget => {
   const displayValue = normalizeServerName(serverInput) || DEFAULT_BROKER_SERVER;
+
+  if (isDefaultDisplayServer(displayValue)) {
+    return { displayValue };
+  }
 
   if (looksLikeBrokerServerAddress(displayValue)) {
     return { displayValue, server: displayValue };

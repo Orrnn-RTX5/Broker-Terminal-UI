@@ -42,7 +42,7 @@ import { drawingManager } from '../../services/drawingManager';
 import { captureFullPage } from '../../services/screenshotService';
 
 const WEB_TERMINAL_TITLE = 'RTX 5 Web Terminal';
-const DEFAULT_BROKER_SERVER = 'FlexyMarkets-Server';
+const DEFAULT_BROKER_SERVER = WEB_TERMINAL_TITLE;
 
 const getLogoutBase = (): string => {
   const fallback = normalizeServerUrl(RTX5_API_URL || import.meta.env.VITE_API_URL || '');
