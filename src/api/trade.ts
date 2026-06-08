@@ -1,4 +1,4 @@
-import { API_HISTORY_BASE_URL, API_V2_BASE_URL } from '../config/api';
+import { API_V2_BASE_URL } from '../config/api';
 import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
 import type {
   Account,
@@ -57,8 +57,7 @@ const v2Options = (options?: ApiRequestOptions): ApiRequestOptions => ({
 
 const historyOptions = (options?: ApiRequestOptions): ApiRequestOptions => ({
   ...options,
-  baseUrl: options?.baseUrl || API_HISTORY_BASE_URL,
-  skipAuth: options?.skipAuth ?? true,
+  baseUrl: options?.baseUrl || API_V2_BASE_URL,
 });
 
 const getApiRootBaseUrl = (): string => API_V2_BASE_URL.replace(/\/api\/v2\/?$/, '');
@@ -80,12 +79,15 @@ const symbolEndpointOptions = (endpoint: string, options?: ApiRequestOptions): {
   };
 };
 
-const extractInstrumentRows = (payload: any): Instrument[] => {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.symbols)) return payload.symbols;
-  if (Array.isArray(payload?.instruments)) return payload.instruments;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.result)) return payload.result;
+const extractInstrumentRows = (payload: unknown): Instrument[] => {
+  if (Array.isArray(payload)) return payload as Instrument[];
+  if (!payload || typeof payload !== 'object') return [];
+
+  const record = payload as Record<string, unknown>;
+  if (Array.isArray(record.symbols)) return record.symbols as Instrument[];
+  if (Array.isArray(record.instruments)) return record.instruments as Instrument[];
+  if (Array.isArray(record.data)) return record.data as Instrument[];
+  if (Array.isArray(record.result)) return record.result as Instrument[];
   return [];
 };
 
@@ -107,7 +109,7 @@ const normalizeInstrumentRow = (instrument: Instrument): Instrument | null => {
   };
 };
 
-const SYMBOL_ENDPOINTS = ['/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols', '/api/v2/instruments'];
+const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols'];
 
 const persistAuth = (response: AuthTokenResponse): AuthTokenResponse => {
   const token = response.access_token || response.token;
@@ -140,6 +142,56 @@ const normalizeLoginRequest = (credentials: AuthLoginRequest): AuthLoginRequest 
     ...(credentials.broker_id ? { broker_id: credentials.broker_id } : {}),
   };
 };
+
+type PendingOrderPayload = {
+  account_login: number;
+  symbol: string;
+  side: PlacePendingOrderRequest['side'];
+  volume: number;
+  type: PlacePendingOrderRequest['type'];
+  price: number;
+  sl?: number;
+  tp?: number;
+  expiry?: number;
+  comment?: string;
+  trailing_stop?: number;
+  trailing_step?: number;
+  magic?: number;
+};
+
+type ModifyPendingOrderPayload = {
+  price?: number;
+  sl?: number;
+  tp?: number;
+  expiry?: number;
+  trailing_stop?: number;
+  trailing_step?: number;
+};
+
+const normalizePendingOrderRequest = (order: PlacePendingOrderRequest): PendingOrderPayload => ({
+  account_login: order.account_login ?? order.login,
+  symbol: order.symbol,
+  side: order.side,
+  volume: order.volume,
+  type: order.type,
+  price: order.price,
+  sl: order.sl ?? order.price_sl,
+  tp: order.tp ?? order.price_tp,
+  expiry: order.expiry ?? order.expiration,
+  comment: order.comment,
+  trailing_stop: order.trailing_stop,
+  trailing_step: order.trailing_step,
+  magic: order.magic,
+});
+
+const normalizeModifyPendingOrderRequest = (changes: ModifyPendingOrderRequest): ModifyPendingOrderPayload => ({
+  price: changes.price,
+  sl: changes.sl ?? changes.price_sl,
+  tp: changes.tp ?? changes.price_tp,
+  expiry: changes.expiry ?? changes.expiration,
+  trailing_stop: changes.trailing_stop,
+  trailing_step: changes.trailing_step,
+});
 
 export const authV2Api = {
   login: async (credentials: AuthLoginRequest, options?: ApiRequestOptions) => {
@@ -236,25 +288,11 @@ export const historyV2Api = {
   getCandles: (symbol: string, params?: HistoryCandleParams, options?: ApiRequestOptions) =>
     apiClient.get<HistoryCandle[]>(`/candles/${encodeURIComponent(symbol)}`, historyOptions({ ...options, params })),
 
-  getLatestCandle: async (symbol: string, tf?: HistoryCandleParams['tf'], options?: ApiRequestOptions) => {
-    try {
-      return await apiClient.get<HistoryCandle>(`/candles/${encodeURIComponent(symbol)}/latest`, historyOptions({
-        ...options,
-        params: { ...options?.params, tf },
-      }));
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status !== 502) {
-        throw error;
-      }
-
-      const fallback = await marketV2Api.getCandles(symbol, {
-        timeframe: tf,
-        limit: 5,
-      }, options);
-      const latest = Array.isArray(fallback) ? fallback.at(-1) : undefined;
-      if (latest) return latest as HistoryCandle;
-      throw error;
-    }
+  getLatestCandle: async (symbol: string, timeframe?: HistoryCandleParams['timeframe'], options?: ApiRequestOptions) => {
+    const candles = await historyV2Api.getCandles(symbol, { timeframe, limit: 5 }, options);
+    const latest = Array.isArray(candles) ? candles.at(-1) : undefined;
+    if (latest) return latest;
+    throw new ApiError(404, 'No candles returned by /api/v2/candles');
   },
 
   getTicks: (symbol: string, params: HistoryTickParams, options?: ApiRequestOptions) =>
@@ -316,7 +354,7 @@ export const tradingV2Api = {
     apiClient.get<Order[]>(`/orders/${login}`, v2Options({ ...options, params })),
 
   placePendingOrder: (order: PlacePendingOrderRequest, options?: ApiRequestOptions) =>
-    apiClient.post<PendingOrder>('/orders/pending', order, v2Options(options)),
+    apiClient.post<PendingOrder>('/orders/pending', normalizePendingOrderRequest(order), v2Options(options)),
 
   getPendingOrders: (login: number | string, options?: ApiRequestOptions) =>
     apiClient.get<PendingOrder[]>(`/orders/pending/${login}`, v2Options(options)),
@@ -325,7 +363,7 @@ export const tradingV2Api = {
     apiClient.delete<{ message?: string }>(`/orders/pending/${ticket}`, v2Options(options)),
 
   modifyPendingOrder: (ticket: number | string, changes: ModifyPendingOrderRequest, options?: ApiRequestOptions) =>
-    apiClient.put<PendingOrder>(`/orders/pending/${ticket}`, changes, v2Options(options)),
+    apiClient.put<PendingOrder>(`/orders/pending/${ticket}`, normalizeModifyPendingOrderRequest(changes), v2Options(options)),
 
   placeOco: (order: PlaceOcoRequest, options?: ApiRequestOptions) =>
     apiClient.post<OcoPair>('/orders/oco', order, v2Options(options)),

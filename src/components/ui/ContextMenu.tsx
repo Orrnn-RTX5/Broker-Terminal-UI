@@ -672,6 +672,23 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   ) : null;
 
   if (children) {
+    if (React.isValidElement<{ onContextMenu?: React.MouseEventHandler }>(children)) {
+      const existingContextMenu = children.props.onContextMenu;
+      return (
+        <>
+          {React.cloneElement(children, {
+            onContextMenu: (event: React.MouseEvent) => {
+              existingContextMenu?.(event);
+              if (!event.defaultPrevented) {
+                handleContextMenu(event);
+              }
+            },
+          })}
+          {menuContent}
+        </>
+      );
+    }
+
     return (
       <div onContextMenu={handleContextMenu} className="contents">
         {children}

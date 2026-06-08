@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getQuoteSocketManager } from '../services/quoteSocketManager';
 import { useAppStore } from '../store/useAppStore';
 import { getAccessToken, getServerUrl, onSessionChange } from '../services/brokerSession';
+import { debugLog } from '../utils/debugLogging';
 
 const normalizeSymbol = (v: unknown): string =>
   typeof v === 'string' ? v.trim().toUpperCase() : '';
@@ -46,17 +47,18 @@ export function useQuoteSubscription(
   const canSubscribe = isAuthenticated || storedBrokerSessionReady;
 
   useEffect(() => {
-    console.log(`[useQuoteSubscription] effect - isAuthenticated=${isAuthenticated}, storedSession=${storedBrokerSessionReady}, symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
+    const manager = managerRef.current;
+    debugLog(`[useQuoteSubscription] effect - isAuthenticated=${isAuthenticated}, storedSession=${storedBrokerSessionReady}, symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
 
     if (!canSubscribe || normalizedSymbols.length === 0) {
-      managerRef.current.removeDemand(sourceId);
+      manager.removeDemand(sourceId);
       return;
     }
 
-    managerRef.current.setDemand(sourceId, normalizedSymbols);
+    manager.setDemand(sourceId, normalizedSymbols);
 
     return () => {
-      managerRef.current.removeDemand(sourceId);
+      manager.removeDemand(sourceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedSymbols.join('|'), sourceId, canSubscribe, storeAuthToken, sessionRevision]);

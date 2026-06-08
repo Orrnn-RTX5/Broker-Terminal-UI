@@ -5,7 +5,7 @@
  * Account data flows through Zustand store (useAppStore).
  *
  * Usage:
- *   const { account, isConnected } = useLiveAccountState(900001);
+ *   const { account, isConnected } = useLiveAccountState(100001);
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';

@@ -1,5 +1,15 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const isAllowedExternalUrl = (value) => {
+    if (typeof value !== 'string') return false;
+    try {
+        const parsed = new URL(value);
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    } catch {
+        return false;
+    }
+};
+
 contextBridge.exposeInMainWorld('electron', {
     // App version from package.json
     appVersion: ipcRenderer.sendSync('get-app-version'),
@@ -7,7 +17,10 @@ contextBridge.exposeInMainWorld('electron', {
     // Shell utilities
     shell: {
         openPath: (path) => ipcRenderer.invoke('shell-open-path', path),
-        openExternal: (url) => ipcRenderer.invoke('shell-open-external', url),
+        openExternal: (url) => {
+            if (!isAllowedExternalUrl(url)) return Promise.resolve(false);
+            return ipcRenderer.invoke('shell-open-external', url);
+        },
     },
 
     // Window controls

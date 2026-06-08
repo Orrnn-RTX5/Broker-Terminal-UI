@@ -382,11 +382,14 @@ export interface Order {
 
 export interface PlaceOrderRequest {
   login: number;
+  account_login?: number;
   symbol: string;
   side: TradeSide;
   volume: number;
   price_sl?: number;
   price_tp?: number;
+  sl?: number;
+  tp?: number;
   comment?: string;
   trailing_stop?: number;
   trailing_step?: number;
@@ -413,6 +416,7 @@ export interface PlacePendingOrderRequest extends PlaceOrderRequest {
   type: PendingOrderType;
   price: number;
   expiration?: number;
+  expiry?: number;
 }
 
 export interface ModifyPendingOrderRequest {
@@ -420,6 +424,9 @@ export interface ModifyPendingOrderRequest {
   price_sl?: number;
   price_tp?: number;
   expiration?: number;
+  sl?: number;
+  tp?: number;
+  expiry?: number;
   trailing_stop?: number;
   trailing_step?: number;
 }
@@ -470,10 +477,10 @@ export interface CandleParams {
 }
 
 export interface HistoryCandleParams {
-  tf?: Timeframe;
+  timeframe?: Timeframe;
   from?: number;
   to?: number;
-  count?: number;
+  limit?: number;
 }
 
 export interface HistoryTickParams {

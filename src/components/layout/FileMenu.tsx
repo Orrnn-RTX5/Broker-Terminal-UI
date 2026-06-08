@@ -9,15 +9,23 @@ import { SavePictureDialog } from '../dialogs/SavePictureDialog';
 import { OpenAccountDialog } from '../dialogs/OpenAccountDialog';
 import { useAppStore } from '../../store/useAppStore';
 import { chartPrinter, type PrintPreferences, type ChartPrintData } from '../../services/chartPrinter';
+import {
+    getActiveChartSource,
+    type ResolvedActiveChartSource,
+} from '../../services/activeChartSource';
 
-// Symbol data type from API
+type ElectronRuntime = NonNullable<Window['electron']> & {
+    app?: {
+        quit?: () => void;
+    };
+};
+
 interface SymbolData {
     symbol: string;
     name: string;
     category: string;
 }
 
-// Menu item interface for building nested structure
 interface NewChartMenuItem {
     label: string;
     symbol?: string;
@@ -138,7 +146,7 @@ const YoForexPanel: React.FC<{
 };
 
 // Recursive menu item renderer (for API-loaded symbols)
-const NewChartMenuItemRenderer: React.FC<{ item: NewChartMenuItem; depth: number; activePair?: string; onClose?: () => void }> = ({ item, depth, activePair, onClose }) => {
+const NewChartMenuItemRenderer: React.FC<{ item: NewChartMenuItem; activePair?: string; onClose?: () => void }> = ({ item, activePair, onClose }) => {
     const hasChildren = item.children && item.children.length > 0;
     const isActive = item.symbol && item.symbol === activePair;
 
@@ -163,7 +171,7 @@ const NewChartMenuItemRenderer: React.FC<{ item: NewChartMenuItem; depth: number
             {hasChildren && (
                 <div className="submenu absolute left-full top-0 -ml-1 hidden min-w-[180px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-xl py-1 z-[102] max-h-[400px] overflow-y-auto no-scrollbar">
                     {item.children!.map((child, idx) => (
-                        <NewChartMenuItemRenderer key={idx} item={child} depth={depth + 1} activePair={activePair} onClose={onClose} />
+                        <NewChartMenuItemRenderer key={idx} item={child} activePair={activePair} onClose={onClose} />
                     ))}
                 </div>
             )}
@@ -195,6 +203,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const { t } = useTranslation();
     const [showSaveDialog, setShowSaveDialog] = useState(false);
     const [showSavePictureDialog, setShowSavePictureDialog] = useState(false);
+    const [savePictureSource, setSavePictureSource] = useState<ResolvedActiveChartSource | null>(null);
     const [showPrintSetupDialog, setShowPrintSetupDialog] = useState(false);
     const [showPrintPreviewDialog, setShowPrintPreviewDialog] = useState(false);
     const [showExitDialog, setShowExitDialog] = useState(false);
@@ -293,9 +302,9 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     };
 
     const handleSaveAsPicture = () => {
-        // Get the active chart canvas from the global window object
-        const canvas = (window as any).__activeChartCanvas as HTMLCanvasElement | null;
-        const container = (window as any).__activeChartContainer as HTMLElement | null;
+        const source = getActiveChartSource();
+        const canvas = source?.canvas ?? null;
+        const container = source?.container ?? null;
 
         if (!canvas && !container) {
             console.warn('[FileMenu] No active chart canvas or container found for export');
@@ -303,6 +312,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
             return;
         }
 
+        setSavePictureSource(source);
         setShowSavePictureDialog(true);
         onSaveAsPicture?.();
     };
@@ -329,6 +339,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     };
 
     const handlePrintPreview = () => {
+        onPrintPreview?.();
         // Generate chart data for preview
         const data = generateChartPrintData();
         setChartPrintData(data);
@@ -336,6 +347,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     };
 
     const handlePrintSetup = () => {
+        onPrintSetup?.();
         setShowPrintSetupDialog(true);
     };
 
@@ -386,17 +398,18 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         // Clear authentication state
         try {
             useAppStore.getState().logout?.();
-        } catch (e) {
+        } catch {
             console.log('No auth to clear');
         }
 
         // Try Electron methods first (if running in Electron)
-        if ((window as any).electron) {
+        const electronRuntime = window.electron as ElectronRuntime | undefined;
+        if (electronRuntime) {
             try {
-                (window as any).electron.app?.quit?.();
-                (window as any).electron.ipcRenderer?.send?.('app-quit');
+                electronRuntime.app?.quit?.();
+                electronRuntime.ipcRenderer?.send?.('app-quit');
                 return;
-            } catch (e) {
+            } catch {
                 console.log('Electron quit failed, trying browser methods');
             }
         }
@@ -404,7 +417,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         // Try window.close() for popup windows
         try {
             window.close();
-        } catch (e) {
+        } catch {
             console.log('window.close() not available');
         }
 
@@ -449,11 +462,23 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                     <Icon name="refresh" size="sm" className="animate-spin" />
                                     Connecting to broker...
                                 </div>
+                            ) : newChartMenuItems.length > 0 ? (
+                                <div className="min-w-[180px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-2xl py-1 max-h-[420px] overflow-y-auto no-scrollbar">
+                                    {newChartMenuItems.map((item, idx) => (
+                                        <NewChartMenuItemRenderer
+                                            key={idx}
+                                            item={item}
+                                            activePair={selectedSymbol}
+                                            onClose={() => setNewChartOpen(false)}
+                                        />
+                                    ))}
+                                </div>
                             ) : (
                                 <YoForexPanel
                                     activePair={selectedSymbol}
                                     onSelect={(sym) => {
                                         window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: sym, newTab: true } }));
+                                        setNewChartOpen(false);
                                     }}
                                 />
                             )}
@@ -687,11 +712,14 @@ export const FileMenu: React.FC<FileMenuProps> = ({
             {showSavePictureDialog && (
                 <SavePictureDialog
                     isOpen={showSavePictureDialog}
-                    onClose={() => setShowSavePictureDialog(false)}
-                    chartCanvas={(window as any).__activeChartCanvas || null}
-                    chartContainer={(window as any).__activeChartContainer || null}
-                    symbol={selectedSymbol || 'EURUSD'}
-                    timeframe={timeframe || '5m'}
+                    onClose={() => {
+                        setShowSavePictureDialog(false);
+                        setSavePictureSource(null);
+                    }}
+                    chartCanvas={savePictureSource?.canvas ?? null}
+                    chartContainer={savePictureSource?.container ?? null}
+                    symbol={savePictureSource?.symbol || selectedSymbol || 'EURUSD'}
+                    timeframe={savePictureSource?.timeframe || timeframe || '5m'}
                 />
             )}
 

@@ -1,19 +1,11 @@
 /**
- * WelcomeTerminal — MT5-style startup terminal with embedded login dialog.
- *
- * Shown instead of the old full-screen Login page.
- * Renders the trading interface behind (dimmed) and shows:
- *   1. A terminal console with scrolling startup log messages.
- *   2. A floating "Login to Trade Account" dialog over it.
- *
- * Once the user authenticates, the onLogin callback fires and this component
- * unmounts — the main platform takes over seamlessly.
+ * WelcomeTerminal renders the pre-authentication webterminal login overlay.
+ * It keeps the active trading workspace visible behind the modal while the user
+ * selects a broker and signs in.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { api } from '../services/api';
-import { getStoredBrokerServer, loadBrokerServers, persistBrokerServer, resolveLoginBrokerTarget } from '../services/brokerServers';
 import { authV2Api } from '../api/trade';
 import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL } from '../config/api';
 import {
@@ -30,7 +22,7 @@ interface BrokerServerItem {
     server?: string;
     server_ip?: string;
     server_port?: number;
-    server_url: string;
+    server_url?: string;
     backend_url?: string;
     market_api_url?: string;
     ws_url?: string;
@@ -45,60 +37,36 @@ interface WelcomeTerminalProps {
     onLogin: (accountId: string) => void;
 }
 
-interface LogLine {
-    time: string;
-    text: string;
-    type: 'info' | 'ok' | 'warn' | 'err';
-}
-
-const now = () =>
-    new Date().toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-    });
-
-const STARTUP_SEQUENCE: { delay: number; text: string; type: LogLine['type'] }[] = [
-    { delay: 0, text: 'RTX Terminal  —  Institutional Trading Environment', type: 'info' },
-    { delay: 120, text: 'Build 1.0.0  (c) 2025 RTX Systems', type: 'info' },
-    { delay: 280, text: '----------------------------------------------------', type: 'info' },
-    { delay: 450, text: 'Initializing market data subsystem...', type: 'info' },
-    { delay: 700, text: 'Loading symbol catalog...', type: 'info' },
-    { delay: 950, text: 'Connecting to trading API', type: 'info' },
-    { delay: 1300, text: 'FIX gateway handshake OK', type: 'ok' },
-    { delay: 1550, text: 'WebSocket market feed: READY', type: 'ok' },
-    { delay: 1800, text: 'Price aggregation engine: ONLINE', type: 'ok' },
-    { delay: 2050, text: '----------------------------------------------------', type: 'info' },
-    { delay: 2200, text: 'Please login to your trade account to continue.', type: 'warn' },
-];
-
 const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
+const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
+const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
+
+const isAbortError = (err: unknown): boolean =>
+    err instanceof DOMException
+        ? err.name === 'AbortError'
+        : Boolean(err && typeof err === 'object' && 'name' in err && err.name === 'AbortError');
+
+const getErrorMessage = (err: unknown, fallback: string): string =>
+    err instanceof Error ? err.message : fallback;
 
 export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
-    // ── Terminal log state ──────────────────────────────────────────────────
-    const [lines, setLines] = useState<LogLine[]>([]);
-    const logEndRef = useRef<HTMLDivElement>(null);
-
-    // ── Login form state ────────────────────────────────────────────────────
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [rememberMe, setRememberMe] = useState(false);
 
-    // Searchable Typeahead & Health Probe State
     const [brokerList, setBrokerList] = useState<BrokerServerItem[]>([]);
     const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(null);
+    const [brokerListStatus, setBrokerListStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     const healthAbortRef = useRef<AbortController | null>(null);
 
     const addSavedAccount = useAppStore(s => s.addSavedAccount);
     const setActiveAccount = useAppStore(s => s.setActiveAccount);
 
-    // Pre-fill remembered account ID only. Passwords must not be restored from storage.
     useEffect(() => {
         const savedUser = localStorage.getItem('rtx_saved_username');
         localStorage.removeItem('rtx_saved_password');
@@ -108,18 +76,16 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
         }
     }, []);
 
+    useEffect(() => () => {
+        healthAbortRef.current?.abort();
+    }, []);
+
     const runHealthCheck = async (serverUrl: string) => {
-        if (healthAbortRef.current) {
-            healthAbortRef.current.abort();
-        }
+        healthAbortRef.current?.abort();
         const controller = new AbortController();
         healthAbortRef.current = controller;
 
         setHealthStatus('checking');
-        setLines(prev => [
-            ...prev,
-            { time: now(), text: `Pinging broker server latency...`, type: 'info' }
-        ]);
 
         const timeoutId = setTimeout(() => {
             controller.abort();
@@ -129,27 +95,11 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
             const response = await fetch(`${cleanUrl}/health`, { signal: controller.signal });
             clearTimeout(timeoutId);
-            if (response.ok) {
-                setHealthStatus('online');
-                setLines(prev => [
-                    ...prev,
-                    { time: now(), text: `Ping health probe success (HTTP ${response.status})`, type: 'ok' }
-                ]);
-            } else {
-                setHealthStatus('offline');
-                setLines(prev => [
-                    ...prev,
-                    { time: now(), text: `Health check failed: HTTP ${response.status}`, type: 'err' }
-                ]);
-            }
-        } catch (err: any) {
+            setHealthStatus(response.ok ? 'online' : 'offline');
+        } catch (err: unknown) {
             clearTimeout(timeoutId);
-            if (err.name !== 'AbortError') {
+            if (!isAbortError(err)) {
                 setHealthStatus('offline');
-                setLines(prev => [
-                    ...prev,
-                    { time: now(), text: `Server unreachable: ${err.message || 'Connection timeout'}`, type: 'err' }
-                ]);
             }
         }
     };
@@ -174,16 +124,18 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
     useEffect(() => {
         let isMounted = true;
-        fetch(`${BROKER_DISCOVERY_URL}/api/v1/broker/servers`)
+        setBrokerListStatus('loading');
+
+        fetch(brokerServersDiscoveryUrl)
             .then(res => res.json())
             .then((payload: unknown) => {
                 if (!isMounted) return;
                 const data = extractBrokerDiscoveryList(payload) as BrokerServerItem[];
                 setBrokerList(data);
+                setBrokerListStatus('ready');
 
-                // Try to restore saved broker from localStorage, otherwise default to first
-                const savedBrokerId = localStorage.getItem('broker_id');
-                const savedBroker = data.find(b => b.broker_id === savedBrokerId);
+                const savedBrokerId = localStorage.getItem('broker_id') || DEFAULT_BROKER_ID;
+                const savedBroker = data.find(b => b.broker_id === savedBrokerId || b.server === savedBrokerId || b.server_url === savedBrokerId);
                 if (savedBroker) {
                     setSelectedBroker({
                         ...savedBroker,
@@ -202,11 +154,10 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 }
             })
             .catch(err => {
+                if (!isMounted) return;
                 console.error('[WelcomeTerminal] Failed to fetch broker servers:', err);
-                setLines(prev => [
-                    ...prev,
-                    { time: now(), text: 'Error fetching centralized broker servers', type: 'err' }
-                ]);
+                setBrokerListStatus('error');
+                setHealthStatus('offline');
             });
 
         return () => {
@@ -214,25 +165,6 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
         };
     }, []);
 
-    // Run startup log sequence
-    useEffect(() => {
-        const timers: ReturnType<typeof setTimeout>[] = [];
-        STARTUP_SEQUENCE.forEach(({ delay, text, type }) => {
-            timers.push(
-                setTimeout(() => {
-                    setLines(prev => [...prev, { time: now(), text, type }]);
-                }, delay)
-            );
-        });
-        return () => timers.forEach(clearTimeout);
-    }, []);
-
-    // Auto-scroll log
-    useEffect(() => {
-        logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [lines]);
-
-    // ── Login handler ───────────────────────────────────────────────────────
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -243,7 +175,6 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 throw new Error('Please select a broker server.');
             }
 
-            // Save selected broker details before login so the request targets the broker backend.
             const submitBroker = normalizeBrokerInfoForTarget(selectedBroker) as BrokerServerItem;
             const brokerServerUrl = resolveBrokerBackendUrl(submitBroker);
             const brokerExtApiUrl = resolveBrokerExtApiUrl(submitBroker);
@@ -285,9 +216,12 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
             const accountId = data.account_login ?? username;
 
-            // Persist account ID and tokens only; never persist the password.
             localStorage.setItem('rtx_last_login', String(accountId));
-            localStorage.setItem('rtx_saved_username', String(accountId));
+            if (rememberMe) {
+                localStorage.setItem('rtx_saved_username', String(accountId));
+            } else {
+                localStorage.removeItem('rtx_saved_username');
+            }
             localStorage.removeItem('rtx_saved_password');
 
             const { setToken, setRefreshToken } = await import('../api/client');
@@ -295,10 +229,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             if (data.refresh_token) setRefreshToken(data.refresh_token);
             if (data.expires_at) localStorage.setItem('token_expires_at', String(data.expires_at));
 
-            // Update Zustand store
             useAppStore.getState().setAuthenticated(true, String(accountId), token, data.refresh_token);
 
-            // Save to multi-account list
             const loginNum = parseInt(String(accountId), 10);
             if (!isNaN(loginNum)) {
                 addSavedAccount({
@@ -311,196 +243,103 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 setActiveAccount(loginNum);
             }
 
-            // Append success line to terminal
-            setLines(prev => [
-                ...prev,
-                { time: now(), text: `Connected — Account ${accountId}  [ ${data.user?.username || data.username || username} ]`, type: 'ok' },
-            ]);
-
             setTimeout(() => {
                 onLogin(String(accountId));
-            }, 1000);
+            }, 500);
 
-        } catch (err: any) {
-            console.error('[WelcomeTerminal] Auth error:', err);
-            setError(err.message || 'Authentication failed');
-            setLines(prev => [
-                ...prev,
-                { time: now(), text: `Auth failed: ${err.message || 'Unknown error'}`, type: 'err' }
-            ]);
+        } catch (err: unknown) {
+            const errorMessage = getErrorMessage(err, 'Authentication failed');
+            if (errorMessage !== 'Please select a broker server.') {
+                console.error('[WelcomeTerminal] Auth error:', err);
+            }
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
     };
-    // ── Colour helpers ──────────────────────────────────────────────────────
-    const lineColor = (type: LogLine['type']) => {
-        switch (type) {
-            case 'ok': return '#22c55e';   // green-500
-            case 'warn': return '#eab308';   // yellow-500
-            case 'err': return '#ef4444';   // red-500
-            default: return '#71717a';   // zinc-500
-        }
-    };
 
-    // ── Render ──────────────────────────────────────────────────────────────
+    const selectedBrokerName = selectedBroker?.broker_name || 'Select broker';
+    const selectedBrokerHost = selectedBroker
+        ? normalizeBrokerServerUrl(resolveBrokerBackendUrl(selectedBroker)).replace(/^https?:\/\//i, '').replace(/\/$/, '')
+        : 'No server selected';
+
+    const healthLabel =
+        healthStatus === 'online' ? 'Online'
+            : healthStatus === 'checking' ? 'Checking'
+                : healthStatus === 'offline' ? 'Unavailable'
+                    : brokerListStatus === 'loading' ? 'Loading'
+                        : 'Select';
+
+    const healthTone =
+        healthStatus === 'online' ? '#10b981'
+            : healthStatus === 'checking' ? '#f59e0b'
+                : healthStatus === 'offline' ? '#ef4444'
+                    : '#71717a';
+
     return (
-        /* Full-screen dark overlay */
         <div
             onContextMenu={e => e.stopPropagation()}
             onMouseDownCapture={e => {
-                // Prevent any mousedown from leaking through to panels below
-                // (which would trigger their right-click context menus via portals)
                 const target = e.target as HTMLElement;
                 if (!target.closest('[data-welcome-card]')) {
                     e.stopPropagation();
                 }
             }}
-            style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(9,9,11,0.92)',
-                backdropFilter: 'blur(6px)',
-                WebkitBackdropFilter: 'blur(6px)',
-                zIndex: 99999,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontFamily: "'Consolas','Fira Mono','Menlo',monospace",
-            }}
+            className="rtx-login-overlay"
         >
-            {/*
-              ┌──────────────────────────────────────────────────────────────┐
-              │  Two-column card: terminal log (left) + login form (right)  │
-              └──────────────────────────────────────────────────────────────┘
-            */}
-            <div
-                data-welcome-card
-                style={{
-                    display: 'flex',
-                    gap: 0,
-                    width: 'min(960px, 96vw)',
-                    height: 'min(540px, 92vh)',
-                    borderRadius: 8,
-                    overflow: 'hidden',
-                    boxShadow: '0 32px 64px rgba(0,0,0,0.7)',
-                    border: '1px solid #222226',
-                }}
-            >
-                {/* ── LEFT: Terminal Console ──────────────────────────────── */}
-                <div
-                    style={{
-                        flex: 1,
-                        background: '#0c0c10',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        overflow: 'hidden',
-                    }}
-                >
-                    {/* Title bar */}
-                    <div
-                        style={{
-                            padding: '8px 14px',
-                            background: '#111114',
-                            borderBottom: '1px solid #222226',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                        }}
-                    >
-                        <span
-                            style={{
-                                display: 'inline-block',
-                                width: 10,
-                                height: 10,
-                                borderRadius: '50%',
-                                background: '#22c55e',
-                                boxShadow: '0 0 6px #22c55e',
-                            }}
-                        />
-                        <span style={{ color: '#52525b', fontSize: 11, letterSpacing: '0.1em' }}>
-                            RTX JOURNAL
+            <section data-welcome-card className="rtx-login-shell" aria-label="RTX Terminal login">
+                <header className="rtx-shell-bar">
+                    <div className="rtx-window-control-group" aria-hidden="true">
+                        <span className="rtx-window-dot rtx-dot-red" />
+                        <span className="rtx-window-dot rtx-dot-yellow" />
+                        <span className="rtx-window-dot rtx-dot-green" />
+                    </div>
+                    <span className="rtx-window-title">RTX 5 Web Terminal</span>
+                    <span className="rtx-shell-health" style={{ color: healthTone }}>
+                        <span style={{ background: healthTone, boxShadow: `0 0 10px ${healthTone}` }} />
+                        {healthLabel}
+                    </span>
+                </header>
+
+                <div className="rtx-login-body">
+                    <header className="rtx-form-header">
+                        <div className="rtx-brand-lockup">
+                            <img src="/logo.png" alt="RTX" className="rtx-brand-logo" />
+                            <div>
+                                <p>RTX 5 Web Terminal</p>
+                                <h1>Sign in to RTX Terminal</h1>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="rtx-broker-strip">
+                        <div className="rtx-route-row">
+                            <div className="rtx-route-logo">
+                                {selectedBroker?.logo_url ? (
+                                    <img src={selectedBroker.logo_url} alt="" />
+                                ) : (
+                                    <span>{selectedBrokerName.slice(0, 1).toUpperCase()}</span>
+                                )}
+                            </div>
+                            <div>
+                                <span className="rtx-summary-label">Broker server</span>
+                                <strong>{selectedBrokerName}</strong>
+                                <small>{selectedBrokerHost}</small>
+                            </div>
+                        </div>
+                        <span className="rtx-broker-state" style={{ color: healthTone }}>
+                            <span style={{ background: healthTone, boxShadow: `0 0 8px ${healthTone}` }} />
+                            {healthLabel}
                         </span>
                     </div>
 
-                    {/* Log lines */}
-                    <div
-                        style={{
-                            flex: 1,
-                            overflowY: 'auto',
-                            padding: '10px 14px',
-                            fontSize: 11.5,
-                            lineHeight: 1.7,
-                        }}
-                    >
-                        {lines.map((line, i) => (
-                            <div key={i} style={{ display: 'flex', gap: 10 }}>
-                                <span style={{ color: '#3f3f46', minWidth: 60, flexShrink: 0 }}>
-                                    {line.time}
-                                </span>
-                                <span style={{ color: lineColor(line.type) }}>{line.text}</span>
-                            </div>
-                        ))}
-                        <div ref={logEndRef} />
-                    </div>
-                </div>
-
-                {/* ── RIGHT: Login Dialog ─────────────────────────────────── */}
-                <div
-                    style={{
-                        width: 320,
-                        flexShrink: 0,
-                        background: '#131316',
-                        borderLeft: '1px solid #222226',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        padding: '32px 28px',
-                        gap: 0,
-                    }}
-                >
-                    {/* Logo & title */}
-                    <div style={{ textAlign: 'center', marginBottom: 28 }}>
-                        {/* RTX Logo — dark background version */}
-                        <img
-                            src="/logo.png"
-                            alt="RTX"
-                            style={{
-                                width: 64,
-                                height: 64,
-                                borderRadius: 12,
-                                margin: '0 auto 14px',
-                                display: 'block',
-                                objectFit: 'contain',
-                                boxShadow: '0 0 20px rgba(109,192,74,0.20)',
-                            }}
-                        />
-                        <p style={{ color: '#f4f4f5', fontSize: 16, fontWeight: 700, margin: 0, letterSpacing: '0.03em', fontFamily: 'system-ui, sans-serif' }}>
-                            RTX Terminal
-                        </p>
-                        <p style={{ color: '#52525b', fontSize: 11, margin: '4px 0 0', fontFamily: 'system-ui, sans-serif' }}>
-                            Login to Trade Account
-                        </p>
-                    </div>
-
-                    {/* Error */}
                     {error && (
-                        <div
-                            style={{
-                                marginBottom: 14,
-                                padding: '8px 12px',
-                                borderRadius: 6,
-                                background: 'rgba(239,68,68,0.1)',
-                                border: '1px solid rgba(239,68,68,0.25)',
-                                color: '#f87171',
-                                fontSize: 12,
-                                fontFamily: 'system-ui, sans-serif',
-                            }}
-                        >
+                        <div className="rtx-login-error" role="alert">
                             {error}
                         </div>
                     )}
 
-                    {/* Form */}
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1 }}>
+                    <form onSubmit={handleSubmit} className="rtx-login-form">
                         <div>
                             <label style={labelStyle}>Account ID</label>
                             <input
@@ -511,8 +350,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                 value={username}
                                 onChange={e => setUsername(e.target.value)}
                                 style={inputStyle}
-                                onFocus={e => (e.target.style.borderColor = '#10b981')}
-                                onBlur={e => (e.target.style.borderColor = '#3f3f46')}
+                                onFocus={e => (e.target.style.borderColor = '#14b8a6')}
+                                onBlur={e => (e.target.style.borderColor = '#252932')}
                             />
                         </div>
 
@@ -525,38 +364,29 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                 value={password}
                                 onChange={e => setPassword(e.target.value)}
                                 style={inputStyle}
-                                onFocus={e => (e.target.style.borderColor = '#10b981')}
-                                onBlur={e => (e.target.style.borderColor = '#3f3f46')}
+                                onFocus={e => (e.target.style.borderColor = '#14b8a6')}
+                                onBlur={e => (e.target.style.borderColor = '#252932')}
                             />
                         </div>
 
-                        <div style={{ position: 'relative' }}>
+                        <div className="rtx-broker-field">
                             <label style={labelStyle}>Broker Server</label>
-                            <div style={{ position: 'relative' }}>
+                            <div className="rtx-broker-input-wrap">
                                 {selectedBroker?.logo_url && (
-                                    <img
-                                        src={selectedBroker.logo_url}
-                                        alt=""
-                                        style={{
-                                            position: 'absolute',
-                                            left: 10,
-                                            top: '50%',
-                                            transform: 'translateY(-50%)',
-                                            width: 18,
-                                            height: 18,
-                                            borderRadius: 4,
-                                            objectFit: 'contain',
-                                            zIndex: 10
-                                        }}
-                                    />
+                                    <img src={selectedBroker.logo_url} alt="" className="rtx-broker-logo" />
                                 )}
                                 <input
                                     type="text"
-                                    placeholder="Search broker..."
+                                    placeholder={brokerListStatus === 'loading' ? 'Loading brokers...' : 'Search broker...'}
                                     required
                                     value={searchQuery}
                                     onChange={e => {
-                                        setSearchQuery(e.target.value);
+                                        const value = e.target.value;
+                                        setSearchQuery(value);
+                                        if (selectedBroker && value.trim() !== selectedBroker.broker_name) {
+                                            setSelectedBroker(null);
+                                            setHealthStatus(null);
+                                        }
                                         setDropdownOpen(true);
                                     }}
                                     onFocus={() => setDropdownOpen(true)}
@@ -570,48 +400,13 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                     }}
                                     style={{
                                         ...inputStyle,
-                                        paddingLeft: selectedBroker?.logo_url ? 34 : 12,
-                                        paddingRight: 32,
+                                        paddingLeft: selectedBroker?.logo_url ? 38 : 12,
+                                        paddingRight: 34,
                                     }}
                                 />
-                                <div style={{
-                                    position: 'absolute',
-                                    right: 10,
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                    pointerEvents: 'none',
-                                }}>
-                                    {healthStatus === 'checking' && (
-                                        <span style={{
-                                            width: 8,
-                                            height: 8,
-                                            borderRadius: '50%',
-                                            background: '#eab308',
-                                            boxShadow: '0 0 6px #eab308',
-                                        }} />
-                                    )}
-                                    {healthStatus === 'online' && (
-                                        <span style={{
-                                            width: 8,
-                                            height: 8,
-                                            borderRadius: '50%',
-                                            background: '#22c55e',
-                                            boxShadow: '0 0 6px #22c55e',
-                                        }} />
-                                    )}
-                                    {healthStatus === 'offline' && (
-                                        <span style={{
-                                            width: 8,
-                                            height: 8,
-                                            borderRadius: '50%',
-                                            background: '#ef4444',
-                                            boxShadow: '0 0 6px #ef4444',
-                                        }} />
-                                    )}
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#71717a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{
+                                <div className="rtx-broker-input-state" aria-hidden="true">
+                                    <span style={{ background: healthTone, boxShadow: `0 0 8px ${healthTone}` }} />
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b8b95" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{
                                         transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                                         transition: 'transform 0.2s',
                                     }}>
@@ -621,100 +416,29 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                             </div>
 
                             {dropdownOpen && (
-                                <div style={{
-                                    position: 'absolute',
-                                    left: 0,
-                                    right: 0,
-                                    top: '100%',
-                                    marginTop: 4,
-                                    background: 'rgba(20, 20, 24, 0.98)',
-                                    backdropFilter: 'blur(16px)',
-                                    WebkitBackdropFilter: 'blur(16px)',
-                                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                                    borderRadius: 6,
-                                    maxHeight: 180,
-                                    overflowY: 'auto',
-                                    zIndex: 1000,
-                                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.5)',
-                                }}>
+                                <div className="rtx-broker-menu">
                                     {filteredBrokers.length === 0 ? (
-                                        <div style={{
-                                            padding: '10px 12px',
-                                            color: '#71717a',
-                                            fontSize: 12,
-                                            fontFamily: 'system-ui, sans-serif'
-                                        }}>
-                                            No brokers found
+                                        <div className="rtx-broker-empty">
+                                            {brokerListStatus === 'error' ? 'Broker discovery unavailable' : 'No brokers found'}
                                         </div>
                                     ) : (
                                         filteredBrokers.map(item => (
-                                            <div
+                                            <button
+                                                type="button"
                                                 key={item.broker_id}
                                                 onMouseDown={() => handleSelectBroker(item)}
-                                                style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'space-between',
-                                                    padding: '8px 12px',
-                                                    cursor: 'pointer',
-                                                    transition: 'background 0.15s',
-                                                    background: selectedBroker?.broker_id === item.broker_id ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
-                                                }}
-                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'}
-                                                onMouseLeave={e => e.currentTarget.style.background = selectedBroker?.broker_id === item.broker_id ? 'rgba(255, 255, 255, 0.06)' : 'transparent'}
+                                                className={selectedBroker?.broker_id === item.broker_id ? 'rtx-broker-option is-selected' : 'rtx-broker-option'}
                                             >
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                <span>
                                                     {item.logo_url ? (
-                                                        <img
-                                                            src={item.logo_url}
-                                                            alt=""
-                                                            style={{
-                                                                width: 20,
-                                                                height: 20,
-                                                                borderRadius: 4,
-                                                                objectFit: 'contain'
-                                                            }}
-                                                        />
+                                                        <img src={item.logo_url} alt="" />
                                                     ) : (
-                                                        <div style={{
-                                                            width: 20,
-                                                            height: 20,
-                                                            borderRadius: 4,
-                                                            background: 'rgba(255,255,255,0.05)',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            color: '#71717a',
-                                                            fontSize: 10
-                                                        }}>
-                                                            B
-                                                        </div>
+                                                        <i>{String(item.broker_name || 'B').slice(0, 1).toUpperCase()}</i>
                                                     )}
-                                                    <span style={{
-                                                        color: '#f4f4f5',
-                                                        fontSize: 12.5,
-                                                        fontWeight: selectedBroker?.broker_id === item.broker_id ? 600 : 400,
-                                                        fontFamily: 'system-ui, sans-serif'
-                                                    }}>
-                                                        {item.broker_name}
-                                                    </span>
-                                                </div>
-                                                {item.region && (
-                                                    <span style={{
-                                                        fontSize: 9,
-                                                        color: '#10b981',
-                                                        background: 'rgba(16, 185, 129, 0.1)',
-                                                        border: '1px solid rgba(16, 185, 129, 0.2)',
-                                                        padding: '1px 5px',
-                                                        borderRadius: 4,
-                                                        fontWeight: 600,
-                                                        textTransform: 'uppercase',
-                                                        fontFamily: 'system-ui, sans-serif'
-                                                    }}>
-                                                        {item.region}
-                                                    </span>
-                                                )}
-                                            </div>
+                                                    <strong>{item.broker_name}</strong>
+                                                </span>
+                                                {item.region && <em>{item.region}</em>}
+                                            </button>
                                         ))
                                     )}
                                 </div>
@@ -722,79 +446,26 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                         </div>
 
                         {healthStatus === 'offline' && (
-                            <div style={{
-                                marginTop: 6,
-                                color: '#ef4444',
-                                fontSize: 11.5,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 4,
-                                fontFamily: 'system-ui, sans-serif'
-                            }}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                                    <line x1="12" y1="9" x2="12" y2="13" />
-                                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                                </svg>
-                                <span>Broker temporarily unavailable</span>
+                            <div className="rtx-inline-status is-offline">
+                                Broker temporarily unavailable
                             </div>
                         )}
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0' }}>
+                        <div className="rtx-remember-row">
                             <input
                                 type="checkbox"
                                 id="wtRemember"
                                 checked={rememberMe}
                                 onChange={e => setRememberMe(e.target.checked)}
-                                style={{ accentColor: '#10b981', width: 14, height: 14, cursor: 'pointer' }}
                             />
-                            <label
-                                htmlFor="wtRemember"
-                                style={{ color: '#71717a', fontSize: 12, cursor: 'pointer', fontFamily: 'system-ui, sans-serif' }}
-                            >
-                                Remember credentials
-                            </label>
+                            <label htmlFor="wtRemember">Remember account ID</label>
                         </div>
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            style={{
-                                marginTop: 8,
-                                padding: '11px 0',
-                                borderRadius: 7,
-                                border: 'none',
-                                background: loading
-                                    ? '#064e3b'
-                                    : 'linear-gradient(135deg,#059669,#10b981)',
-                                color: '#fff',
-                                fontWeight: 700,
-                                fontSize: 13,
-                                cursor: loading ? 'not-allowed' : 'pointer',
-                                letterSpacing: '0.03em',
-                                transition: 'opacity 0.2s',
-                                opacity: loading ? 0.7 : 1,
-                                fontFamily: 'system-ui, sans-serif',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 8,
-                            }}
-                        >
+                        <button type="submit" disabled={loading} className="rtx-login-button">
                             {loading ? (
                                 <>
-                                    <span
-                                        style={{
-                                            display: 'inline-block',
-                                            width: 14,
-                                            height: 14,
-                                            border: '2px solid rgba(255,255,255,0.3)',
-                                            borderTopColor: '#fff',
-                                            borderRadius: '50%',
-                                            animation: 'rtx-spin 0.7s linear infinite',
-                                        }}
-                                    />
-                                    Connecting...
+                                    <span className="rtx-spinner" />
+                                    Connecting
                                 </>
                             ) : (
                                 <>
@@ -808,66 +479,572 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                         </button>
                     </form>
 
-                    {/* Footer */}
-                    <div
-                        style={{
-                            marginTop: 'auto',
-                            paddingTop: 20,
-                            borderTop: '1px solid #222226',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                        }}
-                    >
-                        <span
-                            style={{
-                                display: 'inline-block',
-                                width: 7,
-                                height: 7,
-                                borderRadius: '50%',
-                                background: '#22c55e',
-                                boxShadow: '0 0 4px #22c55e',
-                            }}
-                        />
-                        <span style={{ color: '#52525b', fontSize: 11, fontFamily: 'system-ui,sans-serif' }}>
-                            System Operational
-                        </span>
-                    </div>
+                    <footer className="rtx-login-footer">
+                        <span style={{ background: healthStatus === 'offline' ? '#ef4444' : '#10b981' }} />
+                        {healthStatus === 'offline' ? 'Server check failed' : 'System operational'}
+                    </footer>
                 </div>
-            </div>
+            </section>
 
-            {/* Spinner keyframe injected once */}
             <style>{`
                 @keyframes rtx-spin {
                     to { transform: rotate(360deg); }
+                }
+
+                @keyframes rtx-login-enter {
+                    from { opacity: 0; transform: translateY(8px) scale(0.99); }
+                    to { opacity: 1; transform: translateY(0) scale(1); }
+                }
+
+                .rtx-login-overlay {
+                    position: fixed;
+                    inset: 0;
+                    z-index: 99999;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                    background: rgba(5, 6, 9, 0.90);
+                    backdrop-filter: blur(5px);
+                    -webkit-backdrop-filter: blur(5px);
+                    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                }
+
+                .rtx-login-shell {
+                    width: min(560px, 100%);
+                    min-height: 0;
+                    display: grid;
+                    grid-template-rows: 36px minmax(0, 1fr);
+                    overflow: hidden;
+                    border: 1px solid #252932;
+                    border-radius: 8px;
+                    background: #111318;
+                    box-shadow: 0 22px 58px rgba(0, 0, 0, 0.58);
+                    animation: rtx-login-enter 180ms ease-out both;
+                }
+
+                .rtx-shell-bar {
+                    min-width: 0;
+                    height: 36px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 0 14px;
+                    border-bottom: 1px solid #25272e;
+                    background: #101116;
+                    color: #8b8f9b;
+                    font-size: 11px;
+                    letter-spacing: 0;
+                }
+
+                .rtx-window-control-group {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 7px;
+                    flex: 0 0 auto;
+                }
+
+                .rtx-window-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 999px;
+                    opacity: 0.9;
+                }
+
+                .rtx-dot-red { background: #ef4444; }
+                .rtx-dot-yellow { background: #f59e0b; }
+                .rtx-dot-green { background: #10b981; }
+
+                .rtx-window-title {
+                    min-width: 0;
+                    flex: 1;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .rtx-shell-health {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 7px;
+                    flex: 0 0 auto;
+                    font-size: 11px;
+                    font-weight: 750;
+                }
+
+                .rtx-shell-health span {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 999px;
+                    flex: 0 0 auto;
+                }
+
+                .rtx-login-body {
+                    min-width: 0;
+                    min-height: 0;
+                    padding: 24px;
+                    background: #111318;
+                }
+
+                .rtx-brand-lockup {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+
+                .rtx-brand-logo {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 6px;
+                    object-fit: contain;
+                    background: #14171d;
+                    border: 1px solid #292c34;
+                }
+
+                .rtx-brand-name {
+                    margin: 0;
+                    color: #f4f4f5;
+                    font-size: 21px;
+                    line-height: 1.15;
+                    font-weight: 780;
+                    letter-spacing: 0;
+                }
+
+                .rtx-brand-subtitle {
+                    margin: 0 0 4px;
+                    color: #7d828e;
+                    font-size: 10px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                    letter-spacing: 0.12em;
+                }
+
+                .rtx-broker-strip {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    margin-bottom: 18px;
+                    padding: 12px;
+                    border: 1px solid #252932;
+                    border-radius: 7px;
+                    background: #0c0e12;
+                }
+
+                .rtx-summary-label {
+                    display: block;
+                    margin-bottom: 4px;
+                    color: #737987;
+                    font-size: 9.5px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                    letter-spacing: 0.1em;
+                }
+
+                .rtx-route-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 11px;
+                    min-width: 0;
+                }
+
+                .rtx-route-logo {
+                    width: 34px;
+                    height: 34px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 6px;
+                    background: #171a20;
+                    border: 1px solid #2b2f38;
+                    flex: 0 0 auto;
+                    color: #a7abb5;
+                    font-size: 13px;
+                    font-weight: 800;
+                }
+
+                .rtx-route-logo img {
+                    width: 22px;
+                    height: 22px;
+                    object-fit: contain;
+                }
+
+                .rtx-route-row div:last-child {
+                    min-width: 0;
+                }
+
+                .rtx-route-row strong {
+                    display: block;
+                    color: #f3f4f6;
+                    font-size: 13.5px;
+                    font-weight: 760;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .rtx-route-row small {
+                    display: block;
+                    margin-top: 3px;
+                    color: #838895;
+                    font-size: 11.5px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .rtx-broker-state {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex: 0 0 auto;
+                    min-height: 28px;
+                    padding: 0 9px;
+                    border: 1px solid #252932;
+                    border-radius: 6px;
+                    background: #13161c;
+                    font-size: 11.5px;
+                    font-weight: 760;
+                }
+
+                .rtx-broker-state span {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 999px;
+                    flex: 0 0 auto;
+                }
+
+                .rtx-form-header {
+                    margin-bottom: 18px;
+                }
+
+                .rtx-form-header p {
+                    margin: 0 0 3px;
+                    color: #7d828e;
+                    font-size: 10px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                    letter-spacing: 0.12em;
+                }
+
+                .rtx-form-header h1 {
+                    margin: 0;
+                    color: #f4f4f5;
+                    font-size: 21px;
+                    line-height: 1.2;
+                    font-weight: 760;
+                    letter-spacing: 0;
+                }
+
+                .rtx-login-error {
+                    margin-bottom: 14px;
+                    padding: 8px 10px;
+                    border-radius: 6px;
+                    background: rgba(239, 68, 68, 0.10);
+                    border: 1px solid rgba(239, 68, 68, 0.25);
+                    color: #f87171;
+                    font-size: 12px;
+                    line-height: 1.35;
+                }
+
+                .rtx-login-form {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+
+                .rtx-broker-field {
+                    position: relative;
+                }
+
+                .rtx-broker-input-wrap {
+                    position: relative;
+                }
+
+                .rtx-broker-logo {
+                    position: absolute;
+                    left: 10px;
+                    top: 50%;
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 4px;
+                    object-fit: contain;
+                    transform: translateY(-50%);
+                    z-index: 2;
+                }
+
+                .rtx-broker-input-state {
+                    position: absolute;
+                    right: 10px;
+                    top: 50%;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    transform: translateY(-50%);
+                    pointer-events: none;
+                }
+
+                .rtx-broker-input-state span,
+                .rtx-login-footer span {
+                    width: 7px;
+                    height: 7px;
+                    border-radius: 999px;
+                    flex: 0 0 auto;
+                }
+
+                .rtx-broker-menu {
+                    position: absolute;
+                    left: 0;
+                    right: 0;
+                    top: 100%;
+                    margin-top: 5px;
+                    max-height: 192px;
+                    overflow-y: auto;
+                    z-index: 10;
+                    padding: 4px;
+                    border: 1px solid #30343d;
+                    border-radius: 7px;
+                    background: #171a20;
+                    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.46);
+                }
+
+                .rtx-broker-empty {
+                    padding: 10px 11px;
+                    color: #8b8b95;
+                    font-size: 12px;
+                }
+
+                .rtx-broker-option {
+                    width: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 10px;
+                    min-height: 36px;
+                    padding: 6px 8px;
+                    border: 0;
+                    border-radius: 5px;
+                    background: transparent;
+                    color: #e6e6ea;
+                    cursor: pointer;
+                    text-align: left;
+                }
+
+                .rtx-broker-option:hover,
+                .rtx-broker-option.is-selected {
+                    background: #21252d;
+                }
+
+                .rtx-broker-option span {
+                    display: flex;
+                    align-items: center;
+                    gap: 9px;
+                    min-width: 0;
+                }
+
+                .rtx-broker-option img,
+                .rtx-broker-option i {
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 4px;
+                    flex: 0 0 auto;
+                }
+
+                .rtx-broker-option i {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgba(255, 255, 255, 0.06);
+                    color: #8b8b95;
+                    font-style: normal;
+                    font-size: 10px;
+                }
+
+                .rtx-broker-option strong {
+                    min-width: 0;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    font-size: 12.5px;
+                    font-weight: 650;
+                }
+
+                .rtx-broker-option em {
+                    color: #14b8a6;
+                    font-style: normal;
+                    font-size: 9px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                    letter-spacing: 0.08em;
+                }
+
+                .rtx-inline-status {
+                    min-height: 28px;
+                    display: flex;
+                    align-items: center;
+                    padding: 0 10px;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 650;
+                }
+
+                .rtx-inline-status.is-offline {
+                    color: #f87171;
+                    background: rgba(239, 68, 68, 0.10);
+                    border: 1px solid rgba(239, 68, 68, 0.22);
+                }
+
+                .rtx-remember-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-top: 2px;
+                }
+
+                .rtx-remember-row input {
+                    width: 14px;
+                    height: 14px;
+                    margin: 0;
+                    cursor: pointer;
+                    accent-color: #14b8a6;
+                }
+
+                .rtx-remember-row label {
+                    color: #868690;
+                    font-size: 12px;
+                    cursor: pointer;
+                }
+
+                .rtx-login-button {
+                    min-height: 42px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                    margin-top: 4px;
+                    border: 0;
+                    border-radius: 6px;
+                    background: #14b8a6;
+                    color: #04110f;
+                    font-size: 13px;
+                    font-weight: 800;
+                    cursor: pointer;
+                    transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+                }
+
+                .rtx-login-button:hover:not(:disabled) {
+                    background: #2dd4bf;
+                    transform: translateY(-1px);
+                }
+
+                .rtx-login-button:disabled {
+                    opacity: 0.65;
+                    cursor: not-allowed;
+                }
+
+                .rtx-spinner {
+                    width: 14px;
+                    height: 14px;
+                    border: 2px solid rgba(4, 17, 15, 0.25);
+                    border-top-color: #04110f;
+                    border-radius: 50%;
+                    animation: rtx-spin 0.7s linear infinite;
+                }
+
+                .rtx-login-footer {
+                    display: flex;
+                    align-items: center;
+                    gap: 7px;
+                    margin-top: 16px;
+                    padding-top: 14px;
+                    border-top: 1px solid #252932;
+                    color: #767680;
+                    font-size: 11.5px;
+                }
+
+                @media (max-width: 760px) {
+                    .rtx-login-overlay {
+                        align-items: flex-start;
+                        padding: 14px;
+                        overflow-y: auto;
+                    }
+
+                    .rtx-login-shell {
+                        width: 100%;
+                        min-height: 0;
+                    }
+                }
+
+                @media (max-width: 520px) {
+                    .rtx-login-overlay {
+                        padding: 12px;
+                    }
+
+                    .rtx-shell-bar {
+                        padding: 0 12px;
+                    }
+
+                    .rtx-shell-health {
+                        display: none;
+                    }
+
+                    .rtx-login-body {
+                        padding: 18px;
+                    }
+
+                    .rtx-brand-logo {
+                        width: 40px;
+                        height: 40px;
+                    }
+
+                    .rtx-brand-name {
+                        font-size: 20px;
+                    }
+
+                    .rtx-form-header {
+                        margin-bottom: 16px;
+                    }
+
+                    .rtx-broker-strip {
+                        align-items: flex-start;
+                        flex-direction: column;
+                    }
+
+                    .rtx-login-form {
+                        gap: 11px;
+                    }
+
+                    .rtx-login-footer {
+                        margin-top: 14px;
+                        padding-top: 14px;
+                    }
                 }
             `}</style>
         </div>
     );
 }
 
-// ── Shared input styles ────────────────────────────────────────────────────
 const labelStyle: React.CSSProperties = {
     display: 'block',
-    color: '#52525b',
-    fontSize: 10,
-    fontWeight: 700,
+    color: '#737987',
+    fontSize: 9.5,
+    fontWeight: 800,
     textTransform: 'uppercase',
-    letterSpacing: '0.15em',
+    letterSpacing: '0.1em',
     marginBottom: 6,
-    fontFamily: 'system-ui, sans-serif',
+    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
 };
 
 const inputStyle: React.CSSProperties = {
     width: '100%',
     boxSizing: 'border-box',
-    padding: '9px 12px',
+    padding: '10px 12px',
     borderRadius: 6,
-    border: '1px solid #3f3f46',
-    background: '#0d0d11',
+    border: '1px solid #252932',
+    background: '#0b0d11',
     color: '#f4f4f5',
     fontSize: 13,
     outline: 'none',
-    transition: 'border-color 0.15s',
-    fontFamily: 'system-ui, sans-serif',
+    transition: 'border-color 0.15s, box-shadow 0.15s',
+    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
 };

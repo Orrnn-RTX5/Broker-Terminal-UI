@@ -222,7 +222,7 @@ export const AccountInfoDashboard = () => {
       {/* Export Dialog */}
       {showExportDialog && (
         <ExportDialog
-          accountId="1"
+          accountId={accountId ? String(accountId) : ''}
           onClose={() => setShowExportDialog(false)}
         />
       )}

@@ -181,79 +181,14 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
 
-  // Helper to determine contract size for a symbol (Forex default, custom indices/metals/cryptos)
-  const getContractSize = useCallback((symbol: string): number => {
-    const sym = String(symbol || '').trim().toUpperCase();
-    if (sym.startsWith('BTC') || sym.startsWith('ETH') || sym.startsWith('XRP') || sym.startsWith('SOL') || sym.startsWith('BNB')) {
-      return 1;
-    }
-    if (sym.startsWith('XAU')) {
-      return 100;
-    }
-    if (sym.startsWith('XAG')) {
-      return 5000;
-    }
-    if (sym.startsWith('WTI') || sym.startsWith('BCO') || sym.startsWith('NATGAS')) {
-      return 1000;
-    }
-    // Standard Forex
-    return 100000;
-  }, []);
-
-  // Recalculates account equity and margin levels locally based on latest ticks
-  const computeLocalEquityAndFreeMargin = useCallback(() => {
-    const store = useAppStore.getState();
-    const currentAccount = store.account;
-    if (!currentAccount) return;
-
-    const currentPositions = store.positions;
-    let totalFloatingPnL = 0;
-
-    const updatedPositions = currentPositions.map((pos) => {
-      const symbol = pos.symbol;
-      const direction = pos.side === 'SELL' ? -1 : 1;
-      const volume = pos.volume;
-      const contractSize = getContractSize(symbol);
-      const openPrice = pos.openPrice;
-
-      // Try to resolve latest tick prices
-      const tick = store.ticks[symbol];
-      let currentPrice = pos.currentPrice;
-      if (tick) {
-        currentPrice = pos.side === 'SELL' ? tick.ask : tick.bid;
-        if (!currentPrice || currentPrice <= 0) {
-          currentPrice = tick.bid || tick.last || pos.currentPrice;
-        }
-      }
-
-      if (currentPrice > 0 && openPrice > 0) {
-        const positionPnL = (currentPrice - openPrice) * direction * volume * contractSize;
-        totalFloatingPnL += positionPnL;
-        return {
-          ...pos,
-          currentPrice,
-          unrealizedPnL: Number(positionPnL.toFixed(2)),
-        };
-      }
-      return pos;
-    });
-
-    const balance = currentAccount.balance;
-    const equity = Number((balance + totalFloatingPnL).toFixed(2));
-    const margin = currentAccount.margin;
-    const freeMargin = Number((equity - margin).toFixed(2));
-    const marginLevel = margin > 0 ? Number(((equity / margin) * 100).toFixed(2)) : 0;
-
-    store.setAccount({
-      ...currentAccount,
-      equity,
-      freeMargin,
-      marginLevel,
-      unrealizedPL: Number(totalFloatingPnL.toFixed(2)),
-    });
-
-    store.setPositions(updatedPositions);
-  }, [getContractSize]);
+  // NOTE: A local equity/free-margin recompute used to live here, driven by a
+  // symbol-prefix `getContractSize` heuristic. It was never wired into any
+  // displayed value (dead code) and the heuristic produced incorrect money math
+  // for any non-standard contract size. It has been removed to eliminate the
+  // latent hazard. If client-side equity recomputation is reintroduced, it MUST
+  // source the real `contract_size` from the broker symbol catalog rather than
+  // guessing from the symbol prefix. Equity/margin are otherwise authoritative
+  // from the gateway via AccountSocketManager (below).
 
   // WebSocket — uses AccountSocketManager (Section 4 of WS flow).
   // The AccountSocketManager handles auth, channel subscription, position/account

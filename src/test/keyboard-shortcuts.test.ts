@@ -3,6 +3,8 @@
  * Manual testing guide for keyboard navigation
  */
 
+import { describe, expect, it } from 'vitest';
+
 // This file serves as a testing checklist for manual verification
 
 export const KEYBOARD_SHORTCUTS_TEST_CHECKLIST = {
@@ -57,3 +59,15 @@ export const KEYBOARD_SHORTCUTS_TEST_CHECKLIST = {
 // 6. Test with screen reader if available
 
 export default KEYBOARD_SHORTCUTS_TEST_CHECKLIST;
+
+describe('keyboard shortcut manual checklist', () => {
+  it('documents the global shortcuts expected by the terminal', () => {
+    expect(KEYBOARD_SHORTCUTS_TEST_CHECKLIST.globalShortcuts).toMatchObject({
+      F9: 'Opens New Order dialog',
+      'Alt+B': 'Opens Depth of Market',
+      'Ctrl+U': 'Opens Symbols dialog',
+      F10: 'Opens Popup Prices',
+      Escape: 'Closes active modal or context menu',
+    });
+  });
+});

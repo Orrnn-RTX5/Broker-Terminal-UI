@@ -23,6 +23,7 @@ import { api } from './services/api';
 import { accountV2Api, tradingV2Api } from './api/trade';
 import { tradeGatewayApi } from './api/tradeGateway';
 import { brokerApi } from './api/brokerApi';
+import { formatOrderError } from './utils/orderError';
 import { OneClickTrading } from './components/OneClickTrading';
 import { getStoredBrokerServer } from './services/brokerServers';
 import { BootstrapLoader } from './components/BootstrapLoader';
@@ -2135,7 +2136,7 @@ function App() {
       refreshPositions(loginId);
       refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
     } catch (err: any) {
-      alert('Order failed: ' + err.message);
+      alert(formatOrderError(err));
     } finally {
       setOrderLoading(false);
     }
@@ -2165,7 +2166,7 @@ function App() {
       refreshPositions(loginId);
       refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
     } catch (err: any) {
-      alert('Order failed: ' + err.message);
+      alert(formatOrderError(err));
     } finally {
       setOrderLoading(false);
     }

@@ -31,14 +31,30 @@ interface OrderPanelProps {
   onSubmitOrder: (order: any) => Promise<void> | void;
 }
 
-// Instrument config helper
-function getInstrumentConfig(sym: string) {
-  if (sym.startsWith('BTC')) return { digits: 2, pipSize: 1, contractSize: 1, currency: 'BTC' };
-  if (sym.startsWith('ETH')) return { digits: 2, pipSize: 0.01, contractSize: 1, currency: 'ETH' };
-  if (sym.startsWith('XAU')) return { digits: 2, pipSize: 0.01, contractSize: 100, currency: 'USD' };
-  if (sym.startsWith('XAG')) return { digits: 3, pipSize: 0.001, contractSize: 5000, currency: 'USD' };
-  if (sym.includes('JPY')) return { digits: 3, pipSize: 0.01, contractSize: 100000, currency: sym.slice(0, 3) };
-  return { digits: 5, pipSize: 0.0001, contractSize: 100000, currency: sym.slice(0, 3) };
+// Instrument config helper.
+// NOTE: contractSize/currency are still prefix heuristics (no per-symbol catalog
+// is threaded into this dialog), but `digits` — and therefore `pipSize` — are
+// taken from the live feed (`liveDigits`) whenever the feed provides them, so the
+// price grid and spread match the broker's real precision instead of a guess.
+export function getInstrumentConfig(sym: string, liveDigits?: number) {
+  const base = (() => {
+    if (sym.startsWith('BTC')) return { digits: 2, pipSize: 1, contractSize: 1, currency: 'BTC' };
+    if (sym.startsWith('ETH')) return { digits: 2, pipSize: 0.01, contractSize: 1, currency: 'ETH' };
+    if (sym.startsWith('XAU')) return { digits: 2, pipSize: 0.01, contractSize: 100, currency: 'USD' };
+    if (sym.startsWith('XAG')) return { digits: 3, pipSize: 0.001, contractSize: 5000, currency: 'USD' };
+    if (sym.includes('JPY')) return { digits: 3, pipSize: 0.01, contractSize: 100000, currency: sym.slice(0, 3) };
+    return { digits: 5, pipSize: 0.0001, contractSize: 100000, currency: sym.slice(0, 3) };
+  })();
+
+  // Prefer the broker-reported precision when available. A pip is the last whole
+  // price increment, i.e. 10^-(digits-1) for fractional-pip (5/3-digit) quotes and
+  // 10^-digits otherwise — matching the heuristic defaults above.
+  if (typeof liveDigits === 'number' && Number.isInteger(liveDigits) && liveDigits >= 0 && liveDigits <= 10) {
+    const pipExponent = liveDigits >= 1 && (liveDigits === 3 || liveDigits === 5) ? liveDigits - 1 : liveDigits;
+    return { ...base, digits: liveDigits, pipSize: Math.pow(10, -pipExponent) };
+  }
+
+  return base;
 }
 
 // Format number with space separators (MT5 style: "1 000")
@@ -307,7 +323,7 @@ export function OrderPanelDialog({
 
   const availableSymbols = Object.keys(ticks).length > 0 ? Object.keys(ticks) : [initialSymbol];
 
-  const config = getInstrumentConfig(symbol);
+  const config = getInstrumentConfig(symbol, tick?.digits);
   const { digits, pipSize, contractSize: instContractSize } = config;
 
   const bid = tick?.bid || currentPrice.bid || 0;

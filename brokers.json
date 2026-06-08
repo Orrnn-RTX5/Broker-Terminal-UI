@@ -1,17 +1,12 @@
 {
+  "_comment": "Schema reference only. The deploy pipeline reads the real broker manifest from the ORRNN-RTX5-Broker-Infra repo (or the BROKERS_JSON secret) at deploy time — NOT from this file. Do not commit live SSH hosts, users, ports, or internal IPs here.",
   "brokers": [
     {
       "id": "grow-trading-academy",
       "name": "Grow Trading Academy",
       "enabled": true,
-      "host": "103.91.186.142",
-      "user": "root",
-      "port": 40111,
       "domain": "webterminal.growtradingacademy.com",
       "backend_url": "https://services.growtradingacademy.com",
-      "server_ip": "103.91.186.142",
-      "server_port": 8091,
-      "app_port": "127.0.0.1:8081",
       "env": {
         "BACKEND_TARGET": "web",
         "API_HOST": "https://services.growtradingacademy.com",
@@ -20,11 +15,6 @@
         "DEFAULT_MT5_SERVER": "RTX 5 Web Terminal",
         "DISCOVERY_BASE_URL": "https://superbackend.orrnn.com",
         "USE_MOCK_DISCOVERY": "false"
-      },
-      "ssh": {
-        "host": "103.91.186.142",
-        "port": 40111,
-        "user": "root"
       },
       "services": {
         "frontend": {

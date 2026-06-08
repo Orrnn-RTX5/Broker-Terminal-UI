@@ -7,6 +7,7 @@ import {
   toLocalDevProxyUrl,
 } from '../config/api';
 import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
+import { debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 
 type DynamicBrokerTarget = {
   backend_url?: string;
@@ -169,9 +170,6 @@ const buildHeaders = (customHeaders?: Record<string, string>, skipAuth?: boolean
     const token = getToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
-      if (!headers['X-API-Key']) {
-        headers['X-API-Key'] = token;
-      }
     }
   }
 
@@ -467,7 +465,7 @@ export const apiClient = {
     // Ensure endpoint starts with / for proper URL construction
     const normalizedEndpoint = normalizeEndpoint(endpoint);
     const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
-    console.log('[API Client] GET URL:', url);
+    debugLog('[API Client] GET URL:', redactUrlForDebugLog(url));
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -490,7 +488,7 @@ export const apiClient = {
     // Ensure endpoint starts with / for proper URL construction
     const normalizedEndpoint = normalizeEndpoint(endpoint);
     const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
-    console.log('[API Client] POST URL:', url);
+    debugLog('[API Client] POST URL:', redactUrlForDebugLog(url));
     const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);

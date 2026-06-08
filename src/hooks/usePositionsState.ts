@@ -5,7 +5,7 @@
  * Provides computed helpers (total PnL, position count by symbol, etc.)
  *
  * Usage:
- *   const { positions, totalPnL, isConnected } = usePositionsState(900001);
+ *   const { positions, totalPnL, isConnected } = usePositionsState(100001);
  */
 
 import { useMemo } from 'react';

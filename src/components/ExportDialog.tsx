@@ -1,19 +1,24 @@
 import { Icon } from './ui/Icon';
 import { useState } from 'react';
-import Papa from 'papaparse';
-import type { Trade } from '../store/useAppStore';
-import { api } from '../services/api';
+import { FileSpreadsheet, FileJson } from 'lucide-react';
+import {
+  buildExportCsv,
+  filterSelectedExportColumns,
+  fetchExportRows,
+  getDefaultSelectedExportColumns,
+  getExportColumnsForDataType,
+  getExportUnavailableReason,
+  normalizeCsvDelimiter,
+  type CsvDelimiter,
+  type ExportDataType,
+  type ExportableDataType,
+  type ExportFormat,
+} from './ExportDialog.helpers';
 
 interface ExportDialogProps {
   accountId: string;
   onClose: () => void;
 }
-
-type ExportFormat = 'csv' | 'pdf' | 'json';
-type ExportDataType = 'trades' | 'positions' | 'performance';
-
-import { API_BASE_URL } from '../config/api';
-import { FileSpreadsheet, FileJson } from 'lucide-react';
 
 export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
   const [format, setFormat] = useState<ExportFormat>('csv');
@@ -21,54 +26,52 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedColumns, setSelectedColumns] = useState<Set<string>>(
-    new Set(['symbol', 'side', 'volume', 'profit', 'openTime', 'closeTime'])
-  );
-  const [csvDelimiter, setCsvDelimiter] = useState<',' | ';' | '\t'>(',');
-
-  // Available columns for selection
-  const allColumns = {
-    trades: [
-      { key: 'id', label: 'Trade ID' },
-      { key: 'symbol', label: 'Symbol' },
-      { key: 'side', label: 'Side' },
-      { key: 'volume', label: 'Volume' },
-      { key: 'openPrice', label: 'Open Price' },
-      { key: 'closePrice', label: 'Close Price' },
-      { key: 'profit', label: 'Profit' },
-      { key: 'commission', label: 'Commission' },
-      { key: 'swap', label: 'Swap' },
-      { key: 'openTime', label: 'Open Time' },
-      { key: 'closeTime', label: 'Close Time' },
-    ],
-    positions: [
-      { key: 'id', label: 'Position ID' },
-      { key: 'symbol', label: 'Symbol' },
-      { key: 'side', label: 'Side' },
-      { key: 'volume', label: 'Volume' },
-      { key: 'openPrice', label: 'Open Price' },
-      { key: 'currentPrice', label: 'Current Price' },
-      { key: 'unrealizedPnL', label: 'Unrealized P&L' },
-      { key: 'sl', label: 'Stop Loss' },
-      { key: 'tp', label: 'Take Profit' },
-    ],
-  };
+  const [selectedColumnsByType, setSelectedColumnsByType] = useState<Record<ExportableDataType, Set<string>>>(() => ({
+    trades: getDefaultSelectedExportColumns('trades'),
+    positions: getDefaultSelectedExportColumns('positions'),
+  }));
+  const [csvDelimiter, setCsvDelimiter] = useState<CsvDelimiter>(',');
+  const unavailableReason = getExportUnavailableReason(format, dataType);
+  const requiresColumns = format !== 'pdf' && dataType !== 'performance';
+  const exportableDataType: ExportableDataType | null = dataType === 'performance' ? null : dataType;
+  const selectedColumns = exportableDataType ? selectedColumnsByType[exportableDataType] : new Set<string>();
+  const selectedColumnKeys = exportableDataType
+    ? filterSelectedExportColumns(exportableDataType, selectedColumns)
+    : [];
 
   const toggleColumn = (column: string) => {
-    setSelectedColumns((prev) => {
-      const newSet = new Set(prev);
+    if (!exportableDataType) return;
+
+    setSelectedColumnsByType((prev) => {
+      const newSet = new Set(prev[exportableDataType]);
       if (newSet.has(column)) {
         newSet.delete(column);
       } else {
         newSet.add(column);
       }
-      return newSet;
+      return {
+        ...prev,
+        [exportableDataType]: newSet,
+      };
     });
   };
 
   const handleExport = async () => {
     if (!startDate || !endDate) {
       alert('Please select both start and end dates');
+      return;
+    }
+
+    // Export must target the logged-in trader's own account. Refuse to proceed
+    // without a resolved account id rather than silently exporting a wrong/other
+    // account (the prop is now wired to the active account, not a hardcoded "1").
+    if (!accountId || !accountId.trim()) {
+      alert('No account selected - cannot export data');
+      return;
+    }
+
+    if (unavailableReason) {
+      alert(unavailableReason);
       return;
     }
 
@@ -94,65 +97,23 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
     // Fetch data from API
     const data = await fetchData();
 
-    // Filter columns based on selection
-    const filteredData = data.map((item: any) => {
-      const filtered: any = {};
-      selectedColumns.forEach((col) => {
-        filtered[col] = item[col];
-      });
-      return filtered;
-    });
-
-    // Generate CSV using papaparse
-    const csv = Papa.unparse(filteredData, {
-      delimiter: csvDelimiter,
-      header: true,
-    });
+    const csv = buildExportCsv(data, selectedColumnKeys, csvDelimiter);
 
     // Download CSV file
     downloadFile(csv, `${dataType}_${Date.now()}.csv`, 'text/csv');
   };
 
   const exportPDF = async () => {
-    // Call backend API for PDF generation
-    const queryParams = new URLSearchParams({
-      start: startDate,
-      end: endDate,
-      accountId,
-    });
-
-    const response = await fetch(
-      `${API_BASE_URL}/api/analytics/export/pdf?${queryParams}`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`PDF export failed: ${response.statusText}`);
-    }
-
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `report_${Date.now()}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    throw new Error(getExportUnavailableReason('pdf', dataType) || 'PDF export is unavailable');
   };
 
   const exportJSON = async () => {
     const data = await fetchData();
 
     // Filter columns
-    const filteredData = data.map((item: any) => {
-      const filtered: any = {};
-      selectedColumns.forEach((col) => {
+    const filteredData = data.map((item) => {
+      const filtered: Record<string, unknown> = {};
+      selectedColumnKeys.forEach((col) => {
         filtered[col] = item[col];
       });
       return filtered;
@@ -163,39 +124,10 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
   };
 
   const fetchData = async () => {
-    if (dataType === 'positions') {
-      const login = Number(accountId);
-      if (!Number.isFinite(login) || login <= 0) {
-        throw new Error('A valid account login is required to export positions');
-      }
-
-      return api.positions.getPositions(login);
+    if (dataType === 'performance') {
+      throw new Error(getExportUnavailableReason(format, dataType) || 'Performance export is unavailable');
     }
-
-    const endpoint =
-      dataType === 'trades'
-        ? `/api/trades?accountId=${accountId}`
-        : `/api/performance?accountId=${accountId}`;
-
-    const response = await fetch(`${API_BASE_URL}${endpoint}`);
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${dataType}`);
-    }
-
-    const data = await response.json();
-
-    // Filter by date range if applicable
-    if (dataType === 'trades' && Array.isArray(data)) {
-      const start = new Date(startDate).getTime();
-      const end = new Date(endDate).getTime();
-      return data.filter((item: Trade) => {
-        const closeTime = item.closeTime ? new Date(item.closeTime).getTime() : 0;
-        return closeTime >= start && closeTime <= end;
-      });
-    }
-
-    return data || [];
+    return fetchExportRows(accountId, dataType, startDate, endDate);
   };
 
   const downloadFile = (content: string, filename: string, mimeType: string) => {
@@ -210,8 +142,9 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
     URL.revokeObjectURL(url);
   };
 
-  const currentColumns =
-    dataType === 'trades' ? allColumns.trades : allColumns.positions;
+  const currentColumns = exportableDataType
+    ? getExportColumnsForDataType(exportableDataType)
+    : [];
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -237,19 +170,27 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
               Data Type
             </label>
             <div className="grid grid-cols-3 gap-2">
-              {(['trades', 'positions', 'performance'] as const).map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setDataType(type)}
-                  className={`p-2 rounded border text-sm font-medium transition-colors ${dataType === type
-                      ? 'bg-emerald-600 border-emerald-500 text-white'
-                      : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
-                    }`}
-                >
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </button>
-              ))}
+              {(['trades', 'positions', 'performance'] as const).map((type) => {
+                const reason = getExportUnavailableReason(format, type);
+                return (
+                  <button
+                    key={type}
+                    onClick={() => !reason && setDataType(type)}
+                    disabled={Boolean(reason)}
+                    title={reason || undefined}
+                    className={`p-2 rounded border text-sm font-medium transition-colors ${dataType === type
+                        ? 'bg-emerald-600 border-emerald-500 text-white'
+                        : reason
+                          ? 'bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed'
+                          : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
+                      }`}
+                  >
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </button>
+                );
+              })}
             </div>
+            <p className="mt-2 text-xs text-zinc-500">Performance export is unavailable on this broker backend.</p>
           </div>
 
           {/* Format Selection */}
@@ -270,9 +211,11 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
               </button>
               <button
                 onClick={() => setFormat('pdf')}
+                disabled
+                title={getExportUnavailableReason('pdf', dataType) || undefined}
                 className={`flex items-center justify-center gap-2 p-3 rounded border transition-colors ${format === 'pdf'
                     ? 'bg-blue-600 border-zinc-600 text-white'
-                    : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed'
                   }`}
               >
                 <Icon name="file-text" size="sm" className="w-4 h-4" />
@@ -289,7 +232,14 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
                 <span className="text-sm font-medium">JSON</span>
               </button>
             </div>
+            <p className="mt-2 text-xs text-zinc-500">PDF export is disabled until the broker backend exposes a real PDF endpoint.</p>
           </div>
+
+          {unavailableReason && (
+            <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200" role="status">
+              {unavailableReason}
+            </div>
+          )}
 
           {/* Date Range */}
           <div className="grid grid-cols-2 gap-3">
@@ -327,12 +277,12 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
               </label>
               <select
                 value={csvDelimiter}
-                onChange={(e) => setCsvDelimiter(e.target.value as ',' | ';' | '\t')}
+                onChange={(e) => setCsvDelimiter(normalizeCsvDelimiter(e.target.value))}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white text-sm focus:outline-none focus:border-emerald-500"
               >
                 <option value=",">Comma (,)</option>
                 <option value=";">Semicolon (;)</option>
-                <option value="\t">Tab (\t)</option>
+                <option value={'\t'}>Tab (\t)</option>
               </select>
             </div>
           )}
@@ -372,7 +322,7 @@ export const ExportDialog = ({ accountId, onClose }: ExportDialogProps) => {
             </button>
             <button
               onClick={handleExport}
-              disabled={isLoading || !startDate || !endDate || selectedColumns.size === 0}
+              disabled={isLoading || !startDate || !endDate || (requiresColumns && selectedColumnKeys.length === 0) || Boolean(unavailableReason)}
               className="flex-1 px-4 py-2 bg-emerald-600 border border-emerald-500 rounded text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
             >
               {isLoading ? (

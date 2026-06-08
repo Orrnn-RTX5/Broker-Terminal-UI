@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest';
+import { formatOrderError } from './orderError';
+import { ApiError } from '../api/client';
+
+describe('formatOrderError', () => {
+  it('maps a network-level ApiError (status 0) to a connection message', () => {
+    const msg = formatOrderError(new ApiError(0, 'fetch failed at http://10.0.0.5:8091/api/orders?token=abc'));
+    expect(msg).toBe('Order failed: cannot reach the trading server. Check your connection and try again.');
+    expect(msg).not.toContain('10.0.0.5');
+    expect(msg).not.toContain('token');
+  });
+
+  it('maps auth failures to a re-login message without leaking detail', () => {
+    expect(formatOrderError(new ApiError(401, 'Unauthorized / Session Expired')))
+      .toBe('Order failed: your session is no longer authorized. Please sign in again.');
+    expect(formatOrderError(new ApiError(403, 'Forbidden http://broker/x')))
+      .toBe('Order failed: your session is no longer authorized. Please sign in again.');
+  });
+
+  it('maps 5xx to a generic server message', () => {
+    expect(formatOrderError(new ApiError(503, 'upstream http://103.91.186.142:8091 down')))
+      .toBe('Order failed: the trading server reported an error. Please try again shortly.');
+  });
+
+  it('surfaces a clean 4xx business message but scrubs URLs/IPs', () => {
+    const msg = formatOrderError(new ApiError(400, 'Insufficient margin at https://services.example.com/orders?token=xyz'));
+    expect(msg).toContain('Insufficient margin');
+    expect(msg).toContain('[server]');
+    expect(msg).not.toContain('services.example.com');
+    expect(msg).not.toContain('token');
+  });
+
+  it('scrubs a bare host:port from a 4xx detail', () => {
+    const msg = formatOrderError(new ApiError(409, 'conflict from 103.91.186.142:8091'));
+    expect(msg).not.toContain('103.91.186.142');
+    expect(msg).toContain('[server]');
+  });
+
+  it('handles a plain Error with a fetch failure', () => {
+    expect(formatOrderError(new Error('Failed to fetch')))
+      .toBe('Order failed: cannot reach the trading server. Check your connection and try again.');
+  });
+
+  it('handles a plain Error with a usable, URL-free message', () => {
+    expect(formatOrderError(new Error('Volume below minimum')))
+      .toBe('Order failed: Volume below minimum');
+  });
+
+  it('handles non-error / empty input gracefully', () => {
+    expect(formatOrderError(undefined)).toBe('Order failed: cannot reach the trading server. Check your connection and try again.');
+    expect(formatOrderError(null)).toBe('Order failed: cannot reach the trading server. Check your connection and try again.');
+    expect(formatOrderError('Order rejected')).toBe('Order failed: Order rejected');
+  });
+});

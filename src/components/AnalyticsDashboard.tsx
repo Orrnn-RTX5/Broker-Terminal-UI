@@ -12,6 +12,7 @@ import { RuleEffectivenessDashboard } from './RuleEffectivenessDashboard';
 import { ExposureHeatmap } from './ExposureHeatmap';
 import { ExportDialog } from './ExportDialog';
 import { AlertRulesManager } from './AlertRulesManager';
+import { useAppStore } from '../store/useAppStore';
 import { Grid3X3 } from 'lucide-react';
 
 // ============================================
@@ -92,6 +93,7 @@ interface AnalyticsDashboardProps {
 export function AnalyticsDashboard({ onBack, className = '' }: AnalyticsDashboardProps) {
   const [activeTab, setActiveTab] = useState<AnalyticsTab>('routing');
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const accountId = useAppStore((state) => state.accountId);
 
   // Render active tab content
   const renderContent = () => {
@@ -178,7 +180,7 @@ export function AnalyticsDashboard({ onBack, className = '' }: AnalyticsDashboar
       {/* Export Dialog */}
       {showExportDialog && (
         <ExportDialog
-          accountId="default"
+          accountId={accountId ? String(accountId) : ''}
           onClose={() => setShowExportDialog(false)}
         />
       )}

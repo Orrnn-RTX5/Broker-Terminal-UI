@@ -47,6 +47,26 @@ describe('extractBrokerDiscoveryList', () => {
     ]);
   });
 
+  it('preserves v2 sanitized rows with opaque server handles and no direct host or port', () => {
+    expect(extractBrokerDiscoveryList({
+      servers: [
+        {
+          broker_id: 'gta_broker',
+          broker_name: 'Grow Trading Academy',
+          server: 'gta-live',
+          logo_url: '/logos/gta.png',
+        },
+      ],
+    })).toEqual([
+      {
+        broker_id: 'gta_broker',
+        broker_name: 'Grow Trading Academy',
+        server: 'gta-live',
+        logo_url: '/logos/gta.png',
+      },
+    ]);
+  });
+
   it('filters invalid payload rows instead of returning non-broker values', () => {
     expect(extractBrokerDiscoveryList({
       data: [

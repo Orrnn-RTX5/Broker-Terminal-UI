@@ -29,7 +29,7 @@ describe('useLogin', () => {
       access_token: 'access-token',
       refresh_token: 'refresh-token',
       broker_id: 'testorrnn',
-      account_login: 900001,
+      account_login: 100001,
     })));
     localStorage.clear();
   });
@@ -39,8 +39,8 @@ describe('useLogin', () => {
 
     await act(async () => {
       await result.current.login({
-        username: '900001',
-        password: 'TestPass1234',
+        username: '100001',
+        password: 'FixturePassword123',
         broker_id: 'testorrnn',
         server: 'https://testbroker.example',
       });
@@ -49,11 +49,11 @@ describe('useLogin', () => {
     const request = lastFetchCall();
     expect(request.url).toBe(expectedLoginUrl('https://testbroker.example'));
     expect(request.body).toEqual({
-      username: '900001',
-      password: 'TestPass1234',
+      username: '100001',
+      password: 'FixturePassword123',
       broker_id: 'testorrnn',
     });
     expect(request.body).not.toHaveProperty('server');
-    expect(localStorage.getItem('server_url')).toBe('http://testbroker.example');
+    expect(localStorage.getItem('server_url')).toBe('https://testbroker.example');
   });
 });

@@ -30,11 +30,11 @@ js_bool() {
 }
 
 backend_target="$(resolve_backend_target)"
-api_host="${API_HOST:-${VITE_API_HOST:-${VITE_API_URL:-${VITE_BACKEND_URL:-https://services.myprop.trade}}}}"
+api_host="${API_HOST:-${VITE_API_HOST:-${VITE_API_URL:-${VITE_BACKEND_URL:-https://backend.orrnn.com}}}}"
 api_host_ext="${API_HOST_EXT:-${VITE_API_HOST_EXT:-${VITE_API_URL_EXT:-${VITE_BACKEND_URL_EXT:-$api_host}}}}"
-ws_host="${WS_HOST:-${VITE_WS_HOST:-${VITE_WS_URL:-wss://services.myprop.trade}}}"
-default_mt5_server="${DEFAULT_MT5_SERVER:-${VITE_DEFAULT_MT5_SERVER:-MyProp-Server}}"
-discovery_base_url="${DISCOVERY_BASE_URL:-${VITE_DISCOVERY_BASE_URL:-${VITE_BROKER_DISCOVERY_URL:-https://superbackend.orrnn.com}}}"
+ws_host="${WS_HOST:-${VITE_WS_HOST:-${VITE_WS_URL:-wss://backend.orrnn.com}}}"
+default_mt5_server="${DEFAULT_MT5_SERVER:-${VITE_DEFAULT_MT5_SERVER:-backend.orrnn.com:443}}"
+discovery_base_url="${DISCOVERY_BASE_URL:-${VITE_DISCOVERY_BASE_URL:-${VITE_BROKER_DISCOVERY_URL:-$api_host}}}"
 use_mock_discovery="${USE_MOCK_DISCOVERY:-${VITE_USE_MOCK_DISCOVERY:-false}}"
 
 mkdir -p "${html_dir}"

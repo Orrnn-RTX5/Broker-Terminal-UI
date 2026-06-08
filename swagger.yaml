@@ -1683,11 +1683,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [login, symbol, side, volume, type, price]
+              required: [account_login, symbol, side, volume, type, price]
               properties:
-                login:
+                account_login:
                   type: integer
                   format: int64
+                  description: Account login owned by the authenticated user
                 symbol:
                   type: string
                 side:
@@ -1702,13 +1703,13 @@ paths:
                 price:
                   type: number
                   format: double
-                price_sl:
+                sl:
                   type: number
                   format: double
-                price_tp:
+                tp:
                   type: number
                   format: double
-                expiration:
+                expiry:
                   type: integer
                   format: int64
                   description: Unix timestamp for order expiration
@@ -1815,15 +1816,16 @@ paths:
                 price:
                   type: number
                   format: double
-                price_sl:
+                sl:
                   type: number
                   format: double
-                price_tp:
+                tp:
                   type: number
                   format: double
-                expiration:
+                expiry:
                   type: integer
                   format: int64
+                  description: Unix timestamp for order expiration
                 trailing_stop:
                   type: integer
                   description: Trailing stop distance in points

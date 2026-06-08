@@ -8,6 +8,14 @@ import '@testing-library/jest-dom';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FileMenu } from './FileMenu';
+import {
+    clearActiveChartSources,
+    registerActiveChartSource,
+} from '../../services/activeChartSource';
+
+const savePictureDialogMock = vi.hoisted(() => ({
+    props: [] as any[],
+}));
 
 // 1. Mock i18n translations
 vi.mock('react-i18next', () => {
@@ -103,12 +111,15 @@ vi.mock('../dialogs/PrintPreviewDialog', () => ({
 }));
 
 vi.mock('../dialogs/SavePictureDialog', () => ({
-    SavePictureDialog: ({ isOpen, onClose }: any) => isOpen ? (
-        <div data-testid="save-picture-dialog">
-            <span>Save Picture</span>
-            <button onClick={onClose}>Close Save Picture</button>
-        </div>
-    ) : null
+    SavePictureDialog: (props: any) => {
+        savePictureDialogMock.props.push(props);
+        return props.isOpen ? (
+            <div data-testid="save-picture-dialog">
+                <span>Save Picture</span>
+                <button onClick={props.onClose}>Close Save Picture</button>
+            </div>
+        ) : null;
+    }
 }));
 
 vi.mock('../dialogs/ExitConfirmDialog', () => ({
@@ -143,6 +154,8 @@ describe('FileMenu Component', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        savePictureDialogMock.props = [];
+        clearActiveChartSources();
         vi.spyOn(window, 'alert').mockImplementation(() => { });
     });
 
@@ -189,15 +202,47 @@ describe('FileMenu Component', () => {
         });
 
         it('calls onSaveAsPicture when Save As Picture is clicked', () => {
-            (window as any).__activeChartCanvas = {} as any; // mock chart canvas to pass active check
+            const chartContainer = document.createElement('div');
+            const chartCanvas = document.createElement('canvas');
+            chartCanvas.width = 800;
+            chartCanvas.height = 600;
+            chartContainer.appendChild(chartCanvas);
+            document.body.appendChild(chartContainer);
+            const unregister = registerActiveChartSource({
+                id: 'file-menu-test-chart',
+                getCanvas: () => chartCanvas,
+                getContainer: () => chartContainer,
+                getSymbol: () => 'XAUUSD',
+                getTimeframe: () => 'M15',
+            });
+
             render(<FileMenu {...mockHandlers} />);
 
             const saveAsPictureBtn = screen.getByText('Save As Picture').closest('button');
             fireEvent.click(saveAsPictureBtn!);
 
             expect(mockHandlers.onSaveAsPicture).toHaveBeenCalledTimes(1);
+            expect(screen.getByTestId('save-picture-dialog')).toBeInTheDocument();
+            expect(savePictureDialogMock.props.at(-1)).toMatchObject({
+                chartCanvas,
+                chartContainer,
+                symbol: 'XAUUSD',
+                timeframe: 'M15',
+            });
 
-            delete (window as any).__activeChartCanvas; // cleanup
+            unregister();
+            chartContainer.remove();
+        });
+
+        it('does not open Save Picture without an active registered chart source', () => {
+            render(<FileMenu {...mockHandlers} />);
+
+            const saveAsPictureBtn = screen.getByText('Save As Picture').closest('button');
+            fireEvent.click(saveAsPictureBtn!);
+
+            expect(mockHandlers.onSaveAsPicture).not.toHaveBeenCalled();
+            expect(screen.queryByTestId('save-picture-dialog')).not.toBeInTheDocument();
+            expect(window.alert).toHaveBeenCalledWith('No chart available to export. Please open a chart first.');
         });
 
         it('calls onOpenDataFolder when Open Data Folder is clicked', () => {

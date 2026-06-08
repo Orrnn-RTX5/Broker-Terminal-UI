@@ -7,6 +7,7 @@ import { Icon } from './ui/Icon';
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
+import { escapeCsvCell } from '../utils/csvSafety';
 import { DollarSign, TrendingUp } from 'lucide-react';
 
 type Trade = {
@@ -175,7 +176,12 @@ export const TradeHistory = ({ accountId }: TradeHistoryProps) => {
       trade.duration,
     ]);
 
-    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
+    // Escape every cell: neutralize spreadsheet-formula triggers and apply
+    // RFC 4180 structural quoting so commas/quotes/newlines cannot corrupt the
+    // file or execute as formulas when opened in Excel/Sheets/LibreOffice.
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => escapeCsvCell(cell)).join(','))
+      .join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

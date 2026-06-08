@@ -64,6 +64,18 @@ class FakeWebSocket {
   }
 }
 
+type QuoteSocketManagerInternals = QuoteSocketManager & {
+  ws: WebSocket | null;
+  handleMessage: (data: unknown) => void;
+  sendSubscribe: (symbols?: string[]) => void;
+  sendUnsubscribe: (symbols: string[]) => void;
+  pendingSubscriptions: Set<string>;
+  subscribedSymbols: Set<string>;
+};
+
+const internals = (manager: QuoteSocketManager): QuoteSocketManagerInternals =>
+  manager as unknown as QuoteSocketManagerInternals;
+
 describe('QuoteSocketManager feed protocol', () => {
   beforeEach(() => {
     FakeWebSocket.instances = [];
@@ -80,7 +92,7 @@ describe('QuoteSocketManager feed protocol', () => {
     vi.restoreAllMocks();
   });
 
-  it('sends wildcard subscribe payload when the feed socket opens', () => {
+  it('subscribes to demanded symbols when the feed socket opens', () => {
     const manager = new QuoteSocketManager();
 
     manager.setDemand('watchlist', ['EURUSD', 'XAUUSD']);
@@ -93,20 +105,29 @@ describe('QuoteSocketManager feed protocol', () => {
     expect(ws.sent.map((payload) => JSON.parse(payload))).toEqual([
       {
         type: 'subscribe',
-        symbols: ['*'],
+        symbols: ['EURUSD', 'XAUUSD'],
       },
     ]);
     expect(manager.getActiveSymbols()).toEqual(['EURUSD', 'XAUUSD']);
 
     manager.setDemand('chart', ['GBPUSD']);
 
-    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent.map((payload) => JSON.parse(payload))).toEqual([
+      {
+        type: 'subscribe',
+        symbols: ['EURUSD', 'XAUUSD'],
+      },
+      {
+        type: 'subscribe',
+        symbols: ['GBPUSD'],
+      },
+    ]);
     expect(manager.getActiveSymbols()).toEqual(['EURUSD', 'XAUUSD', 'GBPUSD']);
 
     manager.destroy();
   });
 
-  it('does not send per-symbol unsubscribe while wildcard subscribed', () => {
+  it('unsubscribes removed symbols and can resubscribe them later', () => {
     const manager = new QuoteSocketManager();
 
     manager.setDemand('watchlist', ['EURUSD', 'XAUUSD']);
@@ -122,7 +143,15 @@ describe('QuoteSocketManager feed protocol', () => {
     expect(ws.sent.map((payload) => JSON.parse(payload))).toEqual([
       {
         type: 'subscribe',
-        symbols: ['*'],
+        symbols: ['EURUSD', 'XAUUSD'],
+      },
+      {
+        type: 'unsubscribe',
+        symbols: ['EURUSD'],
+      },
+      {
+        type: 'subscribe',
+        symbols: ['EURUSD'],
       },
     ]);
     expect(manager.getActiveSymbols()).toEqual(['EURUSD', 'XAUUSD']);
@@ -134,13 +163,13 @@ describe('QuoteSocketManager feed protocol', () => {
     const manager = new QuoteSocketManager();
     const send = vi.fn();
 
-    (manager as any).ws = {
+    internals(manager).ws = {
       readyState: WebSocket.OPEN,
       send,
       close: vi.fn(),
-    };
+    } as unknown as WebSocket;
 
-    (manager as any).sendUnsubscribe(['EURUSD', 'XAUUSD']);
+    internals(manager).sendUnsubscribe(['EURUSD', 'XAUUSD']);
 
     expect(send).toHaveBeenCalledOnce();
     expect(JSON.parse(send.mock.calls[0][0])).toEqual({
@@ -196,7 +225,7 @@ describe('QuoteSocketManager feed protocol', () => {
   it('enqueues every normalized tick from a raw array payload', () => {
     const manager = new QuoteSocketManager();
 
-    (manager as any).handleMessage([
+    internals(manager).handleMessage([
       { symbol: 'eurusd', bid: 1.1, ask: 1.2, timestamp: 1 },
       { symbol: 'gbpusd', bid: 1.3, ask: 1.4, timestamp: 2 },
     ]);
@@ -210,7 +239,7 @@ describe('QuoteSocketManager feed protocol', () => {
   it('enqueues every normalized tick from a ticks wrapper payload', () => {
     const manager = new QuoteSocketManager();
 
-    (manager as any).handleMessage({
+    internals(manager).handleMessage({
       ticks: [
         { symbol: 'xauusd', bid: 2400, ask: 2401, timestamp: 1 },
         { symbol: 'usdjpy', bid: 156.1, ask: 156.2, timestamp: 2 },
@@ -226,7 +255,7 @@ describe('QuoteSocketManager feed protocol', () => {
   it('enqueues every normalized tick from a data array payload', () => {
     const manager = new QuoteSocketManager();
 
-    (manager as any).handleMessage({
+    internals(manager).handleMessage({
       data: [
         { symbol: 'audusd', bid: 0.66, ask: 0.67, timestamp: 1 },
         { symbol: 'nzdusd', bid: 0.61, ask: 0.62, timestamp: 2 },
@@ -242,7 +271,7 @@ describe('QuoteSocketManager feed protocol', () => {
   it('enqueues every normalized tick from nested data ticks payloads', () => {
     const manager = new QuoteSocketManager();
 
-    (manager as any).handleMessage({
+    internals(manager).handleMessage({
       data: {
         ticks: [
           { symbol: 'usdcad', bid: 1.36, ask: 1.37, timestamp: 1 },
@@ -260,7 +289,7 @@ describe('QuoteSocketManager feed protocol', () => {
   it('uses the channel symbol as a fallback for wrapped quote payloads', () => {
     const manager = new QuoteSocketManager();
 
-    (manager as any).handleMessage({
+    internals(manager).handleMessage({
       channel: 'ticks.eurusd',
       data: {
         bid: 1.1,
@@ -283,7 +312,7 @@ describe('QuoteSocketManager feed protocol', () => {
   it('preserves ancestor channel through nested quote wrappers', () => {
     const manager = new QuoteSocketManager();
 
-    (manager as any).handleMessage({
+    internals(manager).handleMessage({
       channel: 'ticks.eurusd',
       data: {
         payload: {
@@ -308,7 +337,7 @@ describe('QuoteSocketManager feed protocol', () => {
   it('enqueues normalized ticks from wrapped stringified JSON quote payloads', () => {
     const manager = new QuoteSocketManager();
 
-    (manager as any).handleMessage({
+    internals(manager).handleMessage({
       message: JSON.stringify({
         symbol: 'eurusd',
         bid: 1.1,
@@ -331,7 +360,7 @@ describe('QuoteSocketManager feed protocol', () => {
   it('preserves ancestor channel through stringified nested array wrappers', () => {
     const manager = new QuoteSocketManager();
 
-    (manager as any).handleMessage({
+    internals(manager).handleMessage({
       channel: 'ticks.eurusd',
       message: JSON.stringify({
         data: {
@@ -360,7 +389,7 @@ describe('QuoteSocketManager feed protocol', () => {
   it('uses the channel symbol for wrapped stringified JSON array payloads', () => {
     const manager = new QuoteSocketManager();
 
-    (manager as any).handleMessage({
+    internals(manager).handleMessage({
       channel: 'ticks.eurusd',
       message: JSON.stringify([
         {
@@ -378,6 +407,78 @@ describe('QuoteSocketManager feed protocol', () => {
       bid: 1.1,
       ask: 1.2,
     });
+
+    manager.destroy();
+  });
+
+  // ─── N3-03 regression: subscribe-state desync on rejected/unconfirmed subscribe ───
+
+  it('does not mark a symbol confirmed until the server confirms it (allows retry)', () => {
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+
+    // Optimistic subscribe was sent, but the symbol is only PENDING — not confirmed.
+    expect(internals(manager).pendingSubscriptions.has('EURUSD')).toBe(true);
+    expect(internals(manager).subscribedSymbols.has('EURUSD')).toBe(false);
+
+    // Server rejects EURUSD by unsubscribing it (or never confirms, then drops it).
+    internals(manager).handleMessage({ type: 'unsubscribed', symbols: ['EURUSD'] });
+    expect(internals(manager).pendingSubscriptions.has('EURUSD')).toBe(false);
+    expect(internals(manager).subscribedSymbols.has('EURUSD')).toBe(false);
+
+    // A later re-add for the same symbol must NOT be silently filtered — it retries.
+    ws.sent.length = 0;
+    internals(manager).sendSubscribe(['EURUSD']);
+    expect(ws.sent.map((p: string) => JSON.parse(p))).toEqual([
+      { type: 'subscribe', symbols: ['EURUSD'] },
+    ]);
+
+    manager.destroy();
+  });
+
+  it('promotes a pending symbol to confirmed on a server subscribed confirmation', () => {
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    FakeWebSocket.instances[0].open();
+
+    internals(manager).handleMessage({ type: 'subscribed', symbols: ['ticks.eurusd'] });
+    expect(internals(manager).subscribedSymbols.has('EURUSD')).toBe(true);
+    expect(internals(manager).pendingSubscriptions.has('EURUSD')).toBe(false);
+
+    manager.destroy();
+  });
+
+  it('promotes a pending symbol to confirmed when a live tick arrives even without an explicit confirmation', () => {
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    FakeWebSocket.instances[0].open();
+
+    expect(internals(manager).pendingSubscriptions.has('EURUSD')).toBe(true);
+
+    internals(manager).handleMessage({ symbol: 'eurusd', bid: 1.1, ask: 1.2, timestamp: 1 });
+
+    expect(internals(manager).subscribedSymbols.has('EURUSD')).toBe(true);
+    expect(internals(manager).pendingSubscriptions.has('EURUSD')).toBe(false);
+
+    manager.destroy();
+  });
+
+  it('does not resend a subscribe while a symbol is still pending confirmation', () => {
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.sent.length = 0;
+
+    // Re-issuing the same subscribe before confirmation must be a no-op (no dup).
+    internals(manager).sendSubscribe(['EURUSD']);
+    expect(ws.sent).toHaveLength(0);
 
     manager.destroy();
   });

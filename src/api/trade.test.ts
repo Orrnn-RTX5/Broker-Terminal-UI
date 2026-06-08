@@ -77,8 +77,8 @@ describe('trade v2 API contract calls', () => {
     }, { status: 400 }));
 
     await expect(authV2Api.login({
-      username: '900001',
-      password: 'TestPass1234',
+      username: '100001',
+      password: 'FixturePassword123',
       broker_id: 'gta_broker',
     })).rejects.toMatchObject({
       name: 'ApiError',
@@ -87,8 +87,8 @@ describe('trade v2 API contract calls', () => {
 
     expect(vi.mocked(fetch)).toHaveBeenCalledOnce();
     expect(lastFetchCall().body).toEqual({
-      username: '900001',
-      password: 'TestPass1234',
+      username: '100001',
+      password: 'FixturePassword123',
       broker_id: 'gta_broker',
     });
     expect(localStorage.getItem('auth_token')).toBeNull();
@@ -137,13 +137,13 @@ describe('trade v2 API contract calls', () => {
     }));
 
     await authV2Api.login({
-      username: '900001',
+      username: '100001',
       broker_id: 'testorrnn',
       password: runtimePassword,
     });
 
     expect(lastFetchCall().body).toEqual({
-      username: '900001',
+      username: '100001',
       broker_id: 'testorrnn',
       password: runtimePassword,
     });
@@ -157,17 +157,17 @@ describe('trade v2 API contract calls', () => {
     }));
 
     await authV2Api.login({
-      login: 900001,
+      login: 100001,
       email: 'ignored@example.com',
       broker_id: 'testorrnn',
-      password: 'TestPass1234',
+      password: 'FixturePassword123',
     }, { baseUrl: 'https://selected-broker.example/api/v2' });
 
     const request = lastFetchCall();
     expect(request.url).toBe('https://selected-broker.example/api/v2/auth/login');
     expect(request.body).toEqual({
-      username: 900001,
-      password: 'TestPass1234',
+      username: 100001,
+      password: 'FixturePassword123',
       broker_id: 'testorrnn',
     });
     expect(request.body).not.toHaveProperty('login');
@@ -223,7 +223,7 @@ describe('trade v2 API contract calls', () => {
         enabled: false,
       }),
     ]);
-    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/symbols`);
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/instruments`);
   });
 
   it('normalizes legacy market symbols with snake_case trading flags', async () => {
@@ -244,7 +244,7 @@ describe('trade v2 API contract calls', () => {
         tradingEnabled: false,
       }),
     ]);
-    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/symbols`);
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/instruments`);
   });
 
   it('preserves protected auth, api key, and JSON content headers over custom headers', async () => {
@@ -263,6 +263,16 @@ describe('trade v2 API contract calls', () => {
     expect(request.headers.Authorization).toBe('Bearer jwt-token');
     expect(request.headers['X-API-Key']).toBe('runtime-api-key');
     expect(request.headers['Content-Type']).toBe('application/json');
+  });
+
+  it('does not mirror the bearer token into X-API-Key for normal session requests', async () => {
+    setToken('jwt-token');
+
+    await marketV2Api.getStatus();
+
+    const request = lastFetchCall();
+    expect(request.headers.Authorization).toBe('Bearer jwt-token');
+    expect(request.headers['X-API-Key']).toBeUndefined();
   });
 
   it('covers broker bootstrap, calculators, history, and watchlist contract endpoints', async () => {
@@ -293,16 +303,19 @@ describe('trade v2 API contract calls', () => {
     });
     expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/calculate/profit`);
 
-    await historyV2Api.getCandles('EUR/USD', { tf: 'H1', count: 500 });
-    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/history/candles/EUR%2FUSD?tf=H1&count=500`);
+    await historyV2Api.getCandles('EUR/USD', { timeframe: 'H1', limit: 500 });
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/candles/EUR%2FUSD?timeframe=H1&limit=500`);
     expect(lastFetchCall().headers.Authorization).toBeUndefined();
 
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([
+      { time: 1760000000, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 },
+    ]));
     await historyV2Api.getLatestCandle('EURUSD', 'M5');
-    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/history/candles/EURUSD/latest?tf=M5`);
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/candles/EURUSD?timeframe=M5&limit=5`);
 
     await historyV2Api.getTicks('EURUSD', { from: 1760000000, to: 1760000900, limit: 1000 });
     expect(lastFetchCall().url).toBe(
-      `${RTX5_API_URL}/history/ticks/EURUSD?from=1760000000&to=1760000900&limit=1000`
+      `${RTX5_API_URL}/api/v2/ticks/EURUSD?from=1760000000&to=1760000900&limit=1000`
     );
 
     await watchlistV2Api.update(['EURUSD', 'XAUUSD']);
@@ -319,14 +332,12 @@ describe('trade v2 API contract calls', () => {
     expect(lastFetchCall().init.method).toBe('DELETE');
   });
 
-  it('falls back to v2 candle history when the history latest endpoint is unavailable', async () => {
+  it('gets latest candles through the supported authenticated v2 candle route', async () => {
     setToken('jwt-token');
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(jsonResponse({ message: 'Bad gateway' }, { status: 502 }))
-      .mockResolvedValueOnce(jsonResponse([
-        { time: 1760000000, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 },
-        { time: 1760003600, open: 1.5, high: 2.1, low: 1.4, close: 2, volume: 8 },
-      ]));
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([
+      { time: 1760000000, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 },
+      { time: 1760003600, open: 1.5, high: 2.1, low: 1.4, close: 2, volume: 8 },
+    ]));
 
     await expect(historyV2Api.getLatestCandle('EURUSD', 'H1')).resolves.toMatchObject({
       time: 1760003600,
@@ -334,46 +345,35 @@ describe('trade v2 API contract calls', () => {
     });
 
     expect(vi.mocked(fetch).mock.calls.map(([url]) => String(url))).toEqual([
-      `${RTX5_API_URL}/history/candles/EURUSD/latest?tf=H1`,
       `${RTX5_API_URL}/api/v2/candles/EURUSD?timeframe=H1&limit=5`,
     ]);
     expect(lastFetchCall().headers.Authorization).toBe('Bearer jwt-token');
   });
 
-  it('does not fall back to v2 candle history for non-502 history latest errors', async () => {
+  it('propagates v2 candle history failures', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(
-      { message: 'History request is forbidden' },
-      { status: 403 }
+      { message: 'Gateway candles unavailable' },
+      { status: 503 }
     ));
 
     await expect(historyV2Api.getLatestCandle('EURUSD', 'H1')).rejects.toMatchObject({
       name: 'ApiError',
-      status: 403,
-      message: 'History request is forbidden',
+      status: 503,
+      message: 'Gateway candles unavailable',
     } satisfies Partial<ApiError>);
 
     expect(vi.mocked(fetch)).toHaveBeenCalledOnce();
-    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/history/candles/EURUSD/latest?tf=H1`);
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/candles/EURUSD?timeframe=H1&limit=5`);
   });
 
-  it('propagates v2 candle history fallback failures after a 502 history latest error', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(jsonResponse({ message: 'Bad gateway' }, { status: 502 }))
-      .mockResolvedValueOnce(jsonResponse(
-        { message: 'Fallback candles unavailable' },
-        { status: 503 }
-      ));
+  it('fails latest candle reads clearly when the v2 candle route returns no rows', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse([]));
 
     await expect(historyV2Api.getLatestCandle('EURUSD', 'H1')).rejects.toMatchObject({
       name: 'ApiError',
-      status: 503,
-      message: 'Fallback candles unavailable',
+      status: 404,
+      message: 'No candles returned by /api/v2/candles',
     } satisfies Partial<ApiError>);
-
-    expect(vi.mocked(fetch).mock.calls.map(([url]) => String(url))).toEqual([
-      `${RTX5_API_URL}/history/candles/EURUSD/latest?tf=H1`,
-      `${RTX5_API_URL}/api/v2/candles/EURUSD?timeframe=H1&limit=5`,
-    ]);
   });
 
   it('posts trading payloads to contract endpoints without reshaping order fields', async () => {
@@ -407,6 +407,63 @@ describe('trade v2 API contract calls', () => {
       url: `${RTX5_API_URL}/api/v2/orders/pending/112233`,
     });
     expect(lastFetchCall().init.method).toBe('DELETE');
+  });
+
+  it('normalizes pending order create payloads to backend-readable field names', async () => {
+    await tradingV2Api.placePendingOrder({
+      login: 123456,
+      symbol: 'XAUUSD',
+      side: 'buy',
+      volume: 0.1,
+      type: 'buy_limit',
+      price: 2300,
+      price_sl: 2290,
+      price_tp: 2325,
+      expiration: 1770000000,
+      comment: 'pending-create',
+    });
+
+    expect(lastFetchCall()).toMatchObject({
+      url: `${RTX5_API_URL}/api/v2/orders/pending`,
+      body: {
+        account_login: 123456,
+        symbol: 'XAUUSD',
+        side: 'buy',
+        volume: 0.1,
+        type: 'buy_limit',
+        price: 2300,
+        sl: 2290,
+        tp: 2325,
+        expiry: 1770000000,
+        comment: 'pending-create',
+      },
+    });
+    expect(lastFetchCall().body).not.toHaveProperty('login');
+    expect(lastFetchCall().body).not.toHaveProperty('price_sl');
+    expect(lastFetchCall().body).not.toHaveProperty('price_tp');
+    expect(lastFetchCall().body).not.toHaveProperty('expiration');
+  });
+
+  it('normalizes pending order modify payloads to backend-readable aliases', async () => {
+    await tradingV2Api.modifyPendingOrder(112233, {
+      price: 2301,
+      price_sl: 2291,
+      price_tp: 2326,
+      expiration: 1770000900,
+    });
+
+    expect(lastFetchCall()).toMatchObject({
+      url: `${RTX5_API_URL}/api/v2/orders/pending/112233`,
+      body: {
+        price: 2301,
+        sl: 2291,
+        tp: 2326,
+        expiry: 1770000900,
+      },
+    });
+    expect(lastFetchCall().body).not.toHaveProperty('price_sl');
+    expect(lastFetchCall().body).not.toHaveProperty('price_tp');
+    expect(lastFetchCall().body).not.toHaveProperty('expiration');
   });
 
   it('posts password updates to the v2 password endpoints without persisting secrets', async () => {

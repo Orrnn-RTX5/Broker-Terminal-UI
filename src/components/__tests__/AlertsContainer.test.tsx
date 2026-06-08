@@ -1,210 +1,87 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock WebSocket
-class MockWebSocket {
-  onopen: ((event: Event) => void) | null = null
-  onmessage: ((event: MessageEvent) => void) | null = null
-  onerror: ((event: Event) => void) | null = null
-  onclose: ((event: CloseEvent) => void) | null = null
-  readyState = WebSocket.CONNECTING
+import { AlertsContainer } from '../AlertsContainer'
 
-  constructor(public url: string) {
-    setTimeout(() => {
-      this.readyState = WebSocket.OPEN
-      this.onopen?.(new Event('open'))
-    }, 0)
+class MockWebSocket extends EventTarget {
+  emit(data: unknown) {
+    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(data) }))
   }
-
-  send = vi.fn()
-  close = vi.fn()
-
-  simulateMessage(data: any) {
-    const event = new MessageEvent('message', {
-      data: JSON.stringify(data),
-    })
-    this.onmessage?.(event)
-  }
-}
-
-// Mock component
-const AlertsContainer = () => {
-  return (
-    <div data-testid="alerts-container">
-      <h2>Alerts</h2>
-      <div data-testid="alert-list">
-        <div data-testid="alert-item" className="alert-critical">
-          Critical: High exposure detected
-        </div>
-      </div>
-      <div data-testid="alert-controls">
-        <button data-testid="mute-button">Mute</button>
-        <button data-testid="clear-all-button">Clear All</button>
-      </div>
-      <audio data-testid="alert-sound" src="/alert.mp3" />
-    </div>
-  )
 }
 
 describe('AlertsContainer', () => {
-  let mockWs: MockWebSocket
+  let ws: MockWebSocket
+  let playSpy: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockWs = new MockWebSocket('ws://localhost:7999/ws')
-    ;(global as any).WebSocket = vi.fn(() => mockWs)
+    ws = new MockWebSocket()
+    playSpy = vi.fn(() => Promise.resolve())
+    vi.stubGlobal('Audio', vi.fn(function (this: HTMLAudioElement) {
+      this.currentTime = 0
+      this.volume = 0
+      this.play = playSpy
+      this.pause = vi.fn()
+      this.load = vi.fn()
+    }))
   })
 
   afterEach(() => {
-    mockWs.close()
+    vi.restoreAllMocks()
   })
 
-  it('should render alerts container', () => {
-    render(<AlertsContainer />)
-    expect(screen.getByTestId('alerts-container')).toBeInTheDocument()
+  it('renders nothing until a websocket alert arrives', () => {
+    render(<AlertsContainer wsConnection={ws as unknown as WebSocket} />)
+
+    expect(screen.queryByText('High exposure detected')).not.toBeInTheDocument()
   })
 
-  it('should display alert list', () => {
-    render(<AlertsContainer />)
-    expect(screen.getByTestId('alert-list')).toBeInTheDocument()
-  })
+  it('renders incoming websocket alerts and plays the alert sound', async () => {
+    render(<AlertsContainer wsConnection={ws as unknown as WebSocket} />)
 
-  it('should show individual alerts', () => {
-    render(<AlertsContainer />)
-    const alert = screen.getByTestId('alert-item')
-    expect(alert).toBeInTheDocument()
-    expect(alert).toHaveTextContent('High exposure detected')
-  })
-
-  it('should have mute button', () => {
-    render(<AlertsContainer />)
-    expect(screen.getByTestId('mute-button')).toBeInTheDocument()
-  })
-
-  it('should have clear all button', () => {
-    render(<AlertsContainer />)
-    expect(screen.getByTestId('clear-all-button')).toBeInTheDocument()
-  })
-
-  it('should mute alerts', async () => {
-    const user = userEvent.setup()
-    render(<AlertsContainer />)
-
-    const muteButton = screen.getByTestId('mute-button')
-    await user.click(muteButton)
-
-    // Button text should change or state should update
-    expect(muteButton).toBeInTheDocument()
-  })
-
-  it('should clear all alerts', async () => {
-    const user = userEvent.setup()
-    render(<AlertsContainer />)
-
-    const clearButton = screen.getByTestId('clear-all-button')
-    await user.click(clearButton)
-
-    // Alert list should be empty or hidden
-    expect(screen.getByTestId('alert-list')).toBeInTheDocument()
-  })
-
-  it('should play sound on critical alert', async () => {
-    const playSpy = vi.fn(() => Promise.resolve())
-    HTMLAudioElement.prototype.play = playSpy
-
-    render(<AlertsContainer />)
-
-    // Simulate critical alert via WebSocket
-    await waitFor(() => {
-      mockWs.simulateMessage({
+    act(() => {
+      ws.emit({
         type: 'alert',
-        severity: 'critical',
-        message: 'Critical alert',
+        id: 'alert-1',
+        severity: 'CRITICAL',
+        message: 'High exposure detected',
+        timestamp: 1767225600000,
       })
     })
 
-    // Sound should play for critical alerts
-    await waitFor(() => {
-      expect(playSpy).toHaveBeenCalled()
-    })
+    expect(await screen.findByText('High exposure detected')).toBeInTheDocument()
+    expect(screen.getByText('CRITICAL')).toBeInTheDocument()
+    await waitFor(() => expect(playSpy).toHaveBeenCalledTimes(1))
   })
 
-  it('should connect to WebSocket on mount', async () => {
-    render(<AlertsContainer />)
+  it('dismisses an alert from the stack', async () => {
+    const user = userEvent.setup()
+    render(<AlertsContainer wsConnection={ws as unknown as WebSocket} />)
 
-    await waitFor(() => {
-      expect(global.WebSocket).toHaveBeenCalledWith(
-        expect.stringContaining('ws://')
-      )
-    })
-  })
-
-  it('should receive alerts via WebSocket', async () => {
-    render(<AlertsContainer />)
-
-    await waitFor(() => {
-      mockWs.simulateMessage({
+    act(() => {
+      ws.emit({
         type: 'alert',
-        severity: 'warning',
-        message: 'New alert message',
+        id: 'alert-2',
+        severity: 'HIGH',
+        message: 'Margin threshold reached',
+        timestamp: 1767225600000,
       })
     })
 
-    // Component should handle the message
-    expect(screen.getByTestId('alerts-container')).toBeInTheDocument()
-  })
-
-  it('should categorize alerts by severity', () => {
-    render(<AlertsContainer />)
-    const alert = screen.getByTestId('alert-item')
-    expect(alert).toHaveClass('alert-critical')
-  })
-
-  it('should handle WebSocket connection errors', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    render(<AlertsContainer />)
+    expect(await screen.findByText('Margin threshold reached')).toBeInTheDocument()
+    await user.click(screen.getByTitle('Dismiss'))
 
     await waitFor(() => {
-      mockWs.onerror?.(new Event('error'))
+      expect(screen.queryByText('Margin threshold reached')).not.toBeInTheDocument()
     })
-
-    expect(screen.getByTestId('alerts-container')).toBeInTheDocument()
-    consoleError.mockRestore()
   })
 
-  it('should reconnect on WebSocket close', async () => {
-    render(<AlertsContainer />)
+  it('removes the websocket message listener on unmount', () => {
+    const removeSpy = vi.spyOn(ws, 'removeEventListener')
+    const { unmount } = render(<AlertsContainer wsConnection={ws as unknown as WebSocket} />)
 
-    await waitFor(() => {
-      mockWs.onclose?.(new CloseEvent('close'))
-    })
+    unmount()
 
-    // Component should attempt reconnection
-    expect(screen.getByTestId('alerts-container')).toBeInTheDocument()
-  })
-
-  it('should not play sound when muted', async () => {
-    const user = userEvent.setup()
-    const playSpy = vi.fn(() => Promise.resolve())
-    HTMLAudioElement.prototype.play = playSpy
-
-    render(<AlertsContainer />)
-
-    // Mute alerts
-    const muteButton = screen.getByTestId('mute-button')
-    await user.click(muteButton)
-
-    // Simulate alert
-    mockWs.simulateMessage({
-      type: 'alert',
-      severity: 'critical',
-      message: 'Muted alert',
-    })
-
-    await waitFor(() => {
-      expect(playSpy).not.toHaveBeenCalled()
-    })
+    expect(removeSpy).toHaveBeenCalledWith('message', expect.any(Function))
   })
 })

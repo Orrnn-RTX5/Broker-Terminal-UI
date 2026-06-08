@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { useChartPrint } from '../hooks/useChartPrint';
 import { chartPrinter } from '../services/chartPrinter';
 
@@ -37,7 +37,9 @@ describe('Print Functionality', () => {
         })
       );
 
-      result.current.openPrintSetup();
+      act(() => {
+        result.current.openPrintSetup();
+      });
 
       expect(result.current.showSetupDialog).toBe(true);
     });
@@ -51,7 +53,9 @@ describe('Print Functionality', () => {
       );
 
       const mockPreferences = chartPrinter.getPreferences();
-      result.current.handleSetupComplete(mockPreferences);
+      act(() => {
+        result.current.handleSetupComplete(mockPreferences);
+      });
 
       expect(result.current.showSetupDialog).toBe(false);
       expect(result.current.showPreviewDialog).toBe(true);
@@ -312,12 +316,12 @@ describe('Print Functionality', () => {
     });
 
     it('should support all page sizes', () => {
-      const pageSizes = ['A4', 'Letter', 'Legal', 'A3'];
+      const pageSizes = ['A4', 'Letter', 'Legal', 'A3'] as const;
 
       pageSizes.forEach(size => {
         const preferences = {
           ...chartPrinter.getPreferences(),
-          pageSize: size as any,
+          pageSize: size,
         };
 
         const chartData = {

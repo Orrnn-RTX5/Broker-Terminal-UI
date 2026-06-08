@@ -25,7 +25,7 @@ describe('backend target resolver', () => {
     delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
   });
 
-  it('uses the shared public services backend for browser sessions', () => {
+  it('uses the shared public broker backend for browser sessions', () => {
     expect(isDesktopBackendTarget()).toBe(false);
     expect(getBackendTarget()).toBe(WEB_BACKEND_FALLBACK);
     expect(resolveBrokerBackendUrl({
@@ -48,11 +48,11 @@ describe('backend target resolver', () => {
 
     expect(broker.server_url).toBe(WEB_BACKEND_FALLBACK);
     expect(broker.market_api_url).toBe(WEB_BACKEND_FALLBACK);
-    expect(broker.ws_url).toBe('wss://services.myprop.trade/ws/v2');
-    expect(broker.feed_url).toBe('wss://services.myprop.trade/ws/feed');
+    expect(broker.ws_url).toBe('wss://backend.orrnn.com/ws/v2');
+    expect(broker.feed_url).toBe('wss://backend.orrnn.com/ws/feed');
   });
 
-  it('uses safe runtime services API and derives web websocket paths from runtime WS origin', () => {
+  it('uses safe runtime broker API and derives web websocket paths from runtime WS origin', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
       API_HOST: 'https://services.growtradingacademy.com/',
@@ -64,6 +64,18 @@ describe('backend target resolver', () => {
     expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://services.growtradingacademy.com/ws/feed');
   });
 
+  it('accepts ORRNN test broker public runtime hosts in web mode', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://testbrokerbackend.orrnn.com',
+      WS_HOST: 'wss://testbrokerbackend.orrnn.com',
+    };
+
+    expect(getBackendTarget()).toBe('https://testbrokerbackend.orrnn.com');
+    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://testbrokerbackend.orrnn.com/ws/v2');
+    expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://testbrokerbackend.orrnn.com/ws/feed');
+  });
+
   it('rejects unsafe runtime API and WS hosts in web mode', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_MODE: 'browser',
@@ -72,7 +84,7 @@ describe('backend target resolver', () => {
     };
 
     expect(getBackendTarget()).toBe(WEB_BACKEND_FALLBACK);
-    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://services.myprop.trade/ws/v2');
+    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://backend.orrnn.com/ws/v2');
   });
 
   it('honors uppercase runtime target and mode keys', () => {
@@ -81,6 +93,16 @@ describe('backend target resolver', () => {
 
     runtimeWindow.RUNTIME_CONFIG = { VITE_BACKEND_MODE: 'web' };
     expect(isDesktopBackendTarget()).toBe(false);
+  });
+
+  it('does not hardcode a public broker IP in the desktop fallback (N3-02)', () => {
+    // The last-resort desktop default must not leak a public infra IP or send the
+    // Bearer token in cleartext to a public host; loopback is the only safe default.
+    expect(DESKTOP_BACKEND_FALLBACK).toBe('http://127.0.0.1:8091');
+    expect(DESKTOP_BACKEND_FALLBACK).not.toContain('103.91.186.142');
+
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { backendTarget: 'desktop' };
+    expect(getBackendTarget()).toBe('http://127.0.0.1:8091');
   });
 
   it('uses selected broker direct IP and port for desktop sessions', () => {

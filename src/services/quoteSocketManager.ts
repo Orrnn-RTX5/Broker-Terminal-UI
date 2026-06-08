@@ -61,7 +61,7 @@ const normalizeSymbol = (v: unknown): string =>
 
 const QUOTE_PAYLOAD_KEYS = ['data', 'tick', 'quote', 'price', 'payload', 'message', 'prices', 'ticks'] as const;
 
-const isRecord = (v: unknown): v is Record<string, any> =>
+const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null;
 
 const hasQuotePriceFields = (v: unknown): boolean =>
@@ -78,7 +78,7 @@ const hasQuoteIdentityFields = (v: unknown): boolean =>
 const getDescendantEnvelope = (raw: unknown, envelope: unknown): unknown =>
   hasQuoteIdentityFields(raw) ? raw : envelope;
 
-function collectQuotePayloads(raw: unknown, envelope: unknown = raw): Array<{ payload: Record<string, any>; envelope: unknown }> {
+function collectQuotePayloads(raw: unknown, envelope: unknown = raw): Array<{ payload: Record<string, unknown>; envelope: unknown }> {
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
@@ -112,7 +112,7 @@ function collectQuotePayloads(raw: unknown, envelope: unknown = raw): Array<{ pa
   });
 }
 
-function normalizeQuotePayload(payload: Record<string, any>, envelope: unknown): NormalizedQuoteTick | null {
+function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unknown): NormalizedQuoteTick | null {
   const channelSymbol = getChannelSymbol(envelope) ?? getChannelSymbol(payload);
   const symbol = normalizeSymbol(payload?.symbol ?? (isRecord(envelope) ? envelope.symbol : undefined) ?? channelSymbol);
   if (!symbol) return null;
@@ -126,7 +126,7 @@ function normalizeQuotePayload(payload: Record<string, any>, envelope: unknown):
   const dailyOpen = toNumber(payload?.daily_open ?? payload?.dailyOpen ?? payload?.open);
   const dailyReference = previousClose > 0 ? previousClose : dailyOpen;
 
-  const session = payload?.session ?? {};
+  const session = isRecord(payload.session) ? payload.session : {};
   const sessionHigh = Math.max(toNumber(session?.high_bid), toNumber(session?.high_ask), toNumber(payload?.high));
   const sessionLowValues = [toNumber(session?.low_bid), toNumber(session?.low_ask), toNumber(payload?.low)].filter(v => v > 0);
   const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
@@ -140,7 +140,7 @@ function normalizeQuotePayload(payload: Record<string, any>, envelope: unknown):
       const raw = toNumber(payload?.timestamp ?? payload?.time, Date.now());
       return raw > 1_000_000_000_000 ? raw : raw * 1000;
     })(),
-    lp: payload?.lp,
+    lp: typeof payload?.lp === 'string' ? payload.lp : undefined,
     volume: toNumber(payload?.volume, 1),
     dailyChange: payload?.dailyChange !== undefined
       ? toNumber(payload.dailyChange)
@@ -154,7 +154,7 @@ function normalizeQuotePayload(payload: Record<string, any>, envelope: unknown):
   };
 }
 
-function processIncomingPayload(raw: any): NormalizedQuoteTick[] {
+function processIncomingPayload(raw: unknown): NormalizedQuoteTick[] {
   return collectQuotePayloads(raw)
     .map(({ payload, envelope }) => normalizeQuotePayload(payload, envelope))
     .filter((tick): tick is NormalizedQuoteTick => tick !== null);
@@ -165,7 +165,12 @@ function processIncomingPayload(raw: any): NormalizedQuoteTick[] {
 class QuoteSocketManager {
   private ws: WebSocket | null = null;
   private wsUrl: string = '';
-  private wildcardSubscribed = false;
+  // Server-confirmed subscriptions (reconciled from `type:'subscribed'`/`'unsubscribed'`).
+  private subscribedSymbols: Set<string> = new Set();
+  // In-flight subscribe requests awaiting server confirmation. Kept separate so a
+  // symbol the server never confirms is not treated as permanently subscribed —
+  // it stays pending only until the next confirmation, unsubscribe, or reconnect.
+  private pendingSubscriptions: Set<string> = new Set();
 
   // Step 5: Demand sources — each keyed by sourceId (e.g. "watchlist", "chart-main", "depth-panel")
   private demandSources: Map<string, Set<string>> = new Map();
@@ -255,9 +260,7 @@ class QuoteSocketManager {
       this.sendSubscribe(added);
     }
 
-    // Wildcard feed subscriptions are socket-scoped. Per-symbol unsubscribe can
-    // cancel delivery for symbols that may be demanded again on the same socket.
-    if (!this.wildcardSubscribed && removed.length > 0) {
+    if (removed.length > 0) {
       this.sendUnsubscribe(removed);
     }
   }
@@ -288,7 +291,7 @@ class QuoteSocketManager {
       socket.onopen = () => {
         if (this.ws !== socket) return;
 
-        console.log(`[QuoteSocket] Connected to ${this.wsUrl}`);
+        console.log(`[QuoteSocket] Connected to ${this.wsUrl.replace(/token=[^&]+/, 'token=***')}`);
         this.reconnectAttempts = 0;
 
         // Update global connection state
@@ -296,9 +299,9 @@ class QuoteSocketManager {
           useWebSocketStore.getState().setConnectionState('connected', 'fix_socket');
         } catch { /* store not ready */ }
 
-        // Step 8: The feed endpoint expects a wildcard quote subscription.
+        // Step 8: Subscribe only to the symbols demanded by mounted consumers.
         if (this.activeSymbols.size > 0) {
-          this.sendSubscribe();
+          this.sendSubscribe([...this.activeSymbols]);
         }
       };
 
@@ -347,18 +350,24 @@ class QuoteSocketManager {
 
   // ─── Step 8: Send subscribe message ──────────────────────────────────────
 
-  private sendSubscribe(_symbols: string[] = []): void {
+  private sendSubscribe(symbols: string[] = []): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    if (this.wildcardSubscribed) return;
 
-    const subscriptionSymbols = ['*'];
+    const requestedSymbols = symbols.length > 0 ? symbols : [...this.activeSymbols];
+    const subscriptionSymbols = Array.from(new Set(
+      requestedSymbols.map(normalizeSymbol).filter(Boolean)
+    )).filter((symbol) => !this.subscribedSymbols.has(symbol) && !this.pendingSubscriptions.has(symbol));
+    if (subscriptionSymbols.length === 0) return;
+
     const message = {
       type: 'subscribe',
       symbols: subscriptionSymbols,
     };
     console.log(`[QuoteSocket] Subscribing to symbols: ${subscriptionSymbols.join(', ')}`);
     this.ws.send(JSON.stringify(message));
-    this.wildcardSubscribed = true;
+    // Mark as pending — promoted to subscribedSymbols only on server confirmation
+    // (handleMessage), so a symbol the server rejects can be retried later.
+    subscriptionSymbols.forEach((symbol) => this.pendingSubscriptions.add(symbol));
   }
 
   private sendUnsubscribe(symbols: string[]): void {
@@ -371,23 +380,40 @@ class QuoteSocketManager {
     };
     console.log(`[QuoteSocket] Unsubscribing from symbols: ${unsubscribeSymbols.join(', ')}`);
     this.ws.send(JSON.stringify(message));
+    unsubscribeSymbols.forEach((symbol) => {
+      this.subscribedSymbols.delete(symbol);
+      this.pendingSubscriptions.delete(symbol);
+    });
   }
 
   // ─── Step 9-13: Handle incoming tick payloads ────────────────────────────
 
-  private handleMessage(data: any): void {
+  private handleMessage(data: unknown): void {
+    if (!isRecord(data)) return;
+
     // Handle pong
     if (data.type === 'pong') return;
 
-    // Handle subscription confirmation
+    // Handle subscription confirmation — reconcile local state with the server's
+    // authoritative view so a rejected/unconfirmed symbol is not stranded.
     if (data.type === 'subscribed' || data.type === 'unsubscribed') {
       console.log(`[QuoteSocket] ${data.type}:`, data.symbols ?? data.channels);
+      this.reconcileSubscriptionConfirmation(data.type, data.symbols ?? data.channels);
       return;
     }
 
     // Step 9-10: Normalize ticks
     const ticks = processIncomingPayload(data);
     if (ticks.length === 0) return;
+
+    // A live tick is itself proof the server is feeding this symbol — promote it
+    // out of pending so reconnect-time bookkeeping reflects reality even if the
+    // explicit `subscribed` confirmation was dropped.
+    ticks.forEach((tick) => {
+      if (this.pendingSubscriptions.delete(tick.symbol)) {
+        this.subscribedSymbols.add(tick.symbol);
+      }
+    });
 
     ticks.forEach((tick) => {
       // Step 14: Batched store path — enqueue for rAF-batched Zustand update
@@ -406,6 +432,41 @@ class QuoteSocketManager {
         try { cb(tick); } catch (e) { console.error('[QuoteSocket] global listener error:', e); }
       });
     });
+  }
+
+  /**
+   * Reconcile local subscribe state against a server confirmation message.
+   *
+   * `subscribed`   → the listed symbols are confirmed live: promote them from
+   *                  pending to subscribed.
+   * `unsubscribed` → the listed symbols are no longer served (explicit unsub or
+   *                  a rejection): drop them from both sets so a later re-add is
+   *                  not silently filtered and can retry without a full reconnect.
+   *
+   * Accepts either bare symbols (`'EURUSD'`) or feed channels (`'ticks.eurusd'`).
+   */
+  private reconcileSubscriptionConfirmation(type: 'subscribed' | 'unsubscribed', list: unknown): void {
+    if (!Array.isArray(list)) return;
+
+    const symbols = list
+      .map((entry) => {
+        const raw = typeof entry === 'string' ? entry : '';
+        const symbolPart = raw.startsWith('ticks.') ? raw.slice('ticks.'.length) : raw;
+        return normalizeSymbol(symbolPart);
+      })
+      .filter(Boolean);
+
+    if (type === 'subscribed') {
+      symbols.forEach((symbol) => {
+        this.pendingSubscriptions.delete(symbol);
+        this.subscribedSymbols.add(symbol);
+      });
+    } else {
+      symbols.forEach((symbol) => {
+        this.pendingSubscriptions.delete(symbol);
+        this.subscribedSymbols.delete(symbol);
+      });
+    }
   }
 
   // ─── Step 12: Quote snapshots — per-symbol listener registration ─────────
@@ -476,7 +537,8 @@ class QuoteSocketManager {
       this.ws = null;
       try { socket.close(1000, 'QuoteSocketManager closing'); } catch { /* ignore */ }
     }
-    this.wildcardSubscribed = false;
+    this.subscribedSymbols.clear();
+    this.pendingSubscriptions.clear();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

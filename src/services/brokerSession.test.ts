@@ -17,24 +17,24 @@ describe('broker websocket URL builder', () => {
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { backendTarget: 'desktop' };
   });
 
-  it('normalizes saved HTTPS default-port broker server_url for HTTP-only runtime', () => {
+  it('preserves saved HTTPS broker server_url in desktop runtime', () => {
     localStorage.setItem('server_url', 'https://testbrokerbackend.orrnn.com:443');
     localStorage.setItem('auth_token', 'access-token');
 
-    expect(getServerUrl()).toBe('http://testbrokerbackend.orrnn.com');
-    expect(buildBrokerApiV2()).toBe('http://testbrokerbackend.orrnn.com/api/v2');
+    expect(getServerUrl()).toBe('https://testbrokerbackend.orrnn.com:443');
+    expect(buildBrokerApiV2()).toBe('https://testbrokerbackend.orrnn.com:443/api/v2');
     expect(buildBrokerWsV2Uri()).toBe(
-      'ws://testbrokerbackend.orrnn.com/ws/v2?token=access-token'
+      'wss://testbrokerbackend.orrnn.com/ws/v2?token=access-token'
     );
   });
 
-  it('cleans stale HTTP broker URLs that were saved with the HTTPS port', () => {
+  it('preserves explicit HTTP broker URLs in desktop runtime', () => {
     localStorage.setItem('server_url', 'http://103.91.186.142:443');
 
-    expect(getServerUrl()).toBe('http://103.91.186.142');
-    expect(buildBrokerApiV2()).toBe('http://103.91.186.142/api/v2');
+    expect(getServerUrl()).toBe('http://103.91.186.142:443');
+    expect(buildBrokerApiV2()).toBe('http://103.91.186.142:443/api/v2');
     expect(buildBrokerWsV2Uri('jwt-token')).toBe(
-      'ws://103.91.186.142/ws/v2?token=jwt-token'
+      'ws://103.91.186.142:443/ws/v2?token=jwt-token'
     );
   });
 
@@ -49,18 +49,18 @@ describe('broker websocket URL builder', () => {
     );
   });
 
-  it('uses public services URLs in web mode even when stale direct broker storage exists', () => {
+  it('uses public broker URLs in web mode even when stale direct broker storage exists', () => {
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { VITE_BACKEND_TARGET: 'web' };
     localStorage.setItem('backend_url', 'http://103.91.186.142:8091');
     localStorage.setItem('server_url', 'http://103.91.186.142:8091');
     localStorage.setItem('ws_url', 'ws://103.91.186.142:8091/ws/v2');
     localStorage.setItem('feed_url', 'ws://103.91.186.142:8091/ws/feed');
 
-    expect(getServerUrl()).toBe('https://services.myprop.trade');
-    expect(buildBrokerApiV2()).toBe('https://services.myprop.trade/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('wss://services.myprop.trade/ws/feed');
+    expect(getServerUrl()).toBe('https://backend.orrnn.com');
+    expect(buildBrokerApiV2()).toBe('https://backend.orrnn.com/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://backend.orrnn.com/ws/feed');
     expect(buildBrokerWsV2Uri('access-token')).toBe(
-      'wss://services.myprop.trade/ws/v2?token=access-token'
+      'wss://backend.orrnn.com/ws/v2?token=access-token'
     );
   });
 
@@ -71,11 +71,11 @@ describe('broker websocket URL builder', () => {
     localStorage.setItem('ws_url', 'ws://69.197.178.27:8090/ws/v2');
     localStorage.setItem('feed_url', 'ws://69.197.178.27/ws/feed');
 
-    expect(getServerUrl()).toBe('https://services.myprop.trade');
-    expect(buildBrokerApiV2()).toBe('https://services.myprop.trade/api/v2');
-    expect(buildBrokerWsFeedUri()).toBe('wss://services.myprop.trade/ws/feed');
+    expect(getServerUrl()).toBe('https://backend.orrnn.com');
+    expect(buildBrokerApiV2()).toBe('https://backend.orrnn.com/api/v2');
+    expect(buildBrokerWsFeedUri()).toBe('wss://backend.orrnn.com/ws/feed');
     expect(buildBrokerWsV2Uri('access-token')).toBe(
-      'wss://services.myprop.trade/ws/v2?token=access-token'
+      'wss://backend.orrnn.com/ws/v2?token=access-token'
     );
     expect([
       buildBrokerWsFeedUri(),
@@ -83,7 +83,7 @@ describe('broker websocket URL builder', () => {
     ].join('\n')).not.toContain('69.197.178.27');
   });
 
-  it('persists public services routing for web discovery that includes direct broker endpoints', () => {
+  it('persists public broker routing for web discovery that includes direct broker endpoints', () => {
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { BACKEND_MODE: 'browser' };
 
     persistBrokerSessionDiscovery({
@@ -96,10 +96,10 @@ describe('broker websocket URL builder', () => {
       feed_url: 'ws://103.91.186.142:8091/ws/feed',
     });
 
-    expect(localStorage.getItem('backend_url')).toBe('https://services.myprop.trade');
-    expect(localStorage.getItem('server_url')).toBe('https://services.myprop.trade');
-    expect(localStorage.getItem('ws_url')).toBe('wss://services.myprop.trade/ws/v2');
-    expect(localStorage.getItem('feed_url')).toBe('wss://services.myprop.trade/ws/feed');
+    expect(localStorage.getItem('backend_url')).toBe('https://backend.orrnn.com');
+    expect(localStorage.getItem('server_url')).toBe('https://backend.orrnn.com');
+    expect(localStorage.getItem('ws_url')).toBe('wss://backend.orrnn.com/ws/v2');
+    expect(localStorage.getItem('feed_url')).toBe('wss://backend.orrnn.com/ws/feed');
   });
 
   it('extracts only host and port when server_url contains a path', () => {

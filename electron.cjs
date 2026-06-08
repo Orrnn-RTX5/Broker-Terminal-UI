@@ -152,11 +152,77 @@ ipcMain.handle('window-is-maximized', () => {
     return mainWindow ? mainWindow.isMaximized() : false;
 });
 
+// Constrain shell.openPath to a small allowlist of app-owned base directories so
+// a compromised renderer cannot ask the OS to open arbitrary local files (e.g. an
+// executable on a mounted share). The only legitimate caller opens the app data
+// folder ("./data" / the backend-reported data-folder path), all of which resolve
+// under cwd / userData / downloads. Anything that escapes those bases is rejected.
+const getOpenPathAllowedBases = () => {
+    const bases = new Set();
+    const add = (p) => {
+        if (!p) return;
+        try {
+            bases.add(path.resolve(p));
+        } catch {
+            /* ignore unresolved paths */
+        }
+    };
+    add(process.cwd());
+    add(__dirname);
+    try { add(app.getAppPath()); } catch { /* may be unavailable */ }
+    for (const name of ['userData', 'downloads', 'documents', 'temp']) {
+        try { add(app.getPath(name)); } catch { /* path not available on platform */ }
+    }
+    return [...bases];
+};
+
+const isPathWithinAllowedBase = (resolvedPath) => {
+    return getOpenPathAllowedBases().some((base) => {
+        if (resolvedPath === base) return true;
+        const baseWithSep = base.endsWith(path.sep) ? base : base + path.sep;
+        return resolvedPath.startsWith(baseWithSep);
+    });
+};
+
 ipcMain.handle('shell-open-path', async (_event, filePath) => {
-    return shell.openPath(filePath);
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+        console.warn('[Electron] Blocked shell-open-path: invalid path');
+        return 'Invalid path';
+    }
+
+    let resolved;
+    try {
+        // Resolve relative inputs against cwd and collapse any ".." segments so
+        // traversal cannot escape an allowed base directory.
+        resolved = path.resolve(filePath);
+    } catch {
+        console.warn('[Electron] Blocked shell-open-path: unresolved path');
+        return 'Invalid path';
+    }
+
+    if (!isPathWithinAllowedBase(resolved)) {
+        console.warn('[Electron] Blocked shell-open-path outside allowed directories');
+        return 'Path not allowed';
+    }
+
+    return shell.openPath(resolved);
 });
 
+const isAllowedExternalUrl = (value) => {
+    if (typeof value !== 'string') return false;
+    try {
+        const parsed = new URL(value);
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    } catch {
+        return false;
+    }
+};
+
 ipcMain.handle('shell-open-external', async (_event, url) => {
+    if (!isAllowedExternalUrl(url)) {
+        console.warn('[Electron] Blocked external URL with unsupported scheme');
+        return false;
+    }
     return shell.openExternal(url);
 });
 
@@ -179,7 +245,7 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            webSecurity: false,
+            webSecurity: true,
             preload: path.join(__dirname, 'preload.cjs'),
         },
         autoHideMenuBar: true,

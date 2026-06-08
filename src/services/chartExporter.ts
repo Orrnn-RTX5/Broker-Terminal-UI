@@ -5,6 +5,8 @@
  * Supports canvas-based charts (lightweight-charts) and complex HTML elements
  */
 
+import { getActiveChartSource } from './activeChartSource';
+
 export interface ChartExportOptions {
   format: 'png' | 'jpg';
   quality: number; // 0.1 to 1.0 (for JPG)
@@ -153,16 +155,27 @@ export class ChartExporter {
     metadata: ChartMetadata,
     options: Partial<ChartExportOptions> = {}
   ): Promise<Blob> {
-    // Strategy 1: Check global window object for active chart (set by TradingChart component)
+    const activeSource = getActiveChartSource();
+    if (activeSource?.canvas) {
+      console.log('[ChartExporter] Using registered chart canvas');
+      return this.exportCanvas(activeSource.canvas, metadata, options);
+    }
+
+    if (activeSource?.container) {
+      console.log('[ChartExporter] Using registered chart container');
+      return this.exportElement(activeSource.container, metadata, options);
+    }
+
+    // Strategy 1: Check legacy global window object for active chart
     const globalCanvas = (window as any).__activeChartCanvas as HTMLCanvasElement | null;
     const globalContainer = (window as any).__activeChartContainer as HTMLElement | null;
 
-    if (globalCanvas) {
+    if (globalCanvas?.isConnected) {
       console.log('[ChartExporter] Using global chart canvas');
       return this.exportCanvas(globalCanvas, metadata, options);
     }
 
-    if (globalContainer) {
+    if (globalContainer?.isConnected) {
       console.log('[ChartExporter] Using global chart container');
       return this.exportElement(globalContainer, metadata, options);
     }

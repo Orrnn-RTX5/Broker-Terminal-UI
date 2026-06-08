@@ -3,13 +3,14 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ExposureHeatmap } from '../ExposureHeatmap'
 
-// Mock WebSocket service
-vi.mock('../../services/websocket', () => ({
-  getWebSocketService: vi.fn(() => ({
-    subscribe: vi.fn(() => vi.fn()),
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-  })),
+const { mockSubscribe } = vi.hoisted(() => ({
+  mockSubscribe: vi.fn(() => vi.fn()),
+}))
+
+vi.mock('../../hooks/useWebSocket', () => ({
+  useWebSocket: () => ({
+    subscribe: mockSubscribe,
+  }),
 }))
 
 // Mock canvas context
@@ -34,13 +35,14 @@ const mockCanvasContext = {
 describe('ExposureHeatmap', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    HTMLCanvasElement.prototype.getContext = vi.fn(() => mockCanvasContext) as any
-    global.requestAnimationFrame = vi.fn((cb) => setTimeout(cb, 16)) as any
+    mockSubscribe.mockReturnValue(vi.fn())
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => mockCanvasContext as unknown as CanvasRenderingContext2D) as HTMLCanvasElement['getContext']
+    global.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) => window.setTimeout(() => cb(performance.now()), 16))
     global.cancelAnimationFrame = vi.fn()
   })
 
   afterEach(() => {
-    vi.clearAllMocks()
+    vi.restoreAllMocks()
   })
 
   it('should render the heatmap', () => {
@@ -95,7 +97,7 @@ describe('ExposureHeatmap', () => {
     const fourHourButton = screen.getByText('4h')
     await user.click(fourHourButton)
 
-    expect(fourHourButton).toHaveClass('bg-zinc-700')
+    expect(fourHourButton).toHaveClass('bg-blue-600')
   })
 
   it('should reset view on button click', async () => {
@@ -142,12 +144,6 @@ describe('ExposureHeatmap', () => {
   })
 
   it('should subscribe to WebSocket updates', () => {
-    const mockSubscribe = vi.fn(() => vi.fn())
-    const { getWebSocketService } = require('../../services/websocket')
-    getWebSocketService.mockReturnValue({
-      subscribe: mockSubscribe,
-    })
-
     render(<ExposureHeatmap />)
 
     expect(mockSubscribe).toHaveBeenCalledWith(

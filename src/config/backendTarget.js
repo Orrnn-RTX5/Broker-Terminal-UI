@@ -1,5 +1,11 @@
-export const WEB_BACKEND_FALLBACK = 'https://services.myprop.trade';
-export const DESKTOP_BACKEND_FALLBACK = 'http://103.91.186.142:8091';
+export const WEB_BACKEND_FALLBACK = 'https://backend.orrnn.com';
+// Last-resort desktop default. Must NOT hardcode a public broker IP: doing so
+// leaks infra detail and sends the Bearer JWT in cleartext to a public host,
+// defeating the TLS intent of normalizeBrokerServerUrl. A desktop build should
+// always receive its real backend via runtime/env config; this loopback default
+// only exists so the app does not crash when nothing is configured, and cleartext
+// to loopback is already permitted by the cleartext-downgrade allow-list.
+export const DESKTOP_BACKEND_FALLBACK = 'http://127.0.0.1:8091';
 
 const URL_SCHEME_RE = /^[a-z][a-z\d+.-]*:\/\//i;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
@@ -79,7 +85,14 @@ const normalizeWsUrl = (value, fallbackProtocol = 'wss') => {
   return URL_SCHEME_RE.test(trimmed) ? trimmed : `${fallbackProtocol}://${trimmed}`;
 };
 
-const isPublicServicesUrl = (value, normalize) => {
+const isAllowedPublicBrokerHostname = (hostname = '') => {
+  const normalized = String(hostname || '').trim().toLowerCase();
+  return normalized.startsWith('services.')
+    || normalized === 'backend.orrnn.com'
+    || normalized === 'testbrokerbackend.orrnn.com';
+};
+
+const isPublicBrokerUrl = (value, normalize) => {
   const normalized = normalize(value);
   if (!normalized) return false;
 
@@ -87,11 +100,12 @@ const isPublicServicesUrl = (value, normalize) => {
     const parsed = new URL(normalized);
     const hostname = parsed.hostname.toLowerCase();
     const protocol = parsed.protocol.toLowerCase();
-    return ['http:', 'https:', 'ws:', 'wss:'].includes(protocol)
+    const isSecure = protocol === 'https:' || protocol === 'wss:';
+    return isSecure
       && !LOCAL_HOSTS.has(hostname)
       && !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
       && !hostname.includes(':')
-      && hostname.startsWith('services.');
+      && isAllowedPublicBrokerHostname(hostname);
   } catch {
     return false;
   }
@@ -125,7 +139,7 @@ export const getPublicBackendTarget = () => {
     envValue('VITE_API_URL'),
     envValue('VITE_BACKEND_URL')
   );
-  return isPublicServicesUrl(candidate, normalizeHttpUrl)
+  return isPublicBrokerUrl(candidate, normalizeHttpUrl)
     ? normalizeHttpUrl(candidate, 'https')
     : WEB_BACKEND_FALLBACK;
 };
@@ -144,7 +158,7 @@ export const getPublicWsTarget = () => {
     envValue('VITE_RTX5_WS_URL'),
     envValue('VITE_MARKET_WS_URL')
   );
-  return isPublicServicesUrl(candidate, normalizeWsUrl)
+  return isPublicBrokerUrl(candidate, normalizeWsUrl)
     ? normalizeWsUrl(candidate, 'wss')
     : normalizeWsUrl(getPublicBackendTarget(), 'wss');
 };

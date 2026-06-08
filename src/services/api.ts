@@ -4,10 +4,10 @@
  * Includes authentication with JWT token management and 401 handling
  */
 
-import type { Position, Order, Account, Trade, Tick } from '../store/useAppStore';
 import { useAppStore } from '../store/useAppStore';
 import { API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
 import {
+  getBackendTarget,
   normalizeBrokerInfoForTarget,
   resolveBrokerBackendUrl,
   resolveBrokerExtApiUrl,
@@ -17,7 +17,7 @@ import {
 // API Response Types
 // ============================================
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
@@ -113,13 +113,11 @@ export interface AdminAccount {
 // API Configuration
 // ============================================
 
-import { API_BASE_URL } from '../config/api';
-import { ApiError, apiClient } from '../api/client';
+import { ApiError, apiClient, getAuthToken } from '../api/client';
 import * as endpoints from '../api/endpoints';
 import { getStoredBrokerServer, resolveLoginBrokerTarget } from './brokerServers';
 import { persistBrokerSessionDiscovery } from './brokerSession';
 
-const DEFAULT_TIMEOUT = 10000; // 10 seconds
 const DEFAULT_BROKER_ID = 'broker_3';
 
 interface LoginOptions {
@@ -177,7 +175,47 @@ const unwrapList = <T,>(payload: T[] | { positions?: T[]; orders?: T[]; count?: 
   return Array.isArray(list) ? list : [];
 };
 
-const normalizeGatewayPositionForApp = (raw: any, index = 0) => {
+type LooseRecord = Record<string, unknown>;
+
+type NormalizedGatewayPosition = LooseRecord & {
+  id: number;
+  ticket: number;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  volume: number;
+  quantity: number;
+  openPrice: number;
+  open_price: number;
+  currentPrice: number;
+  current_price: number;
+  opened_at: string;
+  sl: number;
+  tp: number;
+  swap: number;
+  commission: number;
+  unrealizedPnL: number;
+  unrealized_pl: number;
+};
+
+type NormalizedGatewayOrder = LooseRecord & {
+  id: string;
+  ticket: number;
+  symbol: string;
+  type: string;
+  side: 'BUY' | 'SELL';
+  volume: number;
+  quantity: number;
+  price: number;
+  sl: number;
+  tp: number;
+  status: string;
+  created_at: unknown;
+  createdAt: unknown;
+};
+
+type ExportRow = Record<string, unknown>;
+
+const normalizeGatewayPositionForApp = (raw: LooseRecord, index = 0): NormalizedGatewayPosition => {
   const ticket = toFiniteNumber(raw?.ticket ?? raw?.id, index + 1);
   const openPrice = toFiniteNumber(raw?.price_open ?? raw?.open_price ?? raw?.openPrice ?? raw?.price, 0);
   const currentPrice = toFiniteNumber(raw?.price_current ?? raw?.current_price ?? raw?.currentPrice, openPrice);
@@ -196,7 +234,7 @@ const normalizeGatewayPositionForApp = (raw: any, index = 0) => {
     open_price: openPrice,
     currentPrice,
     current_price: currentPrice,
-    opened_at: raw?.opened_at ?? timestampToIso(raw?.time_create),
+    opened_at: typeof raw?.opened_at === 'string' ? raw.opened_at : timestampToIso(raw?.time_create),
     sl: toFiniteNumber(raw?.price_sl ?? raw?.sl, 0),
     tp: toFiniteNumber(raw?.price_tp ?? raw?.tp, 0),
     swap: toFiniteNumber(raw?.swap, 0),
@@ -206,7 +244,7 @@ const normalizeGatewayPositionForApp = (raw: any, index = 0) => {
   };
 };
 
-const normalizeGatewayOrderForApp = (raw: any, index = 0) => {
+const normalizeGatewayOrderForApp = (raw: LooseRecord, index = 0): NormalizedGatewayOrder => {
   const ticket = toFiniteNumber(raw?.ticket ?? raw?.id, index + 1);
   const type = String(raw?.type || '').toUpperCase();
   const side = String(raw?.side ?? '').toLowerCase() === 'sell' || type.includes('SELL') ? 'SELL' : 'BUY';
@@ -325,7 +363,8 @@ export const accountApi = {
 export const positionsApi = {
   async getPositions(login?: number): Promise<endpoints.Position[]> {
     const response = await endpoints.tradingApi.getPositions(resolveTradingLogin(login));
-    return unwrapList(response, 'positions').map(normalizeGatewayPositionForApp) as any;
+    return unwrapList(response, 'positions')
+      .map((position) => normalizeGatewayPositionForApp(position as unknown as LooseRecord)) as unknown as endpoints.Position[];
   },
 
   async closePosition(positionId: string): Promise<void> {
@@ -362,15 +401,16 @@ export const positionsApi = {
     }
 
     const response = await endpoints.tradingApi.getPositions(login, { limit: 500, offset: 0 });
-    const positions = unwrapList(response, 'positions').map(normalizeGatewayPositionForApp);
-    const candidates = positions.filter((position: any) => {
+    const positions = unwrapList(response, 'positions')
+      .map((position) => normalizeGatewayPositionForApp(position as unknown as LooseRecord));
+    const candidates = positions.filter((position) => {
       if (normalizedSymbol && position.symbol !== normalizedSymbol) return false;
       if (type === 'ALL') return true;
       const profit = toFiniteNumber(position.profit ?? position.unrealized_pl ?? position.unrealizedPnL, 0);
       return type === 'WINNERS' ? profit > 0 : profit < 0;
     });
 
-    await Promise.all(candidates.map((position: any) => endpoints.tradingApi.closePosition(position.id ?? position.ticket)));
+    await Promise.all(candidates.map((position) => endpoints.tradingApi.closePosition(position.id ?? position.ticket)));
 
     return {
       closed: candidates.length,
@@ -417,7 +457,7 @@ export const ordersApi = {
       price: requireVolume(data.price),
       price_sl: data.price_sl ?? data.sl,
       price_tp: data.price_tp ?? data.tp,
-      expiration: data.expiration,
+      expiration: data.expiration ?? data.expiry,
       comment: data.comment,
       trailing_stop: data.trailing_stop,
       trailing_step: data.trailing_step,
@@ -431,7 +471,8 @@ export const ordersApi = {
 
   async getPendingOrders(login?: number): Promise<endpoints.Order[]> {
     const response = await endpoints.tradingApi.getPendingOrders(resolveTradingLogin(login));
-    return unwrapList(response as any, 'orders').map(normalizeGatewayOrderForApp) as any;
+    return unwrapList(response, 'orders')
+      .map((order) => normalizeGatewayOrderForApp(order as unknown as LooseRecord)) as unknown as endpoints.Order[];
   },
 
   async cancelOrder(orderId: string): Promise<void> {
@@ -445,9 +486,9 @@ export const ordersApi = {
     if (!Number.isFinite(ticket) || ticket <= 0) throw new Error('Invalid pending order ticket');
     return endpoints.tradingApi.modifyPendingOrder(ticket, {
       price: data.price,
-      price_sl: data.price_sl,
-      price_tp: data.price_tp,
-      expiration: data.expiration,
+      price_sl: data.price_sl ?? data.sl,
+      price_tp: data.price_tp ?? data.tp,
+      expiration: data.expiration ?? data.expiry,
       trailing_stop: data.trailing_stop,
       trailing_step: data.trailing_step,
     });
@@ -463,7 +504,7 @@ export const marketApi = {
     return endpoints.marketApi.getSymbols();
   },
 
-  async getTicks(symbol: string): Promise<any[]> {
+  async getTicks(symbol: string): Promise<unknown[]> {
     return endpoints.marketApi.getTicks(symbol);
   },
 
@@ -524,9 +565,12 @@ export const historyApi = {
 export const configApi = {
   async getConfig(): Promise<BrokerConfig> {
     try {
-      return await apiClient.get<BrokerConfig>('/api/config');
+      return await apiClient.get<BrokerConfig>('/broker/config', {
+        baseUrl: API_V2_BASE_URL,
+        skipAuth: true,
+      });
     } catch (error) {
-      // Some deployments do not expose /api/config yet.
+      // Some deployments do not expose the v2 broker config yet.
       if (error instanceof ApiError && error.status === 404) {
         return {
           brokerName: 'RTX',
@@ -595,12 +639,12 @@ export const adminApi = {
     return apiClient.post<void>('/admin/symbols/toggle', { symbol, enabled });
   },
 
-  async getExecutionMode(): Promise<{ mode: string; description: any; priceFeed: string }> {
-    return apiClient.get<{ mode: string; description: any; priceFeed: string }>('/admin/execution-mode');
+  async getExecutionMode(): Promise<{ mode: string; description: unknown; priceFeed: string }> {
+    return apiClient.get<{ mode: string; description: unknown; priceFeed: string }>('/admin/execution-mode');
   },
 
-  async setExecutionMode(mode: 'ABOOK' | 'BBOOK'): Promise<any> {
-    return apiClient.post<any>('/admin/execution-mode', { mode });
+  async setExecutionMode(mode: 'ABOOK' | 'BBOOK'): Promise<unknown> {
+    return apiClient.post<unknown>('/admin/execution-mode', { mode });
   },
 
   async getLPStatus(): Promise<LPStatus[]> {
@@ -617,23 +661,93 @@ export const adminApi = {
 // Analytics & Export API
 // ============================================
 
+const requireExportLogin = (accountId: string): number => {
+  const parsed = Number.parseInt(String(accountId || ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) throw new Error('Missing account login for export request');
+  return parsed;
+};
+
+const unwrapExportRows = <T,>(payload: T[] | Record<string, unknown>, key: string): T[] => {
+  if (Array.isArray(payload)) return payload;
+  const rows = (payload as Record<string, unknown>)?.[key];
+  return Array.isArray(rows) ? rows as T[] : [];
+};
+
+const rowTimeMs = (row: ExportRow): number => {
+  const raw = row.time_ms ?? row.time ?? row.created_at ?? row.createdAt ?? row.openTime ?? row.closeTime;
+  if (!raw) return 0;
+  if (typeof raw === 'string' && Number.isNaN(Number(raw))) return Date.parse(raw);
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) return 0;
+  return numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
+};
+
+const filterExportRowsByDate = <T extends ExportRow>(rows: T[], startDate: string, endDate: string): T[] => {
+  const from = startDate ? Date.parse(startDate) : 0;
+  const to = endDate ? Date.parse(endDate) : 0;
+  if (!Number.isFinite(from) && !Number.isFinite(to)) return rows;
+
+  return rows.filter((row) => {
+    const time = rowTimeMs(row);
+    if (!time) return true;
+    if (Number.isFinite(from) && from > 0 && time < from) return false;
+    if (Number.isFinite(to) && to > 0 && time > to + 24 * 60 * 60 * 1000 - 1) return false;
+    return true;
+  });
+};
+
+const csvEscape = (value: unknown): string => {
+  const text = value == null ? '' : String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+const rowsToCsv = (rows: ExportRow[]): string => {
+  const columnSet = new Set<string>();
+  rows.forEach((row) => {
+    Object.keys(row || {}).forEach((key) => columnSet.add(key));
+  });
+  const columns = Array.from(columnSet);
+  if (columns.length === 0) return '';
+  return [
+    columns.map(csvEscape).join(','),
+    ...rows.map((row) => columns.map((column) => csvEscape(row?.[column])).join(',')),
+  ].join('\n');
+};
+
 export const analyticsApi = {
   async exportPDF(accountId: string, startDate: string, endDate: string): Promise<Blob> {
-    return apiClient.get<Blob>('/api/analytics/export/pdf', {
-      params: { start: startDate, end: endDate, accountId }
-    });
+    void accountId;
+    void startDate;
+    void endDate;
+    throw new Error('PDF export is unavailable because this broker backend does not expose a PDF export endpoint');
   },
 
   async exportCSV(accountId: string, startDate: string, endDate: string, dataType: string): Promise<string> {
-    return apiClient.get<string>('/api/analytics/export/csv', {
-      params: { start: startDate, end: endDate, accountId, type: dataType }
-    });
+    const login = requireExportLogin(accountId);
+    const normalizedType = String(dataType || '').trim().toLowerCase();
+    let rows: ExportRow[];
+
+    if (normalizedType === 'positions') {
+      const data = await endpoints.tradingApi.getPositions(login, { limit: 500, offset: 0 });
+      rows = unwrapExportRows<ExportRow>(data as ExportRow[] | Record<string, unknown>, 'positions');
+    } else if (normalizedType === 'trades') {
+      const data = await apiClient.get<ExportRow[] | { deals?: ExportRow[] }>(`/deals/${login}`, {
+        baseUrl: API_V2_BASE_URL,
+        params: { limit: 500, offset: 0 },
+      });
+      rows = unwrapExportRows<ExportRow>(data, 'deals');
+    } else {
+      throw new Error('Performance export is unavailable because this broker backend does not expose a performance export endpoint');
+    }
+
+    return rowsToCsv(filterExportRowsByDate(rows, startDate, endDate));
   },
 
-  async getPerformanceReport(accountId: string, startDate: string, endDate: string): Promise<any> {
-    return apiClient.get<any>('/api/performance', {
-      params: { start: startDate, end: endDate, accountId }
-    });
+  async getPerformanceReport(accountId: string, startDate: string, endDate: string): Promise<never> {
+    void accountId;
+    void startDate;
+    void endDate;
+    throw new Error('Performance export is unavailable because this broker backend does not expose a performance export endpoint');
   },
 };
 
@@ -642,10 +756,10 @@ export const analyticsApi = {
 // ============================================
 
 export interface WorkspaceConfig {
-  charts: any[];
-  layout: any;
-  marketWatch: any;
-  orderPanel: any;
+  charts: unknown[];
+  layout: unknown;
+  marketWatch: unknown;
+  orderPanel: unknown;
   version: string;
 }
 
@@ -655,10 +769,10 @@ export interface Workspace {
   description?: string;
   userId: string;
   accountId?: string;
-  charts: any;
-  layout: any;
-  marketWatch: any;
-  orderPanel: any;
+  charts: unknown;
+  layout: unknown;
+  marketWatch: unknown;
+  orderPanel: unknown;
   version: string;
   createdAt?: string;
   updatedAt?: string;
@@ -689,8 +803,8 @@ export const workspaceApi = {
     return apiClient.get<{ success: boolean; workspace?: Workspace; message?: string }>(`/api/workspaces/${workspaceId}`);
   },
 
-  async listWorkspaces(userId: string, accountId?: string): Promise<{ success: boolean; workspaces: any[]; message?: string }> {
-    return apiClient.get<{ success: boolean; workspaces: any[]; message?: string }>('/api/workspaces', {
+  async listWorkspaces(userId: string, accountId?: string): Promise<{ success: boolean; workspaces: unknown[]; message?: string }> {
+    return apiClient.get<{ success: boolean; workspaces: unknown[]; message?: string }>('/api/workspaces', {
       params: { userId, accountId }
     });
   },
@@ -793,12 +907,14 @@ export interface JournalResponse {
 
 export const journalApi = {
   async getLogs(params: JournalQuery = {}): Promise<JournalResponse> {
-    // In Electron the page origin is file:// so we can call the backend directly
-    // without CORS restrictions. In the browser (dev/web) we must go through the
-    // Vite proxy (/api → https://rtxbackend.tradecopier.org) to avoid CORS 503s.
+    // In Electron the page origin is file:// so we call the backend directly
+    // (no CORS). In the browser (dev/web) we go through the Vite proxy (/api →
+    // configured backend) to avoid CORS 503s. The desktop origin is resolved
+    // from runtime broker config via getBackendTarget() — never hardcoded to a
+    // single cross-broker host.
     const isElectron = typeof window !== 'undefined' &&
       (window.location.protocol === 'file:' || navigator.userAgent.includes('Electron'));
-    const BACKEND = isElectron ? 'https://rtxbackend.tradecopier.org' : '';
+    const BACKEND = isElectron ? getBackendTarget().replace(/\/+$/, '') : '';
 
     // Build query string — match working curl: mode, type, filter only
     // ⚠️ BACKEND BUG: /api/v1/journal returns 503 if 'filter' param is absent or empty.
@@ -810,8 +926,14 @@ export const journalApi = {
 
     const url = `${BACKEND}/api/v1/journal?${qs.toString()}`;
 
+    // Authenticate like every other protected call: attach the stored JWT.
+    // The journal endpoint must not be reachable unauthenticated.
+    const token = getAuthToken();
     const res = await fetch(url, {
-      headers: { 'accept': 'application/json' },
+      headers: {
+        'accept': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
     });
 
     if (!res.ok) {

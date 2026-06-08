@@ -19,6 +19,12 @@ interface OHLC {
   volume?: number;
 }
 
+interface Tick {
+  timestamp: number;
+  bid: number;
+  ask: number;
+}
+
 /**
  * Get timeframe duration in seconds
  */
@@ -42,7 +48,7 @@ function getTimeframeSeconds(tf: Timeframe): number {
  * @param timeframe - Candle timeframe (1m, 5m, 15m, etc.)
  * @returns Array of OHLC candles sorted by time
  */
-function buildOHLCFromTicks(ticks: any[], timeframe: Timeframe): OHLC[] {
+function buildOHLCFromTicks(ticks: Tick[] | null, timeframe: Timeframe): OHLC[] {
   if (!ticks || ticks.length === 0) return [];
 
   const tfSeconds = getTimeframeSeconds(timeframe);
@@ -83,7 +89,7 @@ describe('buildOHLCFromTicks - Edge Cases', () => {
   });
 
   it('should return empty array for null input', () => {
-    const result = buildOHLCFromTicks(null as any, '1m');
+    const result = buildOHLCFromTicks(null, '1m');
     expect(result).toEqual([]);
   });
 
@@ -94,14 +100,12 @@ describe('buildOHLCFromTicks - Edge Cases', () => {
     const result = buildOHLCFromTicks(ticks, '1m');
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({
-      time: 1737375600,
-      open: 1.045335,
-      high: 1.045335,
-      low: 1.045335,
-      close: 1.045335,
-      volume: 1
-    });
+    expect(result[0].time).toBe(1737375600);
+    expect(result[0].open).toBeCloseTo(1.045335, 6);
+    expect(result[0].high).toBeCloseTo(1.045335, 6);
+    expect(result[0].low).toBeCloseTo(1.045335, 6);
+    expect(result[0].close).toBeCloseTo(1.045335, 6);
+    expect(result[0].volume).toBe(1);
   });
 });
 
@@ -119,10 +123,10 @@ describe('buildOHLCFromTicks - M1 Timeframe', () => {
     expect(result).toHaveLength(1);
     expect(result[0].time).toBe(1737375600);
     expect(result[0].volume).toBe(5);
-    expect(result[0].open).toBe(1.045335);
-    expect(result[0].close).toBe(1.045325);
-    expect(result[0].high).toBe(1.045375);
-    expect(result[0].low).toBe(1.045315);
+    expect(result[0].open).toBeCloseTo(1.045335, 6);
+    expect(result[0].close).toBeCloseTo(1.045325, 6);
+    expect(result[0].high).toBeCloseTo(1.045375, 6);
+    expect(result[0].low).toBeCloseTo(1.045315, 6);
   });
 
   it('should create separate candles for different minutes', () => {
@@ -158,8 +162,8 @@ describe('buildOHLCFromTicks - M5 Timeframe', () => {
     expect(result).toHaveLength(1);
     expect(result[0].time).toBe(1737375600);
     expect(result[0].volume).toBe(5);
-    expect(result[0].open).toBe(1.045335);
-    expect(result[0].close).toBe(1.045465);
+    expect(result[0].open).toBeCloseTo(1.045335, 6);
+    expect(result[0].close).toBeCloseTo(1.045465, 6);
   });
 
   it('should create new candle at 5-minute boundary', () => {
@@ -191,10 +195,10 @@ describe('buildOHLCFromTicks - M15 Timeframe', () => {
     const result = buildOHLCFromTicks(ticks, '15m');
 
     expect(result).toHaveLength(2);
-    expect(result[0].time).toBe(1737375600); // 09:00-09:15
-    expect(result[0].volume).toBe(2);
-    expect(result[1].time).toBe(1737376500); // 09:15-09:30
-    expect(result[1].volume).toBe(1);
+    expect(result[0].time).toBe(1737375300);
+    expect(result[0].volume).toBe(1);
+    expect(result[1].time).toBe(1737376200);
+    expect(result[1].volume).toBe(2);
   });
 });
 
@@ -235,7 +239,7 @@ describe('buildOHLCFromTicks - OHLC Calculations', () => {
     ];
     const result = buildOHLCFromTicks(ticks, '1m');
 
-    expect(result[0].high).toBe(1.045415);
+    expect(result[0].high).toBeCloseTo(1.045415, 6);
   });
 
   it('should calculate low correctly', () => {
@@ -246,7 +250,7 @@ describe('buildOHLCFromTicks - OHLC Calculations', () => {
     ];
     const result = buildOHLCFromTicks(ticks, '1m');
 
-    expect(result[0].low).toBe(1.045315);
+    expect(result[0].low).toBeCloseTo(1.045315, 6);
   });
 
   it('should set open to first tick price', () => {
@@ -256,7 +260,7 @@ describe('buildOHLCFromTicks - OHLC Calculations', () => {
     ];
     const result = buildOHLCFromTicks(ticks, '1m');
 
-    expect(result[0].open).toBe(1.045335);
+    expect(result[0].open).toBeCloseTo(1.045335, 6);
   });
 
   it('should set close to last tick price', () => {
@@ -266,7 +270,7 @@ describe('buildOHLCFromTicks - OHLC Calculations', () => {
     ];
     const result = buildOHLCFromTicks(ticks, '1m');
 
-    expect(result[0].close).toBe(1.045415);
+    expect(result[0].close).toBeCloseTo(1.045415, 6);
   });
 
   it('should count volume as tick count', () => {

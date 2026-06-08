@@ -24,7 +24,7 @@ interface BrokerServerItem {
     server?: string;
     server_ip?: string;
     server_port?: number;
-    server_url: string;
+    server_url?: string;
     backend_url?: string;
     market_api_url?: string;
     ws_url?: string;
@@ -44,6 +44,16 @@ interface LoginDialogProps {
 }
 
 const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
+const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
+const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
+
+const isAbortError = (err: unknown): boolean =>
+    err instanceof DOMException
+        ? err.name === 'AbortError'
+        : Boolean(err && typeof err === 'object' && 'name' in err && err.name === 'AbortError');
+
+const getErrorMessage = (err: unknown, fallback: string): string =>
+    err instanceof Error ? err.message : fallback;
 
 export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = '', initialServer }: LoginDialogProps) {
     const [login, setLogin] = useState('');
@@ -63,8 +73,8 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
     useEffect(() => {
         if (isOpen) {
             const accountId = initialLogin || useAppStore.getState().accountId || '';
-            setLogin(accountId || '900001');
-            setPassword(accountId ? '' : 'TestPass1234');
+            setLogin(accountId);
+            setPassword('');
             setError(null);
             setSearchQuery('');
             setTimeout(() => loginInputRef.current?.select(), 100);
@@ -93,9 +103,9 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             } else {
                 setHealthStatus('offline');
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             clearTimeout(timeoutId);
-            if (err.name !== 'AbortError') {
+            if (!isAbortError(err)) {
                 setHealthStatus('offline');
             }
         }
@@ -117,7 +127,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
     useEffect(() => {
         if (!isOpen) return;
         let isMounted = true;
-        fetch(`${BROKER_DISCOVERY_URL}/api/v1/broker/servers`)
+        fetch(brokerServersDiscoveryUrl)
             .then(res => res.json())
             .then((payload: unknown) => {
                 if (!isMounted) return;
@@ -125,8 +135,8 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 setBrokerList(data);
 
                 // Try to restore previously used broker or initialServer, or fallback to 'testorrnn'
-                const savedBrokerId = initialServer || localStorage.getItem('broker_id') || 'testorrnn';
-                const savedBroker = data.find(b => b.broker_id === savedBrokerId || b.server_url === savedBrokerId);
+                const savedBrokerId = initialServer || localStorage.getItem('broker_id') || DEFAULT_BROKER_ID;
+                const savedBroker = data.find(b => b.broker_id === savedBrokerId || b.server === savedBrokerId || b.server_url === savedBrokerId);
                 if (savedBroker) {
                     setSelectedBroker({
                         ...(normalizeBrokerInfoForTarget(savedBroker) as BrokerServerItem),
@@ -299,9 +309,9 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                     window.location.reload();
                 }
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('[LoginDialog] Auth error:', err);
-            setError(err.message || 'Authentication failed');
+            setError(getErrorMessage(err, 'Authentication failed'));
         } finally {
             setLoading(false);
         }

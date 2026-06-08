@@ -5,7 +5,6 @@
 
 import type { TickData } from '../types/history';
 import {
-  API_HISTORY_BASE_URL,
   API_V2_BASE_URL,
   RTX5_API_URL,
   RTX5_WS_URL,
@@ -113,19 +112,6 @@ const runtimeApiV2BaseUrl = (): string => {
   if (apiV2Base) return apiV2Base;
   const configBase = RTX5_API_URL.replace(/\/$/, '');
   return configBase ? `${configBase}/api/v2` : '';
-};
-
-const runtimeHistoryBaseUrl = (): string => {
-  const apiV2Base = runtimeApiV2BaseUrl();
-  const hasRuntimeBrokerServer = typeof window !== 'undefined'
-    && Boolean((localStorage.getItem('server_url') || '').trim());
-  if (hasRuntimeBrokerServer && apiV2Base) {
-    return `${apiV2Base.replace(/\/api\/v2$/i, '')}/history`;
-  }
-
-  const historyBase = API_HISTORY_BASE_URL.replace(/\/$/, '');
-  if (historyBase) return historyBase;
-  return `${apiV2Base.replace(/\/api\/v2$/i, '')}/history`;
 };
 
 const getAuthToken = (): string | null => {
@@ -302,9 +288,12 @@ export class ChartDataService {
     const { symbol, timeframe, count = 500, from, to, signal } = options;
     const apiTf = this.normalizeTimeframe(timeframe);
     const apiV2BaseUrl = runtimeApiV2BaseUrl();
-    const historyBaseUrl = runtimeHistoryBaseUrl();
     const token = getAuthToken();
     const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    if (!token) {
+      return [];
+    }
 
     const coreUrl = `${apiV2BaseUrl}/candles/${encodeURIComponent(symbol)}${buildQuery({
       timeframe: apiTf,
@@ -313,17 +302,8 @@ export class ChartDataService {
       to,
     })}`;
 
-    const historyUrl = `${historyBaseUrl}/candles/${encodeURIComponent(symbol)}${buildQuery({
-      tf: apiTf,
-      count,
-      from,
-      to,
-    })}`;
-
     const attempts = [
-      ...(token ? [{ url: coreUrl, headers: authHeaders, isAuthenticatedCore: true }] : []),
-      ...(token ? [{ url: historyUrl, headers: authHeaders, isAuthenticatedCore: false }] : []),
-      { url: historyUrl, headers: undefined, isAuthenticatedCore: false },
+      { url: coreUrl, headers: authHeaders, isAuthenticatedCore: true },
     ];
 
     let lastError: Error | null = null;

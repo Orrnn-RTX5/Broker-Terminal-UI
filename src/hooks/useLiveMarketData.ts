@@ -299,7 +299,7 @@ export function useMarketInstruments() {
     setLoading(true);
     setError(null);
 
-    const endpoints = ['/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols', '/api/v2/instruments'];
+    const endpoints = ['/api/v2/instruments', '/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols'];
     try {
       for (const endpoint of endpoints) {
         try {

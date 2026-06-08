@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom'
-import { expect, afterEach, vi } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
 const hasUsableStorage = (value: unknown): value is Storage => Boolean(
@@ -61,13 +61,14 @@ afterEach(() => {
 })
 
 // Mock WebSocket
-global.WebSocket = vi.fn() as any
+globalThis.WebSocket = vi.fn() as unknown as typeof WebSocket
 
 // Mock Canvas API for chart rendering
 HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
   fillStyle: '',
   fillRect: vi.fn(),
   clearRect: vi.fn(),
+  strokeRect: vi.fn(),
   getImageData: vi.fn(),
   putImageData: vi.fn(),
   createImageData: vi.fn(),
@@ -85,26 +86,36 @@ HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
   rotate: vi.fn(),
   arc: vi.fn(),
   fill: vi.fn(),
+  fillText: vi.fn(),
   measureText: vi.fn(() => ({ width: 0 })),
   transform: vi.fn(),
   rect: vi.fn(),
   clip: vi.fn(),
-})) as any
+}) as unknown as CanvasRenderingContext2D) as unknown as HTMLCanvasElement['getContext']
 
 // Mock Canvas toBlob and toDataURL
-HTMLCanvasElement.prototype.toBlob = vi.fn((callback) => {
-  const blob = new Blob(['fake image data'], { type: 'image/png' })
+HTMLCanvasElement.prototype.toBlob = vi.fn(function (
+  this: HTMLCanvasElement,
+  callback: BlobCallback,
+  type?: string | null
+) {
+  const mimeType = type || 'image/png'
+  const blob = new Blob([`fake image data ${this.width}x${this.height} ${mimeType}`], { type: mimeType })
   callback(blob)
-}) as any
+}) as unknown as HTMLCanvasElement['toBlob']
 
-HTMLCanvasElement.prototype.toDataURL = vi.fn(() => 'data:image/png;base64,fake') as any
+HTMLCanvasElement.prototype.toDataURL = vi.fn(function (this: HTMLCanvasElement, type?: string) {
+  const mimeType = type || 'image/png'
+  const payloadLength = Math.max(120, Math.ceil((this.width * this.height) / 1000))
+  return `data:${mimeType};base64,${'a'.repeat(payloadLength)}`
+}) as unknown as HTMLCanvasElement['toDataURL']
 
 // Mock Audio API for alerts
-global.Audio = vi.fn(() => ({
+globalThis.Audio = vi.fn(() => ({
   play: vi.fn(() => Promise.resolve()),
   pause: vi.fn(),
   load: vi.fn(),
-})) as any
+}) as unknown as HTMLAudioElement) as unknown as typeof Audio
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {

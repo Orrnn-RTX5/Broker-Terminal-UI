@@ -3,7 +3,7 @@
  * Handles chart printing and PDF generation with full chart elements
  */
 
-import type { IChartApi, ISeriesApi } from 'lightweight-charts';
+import type { IChartApi } from 'lightweight-charts';
 
 export type PageSize = 'A4' | 'Letter' | 'Legal' | 'A3';
 export type PageOrientation = 'portrait' | 'landscape';
@@ -37,7 +37,7 @@ export interface ChartPrintData {
   chartCanvas?: HTMLCanvasElement;
   indicators: Array<{
     name: string;
-    parameters: Record<string, any>;
+    parameters: Record<string, unknown>;
   }>;
   drawings: Array<{
     type: string;
@@ -304,7 +304,7 @@ class ChartPrinterService {
         <strong>Drawings:</strong>
 `;
       data.drawings.forEach((drawing, index) => {
-        const label = drawing.label || `${drawing.type} ${index + 1}`;
+        const label = drawing.label ? `${drawing.type} - ${drawing.label}` : `${drawing.type} ${index + 1}`;
         html += `        <div class="drawing-item">${label}</div>
 `;
       });
@@ -380,8 +380,8 @@ class ChartPrinterService {
    * Generate PDF from chart (requires html2pdf library)
    */
   async generatePDF(data: ChartPrintData, preferences?: PrintPreferences): Promise<Blob> {
-    const prefs = preferences || this.preferences;
-    const html = this.generatePrintableHTML(data, prefs);
+    void data;
+    void preferences;
 
     // Note: This requires html2pdf.js library to be installed
     // For now, we'll return a placeholder

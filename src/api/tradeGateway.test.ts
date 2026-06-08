@@ -2,11 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
 import { RTX5_API_URL, WS_URL } from '../config/api';
 import {
+  getStoredAccountLogin,
   normalizeAccount,
+  normalizeClosedPosition,
   normalizeDeal,
+  normalizeOrder,
   normalizePosition,
   tradeGatewayApi,
 } from './tradeGateway';
+
+// Build a base64url JWT-shaped string (no padding, url-safe chars) for tests.
+const makeJwt = (payload: Record<string, unknown>): string => {
+  const body = btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `header.${body}.sig`;
+};
 
 vi.mock('./client', () => ({
   apiClient: {
@@ -22,7 +31,7 @@ describe('trade gateway normalization', () => {
   it('uses the shared v2 REST and websocket authority helpers', () => {
     expect(tradeGatewayApi.getWsUrl()).toBe(`${WS_URL}`);
     expect(tradeGatewayApi.getHistoryUrl('EUR/USD', 'M5', 100)).toBe(
-      `${RTX5_API_URL}/history/candles/EUR%2FUSD?tf=M5&count=100`
+      `${RTX5_API_URL}/api/v2/candles/EUR%2FUSD?timeframe=M5&limit=100`
     );
   });
 
@@ -53,14 +62,14 @@ describe('trade gateway normalization', () => {
       position_id: 445566,
       symbol: 'EURUSD',
       action: '1',
-      volume_lots: '0.3' as any,
-      open_price: '1.0825' as any,
-      current_price: '1.0811' as any,
+      volume_lots: '0.3' as unknown as number,
+      open_price: '1.0825' as unknown as number,
+      current_price: '1.0811' as unknown as number,
       sl: null,
-      tp: '1.0750' as any,
-      storage: '-0.25' as any,
-      commission: '-1.5' as any,
-      profit: '42.75' as any,
+      tp: '1.0750' as unknown as number,
+      storage: '-0.25' as unknown as number,
+      commission: '-1.5' as unknown as number,
+      profit: '42.75' as unknown as number,
       time_ms: 1760000000000,
     })).toMatchObject({
       id: 445566,
@@ -85,11 +94,11 @@ describe('trade gateway normalization', () => {
       symbol: 'XAUUSD',
       action: 'deal_buy',
       entry: 'entry_out',
-      volume: '0.1' as any,
-      price: '2333.45' as any,
-      profit: '18.25' as any,
-      commission: '-0.7' as any,
-      swap: '-0.1' as any,
+      volume: '0.1' as unknown as number,
+      price: '2333.45' as unknown as number,
+      profit: '18.25' as unknown as number,
+      commission: '-0.7' as unknown as number,
+      swap: '-0.1' as unknown as number,
       time: 1760000000,
     })).toMatchObject({
       id: 778899,
@@ -104,6 +113,68 @@ describe('trade gateway normalization', () => {
       profit: 18.25,
       commission: -0.7,
       swap: -0.1,
+    });
+  });
+
+  it('normalizes closed position opened time from gateway time_open', () => {
+    expect(normalizeClosedPosition({
+      position_id: 445566,
+      symbol: 'EURUSD',
+      action: 'sell',
+      volume_lots: 0.3,
+      price_open: 1.0825,
+      price_close: 1.0811,
+      profit: 42.75,
+      time_open: 1760000100,
+      time_close: 1760003700,
+    })).toMatchObject({
+      id: 445566,
+      symbol: 'EURUSD',
+      side: 'SELL',
+      volume: 0.3,
+      openPrice: 1.0825,
+      closePrice: 1.0811,
+      openTime: new Date(1760000100 * 1000).toISOString(),
+      closeTime: new Date(1760003700 * 1000).toISOString(),
+      profit: 42.75,
+    });
+  });
+
+  it('falls back to legacy closed position opened timestamps when time_open is absent', () => {
+    expect(normalizeClosedPosition({
+      ticket: 778899,
+      symbol: 'XAUUSD',
+      side: 'buy',
+      price_open: 2333.45,
+      price_close: 2341.7,
+      time_create: 1760000200,
+      time_close: 1760003800,
+    })).toMatchObject({
+      id: 778899,
+      symbol: 'XAUUSD',
+      side: 'BUY',
+      openTime: new Date(1760000200 * 1000).toISOString(),
+      closeTime: new Date(1760003800 * 1000).toISOString(),
+    });
+  });
+
+  it('normalizes order openPrice from price_open when price is absent', () => {
+    expect(normalizeOrder({
+      ticket: 991122,
+      symbol: 'EURUSD',
+      type: 'buy_limit',
+      side: 'buy',
+      volume: 0.2,
+      price_open: 1.08765,
+      time_create: 1760000000,
+    })).toMatchObject({
+      id: 991122,
+      symbol: 'EURUSD',
+      side: 'BUY',
+      volume: 0.2,
+      openPrice: 1.08765,
+      closePrice: 1.08765,
+      openTime: new Date(1760000000 * 1000).toISOString(),
     });
   });
 
@@ -143,5 +214,38 @@ describe('trade gateway normalization', () => {
     await expect(tradeGatewayApi.getClosedPositions(123456)).resolves.toMatchObject([
       { id: 401, symbol: 'USDJPY', side: 'SELL' },
     ]);
+  });
+});
+
+describe('getStoredAccountLogin (fe-10 — safe JWT decode)', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('prefers explicit saved login over the token claim', () => {
+    localStorage.setItem('rtx_saved_username', '900111');
+    localStorage.setItem('auth_token', makeJwt({ account_login: 900999 }));
+    expect(getStoredAccountLogin()).toBe(900111);
+  });
+
+  it('reads the account_login claim from a base64url token without padding', () => {
+    localStorage.setItem('auth_token', makeJwt({ account_login: 900222 }));
+    expect(getStoredAccountLogin()).toBe(900222);
+  });
+
+  it('falls back to the login claim when account_login is absent', () => {
+    localStorage.setItem('auth_token', makeJwt({ login: 900333 }));
+    expect(getStoredAccountLogin()).toBe(900333);
+  });
+
+  it('returns null for a malformed token instead of throwing', () => {
+    localStorage.setItem('auth_token', 'not.a-valid-jwt');
+    expect(() => getStoredAccountLogin()).not.toThrow();
+    expect(getStoredAccountLogin()).toBeNull();
+  });
+
+  it('returns null when the token has no usable login claim', () => {
+    localStorage.setItem('auth_token', makeJwt({ sub: 'user-1' }));
+    expect(getStoredAccountLogin()).toBeNull();
   });
 });

@@ -104,6 +104,33 @@ interface Props {
     onClose: () => void;
 }
 
+type CreatedAccount = {
+    login?: number | string;
+    api_key?: string;
+    broker_id?: string;
+    group?: string;
+    balance?: number | string;
+    currency?: string;
+    leverage?: number | string;
+};
+
+type CreatedAccountSummaryRow = {
+    label: string;
+    value: React.ReactNode;
+    mono?: boolean;
+    color?: string;
+    size?: string;
+    small?: boolean;
+};
+
+const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
+
+const getErrorMessage = (err: unknown, fallback: string): string =>
+    err instanceof Error ? err.message : fallback;
+
+const isSummaryRow = (row: CreatedAccountSummaryRow | false | null | undefined): row is CreatedAccountSummaryRow =>
+    Boolean(row);
+
 export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [step, setStep] = useState(0);
     const [brokers, setBrokers] = useState<BrokerServer[]>([]);
@@ -134,7 +161,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         investorPass: 'Read-Only-Pass',
         comment: 'Public demo account',
     });
-    const [createdAccount, setCreatedAccount] = useState<any>(null);
+    const [createdAccount, setCreatedAccount] = useState<CreatedAccount | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [createError, setCreateError] = useState('');
 
@@ -142,7 +169,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     useEffect(() => {
         if (!isOpen) return;
         setLoadingBrokers(true);
-        fetch(`${BROKER_DISCOVERY_URL}/api/v1/broker/servers`)
+        fetch(brokerServersDiscoveryUrl)
             .then(res => res.json())
             .then((payload: unknown) => {
                 const list = extractBrokerDiscoveryList(payload);
@@ -150,13 +177,13 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     id: b.broker_id || b.id || idx,
                     broker_id: String(b.broker_id || b.id || ''),
                     broker_name: String(b.broker_name || b.name || b.broker_id || b.id || ''),
-                    server: String(b.server_url || b.server || b.backend_url || ''),
+                    server: String(b.server || b.server_url || b.backend_url || b.broker_id || ''),
                     region: typeof b.region === 'string' ? b.region : undefined,
                     logo_url: typeof b.logo_url === 'string' ? b.logo_url : undefined,
                     enabled: true,
                 })).filter((broker) => Boolean(broker.broker_id && broker.broker_name));
                 setBrokers(mapped);
-                if (!selected && mapped.length > 0) setSelected(String(mapped[0].id));
+                setSelected((current) => current || (mapped.length > 0 ? String(mapped[0].id) : current));
             })
             .catch(err => console.warn('[OpenAccountDialog] Could not load brokers:', err))
             .finally(() => setLoadingBrokers(false));
@@ -188,22 +215,20 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             try {
                 setIsCreating(true);
                 setCreateError('');
-                const response = await tradeApi.account.create({
+                const request = {
                     name: `${formData.firstName} ${formData.lastName}`.trim(),
                     currency: formData.currency,
                     leverage: parseInt(formData.leverage, 10),
                     group: formData.group,
-                    // @ts-ignore
                     balance: parseFloat(formData.deposit),
-                    // @ts-ignore
                     master_pass: formData.masterPass,
-                    // @ts-ignore
                     investor_pass: formData.investorPass,
-                });
+                };
+                const response = await tradeApi.account.create(request);
                 setCreatedAccount(response);
                 setStep(4);
-            } catch (err: any) {
-                setCreateError(err.message || 'Failed to create account');
+            } catch (err: unknown) {
+                setCreateError(getErrorMessage(err, 'Failed to create account'));
             } finally {
                 setIsCreating(false);
             }
@@ -268,7 +293,6 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     filteredBrokers.map((broker, i) => {
                         const isSelected = selected === String(broker.id);
                         const isHovered = hoveredId === String(broker.id);
-                        const grad = GRADIENTS[i % GRADIENTS.length];
                         return (
                             <div
                                 key={broker.id}
@@ -570,7 +594,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         { label: 'Group', value: createdAccount.group },
                         { label: 'Balance', value: `${createdAccount.balance || formData.deposit} ${createdAccount.currency || formData.currency}`, color: 'text-emerald-400' },
                         { label: 'Leverage', value: `1:${createdAccount.leverage || formData.leverage}` },
-                    ].filter(Boolean).map((row: any) => (
+                    ].filter(isSummaryRow).map((row) => (
                         <div key={row.label} className="flex justify-between items-center pb-3 border-b border-zinc-800/80 last:border-0 last:pb-0">
                             <span className="text-zinc-500 text-[11px] font-medium uppercase tracking-wider">{row.label}</span>
                             <div className="flex items-center gap-2">

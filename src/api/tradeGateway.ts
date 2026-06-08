@@ -1,6 +1,8 @@
 import { apiClient } from './client';
 import type { Account, Position, Trade } from '../store/useAppStore';
-import { API_HISTORY_BASE_URL, API_V2_BASE_URL, RTX5_WS_URL } from '../config/api';
+import { API_V2_BASE_URL, RTX5_WS_URL } from '../config/api';
+import { debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
+import { decodeJwtPayload } from '../utils/jwt';
 
 export type GatewayAccount = {
   login?: number;
@@ -12,9 +14,17 @@ export type GatewayAccount = {
   credit?: number;
   equity?: number;
   margin?: number;
+  used_margin?: number;
+  margin_used?: number;
   margin_free?: number;
+  free_margin?: number;
+  margin_available?: number;
   margin_level?: number;
+  marginLevel?: number;
   floating?: number;
+  floating_pnl?: number;
+  profit?: number;
+  unrealized_pl?: number;
   status?: string;
   created_at?: number;
 };
@@ -72,6 +82,7 @@ export type GatewayClosedPosition = GatewayPosition & {
   price_close?: number;
   reason?: string;
   duration_seconds?: number;
+  time_open?: number;
   time_close?: number;
 };
 
@@ -83,6 +94,8 @@ export type GatewayOrder = {
   side?: string;
   volume?: number;
   price?: number;
+  price_open?: number;
+  open_price?: number;
   price_sl?: number | null;
   price_tp?: number | null;
   status?: string;
@@ -114,21 +127,22 @@ export const getStoredAccountLogin = (): number | null => {
   const token = localStorage.getItem('auth_token');
   if (!token) return null;
 
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1] || ''));
-    const parsed = Number.parseInt(
-      String(payload.account_login ?? payload.login ?? ''),
-      10
-    );
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  } catch {
-    return null;
-  }
+  // NOTE: this claim is read from an UNVERIFIED token (the client cannot check
+  // the signature) and is used only as a best-effort hint. The gateway remains
+  // the sole authority for which account a token may act on.
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+  const parsed = Number.parseInt(
+    String(payload.account_login ?? payload.login ?? ''),
+    10
+  );
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 };
 
-const toIsoFromSeconds = (value?: number): string => {
-  if (!value) return '';
-  const ms = value > 1_000_000_000_000 ? value : value * 1000;
+const toIsoFromSeconds = (value?: number | string | null): string => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '';
+  const ms = numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
   return new Date(ms).toISOString();
 };
 
@@ -137,7 +151,7 @@ const numberOr = (value: unknown, fallback: number): number => {
   return Number.isFinite(next) ? next : fallback;
 };
 
-export const normalizeAccount = (raw: GatewayAccount | any, previous?: Account | null): Account => ({
+export const normalizeAccount = (raw: GatewayAccount, previous?: Account | null): Account => ({
   balance: numberOr(raw?.balance, previous?.balance ?? 0),
   equity: numberOr(raw?.equity ?? raw?.balance, previous?.equity ?? previous?.balance ?? 0),
   margin: numberOr(raw?.used_margin ?? raw?.margin_used ?? raw?.margin, previous?.margin ?? 0),
@@ -150,22 +164,29 @@ export const normalizeAccount = (raw: GatewayAccount | any, previous?: Account |
 
 export const normalizePosition = (raw: GatewayPosition): Position => {
   const side = String(raw.side ?? raw.action ?? '').toLowerCase();
+  const volume = Number(raw.volume_lots ?? raw.volume ?? 0);
+  const openPrice = Number(raw.price_open ?? raw.open_price ?? 0);
+  const currentPrice = Number(raw.price_current ?? raw.current_price ?? raw.price_open ?? 0);
+  const profit = Number(raw.profit ?? 0);
   return {
-    ...raw,
     id: Number(raw.ticket ?? raw.position_id ?? 0),
     symbol: (raw.symbol ?? '').toUpperCase(),
     side: side.includes('sell') || side === '1' ? 'SELL' : 'BUY',
-    volume: Number(raw.volume_lots ?? raw.volume ?? 0),
-    openPrice: Number(raw.price_open ?? raw.open_price ?? 0),
-    currentPrice: Number(raw.price_current ?? raw.current_price ?? raw.price_open ?? 0),
+    volume,
+    openPrice,
+    currentPrice,
     openTime: toIsoFromSeconds(raw.time_create ?? raw.time_ms ?? raw.time),
     sl: Number(raw.price_sl ?? raw.sl ?? 0),
     tp: Number(raw.price_tp ?? raw.tp ?? 0),
     swap: Number(raw.swap ?? raw.storage ?? 0),
     commission: Number(raw.commission ?? 0),
-    unrealizedPnL: Number(raw.profit ?? 0),
+    unrealizedPnL: profit,
     comment: raw.comment ?? '',
-  } as any;
+    open_price: openPrice,
+    current_price: currentPrice,
+    profit,
+    quantity: volume,
+  };
 };
 
 export const normalizeDeal = (raw: GatewayDeal, index = 0): Trade => {
@@ -199,7 +220,7 @@ export const normalizeClosedPosition = (raw: GatewayClosedPosition, index = 0): 
     volume: Number(raw.volume_lots ?? raw.volume ?? 0),
     openPrice: Number(raw.price_open ?? raw.open_price ?? 0),
     closePrice: Number(raw.price_close ?? raw.price_current ?? raw.current_price ?? 0),
-    openTime: toIsoFromSeconds(raw.time_create ?? raw.time_ms ?? raw.time),
+    openTime: toIsoFromSeconds(raw.time_open ?? raw.time_create ?? raw.time_ms ?? raw.time),
     closeTime: toIsoFromSeconds(raw.time_close ?? raw.time_ms ?? raw.time),
     profit: Number(raw.profit ?? 0),
     commission: Number(raw.commission ?? 0),
@@ -216,8 +237,8 @@ export const normalizeOrder = (raw: GatewayOrder, index = 0): Trade => {
     type: raw.status ?? raw.type ?? 'order',
     side: side.includes('sell') ? 'SELL' : side.includes('buy') ? 'BUY' : side.toUpperCase(),
     volume: Number(raw.volume ?? 0),
-    openPrice: Number(raw.price ?? 0),
-    closePrice: Number(raw.price ?? 0),
+    openPrice: Number(raw.price_open ?? raw.open_price ?? raw.price ?? 0),
+    closePrice: Number(raw.price ?? raw.price_open ?? raw.open_price ?? 0),
     openTime: toIsoFromSeconds(time),
     closeTime: toIsoFromSeconds(time),
     profit: 0,
@@ -253,8 +274,8 @@ export const tradeGatewayApi = {
   },
 
   getHistoryUrl(symbol: string, timeframe = 'H1', count = 500): string {
-    const params = new URLSearchParams({ tf: timeframe, count: String(count) });
-    return `${API_HISTORY_BASE_URL}/candles/${encodeURIComponent(symbol)}?${params}`;
+    const params = new URLSearchParams({ timeframe, limit: String(count) });
+    return `${API_V2_BASE_URL}/candles/${encodeURIComponent(symbol)}?${params}`;
   },
 
   async getAccount(login: number): Promise<Account> {
@@ -266,7 +287,7 @@ export const tradeGatewayApi = {
     const baseUrl = API_V2_BASE_URL;
     const endpoint = `/positions/${login}`;
     const url = `${baseUrl}${endpoint}`;
-    console.log("Calling Toolbox -> Trade API:", url);
+    debugLog("Calling Toolbox -> Trade API:", redactUrlForDebugLog(url));
     const data = await apiClient.get<GatewayPosition[] | { positions: GatewayPosition[] }>(
       endpoint,
       {
@@ -326,7 +347,7 @@ export const tradeGatewayApi = {
   },
 
   async getBalanceHistory(login: number, limit = 10) {
-    return apiClient.get<any[]>(`/accounts/${login}/history`, {
+    return apiClient.get<Record<string, unknown>[]>(`/accounts/${login}/history`, {
       baseUrl: API_V2_BASE_URL,
       params: { limit, offset: 0 },
     });

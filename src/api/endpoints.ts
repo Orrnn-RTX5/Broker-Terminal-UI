@@ -1,5 +1,6 @@
 import { apiClient } from './client';
-import { API_HISTORY_BASE_URL, API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
+import { API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
+import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 
 const resolveV2BaseUrl = (baseUrl?: string): string => {
   if (!baseUrl) return API_V2_BASE_URL;
@@ -16,19 +17,57 @@ const resolveStoredLogin = (): number | undefined => {
 
 const getApiRootBaseUrl = (): string => API_V2_BASE_URL.replace(/\/api\/v2\/?$/, '');
 
-const SYMBOL_ENDPOINTS = ['/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols', '/api/v2/instruments'];
+const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols'];
 
 const resolveSymbolEndpoint = (endpoint: string): { endpoint: string; baseUrl: string } =>
   endpoint.startsWith('/api/v2')
     ? { endpoint: endpoint.replace(/^\/api\/v2(?=\/|$)/, '') || '/', baseUrl: API_V2_BASE_URL }
     : { endpoint, baseUrl: getApiRootBaseUrl() };
 
-const extractInstrumentRows = (payload: any): any[] => {
+type InstrumentRow = Record<string, unknown> & {
+  symbol?: string | number;
+  name?: string | number;
+  id?: string | number;
+  description?: string;
+  category?: string;
+  digits?: number;
+  tick_size?: number;
+  contract_size?: number;
+  margin_rate?: number;
+  enabled?: boolean;
+  trading_enabled?: boolean;
+  tradingEnabled?: boolean;
+  bid?: number;
+  ask?: number;
+};
+
+type TransactionRow = {
+  id?: string | number;
+  type?: string;
+  amount?: string | number;
+  currency?: string;
+  comment?: string;
+  time?: string | number;
+};
+
+type EquityPointRow = {
+  time?: string | number;
+  equity?: string | number;
+};
+
+type TradingPositionsResponse = Position[] | { positions?: Position[]; count?: number };
+type TradingOrdersResponse = Order[] | { orders?: Order[]; count?: number };
+type TickRow = Record<string, unknown>;
+
+const extractInstrumentRows = (payload: unknown): InstrumentRow[] => {
   if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.symbols)) return payload.symbols;
-  if (Array.isArray(payload?.instruments)) return payload.instruments;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.result)) return payload.result;
+  if (!payload || typeof payload !== 'object') return [];
+
+  const record = payload as Record<string, unknown>;
+  if (Array.isArray(record.symbols)) return record.symbols as InstrumentRow[];
+  if (Array.isArray(record.instruments)) return record.instruments as InstrumentRow[];
+  if (Array.isArray(record.data)) return record.data as InstrumentRow[];
+  if (Array.isArray(record.result)) return record.result as InstrumentRow[];
   return [];
 };
 
@@ -53,27 +92,53 @@ const normalizeOrderPayload = (order: CreateOrderRequest): CreateOrderRequest & 
     throw new Error('Missing order volume for /api/v2/orders');
   }
 
-  const { account_login: _accountLogin, quantity: _quantity, sl, tp, type: _type, ...rest } = order;
+  const rest = { ...order };
+  delete rest.account_login;
+  delete rest.quantity;
+  delete rest.sl;
+  delete rest.tp;
+  delete rest.type;
+
   return {
     ...rest,
     login,
     side: normalizeSide(order.side),
     volume,
-    price_sl: order.price_sl ?? sl,
-    price_tp: order.price_tp ?? tp,
+    price_sl: order.price_sl ?? order.sl,
+    price_tp: order.price_tp ?? order.tp,
   };
 };
 
-const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderRequest & { login: number; side: 'buy' | 'sell' } => {
+const normalizePendingOrderPayload = (order: PendingOrderRequest): PendingOrderRequest & { account_login: number; side: 'buy' | 'sell'; sl?: number; tp?: number; expiry?: number } => {
   const login = requireLogin(order.login ?? order.account_login, '/api/v2/orders/pending');
-  const { account_login: _accountLogin, sl, tp, ...rest } = order;
+  const rest = { ...order };
+  delete rest.login;
+  delete rest.account_login;
+  delete rest.price_sl;
+  delete rest.price_tp;
+  delete rest.sl;
+  delete rest.tp;
+  delete rest.expiration;
+  delete rest.expiry;
+
   return {
     ...rest,
-    login,
+    account_login: login,
     side: normalizeSide(order.side),
     type: order.type.toLowerCase() as PendingOrderRequest['type'],
-    price_sl: order.price_sl ?? sl,
-    price_tp: order.price_tp ?? tp,
+    sl: order.sl ?? order.price_sl,
+    tp: order.tp ?? order.price_tp,
+    expiry: order.expiry ?? order.expiration,
+  };
+};
+
+const normalizeModifyPendingOrderPayload = (data: ModifyPendingOrderRequest): ModifyPendingOrderRequest & { sl?: number; tp?: number; expiry?: number } => {
+  const { price_sl, price_tp, sl, tp, expiration, expiry, ...rest } = data;
+  return {
+    ...rest,
+    sl: sl ?? price_sl,
+    tp: tp ?? price_tp,
+    expiry: expiry ?? expiration,
   };
 };
 
@@ -226,6 +291,7 @@ export interface PendingOrderRequest {
   sl?: number;
   tp?: number;
   expiration?: number;
+  expiry?: number;
   comment?: string;
   trailing_stop?: number;
   trailing_step?: number;
@@ -242,6 +308,9 @@ export interface ModifyPositionRequest {
 export interface ModifyPendingOrderRequest extends ModifyPositionRequest {
   price?: number;
   expiration?: number;
+  expiry?: number;
+  sl?: number;
+  tp?: number;
 }
 
 export interface CreateAccountRequest {
@@ -365,18 +434,25 @@ export const accountApi = {
       const res = await apiClient.get<AccountSummary>(`/account/${resolvedLogin}`, {
         baseUrl: API_V2_BASE_URL,
       });
-      console.log('[DEBUG REST ACCOUNT PAYLOAD]', res);
+      debugDebug('[DEBUG REST ACCOUNT PAYLOAD]', {
+        id: res.id ? '[present]' : undefined,
+        currency: res.currency,
+        leverage: res.leverage,
+        open_positions: res.open_positions,
+        pending_orders: res.pending_orders,
+      });
       return res;
     } catch (e) {
       // Gateway may be down — suppress console noise
-      console.debug('[accountApi] getSummary unavailable:', (e as any)?.status || (e as any)?.message);
+      const error = e as { status?: unknown; message?: unknown };
+      debugDebug('[accountApi] getSummary unavailable:', error.status || error.message);
       throw e;
     }
   },
 
   getTransactions: async (params?: { type?: string; limit?: number; offset?: number; login?: number }) => {
     const login = requireLogin(params?.login ?? resolveStoredLogin(), '/api/v2/accounts/{login}/history');
-    const rows = await apiClient.get<any[]>(`/accounts/${login}/history`, {
+    const rows = await apiClient.get<TransactionRow[]>(`/accounts/${login}/history`, {
       baseUrl: API_V2_BASE_URL,
       params: { limit: params?.limit, offset: params?.offset },
     });
@@ -395,7 +471,7 @@ export const accountApi = {
 
   getEquityHistory: async (params?: { period?: '1d' | '7d' | '30d' | '90d' | '1y'; interval?: string; login?: number; from?: number; to?: number }) => {
     const login = requireLogin(params?.login ?? resolveStoredLogin(), '/api/v2/account/{login}/equity');
-    const points = await apiClient.get<any[]>(`/account/${login}/equity`, {
+    const points = await apiClient.get<EquityPointRow[]>(`/account/${login}/equity`, {
       baseUrl: API_V2_BASE_URL,
       params: { from: params?.from, to: params?.to },
     });
@@ -410,12 +486,12 @@ export const accountApi = {
 
 
 export const tradingApi = {
-  getPositions: (login?: number, params?: { limit?: number; offset?: number }): Promise<any> => {
+  getPositions: (login?: number, params?: { limit?: number; offset?: number }): Promise<TradingPositionsResponse> => {
     const resolvedLogin = requireLogin(login, '/api/v2/positions/{login}');
     const baseUrl = API_V2_BASE_URL;
     const endpoint = `/positions/${resolvedLogin}`;
     const url = `${baseUrl}${endpoint}`;
-    console.log("Calling Toolbox -> Trade API:", url);
+    debugLog("Calling Toolbox -> Trade API:", redactUrlForDebugLog(url));
     return apiClient.get<Position[]>(endpoint, {
       baseUrl,
       params: {
@@ -428,31 +504,35 @@ export const tradingApi = {
     });
   },
 
-  getOrders: (login?: number, params?: { limit?: number }): Promise<any> =>
+  getOrders: (login?: number, params?: { limit?: number }): Promise<TradingOrdersResponse> =>
     apiClient.get<Order[]>(`/orders/${requireLogin(login, '/api/v2/orders/{login}')}`, {
       baseUrl: API_V2_BASE_URL,
       params,
     }),
 
-  getPendingOrders: (login: number): Promise<any> =>
+  getPendingOrders: (login: number): Promise<TradingOrdersResponse> =>
     apiClient.get<Order[]>(`/orders/pending/${requireLogin(login, '/api/v2/orders/pending/{login}')}`, { baseUrl: API_V2_BASE_URL }),
 
-  placeOrder: (order: CreateOrderRequest): Promise<any> =>
+  placeOrder: (order: CreateOrderRequest): Promise<Position> =>
     apiClient.post<Position>('/orders', normalizeOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
 
-  placePendingOrder: (order: PendingOrderRequest): Promise<any> =>
+  placePendingOrder: (order: PendingOrderRequest): Promise<Order> =>
     apiClient.post<Order>('/orders/pending', normalizePendingOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
 
-  cancelOrder: (orderId: string | number): Promise<any> =>
+  cancelOrder: (orderId: string | number): Promise<{ message?: string }> =>
     apiClient.delete<{ message?: string }>(`/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`, { baseUrl: API_V2_BASE_URL }),
 
-  modifyPendingOrder: (orderId: string | number, data: ModifyPendingOrderRequest): Promise<any> =>
-    apiClient.put<Order>(`/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`, data, { baseUrl: API_V2_BASE_URL }),
+  modifyPendingOrder: (orderId: string | number, data: ModifyPendingOrderRequest): Promise<Order> =>
+    apiClient.put<Order>(
+      `/orders/pending/${requireTicket(orderId, '/api/v2/orders/pending/{ticket}')}`,
+      normalizeModifyPendingOrderPayload(data),
+      { baseUrl: API_V2_BASE_URL }
+    ),
 
-  closePosition: (positionId: string | number): Promise<any> =>
+  closePosition: (positionId: string | number): Promise<void> =>
     apiClient.post<void>(`/positions/${requireTicket(positionId, '/api/v2/positions/{id}/close')}/close`, {}, { baseUrl: API_V2_BASE_URL }),
 
-  modifyPosition: (positionId: string | number, data: ModifyPositionRequest): Promise<any> =>
+  modifyPosition: (positionId: string | number, data: ModifyPositionRequest): Promise<Position> =>
     apiClient.put<Position>(`/positions/${requireTicket(positionId, '/api/v2/positions/{id}')}`, data, { baseUrl: API_V2_BASE_URL }),
 
 };
@@ -464,7 +544,7 @@ export const tradingApi = {
 export const marketApi = {
   getSymbols: async () => {
     let lastError: unknown = null;
-    let instruments: any[] = [];
+    let instruments: InstrumentRow[] = [];
 
     for (const endpoint of SYMBOL_ENDPOINTS) {
       try {
@@ -508,30 +588,28 @@ export const marketApi = {
 
   getCandles: (symbol: string, params?: { timeframe?: string; count?: number; from?: number; to?: number }) =>
     apiClient.get<{ candles: Candle[] } | Candle[]>(`/candles/${encodeURIComponent(symbol)}`, {
-      baseUrl: API_HISTORY_BASE_URL,
+      baseUrl: API_V2_BASE_URL,
       params: {
-        tf: params?.timeframe,
-        count: params?.count,
+        timeframe: params?.timeframe,
+        limit: params?.count,
         from: params?.from,
         to: params?.to,
       },
-      skipAuth: true,
     }),
 
   getOHLC: async (symbol: string, timeframe: string = 'M1', count: number = 100) => {
     const response = await apiClient.get<{ candles: Candle[] } | Candle[]>(
       `/candles/${encodeURIComponent(symbol)}`,
       {
-        baseUrl: API_HISTORY_BASE_URL,
-        params: { tf: timeframe, count },
-        skipAuth: true,
+        baseUrl: API_V2_BASE_URL,
+        params: { timeframe, limit: count },
       }
     );
     return Array.isArray(response) ? response : (response.candles || []);
   },
 
   getTicks: (symbol: string) =>
-    apiClient.get<any[]>(`/ticks/${encodeURIComponent(symbol)}`, {
+    apiClient.get<TickRow[]>(`/ticks/${encodeURIComponent(symbol)}`, {
       baseUrl: API_V2_BASE_URL,
       params: { limit: 100 },
     }),

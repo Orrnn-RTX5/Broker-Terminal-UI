@@ -9,6 +9,9 @@ import {
   normalizeBrokerInfoForTarget,
   trimTrailingSlash,
 } from './backendTarget.js';
+import { isCleartextDowngradeAllowedHost } from './urlSecurity';
+
+export { isCleartextDowngradeAllowedHost } from './urlSecurity';
 
 export const FORCE_HTTP_ONLY = import.meta.env.VITE_FORCE_HTTP_ONLY === 'true';
 
@@ -88,12 +91,21 @@ export const normalizeServerUrl = (value: string): string => {
   return hasUrlScheme(trimmed) ? trimmed : `${getRuntimeProtocol()}//${trimmed}`;
 };
 
+// Hosts for which an opt-in (VITE_FORCE_HTTP_ONLY) https→http downgrade is safe:
+// loopback and RFC1918/link-local private ranges only. A public hostname or
+// publicly-routable IP must NEVER be silently downgraded to cleartext, even on
+// an Electron file:/http: origin — that would expose broker REST/WS in the clear.
 export const normalizeBrokerServerUrl = (value: string): string => {
   const normalized = normalizeServerUrl(value);
   if (!shouldForceHttpProtocol() || !normalized) return normalized;
 
   try {
     const parsed = new URL(normalized);
+    // Only downgrade to cleartext for local/private targets. Never strip TLS
+    // from a public broker even when FORCE_HTTP_ONLY is opted in.
+    if (!isCleartextDowngradeAllowedHost(parsed.hostname)) {
+      return normalized;
+    }
     if (parsed.protocol === 'https:') {
       parsed.protocol = 'http:';
     }
@@ -102,9 +114,7 @@ export const normalizeBrokerServerUrl = (value: string): string => {
     }
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    return normalized
-      .replace(/^https:\/\//i, 'http://')
-      .replace(/^http:\/\/(\[[^\]]+\]|[^/:?#]+):443(?=\/|[?#]|$)/i, 'http://$1');
+    return normalized;
   }
 };
 
@@ -287,8 +297,6 @@ export function updateDynamicUrls(): void {
 const getApiBase = (): string => API_BASE_URL;
 const getFixApiBase = (): string => FIX_API_URL;
 const getV2Base = (): string => API_V2_BASE_URL;
-const getHistoryBase = (): string => API_HISTORY_BASE_URL;
-
 
 // API Endpoints
 const buildApiEndpoints = () => ({
@@ -337,9 +345,9 @@ const buildApiEndpoints = () => ({
       config: `${getV2Base()}/broker/config`,
     },
     history: {
-      candles: (symbol: string) => `${getHistoryBase()}/candles/${encodeURIComponent(symbol)}`,
-      latestCandle: (symbol: string) => `${getHistoryBase()}/candles/${encodeURIComponent(symbol)}/latest`,
-      ticks: (symbol: string) => `${getHistoryBase()}/ticks/${encodeURIComponent(symbol)}`,
+      candles: (symbol: string) => `${getV2Base()}/candles/${encodeURIComponent(symbol)}`,
+      latestCandle: (symbol: string) => `${getV2Base()}/candles/${encodeURIComponent(symbol)}`,
+      ticks: (symbol: string) => `${getV2Base()}/ticks/${encodeURIComponent(symbol)}`,
     },
     watchlist: {
       list: `${getV2Base()}/watchlist`,

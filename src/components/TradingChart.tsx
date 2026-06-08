@@ -63,6 +63,11 @@ import {
   shouldTradingChartFooterPromoteLeftEdgeDateLabel,
 } from '../utils/chartTimeFormat';
 import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
+import {
+  activateActiveChartSource,
+  findLargestChartCanvas,
+  registerActiveChartSource,
+} from '../services/activeChartSource';
 
 export type ChartType = 'candlestick' | 'bar' | 'line' | 'area';
 export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
@@ -170,6 +175,10 @@ export const TradingChart = React.memo(function TradingChart({
   const authToken = useAppStore((state) => state.authToken);
   const chartInstanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [activeTimeframe, setActiveTimeframe] = useState<Timeframe>(timeframe);
+  const activeChartSourceId = useMemo(
+    () => `trading-chart:${panelId || chartInstanceId}`,
+    [chartInstanceId, panelId],
+  );
   const chartQuoteSourceId = useMemo(() => {
     const normalizedSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'UNKNOWN';
     return `chart:${panelId || chartInstanceId}:${normalizedSymbol}`;
@@ -192,6 +201,7 @@ export const TradingChart = React.memo(function TradingChart({
   // Tracks current active drawing tool — used inside event-handler closures
   const activeToolRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const chartExportMetadataRef = useRef({ symbol, timeframe: activeTimeframe });
 
   // Custom crosshair
   const [crosshairEnabled, setCrosshairEnabled] = useState(false);
@@ -205,6 +215,39 @@ export const TradingChart = React.memo(function TradingChart({
     digits: getSymbolDigits(symbol),
     timeframe,
   });
+
+  useEffect(() => {
+    chartExportMetadataRef.current = { symbol, timeframe: activeTimeframe };
+  }, [activeTimeframe, symbol]);
+
+  useEffect(() => {
+    const unregister = registerActiveChartSource({
+      id: activeChartSourceId,
+      getContainer: () => containerRef.current,
+      getCanvas: () => findLargestChartCanvas(containerRef.current),
+      getSymbol: () => chartExportMetadataRef.current.symbol,
+      getTimeframe: () => chartExportMetadataRef.current.timeframe,
+    });
+
+    const activate = () => activateActiveChartSource(activeChartSourceId);
+    const container = containerRef.current;
+    activate();
+
+    if (container) {
+      container.addEventListener('pointerenter', activate);
+      container.addEventListener('pointerdown', activate);
+      container.addEventListener('focusin', activate);
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener('pointerenter', activate);
+        container.removeEventListener('pointerdown', activate);
+        container.removeEventListener('focusin', activate);
+      }
+      unregister();
+    };
+  }, [activeChartSourceId]);
 
   const ohlcOpenRef = useRef<HTMLSpanElement>(null);
   const ohlcHighRef = useRef<HTMLSpanElement>(null);

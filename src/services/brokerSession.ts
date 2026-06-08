@@ -17,6 +17,7 @@
 // ─── Session Change Event Bus ────────────────────────────────────────────────
 
 import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
+import { isCleartextDowngradeAllowedHost } from '../config/urlSecurity';
 
 export type SessionChangeReason =
   | 'token_rotation'
@@ -60,7 +61,7 @@ const getRuntimePageProtocol = (): string => {
 };
 
 const shouldForceHttpProtocol = (): boolean =>
-  (FORCE_HTTP_ONLY || isDesktopBackendTarget()) && getRuntimePageProtocol() !== 'https:';
+  FORCE_HTTP_ONLY && getRuntimePageProtocol() !== 'https:';
 
 const getRuntimeProtocol = (): string => {
   if (shouldForceHttpProtocol()) return 'http:';
@@ -84,6 +85,13 @@ const normalizeBrokerServerUrl = (value: string): string => {
 
   try {
     const parsed = new URL(normalized);
+    // Only downgrade to cleartext for loopback/RFC1918/link-local targets. A
+    // public broker host must NEVER be silently stripped of TLS even under
+    // FORCE_HTTP_ONLY — that would expose the bearer token + orders to MITM.
+    // Mirrors the guard in config/api.ts:normalizeBrokerServerUrl.
+    if (!isCleartextDowngradeAllowedHost(parsed.hostname)) {
+      return normalized;
+    }
     if (parsed.protocol === 'https:') {
       parsed.protocol = 'http:';
     }
@@ -92,9 +100,8 @@ const normalizeBrokerServerUrl = (value: string): string => {
     }
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    return normalized
-      .replace(/^https:\/\//i, 'http://')
-      .replace(/^http:\/\/(\[[^\]]+\]|[^/:?#]+):443(?=\/|[?#]|$)/i, 'http://$1');
+    // Unparseable URL: cannot safely identify the host, so never downgrade.
+    return normalized;
   }
 };
 
@@ -249,21 +256,23 @@ const isValidMarketOrigin = (value: string): boolean => Boolean(value && !isPort
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
-const isPublicServicesHostname = (hostname: string): boolean => {
+const isAllowedPublicBrokerHostname = (hostname: string): boolean => {
   const normalized = hostname.toLowerCase();
-  return normalized.startsWith('services.')
+  return (normalized.startsWith('services.')
+    || normalized === 'backend.orrnn.com'
+    || normalized === 'testbrokerbackend.orrnn.com')
     && !LOCAL_HOSTS.has(normalized)
     && !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized)
     && !normalized.includes(':');
 };
 
-const isPublicServicesWsUrl = (value: string): boolean => {
+const isPublicBrokerWsUrl = (value: string): boolean => {
   const normalized = normalizeOptionalWsUrl(value);
   if (!normalized) return false;
 
   try {
     const parsed = new URL(normalized);
-    return isPublicServicesHostname(parsed.hostname);
+    return parsed.protocol === 'wss:' && isAllowedPublicBrokerHostname(parsed.hostname);
   } catch {
     return false;
   }
@@ -646,7 +655,7 @@ const canUseStoredWsUrl = (candidate: string, marketOrigin: string): boolean =>
   Boolean(
     candidate
     && isUrlLikeWsEndpointValue(candidate)
-    && (isDesktopBackendTarget() || isPublicServicesWsUrl(candidate))
+    && (isDesktopBackendTarget() || isPublicBrokerWsUrl(candidate))
     && !(isPort8091Url(candidate) && isValidMarketOrigin(marketOrigin))
   );
 
