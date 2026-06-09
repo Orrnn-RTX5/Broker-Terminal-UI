@@ -5,9 +5,11 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { ArrowRight, ChevronDown, Eye, EyeOff, Lock, User } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
 import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL } from '../config/api';
+import SplitText from './SplitText';
 import {
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
@@ -40,6 +42,8 @@ interface WelcomeTerminalProps {
 const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
 const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
 const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
+const RTX5_GREEN = '#80c33f';
+const RTX5_GREEN_DARK = '#6fb334';
 
 const isAbortError = (err: unknown): boolean =>
     err instanceof DOMException
@@ -54,6 +58,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
     const [error, setError] = useState<string | null>(null);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
 
     const [brokerList, setBrokerList] = useState<BrokerServerItem[]>([]);
@@ -62,6 +67,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(null);
     const [brokerListStatus, setBrokerListStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+    const brokerInputRef = useRef<HTMLInputElement | null>(null);
     const healthAbortRef = useRef<AbortController | null>(null);
 
     const addSavedAccount = useAppStore(s => s.addSavedAccount);
@@ -121,6 +127,35 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
         String(b.broker_id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         String(b.region || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    const closeBrokerDropdown = () => {
+        setDropdownOpen(false);
+        if (selectedBroker) {
+            setSearchQuery(selectedBroker.broker_name);
+        }
+    };
+
+    const handleBrokerInputMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        const input = brokerInputRef.current;
+        if (!input) return;
+
+        const isFocused = document.activeElement === input;
+        if (isFocused) {
+            e.preventDefault();
+            if (dropdownOpen) {
+                closeBrokerDropdown();
+            } else {
+                setDropdownOpen(true);
+            }
+            return;
+        }
+
+        if (e.target !== input) {
+            e.preventDefault();
+            input.focus();
+            setDropdownOpen(true);
+        }
+    };
 
     useEffect(() => {
         let isMounted = true;
@@ -271,7 +306,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                         : 'Select';
 
     const healthTone =
-        healthStatus === 'online' ? '#10b981'
+        healthStatus === 'online' ? RTX5_GREEN
             : healthStatus === 'checking' ? '#f59e0b'
                 : healthStatus === 'offline' ? '#ef4444'
                     : '#71717a';
@@ -287,240 +322,345 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             }}
             className="rtx-login-overlay"
         >
-            <section data-welcome-card className="rtx-login-shell" aria-label="RTX Terminal login">
-                <header className="rtx-shell-bar">
-                    <div className="rtx-window-control-group" aria-hidden="true">
-                        <span className="rtx-window-dot rtx-dot-red" />
-                        <span className="rtx-window-dot rtx-dot-yellow" />
-                        <span className="rtx-window-dot rtx-dot-green" />
-                    </div>
-                    <span className="rtx-window-title">RTX 5 Web Terminal</span>
-                    <span className="rtx-shell-health" style={{ color: healthTone }}>
-                        <span style={{ background: healthTone, boxShadow: `0 0 10px ${healthTone}` }} />
-                        {healthLabel}
-                    </span>
-                </header>
+            <div className="rtx-login-stage">
+                <aside className="rtx-login-visual" aria-hidden="true">
+                    <picture>
+                        <source media="(max-width: 760px)" srcSet="/login/trading-desk-hero-mobile.webp" />
+                        <img
+                            src="/login/trading-desk-hero.webp"
+                            alt=""
+                            width={2048}
+                            height={1152}
+                            loading="eager"
+                            decoding="async"
+                            fetchPriority="high"
+                        />
+                    </picture>
+                    <div className="rtx-login-visual-shade" />
+                </aside>
 
-                <div className="rtx-login-body">
-                    <header className="rtx-form-header">
-                        <div className="rtx-brand-lockup">
-                            <img src="/logo.png" alt="RTX" className="rtx-brand-logo" />
-                            <div>
-                                <p>RTX 5 Web Terminal</p>
-                                <h1>Sign in to RTX Terminal</h1>
-                            </div>
-                        </div>
-                    </header>
+                <main className="rtx-login-panel-wrap">
+                    <section data-welcome-card className="rtx-login-panel" aria-label="RTX Terminal login">
+                        <div className="rtx-login-body">
+                            <header className="rtx-form-header">
+                                <h1 className="rtx-login-title">
+                                    <SplitText
+                                        tag="span"
+                                        text="Sign in to"
+                                        className="rtx-login-title-text"
+                                        delay={90}
+                                        duration={1.05}
+                                        ease="power3.out"
+                                        splitType="words, chars"
+                                        from={{ opacity: 0, y: 18, filter: 'blur(5px)' }}
+                                        to={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                                        threshold={0.05}
+                                        rootMargin="0px"
+                                        textAlign="left"
+                                    />
+                                    <img
+                                        src="/brand/rtx5-logo.png"
+                                        alt="RTX 5"
+                                        className="rtx-login-title-logo"
+                                        width={720}
+                                        height={197}
+                                        loading="eager"
+                                        decoding="async"
+                                        fetchPriority="high"
+                                    />
+                                </h1>
+                            </header>
 
-                    <div className="rtx-broker-strip">
-                        <div className="rtx-route-row">
-                            <div className="rtx-route-logo">
-                                {selectedBroker?.logo_url ? (
-                                    <img src={selectedBroker.logo_url} alt="" />
-                                ) : (
-                                    <span>{selectedBrokerName.slice(0, 1).toUpperCase()}</span>
-                                )}
-                            </div>
-                            <div>
-                                <span className="rtx-summary-label">Broker server</span>
-                                <strong>{selectedBrokerName}</strong>
-                                <small>{selectedBrokerHost}</small>
-                            </div>
-                        </div>
-                        <span className="rtx-broker-state" style={{ color: healthTone }}>
-                            <span style={{ background: healthTone, boxShadow: `0 0 8px ${healthTone}` }} />
-                            {healthLabel}
-                        </span>
-                    </div>
-
-                    {error && (
-                        <div className="rtx-login-error" role="alert">
-                            {error}
-                        </div>
-                    )}
-
-                    <form onSubmit={handleSubmit} className="rtx-login-form">
-                        <div>
-                            <label style={labelStyle}>Account ID</label>
-                            <input
-                                type="text"
-                                placeholder="Enter Account ID"
-                                required
-                                autoFocus
-                                value={username}
-                                onChange={e => setUsername(e.target.value)}
-                                style={inputStyle}
-                                onFocus={e => (e.target.style.borderColor = '#14b8a6')}
-                                onBlur={e => (e.target.style.borderColor = '#252932')}
-                            />
-                        </div>
-
-                        <div>
-                            <label style={labelStyle}>Password</label>
-                            <input
-                                type="password"
-                                placeholder="Enter Password"
-                                required
-                                value={password}
-                                onChange={e => setPassword(e.target.value)}
-                                style={inputStyle}
-                                onFocus={e => (e.target.style.borderColor = '#14b8a6')}
-                                onBlur={e => (e.target.style.borderColor = '#252932')}
-                            />
-                        </div>
-
-                        <div className="rtx-broker-field">
-                            <label style={labelStyle}>Broker Server</label>
-                            <div className="rtx-broker-input-wrap">
-                                {selectedBroker?.logo_url && (
-                                    <img src={selectedBroker.logo_url} alt="" className="rtx-broker-logo" />
-                                )}
-                                <input
-                                    type="text"
-                                    placeholder={brokerListStatus === 'loading' ? 'Loading brokers...' : 'Search broker...'}
-                                    required
-                                    value={searchQuery}
-                                    onChange={e => {
-                                        const value = e.target.value;
-                                        setSearchQuery(value);
-                                        if (selectedBroker && value.trim() !== selectedBroker.broker_name) {
-                                            setSelectedBroker(null);
-                                            setHealthStatus(null);
-                                        }
-                                        setDropdownOpen(true);
-                                    }}
-                                    onFocus={() => setDropdownOpen(true)}
-                                    onBlur={() => {
-                                        setTimeout(() => {
-                                            setDropdownOpen(false);
-                                            if (selectedBroker) {
-                                                setSearchQuery(selectedBroker.broker_name);
-                                            }
-                                        }, 200);
-                                    }}
-                                    style={{
-                                        ...inputStyle,
-                                        paddingLeft: selectedBroker?.logo_url ? 38 : 12,
-                                        paddingRight: 34,
-                                    }}
-                                />
-                                <div className="rtx-broker-input-state" aria-hidden="true">
-                                    <span style={{ background: healthTone, boxShadow: `0 0 8px ${healthTone}` }} />
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b8b95" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{
-                                        transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                                        transition: 'transform 0.2s',
-                                    }}>
-                                        <polyline points="6 9 12 15 18 9" />
-                                    </svg>
+                            <div className="rtx-broker-strip">
+                                <div className="rtx-route-row">
+                                    <div className="rtx-route-logo">
+                                        {selectedBroker?.logo_url ? (
+                                            <img src={selectedBroker.logo_url} alt="" decoding="async" />
+                                        ) : (
+                                            <span>{selectedBrokerName.slice(0, 1).toUpperCase()}</span>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <span className="rtx-summary-label">Broker Server</span>
+                                        <strong>{selectedBrokerName}</strong>
+                                        <small>{selectedBrokerHost}</small>
+                                    </div>
                                 </div>
+                                <span className="rtx-broker-state" style={{ color: healthTone }}>
+                                    <span style={{ background: healthTone }} />
+                                    {healthLabel}
+                                </span>
                             </div>
 
-                            {dropdownOpen && (
-                                <div className="rtx-broker-menu">
-                                    {filteredBrokers.length === 0 ? (
-                                        <div className="rtx-broker-empty">
-                                            {brokerListStatus === 'error' ? 'Broker discovery unavailable' : 'No brokers found'}
+                            {error && (
+                                <div className="rtx-login-error" role="alert">
+                                    {error}
+                                </div>
+                            )}
+
+                            <form onSubmit={handleSubmit} className="rtx-login-form">
+                                <div>
+                                    <label htmlFor="rtxAccountId" style={labelStyle}>Account ID</label>
+                                    <div className="rtx-input-shell">
+                                        <User size={18} strokeWidth={1.8} aria-hidden="true" />
+                                        <input
+                                            id="rtxAccountId"
+                                            name="accountId"
+                                            type="text"
+                                            placeholder="Enter Account ID"
+                                            required
+                                            autoFocus
+                                            autoComplete="username"
+                                            value={username}
+                                            onChange={e => setUsername(e.target.value)}
+                                            style={inputStyle}
+                                            onFocus={e => (e.currentTarget.parentElement!.style.borderColor = RTX5_GREEN)}
+                                            onBlur={e => (e.currentTarget.parentElement!.style.borderColor = '#2b303a')}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="rtxPassword" style={labelStyle}>Password</label>
+                                    <div className="rtx-input-shell">
+                                        <Lock size={18} strokeWidth={1.8} aria-hidden="true" />
+                                        <input
+                                            id="rtxPassword"
+                                            name="password"
+                                            type={showPassword ? 'text' : 'password'}
+                                            placeholder="Enter Password"
+                                            required
+                                            autoComplete="current-password"
+                                            value={password}
+                                            onChange={e => setPassword(e.target.value)}
+                                            style={inputStyle}
+                                            onFocus={e => (e.currentTarget.parentElement!.style.borderColor = RTX5_GREEN)}
+                                            onBlur={e => (e.currentTarget.parentElement!.style.borderColor = '#2b303a')}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="rtx-password-toggle"
+                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                            aria-pressed={showPassword}
+                                            onMouseDown={e => e.preventDefault()}
+                                            onClick={() => setShowPassword(value => !value)}
+                                        >
+                                            {showPassword ? (
+                                                <EyeOff size={18} strokeWidth={1.8} aria-hidden="true" className="rtx-field-end-icon" />
+                                            ) : (
+                                                <Eye size={18} strokeWidth={1.8} aria-hidden="true" className="rtx-field-end-icon" />
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="rtx-broker-field">
+                                    <label htmlFor="rtxBrokerServer" style={labelStyle}>Broker Server</label>
+                                    <div className="rtx-broker-input-wrap" onMouseDown={handleBrokerInputMouseDown}>
+                                        {selectedBroker?.logo_url && (
+                                            <img src={selectedBroker.logo_url} alt="" className="rtx-broker-logo" decoding="async" />
+                                        )}
+                                        <input
+                                            id="rtxBrokerServer"
+                                            name="brokerServer"
+                                            ref={brokerInputRef}
+                                            type="text"
+                                            placeholder={brokerListStatus === 'loading' ? 'Loading brokers...' : 'Search broker...'}
+                                            required
+                                            autoComplete="organization"
+                                            value={searchQuery}
+                                            onChange={e => {
+                                                const value = e.target.value;
+                                                setSearchQuery(value);
+                                                if (selectedBroker && value.trim() !== selectedBroker.broker_name) {
+                                                    setSelectedBroker(null);
+                                                    setHealthStatus(null);
+                                                }
+                                                setDropdownOpen(true);
+                                            }}
+                                            onFocus={() => setDropdownOpen(true)}
+                                            onBlur={() => {
+                                                setTimeout(() => {
+                                                    closeBrokerDropdown();
+                                                }, 200);
+                                            }}
+                                            style={{
+                                                ...inputStyle,
+                                                paddingLeft: selectedBroker?.logo_url ? 42 : 16,
+                                                paddingRight: 44,
+                                                cursor: 'pointer',
+                                            }}
+                                        />
+                                        <div className="rtx-broker-input-state" aria-hidden="true">
+                                            <span style={{ background: healthTone }} />
+                                            <ChevronDown size={16} strokeWidth={1.8} style={{
+                                                transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                                                transition: 'transform 0.2s',
+                                            }} />
                                         </div>
-                                    ) : (
-                                        filteredBrokers.map(item => (
-                                            <button
-                                                type="button"
-                                                key={item.broker_id}
-                                                onMouseDown={() => handleSelectBroker(item)}
-                                                className={selectedBroker?.broker_id === item.broker_id ? 'rtx-broker-option is-selected' : 'rtx-broker-option'}
-                                            >
-                                                <span>
-                                                    {item.logo_url ? (
-                                                        <img src={item.logo_url} alt="" />
-                                                    ) : (
-                                                        <i>{String(item.broker_name || 'B').slice(0, 1).toUpperCase()}</i>
-                                                    )}
-                                                    <strong>{item.broker_name}</strong>
-                                                </span>
-                                                {item.region && <em>{item.region}</em>}
-                                            </button>
-                                        ))
+                                    </div>
+
+                                    {dropdownOpen && (
+                                        <div className="rtx-broker-menu">
+                                            {filteredBrokers.length === 0 ? (
+                                                <div className="rtx-broker-empty">
+                                                    {brokerListStatus === 'error' ? 'Broker discovery unavailable' : 'No brokers found'}
+                                                </div>
+                                            ) : (
+                                                filteredBrokers.map(item => (
+                                                    <button
+                                                        type="button"
+                                                        key={item.broker_id}
+                                                        onMouseDown={() => handleSelectBroker(item)}
+                                                        className={selectedBroker?.broker_id === item.broker_id ? 'rtx-broker-option is-selected' : 'rtx-broker-option'}
+                                                    >
+                                                        <span>
+                                                            {item.logo_url ? (
+                                                                <img src={item.logo_url} alt="" loading="lazy" decoding="async" />
+                                                            ) : (
+                                                                <i>{String(item.broker_name || 'B').slice(0, 1).toUpperCase()}</i>
+                                                            )}
+                                                            <strong>{item.broker_name}</strong>
+                                                        </span>
+                                                        {item.region && <em>{item.region}</em>}
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
                                     )}
                                 </div>
-                            )}
+
+                                {healthStatus === 'offline' && (
+                                    <div className="rtx-inline-status is-offline">
+                                        Broker temporarily unavailable
+                                    </div>
+                                )}
+
+                                <div className="rtx-remember-row">
+                                    <input
+                                        type="checkbox"
+                                        id="wtRemember"
+                                        name="rememberAccountId"
+                                        checked={rememberMe}
+                                        onChange={e => setRememberMe(e.target.checked)}
+                                    />
+                                    <label htmlFor="wtRemember">Remember account ID</label>
+                                </div>
+
+                                <button type="submit" disabled={loading} className="rtx-login-button">
+                                    {loading ? (
+                                        <>
+                                            <span className="rtx-spinner" />
+                                            Connecting
+                                        </>
+                                    ) : (
+                                        <>
+                                            Login
+                                            <ArrowRight size={18} strokeWidth={2.2} aria-hidden="true" />
+                                        </>
+                                    )}
+                                </button>
+                            </form>
+
                         </div>
-
-                        {healthStatus === 'offline' && (
-                            <div className="rtx-inline-status is-offline">
-                                Broker temporarily unavailable
-                            </div>
-                        )}
-
-                        <div className="rtx-remember-row">
-                            <input
-                                type="checkbox"
-                                id="wtRemember"
-                                checked={rememberMe}
-                                onChange={e => setRememberMe(e.target.checked)}
-                            />
-                            <label htmlFor="wtRemember">Remember account ID</label>
-                        </div>
-
-                        <button type="submit" disabled={loading} className="rtx-login-button">
-                            {loading ? (
-                                <>
-                                    <span className="rtx-spinner" />
-                                    Connecting
-                                </>
-                            ) : (
-                                <>
-                                    Login
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                        <line x1="5" y1="12" x2="19" y2="12" />
-                                        <polyline points="12 5 19 12 12 19" />
-                                    </svg>
-                                </>
-                            )}
-                        </button>
-                    </form>
-
-                    <footer className="rtx-login-footer">
-                        <span style={{ background: healthStatus === 'offline' ? '#ef4444' : '#10b981' }} />
-                        {healthStatus === 'offline' ? 'Server check failed' : 'System operational'}
-                    </footer>
-                </div>
-            </section>
+                    </section>
+                </main>
+            </div>
 
             <style>{`
                 @keyframes rtx-spin {
                     to { transform: rotate(360deg); }
                 }
 
+                @keyframes rtx-login-page-enter {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+
                 @keyframes rtx-login-enter {
-                    from { opacity: 0; transform: translateY(8px) scale(0.99); }
+                    from { opacity: 0; transform: translateY(14px) scale(0.985); }
                     to { opacity: 1; transform: translateY(0) scale(1); }
+                }
+
+                @keyframes rtx-visual-settle {
+                    from { transform: scale(1.035); }
+                    to { transform: scale(1); }
                 }
 
                 .rtx-login-overlay {
                     position: fixed;
                     inset: 0;
                     z-index: 99999;
+                    display: block;
+                    overflow: hidden;
+                    min-height: 100dvh;
+                    background: #050608;
+                    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    animation: none;
+                }
+
+                .rtx-login-stage {
+                    position: relative;
+                    min-height: 100%;
+                    display: flex;
+                    justify-content: flex-end;
+                    background: #050608;
+                }
+
+                .rtx-login-visual {
+                    position: absolute;
+                    inset: 0;
+                    overflow: hidden;
+                    background: #07080b;
+                }
+
+                .rtx-login-visual picture,
+                .rtx-login-visual img {
+                    display: block;
+                    width: 100%;
+                    height: 100%;
+                }
+
+                .rtx-login-visual img {
+                    object-fit: cover;
+                    object-position: center center;
+                    filter: saturate(0.86) contrast(1.02) brightness(0.78);
+                    animation: rtx-visual-settle 900ms ease-out both;
+                }
+
+                .rtx-login-visual-shade {
+                    position: absolute;
+                    inset: 0;
+                    background:
+                        linear-gradient(90deg, rgba(5, 6, 8, 0.08) 0%, rgba(5, 6, 8, 0.36) 46%, rgba(5, 6, 8, 0.76) 100%),
+                        linear-gradient(180deg, rgba(5, 6, 8, 0.16) 0%, rgba(5, 6, 8, 0.08) 42%, rgba(5, 6, 8, 0.48) 100%);
+                    pointer-events: none;
+                }
+
+                .rtx-login-panel-wrap {
+                    position: relative;
+                    z-index: 1;
+                    min-width: 0;
+                    width: min(620px, 43vw);
+                    min-height: 100vh;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    padding: 20px;
-                    background: rgba(5, 6, 9, 0.90);
-                    backdrop-filter: blur(5px);
-                    -webkit-backdrop-filter: blur(5px);
-                    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    padding: clamp(24px, 3vw, 72px);
+                    background: rgba(5, 6, 8, 0.18);
                 }
 
                 .rtx-login-shell {
-                    width: min(560px, 100%);
+                    width: min(520px, 100%);
                     min-height: 0;
                     display: grid;
                     grid-template-rows: 36px minmax(0, 1fr);
                     overflow: hidden;
-                    border: 1px solid #252932;
+                    border: 1px solid #2b3039;
                     border-radius: 8px;
                     background: #111318;
-                    box-shadow: 0 22px 58px rgba(0, 0, 0, 0.58);
-                    animation: rtx-login-enter 180ms ease-out both;
+                    box-shadow: 0 24px 58px rgba(0, 0, 0, 0.42);
+                    animation: rtx-login-enter 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
                 }
 
                 .rtx-shell-bar {
@@ -531,7 +671,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     gap: 10px;
                     padding: 0 14px;
                     border-bottom: 1px solid #25272e;
-                    background: #101116;
+                    background: #101216;
                     color: #8b8f9b;
                     font-size: 11px;
                     letter-spacing: 0;
@@ -553,7 +693,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                 .rtx-dot-red { background: #ef4444; }
                 .rtx-dot-yellow { background: #f59e0b; }
-                .rtx-dot-green { background: #10b981; }
+                .rtx-dot-green { background: #80c33f; }
 
                 .rtx-window-title {
                     min-width: 0;
@@ -582,7 +722,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 .rtx-login-body {
                     min-width: 0;
                     min-height: 0;
-                    padding: 24px;
+                    padding: 26px;
                     background: #111318;
                 }
 
@@ -629,6 +769,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     border: 1px solid #252932;
                     border-radius: 7px;
                     background: #0c0e12;
+                    transition: border-color 0.18s ease, background 0.18s ease;
                 }
 
                 .rtx-summary-label {
@@ -759,6 +900,11 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                 .rtx-broker-input-wrap {
                     position: relative;
+                    cursor: pointer;
+                }
+
+                .rtx-broker-input-wrap input {
+                    cursor: pointer;
                 }
 
                 .rtx-broker-logo {
@@ -784,8 +930,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     pointer-events: none;
                 }
 
-                .rtx-broker-input-state span,
-                .rtx-login-footer span {
+                .rtx-broker-input-state span {
                     width: 7px;
                     height: 7px;
                     border-radius: 999px;
@@ -870,7 +1015,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 }
 
                 .rtx-broker-option em {
-                    color: #14b8a6;
+                    color: #80c33f;
                     font-style: normal;
                     font-size: 9px;
                     font-weight: 800;
@@ -906,7 +1051,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     height: 14px;
                     margin: 0;
                     cursor: pointer;
-                    accent-color: #14b8a6;
+                    accent-color: #80c33f;
                 }
 
                 .rtx-remember-row label {
@@ -924,16 +1069,16 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     margin-top: 4px;
                     border: 0;
                     border-radius: 6px;
-                    background: #14b8a6;
+                    background: #80c33f;
                     color: #04110f;
                     font-size: 13px;
                     font-weight: 800;
                     cursor: pointer;
-                    transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+                    transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
                 }
 
                 .rtx-login-button:hover:not(:disabled) {
-                    background: #2dd4bf;
+                    background: #8bd24a;
                     transform: translateY(-1px);
                 }
 
@@ -962,11 +1107,35 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     font-size: 11.5px;
                 }
 
-                @media (max-width: 760px) {
+                @media (max-width: 900px) {
+                    .rtx-login-stage {
+                        justify-content: center;
+                    }
+
                     .rtx-login-overlay {
-                        align-items: flex-start;
-                        padding: 14px;
                         overflow-y: auto;
+                    }
+
+                    .rtx-login-visual {
+                        min-height: 100%;
+                    }
+
+                    .rtx-login-visual img {
+                        object-position: center center;
+                    }
+
+                    .rtx-login-visual-shade {
+                        background:
+                            linear-gradient(180deg, rgba(5, 6, 8, 0.42) 0%, rgba(5, 6, 8, 0.58) 48%, rgba(5, 6, 8, 0.82) 100%),
+                            linear-gradient(90deg, rgba(5, 6, 8, 0.2) 0%, rgba(5, 6, 8, 0.4) 100%);
+                    }
+
+                    .rtx-login-panel-wrap {
+                        width: 100%;
+                        min-height: 100vh;
+                        padding: 18px;
+                        align-items: center;
+                        background: transparent;
                     }
 
                     .rtx-login-shell {
@@ -976,7 +1145,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 }
 
                 @media (max-width: 520px) {
-                    .rtx-login-overlay {
+                    .rtx-login-panel-wrap {
                         padding: 12px;
                     }
 
@@ -1019,6 +1188,771 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                         padding-top: 14px;
                     }
                 }
+
+                .rtx-login-stage {
+                    min-height: 100dvh;
+                    display: grid;
+                    grid-template-columns: minmax(0, 63.2%) minmax(520px, 36.8%);
+                    background: #06080c;
+                }
+
+                .rtx-login-visual {
+                    position: relative;
+                    inset: auto;
+                    min-width: 0;
+                    min-height: 100dvh;
+                    overflow: hidden;
+                    background: #020407;
+                }
+
+                .rtx-login-visual picture,
+                .rtx-login-visual img {
+                    display: block;
+                    width: 100%;
+                    height: 100%;
+                }
+
+                .rtx-login-visual img {
+                    object-fit: cover;
+                    object-position: left center;
+                    filter: saturate(0.94) contrast(1.05) brightness(0.82);
+                    animation: none;
+                }
+
+                .rtx-login-visual-shade {
+                    position: absolute;
+                    inset: 0;
+                    background:
+                        linear-gradient(90deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.08) 48%, rgba(0, 0, 0, 0.86) 100%),
+                        linear-gradient(180deg, rgba(2, 5, 9, 0.18) 0%, rgba(2, 5, 9, 0.02) 44%, rgba(0, 0, 0, 0.38) 100%);
+                    pointer-events: none;
+                }
+
+                .rtx-login-panel-wrap {
+                    position: relative;
+                    z-index: 1;
+                    min-width: 0;
+                    width: auto;
+                    min-height: 100dvh;
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: center;
+                    padding: clamp(42px, 7.5vh, 86px) clamp(54px, 5.25vw, 88px);
+                    background:
+                        radial-gradient(circle at 86% 18%, rgba(255, 255, 255, 0.035), transparent 34%),
+                        linear-gradient(180deg, #12161d 0%, #11151b 47%, #0d1117 100%);
+                    box-shadow: inset 1px 0 0 rgba(128, 195, 63, 0.14);
+                }
+
+                .rtx-login-panel {
+                    width: min(clamp(442px, 26.45vw, 508px), 100%);
+                    min-width: 0;
+                    margin-top: clamp(42px, 5vh, 48px);
+                    color: #f4f6f8;
+                    contain: layout paint;
+                    animation: none;
+                }
+
+                .rtx-wordmark {
+                    display: flex;
+                    align-items: baseline;
+                    gap: 10px;
+                    margin: 0 0 8px;
+                    color: #f5f7fb;
+                    font-size: clamp(38px, 3.2vw, 48px);
+                    font-weight: 900;
+                    line-height: 0.9;
+                    letter-spacing: 0;
+                }
+
+                .rtx-wordmark strong {
+                    color: #80c33f;
+                    font: inherit;
+                }
+
+                .rtx-login-body {
+                    min-width: 0;
+                    min-height: 0;
+                    padding: 0;
+                    background: transparent;
+                }
+
+                .rtx-form-header {
+                    position: relative;
+                    margin-bottom: 16px;
+                    padding-bottom: 18px;
+                    border-bottom: 0;
+                }
+
+                .rtx-form-header::after {
+                    content: '';
+                    position: absolute;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    height: 1px;
+                    background: linear-gradient(90deg, rgba(128, 195, 63, 0.46), rgba(148, 163, 184, 0.18) 42%, transparent 100%);
+                }
+
+                .rtx-form-header h1 {
+                    margin: 0;
+                    display: flex;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                    color: #f5f6f8;
+                    font-size: 29px;
+                    line-height: 1.08;
+                    font-weight: 860;
+                    letter-spacing: 0;
+                    text-shadow: 0 10px 26px rgba(0, 0, 0, 0.36);
+                }
+
+                .rtx-login-title-text {
+                    color: inherit;
+                    font: inherit;
+                    line-height: 1.18;
+                    letter-spacing: inherit;
+                    flex: 0 0 auto;
+                    max-width: 100%;
+                    overflow: visible !important;
+                    padding-bottom: 0.12em;
+                    margin-bottom: -0.12em;
+                }
+
+                .rtx-login-title-text .split-word,
+                .rtx-login-title-text .split-char {
+                    display: inline-block;
+                    line-height: 1.18;
+                    vertical-align: top;
+                    overflow: visible;
+                }
+
+                .rtx-login-title-logo {
+                    width: 136px;
+                    height: auto;
+                    display: inline-block;
+                    object-fit: contain;
+                    filter: drop-shadow(0 10px 18px rgba(128, 195, 63, 0.12));
+                }
+
+                .rtx-broker-strip {
+                    position: relative;
+                    overflow: hidden;
+                    box-sizing: border-box;
+                    height: 96px;
+                    min-height: 96px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 18px;
+                    margin-bottom: 26px;
+                    padding: 0 17px;
+                    border: 1px solid rgba(83, 94, 111, 0.48);
+                    border-radius: 8px;
+                    background:
+                        linear-gradient(135deg, rgba(25, 31, 42, 0.94) 0%, rgba(13, 18, 27, 0.84) 54%, rgba(9, 13, 20, 0.96) 100%);
+                    box-shadow:
+                        0 20px 44px rgba(0, 0, 0, 0.28),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+                        inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+                    transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+                }
+
+                .rtx-broker-strip::before {
+                    content: '';
+                    position: absolute;
+                    inset: 0;
+                    border-radius: inherit;
+                    background:
+                        linear-gradient(90deg, rgba(128, 195, 63, 0.13), transparent 42%),
+                        linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 48%);
+                    pointer-events: none;
+                }
+
+                .rtx-broker-strip > * {
+                    position: relative;
+                    z-index: 1;
+                }
+
+                .rtx-route-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                    min-width: 0;
+                }
+
+                .rtx-route-row > div:not(.rtx-route-logo) {
+                    min-width: 0;
+                }
+
+                .rtx-route-logo {
+                    width: 42px;
+                    height: 42px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 8px;
+                    background:
+                        linear-gradient(145deg, rgba(35, 43, 58, 0.98), rgba(16, 22, 33, 0.98));
+                    border: 1px solid rgba(92, 105, 124, 0.58);
+                    flex: 0 0 auto;
+                    color: #a7abb5;
+                    font-size: 13px;
+                    font-weight: 800;
+                    box-shadow:
+                        0 12px 22px rgba(0, 0, 0, 0.24),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+                }
+
+                .rtx-route-logo img {
+                    width: 27px;
+                    height: 27px;
+                    object-fit: contain;
+                }
+
+                .rtx-summary-label {
+                    display: block;
+                    margin-bottom: 9px;
+                    color: #aab1bd;
+                    font-size: 11.5px;
+                    font-weight: 780;
+                    text-transform: none;
+                    letter-spacing: 0;
+                }
+
+                .rtx-route-row strong {
+                    display: block;
+                    color: #f7f8fa;
+                    font-size: 17px;
+                    font-weight: 840;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .rtx-route-row small {
+                    display: block;
+                    margin-top: 8px;
+                    color: #a8afba;
+                    font-size: 14px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .rtx-broker-state {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 9px;
+                    flex: 0 0 auto;
+                    min-height: 34px;
+                    padding: 0 14px;
+                    border: 1px solid color-mix(in srgb, currentColor 30%, #2c333e);
+                    border-radius: 8px;
+                    background: color-mix(in srgb, currentColor 10%, rgba(16, 21, 29, 0.82));
+                    box-shadow:
+                        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+                        0 10px 24px rgba(0, 0, 0, 0.22);
+                    font-size: 13px;
+                    font-weight: 820;
+                }
+
+                .rtx-broker-state span,
+                .rtx-broker-input-state span {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 999px;
+                    flex: 0 0 auto;
+                    box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 14%, transparent);
+                }
+
+                .rtx-login-error {
+                    margin-bottom: 18px;
+                    padding: 10px 12px;
+                    border-radius: 4px;
+                    background: rgba(239, 68, 68, 0.10);
+                    border: 1px solid rgba(239, 68, 68, 0.28);
+                    color: #f87171;
+                    font-size: 13px;
+                    line-height: 1.35;
+                }
+
+                .rtx-login-form {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 18px;
+                }
+
+                .rtx-input-shell {
+                    min-height: 50px;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 0 14px;
+                    border: 1px solid #2b303a;
+                    border-radius: 4px;
+                    background: rgba(12, 16, 22, 0.62);
+                    color: #858c98;
+                    transition: border-color 0.16s ease, background 0.16s ease;
+                }
+
+                .rtx-input-shell:focus-within {
+                    background: rgba(14, 19, 26, 0.84);
+                }
+
+                .rtx-input-shell input {
+                    min-width: 0;
+                    flex: 1;
+                    height: 48px;
+                    padding: 0 !important;
+                    border: 0 !important;
+                    background: transparent !important;
+                    color: #f4f5f7 !important;
+                    caret-color: #80c33f;
+                    appearance: none;
+                    color-scheme: dark;
+                }
+
+                .rtx-input-shell input:-webkit-autofill,
+                .rtx-input-shell input:-webkit-autofill:hover,
+                .rtx-input-shell input:-webkit-autofill:focus,
+                .rtx-broker-input-wrap input:-webkit-autofill,
+                .rtx-broker-input-wrap input:-webkit-autofill:hover,
+                .rtx-broker-input-wrap input:-webkit-autofill:focus {
+                    -webkit-text-fill-color: #f4f5f7 !important;
+                    box-shadow: 0 0 0 1000px #0d1117 inset !important;
+                    border-color: transparent !important;
+                    transition: background-color 99999s ease-out 0s !important;
+                }
+
+                .rtx-password-toggle {
+                    margin-left: auto;
+                    width: 30px;
+                    height: 30px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 0;
+                    border: 0;
+                    border-radius: 6px;
+                    background: transparent;
+                    color: #7d8490;
+                    cursor: pointer;
+                    flex: 0 0 auto;
+                    transition: color 0.16s ease, background 0.16s ease;
+                }
+
+                .rtx-password-toggle:hover,
+                .rtx-password-toggle:focus-visible {
+                    color: #c8d1df;
+                    background: rgba(255, 255, 255, 0.055);
+                    outline: none;
+                }
+
+                .rtx-field-end-icon {
+                    display: block;
+                    color: currentColor;
+                }
+
+                .rtx-broker-field {
+                    position: relative;
+                }
+
+                .rtx-broker-input-wrap {
+                    position: relative;
+                    cursor: pointer;
+                }
+
+                .rtx-broker-input-wrap input {
+                    cursor: pointer;
+                }
+
+                .rtx-broker-logo {
+                    position: absolute;
+                    left: 13px;
+                    top: 50%;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 5px;
+                    object-fit: contain;
+                    transform: translateY(-50%);
+                    z-index: 2;
+                }
+
+                .rtx-broker-input-state {
+                    position: absolute;
+                    right: 14px;
+                    top: 50%;
+                    display: flex;
+                    align-items: center;
+                    gap: 11px;
+                    color: #8d94a0;
+                    transform: translateY(-50%);
+                    pointer-events: none;
+                }
+
+                .rtx-broker-menu {
+                    position: absolute;
+                    left: 0;
+                    right: 0;
+                    top: 100%;
+                    margin-top: 6px;
+                    max-height: 210px;
+                    overflow-y: auto;
+                    z-index: 10;
+                    padding: 5px;
+                    border: 1px solid #343b47;
+                    border-radius: 5px;
+                    background: #171c24;
+                    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.46);
+                }
+
+                .rtx-broker-empty {
+                    padding: 11px 12px;
+                    color: #9aa0aa;
+                    font-size: 13px;
+                }
+
+                .rtx-broker-option {
+                    width: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 10px;
+                    min-height: 40px;
+                    padding: 7px 9px;
+                    border: 0;
+                    border-radius: 4px;
+                    background: transparent;
+                    color: #e8eaed;
+                    cursor: pointer;
+                    text-align: left;
+                }
+
+                .rtx-broker-option:hover,
+                .rtx-broker-option.is-selected {
+                    background: #222832;
+                }
+
+                .rtx-broker-option span {
+                    display: flex;
+                    align-items: center;
+                    gap: 9px;
+                    min-width: 0;
+                }
+
+                .rtx-broker-option img,
+                .rtx-broker-option i {
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 4px;
+                    flex: 0 0 auto;
+                }
+
+                .rtx-broker-option i {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgba(255, 255, 255, 0.06);
+                    color: #8b8b95;
+                    font-style: normal;
+                    font-size: 10px;
+                }
+
+                .rtx-broker-option strong {
+                    min-width: 0;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    font-size: 12.5px;
+                    font-weight: 650;
+                }
+
+                .rtx-broker-option em {
+                    color: #80c33f;
+                    font-style: normal;
+                    font-size: 9px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                    letter-spacing: 0.08em;
+                }
+
+                .rtx-inline-status {
+                    min-height: 34px;
+                    display: flex;
+                    align-items: center;
+                    padding: 0 12px;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    font-weight: 650;
+                }
+
+                .rtx-inline-status.is-offline {
+                    background: rgba(239, 68, 68, 0.09);
+                    border: 1px solid rgba(239, 68, 68, 0.24);
+                    color: #f87171;
+                }
+
+                .rtx-remember-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 11px;
+                    margin-top: -2px;
+                }
+
+                .rtx-remember-row input {
+                    width: 20px;
+                    height: 20px;
+                    margin: 0;
+                    cursor: pointer;
+                    accent-color: #80c33f;
+                }
+
+                .rtx-remember-row label {
+                    color: #a4aab4;
+                    font-size: 14px;
+                    cursor: pointer;
+                }
+
+                .rtx-login-button {
+                    min-height: 51px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 28px;
+                    margin-top: 2px;
+                    border: 0;
+                    border-radius: 4px;
+                    background: linear-gradient(180deg, #8bd24a 0%, #80c33f 100%);
+                    color: #03120f;
+                    font-size: 16px;
+                    font-weight: 850;
+                    cursor: pointer;
+                    transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+                }
+
+                .rtx-login-button:hover:not(:disabled) {
+                    background: linear-gradient(180deg, #94db55 0%, #72b936 100%);
+                    transform: translateY(-1px);
+                }
+
+                .rtx-login-button:disabled {
+                    opacity: 0.65;
+                    cursor: not-allowed;
+                }
+
+                .rtx-spinner {
+                    width: 16px;
+                    height: 16px;
+                    border: 2px solid rgba(3, 18, 15, 0.25);
+                    border-top-color: rgba(3, 18, 15, 0.88);
+                    border-radius: 999px;
+                    animation: rtx-spin 720ms linear infinite;
+                }
+
+                .rtx-login-footer {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-top: 17px;
+                    padding-top: 25px;
+                    border-top: 1px solid rgba(95, 103, 118, 0.24);
+                    color: #a6adb7;
+                    font-size: 14px;
+                }
+
+                @media (max-width: 1180px) {
+                    .rtx-login-stage {
+                        grid-template-columns: minmax(0, 55%) minmax(490px, 45%);
+                    }
+
+                    .rtx-login-panel-wrap {
+                        padding-left: 44px;
+                        padding-right: 44px;
+                    }
+                }
+
+                @media (max-width: 900px) {
+                    .rtx-login-overlay {
+                        overflow-y: auto;
+                    }
+
+                    .rtx-login-stage {
+                        min-height: 100dvh;
+                        display: block;
+                        background: #06080c;
+                    }
+
+                    .rtx-login-visual {
+                        position: fixed;
+                        inset: 0;
+                        min-height: 100dvh;
+                    }
+
+                    .rtx-login-visual img {
+                        object-position: left center;
+                    }
+
+                    .rtx-login-visual-shade {
+                        background:
+                            linear-gradient(180deg, rgba(5, 8, 12, 0.5) 0%, rgba(5, 8, 12, 0.74) 44%, rgba(5, 8, 12, 0.9) 100%),
+                            linear-gradient(90deg, rgba(0, 0, 0, 0.18) 0%, rgba(0, 0, 0, 0.54) 100%);
+                    }
+
+                    .rtx-login-panel-wrap {
+                        position: relative;
+                        z-index: 1;
+                        width: 100%;
+                        min-height: 100dvh;
+                        align-items: center;
+                        align-items: safe center;
+                        padding:
+                            max(28px, env(safe-area-inset-top))
+                            max(18px, env(safe-area-inset-right))
+                            max(28px, env(safe-area-inset-bottom))
+                            max(18px, env(safe-area-inset-left));
+                        border-left: 0;
+                        background: transparent;
+                        box-shadow: none;
+                    }
+
+                    .rtx-login-panel {
+                        width: min(442px, 100%);
+                        margin-top: 0;
+                        padding: 24px 18px;
+                        border: 1px solid rgba(61, 70, 84, 0.72);
+                        border-radius: 8px;
+                        background: rgba(13, 17, 23, 0.88);
+                    }
+
+                }
+
+                @media (max-width: 520px) {
+                    .rtx-login-panel-wrap {
+                        padding: 18px 12px;
+                    }
+
+                    .rtx-login-panel {
+                        padding: 18px;
+                    }
+
+                    .rtx-wordmark {
+                        font-size: 34px;
+                    }
+
+                    .rtx-form-header {
+                        margin-bottom: 18px;
+                        padding-bottom: 18px;
+                    }
+
+                    .rtx-form-header h1 {
+                        gap: 10px;
+                        font-size: 27px;
+                        line-height: 1.14;
+                    }
+
+                    .rtx-login-title-logo {
+                        width: 118px;
+                    }
+
+                    .rtx-broker-strip {
+                        height: auto;
+                        min-height: 0;
+                        align-items: flex-start;
+                        flex-direction: column;
+                        gap: 13px;
+                        margin-bottom: 20px;
+                        padding: 15px;
+                    }
+
+                    .rtx-route-row {
+                        width: 100%;
+                    }
+
+                    .rtx-broker-state {
+                        align-self: flex-start;
+                    }
+
+                    .rtx-broker-menu {
+                        max-height: min(44vh, 210px);
+                    }
+
+                    .rtx-login-form {
+                        gap: 18px;
+                    }
+
+                    .rtx-remember-row input {
+                        width: 16px;
+                        height: 16px;
+                    }
+
+                    .rtx-login-footer {
+                        margin-top: 15px;
+                        padding-top: 18px;
+                    }
+                }
+
+                @media (max-width: 380px) {
+                    .rtx-login-panel-wrap {
+                        padding:
+                            max(16px, env(safe-area-inset-top))
+                            max(10px, env(safe-area-inset-right))
+                            max(16px, env(safe-area-inset-bottom))
+                            max(10px, env(safe-area-inset-left));
+                    }
+
+                    .rtx-login-panel {
+                        padding: 16px;
+                    }
+
+                    .rtx-form-header h1 {
+                        gap: 8px;
+                        font-size: 25px;
+                    }
+
+                    .rtx-login-title-logo {
+                        width: 108px;
+                    }
+
+                    .rtx-broker-strip {
+                        padding: 13px;
+                    }
+
+                    .rtx-route-logo {
+                        width: 38px;
+                        height: 38px;
+                    }
+
+                    .rtx-route-row strong {
+                        font-size: 16px;
+                    }
+
+                    .rtx-route-row small {
+                        font-size: 13px;
+                    }
+
+                    .rtx-broker-state {
+                        min-height: 32px;
+                        padding: 0 12px;
+                        font-size: 12.5px;
+                    }
+                }
+
+                @media (prefers-reduced-motion: reduce) {
+                    .rtx-login-overlay,
+                    .rtx-login-shell,
+                    .rtx-login-panel,
+                    .rtx-login-visual img,
+                    .rtx-spinner {
+                        animation: none !important;
+                    }
+
+                    .rtx-login-button,
+                    .rtx-broker-strip {
+                        transition: none !important;
+                    }
+                }
             `}</style>
         </div>
     );
@@ -1026,24 +1960,24 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
 const labelStyle: React.CSSProperties = {
     display: 'block',
-    color: '#737987',
-    fontSize: 9.5,
-    fontWeight: 800,
-    textTransform: 'uppercase',
-    letterSpacing: '0.1em',
-    marginBottom: 6,
+    color: '#a0a6b0',
+    fontSize: 12,
+    fontWeight: 720,
+    letterSpacing: 0,
+    marginBottom: 10,
     fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
 };
 
 const inputStyle: React.CSSProperties = {
     width: '100%',
     boxSizing: 'border-box',
-    padding: '10px 12px',
-    borderRadius: 6,
-    border: '1px solid #252932',
-    background: '#0b0d11',
+    minHeight: 50,
+    padding: '0 16px',
+    borderRadius: 4,
+    border: '1px solid #2b303a',
+    background: 'rgba(12, 16, 22, 0.62)',
     color: '#f4f4f5',
-    fontSize: 13,
+    fontSize: 15,
     outline: 'none',
     transition: 'border-color 0.15s, box-shadow 0.15s',
     fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',

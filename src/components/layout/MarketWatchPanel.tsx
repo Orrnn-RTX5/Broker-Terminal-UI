@@ -646,6 +646,8 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <input
+              id="rtxMarketWatchSymbolSearch"
+              name="marketWatchSymbolSearch"
               ref={inputRef}
               className="mw-input"
               style={{
@@ -661,6 +663,8 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                 fontFamily: 'inherit',
                 transition: 'border-color 0.15s, box-shadow 0.15s',
               }}
+              aria-label="Add symbol"
+              autoComplete="off"
               placeholder="Add symbol..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
