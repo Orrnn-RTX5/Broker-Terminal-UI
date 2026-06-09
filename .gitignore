@@ -1,5 +1,5 @@
-# ── Logs ──────────────────────────────────────────────────────────
-logs
+# Logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,16 +7,17 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# ── Dependencies ───────────────────────────────────────────────────
-node_modules
+# Dependencies
+node_modules/
 
-# ── Build outputs ──────────────────────────────────────────────────
-dist
-dist-ssr
+# Build outputs
+dist/
+dist-ssr/
 out/
+build/
 *.local
 
-# ── Electron release folders ────────────────────────────────────────
+# Electron release folders
 draft/
 release/
 release-new/
@@ -26,18 +27,32 @@ release-rtxbackend/
 release-final-cors/
 release-final-latest/
 
-# ── Environment files ───────────────────────────────────────────────
+# Environment files
 .env
 .env.local
 .env.*.local
+.env_*
 !.env.example
 !.env.production
 !.env.staging
 
-# ── Editor / OS artifacts ───────────────────────────────────────────
+# Test and report outputs
+coverage/
+.vitest/
+test-results/
+playwright-report/
+jscpd-report/
+
+# Tool caches
+.vite/
+.cache/
+.eslintcache
+.turbo/
+
+# Editor and OS files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 Thumbs.db
 *.suo
@@ -46,7 +61,7 @@ Thumbs.db
 *.sln
 *.sw?
 
-# ── AI / tooling dirs ───────────────────────────────────────────────
+# AI and local tooling
 .gemini/happen
-
-Critical  Instruction.txt
+codex-opener/
+Critical Instruction.txt
