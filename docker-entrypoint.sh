@@ -29,6 +29,10 @@ js_bool() {
   esac
 }
 
+trim_url() {
+  printf '%s' "$1" | sed 's:/*$::'
+}
+
 backend_target="$(resolve_backend_target)"
 api_host="${API_HOST:-${VITE_API_HOST:-${VITE_API_URL:-${VITE_BACKEND_URL:-https://backend.orrnn.com}}}}"
 api_host_ext="${API_HOST_EXT:-${VITE_API_HOST_EXT:-${VITE_API_URL_EXT:-${VITE_BACKEND_URL_EXT:-$api_host}}}}"
@@ -36,6 +40,9 @@ ws_host="${WS_HOST:-${VITE_WS_HOST:-${VITE_WS_URL:-wss://backend.orrnn.com}}}"
 default_mt5_server="${DEFAULT_MT5_SERVER:-${VITE_DEFAULT_MT5_SERVER:-backend.orrnn.com:443}}"
 shared_discovery_base_url="${SHARED_DISCOVERY_BASE_URL:-${VITE_SHARED_DISCOVERY_BASE_URL:-https://superbackend.orrnn.com}}"
 discovery_base_url="${DISCOVERY_BASE_URL:-${VITE_DISCOVERY_BASE_URL:-${VITE_BROKER_DISCOVERY_URL:-$shared_discovery_base_url}}}"
+if [ "$(trim_url "$discovery_base_url")" = "$(trim_url "$api_host")" ] || [ "$(trim_url "$discovery_base_url")" = "$(trim_url "$api_host_ext")" ]; then
+  discovery_base_url="$shared_discovery_base_url"
+fi
 use_mock_discovery="${USE_MOCK_DISCOVERY:-${VITE_USE_MOCK_DISCOVERY:-false}}"
 
 mkdir -p "${html_dir}"

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   DESKTOP_BACKEND_FALLBACK,
+  SHARED_DISCOVERY_FALLBACK,
   WEB_BACKEND_FALLBACK,
   getBackendTarget,
+  getRuntimeDiscoveryBaseUrl,
   isDesktopBackendTarget,
   normalizeBrokerInfoForTarget,
   resolveBrokerBackendUrl,
@@ -62,6 +64,30 @@ describe('backend target resolver', () => {
     expect(getBackendTarget()).toBe('https://services.growtradingacademy.com');
     expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://services.growtradingacademy.com/ws/v2');
     expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://services.growtradingacademy.com/ws/feed');
+  });
+
+  it('keeps branded web broker discovery on the shared discovery backend by default', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://services.growtradingacademy.com/',
+      WS_HOST: 'wss://services.growtradingacademy.com',
+    };
+
+    expect(getBackendTarget()).toBe('https://services.growtradingacademy.com');
+    expect(getRuntimeDiscoveryBaseUrl()).toBe(SHARED_DISCOVERY_FALLBACK);
+  });
+
+  it('does not use the branded broker API host as the discovery backend', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://services.growtradingacademy.com',
+      API_HOST_EXT: 'https://services.growtradingacademy.com',
+      DISCOVERY_BASE_URL: 'https://services.growtradingacademy.com',
+      WS_HOST: 'wss://services.growtradingacademy.com',
+    };
+
+    expect(getBackendTarget()).toBe('https://services.growtradingacademy.com');
+    expect(getRuntimeDiscoveryBaseUrl()).toBe(SHARED_DISCOVERY_FALLBACK);
   });
 
   it('accepts ORRNN test broker public runtime hosts in web mode', () => {

@@ -1,4 +1,5 @@
 export const WEB_BACKEND_FALLBACK = 'https://backend.orrnn.com';
+export const SHARED_DISCOVERY_FALLBACK = 'https://superbackend.orrnn.com';
 // Last-resort desktop default. Must NOT hardcode a public broker IP: doing so
 // leaks infra detail and sends the Bearer JWT in cleartext to a public host,
 // defeating the TLS intent of normalizeBrokerServerUrl. A desktop build should
@@ -124,6 +125,31 @@ const runtimeFirst = (...keys) => {
   return first(...keys.map((key) => config[key]));
 };
 
+const runtimeApiHostCandidates = () => [
+  runtimeFirst(
+    'API_HOST',
+    'API_HOST_EXT',
+    'VITE_API_HOST',
+    'VITE_API_HOST_EXT',
+    'VITE_API_URL',
+    'VITE_BACKEND_URL'
+  ),
+  envValue('VITE_API_HOST'),
+  envValue('VITE_API_HOST_EXT'),
+  envValue('VITE_API_URL'),
+  envValue('VITE_BACKEND_URL'),
+  getPublicBackendTarget(),
+];
+
+const isBrokerApiHost = (value) => {
+  const normalized = normalizeHttpUrl(value, 'https');
+  if (!normalized || normalized === SHARED_DISCOVERY_FALLBACK) return false;
+
+  return runtimeApiHostCandidates().some((candidate) =>
+    normalizeHttpUrl(candidate, 'https') === normalized
+  );
+};
+
 export const getPublicBackendTarget = () => {
   const candidate = first(
     runtimeFirst(
@@ -163,14 +189,21 @@ export const getPublicWsTarget = () => {
     : normalizeWsUrl(getPublicBackendTarget(), 'wss');
 };
 
-export const getRuntimeDiscoveryBaseUrl = (fallback = '') => {
-  const candidate = first(
+export const getRuntimeDiscoveryBaseUrl = (fallback = SHARED_DISCOVERY_FALLBACK) => {
+  const candidates = [
     runtimeFirst('DISCOVERY_BASE_URL', 'VITE_DISCOVERY_BASE_URL', 'VITE_BROKER_DISCOVERY_URL'),
     envValue('VITE_DISCOVERY_BASE_URL'),
     envValue('VITE_BROKER_DISCOVERY_URL'),
-    fallback
-  );
-  return normalizeHttpUrl(candidate, 'https');
+    fallback,
+    SHARED_DISCOVERY_FALLBACK,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeHttpUrl(candidate, 'https');
+    if (normalized && !isBrokerApiHost(normalized)) return normalized;
+  }
+
+  return SHARED_DISCOVERY_FALLBACK;
 };
 
 const directUrlFromHostPort = (brokerInfo = {}) => {

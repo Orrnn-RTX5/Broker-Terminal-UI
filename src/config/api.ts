@@ -473,7 +473,7 @@ export { API_BASE_URL, RTX5_API_URL, ADMIN_API_URL, FIX_API_URL, FIX_WS_URL, WS_
 
 export const BROKER_DISCOVERY_URL = toLocalDevProxyUrl(
   trimTrailingSlash(normalizeServerUrl(
-    getRuntimeDiscoveryBaseUrl(import.meta.env.VITE_BROKER_DISCOVERY_URL as string || getBackendTarget())
+    getRuntimeDiscoveryBaseUrl()
   )),
   DEV_BROKER_DISCOVERY_PROXY_PREFIX
 );
