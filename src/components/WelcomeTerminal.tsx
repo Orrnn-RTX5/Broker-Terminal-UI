@@ -294,10 +294,6 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
     };
 
     const selectedBrokerName = selectedBroker?.broker_name || 'Select broker';
-    const selectedBrokerHost = selectedBroker
-        ? normalizeBrokerServerUrl(resolveBrokerBackendUrl(selectedBroker)).replace(/^https?:\/\//i, '').replace(/\/$/, '')
-        : 'No server selected';
-
     const healthLabel =
         healthStatus === 'online' ? 'Online'
             : healthStatus === 'checking' ? 'Checking'
@@ -380,10 +376,9 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                             <span>{selectedBrokerName.slice(0, 1).toUpperCase()}</span>
                                         )}
                                     </div>
-                                    <div>
+                                    <div className="rtx-route-copy">
                                         <span className="rtx-summary-label">Broker Server</span>
                                         <strong>{selectedBrokerName}</strong>
-                                        <small>{selectedBrokerHost}</small>
                                     </div>
                                 </div>
                                 <span className="rtx-broker-state" style={{ color: healthTone }}>
@@ -774,18 +769,20 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                 .rtx-summary-label {
                     display: block;
-                    margin-bottom: 4px;
+                    margin-bottom: 0;
                     color: #737987;
                     font-size: 9.5px;
                     font-weight: 800;
                     text-transform: uppercase;
                     letter-spacing: 0.1em;
+                    line-height: 1.2;
                 }
 
                 .rtx-route-row {
                     display: flex;
                     align-items: center;
                     gap: 11px;
+                    flex: 1 1 auto;
                     min-width: 0;
                 }
 
@@ -810,7 +807,12 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     object-fit: contain;
                 }
 
-                .rtx-route-row div:last-child {
+                .rtx-route-copy {
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    gap: 4px;
+                    flex: 1 1 auto;
                     min-width: 0;
                 }
 
@@ -819,6 +821,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     color: #f3f4f6;
                     font-size: 13.5px;
                     font-weight: 760;
+                    line-height: 1.18;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
@@ -839,6 +842,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     align-items: center;
                     gap: 6px;
                     flex: 0 0 auto;
+                    align-self: center;
                     min-height: 28px;
                     padding: 0 9px;
                     border: 1px solid #252932;
@@ -1340,14 +1344,14 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     position: relative;
                     overflow: hidden;
                     box-sizing: border-box;
-                    height: 96px;
-                    min-height: 96px;
+                    height: auto;
+                    min-height: 74px;
                     display: flex;
                     align-items: center;
                     justify-content: space-between;
                     gap: 18px;
                     margin-bottom: 26px;
-                    padding: 0 17px;
+                    padding: 14px 17px;
                     border: 1px solid rgba(83, 94, 111, 0.48);
                     border-radius: 8px;
                     background:
@@ -1379,10 +1383,16 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     display: flex;
                     align-items: center;
                     gap: 15px;
+                    flex: 1 1 auto;
                     min-width: 0;
                 }
 
-                .rtx-route-row > div:not(.rtx-route-logo) {
+                .rtx-route-copy {
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    gap: 6px;
+                    flex: 1 1 auto;
                     min-width: 0;
                 }
 
@@ -1413,12 +1423,13 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                 .rtx-summary-label {
                     display: block;
-                    margin-bottom: 9px;
+                    margin-bottom: 0;
                     color: #aab1bd;
                     font-size: 11.5px;
                     font-weight: 780;
                     text-transform: none;
                     letter-spacing: 0;
+                    line-height: 1.15;
                 }
 
                 .rtx-route-row strong {
@@ -1426,6 +1437,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     color: #f7f8fa;
                     font-size: 17px;
                     font-weight: 840;
+                    line-height: 1.16;
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
@@ -1446,7 +1458,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     align-items: center;
                     gap: 9px;
                     flex: 0 0 auto;
-                    min-height: 34px;
+                    align-self: center;
+                    min-height: 32px;
                     padding: 0 14px;
                     border: 1px solid color-mix(in srgb, currentColor 30%, #2c333e);
                     border-radius: 8px;

@@ -64,6 +64,7 @@ jobs:
           BROKER_IDS: "grow-trading-academy myprop-trade"
           COMPONENT: webterminal
           IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          SHARED_DISCOVERY_BASE_URL: "https://superbackend.orrnn.com"
           BROKER_SSH_PRIVATE_KEY: ${{ secrets.BROKER_SSH_PRIVATE_KEY }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ github.token }}
@@ -102,6 +103,7 @@ jobs:
               echo "Broker '$broker_id' is missing or disabled in $INFRA_REPO/brokers.json" >&2
               exit 1
             fi
+            broker="$(jq -c --arg discovery_base_url "$SHARED_DISCOVERY_BASE_URL" '.env = (.env // {}) | .env.DISCOVERY_BASE_URL = $discovery_base_url | .env.VITE_DISCOVERY_BASE_URL = $discovery_base_url | .env.VITE_BROKER_DISCOVERY_URL = $discovery_base_url' <<<"$broker")"
 
             host="$(jq -r '.ssh.host' <<<"$broker")"
             user="$(jq -r '.ssh.user // "root"' <<<"$broker")"
