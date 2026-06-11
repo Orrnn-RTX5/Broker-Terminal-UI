@@ -9,8 +9,10 @@ type MotionVars = {
 interface SplitTextProps {
     tag?: React.ElementType;
     text: string;
+    children?: React.ReactNode;
     className?: string;
     delay?: number;
+    initialDelay?: number;
     duration?: number;
     ease?: string;
     splitType?: string;
@@ -62,8 +64,10 @@ const getMotionStyle = (
 
 export default function SplitText({
     text,
+    children,
     className = '',
     delay = 50,
+    initialDelay = 0,
     duration = 1.25,
     ease = 'power3.out',
     splitType = 'chars',
@@ -84,6 +88,7 @@ export default function SplitText({
     const cssEase = cssEaseMap[ease] || ease;
     const shouldSplitChars = splitType.includes('chars');
     const shouldSplitWords = splitType.includes('words');
+    const hasCustomContent = children !== undefined;
 
     const words = useMemo(() => text.split(/\s+/).filter(Boolean), [text]);
 
@@ -127,21 +132,23 @@ export default function SplitText({
     useEffect(() => {
         if ((!isVisible && !prefersReducedMotion) || hasCompletedRef.current) return;
 
-        const animatedCount = shouldSplitChars
+        const animatedCount = hasCustomContent
+            ? 1
+            : shouldSplitChars
             ? text.replace(/\s/g, '').length
             : shouldSplitWords
                 ? words.length
                 : 1;
         const totalMs = prefersReducedMotion
             ? 0
-            : Math.max(0, (animatedCount - 1) * delay) + duration * 1000;
+            : initialDelay + Math.max(0, (animatedCount - 1) * delay) + duration * 1000;
         const timeoutId = window.setTimeout(() => {
             hasCompletedRef.current = true;
             callbackRef.current?.();
         }, totalMs);
 
         return () => window.clearTimeout(timeoutId);
-    }, [delay, duration, isVisible, prefersReducedMotion, shouldSplitChars, shouldSplitWords, text, words.length]);
+    }, [delay, duration, hasCustomContent, initialDelay, isVisible, prefersReducedMotion, shouldSplitChars, shouldSplitWords, text, words.length]);
 
     let targetIndex = 0;
     const nextStyle = () => getMotionStyle(
@@ -149,12 +156,18 @@ export default function SplitText({
         from,
         to,
         duration,
-        targetIndex++ * delay,
+        initialDelay + targetIndex++ * delay,
         cssEase,
         prefersReducedMotion
     );
 
-    const content = shouldSplitWords
+    const content = hasCustomContent
+        ? (
+            <span className="split-char" aria-hidden="true" style={nextStyle()}>
+                {children}
+            </span>
+        )
+        : shouldSplitWords
         ? words.map((word, wordIndex) => (
             <React.Fragment key={`${word}-${wordIndex}`}>
                 {wordIndex > 0 && ' '}

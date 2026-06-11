@@ -44,6 +44,9 @@ const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers
 const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
 const RTX5_GREEN = '#80c33f';
 const RTX5_GREEN_DARK = '#6fb334';
+const LOGIN_TITLE_TEXT = 'Sign in to';
+const LOGIN_TITLE_REVEAL_DELAY_MS = 90;
+const LOGIN_TITLE_LOGO_INITIAL_DELAY_MS = LOGIN_TITLE_TEXT.replace(/\s/g, '').length * LOGIN_TITLE_REVEAL_DELAY_MS;
 
 const isAbortError = (err: unknown): boolean =>
     err instanceof DOMException
@@ -342,9 +345,9 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                 <h1 className="rtx-login-title">
                                     <SplitText
                                         tag="span"
-                                        text="Sign in to"
+                                        text={LOGIN_TITLE_TEXT}
                                         className="rtx-login-title-text"
-                                        delay={90}
+                                        delay={LOGIN_TITLE_REVEAL_DELAY_MS}
                                         duration={1.05}
                                         ease="power3.out"
                                         splitType="words, chars"
@@ -354,16 +357,33 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                         rootMargin="0px"
                                         textAlign="left"
                                     />
-                                    <img
-                                        src="/brand/rtx5-logo.png"
-                                        alt="RTX 5"
-                                        className="rtx-login-title-logo"
-                                        width={720}
-                                        height={197}
-                                        loading="eager"
-                                        decoding="async"
-                                        fetchPriority="high"
-                                    />
+                                    <SplitText
+                                        tag="span"
+                                        text="RTX 5"
+                                        className="rtx-login-title-logo-reveal"
+                                        delay={LOGIN_TITLE_REVEAL_DELAY_MS}
+                                        initialDelay={LOGIN_TITLE_LOGO_INITIAL_DELAY_MS}
+                                        duration={1.05}
+                                        ease="power3.out"
+                                        splitType="chars"
+                                        from={{ opacity: 0, y: 18, filter: 'blur(5px)' }}
+                                        to={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                                        threshold={0.05}
+                                        rootMargin="0px"
+                                        textAlign="left"
+                                    >
+                                        <img
+                                            src="/brand/rtx5-logo.png"
+                                            alt=""
+                                            aria-hidden="true"
+                                            className="rtx-login-title-logo"
+                                            width={720}
+                                            height={197}
+                                            loading="eager"
+                                            decoding="async"
+                                            fetchPriority="high"
+                                        />
+                                    </SplitText>
                                 </h1>
                             </header>
 
@@ -1338,6 +1358,12 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     display: inline-block;
                     object-fit: contain;
                     filter: drop-shadow(0 10px 18px rgba(128, 195, 63, 0.12));
+                }
+
+                .rtx-login-title-logo-reveal .split-char {
+                    display: inline-block;
+                    line-height: 0;
+                    vertical-align: middle;
                 }
 
                 .rtx-broker-strip {
