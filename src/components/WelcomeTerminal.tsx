@@ -5,12 +5,13 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowRight, ChevronDown, Eye, EyeOff, Lock, User } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Lock, User } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
 import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL } from '../config/api';
 import SplitText from './SplitText';
 import {
+    getBackendTarget,
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
     resolveBrokerExtApiUrl,
@@ -31,6 +32,16 @@ interface BrokerServerItem {
     feed_url?: string;
     feed_ws_url?: string;
     feed_status_url?: string;
+    API_HOST?: string;
+    API_HOST_EXT?: string;
+    api_host?: string;
+    api_host_ext?: string;
+    public_backend_url?: string;
+    public_ext_api_url?: string;
+    web_backend_url?: string;
+    web_ext_api_url?: string;
+    services_url?: string;
+    servicesUrl?: string;
     logo_url: string;
     region?: string;
 }
@@ -43,10 +54,51 @@ const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerSer
 const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
 const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
 const RTX5_GREEN = '#80c33f';
-const RTX5_GREEN_DARK = '#6fb334';
 const LOGIN_TITLE_TEXT = 'Sign in to';
 const LOGIN_TITLE_REVEAL_DELAY_MS = 90;
 const LOGIN_TITLE_LOGO_INITIAL_DELAY_MS = LOGIN_TITLE_TEXT.replace(/\s/g, '').length * LOGIN_TITLE_REVEAL_DELAY_MS;
+const RUNTIME_BROKER_URL_FIELDS = [
+    'API_HOST',
+    'API_HOST_EXT',
+    'api_host',
+    'api_host_ext',
+    'public_backend_url',
+    'public_ext_api_url',
+    'web_backend_url',
+    'web_ext_api_url',
+    'services_url',
+    'servicesUrl',
+    'backend_url',
+    'market_api_url',
+    'server_url',
+] as const satisfies readonly (keyof BrokerServerItem)[];
+
+const normalizeComparableRuntimeUrl = (value: string | number | undefined): string => {
+    const normalized = normalizeBrokerServerUrl(String(value || '').trim()).replace(/\/+$/, '');
+    if (!normalized) return '';
+
+    try {
+        const parsed = new URL(normalized);
+        parsed.pathname = '';
+        parsed.search = '';
+        parsed.hash = '';
+        return parsed.toString().replace(/\/+$/, '').toLowerCase();
+    } catch {
+        return normalized.toLowerCase();
+    }
+};
+
+const getBrokerRuntimeUrls = (broker: BrokerServerItem): string[] =>
+    RUNTIME_BROKER_URL_FIELDS
+        .map(field => normalizeComparableRuntimeUrl(broker[field]))
+        .filter((value): value is string => Boolean(value));
+
+const findBrokerForRuntimeTarget = (brokers: BrokerServerItem[]): BrokerServerItem | undefined => {
+    const runtimeTarget = normalizeComparableRuntimeUrl(getBackendTarget());
+    if (!runtimeTarget) return undefined;
+
+    return brokers.find(broker => getBrokerRuntimeUrls(broker).includes(runtimeTarget));
+};
 
 const isAbortError = (err: unknown): boolean =>
     err instanceof DOMException
@@ -64,13 +116,10 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
 
-    const [brokerList, setBrokerList] = useState<BrokerServerItem[]>([]);
     const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [dropdownOpen, setDropdownOpen] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(null);
     const [brokerListStatus, setBrokerListStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-    const brokerInputRef = useRef<HTMLInputElement | null>(null);
     const healthAbortRef = useRef<AbortController | null>(null);
 
     const addSavedAccount = useAppStore(s => s.addSavedAccount);
@@ -113,53 +162,6 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
         }
     };
 
-    const handleSelectBroker = (item: BrokerServerItem) => {
-        const normalizedBroker = normalizeBrokerInfoForTarget(item) as BrokerServerItem;
-        const normalizedServerUrl = resolveBrokerBackendUrl(normalizedBroker);
-        setSelectedBroker({
-            ...normalizedBroker,
-            server_url: normalizedServerUrl,
-        });
-        setSearchQuery(item.broker_name);
-        setDropdownOpen(false);
-        runHealthCheck(normalizedServerUrl);
-    };
-
-    const filteredBrokers = brokerList.filter(b =>
-        String(b.broker_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        String(b.broker_id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        String(b.region || '').toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const closeBrokerDropdown = () => {
-        setDropdownOpen(false);
-        if (selectedBroker) {
-            setSearchQuery(selectedBroker.broker_name);
-        }
-    };
-
-    const handleBrokerInputMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        const input = brokerInputRef.current;
-        if (!input) return;
-
-        const isFocused = document.activeElement === input;
-        if (isFocused) {
-            e.preventDefault();
-            if (dropdownOpen) {
-                closeBrokerDropdown();
-            } else {
-                setDropdownOpen(true);
-            }
-            return;
-        }
-
-        if (e.target !== input) {
-            e.preventDefault();
-            input.focus();
-            setDropdownOpen(true);
-        }
-    };
-
     useEffect(() => {
         let isMounted = true;
         setBrokerListStatus('loading');
@@ -169,26 +171,21 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             .then((payload: unknown) => {
                 if (!isMounted) return;
                 const data = extractBrokerDiscoveryList(payload) as BrokerServerItem[];
-                setBrokerList(data);
                 setBrokerListStatus('ready');
 
-                const savedBrokerId = localStorage.getItem('broker_id') || DEFAULT_BROKER_ID;
-                const savedBroker = data.find(b => b.broker_id === savedBrokerId || b.server === savedBrokerId || b.server_url === savedBrokerId);
-                if (savedBroker) {
+                const runtimeBroker = findBrokerForRuntimeTarget(data);
+                const configuredBrokerId = DEFAULT_BROKER_ID;
+                const configuredBroker = data.find(b => b.broker_id === configuredBrokerId || b.server === configuredBrokerId || b.server_url === configuredBrokerId);
+                const selectedDiscoveryBroker = runtimeBroker || configuredBroker || data[0];
+
+                if (selectedDiscoveryBroker) {
                     setSelectedBroker({
-                        ...savedBroker,
-                        ...(normalizeBrokerInfoForTarget(savedBroker) as BrokerServerItem),
-                        server_url: resolveBrokerBackendUrl(savedBroker),
+                        ...selectedDiscoveryBroker,
+                        ...(normalizeBrokerInfoForTarget(selectedDiscoveryBroker) as BrokerServerItem),
+                        server_url: resolveBrokerBackendUrl(selectedDiscoveryBroker),
                     });
-                    setSearchQuery(savedBroker.broker_name);
-                    runHealthCheck(resolveBrokerExtApiUrl(savedBroker));
-                } else if (data.length > 0) {
-                    setSelectedBroker({
-                        ...(normalizeBrokerInfoForTarget(data[0]) as BrokerServerItem),
-                        server_url: resolveBrokerBackendUrl(data[0]),
-                    });
-                    setSearchQuery(data[0].broker_name);
-                    runHealthCheck(resolveBrokerExtApiUrl(data[0]));
+                    setSearchQuery(selectedDiscoveryBroker.broker_name);
+                    runHealthCheck(resolveBrokerExtApiUrl(selectedDiscoveryBroker));
                 }
             })
             .catch(err => {
@@ -471,78 +468,31 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                                 <div className="rtx-broker-field">
                                     <label htmlFor="rtxBrokerServer" style={labelStyle}>Broker Server</label>
-                                    <div className="rtx-broker-input-wrap" onMouseDown={handleBrokerInputMouseDown}>
+                                    <div className="rtx-broker-input-wrap is-locked">
                                         {selectedBroker?.logo_url && (
                                             <img src={selectedBroker.logo_url} alt="" className="rtx-broker-logo" decoding="async" />
                                         )}
                                         <input
                                             id="rtxBrokerServer"
                                             name="brokerServer"
-                                            ref={brokerInputRef}
                                             type="text"
-                                            placeholder={brokerListStatus === 'loading' ? 'Loading brokers...' : 'Search broker...'}
+                                            placeholder={brokerListStatus === 'loading' ? 'Resolving broker...' : 'Broker resolved from domain'}
                                             required
                                             autoComplete="organization"
                                             value={searchQuery}
-                                            onChange={e => {
-                                                const value = e.target.value;
-                                                setSearchQuery(value);
-                                                if (selectedBroker && value.trim() !== selectedBroker.broker_name) {
-                                                    setSelectedBroker(null);
-                                                    setHealthStatus(null);
-                                                }
-                                                setDropdownOpen(true);
-                                            }}
-                                            onFocus={() => setDropdownOpen(true)}
-                                            onBlur={() => {
-                                                setTimeout(() => {
-                                                    closeBrokerDropdown();
-                                                }, 200);
-                                            }}
+                                            readOnly
+                                            aria-readonly="true"
+                                            title="Broker server is resolved automatically from this domain"
                                             style={{
                                                 ...inputStyle,
                                                 paddingLeft: selectedBroker?.logo_url ? 42 : 16,
-                                                paddingRight: 44,
-                                                cursor: 'pointer',
+                                                paddingRight: 32,
                                             }}
                                         />
                                         <div className="rtx-broker-input-state" aria-hidden="true">
                                             <span style={{ background: healthTone }} />
-                                            <ChevronDown size={16} strokeWidth={1.8} style={{
-                                                transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                                                transition: 'transform 0.2s',
-                                            }} />
                                         </div>
                                     </div>
-
-                                    {dropdownOpen && (
-                                        <div className="rtx-broker-menu">
-                                            {filteredBrokers.length === 0 ? (
-                                                <div className="rtx-broker-empty">
-                                                    {brokerListStatus === 'error' ? 'Broker discovery unavailable' : 'No brokers found'}
-                                                </div>
-                                            ) : (
-                                                filteredBrokers.map(item => (
-                                                    <button
-                                                        type="button"
-                                                        key={item.broker_id}
-                                                        onMouseDown={() => handleSelectBroker(item)}
-                                                        className={selectedBroker?.broker_id === item.broker_id ? 'rtx-broker-option is-selected' : 'rtx-broker-option'}
-                                                    >
-                                                        <span>
-                                                            {item.logo_url ? (
-                                                                <img src={item.logo_url} alt="" loading="lazy" decoding="async" />
-                                                            ) : (
-                                                                <i>{String(item.broker_name || 'B').slice(0, 1).toUpperCase()}</i>
-                                                            )}
-                                                            <strong>{item.broker_name}</strong>
-                                                        </span>
-                                                        {item.region && <em>{item.region}</em>}
-                                                    </button>
-                                                ))
-                                            )}
-                                        </div>
-                                    )}
                                 </div>
 
                                 {healthStatus === 'offline' && (
@@ -924,11 +874,16 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                 .rtx-broker-input-wrap {
                     position: relative;
-                    cursor: pointer;
+                    cursor: default;
                 }
 
                 .rtx-broker-input-wrap input {
-                    cursor: pointer;
+                    cursor: default;
+                }
+
+                .rtx-broker-input-wrap.is-locked input {
+                    color: #d9e1ea;
+                    background: #101318;
                 }
 
                 .rtx-broker-logo {
@@ -949,7 +904,6 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     top: 50%;
                     display: flex;
                     align-items: center;
-                    gap: 8px;
                     transform: translateY(-50%);
                     pointer-events: none;
                 }
@@ -1600,11 +1554,16 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                 .rtx-broker-input-wrap {
                     position: relative;
-                    cursor: pointer;
+                    cursor: default;
                 }
 
                 .rtx-broker-input-wrap input {
-                    cursor: pointer;
+                    cursor: default;
+                }
+
+                .rtx-broker-input-wrap.is-locked input {
+                    color: #d9e1ea;
+                    background: #101318;
                 }
 
                 .rtx-broker-logo {
@@ -1625,7 +1584,6 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     top: 50%;
                     display: flex;
                     align-items: center;
-                    gap: 11px;
                     color: #8d94a0;
                     transform: translateY(-50%);
                     pointer-events: none;
