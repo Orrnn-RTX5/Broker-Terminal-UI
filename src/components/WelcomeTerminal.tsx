@@ -55,6 +55,8 @@ const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerSer
 const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
 const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
 const RTX5_GREEN = '#80c33f';
+const LOGIN_FIELD_BORDER = '#24424a';
+const LOGIN_FIELD_FOCUS = '#35d8b2';
 const LOGIN_TITLE_TEXT = 'Sign in to';
 const LOGIN_TITLE_REVEAL_DELAY_MS = 90;
 const LOGIN_TITLE_LOGO_INITIAL_DELAY_MS = LOGIN_TITLE_TEXT.replace(/\s/g, '').length * LOGIN_TITLE_REVEAL_DELAY_MS;
@@ -447,8 +449,18 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                             value={username}
                                             onChange={e => setUsername(e.target.value)}
                                             style={inputStyle}
-                                            onFocus={e => (e.currentTarget.parentElement!.style.borderColor = RTX5_GREEN)}
-                                            onBlur={e => (e.currentTarget.parentElement!.style.borderColor = '#2b303a')}
+                                            onFocus={e => {
+                                                const shell = e.currentTarget.parentElement;
+                                                if (!shell) return;
+                                                shell.style.borderColor = LOGIN_FIELD_FOCUS;
+                                                shell.style.boxShadow = '0 0 0 3px rgba(53, 216, 178, 0.12)';
+                                            }}
+                                            onBlur={e => {
+                                                const shell = e.currentTarget.parentElement;
+                                                if (!shell) return;
+                                                shell.style.borderColor = LOGIN_FIELD_BORDER;
+                                                shell.style.boxShadow = 'none';
+                                            }}
                                         />
                                     </div>
                                 </div>
@@ -467,8 +479,18 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                             value={password}
                                             onChange={e => setPassword(e.target.value)}
                                             style={inputStyle}
-                                            onFocus={e => (e.currentTarget.parentElement!.style.borderColor = RTX5_GREEN)}
-                                            onBlur={e => (e.currentTarget.parentElement!.style.borderColor = '#2b303a')}
+                                            onFocus={e => {
+                                                const shell = e.currentTarget.parentElement;
+                                                if (!shell) return;
+                                                shell.style.borderColor = LOGIN_FIELD_FOCUS;
+                                                shell.style.boxShadow = '0 0 0 3px rgba(53, 216, 178, 0.12)';
+                                            }}
+                                            onBlur={e => {
+                                                const shell = e.currentTarget.parentElement;
+                                                if (!shell) return;
+                                                shell.style.borderColor = LOGIN_FIELD_BORDER;
+                                                shell.style.boxShadow = 'none';
+                                            }}
                                         />
                                         <button
                                             type="button"
@@ -508,6 +530,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                                 ...inputStyle,
                                                 paddingLeft: selectedBroker?.logo_url ? 42 : 16,
                                                 paddingRight: 32,
+                                                color: '#ffffff',
                                             }}
                                         />
                                         <div className="rtx-broker-input-state" aria-hidden="true">
@@ -903,8 +926,12 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 }
 
                 .rtx-broker-input-wrap.is-locked input {
-                    color: #d9e1ea;
+                    color: #ffffff !important;
                     background: #101318;
+                }
+
+                .rtx-broker-input-wrap input::placeholder {
+                    color: rgba(255, 255, 255, 0.65) !important;
                 }
 
                 .rtx-broker-logo {
@@ -1245,15 +1272,25 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     overflow-y: auto;
                     padding: clamp(42px, 7.5vh, 86px) clamp(54px, 5.25vw, 88px);
                     background:
-                        radial-gradient(circle at 86% 18%, rgba(255, 255, 255, 0.035), transparent 34%),
-                        linear-gradient(180deg, #12161d 0%, #11151b 47%, #0d1117 100%);
-                    box-shadow: inset 1px 0 0 rgba(128, 195, 63, 0.14);
+                        linear-gradient(180deg, #10181c 0%, #0d1418 46%, #090f13 100%);
+                    box-shadow:
+                        inset 1px 0 0 rgba(53, 216, 178, 0.18),
+                        inset 10px 0 24px rgba(0, 0, 0, 0.12);
                 }
 
                 .rtx-login-panel {
                     width: min(clamp(442px, 26.45vw, 508px), 100%);
                     min-width: 0;
                     margin-top: clamp(42px, 5vh, 48px);
+                    padding: clamp(24px, 2.6vw, 32px);
+                    border: 1px solid rgba(48, 106, 97, 0.36);
+                    border-radius: 8px;
+                    background:
+                        linear-gradient(180deg, rgba(12, 24, 28, 0.86) 0%, rgba(8, 14, 19, 0.78) 100%);
+                    box-shadow:
+                        0 16px 34px rgba(0, 0, 0, 0.24),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.055),
+                        inset 0 0 0 1px rgba(53, 216, 178, 0.035);
                     color: #f4f6f8;
                     contain: layout paint;
                     animation: none;
@@ -1297,7 +1334,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     right: 0;
                     bottom: 0;
                     height: 1px;
-                    background: linear-gradient(90deg, rgba(128, 195, 63, 0.46), rgba(148, 163, 184, 0.18) 42%, transparent 100%);
+                    background: linear-gradient(90deg, rgba(53, 216, 178, 0.58), rgba(128, 195, 63, 0.28) 44%, transparent 100%);
                 }
 
                 .rtx-form-header h1 {
@@ -1360,12 +1397,12 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     gap: 18px;
                     margin-bottom: 26px;
                     padding: 14px 17px;
-                    border: 1px solid rgba(83, 94, 111, 0.48);
+                    border: 1px solid rgba(61, 119, 107, 0.48);
                     border-radius: 8px;
                     background:
-                        linear-gradient(135deg, rgba(25, 31, 42, 0.94) 0%, rgba(13, 18, 27, 0.84) 54%, rgba(9, 13, 20, 0.96) 100%);
+                        linear-gradient(135deg, rgba(19, 35, 38, 0.94) 0%, rgba(10, 20, 24, 0.88) 54%, rgba(7, 12, 17, 0.97) 100%);
                     box-shadow:
-                        0 20px 44px rgba(0, 0, 0, 0.28),
+                        0 12px 26px rgba(0, 0, 0, 0.22),
                         inset 0 1px 0 rgba(255, 255, 255, 0.06),
                         inset 0 -1px 0 rgba(0, 0, 0, 0.28);
                     transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
@@ -1377,7 +1414,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     inset: 0;
                     border-radius: inherit;
                     background:
-                        linear-gradient(90deg, rgba(128, 195, 63, 0.13), transparent 42%),
+                        linear-gradient(90deg, rgba(53, 216, 178, 0.16), transparent 46%),
                         linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 48%);
                     pointer-events: none;
                 }
@@ -1412,8 +1449,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     justify-content: center;
                     border-radius: 8px;
                     background:
-                        linear-gradient(145deg, rgba(35, 43, 58, 0.98), rgba(16, 22, 33, 0.98));
-                    border: 1px solid rgba(92, 105, 124, 0.58);
+                        linear-gradient(145deg, rgba(30, 58, 58, 0.98), rgba(11, 22, 27, 0.98));
+                    border: 1px solid rgba(69, 135, 121, 0.58);
                     flex: 0 0 auto;
                     color: #a7abb5;
                     font-size: 13px;
@@ -1471,7 +1508,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     padding: 0 14px;
                     border: 1px solid color-mix(in srgb, currentColor 30%, #2c333e);
                     border-radius: 8px;
-                    background: color-mix(in srgb, currentColor 10%, rgba(16, 21, 29, 0.82));
+                    background: color-mix(in srgb, currentColor 11%, rgba(8, 18, 21, 0.86));
                     box-shadow:
                         inset 0 1px 0 rgba(255, 255, 255, 0.05),
                         0 10px 24px rgba(0, 0, 0, 0.22);
@@ -1511,28 +1548,50 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     align-items: center;
                     gap: 12px;
                     padding: 0 14px;
-                    border: 1px solid #2b303a;
-                    border-radius: 4px;
-                    background: rgba(12, 16, 22, 0.62);
-                    color: #858c98;
-                    transition: border-color 0.16s ease, background 0.16s ease;
+                    border: 1px solid #24424a;
+                    border-radius: 6px;
+                    background:
+                        linear-gradient(180deg, rgba(8, 20, 23, 0.78), rgba(7, 13, 18, 0.78));
+                    color: #86a7a4;
+                    box-shadow: none;
+                    transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
                 }
 
                 .rtx-input-shell:focus-within {
-                    background: rgba(14, 19, 26, 0.84);
+                    border-color: #35d8b2;
+                    background:
+                        linear-gradient(180deg, rgba(10, 27, 29, 0.9), rgba(8, 17, 21, 0.9));
+                    box-shadow:
+                        0 0 0 2px rgba(53, 216, 178, 0.12);
                 }
 
                 .rtx-input-shell input {
                     min-width: 0;
                     flex: 1;
                     height: 48px;
+                    min-height: 0 !important;
                     padding: 0 !important;
+                    border-radius: 0 !important;
                     border: 0 !important;
                     background: transparent !important;
+                    box-shadow: none !important;
+                    outline: none !important;
                     color: #f4f5f7 !important;
-                    caret-color: #80c33f;
+                    caret-color: #35d8b2;
                     appearance: none;
+                    -webkit-appearance: none;
                     color-scheme: dark;
+                }
+
+                .rtx-input-shell input::placeholder,
+                .rtx-input-shell input::-webkit-input-placeholder,
+                .rtx-input-shell input::-moz-placeholder,
+                .rtx-input-shell input:-ms-input-placeholder,
+                .rtx-broker-input-wrap input::placeholder,
+                .rtx-broker-input-wrap input::-webkit-input-placeholder,
+                .rtx-broker-input-wrap input::-moz-placeholder,
+                .rtx-broker-input-wrap input:-ms-input-placeholder {
+                    color: rgba(255, 255, 255, 0.48) !important;
                 }
 
                 .rtx-input-shell input:-webkit-autofill,
@@ -1542,7 +1601,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 .rtx-broker-input-wrap input:-webkit-autofill:hover,
                 .rtx-broker-input-wrap input:-webkit-autofill:focus {
                     -webkit-text-fill-color: #f4f5f7 !important;
-                    box-shadow: 0 0 0 1000px #0d1117 inset !important;
+                    box-shadow: 0 0 0 1000px #0b1518 inset !important;
                     border-color: transparent !important;
                     transition: background-color 99999s ease-out 0s !important;
                 }
@@ -1558,7 +1617,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     border: 0;
                     border-radius: 6px;
                     background: transparent;
-                    color: #7d8490;
+                    color: #86a7a4;
                     cursor: pointer;
                     flex: 0 0 auto;
                     transition: color 0.16s ease, background 0.16s ease;
@@ -1566,8 +1625,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                 .rtx-password-toggle:hover,
                 .rtx-password-toggle:focus-visible {
-                    color: #c8d1df;
-                    background: rgba(255, 255, 255, 0.055);
+                    color: #c8fff1;
+                    background: rgba(53, 216, 178, 0.08);
                     outline: none;
                 }
 
@@ -1590,8 +1649,16 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 }
 
                 .rtx-broker-input-wrap.is-locked input {
-                    color: #d9e1ea;
-                    background: #101318;
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                    border-color: #24424a !important;
+                    background: rgba(8, 18, 20, 0.76) !important;
+                    box-shadow: none !important;
+                    outline: none !important;
+                }
+
+                .rtx-broker-input-wrap.is-locked input::placeholder {
+                    color: rgba(255, 255, 255, 0.75) !important;
                 }
 
                 .rtx-broker-logo {
@@ -1714,9 +1781,10 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 }
 
                 .rtx-inline-status.is-offline {
-                    background: rgba(239, 68, 68, 0.09);
-                    border: 1px solid rgba(239, 68, 68, 0.24);
-                    color: #f87171;
+                    background:
+                        linear-gradient(180deg, rgba(95, 23, 33, 0.36), rgba(61, 18, 26, 0.28));
+                    border: 1px solid rgba(248, 113, 113, 0.34);
+                    color: #ff8585;
                 }
 
                 .rtx-remember-row {
@@ -1731,7 +1799,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     height: 20px;
                     margin: 0;
                     cursor: pointer;
-                    accent-color: #80c33f;
+                    accent-color: #35d8b2;
                 }
 
                 .rtx-remember-row label {
@@ -1748,17 +1816,21 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     gap: 28px;
                     margin-top: 2px;
                     border: 0;
-                    border-radius: 4px;
-                    background: linear-gradient(180deg, #8bd24a 0%, #80c33f 100%);
-                    color: #03120f;
+                    border-radius: 6px;
+                    background: linear-gradient(180deg, #54e39d 0%, #2fc58c 100%);
+                    color: #02130e;
                     font-size: 16px;
                     font-weight: 850;
                     cursor: pointer;
+                    box-shadow:
+                        inset 0 1px 0 rgba(255, 255, 255, 0.26);
                     transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
                 }
 
                 .rtx-login-button:hover:not(:disabled) {
-                    background: linear-gradient(180deg, #94db55 0%, #72b936 100%);
+                    background: linear-gradient(180deg, #64efaa 0%, #25b97f 100%);
+                    box-shadow:
+                        inset 0 1px 0 rgba(255, 255, 255, 0.30);
                     transform: translateY(-1px);
                 }
 
@@ -1852,9 +1924,13 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                         width: min(442px, 100%);
                         margin-top: 0;
                         padding: 24px 18px;
-                        border: 1px solid rgba(61, 70, 84, 0.72);
+                        border: 1px solid rgba(48, 106, 97, 0.44);
                         border-radius: 8px;
-                        background: rgba(13, 17, 23, 0.88);
+                        background:
+                            linear-gradient(180deg, rgba(12, 24, 28, 0.9) 0%, rgba(8, 14, 19, 0.84) 100%);
+                        box-shadow:
+                            0 16px 34px rgba(0, 0, 0, 0.34),
+                            inset 0 1px 0 rgba(255, 255, 255, 0.055);
                     }
 
                 }
@@ -1991,7 +2067,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
 const labelStyle: React.CSSProperties = {
     display: 'block',
-    color: '#a0a6b0',
+    color: '#a9c8c2',
     fontSize: 12,
     fontWeight: 720,
     letterSpacing: 0,
@@ -2004,9 +2080,9 @@ const inputStyle: React.CSSProperties = {
     boxSizing: 'border-box',
     minHeight: 50,
     padding: '0 16px',
-    borderRadius: 4,
-    border: '1px solid #2b303a',
-    background: 'rgba(12, 16, 22, 0.62)',
+    borderRadius: 6,
+    border: '0',
+    background: 'transparent',
     color: '#f4f4f5',
     fontSize: 15,
     outline: 'none',
