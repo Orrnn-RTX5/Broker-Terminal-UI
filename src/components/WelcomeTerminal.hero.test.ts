@@ -29,7 +29,7 @@ describe('resolveLoginHeroAsset', () => {
       logo_url: '',
     });
 
-    expect(growTradingAcademyAsset.src).toBe('/login/gta-hero-desktop-fit.png');
+    expect(growTradingAcademyAsset.src).toBe('/login/gta-hero-desktop-fit.webp');
     expect(growTradingAcademyAsset.fit).toBe('cover');
     expect(growTradingAcademyAsset.position).toBe('center center');
     expect(growTradingAcademyAsset.mobileFit).toBe('contain');
@@ -38,7 +38,7 @@ describe('resolveLoginHeroAsset', () => {
       broker_id: 'gta_broker',
       broker_name: 'GTA',
       logo_url: '',
-    }).src).toBe('/login/gta-hero-desktop-fit.png');
+    }).src).toBe('/login/gta-hero-desktop-fit.webp');
   });
 
   it('uses the MyProp image for MyProp broker identities', () => {
@@ -66,7 +66,7 @@ describe('resolveLoginHeroAsset', () => {
       API_HOST: 'https://services.growtradingacademy.com',
     };
 
-    expect(resolveLoginHeroAsset(null).src).toBe('/login/gta-hero-desktop-fit.png');
+    expect(resolveLoginHeroAsset(null).src).toBe('/login/gta-hero-desktop-fit.webp');
   });
 
   it('does not let runtime identity override an already selected unbranded broker', () => {
