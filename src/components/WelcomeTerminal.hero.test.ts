@@ -29,15 +29,15 @@ describe('resolveLoginHeroAsset', () => {
       logo_url: '',
     });
 
-    expect(growTradingAcademyAsset.src).toBe('/login/gta-hero.jpg');
-    expect(growTradingAcademyAsset.fit).toBe('contain');
+    expect(growTradingAcademyAsset.src).toBe('/login/gta-hero-wide.png');
+    expect(growTradingAcademyAsset.fit).toBe('cover');
     expect(growTradingAcademyAsset.mobileFit).toBe('contain');
 
     expect(resolveLoginHeroAsset({
       broker_id: 'gta_broker',
       broker_name: 'GTA',
       logo_url: '',
-    }).src).toBe('/login/gta-hero.jpg');
+    }).src).toBe('/login/gta-hero-wide.png');
   });
 
   it('uses the MyProp image for MyProp broker identities', () => {
@@ -47,8 +47,8 @@ describe('resolveLoginHeroAsset', () => {
       logo_url: '',
     });
 
-    expect(myPropAsset.src).toBe('/login/myprop-hero.jpg');
-    expect(myPropAsset.fit).toBe('contain');
+    expect(myPropAsset.src).toBe('/login/myprop-hero-wide.png');
+    expect(myPropAsset.fit).toBe('cover');
     expect(myPropAsset.mobileFit).toBe('contain');
   });
 
@@ -58,14 +58,14 @@ describe('resolveLoginHeroAsset', () => {
       API_HOST: 'https://services.myprop.trade',
     };
 
-    expect(resolveLoginHeroAsset(null).src).toBe('/login/myprop-hero.jpg');
+    expect(resolveLoginHeroAsset(null).src).toBe('/login/myprop-hero-wide.png');
 
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
       API_HOST: 'https://services.growtradingacademy.com',
     };
 
-    expect(resolveLoginHeroAsset(null).src).toBe('/login/gta-hero.jpg');
+    expect(resolveLoginHeroAsset(null).src).toBe('/login/gta-hero-wide.png');
   });
 
   it('does not let runtime identity override an already selected unbranded broker', () => {

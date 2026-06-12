@@ -42,22 +42,22 @@ const DEFAULT_LOGIN_HERO_ASSET: LoginHeroAsset = {
 };
 
 const GTA_LOGIN_HERO_ASSET: LoginHeroAsset = {
-  src: '/login/gta-hero.jpg',
+  src: '/login/gta-hero-wide.png',
   mobileSrc: '/login/gta-hero-mobile.jpg',
-  width: 1254,
-  height: 1254,
-  fit: 'contain',
+  width: 1586,
+  height: 992,
+  fit: 'cover',
   position: 'left center',
   mobileFit: 'contain',
   mobilePosition: 'center center',
 };
 
 const MYPROP_LOGIN_HERO_ASSET: LoginHeroAsset = {
-  src: '/login/myprop-hero.jpg',
+  src: '/login/myprop-hero-wide.png',
   mobileSrc: '/login/myprop-hero-mobile.jpg',
-  width: 1254,
-  height: 1254,
-  fit: 'contain',
+  width: 1672,
+  height: 941,
+  fit: 'cover',
   position: 'left center',
   mobileFit: 'contain',
   mobilePosition: 'center center',
