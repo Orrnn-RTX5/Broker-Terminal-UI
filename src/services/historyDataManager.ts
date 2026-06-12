@@ -195,14 +195,14 @@ export class HistoryDataManager {
       this.notifyProgress(task);
 
     } catch (error) {
-      const taskStillTracked = this.downloadTasks.has(taskId);
-      if (task.status === 'paused' || !taskStillTracked) {
+      const currentTask = this.downloadTasks.get(taskId);
+      if (!currentTask || currentTask.status === 'paused') {
         return;
       }
 
-      task.status = 'failed';
-      task.error = error instanceof Error ? error.message : 'Unknown error';
-      this.notifyProgress(task);
+      currentTask.status = 'failed';
+      currentTask.error = error instanceof Error ? error.message : 'Unknown error';
+      this.notifyProgress(currentTask);
       console.error('Download failed:', error);
     } finally {
       this.activeDownloads--;
