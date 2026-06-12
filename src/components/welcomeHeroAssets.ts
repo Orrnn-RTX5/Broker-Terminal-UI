@@ -46,7 +46,7 @@ const GTA_LOGIN_HERO_ASSET: LoginHeroAsset = {
   mobileSrc: '/login/gta-hero-mobile.jpg',
   width: 1586,
   height: 992,
-  fit: 'cover',
+  fit: 'contain',
   position: 'left center',
   mobileFit: 'contain',
   mobilePosition: 'center center',

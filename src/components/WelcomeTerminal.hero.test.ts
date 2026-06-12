@@ -30,7 +30,8 @@ describe('resolveLoginHeroAsset', () => {
     });
 
     expect(growTradingAcademyAsset.src).toBe('/login/gta-hero-wide.png');
-    expect(growTradingAcademyAsset.fit).toBe('cover');
+    expect(growTradingAcademyAsset.fit).toBe('contain');
+    expect(growTradingAcademyAsset.position).toBe('left center');
     expect(growTradingAcademyAsset.mobileFit).toBe('contain');
 
     expect(resolveLoginHeroAsset({
