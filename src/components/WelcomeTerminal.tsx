@@ -1269,7 +1269,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     display: flex;
                     align-items: flex-start;
                     justify-content: center;
-                    overflow-y: auto;
+                    overflow: hidden;
                     padding: clamp(42px, 7.5vh, 86px) clamp(54px, 5.25vw, 88px);
                     background:
                         linear-gradient(180deg, #10181c 0%, #0d1418 46%, #090f13 100%);
@@ -1870,7 +1870,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     }
                 }
 
-                @media (max-width: 900px) {
+                @media (max-width: 1040px) {
                     .rtx-login-overlay {
                         overflow-y: auto;
                     }
@@ -1897,8 +1897,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                     .rtx-login-visual-shade {
                         background:
-                            linear-gradient(180deg, rgba(5, 8, 12, 0.5) 0%, rgba(5, 8, 12, 0.74) 44%, rgba(5, 8, 12, 0.9) 100%),
-                            linear-gradient(90deg, rgba(0, 0, 0, 0.18) 0%, rgba(0, 0, 0, 0.54) 100%);
+                            linear-gradient(180deg, rgba(5, 8, 12, 0.44) 0%, rgba(5, 8, 12, 0.7) 42%, rgba(5, 8, 12, 0.88) 100%),
+                            linear-gradient(90deg, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.5) 100%);
                     }
 
                     .rtx-login-panel-wrap {
@@ -1909,7 +1909,220 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                         height: auto;
                         align-items: center;
                         align-items: safe center;
-                        overflow-y: visible;
+                        overflow-y: auto;
+                        overflow-x: hidden;
+                        padding:
+                            max(24px, env(safe-area-inset-top))
+                            max(16px, env(safe-area-inset-right))
+                            max(24px, env(safe-area-inset-bottom))
+                            max(16px, env(safe-area-inset-left));
+                        border-left: 0;
+                        background: transparent;
+                        box-shadow: none;
+                    }
+
+                    .rtx-login-panel {
+                        width: min(468px, 100%);
+                        margin-top: 0;
+                    }
+                }
+
+                @media (min-width: 901px) and (max-height: 820px) {
+                    .rtx-login-panel-wrap {
+                        align-items: center;
+                        padding-top: clamp(20px, 3.25vh, 30px);
+                        padding-bottom: clamp(20px, 3.25vh, 30px);
+                    }
+
+                    .rtx-login-panel {
+                        margin-top: 0;
+                        padding: 22px 24px;
+                    }
+
+                    .rtx-form-header {
+                        margin-bottom: 13px;
+                        padding-bottom: 14px;
+                    }
+
+                    .rtx-form-header h1 {
+                        font-size: 27px;
+                    }
+
+                    .rtx-login-title-logo {
+                        width: 124px;
+                    }
+
+                    .rtx-broker-strip {
+                        min-height: 64px;
+                        gap: 14px;
+                        margin-bottom: 16px;
+                        padding: 11px 14px;
+                    }
+
+                    .rtx-route-logo {
+                        width: 38px;
+                        height: 38px;
+                    }
+
+                    .rtx-route-logo img {
+                        width: 24px;
+                        height: 24px;
+                    }
+
+                    .rtx-route-copy {
+                        gap: 4px;
+                    }
+
+                    .rtx-route-row strong {
+                        font-size: 16px;
+                    }
+
+                    .rtx-broker-state {
+                        min-height: 29px;
+                        padding: 0 12px;
+                        font-size: 12.5px;
+                    }
+
+                    .rtx-login-form {
+                        gap: 12px;
+                    }
+
+                    .rtx-input-shell {
+                        min-height: 44px;
+                        padding: 0 13px;
+                    }
+
+                    .rtx-input-shell input {
+                        height: 42px;
+                    }
+
+                    .rtx-login-button {
+                        min-height: 45px;
+                    }
+
+                    .rtx-login-footer {
+                        margin-top: 12px;
+                        padding-top: 14px;
+                    }
+                }
+
+                @media (min-width: 901px) and (max-height: 700px) {
+                    .rtx-login-overlay {
+                        overflow-y: auto;
+                    }
+
+                    .rtx-login-stage {
+                        min-height: 100dvh;
+                        height: auto;
+                    }
+
+                    .rtx-login-panel-wrap {
+                        min-height: 100dvh;
+                        height: auto;
+                        overflow-y: auto;
+                        padding-top: 16px;
+                        padding-bottom: 16px;
+                    }
+
+                    .rtx-login-panel {
+                        padding: 18px 22px;
+                    }
+
+                    .rtx-form-header {
+                        margin-bottom: 11px;
+                        padding-bottom: 12px;
+                    }
+
+                    .rtx-form-header h1 {
+                        font-size: 25px;
+                        gap: 10px;
+                    }
+
+                    .rtx-login-title-logo {
+                        width: 112px;
+                    }
+
+                    .rtx-broker-strip {
+                        min-height: 58px;
+                        margin-bottom: 13px;
+                        padding: 9px 12px;
+                    }
+
+                    .rtx-route-logo {
+                        width: 34px;
+                        height: 34px;
+                    }
+
+                    .rtx-route-logo img {
+                        width: 22px;
+                        height: 22px;
+                    }
+
+                    .rtx-summary-label {
+                        font-size: 11px;
+                    }
+
+                    .rtx-route-row strong {
+                        font-size: 15px;
+                    }
+
+                    .rtx-login-form {
+                        gap: 10px;
+                    }
+
+                    .rtx-input-shell {
+                        min-height: 41px;
+                    }
+
+                    .rtx-input-shell input {
+                        height: 39px;
+                    }
+
+                    .rtx-login-button {
+                        min-height: 42px;
+                    }
+                }
+
+                @media (max-width: 900px) {
+                    .rtx-login-overlay {
+                        overflow: hidden;
+                    }
+
+                    .rtx-login-stage {
+                        min-height: 100dvh;
+                        height: 100dvh;
+                        display: block;
+                        overflow: hidden;
+                        background: #06080c;
+                    }
+
+                    .rtx-login-visual {
+                        position: fixed;
+                        inset: 0;
+                        min-height: 100dvh;
+                        height: 100dvh;
+                    }
+
+                    .rtx-login-visual img {
+                        object-fit: var(--rtx-login-hero-mobile-fit, var(--rtx-login-hero-fit, cover));
+                        object-position: var(--rtx-login-hero-mobile-position, var(--rtx-login-hero-position, left center));
+                    }
+
+                    .rtx-login-visual-shade {
+                        background:
+                            linear-gradient(180deg, rgba(5, 8, 12, 0.5) 0%, rgba(5, 8, 12, 0.74) 44%, rgba(5, 8, 12, 0.9) 100%),
+                            linear-gradient(90deg, rgba(0, 0, 0, 0.18) 0%, rgba(0, 0, 0, 0.54) 100%);
+                    }
+
+                    .rtx-login-panel-wrap {
+                        position: relative;
+                        z-index: 1;
+                        width: 100%;
+                        min-height: 100dvh;
+                        height: 100dvh;
+                        align-items: center;
+                        align-items: safe center;
+                        overflow: hidden;
                         padding:
                             max(28px, env(safe-area-inset-top))
                             max(18px, env(safe-area-inset-right))
@@ -1997,6 +2210,71 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     .rtx-login-footer {
                         margin-top: 15px;
                         padding-top: 18px;
+                    }
+                }
+
+                @media (max-width: 900px) and (max-height: 720px) {
+                    .rtx-login-panel-wrap {
+                        padding:
+                            max(16px, env(safe-area-inset-top))
+                            max(12px, env(safe-area-inset-right))
+                            max(16px, env(safe-area-inset-bottom))
+                            max(12px, env(safe-area-inset-left));
+                    }
+
+                    .rtx-login-panel {
+                        padding: 16px;
+                    }
+
+                    .rtx-form-header {
+                        margin-bottom: 12px;
+                        padding-bottom: 12px;
+                    }
+
+                    .rtx-form-header h1 {
+                        gap: 8px;
+                        font-size: 24px;
+                    }
+
+                    .rtx-login-title-logo {
+                        width: 104px;
+                    }
+
+                    .rtx-broker-strip {
+                        gap: 10px;
+                        margin-bottom: 13px;
+                        padding: 12px;
+                    }
+
+                    .rtx-route-logo {
+                        width: 34px;
+                        height: 34px;
+                    }
+
+                    .rtx-route-logo img {
+                        width: 22px;
+                        height: 22px;
+                    }
+
+                    .rtx-login-form {
+                        gap: 10px;
+                    }
+
+                    .rtx-input-shell {
+                        min-height: 42px;
+                    }
+
+                    .rtx-input-shell input {
+                        height: 40px;
+                    }
+
+                    .rtx-login-button {
+                        min-height: 42px;
+                    }
+
+                    .rtx-login-footer {
+                        margin-top: 12px;
+                        padding-top: 12px;
                     }
                 }
 

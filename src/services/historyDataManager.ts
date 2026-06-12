@@ -76,15 +76,16 @@ export class HistoryDataManager {
     dateRange: DateRange,
     onProgress?: DownloadProgressCallback
   ): Promise<string> {
-    const taskId = this.generateTaskId(symbol, dateRange);
-
-    // Check if task already exists
-    if (this.downloadTasks.has(taskId)) {
-      const existingTask = this.downloadTasks.get(taskId)!;
-      if (existingTask.status === 'downloading' || existingTask.status === 'pending') {
-        return taskId;
+    const existingTask = this.findActiveTask(symbol, dateRange);
+    if (existingTask) {
+      if (onProgress) {
+        this.progressCallbacks.set(existingTask.id, onProgress);
       }
+
+      return existingTask.id;
     }
+
+    const taskId = this.generateTaskId(symbol, dateRange);
 
     // Create download task
     const task: DownloadTask = {
@@ -129,13 +130,13 @@ export class HistoryDataManager {
   /**
    * Process download queue
    */
-  private async processQueue() {
+  private processQueue() {
     while (
       this.downloadQueue.length > 0 &&
       this.activeDownloads < this.maxConcurrentDownloads
     ) {
       const taskId = this.downloadQueue.shift()!;
-      await this.executeDownload(taskId);
+      void this.executeDownload(taskId);
     }
   }
 
@@ -144,13 +145,14 @@ export class HistoryDataManager {
    */
   private async executeDownload(taskId: string) {
     const task = this.downloadTasks.get(taskId);
-    if (!task) return;
+    if (!task || task.status !== 'pending') return;
 
     this.activeDownloads++;
-    task.status = 'downloading';
-    this.notifyProgress(task);
 
     try {
+      task.status = 'downloading';
+      this.notifyProgress(task);
+
       const dates = this.getDatesBetween(task.dateRange.from, task.dateRange.to);
       let totalDownloaded = 0;
 
@@ -193,6 +195,11 @@ export class HistoryDataManager {
       this.notifyProgress(task);
 
     } catch (error) {
+      const taskStillTracked = this.downloadTasks.has(taskId);
+      if (task.status === 'paused' || !taskStillTracked) {
+        return;
+      }
+
       task.status = 'failed';
       task.error = error instanceof Error ? error.message : 'Unknown error';
       this.notifyProgress(task);
@@ -339,6 +346,15 @@ export class HistoryDataManager {
   /**
    * Generate unique task ID
    */
+  private findActiveTask(symbol: string, dateRange: DateRange): DownloadTask | undefined {
+    return Array.from(this.downloadTasks.values()).find(task => (
+      task.symbol === symbol &&
+      task.dateRange.from === dateRange.from &&
+      task.dateRange.to === dateRange.to &&
+      (task.status === 'pending' || task.status === 'downloading')
+    ));
+  }
+
   private generateTaskId(symbol: string, dateRange: DateRange): string {
     return `${symbol}-${dateRange.from}-${dateRange.to}-${Date.now()}`;
   }
