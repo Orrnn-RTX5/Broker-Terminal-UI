@@ -18,6 +18,7 @@ import {
 } from '../config/backendTarget.js';
 import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
+import { resolveLoginHeroAsset, type LoginHeroAsset } from './welcomeHeroAssets';
 
 interface BrokerServerItem {
     broker_id: string;
@@ -57,6 +58,13 @@ const RTX5_GREEN = '#80c33f';
 const LOGIN_TITLE_TEXT = 'Sign in to';
 const LOGIN_TITLE_REVEAL_DELAY_MS = 90;
 const LOGIN_TITLE_LOGO_INITIAL_DELAY_MS = LOGIN_TITLE_TEXT.replace(/\s/g, '').length * LOGIN_TITLE_REVEAL_DELAY_MS;
+type LoginHeroFit = NonNullable<LoginHeroAsset['fit']>;
+type LoginHeroImageStyle = React.CSSProperties & {
+    '--rtx-login-hero-fit': LoginHeroFit;
+    '--rtx-login-hero-position': string;
+    '--rtx-login-hero-mobile-fit': LoginHeroFit;
+    '--rtx-login-hero-mobile-position': string;
+};
 const RUNTIME_BROKER_URL_FIELDS = [
     'API_HOST',
     'API_HOST_EXT',
@@ -306,6 +314,18 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             : healthStatus === 'checking' ? '#f59e0b'
                 : healthStatus === 'offline' ? '#ef4444'
                     : '#71717a';
+    const loginHeroAsset = resolveLoginHeroAsset(selectedBroker);
+    const loginHeroVisualStyle: React.CSSProperties = {
+        backgroundColor: '#020507',
+    };
+    const desktopHeroFit = loginHeroAsset.fit ?? 'cover';
+    const desktopHeroPosition = loginHeroAsset.position ?? 'center center';
+    const loginHeroImageStyle: LoginHeroImageStyle = {
+        '--rtx-login-hero-fit': desktopHeroFit,
+        '--rtx-login-hero-position': desktopHeroPosition,
+        '--rtx-login-hero-mobile-fit': loginHeroAsset.mobileFit ?? desktopHeroFit,
+        '--rtx-login-hero-mobile-position': loginHeroAsset.mobilePosition ?? desktopHeroPosition,
+    };
 
     return (
         <div
@@ -319,14 +339,15 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             className="rtx-login-overlay"
         >
             <div className="rtx-login-stage">
-                <aside className="rtx-login-visual" aria-hidden="true">
+                <aside className="rtx-login-visual" aria-hidden="true" style={loginHeroVisualStyle}>
                     <picture>
-                        <source media="(max-width: 760px)" srcSet="/login/trading-desk-hero-mobile.webp" />
+                        <source media="(max-width: 760px)" srcSet={loginHeroAsset.mobileSrc ?? loginHeroAsset.src} />
                         <img
-                            src="/login/trading-desk-hero.webp"
+                            src={loginHeroAsset.src}
                             alt=""
-                            width={2048}
-                            height={1152}
+                            width={loginHeroAsset.width}
+                            height={loginHeroAsset.height}
+                            style={loginHeroImageStyle}
                             loading="eager"
                             decoding="async"
                             fetchPriority="high"
@@ -587,8 +608,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 }
 
                 .rtx-login-visual img {
-                    object-fit: cover;
-                    object-position: center center;
+                    object-fit: var(--rtx-login-hero-fit, cover);
+                    object-position: var(--rtx-login-hero-position, center center);
                     filter: saturate(0.86) contrast(1.02) brightness(0.78);
                     animation: rtx-visual-settle 900ms ease-out both;
                 }
@@ -1099,7 +1120,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     }
 
                     .rtx-login-visual img {
-                        object-position: center center;
+                        object-fit: var(--rtx-login-hero-mobile-fit, var(--rtx-login-hero-fit, cover));
+                        object-position: var(--rtx-login-hero-mobile-position, var(--rtx-login-hero-position, center center));
                     }
 
                     .rtx-login-visual-shade {
@@ -1169,8 +1191,11 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                 .rtx-login-stage {
                     min-height: 100dvh;
+                    height: 100dvh;
                     display: grid;
                     grid-template-columns: minmax(0, 63.2%) minmax(520px, 36.8%);
+                    grid-template-rows: minmax(0, 1fr);
+                    overflow: hidden;
                     background: #06080c;
                 }
 
@@ -1178,7 +1203,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     position: relative;
                     inset: auto;
                     min-width: 0;
-                    min-height: 100dvh;
+                    min-height: 0;
+                    height: 100%;
                     overflow: hidden;
                     background: #020407;
                 }
@@ -1191,8 +1217,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 }
 
                 .rtx-login-visual img {
-                    object-fit: cover;
-                    object-position: left center;
+                    object-fit: var(--rtx-login-hero-fit, cover);
+                    object-position: var(--rtx-login-hero-position, left center);
                     filter: saturate(0.94) contrast(1.05) brightness(0.82);
                     animation: none;
                 }
@@ -1211,10 +1237,12 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     z-index: 1;
                     min-width: 0;
                     width: auto;
-                    min-height: 100dvh;
+                    min-height: 0;
+                    height: 100%;
                     display: flex;
                     align-items: flex-start;
                     justify-content: center;
+                    overflow-y: auto;
                     padding: clamp(42px, 7.5vh, 86px) clamp(54px, 5.25vw, 88px);
                     background:
                         radial-gradient(circle at 86% 18%, rgba(255, 255, 255, 0.035), transparent 34%),
@@ -1777,7 +1805,9 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                     .rtx-login-stage {
                         min-height: 100dvh;
+                        height: auto;
                         display: block;
+                        overflow: visible;
                         background: #06080c;
                     }
 
@@ -1785,10 +1815,12 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                         position: fixed;
                         inset: 0;
                         min-height: 100dvh;
+                        height: 100dvh;
                     }
 
                     .rtx-login-visual img {
-                        object-position: left center;
+                        object-fit: var(--rtx-login-hero-mobile-fit, var(--rtx-login-hero-fit, cover));
+                        object-position: var(--rtx-login-hero-mobile-position, var(--rtx-login-hero-position, left center));
                     }
 
                     .rtx-login-visual-shade {
@@ -1802,8 +1834,10 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                         z-index: 1;
                         width: 100%;
                         min-height: 100dvh;
+                        height: auto;
                         align-items: center;
                         align-items: safe center;
+                        overflow-y: visible;
                         padding:
                             max(28px, env(safe-area-inset-top))
                             max(18px, env(safe-area-inset-right))
