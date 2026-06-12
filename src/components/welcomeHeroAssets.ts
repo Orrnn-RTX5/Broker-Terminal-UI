@@ -42,12 +42,12 @@ const DEFAULT_LOGIN_HERO_ASSET: LoginHeroAsset = {
 };
 
 const GTA_LOGIN_HERO_ASSET: LoginHeroAsset = {
-  src: '/login/gta-hero-wide.png',
+  src: '/login/gta-hero-desktop-fit.png',
   mobileSrc: '/login/gta-hero-mobile.jpg',
-  width: 1586,
-  height: 992,
-  fit: 'contain',
-  position: 'left center',
+  width: 1024,
+  height: 928,
+  fit: 'cover',
+  position: 'center center',
   mobileFit: 'contain',
   mobilePosition: 'center center',
 };
