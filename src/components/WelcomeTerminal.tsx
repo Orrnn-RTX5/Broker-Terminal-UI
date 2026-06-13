@@ -604,8 +604,16 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     overflow: hidden;
                     min-height: 100dvh;
                     background: #050608;
-                    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    font-family: var(--font-login-sans, var(--font-sans));
                     animation: none;
+                }
+
+                .rtx-login-overlay button,
+                .rtx-login-overlay input,
+                .rtx-login-overlay label,
+                .rtx-login-overlay select,
+                .rtx-login-overlay textarea {
+                    font-family: inherit;
                 }
 
                 .rtx-login-stage {
@@ -2350,7 +2358,7 @@ const labelStyle: React.CSSProperties = {
     fontWeight: 720,
     letterSpacing: 0,
     marginBottom: 10,
-    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontFamily: 'var(--font-login-sans, var(--font-sans))',
 };
 
 const inputStyle: React.CSSProperties = {
@@ -2365,5 +2373,5 @@ const inputStyle: React.CSSProperties = {
     fontSize: 15,
     outline: 'none',
     transition: 'border-color 0.15s, box-shadow 0.15s',
-    fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontFamily: 'var(--font-login-sans, var(--font-sans))',
 };
