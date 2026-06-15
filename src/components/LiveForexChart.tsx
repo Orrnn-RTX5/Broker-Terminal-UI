@@ -3,6 +3,7 @@ import { createChart, ColorType } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import './LiveForexChart.css';
 import { chartDataService, type CandleStreamSubscription } from '../services/chartDataService';
+import { formatSpreadDisplayWithUnit } from '../utils/spread';
 
 interface OHLCCandle {
     time: number; // UNIX timestamp
@@ -222,6 +223,13 @@ export const LiveForexChart: React.FC<LiveForexChartProps> = ({
         setSelectedTimeframe(tf);
     };
 
+    const spreadDisplay = formatSpreadDisplayWithUnit(
+        selectedSymbol,
+        currentPrice.spread,
+        currentPrice.bid,
+        currentPrice.ask
+    );
+
     return (
         <div className="live-forex-chart">
             <div className="chart-header">
@@ -245,7 +253,7 @@ export const LiveForexChart: React.FC<LiveForexChartProps> = ({
                     </div>
                     <div className="price-item">
                         <span className="label">Spread:</span>
-                        <span className="value spread">{(currentPrice.spread * 10000).toFixed(1)} pips</span>
+                        <span className="value spread">{spreadDisplay}</span>
                     </div>
                 </div>
 

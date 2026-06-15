@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { buildApiUrl } from '../config/api';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import type { SymbolSpecification } from '../types/trading';
+import { formatSpreadDisplayWithUnit } from '../utils/spread';
 
 interface SymbolInfoProps {
   symbol: string;
@@ -126,8 +127,10 @@ export const SymbolInfo = ({ symbol, isOpen, onClose }: SymbolInfoProps) => {
 
   const symbolType = getSymbolType(symbol);
   const tradingHours = getTradingHours(symbolType);
-  const currentSpread = currentTick ? (currentTick.ask - currentTick.bid) : 0;
-  const spreadPips = currentSpread * Math.pow(10, spec?.pipPosition || 5);
+  const currentSpread = currentTick ? (currentTick.spread || currentTick.ask - currentTick.bid) : 0;
+  const spreadDisplay = currentTick
+    ? formatSpreadDisplayWithUnit(symbol, currentSpread, currentTick.bid, currentTick.ask)
+    : '-';
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -200,7 +203,7 @@ export const SymbolInfo = ({ symbol, isOpen, onClose }: SymbolInfoProps) => {
                 />
                 <SpecRow
                   label="Spread (Current)"
-                  value={`${spreadPips.toFixed(1)} pips`}
+                  value={spreadDisplay}
                   valueColor={currentTick ? 'text-emerald-400' : 'text-zinc-500'}
                   hint={currentTick ? `Bid: ${currentTick.bid.toFixed(spec.pipPosition)} / Ask: ${currentTick.ask.toFixed(spec.pipPosition)}` : 'No market data'}
                 />

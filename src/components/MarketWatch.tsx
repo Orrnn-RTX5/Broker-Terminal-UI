@@ -4,7 +4,8 @@ import { useWatchlistStore } from '../store/useWatchlistStore';
 import { MarketWatchContextMenu } from './MarketWatchContextMenu';
 import { SymbolInfo } from './SymbolInfo';
 import { PriceDisplay } from './ui/PriceDisplay';
-import { getSymbolDigits, formatPrice as formatPriceUtil } from '../utils/symbolUtils';
+import { formatPrice as formatPriceUtil } from '../utils/symbolUtils';
+import { formatSpreadDisplay } from '../utils/spread';
 import { useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../hooks/useLiveMarketData';
 
 interface MarketWatchProps {
@@ -205,14 +206,8 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         return formatPriceUtil(price, symbol);
     };
 
-    // Format spread in points (pips)
-    const formatSpread = (spread: number, symbol: string) => {
-        if (!Number.isFinite(spread) || spread === 0) return '-';
-        const digits = getSymbolDigits(symbol);
-        const multiplier = Math.pow(10, digits);
-        const points = Math.round(spread * multiplier); 
-        return points.toString();
-    };
+    const formatSpread = (spread: number, symbol: string, bid?: number, ask?: number) =>
+        formatSpreadDisplay(symbol, spread, bid, ask);
 
     // Format daily change as percentage
     const formatDailyChange = (change: number) => {
@@ -368,7 +363,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                                             {/* Spread */}
                                             {columnVisibility.spread && (
                                                 <td className="text-right py-[3px] px-1 border-r border-[#e8e8e8] text-gray-600 font-mono truncate">
-                                                    {hasData ? formatSpread(spread, symbol) : '-'}
+                                                    {hasData ? formatSpread(spread, symbol, bid, ask) : '-'}
                                                 </td>
                                             )}
 

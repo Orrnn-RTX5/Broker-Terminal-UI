@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { formatPriceParts } from './ui/PriceDisplay';
+import { formatSpreadDisplayWithUnit } from '../utils/spread';
 
 // Symbol display names
 const SYMBOL_NAMES: Record<string, string> = {
@@ -324,7 +325,7 @@ export function OrderPanelDialog({
   const availableSymbols = Object.keys(ticks).length > 0 ? Object.keys(ticks) : [initialSymbol];
 
   const config = getInstrumentConfig(symbol, tick?.digits);
-  const { digits, pipSize, contractSize: instContractSize } = config;
+  const { digits, contractSize: instContractSize } = config;
 
   const bid = tick?.bid || currentPrice.bid || 0;
   const ask = tick?.ask || currentPrice.ask || 0;
@@ -357,7 +358,7 @@ export function OrderPanelDialog({
   }, [isOpen, initialSymbol]);
 
   const spread = ask - bid;
-  const spreadPips = pipSize > 0 ? spread / pipSize : 0;
+  const spreadDisplay = formatSpreadDisplayWithUnit(symbol, spread, bid, ask);
 
   const formatPrice = (price: number) => {
     return formatPriceParts(price, symbol, digits);
@@ -545,7 +546,7 @@ export function OrderPanelDialog({
 
             {/* Spread */}
             <div className="text-center text-[10px] text-zinc-500 mb-2">
-              Spread: {spreadPips.toFixed(1)} pips
+              Spread: {spreadDisplay}
             </div>
 
             {/* Buttons */}

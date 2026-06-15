@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { useTradeSettings } from '../store/useSettingsStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
+import { formatSpreadDisplayWithUnit } from '../utils/spread';
 
 interface OneClickPanelProps {
   symbol: string;
@@ -135,7 +136,7 @@ export function OneClickPanel({
   );
 
   const spread = currentAsk - currentBid;
-  const spreadPips = symbol.includes('JPY') ? spread * 100 : spread * 10000;
+  const spreadDisplay = formatSpreadDisplayWithUnit(symbol, spread, currentBid, currentAsk);
 
   // Disclaimer modal
   if (showDisclaimer) {
@@ -204,7 +205,7 @@ export function OneClickPanel({
         </div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-zinc-500">Spread:</span>
-          <span className="font-mono text-zinc-400">{spreadPips.toFixed(1)} pips</span>
+          <span className="font-mono text-zinc-400">{spreadDisplay}</span>
         </div>
       </div>
 

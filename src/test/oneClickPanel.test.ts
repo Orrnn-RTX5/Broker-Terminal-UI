@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { formatSpreadDisplay } from '../utils/spread';
 
 describe('OneClickPanel', () => {
   let originalLocalStorage: Storage;
@@ -79,15 +80,17 @@ describe('OneClickPanel', () => {
     it('should calculate spread in pips for EUR/USD (4 decimal places)', () => {
       const spread = 0.0002;
       const symbol = 'EURUSD';
-      const spreadPips = symbol.includes('JPY') ? spread * 100 : spread * 10000;
-      expect(spreadPips).toBe(2);
+      expect(formatSpreadDisplay(symbol, spread)).toBe('2');
     });
 
     it('should calculate spread in pips for USD/JPY (2 decimal places)', () => {
       const spread = 0.02;
       const symbol = 'USDJPY';
-      const spreadPips = symbol.includes('JPY') ? spread * 100 : spread * 10000;
-      expect(spreadPips).toBe(2);
+      expect(formatSpreadDisplay(symbol, spread)).toBe('2');
+    });
+
+    it('should keep BTC/USD spread in raw price units', () => {
+      expect(formatSpreadDisplay('BTCUSD', 111.37)).toBe('111.37');
     });
   });
 

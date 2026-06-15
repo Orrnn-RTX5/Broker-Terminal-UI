@@ -6,6 +6,7 @@
 import { Icon } from './ui/Icon';
 import { useState, useMemo } from 'react';
 import { formatPrice as formatPriceUtil } from '../utils/symbolUtils';
+import { formatSpreadDisplayWithUnit } from '../utils/spread';
 import { useLiveOrderBook } from '../hooks/useLiveMarketData';
 
 type OrderBookProps = {
@@ -35,6 +36,9 @@ export const OrderBook = ({ symbol, currentBid = 0, currentAsk = 0 }: OrderBookP
     }
     return volume.toFixed(2);
   };
+
+  const formatSpread = (spread: number) =>
+    formatSpreadDisplayWithUnit(symbol, spread, currentBid, currentAsk);
 
   if (loading && !orderBook) {
     return (
@@ -81,7 +85,7 @@ export const OrderBook = ({ symbol, currentBid = 0, currentAsk = 0 }: OrderBookP
         <div className="flex items-center gap-2">
           <span className="text-zinc-500">Spread:</span>
           <span className="font-mono text-zinc-300">{formatPrice(orderBook.spread)}</span>
-          <span className="text-zinc-500">({orderBook.spreadPips.toFixed(1)} pips)</span>
+          <span className="text-zinc-500">({formatSpread(orderBook.spread)})</span>
         </div>
         <div className="text-zinc-500">
           {new Date(orderBook.timestamp).toLocaleTimeString()}

@@ -6,6 +6,7 @@ import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
 import { useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../../hooks/useLiveMarketData';
+import { formatSpreadDisplay } from '../../utils/spread';
 
 interface MarketWatchPanelProps {
   allSymbols: any[];
@@ -79,9 +80,7 @@ const MarketWatchRow: React.FC<{
       ? Number(rawDaily)
       : stats?.changePercent24h ?? null;
 
-  const spreadPips = symbol.includes('JPY')
-    ? Math.round(spread * 100)
-    : Math.round(spread * 10000);
+  const spreadDisplay = formatSpreadDisplay(symbol, spread, bid, ask);
 
   const hasData = tick && (tick.bid > 0 || tick.ask > 0);
   const hasDailyData = dailyPct !== null;
@@ -203,7 +202,7 @@ const MarketWatchRow: React.FC<{
               letterSpacing: '0.01em',
               fontVariantNumeric: 'tabular-nums',
             }}>
-              {hasData ? spreadPips : '—'}
+              {hasData ? spreadDisplay : '—'}
             </span>
           </td>
         )}
@@ -460,7 +459,8 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   const handleExport = useCallback(() => {
     const data = rows.map(sym => {
       const tick = getTickSnapshot(sym);
-      return `${sym}\t${tick?.bid ?? '-'}\t${tick?.ask ?? '-'}\t${tick?.spread ?? '-'}`;
+      const spreadDisplay = tick ? formatSpreadDisplay(sym, tick.spread, tick.bid, tick.ask) : '-';
+      return `${sym}\t${tick?.bid ?? '-'}\t${tick?.ask ?? '-'}\t${spreadDisplay}`;
     }).join('\n');
     navigator.clipboard.writeText(`Symbol\tBid\tAsk\tSpread\n${data}`);
   }, [rows]);

@@ -17,6 +17,7 @@ import { Icon } from './ui/Icon';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
+import { formatSpreadDisplayWithUnit } from '../utils/spread';
 
 export function LastSymbolPanel() {
     const {
@@ -107,7 +108,7 @@ export function LastSymbolPanel() {
     };
 
     const pipSize = getSymbolPipSize(lastSymbol);
-    const spreadPips = pipSize > 0 ? spread / pipSize : 0;
+    const spreadDisplay = formatSpreadDisplayWithUnit(lastSymbol, tick?.spread ?? spread, bid, ask);
     const digits = tick?.digits || getSymbolDigits(lastSymbol);
 
     // Positions on last symbol
@@ -374,7 +375,7 @@ export function LastSymbolPanel() {
                 {lastSymbol && (
                     <div className="px-3 py-1.5 border-b border-[#2a2e39]/50 flex items-center justify-between text-[10px]">
                         <span className="text-zinc-500">
-                            Spread: <span className="text-zinc-300 font-mono">{spreadPips.toFixed(1)}</span> pips
+                            Spread: <span className="text-zinc-300 font-mono">{spreadDisplay}</span>
                         </span>
                         <span className="text-zinc-500">
                             Lot: <span className="text-zinc-300 font-mono">{effectiveLot.toFixed(2)}</span>

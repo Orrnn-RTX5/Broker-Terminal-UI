@@ -5,6 +5,7 @@
  */
 
 import { API_BASE_URL as API_BASE } from '../config/api';
+import { formatSpreadDisplay } from '../utils/spread';
 
 // ==========================================
 // TRADING ACTIONS
@@ -343,18 +344,18 @@ export function sortSymbols(
  * Export market watch data as CSV
  */
 export function exportMarketWatchCSV(ticks: Record<string, any>): void {
-  const headers = ['Symbol', 'Bid', 'Ask', 'Spread (pips)', 'Daily Change %', 'High', 'Low', 'Volume', 'Time'];
+  const headers = ['Symbol', 'Bid', 'Ask', 'Spread', 'Daily Change %', 'High', 'Low', 'Volume', 'Time'];
 
   const rows = Object.keys(ticks).map(symbol => {
     const tick = ticks[symbol];
-    const spreadInPips = Math.round((tick.spread || (tick.ask - tick.bid)) * 10000);
+    const spreadDisplay = formatSpreadDisplay(symbol, tick.spread, tick.bid, tick.ask);
     const timestamp = new Date(tick.timestamp || Date.now()).toISOString();
 
     return [
       symbol,
       tick.bid?.toFixed(5) || '',
       tick.ask?.toFixed(5) || '',
-      spreadInPips,
+      spreadDisplay === '-' ? '' : spreadDisplay,
       (tick.dailyChange || 0).toFixed(2),
       tick.high?.toFixed(5) || '',
       tick.low?.toFixed(5) || '',
