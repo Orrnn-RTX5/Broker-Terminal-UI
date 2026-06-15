@@ -7,6 +7,7 @@ import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
 import { useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../../hooks/useLiveMarketData';
 import { formatSpreadDisplay } from '../../utils/spread';
+import { shouldUseWatchlistAsMarketWatchSource } from '../../utils/marketWatchSource';
 
 interface MarketWatchPanelProps {
   allSymbols: any[];
@@ -273,7 +274,6 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   const [hiddenSymbols, setHiddenSymbols] = useState<Set<string>>(() => new Set());
   const [manualSymbols, setManualSymbols] = useState<string[] | null>(null);
   const [sortMethod, setSortMethod] = useState<'name' | 'name-desc' | null>(null);
-  const [watchlistDrivenIds, setWatchlistDrivenIds] = useState<Record<string, true>>({});
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -309,18 +309,10 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
 
   const activeWatchlistId = activeWatchlist?.id ?? '';
   const normalizedWatchlistSymbols = useMemo(() => uniqueSymbols(watchlistSymbols), [watchlistSymbols]);
-  const isWatchlistDriven = Boolean(
-    activeWatchlistId
-    && (normalizedWatchlistSymbols.length > 0 || watchlistDrivenIds[activeWatchlistId])
-  );
-
-  useEffect(() => {
-    if (!activeWatchlistId || normalizedWatchlistSymbols.length === 0) return;
-    setWatchlistDrivenIds((prev) => {
-      if (prev[activeWatchlistId]) return prev;
-      return { ...prev, [activeWatchlistId]: true };
-    });
-  }, [activeWatchlistId, normalizedWatchlistSymbols]);
+  const isWatchlistDriven = shouldUseWatchlistAsMarketWatchSource({
+    activeWatchlistId,
+    activeWatchlistIsDefault: activeWatchlist?.isDefault,
+  });
 
   const defaultSymbols = useMemo(() => {
     return isWatchlistDriven ? normalizedWatchlistSymbols : availableSymbols;
@@ -342,8 +334,6 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     return visible;
   }, [availableSymbolSet, defaultSymbols, disabledSymbolSet, hiddenSymbols, manualSymbols, sortMethod]);
 
-  const visibleSymbolSet = useMemo(() => new Set(rows), [rows]);
-
   const filteredSymbols = useMemo(() => {
     if (!search.trim()) return [];
     const q = search.trim().toUpperCase();
@@ -358,25 +348,12 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     });
   }, []);
 
-  const markActiveWatchlistDriven = useCallback(() => {
-    if (!activeWatchlistId) return;
-    setWatchlistDrivenIds((prev) => {
-      if (prev[activeWatchlistId]) return prev;
-      return { ...prev, [activeWatchlistId]: true };
-    });
-  }, [activeWatchlistId]);
-
   const handleSelectSymbol = useCallback((symbol: string) => {
     const next = normalizeSymbol(symbol);
     if (!next) return;
-    const isVisible = visibleSymbolSet.has(next);
-    const isDefaultSymbol = defaultSymbols.includes(next);
-    if (activeWatchlist && !normalizedWatchlistSymbols.includes(next)) {
+    if (isWatchlistDriven && activeWatchlist && !normalizedWatchlistSymbols.includes(next)) {
       useWatchlistStore.getState().addSymbolToWatchlist(activeWatchlist.id, next);
       useMarketDataStore.getState().subscribeSymbol(next);
-    }
-    if (activeWatchlist) {
-      markActiveWatchlistDriven();
     }
     setHiddenSymbols((prev) => {
       if (!prev.has(next)) return prev;
@@ -384,10 +361,12 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
       updated.delete(next);
       return updated;
     });
-    setManualSymbols((prev) => {
-      if (prev) return uniqueSymbols([...prev, next]);
-      return defaultSymbols.includes(next) ? prev : uniqueSymbols([...rows, next]);
-    });
+    if (!isWatchlistDriven) {
+      setManualSymbols((prev) => {
+        if (prev) return uniqueSymbols([...prev, next]);
+        return defaultSymbols.includes(next) ? prev : uniqueSymbols([...rows, next]);
+      });
+    }
     setSearch('');
     setShowDropdown(false);
     setHighlightIndex(-1);
@@ -399,20 +378,18 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   }, [
     activeWatchlist,
     defaultSymbols,
-    markActiveWatchlistDriven,
+    isWatchlistDriven,
     normalizedWatchlistSymbols,
     onSymbolSelect,
     rows,
     scrollSymbolIntoView,
-    visibleSymbolSet,
   ]);
 
   const handleHideSymbol = useCallback((symbol: string) => {
     const next = normalizeSymbol(symbol);
     if (!next) return;
     const watchlistSymbol = watchlistSymbols.find((item) => normalizeSymbol(item) === next);
-    if (activeWatchlist && watchlistSymbol) {
-      markActiveWatchlistDriven();
+    if (isWatchlistDriven && activeWatchlist && watchlistSymbol) {
       useWatchlistStore.getState().removeSymbolFromWatchlist(activeWatchlist.id, watchlistSymbol);
       return;
     }
@@ -426,31 +403,22 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         return updated;
       });
     }
-  }, [activeWatchlist, manualSymbols, markActiveWatchlistDriven, watchlistSymbols]);
+  }, [activeWatchlist, isWatchlistDriven, manualSymbols, watchlistSymbols]);
 
   const handleHideAll = useCallback(() => {
-    if (activeWatchlist) {
-      markActiveWatchlistDriven();
+    if (isWatchlistDriven && activeWatchlist) {
       useWatchlistStore.getState().reorderSymbols(activeWatchlist.id, []);
       setManualSymbols(null);
     } else {
       setManualSymbols([]);
     }
     setHiddenSymbols(new Set());
-  }, [activeWatchlist, markActiveWatchlistDriven]);
+  }, [activeWatchlist, isWatchlistDriven]);
 
   const handleShowAll = useCallback(() => {
-    if (activeWatchlistId) {
-      setWatchlistDrivenIds((prev) => {
-        if (!prev[activeWatchlistId]) return prev;
-        const next = { ...prev };
-        delete next[activeWatchlistId];
-        return next;
-      });
-    }
     setManualSymbols(availableSymbols);
     setHiddenSymbols(new Set());
-  }, [activeWatchlistId, availableSymbols]);
+  }, [availableSymbols]);
 
   const handleSort = useCallback((method: 'name' | 'name-desc') => {
     setSortMethod(method);
