@@ -120,6 +120,10 @@ export interface BrokerSessionDiscoveryInput {
   access_token?: string | null;
   token?: string | null;
   broker_id?: string | null;
+  feed_token?: string | null;
+  feed_broker_token?: string | null;
+  broker_feed_token?: string | null;
+  ws_feed_token?: string | null;
   backend_url?: string | null;
   market_api_url?: string | null;
   server_url?: string | null;
@@ -222,6 +226,31 @@ const getStoredUrlByKeys = (keys: string[]): string => {
   for (const key of keys) {
     const value = (getLocalStorageItem(key) || '').trim();
     if (value) return value;
+  }
+
+  return '';
+};
+
+const getRuntimeConfigValue = (keys: string[]): string => {
+  if (typeof window === 'undefined') return '';
+
+  const runtimeWindow = window as Window & {
+    __RTX_RUNTIME_CONFIG__?: Record<string, unknown>;
+    RUNTIME_CONFIG?: Record<string, unknown>;
+    __RUNTIME_CONFIG__?: Record<string, unknown>;
+  };
+  const configs = [
+    runtimeWindow.__RTX_RUNTIME_CONFIG__,
+    runtimeWindow.RUNTIME_CONFIG,
+    runtimeWindow.__RUNTIME_CONFIG__,
+  ];
+
+  for (const config of configs) {
+    if (!config || typeof config !== 'object') continue;
+    for (const key of keys) {
+      const value = String(config[key] ?? '').trim();
+      if (value) return value;
+    }
   }
 
   return '';
@@ -356,6 +385,35 @@ const isSameOrUnknownBroker = (nextBrokerId: string): boolean => {
   return !currentBrokerId || !nextBrokerId || currentBrokerId === nextBrokerId;
 };
 
+const getStoredBrokerId = (): string => {
+  if (typeof window === 'undefined') return '';
+  return String(
+    getLocalStorageItem('broker_id')
+    || getLocalStorageItem('rtx_broker_id')
+    || getRuntimeConfigValue(['BROKER_ID', 'VITE_BROKER_ID', 'FEED_BROKER_ID', 'VITE_FEED_BROKER_ID'])
+    || ''
+  ).trim();
+};
+
+const getFeedBrokerToken = (): string => {
+  if (typeof window === 'undefined') return '';
+  return String(
+    getLocalStorageItem('feed_broker_token')
+    || getLocalStorageItem('broker_feed_token')
+    || getLocalStorageItem('feed_token')
+    || getLocalStorageItem('ws_feed_token')
+    || getRuntimeConfigValue([
+      'FEED_BROKER_TOKEN',
+      'VITE_FEED_BROKER_TOKEN',
+      'BROKER_FEED_TOKEN',
+      'VITE_BROKER_FEED_TOKEN',
+      'WS_FEED_TOKEN',
+      'VITE_WS_FEED_TOKEN',
+    ])
+    || ''
+  ).trim();
+};
+
 const shouldKeepCurrentMarketOrigin = (
   nextUrl: string,
   hasToken: boolean,
@@ -433,6 +491,13 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   const normalizedInput = normalizeBrokerInfoForTarget(input) as BrokerSessionDiscoveryInput;
   const token = String(normalizedInput.access_token || normalizedInput.token || '').trim();
   const brokerId = String(normalizedInput.broker_id || '').trim();
+  const feedToken = String(
+    normalizedInput.feed_token
+    || normalizedInput.feed_broker_token
+    || normalizedInput.broker_feed_token
+    || normalizedInput.ws_feed_token
+    || ''
+  ).trim();
   const hasToken = Boolean(token);
   const sameBroker = isSameOrUnknownBroker(brokerId);
   const currentMarketOrigin = getCurrentValidMarketOrigin();
@@ -469,6 +534,9 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   setOrRemove('ws_url', wsUrl);
   setOrRemove('feed_url', feedUrl);
   setOrRemove('feed_status_url', feedStatusUrl);
+  if (feedToken) {
+    setLocalStorageItem('feed_broker_token', feedToken);
+  }
   if (logoUrl) setLocalStorageItem('logo_url', logoUrl);
 
   emitSessionChange(token ? 'login' : 'broker_url_change');
@@ -667,6 +735,30 @@ const pickStoredWsUrl = (candidates: string[], marketOrigin: string): string => 
   return '';
 };
 
+const appendFeedAuthToWsUrl = (url: string): string => {
+  if (!url) return '';
+  const token = getFeedBrokerToken();
+  if (!token) return url;
+
+  const brokerId = getStoredBrokerId();
+  try {
+    const parsed = new URL(url);
+    if (brokerId && !parsed.searchParams.has('broker_id')) {
+      parsed.searchParams.set('broker_id', brokerId);
+    }
+    if (!parsed.searchParams.has('token')) {
+      parsed.searchParams.set('token', token);
+    }
+    return parsed.toString().replace(/\/$/, '');
+  } catch {
+    const params = new URLSearchParams();
+    if (brokerId) params.set('broker_id', brokerId);
+    params.set('token', token);
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}${params.toString()}`;
+  }
+};
+
 /** Build authenticated WebSocket URI for the /ws/v2 endpoint (candles, account, positions). */
 export function buildBrokerWsV2Uri(token?: string | null): string {
   const server = getRuntimeMarketOrigin();
@@ -699,12 +791,12 @@ export function buildBrokerWsFeedUri(): string {
   const server = getRuntimeMarketOrigin();
   const providedFeedUrl = normalizeWsUrl(getStoredUrlByKeys(['feed_url']));
   if (canUseStoredWsUrl(providedFeedUrl, server)) {
-    return forceWssForHttpsFrontend(providedFeedUrl);
+    return appendFeedAuthToWsUrl(forceWssForHttpsFrontend(providedFeedUrl));
   }
 
   const providedWsUrl = normalizeWsUrlToFeed(getStoredUrlByKeys(['ws_url']));
   if (canUseStoredWsUrl(providedWsUrl, server)) {
-    return forceWssForHttpsFrontend(providedWsUrl);
+    return appendFeedAuthToWsUrl(forceWssForHttpsFrontend(providedWsUrl));
   }
 
   const fallback = normalizeWsUrl(
@@ -712,8 +804,8 @@ export function buildBrokerWsFeedUri(): string {
     || import.meta.env.VITE_RTX5_WS_URL as string
     || ''
   );
-  if (!server) return forceWssForHttpsFrontend(fallback);
-  return forceWssForHttpsFrontend(appendWsFeedPath(httpToWss(server)));
+  if (!server) return appendFeedAuthToWsUrl(forceWssForHttpsFrontend(fallback));
+  return appendFeedAuthToWsUrl(forceWssForHttpsFrontend(appendWsFeedPath(httpToWss(server))));
 }
 
 /** Build REST API v2 base URL. */

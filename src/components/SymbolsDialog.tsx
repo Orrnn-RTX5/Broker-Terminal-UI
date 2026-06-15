@@ -138,7 +138,7 @@ const buildSymbolEndpointUrl = (endpoint: string): string =>
     ? `${API_V2_BASE_URL}${endpoint.replace(/^\/api\/v2(?=\/|$)/, '') || '/'}`
     : `${getApiRootBaseUrl()}${endpoint}`;
 
-const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols'];
+const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v1/market/symbols', '/api/v1/market/symbol-list'];
 
 const extractInstrumentRows = (payload: unknown): any[] =>
   asArray<any>(payload, ['symbols', 'instruments', 'data', 'result']);

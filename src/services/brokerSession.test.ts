@@ -122,6 +122,44 @@ describe('broker websocket URL builder', () => {
     expect(buildBrokerWsFeedUri()).toBe('wss://feed-broker.example/custom/feed');
   });
 
+  it('appends broker feed query auth when a feed token is configured', () => {
+    localStorage.setItem('broker_id', 'gta_broker');
+    localStorage.setItem('feed_broker_token', 'feed-secret');
+    localStorage.setItem('server_url', 'https://services.growtradingacademy.com');
+
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
+    );
+  });
+
+  it('uses runtime-config feed auth for deployed web quote sockets', () => {
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://services.growtradingacademy.com',
+      WS_HOST: 'wss://services.growtradingacademy.com',
+      BROKER_ID: 'gta_broker',
+      VITE_BROKER_ID: 'grow-trading-academy',
+      FEED_BROKER_TOKEN: 'feed-secret',
+    };
+
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
+    );
+  });
+
+  it('persists discovery-provided feed token for quote feed sockets', () => {
+    persistBrokerSessionDiscovery({
+      broker_id: 'gta_broker',
+      backend_url: 'https://services.growtradingacademy.com',
+      feed_broker_token: 'feed-secret',
+    });
+
+    expect(localStorage.getItem('feed_broker_token')).toBe('feed-secret');
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
+    );
+  });
+
   it('uses broker-provided ws_url when feed_url is absent', () => {
     localStorage.setItem('server_url', 'http://fallback-broker.example');
     localStorage.setItem('ws_url', 'https://feed-broker.example/ws/feed');

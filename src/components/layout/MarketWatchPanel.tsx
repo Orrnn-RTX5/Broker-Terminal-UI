@@ -274,6 +274,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   const [hiddenSymbols, setHiddenSymbols] = useState<Set<string>>(() => new Set());
   const [manualSymbols, setManualSymbols] = useState<string[] | null>(null);
   const [sortMethod, setSortMethod] = useState<'name' | 'name-desc' | null>(null);
+  const [watchlistDrivenIds, setWatchlistDrivenIds] = useState<Record<string, true>>({});
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -307,9 +308,24 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
       .sort((a, b) => a.localeCompare(b));
   }, [allSymbols, disabledSymbolSet, marketInstruments]);
 
+  const activeWatchlistId = activeWatchlist?.id ?? '';
+  const normalizedWatchlistSymbols = useMemo(() => uniqueSymbols(watchlistSymbols), [watchlistSymbols]);
+  const isWatchlistDriven = Boolean(
+    activeWatchlistId
+    && (normalizedWatchlistSymbols.length > 0 || watchlistDrivenIds[activeWatchlistId])
+  );
+
+  useEffect(() => {
+    if (!activeWatchlistId || normalizedWatchlistSymbols.length === 0) return;
+    setWatchlistDrivenIds((prev) => {
+      if (prev[activeWatchlistId]) return prev;
+      return { ...prev, [activeWatchlistId]: true };
+    });
+  }, [activeWatchlistId, normalizedWatchlistSymbols]);
+
   const defaultSymbols = useMemo(() => {
-    return availableSymbols;
-  }, [availableSymbols]);
+    return isWatchlistDriven ? normalizedWatchlistSymbols : availableSymbols;
+  }, [availableSymbols, isWatchlistDriven, normalizedWatchlistSymbols]);
   const availableSymbolSet = useMemo(() => new Set(availableSymbols), [availableSymbols]);
 
   const rows = useMemo(() => {
@@ -343,14 +359,25 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     });
   }, []);
 
+  const markActiveWatchlistDriven = useCallback(() => {
+    if (!activeWatchlistId) return;
+    setWatchlistDrivenIds((prev) => {
+      if (prev[activeWatchlistId]) return prev;
+      return { ...prev, [activeWatchlistId]: true };
+    });
+  }, [activeWatchlistId]);
+
   const handleSelectSymbol = useCallback((symbol: string) => {
     const next = normalizeSymbol(symbol);
     if (!next) return;
     const isVisible = visibleSymbolSet.has(next);
     const isDefaultSymbol = defaultSymbols.includes(next);
-    if (!isVisible && !isDefaultSymbol && activeWatchlist && !watchlistSymbols.includes(next)) {
+    if (activeWatchlist && !normalizedWatchlistSymbols.includes(next)) {
       useWatchlistStore.getState().addSymbolToWatchlist(activeWatchlist.id, next);
       useMarketDataStore.getState().subscribeSymbol(next);
+    }
+    if (activeWatchlist) {
+      markActiveWatchlistDriven();
     }
     setHiddenSymbols((prev) => {
       if (!prev.has(next)) return prev;
@@ -370,11 +397,26 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     
     // Automatically open chart for the newly searched/selected pair as a NEW TAB
     window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: next, newTab: true } }));
-  }, [activeWatchlist, defaultSymbols, onSymbolSelect, rows, scrollSymbolIntoView, visibleSymbolSet, watchlistSymbols]);
+  }, [
+    activeWatchlist,
+    defaultSymbols,
+    markActiveWatchlistDriven,
+    normalizedWatchlistSymbols,
+    onSymbolSelect,
+    rows,
+    scrollSymbolIntoView,
+    visibleSymbolSet,
+  ]);
 
   const handleHideSymbol = useCallback((symbol: string) => {
     const next = normalizeSymbol(symbol);
     if (!next) return;
+    const watchlistSymbol = watchlistSymbols.find((item) => normalizeSymbol(item) === next);
+    if (activeWatchlist && watchlistSymbol) {
+      markActiveWatchlistDriven();
+      useWatchlistStore.getState().removeSymbolFromWatchlist(activeWatchlist.id, watchlistSymbol);
+      return;
+    }
     if (manualSymbols !== null) {
       setManualSymbols((prev) => prev?.filter((s) => normalizeSymbol(s) !== next) ?? prev);
     } else {
@@ -385,17 +427,31 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         return updated;
       });
     }
-  }, [manualSymbols]);
+  }, [activeWatchlist, manualSymbols, markActiveWatchlistDriven, watchlistSymbols]);
 
   const handleHideAll = useCallback(() => {
-    setManualSymbols([]);
+    if (activeWatchlist) {
+      markActiveWatchlistDriven();
+      useWatchlistStore.getState().reorderSymbols(activeWatchlist.id, []);
+      setManualSymbols(null);
+    } else {
+      setManualSymbols([]);
+    }
     setHiddenSymbols(new Set());
-  }, []);
+  }, [activeWatchlist, markActiveWatchlistDriven]);
 
   const handleShowAll = useCallback(() => {
-    setManualSymbols(null);
+    if (activeWatchlistId) {
+      setWatchlistDrivenIds((prev) => {
+        if (!prev[activeWatchlistId]) return prev;
+        const next = { ...prev };
+        delete next[activeWatchlistId];
+        return next;
+      });
+    }
+    setManualSymbols(availableSymbols);
     setHiddenSymbols(new Set());
-  }, []);
+  }, [activeWatchlistId, availableSymbols]);
 
   const handleSort = useCallback((method: 'name' | 'name-desc') => {
     setSortMethod(method);

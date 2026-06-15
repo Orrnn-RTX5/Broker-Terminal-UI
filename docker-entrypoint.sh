@@ -40,6 +40,8 @@ ws_host="${WS_HOST:-${VITE_WS_HOST:-${VITE_WS_URL:-wss://backend.orrnn.com}}}"
 default_mt5_server="${DEFAULT_MT5_SERVER:-${VITE_DEFAULT_MT5_SERVER:-backend.orrnn.com:443}}"
 shared_discovery_base_url="${SHARED_DISCOVERY_BASE_URL:-${VITE_SHARED_DISCOVERY_BASE_URL:-https://superbackend.orrnn.com}}"
 discovery_base_url="${DISCOVERY_BASE_URL:-${VITE_DISCOVERY_BASE_URL:-${VITE_BROKER_DISCOVERY_URL:-$shared_discovery_base_url}}}"
+feed_broker_id="${FEED_BROKER_ID:-${VITE_FEED_BROKER_ID:-${BROKER_ID:-${VITE_BROKER_ID:-}}}}"
+feed_broker_token="${FEED_BROKER_TOKEN:-${VITE_FEED_BROKER_TOKEN:-${BROKER_FEED_TOKEN:-${VITE_BROKER_FEED_TOKEN:-${WS_FEED_TOKEN:-${VITE_WS_FEED_TOKEN:-}}}}}}"
 if [ "$(trim_url "$discovery_base_url")" = "$(trim_url "$api_host")" ] || [ "$(trim_url "$discovery_base_url")" = "$(trim_url "$api_host_ext")" ]; then
   discovery_base_url="$shared_discovery_base_url"
 fi
@@ -55,6 +57,8 @@ cat > "${runtime_config}" <<EOF
     WS_HOST: '$(js_string "$ws_host")',
     DEFAULT_MT5_SERVER: '$(js_string "$default_mt5_server")',
     DISCOVERY_BASE_URL: '$(js_string "$discovery_base_url")',
+    FEED_BROKER_ID: '$(js_string "$feed_broker_id")',
+    FEED_BROKER_TOKEN: '$(js_string "$feed_broker_token")',
     USE_MOCK_DISCOVERY: $(js_bool "$use_mock_discovery")
   };
 
@@ -63,3 +67,4 @@ cat > "${runtime_config}" <<EOF
   window.__RUNTIME_CONFIG__ = config;
 })();
 EOF
+
