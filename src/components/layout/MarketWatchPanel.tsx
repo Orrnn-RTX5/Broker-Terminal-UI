@@ -5,7 +5,7 @@ import { useWatchlistStore } from '../../store/useWatchlistStore';
 import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
-import { useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../../hooks/useLiveMarketData';
+import { useActiveMarketSymbols, useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../../hooks/useLiveMarketData';
 import { formatSpreadDisplay } from '../../utils/spread';
 import { shouldUseWatchlistAsMarketWatchSource } from '../../utils/marketWatchSource';
 
@@ -250,6 +250,11 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     loading: isLoadingSymbols,
     error: symbolsError,
   } = useMarketInstruments();
+  const {
+    symbols: activeMarketSymbols,
+    loading: activeSymbolsLoading,
+    error: activeSymbolsError,
+  } = useActiveMarketSymbols();
 
   const activeWatchlist = useWatchlistStore((s) => {
     return s.watchlists.find((w) => w.id === s.activeWatchlistId);
@@ -297,7 +302,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
 
   const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols(disabledSymbols)), [disabledSymbols]);
 
-  const availableSymbols = useMemo(() => {
+  const marketCatalogSymbols = useMemo(() => {
     const fromProps = (Array.isArray(allSymbols) ? allSymbols : [])
       .map((item) => normalizeSymbol(String(item?.symbol ?? item?.name ?? item?.id ?? item)))
       .filter(Boolean);
@@ -306,6 +311,14 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
       .filter((symbol) => !disabledSymbolSet.has(symbol))
       .sort((a, b) => a.localeCompare(b));
   }, [allSymbols, disabledSymbolSet, marketInstruments]);
+  const marketCatalogSymbolSet = useMemo(() => new Set(marketCatalogSymbols), [marketCatalogSymbols]);
+
+  const availableSymbols = useMemo(() => {
+    return uniqueSymbols(activeMarketSymbols)
+      .filter((symbol) => !disabledSymbolSet.has(symbol))
+      .filter((symbol) => marketCatalogSymbolSet.size === 0 || marketCatalogSymbolSet.has(symbol))
+      .sort((a, b) => a.localeCompare(b));
+  }, [activeMarketSymbols, disabledSymbolSet, marketCatalogSymbolSet]);
 
   const activeWatchlistId = activeWatchlist?.id ?? '';
   const normalizedWatchlistSymbols = useMemo(() => uniqueSymbols(watchlistSymbols), [watchlistSymbols]);
@@ -712,7 +725,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               maxHeight: 220,
               overflowY: 'auto',
             }}>
-              {isLoadingSymbols ? (
+              {(isLoadingSymbols || activeSymbolsLoading) ? (
                 <div style={{ padding: '10px 12px', fontSize: 11, color: '#50505a' }}>Loading…</div>
               ) : filteredSymbols.length === 0 ? (
                 <div style={{ padding: '10px 12px', fontSize: 11, color: '#50505a' }}>
@@ -768,7 +781,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '4px 10px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)',
             }}>
-              <span className="rtx-market-watch__symbols-title" style={{ fontSize: 9, color: '#50505a', letterSpacing: '0.05em' }}>ALL SYMBOLS ({availableSymbols.length})</span>
+              <span className="rtx-market-watch__symbols-title" style={{ fontSize: 9, color: '#50505a', letterSpacing: '0.05em' }}>ACTIVE SYMBOLS ({availableSymbols.length})</span>
               <button
                 onClick={() => setShowSymbolsPanel(false)}
                 style={{ background: 'none', border: 'none', color: '#50505a', cursor: 'pointer', fontSize: 11, padding: '0 2px', lineHeight: 1 }}
@@ -804,7 +817,9 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
                 <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
               </svg>
-              <span className="rtx-market-watch__empty-text" style={{ fontSize: 11, color: '#50505a' }}>No symbols — type above to add</span>
+              <span className="rtx-market-watch__empty-text" style={{ fontSize: 11, color: '#50505a' }}>
+                {(isLoadingSymbols || activeSymbolsLoading) ? 'Loading symbols...' : 'No active symbols'}
+              </span>
             </div>
           ) : (
             <table className="rtx-market-watch__grid" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -877,7 +892,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
           <span className="rtx-market-watch__footer-count" style={{ fontSize: 9, color: '#36363e' }}>{rows.length} symbols</span>
         </div>
 
-        {(symbolsError || watchlistError || quotesError) && (
+        {(symbolsError || activeSymbolsError || watchlistError || quotesError) && (
           <div style={{
             padding: '5px 10px',
             borderTop: '1px solid rgba(248,113,113,0.16)',
@@ -886,7 +901,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
             fontSize: 10,
             lineHeight: 1.3,
           }}>
-            {symbolsError || watchlistError || quotesError}
+            {symbolsError || activeSymbolsError || watchlistError || quotesError}
           </div>
         )}
         {(quotesLoading || watchlistLoading) && rows.length > 0 && liveTickCount === 0 && (

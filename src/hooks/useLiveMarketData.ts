@@ -3,6 +3,7 @@ import { apiClient, ApiError } from '../api/client';
 import { API_V2_BASE_URL, MARKET_WS_URL } from '../config/api';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { enqueueLiveTick } from '../services/liveTickDispatcher';
+import { getServerUrl } from '../services/brokerSession';
 import { resolveTickFromLookup, useAppStore, type Tick as AppTick } from '../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../store/useMarketDataStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
@@ -34,8 +35,18 @@ export interface LiveOrderBook {
   timestamp: number;
 }
 
+export interface ActiveMarketSymbolsCache {
+  symbols: string[];
+  updatedAt: number;
+  availableCount?: number;
+  silentCount?: number;
+}
+
 const normalizeSymbol = (value: unknown): string =>
   typeof value === 'string' ? value.trim().toUpperCase() : '';
+
+const uniqueSymbols = (symbols: unknown[]): string[] =>
+  Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean)));
 
 const toNumber = (value: unknown, fallback = 0): number => {
   const next = Number(value);
@@ -255,6 +266,114 @@ const putJson = async <T,>(endpoint: string, body: unknown): Promise<T> =>
 const sameSymbols = (a: string[], b: string[]): boolean =>
   a.length === b.length && a.every((symbol, index) => symbol === b[index]);
 
+export const ACTIVE_MARKET_SYMBOLS_STORAGE_KEY_PREFIX = 'rtx5-active-market-symbols:v1';
+
+const getBrowserLocalStorage = (): Storage | null => {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeStorageScope = (value: unknown): string => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return normalized || 'default';
+};
+
+const getActiveMarketSymbolsStorageScope = (): string => {
+  const storage = getBrowserLocalStorage();
+  const brokerId = storage?.getItem('broker_id') || storage?.getItem('rtx_broker_id');
+  if (brokerId) return normalizeStorageScope(brokerId);
+
+  const serverUrl = getServerUrl();
+  if (!serverUrl) return 'default';
+
+  try {
+    return normalizeStorageScope(new URL(serverUrl).hostname);
+  } catch {
+    return normalizeStorageScope(serverUrl);
+  }
+};
+
+export const getActiveMarketSymbolsStorageKey = (scope?: string): string =>
+  `${ACTIVE_MARKET_SYMBOLS_STORAGE_KEY_PREFIX}:${normalizeStorageScope(scope || getActiveMarketSymbolsStorageScope())}`;
+
+const extractSymbolList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return uniqueSymbols(value.map((item) => {
+    if (typeof item === 'string' || typeof item === 'number') return String(item);
+    if (!item || typeof item !== 'object') return '';
+    const record = item as Record<string, unknown>;
+    return String(record.symbol ?? record.name ?? record.id ?? '');
+  }));
+};
+
+export const extractActiveMarketSymbols = (response: any): string[] => {
+  const statusRows = Array.isArray(response?.symbol_status) ? response.symbol_status : [];
+  const activeFromStatus = uniqueSymbols(statusRows
+    .filter((row: any) => {
+      const symbol = normalizeSymbol(row?.symbol ?? row?.name ?? row?.id);
+      if (!symbol) return false;
+      const silent = parseBooleanish(row?.silent);
+      const hasData = parseBooleanish(row?.has_data ?? row?.hasData);
+      return silent === false && hasData !== false;
+    })
+    .map((row: any) => row?.symbol ?? row?.name ?? row?.id));
+
+  if (activeFromStatus.length > 0) return activeFromStatus;
+
+  const available = extractSymbolList(response?.available_symbols ?? response?.symbols ?? response?.data);
+  const hasSilentList = Array.isArray(response?.silent_symbols);
+  const silent = new Set(extractSymbolList(response?.silent_symbols));
+
+  if (available.length > 0 && hasSilentList) {
+    return available.filter((symbol) => !silent.has(symbol));
+  }
+
+  if (available.length > 0 && parseBooleanish(response?.upstream_connected) !== false) {
+    return available;
+  }
+
+  return [];
+};
+
+export const readCachedActiveMarketSymbols = (scope?: string): ActiveMarketSymbolsCache => {
+  const storage = getBrowserLocalStorage();
+  if (!storage) return { symbols: [], updatedAt: 0 };
+
+  try {
+    const raw = storage.getItem(getActiveMarketSymbolsStorageKey(scope));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return {
+      symbols: extractSymbolList(parsed?.symbols),
+      updatedAt: toNumber(parsed?.updatedAt),
+      availableCount: toOptionalNumber(parsed?.availableCount),
+      silentCount: toOptionalNumber(parsed?.silentCount),
+    };
+  } catch {
+    return { symbols: [], updatedAt: 0 };
+  }
+};
+
+const writeCachedActiveMarketSymbols = (cache: ActiveMarketSymbolsCache, scope?: string): void => {
+  const storage = getBrowserLocalStorage();
+  if (!storage) return;
+
+  try {
+    storage.setItem(getActiveMarketSymbolsStorageKey(scope), JSON.stringify({
+      ...cache,
+      symbols: uniqueSymbols(cache.symbols),
+    }));
+  } catch {
+    // Browser storage can be unavailable or full; live status still drives this session.
+  }
+};
+
 export const LIVE_QUOTES_REST_BATCH_SIZE = 50;
 export const LIVE_QUOTES_REST_POLL_INTERVAL_MS = 15000;
 
@@ -280,6 +399,65 @@ const extractInstrumentRows = (response: any): any[] => {
   if (Array.isArray(response?.result)) return response.result;
   return [];
 };
+
+export function useActiveMarketSymbols() {
+  const [symbols, setSymbols] = useState<string[]>(() => readCachedActiveMarketSymbols().symbols);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
+
+  const reload = useCallback(async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await apiClient.get<any>('/ws/feed/status', {
+        baseUrl: getApiRootBaseUrl(),
+        skipAuth: true,
+      });
+      const nextSymbols = extractActiveMarketSymbols(response);
+
+      if (nextSymbols.length > 0) {
+        writeCachedActiveMarketSymbols({
+          symbols: nextSymbols,
+          updatedAt: Date.now(),
+          availableCount: toOptionalNumber(response?.available_symbols?.length),
+          silentCount: toOptionalNumber(response?.silent_symbols?.length),
+        });
+        setSymbols(nextSymbols);
+        return;
+      }
+
+      const cached = readCachedActiveMarketSymbols();
+      setSymbols(cached.symbols);
+      setError('No active feed symbols returned');
+    } catch (err) {
+      const cached = readCachedActiveMarketSymbols();
+      setSymbols(cached.symbols);
+      setError(err instanceof ApiError ? err.message : 'Failed to load active feed symbols');
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    let cancelled = false;
+    reload().finally(() => {
+      if (cancelled) return;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reload]);
+
+  return { symbols, loading, error, reload };
+}
 
 export function useMarketInstruments() {
   const [symbols, setSymbols] = useState<MarketInstrument[]>([]);

@@ -3,10 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAppStore } from '../store/useAppStore';
 import {
+  ACTIVE_MARKET_SYMBOLS_STORAGE_KEY_PREFIX,
+  extractActiveMarketSymbols,
+  getActiveMarketSymbolsStorageKey,
   getLiveQuoteRestBatches,
   LIVE_QUOTES_REST_BATCH_SIZE,
   LIVE_QUOTES_REST_POLL_INTERVAL_MS,
   normalizeInstrumentEnabled,
+  readCachedActiveMarketSymbols,
   useMarketInstruments,
   useLiveQuotes,
 } from './useLiveMarketData';
@@ -160,5 +164,52 @@ describe('useMarketInstruments normalization', () => {
     }));
 
     unmount();
+  });
+});
+
+describe('active market symbol status cache', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('extracts active symbols from per-symbol feed status rows', () => {
+    const active = extractActiveMarketSymbols({
+      symbol_status: [
+        { symbol: 'eurusd', has_data: true, silent: false },
+        { symbol: 'xauusd', has_data: true, silent: true },
+        { symbol: 'gbpusd', has_data: false, silent: false },
+        { symbol: 'btcusd', has_data: true, silent: false },
+      ],
+      available_symbols: ['EURUSD', 'XAUUSD', 'GBPUSD', 'BTCUSD'],
+      silent_symbols: ['XAUUSD'],
+    });
+
+    expect(active).toEqual(['EURUSD', 'BTCUSD']);
+  });
+
+  it('falls back to available minus silent symbols when row status is not present', () => {
+    const active = extractActiveMarketSymbols({
+      available_symbols: ['EURUSD', 'XAUUSD', 'BTCUSD'],
+      silent_symbols: ['XAUUSD'],
+    });
+
+    expect(active).toEqual(['EURUSD', 'BTCUSD']);
+  });
+
+  it('reads normalized cached active symbols from broker-scoped local storage', () => {
+    const key = getActiveMarketSymbolsStorageKey('gta_broker');
+    expect(key).toBe(`${ACTIVE_MARKET_SYMBOLS_STORAGE_KEY_PREFIX}:gta_broker`);
+
+    localStorage.setItem(key, JSON.stringify({
+      symbols: ['eurusd', 'EURUSD', 'xauusd'],
+      updatedAt: 1710000000000,
+    }));
+
+    expect(readCachedActiveMarketSymbols('gta_broker')).toEqual({
+      symbols: ['EURUSD', 'XAUUSD'],
+      updatedAt: 1710000000000,
+      availableCount: undefined,
+      silentCount: undefined,
+    });
   });
 });
