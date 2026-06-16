@@ -82,6 +82,28 @@ table tbody tr:hover {
   background: rgba(255, 255, 255, 0.08) !important;
 }
 
+.rtx-dock-tab:active {
+  transform: none;
+}
+
+tr.rtx-trade-row.rtx-trade-row--selected,
+tr.rtx-trade-row.rtx-trade-row--selected:hover {
+  background: #0b63ce !important;
+}
+
+tr.rtx-trade-row.rtx-trade-row--selected td {
+  background: transparent !important;
+  color: #ffffff !important;
+}
+
+tr.rtx-trade-row.rtx-trade-row--selected td span {
+  color: #ffffff !important;
+}
+
+tr.rtx-trade-row.rtx-trade-row--selected button {
+  color: #ffffff !important;
+}
+
 /* Global ultra-premium scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useAppStore } from '../store/useAppStore';
 import api from '../services/api';
@@ -21,6 +22,7 @@ interface ModifyPositionDialogProps {
         openPrice: number;
         sl: number;
         tp: number;
+        comment?: string;
     } | null;
 }
 
@@ -30,13 +32,6 @@ const getSymbolDigits = (symbol: string) => {
     if (symbol.startsWith('XAU')) return 2;
     if (symbol.startsWith('XAG')) return 3;
     return 5;
-};
-
-// Get pip size for a symbol (1 pip = 10^-(digits-1))
-const getPipSize = (symbol: string) => {
-    const digits = getSymbolDigits(symbol);
-    // For 5-digit forex: pip = 0.0001, for 3-digit JPY: pip = 0.01, for 2-digit gold/crypto: pip = 0.1
-    return Math.pow(10, -(digits - 1));
 };
 
 const getSymbolFullName = (symbol: string) => {
@@ -52,14 +47,51 @@ const getSymbolFullName = (symbol: string) => {
     return names[symbol] || symbol;
 };
 
+const getContractSize = (symbol: string) => {
+    if (symbol.startsWith('XAU')) return 100;
+    if (symbol.startsWith('XAG')) return 5000;
+    if (symbol.startsWith('BTC') || symbol.startsWith('ETH')) return 1;
+    return 100000;
+};
+
+const getContractUnit = (symbol: string) => {
+    if (symbol.length >= 3) return symbol.slice(0, 3);
+    return symbol;
+};
+
+const getErrorMessage = (err: unknown) => {
+    if (err instanceof Error) return err.message;
+    return 'Network error';
+};
+
+const focusableSelector = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+const getFocusableElements = (container: HTMLElement) => {
+    return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter((element) => {
+        if (element.getAttribute('aria-disabled') === 'true') return false;
+        if (element.closest('[aria-hidden="true"], [inert]')) return false;
+        return element.tabIndex >= 0 && element.getClientRects().length > 0;
+    });
+};
+
 export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'position' }: ModifyPositionDialogProps) {
     const [sl, setSl] = useState('0.00');
     const [tp, setTp] = useState('0.00');
+    const [volumeStr, setVolumeStr] = useState('0.01');
     const [comment, setComment] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
+    const onCloseRef = useRef(onClose);
+    const isDialogVisible = isOpen && position !== null;
 
     const tick = useCurrentTick(position?.symbol || '');
 
@@ -70,38 +102,13 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
     useEffect(() => {
         if (isOpen && position) {
             const digits = getSymbolDigits(position.symbol);
-            const pointSize = Math.pow(10, -digits);
-            const pointsOffset = 50 * pointSize;
+            setSl(position.sl > 0 ? position.sl.toFixed(digits) : '0.00');
+            setTp(position.tp > 0 ? position.tp.toFixed(digits) : '0.00');
 
-            // Use current tick price if available, otherwise use open price
-            const currentBid = tick?.bid ?? position.openPrice;
-            const currentAsk = tick?.ask ?? position.openPrice;
-
-            if (position.sl > 0) {
-                // Keep existing SL
-                setSl(position.sl.toFixed(digits));
-            } else {
-                // Auto-fill 50 points (5 pips) below for BUY, 50 points above for SELL
-                const autoSl = position.side === 'BUY'
-                    ? currentBid - pointsOffset
-                    : currentAsk + pointsOffset;
-                setSl(autoSl.toFixed(digits));
-            }
-
-            if (position.tp > 0) {
-                // Keep existing TP
-                setTp(position.tp.toFixed(digits));
-            } else {
-                // Auto-fill 50 points (5 pips) above for BUY, 50 points below for SELL
-                const autoTp = position.side === 'BUY'
-                    ? currentAsk + pointsOffset
-                    : currentBid - pointsOffset;
-                setTp(autoTp.toFixed(digits));
-            }
-
-            setComment('');
+            setVolumeStr(position.volume.toFixed(2));
+            setComment(position.comment ?? '');
             setError(null);
-            setSuccess(false);
+            setSuccessMessage(null);
             bidHistoryRef.current = [];
             askHistoryRef.current = [];
         }
@@ -115,17 +122,105 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
         }
     }, [tick, isOpen]);
 
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
+
+    useEffect(() => {
+        if (!isDialogVisible) return;
+
+        const previousFocusedElement = document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+
+        const focusDialog = () => {
+            const dialog = dialogRef.current;
+            if (!dialog) return;
+            dialog.focus({ preventScroll: true });
+        };
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onCloseRef.current();
+                return;
+            }
+
+            if (event.key !== 'Tab') {
+                return;
+            }
+
+            const dialog = dialogRef.current;
+            if (!dialog) return;
+
+            const focusableElements = getFocusableElements(dialog);
+            if (focusableElements.length === 0) {
+                event.preventDefault();
+                dialog.focus({ preventScroll: true });
+                return;
+            }
+
+            const activeElement = document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+            const activeIndex = activeElement ? focusableElements.indexOf(activeElement) : -1;
+            const firstElement = focusableElements[0];
+            const lastElement = focusableElements[focusableElements.length - 1];
+
+            if (event.shiftKey && activeIndex <= 0) {
+                event.preventDefault();
+                lastElement.focus({ preventScroll: true });
+                return;
+            }
+
+            if (!event.shiftKey && activeIndex === focusableElements.length - 1) {
+                event.preventDefault();
+                firstElement.focus({ preventScroll: true });
+                return;
+            }
+
+            if (!event.shiftKey && activeIndex === -1) {
+                event.preventDefault();
+                firstElement.focus({ preventScroll: true });
+            }
+        };
+
+        const animationFrameId = window.requestAnimationFrame(focusDialog);
+        document.addEventListener('keydown', handleKeyDown, true);
+
+        return () => {
+            window.cancelAnimationFrame(animationFrameId);
+            document.removeEventListener('keydown', handleKeyDown, true);
+            if (
+                previousFocusedElement
+                && previousFocusedElement !== document.body
+                && document.contains(previousFocusedElement)
+            ) {
+                previousFocusedElement.focus({ preventScroll: true });
+            }
+        };
+    }, [isDialogVisible]);
+
     if (!isOpen || !position) return null;
 
     const digits = getSymbolDigits(position.symbol);
     const bid = tick?.bid ?? position.openPrice;
     const ask = tick?.ask ?? position.openPrice;
-    const spread = ((ask - bid) * Math.pow(10, digits)).toFixed(1);
+    const dialogTitleId = `modify-position-${position.id}-title`;
+    const symbolFieldId = `modify-position-${position.id}-symbol`;
+    const typeLabelId = `modify-position-${position.id}-type-label`;
+    const typeValueId = `modify-position-${position.id}-type-value`;
+    const volumeFieldId = `modify-position-${position.id}-volume`;
+    const slFieldId = `modify-position-${position.id}-sl`;
+    const slPointsFieldId = `modify-position-${position.id}-sl-points`;
+    const tpFieldId = `modify-position-${position.id}-tp`;
+    const tpPointsFieldId = `modify-position-${position.id}-tp-points`;
+    const commentFieldId = `modify-position-${position.id}-comment`;
 
     const handleSubmit = async () => {
         setIsSubmitting(true);
         setError(null);
-        setSuccess(false);
+        setSuccessMessage(null);
 
         try {
             const slVal = parseFloat(sl) || 0;
@@ -142,7 +237,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 await api.positions.modifyPosition(position.id, { price_sl: slVal, price_tp: tpVal });
             }
 
-            setSuccess(true);
+            setSuccessMessage(kind === 'pending-order' ? 'Pending order modified successfully' : 'Position modified successfully');
             const store = useAppStore.getState();
             store.setPositions(store.positions.map(p =>
                 p.id === position.id ? { ...p, sl: slVal, tp: tpVal } : p
@@ -151,9 +246,104 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 window.dispatchEvent(new Event('rtx:force-refresh-positions'));
             }
             setTimeout(() => onClose(slVal, tpVal), 600);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('[Modify] Error:', err);
-            setError(err.message || 'Network error');
+            setError(getErrorMessage(err));
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const parsedVolume = Number.parseFloat(volumeStr);
+    const actionVolume = Number.isFinite(parsedVolume) && parsedVolume > 0 ? parsedVolume : 0;
+    const contractAmount = actionVolume * getContractSize(position.symbol);
+    const volumeDescription = `${Number.isInteger(contractAmount) ? contractAmount.toFixed(0) : contractAmount.toFixed(2)} ${getContractUnit(position.symbol)}`;
+
+    const normalizeVolume = (value: string) => {
+        const parsed = Number.parseFloat(value);
+        if (!Number.isFinite(parsed) || parsed <= 0) return '0.01';
+        return Math.max(0.01, Math.round(parsed * 100) / 100).toFixed(2);
+    };
+
+    const adjustVolume = (delta: number) => {
+        const current = Number.parseFloat(volumeStr) || 0.01;
+        const next = Math.max(0.01, Math.round((current + delta) * 100) / 100);
+        setVolumeStr(next.toFixed(2));
+    };
+
+    const refreshPositionsAfterTrade = () => {
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+            window.dispatchEvent(new CustomEvent('rtx:new-trade-placed'));
+        }
+    };
+
+    const handleMarketOrder = async (side: 'BUY' | 'SELL') => {
+        if (isSubmitting) return;
+        if (actionVolume <= 0) {
+            setError('Volume must be greater than zero');
+            return;
+        }
+
+        setIsSubmitting(true);
+        setError(null);
+        setSuccessMessage(null);
+
+        try {
+            const slVal = Number.parseFloat(sl) || 0;
+            const tpVal = Number.parseFloat(tp) || 0;
+            await api.orders.placeMarketOrder({
+                symbol: position.symbol,
+                side,
+                volume: actionVolume,
+                price_sl: slVal > 0 ? slVal : undefined,
+                price_tp: tpVal > 0 ? tpVal : undefined,
+                comment: comment.trim() || undefined,
+            });
+            setSuccessMessage(`${side === 'BUY' ? 'Buy' : 'Sell'} market order placed successfully`);
+            refreshPositionsAfterTrade();
+            setTimeout(() => onClose(), 600);
+        } catch (err: unknown) {
+            console.error('[Market Order] Error:', err);
+            setError(getErrorMessage(err));
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleCloseByMarket = async () => {
+        if (isSubmitting) return;
+        if (kind === 'pending-order') {
+            setError('Close by market is only available for open positions');
+            return;
+        }
+        if (actionVolume <= 0) {
+            setError('Volume must be greater than zero');
+            return;
+        }
+        if (actionVolume > position.volume + 0.0000001) {
+            setError('Close volume cannot be greater than position volume');
+            return;
+        }
+        if (Math.abs(actionVolume - position.volume) > 0.0000001) {
+            setError('Partial close by volume is not supported by the backend yet');
+            return;
+        }
+
+        setIsSubmitting(true);
+        setError(null);
+        setSuccessMessage(null);
+
+        try {
+            await api.positions.closePosition(String(position.id));
+            const store = useAppStore.getState();
+            store.setPositions(store.positions.filter(p => p.id !== position.id));
+            setSuccessMessage('Position closed successfully');
+            refreshPositionsAfterTrade();
+            setTimeout(() => onClose(), 600);
+        } catch (err: unknown) {
+            console.error('[Close by Market] Error:', err);
+            setError(getErrorMessage(err));
         } finally {
             setIsSubmitting(false);
         }
@@ -263,95 +453,174 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
         setTp(val.toFixed(digits));
     };
 
-    return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm rtx-modify-dialog-overlay">
-            <div ref={dialogRef} className="rtx-modify-dialog bg-[#131316] rounded-lg shadow-2xl w-[680px] overflow-hidden border border-zinc-700">
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 p-3 backdrop-blur-[3px] rtx-modify-dialog-overlay sm:p-4">
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={dialogTitleId}
+                tabIndex={-1}
+                className="rtx-modify-dialog flex max-h-[calc(100vh-24px)] w-[720px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-md border border-[#3f424a] bg-[#111217] shadow-[0_22px_70px_rgba(0,0,0,0.65)] sm:max-h-[calc(100vh-48px)] sm:max-w-[calc(100vw-32px)]"
+            >
                 {/* Title Bar - MT5 style with position info */}
-                <div className="bg-[#2d2d2d] px-4 py-2 flex items-center justify-between border-b border-zinc-700">
-                    <span className="text-sm font-medium text-zinc-200">
+                <div className="flex h-[43px] shrink-0 items-center justify-between border-b border-[#3f424a] bg-[#2b2b2e] px-4">
+                    <span id={dialogTitleId} className="min-w-0 truncate text-[13px] font-semibold text-[#d9dde5]">
                         Position: #{position.id} {position.side.toLowerCase()} {position.volume.toFixed(2)} {position.symbol} {position.openPrice.toFixed(digits)}
                     </span>
                     <button
                         onClick={() => onClose()}
-                        className="p-1 hover:bg-zinc-600 rounded text-zinc-400 hover:text-white transition-colors text-lg leading-none"
+                        className="ml-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-lg leading-none text-zinc-400 transition-colors hover:bg-[#3b3d42] hover:text-white"
+                        aria-label="Close modify position dialog"
                     >
-                        ×
+                        &times;
                     </button>
                 </div>
 
                 {/* Content */}
-                <div className="flex">
+                <div className="flex min-h-0 flex-1 overflow-hidden max-[640px]:flex-col">
                     {/* Left: Mini Chart */}
-                    <div className="w-[280px] border-r border-zinc-700 flex flex-col">
-                        <div className="px-3 py-1.5 text-[11px] text-zinc-300 border-b border-zinc-700 font-mono">
-                            {position.symbol} <span className="text-blue-400">{bid.toFixed(digits)}</span> / <span className="text-red-400">{ask.toFixed(digits)}</span>
+                    <div className="flex w-[300px] shrink-0 flex-col border-r border-[#353842] bg-[#151518] max-[640px]:h-[180px] max-[640px]:w-full max-[640px]:border-r-0 max-[640px]:border-b">
+                        <div className="flex h-[30px] min-w-0 items-center border-b border-[#353842] px-3 font-mono text-[11px] text-zinc-300">
+                            <span className="min-w-0 truncate font-semibold text-zinc-200">{position.symbol}</span>
+                            <span className="ml-2 shrink-0 text-[#4ea4ff]">{bid.toFixed(digits)}</span>
+                            <span className="mx-1 text-zinc-500">/</span>
+                            <span className="shrink-0 text-[#ff5d66]">{ask.toFixed(digits)}</span>
                         </div>
-                        <div className="flex-1 bg-[#151515] p-1">
+                        <div className="flex-1 bg-[#141416] p-2">
                             {renderMiniChart()}
                         </div>
                     </div>
 
                     {/* Right: Form */}
-                    <div className="flex-1 p-4 space-y-3">
+                    <div className="min-w-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain bg-[#101116] p-4 max-[420px]:p-3">
                         {/* Symbol */}
-                        <div className="flex items-center gap-3">
-                            <label className="text-[11px] w-[80px] text-right text-zinc-500">Symbol:</label>
-                            <div className="flex-1 bg-[#2a2a2a] border border-zinc-600 px-2.5 py-1.5 text-xs text-zinc-200 rounded">
-                                {getSymbolFullName(position.symbol)}
-                            </div>
+                        <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
+                            <label htmlFor={symbolFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-medium text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">Symbol:</label>
+                            <select
+                                id={symbolFieldId}
+                                value={position.symbol}
+                                onChange={() => undefined}
+                                className="h-[31px] min-w-0 flex-1 rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-xs font-semibold text-[#e4e7ee] shadow-inner shadow-black/20 outline-none transition-colors focus:border-[#666b78]"
+                            >
+                                <option value={position.symbol}>{getSymbolFullName(position.symbol)}</option>
+                            </select>
                         </div>
 
                         {/* Type */}
-                        <div className="flex items-center gap-3">
-                            <label className="text-[11px] w-[80px] text-right text-zinc-500">Type:</label>
-                            <div className="flex-1 bg-[#2a2a2a] border border-zinc-600 px-2.5 py-1.5 text-xs text-zinc-200 rounded">
+                        <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
+                            <span id={typeLabelId} className="w-[84px] shrink-0 text-right text-[11px] font-medium text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">Type:</span>
+                            <div id={typeValueId} aria-labelledby={`${typeLabelId} ${typeValueId}`} className="flex h-[31px] min-w-0 flex-1 items-center truncate rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-xs font-semibold text-[#e4e7ee] shadow-inner shadow-black/20">
                                 {kind === 'pending-order' ? 'Modify Pending Order' : 'Modify Position'}
                             </div>
                         </div>
 
+                        {/* Volume */}
+                        <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
+                            <label htmlFor={volumeFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-medium text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">Volume:</label>
+                            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                                <div className="flex h-[31px] w-[96px] items-stretch overflow-hidden rounded-sm border border-[#434650] bg-[#1f2026] shadow-inner shadow-black/20">
+                                    <input
+                                        id={volumeFieldId}
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={volumeStr}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                                                setVolumeStr(value);
+                                            }
+                                        }}
+                                        onBlur={() => setVolumeStr(normalizeVolume(volumeStr))}
+                                        className="min-w-0 flex-1 bg-transparent px-2 text-right font-mono text-xs text-[#f3f4f6] focus:outline-none"
+                                    />
+                                    <div className="flex w-[18px] flex-col border-l border-[#434650] bg-[#272931]">
+                                        <button
+                                            type="button"
+                                            onClick={() => adjustVolume(0.01)}
+                                            className="h-1/2 text-[8px] leading-none text-zinc-400 hover:bg-[#3c404b] hover:text-white"
+                                            aria-label="Increase volume"
+                                        >
+                                            &#9650;
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => adjustVolume(-0.01)}
+                                            className="h-1/2 text-[8px] leading-none text-zinc-400 hover:bg-[#3c404b] hover:text-white"
+                                            aria-label="Decrease volume"
+                                        >
+                                            &#9660;
+                                        </button>
+                                    </div>
+                                </div>
+                                <span className="min-w-0 break-words text-[11px] text-[#aeb5c3]">{volumeDescription}</span>
+                            </div>
+                        </div>
+
                         {/* Stop Loss with Points */}
-                        <div className="flex items-center gap-2">
-                            <label className="text-[11px] w-[80px] text-right text-red-400 font-medium">Stop Loss:</label>
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <label htmlFor={slFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-semibold text-[#ff626a] max-[420px]:w-full max-[420px]:text-left">Stop Loss:</label>
                             <input
+                                id={slFieldId}
                                 type="number"
                                 step={Math.pow(10, -digits).toString()}
                                 value={sl}
                                 onChange={(e) => setSl(e.target.value)}
-                                className="w-[90px] bg-[#2a2a2a] border border-zinc-600 px-2 py-1.5 text-xs text-zinc-200 rounded font-mono focus:border-zinc-600 focus:outline-none text-center"
+                                className="h-[31px] w-[96px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-xs text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
                             <input
+                                id={slPointsFieldId}
+                                aria-label="Stop Loss points"
                                 type="number"
                                 value={slPoints}
                                 onChange={(e) => handleSlPointsChange(parseInt(e.target.value) || 0)}
-                                className="w-[60px] bg-[#2a2a2a] border border-zinc-600 px-2 py-1.5 text-xs text-zinc-200 rounded font-mono focus:border-zinc-600 focus:outline-none text-center"
+                                className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-xs text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
-                            <span className="text-[10px] text-zinc-500">points</span>
+                            <span className="text-[10px] text-[#7f8796]">points</span>
                         </div>
 
                         {/* Take Profit with Points */}
-                        <div className="flex items-center gap-2">
-                            <label className="text-[11px] w-[80px] text-right text-emerald-400 font-medium">Take Profit:</label>
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <label htmlFor={tpFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-semibold text-[#1fd79b] max-[420px]:w-full max-[420px]:text-left">Take Profit:</label>
                             <input
+                                id={tpFieldId}
                                 type="number"
                                 step={Math.pow(10, -digits).toString()}
                                 value={tp}
                                 onChange={(e) => setTp(e.target.value)}
-                                className="w-[90px] bg-[#2a2a2a] border border-zinc-600 px-2 py-1.5 text-xs text-zinc-200 rounded font-mono focus:border-zinc-600 focus:outline-none text-center"
+                                className="h-[31px] w-[96px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-xs text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
                             <input
+                                id={tpPointsFieldId}
+                                aria-label="Take Profit points"
                                 type="number"
                                 value={tpPoints}
                                 onChange={(e) => handleTpPointsChange(parseInt(e.target.value) || 0)}
-                                className="w-[60px] bg-[#2a2a2a] border border-zinc-600 px-2 py-1.5 text-xs text-zinc-200 rounded font-mono focus:border-zinc-600 focus:outline-none text-center"
+                                className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-xs text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
-                            <span className="text-[10px] text-zinc-500">points</span>
+                            <span className="text-[10px] text-[#7f8796]">points</span>
+                        </div>
+
+                        {/* Comment */}
+                        <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
+                            <label htmlFor={commentFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-medium text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">Comment:</label>
+                            <input
+                                id={commentFieldId}
+                                type="text"
+                                maxLength={64}
+                                value={comment}
+                                onChange={(e) => setComment(e.target.value)}
+                                className="h-[31px] min-w-0 flex-1 rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-xs text-[#e4e7ee] shadow-inner shadow-black/20 outline-none transition-colors focus:border-[#666b78]"
+                            />
                         </div>
 
                         {/* Live Price Display */}
-                        <div className="text-center py-3 border-t border-zinc-700 mt-2">
-                            <div className="flex items-center justify-center gap-3">
+                        <div className="mt-3 border-t border-[#3a3d45] py-4 text-center">
+                            <div className="flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
                                 {formatBigPrice(bid, 'text-zinc-100')}
-                                <span className="text-zinc-500 text-lg">/</span>
+                                <span className="text-lg text-[#707784]">/</span>
                                 {formatBigPrice(ask, 'text-zinc-100')}
                             </div>
                         </div>
@@ -360,31 +629,63 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                         <button
                             onClick={handleSubmit}
                             disabled={isSubmitting}
-                            className="w-full py-2.5 text-xs font-bold rounded bg-zinc-700 hover:bg-zinc-600 text-white transition-colors disabled:opacity-50"
+                            className="min-h-[36px] w-full break-words rounded-sm border border-[#51535d] bg-[#4a4b53] px-2 py-2 text-xs font-bold leading-tight text-white transition-colors hover:bg-[#565861] active:bg-[#3f4047] disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {isSubmitting ? 'Modifying...' : `Modify #${position.id} ${position.side.toLowerCase()} ${position.volume.toFixed(2)} ${position.symbol} ${position.openPrice.toFixed(digits)}`}
+                            {isSubmitting ? 'Processing...' : `Modify #${position.id} ${position.side.toLowerCase()} ${position.volume.toFixed(2)} ${position.symbol} ${position.openPrice.toFixed(digits)}`}
                         </button>
+
+                        {kind === 'position' && (
+                            <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1 max-[420px]:gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleMarketOrder('SELL')}
+                                        disabled={isSubmitting || bid <= 0}
+                                        className="min-h-[34px] rounded-sm bg-[#f23f45] px-2 py-2 text-xs font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#ff5258] active:bg-[#d8393f] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        Sell by Market
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleMarketOrder('BUY')}
+                                        disabled={isSubmitting || ask <= 0}
+                                        className="min-h-[34px] rounded-sm bg-[#3f73f1] px-2 py-2 text-xs font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#5486ff] active:bg-[#315fd1] disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        Buy by Market
+                                    </button>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleCloseByMarket}
+                                    disabled={isSubmitting}
+                                    className="min-h-[31px] w-full break-words rounded-sm border border-[#d8c889] bg-[#fff8dc] px-2 py-2 text-xs font-semibold leading-tight text-zinc-900 transition-colors hover:bg-[#fff1b8] active:bg-[#f1df9b] disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    Close #{position.id} {position.side.toLowerCase()} {actionVolume > 0 ? actionVolume.toFixed(2) : '0.00'} {position.symbol} {position.openPrice.toFixed(digits)} by Market
+                                </button>
+                            </div>
+                        )}
 
                         {/* Error / Success */}
                         {error && (
-                            <div className="bg-red-900/30 border border-red-700 text-red-300 text-[11px] px-3 py-2 rounded text-center">
+                            <div className="break-words rounded-sm border border-red-700/80 bg-red-950/40 px-3 py-2 text-center text-[11px] text-red-200">
                                 {error}
                             </div>
                         )}
-                        {success && (
-                            <div className="bg-emerald-900/30 border border-emerald-700 text-emerald-300 text-[11px] px-3 py-2 rounded text-center">
-                                ✓ Position modified successfully
+                        {successMessage && (
+                            <div className="break-words rounded-sm border border-emerald-700/80 bg-emerald-950/35 px-3 py-2 text-center text-[11px] text-emerald-200">
+                                {successMessage}
                             </div>
                         )}
 
                         {/* MT5 Quote Text */}
-                        <div className="text-[10px] text-zinc-500 text-center leading-relaxed pt-1">
+                        <div className="px-2 pt-1 text-center text-[10px] leading-relaxed text-[#777f8d]">
                             Stop Loss or Take Profit you set must differ from market price by at least 0 points.<br />
                             Stops processing is performed on the broker side.
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

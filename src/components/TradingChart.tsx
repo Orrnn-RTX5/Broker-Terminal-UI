@@ -602,7 +602,7 @@ export const TradingChart = React.memo(function TradingChart({
         vertTouchDrag: false,
         horzTouchDrag: true,
         mouseWheel: false,      // custom handler does the scrolling
-        pressedMouseMove: !chartSettings.chartAutoScroll, // drag still works
+        pressedMouseMove: true, // body drag pans the chart; auto-scroll snaps back after inactivity
       },
       handleScale: {
         axisPressedMouseMove: { time: false, price: true },  // MT5-style: drag price axis to zoom vertically
@@ -1972,7 +1972,7 @@ export const TradingChart = React.memo(function TradingChart({
         horzLine: { color: chartColors.foreground },
       },
       handleScroll: {
-        pressedMouseMove: !chartSettings.chartAutoScroll,
+        pressedMouseMove: true,
       },
       handleScale: {
         axisPressedMouseMove: { time: false, price: true },
@@ -4414,7 +4414,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       if (chartRef.current) {
         chartRef.current.applyOptions({
-          handleScroll: { pressedMouseMove: !chartSettingsRef.current.chartAutoScroll, horzTouchDrag: true },
+          handleScroll: { pressedMouseMove: true, horzTouchDrag: true },
           handleScale: { axisPressedMouseMove: { time: false, price: true } }
         });
       }

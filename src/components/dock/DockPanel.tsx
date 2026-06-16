@@ -71,8 +71,8 @@ export const DockPanel: React.FC<DockPanelProps> = ({
             // Make cursor a pointer when minimized (click to restore)
             minimized ? 'cursor-pointer' : 'cursor-default',
             isActive
-              ? 'bg-gradient-to-r from-[#222226] to-[#191a1e] border-b border-[#28282e]'
-              : 'bg-[#131316] border-b border-[#1e1e22]/80',
+              ? 'bg-[#202126] border-b border-[#34363d]'
+              : 'bg-[#17181c] border-b border-[#27282d]',
           )}
           onMouseDown={(e) => {
             // Click on empty header area while minimized → restore
