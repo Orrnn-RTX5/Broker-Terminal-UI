@@ -5,12 +5,14 @@ const setConnectionState = vi.fn();
 const enqueueLiveTick = vi.hoisted(() => vi.fn());
 const brokerSessionMock = vi.hoisted(() => ({
   accessToken: 'access-token' as string | null,
+  hasFeedToken: false,
   sessionListener: null as null | ((reason: 'token_rotation' | 'login' | 'logout' | 'broker_url_change' | 'account_change') => void),
 }));
 
 vi.mock('./brokerSession', () => ({
   buildBrokerWsFeedUri: vi.fn(() => 'wss://broker.example/ws/feed'),
   getAccessToken: vi.fn(() => brokerSessionMock.accessToken),
+  hasFeedBrokerToken: vi.fn(() => brokerSessionMock.hasFeedToken),
   onSessionChange: vi.fn((cb) => {
     brokerSessionMock.sessionListener = cb;
     return vi.fn();
@@ -80,6 +82,7 @@ describe('QuoteSocketManager feed protocol', () => {
   beforeEach(() => {
     FakeWebSocket.instances = [];
     brokerSessionMock.accessToken = 'access-token';
+    brokerSessionMock.hasFeedToken = false;
     brokerSessionMock.sessionListener = null;
     setConnectionState.mockClear();
     enqueueLiveTick.mockClear();
@@ -190,6 +193,19 @@ describe('QuoteSocketManager feed protocol', () => {
 
     brokerSessionMock.accessToken = 'access-token';
     brokerSessionMock.sessionListener?.('login');
+
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(FakeWebSocket.instances[0].url).toBe('wss://broker.example/ws/feed');
+
+    manager.destroy();
+  });
+
+  it('opens the quote feed with a feed token even without an account token', () => {
+    brokerSessionMock.accessToken = null;
+    brokerSessionMock.hasFeedToken = true;
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
 
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(FakeWebSocket.instances[0].url).toBe('wss://broker.example/ws/feed');

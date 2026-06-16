@@ -214,7 +214,7 @@ describe('active market symbol status cache', () => {
     });
   });
 
-  it('loads feed status from the runtime API root without auth or dynamic URL rewrite', async () => {
+  it('loads active feed symbols from the runtime API root without auth or dynamic URL rewrite', async () => {
     apiGet.mockResolvedValueOnce({
       symbol_status: [
         { symbol: 'EURUSD', has_data: true, silent: false },

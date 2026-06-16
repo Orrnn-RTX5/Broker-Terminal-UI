@@ -1,4 +1,4 @@
-import { API_V2_BASE_URL } from '../config/api';
+import { API_V2_BASE_URL, isLocalViteDevServer } from '../config/api';
 import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
 import type {
   Account,
@@ -109,7 +109,7 @@ const normalizeInstrumentRow = (instrument: Instrument): Instrument | null => {
   };
 };
 
-const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols'];
+const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v1/market/symbols', '/api/v1/market/symbol-list'];
 
 const persistAuth = (response: AuthTokenResponse): AuthTokenResponse => {
   const token = response.access_token || response.token;
@@ -195,7 +195,7 @@ const normalizeModifyPendingOrderRequest = (changes: ModifyPendingOrderRequest):
 
 export const authV2Api = {
   login: async (credentials: AuthLoginRequest, options?: ApiRequestOptions) => {
-    const shouldSkipDynamicUrl = Boolean(options?.baseUrl) || Boolean(options?.skipDynamicUrl);
+    const shouldSkipDynamicUrl = (Boolean(options?.baseUrl) || Boolean(options?.skipDynamicUrl)) && !isLocalViteDevServer();
     const response = await apiClient.post<AuthTokenResponse>(
       '/auth/login',
       normalizeLoginRequest(credentials),

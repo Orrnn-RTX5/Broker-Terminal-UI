@@ -56,7 +56,6 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     } = useRemoteWatchlistSync(activeWatchlist?.id);
 
     const {
-        symbols: availableInstruments,
         disabledSymbols,
         loading: symbolsLoading,
         error: symbolsError,
@@ -80,22 +79,12 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     const [hiddenSymbols, setHiddenSymbols] = useState<Set<string>>(() => new Set());
     const [manualSymbols, setManualSymbols] = useState<string[] | null>(null);
 
-    const liveTickSymbols = useMemo(() => {
-        return uniqueSymbols(Object.keys(liveTicks));
-    }, [liveTicks]);
     const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols(disabledSymbols)), [disabledSymbols]);
-    const marketCatalogSymbols = useMemo(() => {
-        return uniqueSymbols([...availableInstruments.map((item) => item.symbol), ...liveTickSymbols])
-            .filter((symbol) => !disabledSymbolSet.has(symbol))
-            .sort((a, b) => a.localeCompare(b));
-    }, [availableInstruments, disabledSymbolSet, liveTickSymbols]);
-    const marketCatalogSymbolSet = useMemo(() => new Set(marketCatalogSymbols), [marketCatalogSymbols]);
     const availableSymbols = useMemo(() => {
         return uniqueSymbols(activeMarketSymbols)
             .filter((symbol) => !disabledSymbolSet.has(symbol))
-            .filter((symbol) => marketCatalogSymbolSet.size === 0 || marketCatalogSymbolSet.has(symbol))
             .sort((a, b) => a.localeCompare(b));
-    }, [activeMarketSymbols, disabledSymbolSet, marketCatalogSymbolSet]);
+    }, [activeMarketSymbols, disabledSymbolSet]);
     const availableSymbolSet = useMemo(() => new Set(availableSymbols), [availableSymbols]);
     const defaultSymbols = useMemo(() => {
         return availableSymbols;
@@ -106,6 +95,8 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
             .filter((symbol) => availableSymbolSet.has(symbol) && !hiddenSymbols.has(symbol) && !disabledSymbolSet.has(symbol));
     }, [availableSymbolSet, defaultSymbols, disabledSymbolSet, hiddenSymbols, manualSymbols]);
     const { loading: quotesLoading, error: quotesError } = useLiveQuotes(symbols);
+    const isSymbolListLoading = symbolsLoading || watchlistLoading || (availableSymbols.length === 0 && activeSymbolsLoading);
+    const marketWatchError = quotesError || symbolsError || watchlistError || (availableSymbols.length === 0 ? activeSymbolsError : null);
 
     // Build display data from live ticks only (no fallback)
     const displayData = useMemo(() => {
@@ -265,9 +256,9 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                 </div>
 
                 <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white min-w-0">
-                    {(quotesError || symbolsError || activeSymbolsError || watchlistError) && (
+                    {marketWatchError && (
                         <div className="px-2 py-1 text-[11px] text-red-700 bg-red-50 border-b border-red-200">
-                            {quotesError || symbolsError || activeSymbolsError || watchlistError}
+                            {marketWatchError}
                         </div>
                     )}
                     {quotesLoading && symbols.length > 0 && Object.keys(liveTicks).length === 0 && (
@@ -277,7 +268,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                     )}
                     {symbols.length === 0 ? (
                         <div className="flex items-center justify-center h-32 text-gray-500 text-xs px-4 text-center">
-                            <span>{symbolsLoading || activeSymbolsLoading || watchlistLoading ? 'Loading symbols...' : 'No active symbols'}</span>
+                            <span>{isSymbolListLoading ? 'Loading symbols...' : 'No live symbols'}</span>
                         </div>
                     ) : (
                         <table className="w-full text-[12px] border-collapse bg-white table-fixed" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>

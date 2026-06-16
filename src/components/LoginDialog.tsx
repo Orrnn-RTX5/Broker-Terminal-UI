@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
-import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL } from '../config/api';
+import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL, toLocalDevProxyUrl } from '../config/api';
 import {
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
@@ -96,7 +96,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
         try {
             const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
-            const response = await fetch(`${cleanUrl}/health`, { signal: controller.signal });
+            const response = await fetch(toLocalDevProxyUrl(`${cleanUrl}/api/v2/time`), { signal: controller.signal });
             clearTimeout(timeoutId);
             if (response.ok) {
                 setHealthStatus('online');

@@ -21,6 +21,7 @@
 import {
   buildBrokerWsFeedUri,
   getAccessToken,
+  hasFeedBrokerToken,
   onSessionChange,
 } from './brokerSession';
 import { enqueueLiveTick, type LiveTick } from './liveTickDispatcher';
@@ -272,7 +273,7 @@ class QuoteSocketManager {
 
     if (this.disposed) return;
     const nextWsUrl = buildBrokerWsFeedUri();
-    if (!nextWsUrl || !getAccessToken()) {
+    if (!nextWsUrl || (!getAccessToken() && !hasFeedBrokerToken())) {
       console.warn('[QuoteSocket] Session not ready, deferring connect');
       return;
     }

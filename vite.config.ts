@@ -41,6 +41,23 @@ const toHttpOrigin = (value: string): string | null => {
   }
 }
 
+const toWsOrigin = (value: string): string | null => {
+  const trimmed = String(value || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return null
+
+  try {
+    const parsed = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `wss://${trimmed}`)
+    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:' && parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    parsed.protocol = parsed.protocol === 'http:' ? 'ws:' : parsed.protocol === 'https:' ? 'wss:' : parsed.protocol
+    parsed.pathname = ''
+    parsed.search = ''
+    parsed.hash = ''
+    return parsed.toString().replace(/\/$/, '')
+  } catch {
+    return null
+  }
+}
+
 const addOrigin = (origins: Set<string>, value: string): void => {
   const origin = toHttpOrigin(value)
   if (origin) origins.add(origin)
@@ -95,6 +112,29 @@ const parseDynamicProxyTarget = (requestUrl: string, prefix: string): URL | null
     return target
   } catch {
     return null
+  }
+}
+
+const rewriteDynamicWsProxyPath = (path: string): string => {
+  const prefix = '/__broker_feed_ws'
+  if (!path.startsWith(`${prefix}/`)) return path.replace(/^\/__broker_feed_ws/, '')
+
+  const pathAfterPrefix = path.slice(prefix.length + 1)
+  const slashIndex = pathAfterPrefix.indexOf('/')
+  if (slashIndex < 0) return '/'
+
+  const encodedOrigin = pathAfterPrefix.slice(0, slashIndex)
+  const targetPath = pathAfterPrefix.slice(slashIndex)
+
+  try {
+    const origin = new URL(decodeURIComponent(encodedOrigin))
+    if (origin.protocol !== 'ws:' && origin.protocol !== 'wss:') return '/'
+    const queryIndex = targetPath.indexOf('?')
+    const pathname = queryIndex >= 0 ? targetPath.slice(0, queryIndex) : targetPath
+    const search = queryIndex >= 0 ? targetPath.slice(queryIndex) : ''
+    return `${pathname || '/'}${search}`
+  } catch {
+    return '/'
   }
 }
 
@@ -273,7 +313,29 @@ const learnBrokerOrigins = (body: Buffer, access: BrokerProxyAccess): void => {
     if (!value || typeof value !== 'object') return
 
     const record = value as Record<string, unknown>
-    for (const key of ['server_url', 'serverUrl', 'server']) {
+    for (const key of [
+      'server_url',
+      'serverUrl',
+      'server',
+      'backend_url',
+      'backendUrl',
+      'market_api_url',
+      'marketApiUrl',
+      'public_backend_url',
+      'publicBackendUrl',
+      'public_ext_api_url',
+      'publicExtApiUrl',
+      'web_backend_url',
+      'webBackendUrl',
+      'web_ext_api_url',
+      'webExtApiUrl',
+      'services_url',
+      'servicesUrl',
+      'API_HOST',
+      'API_HOST_EXT',
+      'api_host',
+      'api_host_ext',
+    ]) {
       if (typeof record[key] === 'string') addBrokerOrigin(access.discoveredBrokerOrigins, record[key])
     }
 
@@ -400,6 +462,7 @@ export default defineConfig(({ mode }) => {
   const discoveryTarget = env.VITE_BROKER_DISCOVERY_URL || 'https://testbrokerbackend.orrnn.com';
   const brokerApiTarget = env.VITE_DEV_BROKER_API_URL || env.VITE_RTX5_API_URL || 'https://testbrokerbackend.orrnn.com';
   const wsTarget = (env.VITE_WS_URL || env.VITE_FIX_WS_URL || 'wss://backend.orrnn.com/ws/v2').replace(/\/ws\/v2$/, '');
+  const feedWsTarget = toWsOrigin(env.VITE_MARKET_WS_URL || env.VITE_WS_URL || env.VITE_FIX_WS_URL || wsTarget) || wsTarget;
   const brokerProxyAccess = createBrokerProxyAccess(env);
 
   return {
@@ -412,11 +475,6 @@ export default defineConfig(({ mode }) => {
     host: '127.0.0.1',
     port: 5173,
     open: true,
-    hmr: {
-      host: '127.0.0.1',
-      protocol: 'ws',
-      clientPort: 5173,
-    },
     proxy: {
       '/__broker_discovery': {
         target: discoveryTarget,
@@ -442,6 +500,18 @@ export default defineConfig(({ mode }) => {
         changeOrigin: true,
         secure: false,
         ws: true,
+      },
+      '/__broker_feed_ws': {
+        target: feedWsTarget,
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+        rewrite: rewriteDynamicWsProxyPath,
+        configure: (proxy) => {
+          proxy.on('proxyReqWs', (proxyReq) => {
+            proxyReq.removeHeader('origin')
+          })
+        },
       }
     }
   },

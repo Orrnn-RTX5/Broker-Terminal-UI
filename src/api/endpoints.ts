@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
+import { API_V2_BASE_URL, isLocalViteDevServer, normalizeBrokerServerUrl } from '../config/api';
 import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 
 const resolveV2BaseUrl = (baseUrl?: string): string => {
@@ -17,7 +17,7 @@ const resolveStoredLogin = (): number | undefined => {
 
 const getApiRootBaseUrl = (): string => API_V2_BASE_URL.replace(/\/api\/v2\/?$/, '');
 
-const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v2/symbols', '/api/v1/symbols', '/manager/api/v2/symbols'];
+const SYMBOL_ENDPOINTS = ['/api/v2/instruments', '/api/v1/market/symbols', '/api/v1/market/symbol-list'];
 
 const resolveSymbolEndpoint = (endpoint: string): { endpoint: string; baseUrl: string } =>
   endpoint.startsWith('/api/v2')
@@ -412,7 +412,7 @@ export const authApi = {
   login: (credentials: LoginCredentials, options?: { baseUrl?: string }) =>
     apiClient.post<LoginResponse>('/auth/login', normalizeLoginCredentials(credentials), {
       baseUrl: resolveV2BaseUrl(options?.baseUrl),
-      skipDynamicUrl: Boolean(options?.baseUrl),
+      skipDynamicUrl: Boolean(options?.baseUrl) && !isLocalViteDevServer(),
     }),
 
   logout: () =>

@@ -129,7 +129,7 @@ export const workspaceApi = {
    */
   async saveWorkspace(request: SaveWorkspaceRequest): Promise<SaveWorkspaceResponse> {
     try {
-      const response = await fetchWithTimeout(`${getFixApiBaseUrl()}/api/workspaces`, {
+      const response = await fetchWithTimeout(`${getFixApiBaseUrl()}/api/v2/workspaces`, {
         method: 'POST',
         body: JSON.stringify(request),
       });
@@ -147,7 +147,7 @@ export const workspaceApi = {
   async loadWorkspace(workspaceId: string): Promise<LoadWorkspaceResponse> {
     try {
       const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces/${workspaceId}`
+        `${getFixApiBaseUrl()}/api/v2/workspaces/${workspaceId}`
       );
 
       return await handleResponse<LoadWorkspaceResponse>(response);
@@ -164,7 +164,7 @@ export const workspaceApi = {
     try {
       const queryParams = userId ? `?userId=${userId}` : '';
       const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces${queryParams}`
+        `${getFixApiBaseUrl()}/api/v2/workspaces${queryParams}`
       );
 
       return await handleResponse<ListWorkspacesResponse>(response);
@@ -180,7 +180,7 @@ export const workspaceApi = {
   async deleteWorkspace(workspaceId: string): Promise<DeleteWorkspaceResponse> {
     try {
       const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces/${workspaceId}`,
+        `${getFixApiBaseUrl()}/api/v2/workspaces/${workspaceId}`,
         {
           method: 'DELETE',
         }
@@ -202,7 +202,7 @@ export const workspaceApi = {
   ): Promise<SaveWorkspaceResponse> {
     try {
         const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces/${workspaceId}/metadata`,
+        `${getFixApiBaseUrl()}/api/v2/workspaces/${workspaceId}/metadata`,
         {
           method: 'PATCH',
           body: JSON.stringify(updates),
@@ -222,7 +222,7 @@ export const workspaceApi = {
   async setDefaultWorkspace(workspaceId: string): Promise<SaveWorkspaceResponse> {
     try {
       const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces/${workspaceId}/set-default`,
+        `${getFixApiBaseUrl()}/api/v2/workspaces/${workspaceId}/set-default`,
         {
           method: 'POST',
         }
@@ -242,7 +242,7 @@ export const workspaceApi = {
     try {
       const queryParams = userId ? `?userId=${userId}` : '';
       const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces/default${queryParams}`
+        `${getFixApiBaseUrl()}/api/v2/workspaces/default${queryParams}`
       );
 
       return await handleResponse<LoadWorkspaceResponse>(response);
@@ -261,7 +261,7 @@ export const workspaceApi = {
   ): Promise<SaveWorkspaceResponse> {
     try {
       const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces/${workspaceId}/duplicate`,
+        `${getFixApiBaseUrl()}/api/v2/workspaces/${workspaceId}/duplicate`,
         {
           method: 'POST',
           body: JSON.stringify({ name: newName }),
@@ -281,7 +281,7 @@ export const workspaceApi = {
   async exportWorkspace(workspaceId: string): Promise<Workspace> {
     try {
       const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces/${workspaceId}/export`
+        `${getFixApiBaseUrl()}/api/v2/workspaces/${workspaceId}/export`
       );
 
       const result = await handleResponse<{ workspace: Workspace }>(response);
@@ -298,7 +298,7 @@ export const workspaceApi = {
   async importWorkspace(workspaceData: Workspace): Promise<SaveWorkspaceResponse> {
     try {
       const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces/import`,
+        `${getFixApiBaseUrl()}/api/v2/workspaces/import`,
         {
           method: 'POST',
           body: JSON.stringify({ workspace: workspaceData }),
@@ -329,7 +329,7 @@ export const workspaceApi = {
       }
 
       const response = await fetchWithTimeout(
-        `${getFixApiBaseUrl()}/api/workspaces/search?${queryParams}`
+        `${getFixApiBaseUrl()}/api/v2/workspaces/search?${queryParams}`
       );
 
       return await handleResponse<ListWorkspacesResponse>(response);

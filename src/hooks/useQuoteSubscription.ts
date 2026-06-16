@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getQuoteSocketManager } from '../services/quoteSocketManager';
 import { useAppStore } from '../store/useAppStore';
-import { getAccessToken, getServerUrl, onSessionChange } from '../services/brokerSession';
+import { getAccessToken, getServerUrl, hasFeedBrokerToken, onSessionChange } from '../services/brokerSession';
 import { debugLog } from '../utils/debugLogging';
 
 const normalizeSymbol = (v: unknown): string =>
@@ -22,7 +22,7 @@ export interface UseQuoteSubscriptionReturn {
 }
 
 const hasReadyStoredBrokerSession = (): boolean =>
-  Boolean(getServerUrl() && getAccessToken());
+  Boolean(getServerUrl() && (getAccessToken() || hasFeedBrokerToken()));
 
 export function useQuoteSubscription(
   symbols: string[],

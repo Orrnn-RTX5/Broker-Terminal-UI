@@ -796,21 +796,21 @@ export interface SaveWorkspaceResponse {
 
 export const workspaceApi = {
   async saveWorkspace(workspace: Workspace, overwrite = false): Promise<SaveWorkspaceResponse> {
-    return apiClient.post<SaveWorkspaceResponse>('/api/workspaces', { workspace, overwrite });
+    return apiClient.post<SaveWorkspaceResponse>('/workspaces', { workspace, overwrite });
   },
 
   async loadWorkspace(workspaceId: string): Promise<{ success: boolean; workspace?: Workspace; message?: string }> {
-    return apiClient.get<{ success: boolean; workspace?: Workspace; message?: string }>(`/api/workspaces/${workspaceId}`);
+    return apiClient.get<{ success: boolean; workspace?: Workspace; message?: string }>(`/workspaces/${workspaceId}`);
   },
 
   async listWorkspaces(userId: string, accountId?: string): Promise<{ success: boolean; workspaces: unknown[]; message?: string }> {
-    return apiClient.get<{ success: boolean; workspaces: unknown[]; message?: string }>('/api/workspaces', {
+    return apiClient.get<{ success: boolean; workspaces: unknown[]; message?: string }>('/workspaces', {
       params: { userId, accountId }
     });
   },
 
   async deleteWorkspace(workspaceId: string): Promise<{ success: boolean; message?: string }> {
-    return apiClient.delete<{ success: boolean; message?: string }>(`/api/workspaces/${workspaceId}`);
+    return apiClient.delete<{ success: boolean; message?: string }>(`/workspaces/${workspaceId}`);
   },
 };
 

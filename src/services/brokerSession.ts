@@ -54,6 +54,8 @@ const removeSessionStorageItem = (key: string): void => getBrowserStorage('sessi
 
 const FORCE_HTTP_ONLY = import.meta.env.VITE_FORCE_HTTP_ONLY === 'true';
 const hasUrlScheme = (value: string): boolean => /^[a-z][a-z\d+.-]*:\/\//i.test(value);
+const DEV_BROKER_FEED_WS_PROXY_PREFIX = '/__broker_feed_ws';
+const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 const getRuntimePageProtocol = (): string => {
   if (typeof window === 'undefined' || !window.location?.protocol) return 'https:';
@@ -114,6 +116,35 @@ const normalizeWsUrl = (value: string): string => {
   if (/^http:\/\//i.test(trimmed)) return trimmed.replace(/^http:\/\//i, 'ws://');
   if (hasUrlScheme(trimmed)) return trimmed;
   return `${getRuntimeWsProtocol()}//${trimmed}`;
+};
+
+const isElectronRuntime = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return Boolean((window as Window & { electronAPI?: unknown }).electronAPI)
+    || window.location?.protocol === 'file:'
+    || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron'));
+};
+
+const isLocalViteDevServer = (): boolean => {
+  if (!import.meta.env.DEV || import.meta.env.MODE === 'test' || typeof window === 'undefined' || isElectronRuntime()) return false;
+  const protocol = window.location?.protocol || '';
+  const hostname = window.location?.hostname || '';
+  return protocol.startsWith('http') && LOCAL_DEV_HOSTS.has(hostname);
+};
+
+const toLocalDevProxyWsUrl = (value: string): string => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed || !isLocalViteDevServer()) return trimmed;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') return trimmed;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const pathname = parsed.pathname === '/' ? '' : parsed.pathname;
+    return `${protocol}//${window.location.host}${DEV_BROKER_FEED_WS_PROXY_PREFIX}/${encodeURIComponent(parsed.origin)}${pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return trimmed;
+  }
 };
 
 export interface BrokerSessionDiscoveryInput {
@@ -414,6 +445,8 @@ const getFeedBrokerToken = (): string => {
   ).trim();
 };
 
+export const hasFeedBrokerToken = (): boolean => Boolean(getFeedBrokerToken());
+
 const shouldKeepCurrentMarketOrigin = (
   nextUrl: string,
   hasToken: boolean,
@@ -518,8 +551,19 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
     setLocalStorageItem('auth_token', token);
     emitAuthTokenUpdated();
   } else if (brokerChangedWithoutToken) {
-    removeLocalStorageItem('auth_token');
-    removeSessionStorageItem('auth_token');
+    [
+      'auth_token',
+      'refresh_token',
+      'token_expires_at',
+      'api_base_url',
+      'account_login',
+      'rtx_last_login',
+      'rtx_saved_username',
+      'feed_broker_token',
+    ].forEach((key) => {
+      removeLocalStorageItem(key);
+      removeSessionStorageItem(key);
+    });
     emitAuthTokenUpdated();
   }
   if (brokerId) {
@@ -778,12 +822,16 @@ export function buildBrokerWsV2Uri(token?: string | null): string {
   );
   const secureStoredWsUrl = forceWssForHttpsFrontend(storedWsUrl);
   const secureFallback = forceWssForHttpsFrontend(fallback);
-  if (secureStoredWsUrl) return activeToken ? appendTokenToWsUrl(secureStoredWsUrl, activeToken) : secureStoredWsUrl;
-  if (!server) return activeToken ? (secureFallback ? appendTokenToWsUrl(secureFallback, activeToken) : '') : secureFallback;
+  if (secureStoredWsUrl) {
+    return toLocalDevProxyWsUrl(activeToken ? appendTokenToWsUrl(secureStoredWsUrl, activeToken) : secureStoredWsUrl);
+  }
+  if (!server) {
+    return toLocalDevProxyWsUrl(activeToken ? (secureFallback ? appendTokenToWsUrl(secureFallback, activeToken) : '') : secureFallback);
+  }
 
   const brokerOrigin = forceWssForHttpsFrontend(httpToWss(server));
   const base = brokerOrigin ? `${brokerOrigin}/ws/v2` : secureFallback;
-  return activeToken ? appendTokenToWsUrl(base, activeToken) : base;
+  return toLocalDevProxyWsUrl(activeToken ? appendTokenToWsUrl(base, activeToken) : base);
 }
 
 /** Build WebSocket URI for the /ws/feed endpoint (live bid/ask quotes). */
@@ -791,12 +839,12 @@ export function buildBrokerWsFeedUri(): string {
   const server = getRuntimeMarketOrigin();
   const providedFeedUrl = normalizeWsUrl(getStoredUrlByKeys(['feed_url']));
   if (canUseStoredWsUrl(providedFeedUrl, server)) {
-    return appendFeedAuthToWsUrl(forceWssForHttpsFrontend(providedFeedUrl));
+    return toLocalDevProxyWsUrl(appendFeedAuthToWsUrl(forceWssForHttpsFrontend(providedFeedUrl)));
   }
 
   const providedWsUrl = normalizeWsUrlToFeed(getStoredUrlByKeys(['ws_url']));
   if (canUseStoredWsUrl(providedWsUrl, server)) {
-    return appendFeedAuthToWsUrl(forceWssForHttpsFrontend(providedWsUrl));
+    return toLocalDevProxyWsUrl(appendFeedAuthToWsUrl(forceWssForHttpsFrontend(providedWsUrl)));
   }
 
   const fallback = normalizeWsUrl(
@@ -804,8 +852,8 @@ export function buildBrokerWsFeedUri(): string {
     || import.meta.env.VITE_RTX5_WS_URL as string
     || ''
   );
-  if (!server) return appendFeedAuthToWsUrl(forceWssForHttpsFrontend(fallback));
-  return appendFeedAuthToWsUrl(forceWssForHttpsFrontend(appendWsFeedPath(httpToWss(server))));
+  if (!server) return toLocalDevProxyWsUrl(appendFeedAuthToWsUrl(forceWssForHttpsFrontend(fallback)));
+  return toLocalDevProxyWsUrl(appendFeedAuthToWsUrl(forceWssForHttpsFrontend(appendWsFeedPath(httpToWss(server)))));
 }
 
 /** Build REST API v2 base URL. */

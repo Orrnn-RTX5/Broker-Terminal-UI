@@ -192,6 +192,12 @@ export class EnhancedWebSocketService {
     const token = localStorage.getItem('auth_token');
     let urlWithAuth: string;
 
+    if (!isFixApiBackend && !token) {
+      console.warn('[WS] Skipping trade WebSocket connect until auth token is available');
+      this.updateState('disconnected');
+      return;
+    }
+
     if (!isFixApiBackend && serverUrl) {
       this.url = buildBrokerWsV2Uri(null);
       urlWithAuth = token ? buildBrokerWsV2Uri(token) : this.url;

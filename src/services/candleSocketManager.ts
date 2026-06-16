@@ -209,13 +209,10 @@ class CandleSocketManager {
     const candleChannel = `candles.${symbol.toUpperCase()}.${timeframe.toUpperCase()}`;
     const tickChannel = `ticks.${symbol.toUpperCase()}`;
 
-    const msg = {
-      action: 'subscribe',
-      channels: [candleChannel, tickChannel],
-    };
-
     console.log(`[CandleSocket] Subscribing: ${candleChannel}, ${tickChannel}`);
-    this.ws.send(JSON.stringify(msg));
+    [candleChannel, tickChannel].forEach((channel) => {
+      this.ws?.send(JSON.stringify({ action: 'subscribe', channel }));
+    });
   }
 
   private sendChannelUnsubscribe(symbol: string, timeframe: string): void {
@@ -230,13 +227,10 @@ class CandleSocketManager {
       channels.push(`ticks.${symbol.toUpperCase()}`);
     }
 
-    const msg = {
-      action: 'unsubscribe',
-      channels,
-    };
-
     console.log(`[CandleSocket] Unsubscribing: ${channels.join(', ')}`);
-    this.ws.send(JSON.stringify(msg));
+    channels.forEach((channel) => {
+      this.ws?.send(JSON.stringify({ action: 'unsubscribe', channel }));
+    });
   }
 
   private resubscribeAll(): void {

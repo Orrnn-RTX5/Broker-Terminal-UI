@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { API_BASE_URL } from '../config/api';
 import { tradeApi } from '../api/trade';
 import { getStoredAccountLogin } from '../api/tradeGateway';
+import { useAppStore } from '../store/useAppStore';
 
 type SupportedOrderType = 'MARKET' | 'LIMIT' | 'STOP';
 
@@ -46,6 +46,7 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
     const [oneClick, setOneClick] = useState(false);
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [loading, setLoading] = useState(false);
+    const account = useAppStore((state) => state.account);
 
     // Set default price when price changes
     useEffect(() => {
@@ -65,18 +66,31 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
         const slPips = parseFloat(sl);
         if (slPips <= 0) return;
 
-        // Must explicitly import to avoid async component level loading issues
-        import('../api/client').then(({ apiClient }) => {
-            apiClient.get<any>(`${API_BASE_URL}/risk/calculate-lot?symbol=${symbol}&riskPercent=${riskPercent}&slPips=${slPips}`)
-                .then(data => {
-                    if (data?.lotSize) {
-                        setCalculatedLot(data.lotSize);
-                        setVolume(data.lotSize.toFixed(2));
-                    }
-                })
-                .catch(() => { });
-        });
-    }, [useRiskCalc, sl, riskPercent, symbol]);
+        const login = getStoredAccountLogin();
+        const balance = Number(account?.balance || 0);
+        if (!login || balance <= 0) {
+            setCalculatedLot(null);
+            return;
+        }
+
+        tradeApi.market.calculateMargin({
+            account_login: login,
+            symbol,
+            side: side.toLowerCase() as 'buy' | 'sell',
+            volume: 1,
+        })
+            .then(data => {
+                const pipValue = Number(data?.pip_value || 0);
+                if (pipValue <= 0) return;
+                const riskAmount = balance * (parseFloat(riskPercent) / 100);
+                const maxLots = Number(data?.max_lots || Number.POSITIVE_INFINITY);
+                const lotSize = Math.max(0.01, Math.min(riskAmount / (slPips * pipValue), maxLots));
+                const rounded = Math.floor(lotSize * 100) / 100;
+                setCalculatedLot(rounded);
+                setVolume(rounded.toFixed(2));
+            })
+            .catch(() => setCalculatedLot(null));
+    }, [useRiskCalc, sl, riskPercent, symbol, side, account?.balance]);
 
     // Preview margin
     useEffect(() => {
@@ -85,11 +99,28 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
             return;
         }
 
-        import('../api/client').then(({ apiClient }) => {
-            apiClient.get<any>(`${API_BASE_URL}/risk/margin-preview?symbol=${symbol}&volume=${volume}&side=${side}`)
-                .then(data => setMarginPreview(data))
-                .catch(() => setMarginPreview(null));
-        });
+        const login = getStoredAccountLogin();
+        if (!login) {
+            setMarginPreview(null);
+            return;
+        }
+
+        tradeApi.market.calculateMargin({
+            account_login: login,
+            symbol,
+            side: side.toLowerCase() as 'buy' | 'sell',
+            volume: parseFloat(volume),
+        })
+            .then(data => {
+                const requiredMargin = Number(data?.required_margin || 0);
+                const freeMargin = Number(data?.free_margin);
+                setMarginPreview({
+                    requiredMargin,
+                    freeMarginAfter: Number.isFinite(freeMargin) ? freeMargin - requiredMargin : undefined,
+                    canTrade: !Number.isFinite(freeMargin) || freeMargin >= requiredMargin,
+                });
+            })
+            .catch(() => setMarginPreview(null));
     }, [volume, symbol, side]);
 
     const handleSubmit = async (nextSide = side) => {

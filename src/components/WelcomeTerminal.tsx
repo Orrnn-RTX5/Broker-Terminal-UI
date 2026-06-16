@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRight, Eye, EyeOff, Lock, User } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
-import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL } from '../config/api';
+import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL, toLocalDevProxyUrl } from '../config/api';
 import SplitText from './SplitText';
 import {
     getBackendTarget,
@@ -161,7 +161,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
         try {
             const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
-            const response = await fetch(`${cleanUrl}/health`, { signal: controller.signal });
+            const response = await fetch(toLocalDevProxyUrl(`${cleanUrl}/api/v2/time`), { signal: controller.signal });
             clearTimeout(timeoutId);
             setHealthStatus(response.ok ? 'online' : 'offline');
         } catch (err: unknown) {
