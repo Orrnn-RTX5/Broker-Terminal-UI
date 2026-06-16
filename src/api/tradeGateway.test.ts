@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
 import { RTX5_API_URL, WS_URL } from '../config/api';
 import {
+  collapseDealHistory,
   getStoredAccountLogin,
   normalizeAccount,
   normalizeClosedPosition,
@@ -113,7 +114,171 @@ describe('trade gateway normalization', () => {
       profit: 18.25,
       commission: -0.7,
       swap: -0.1,
+      positionId: 445566,
+      dealTicket: 778899,
+      entry: 'entry_out',
     });
+  });
+
+  it('collapses paired MT5 entry deals into one closed history trade', () => {
+    const openTime = new Date(1760000000 * 1000).toISOString();
+    const closeTime = new Date(1760003600 * 1000).toISOString();
+    const deals = [
+      normalizeDeal({
+        deal: 1001,
+        position_ticket: 5001,
+        symbol: 'GBPUSD',
+        action: 'deal_buy',
+        entry: 'entry_in',
+        volume: 0.01,
+        price: 1.33981,
+        time: 1760000000,
+      }),
+      normalizeDeal({
+        deal: 1002,
+        position_ticket: 5001,
+        symbol: 'GBPUSD',
+        action: 'deal_sell',
+        entry: 'entry_out',
+        volume: 0.01,
+        price: 1.34008,
+        profit: 2.7,
+        commission: -0.12,
+        swap: -0.01,
+        time: 1760003600,
+      }),
+    ];
+
+    expect(collapseDealHistory(deals)).toEqual([
+      expect.objectContaining({
+        id: 5001,
+        symbol: 'GBPUSD',
+        type: 'closed',
+        status: 'closed',
+        side: 'BUY',
+        volume: 0.01,
+        openPrice: 1.33981,
+        closePrice: 1.34008,
+        openTime,
+        closeTime,
+        profit: 2.7,
+        commission: -0.12,
+        swap: -0.01,
+      }),
+    ]);
+  });
+
+  it('returns collapsed deal history rows from getOrderHistory instead of raw entry rows', async () => {
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce({ positions: [] })
+      .mockResolvedValueOnce({
+        deals: [
+          {
+            deal: 2001,
+            position_ticket: 9001,
+            symbol: 'XAUUSD',
+            action: 'deal_buy',
+            entry: 'entry_in',
+            volume: 0.01,
+            price: 4320.35,
+            time: 1760000000,
+          },
+          {
+            deal: 2002,
+            position_ticket: 9001,
+            symbol: 'XAUUSD',
+            action: 'deal_sell',
+            entry: 'entry_out',
+            volume: 0.01,
+            price: 4326.10,
+            profit: 5.75,
+            time: 1760000300,
+          },
+        ],
+      });
+
+    await expect(tradeGatewayApi.getOrderHistory(123456)).resolves.toMatchObject([
+      {
+        id: 9001,
+        symbol: 'XAUUSD',
+        type: 'closed',
+        status: 'closed',
+        openPrice: 4320.35,
+        closePrice: 4326.10,
+        profit: 5.75,
+      },
+    ]);
+  });
+
+  it('returns only closed trades in history and excludes opening deals and orders', async () => {
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce({ positions: [] })
+      .mockResolvedValueOnce({
+        deals: [
+          {
+            deal: 3001,
+            position_ticket: 9101,
+            symbol: 'GBPUSD',
+            action: 'deal_buy',
+            entry: 'entry_in',
+            volume: 0.01,
+            price: 1.33981,
+            time: 1760000000,
+          },
+          {
+            deal: 3002,
+            position_ticket: 9102,
+            symbol: 'EURUSD',
+            action: 'deal_sell',
+            entry: 'entry_in',
+            volume: 0.02,
+            price: 1.0900,
+            time: 1760000100,
+          },
+          {
+            deal: 3003,
+            position_ticket: 9102,
+            symbol: 'EURUSD',
+            action: 'deal_buy',
+            entry: 'entry_out',
+            volume: 0.02,
+            price: 1.0880,
+            profit: 4,
+            time: 1760000200,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        orders: [
+          {
+            ticket: 4001,
+            symbol: 'GBPUSD',
+            type: 'buy',
+            side: 'buy',
+            volume: 0.01,
+            price_open: 1.33981,
+            time_create: 1760000000,
+          },
+        ],
+      });
+
+    const history = await tradeGatewayApi.getOrderHistory(123456);
+
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      id: 9102,
+      symbol: 'EURUSD',
+      type: 'closed',
+      status: 'closed',
+      side: 'SELL',
+      openPrice: 1.09,
+      closePrice: 1.088,
+      profit: 4,
+    });
+    expect(vi.mocked(apiClient.get)).not.toHaveBeenCalledWith(
+      '/orders/123456',
+      expect.anything(),
+    );
   });
 
   it('normalizes closed position opened time from gateway time_open', () => {

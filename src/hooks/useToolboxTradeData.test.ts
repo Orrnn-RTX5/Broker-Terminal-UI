@@ -14,6 +14,7 @@ describe('useToolboxTradeData helpers', () => {
       free_margin: 9995.5,
       margin_level: 100055,
       floating_pnl: 5.5,
+      credit: 50,
     });
 
     expect(account).toMatchObject({
@@ -23,6 +24,28 @@ describe('useToolboxTradeData helpers', () => {
       freeMargin: 9995.5,
       marginLevel: 100055,
       unrealizedPL: 5.5,
+      credit: 50,
+      hasBackendEquity: true,
+      hasBackendFreeMargin: true,
+      hasBackendMarginLevel: true,
+    });
+  });
+
+  it('marks derived account fields as missing when backend does not send them', () => {
+    const account = normalizeToolboxAccount({
+      balance: 10000,
+      used_margin: 10,
+      floating_pnl: 5.5,
+    });
+
+    expect(account).toMatchObject({
+      balance: 10000,
+      equity: 10000,
+      freeMargin: 0,
+      marginLevel: 0,
+      hasBackendEquity: false,
+      hasBackendFreeMargin: false,
+      hasBackendMarginLevel: false,
     });
   });
 
@@ -71,10 +94,42 @@ describe('useToolboxTradeData helpers', () => {
       openPrice: 1.35031,
       currentPrice: 1.34705,
       unrealizedPnL: 2.24,
+      hasBackendProfit: true,
       time_create: 1774502950,
       time_update: 1774503999,
     });
     expect(patched.find((position) => position.id === 102)).toBe(initial.find((position) => position.id === 102));
+  });
+
+  it('invalidates backend profit when current price changes without fresh profit', () => {
+    const initial = replaceToolboxPositions([], [
+      {
+        ticket: 101,
+        account_login: 200116,
+        symbol: 'GBPUSD',
+        side: 'sell',
+        volume: 0.01,
+        price_open: 1.35031,
+        price_current: 1.34994,
+        profit: 0.37,
+        contract_size: 100000,
+      },
+    ]);
+
+    const patched = patchToolboxPositions(initial, [
+      {
+        ticket: 101,
+        price_current: 1.34705,
+        time_update: 1774503999,
+      },
+    ]);
+
+    expect(patched[0]).toMatchObject({
+      currentPrice: 1.34705,
+      price_current: 1.34705,
+      profit: 0.37,
+      hasBackendProfit: false,
+    });
   });
 
   it('removes only close-event tickets', () => {

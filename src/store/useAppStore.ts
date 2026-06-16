@@ -76,6 +76,10 @@ export interface Account {
   freeMargin: number;
   unrealizedPL: number;
   marginLevel: number;
+  credit?: number;
+  hasBackendEquity?: boolean;
+  hasBackendFreeMargin?: boolean;
+  hasBackendMarginLevel?: boolean;
   currency: string;
   leverage: number;
 }
@@ -93,6 +97,13 @@ export interface Trade {
   profit: number;
   commission: number;
   swap: number;
+  sl?: number;
+  tp?: number;
+  status?: string;
+  positionId?: number;
+  orderTicket?: number;
+  dealTicket?: number;
+  entry?: string;
 }
 
 export interface SavedAccount {

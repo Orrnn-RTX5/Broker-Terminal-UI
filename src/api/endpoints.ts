@@ -301,6 +301,7 @@ export interface PendingOrderRequest {
 export interface ModifyPositionRequest {
   price_sl?: number;
   price_tp?: number;
+  comment?: string;
   trailing_stop?: number;
   trailing_step?: number;
 }

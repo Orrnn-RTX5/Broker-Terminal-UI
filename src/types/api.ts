@@ -399,6 +399,7 @@ export interface PlaceOrderRequest {
 export interface ModifyPositionRequest {
   price_sl?: number;
   price_tp?: number;
+  comment?: string;
   trailing_stop?: number;
   trailing_step?: number;
 }
@@ -423,6 +424,7 @@ export interface ModifyPendingOrderRequest {
   price?: number;
   price_sl?: number;
   price_tp?: number;
+  comment?: string;
   expiration?: number;
   sl?: number;
   tp?: number;

@@ -4,15 +4,24 @@
  * Matches the MT5 "Order" dialog visual style
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useReducer, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import {
+    Activity,
+    ChartCandlestick,
+    Crosshair,
+    Grid3X3,
+    RotateCcw,
+    ZoomIn,
+    ZoomOut,
+} from 'lucide-react';
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useAppStore } from '../store/useAppStore';
 import api from '../services/api';
 
 interface ModifyPositionDialogProps {
     isOpen: boolean;
-    onClose: (modifiedSl?: number, modifiedTp?: number) => void;
+    onClose: (modifiedSl?: number, modifiedTp?: number, modifiedComment?: string) => void;
     kind?: 'position' | 'pending-order';
     position: {
         id: number;
@@ -25,6 +34,73 @@ interface ModifyPositionDialogProps {
         comment?: string;
     } | null;
 }
+
+type ModifyDialogKind = NonNullable<ModifyPositionDialogProps['kind']>;
+type ModifyPosition = NonNullable<ModifyPositionDialogProps['position']>;
+
+interface MiniChartSample {
+    bid: number;
+    ask: number;
+    timestamp: number;
+}
+
+interface MiniChartState {
+    key: string | null;
+    samples: MiniChartSample[];
+}
+
+interface MiniMarketDepthLevel {
+    side: 'ASK' | 'BID';
+    price: number;
+    volume: number;
+    intensity: number;
+    isBest: boolean;
+}
+
+type MiniChartAction =
+    | { type: 'reset'; key: string }
+    | { type: 'clear' }
+    | { type: 'append'; key: string; sample: MiniChartSample };
+
+const MAX_MINI_CHART_SAMPLES = 60;
+const MINI_CHART_ZOOM_LEVELS = [1, 1.35, 1.8, 2.4] as const;
+const initialMiniChartState: MiniChartState = { key: null, samples: [] };
+
+const getMiniChartKey = (position: ModifyPosition, kind: ModifyDialogKind) => {
+    return `${kind}:${position.id}:${position.symbol}`;
+};
+
+const isSameMiniChartSample = (left: MiniChartSample, right: MiniChartSample) => {
+    return left.bid === right.bid && left.ask === right.ask && left.timestamp === right.timestamp;
+};
+
+const appendMiniChartSample = (samples: MiniChartSample[], sample: MiniChartSample) => {
+    const lastSample = samples[samples.length - 1];
+    if (lastSample && isSameMiniChartSample(lastSample, sample)) {
+        return samples;
+    }
+
+    return [...samples, sample].slice(-MAX_MINI_CHART_SAMPLES);
+};
+
+const miniChartReducer = (state: MiniChartState, action: MiniChartAction): MiniChartState => {
+    switch (action.type) {
+        case 'clear':
+            if (state.key === null && state.samples.length === 0) return state;
+            return initialMiniChartState;
+        case 'reset':
+            if (state.key === action.key && state.samples.length === 0) return state;
+            return { key: action.key, samples: [] };
+        case 'append': {
+            const baseSamples = state.key === action.key ? state.samples : [];
+            const nextSamples = appendMiniChartSample(baseSamples, action.sample);
+            if (state.key === action.key && nextSamples === state.samples) return state;
+            return { key: action.key, samples: nextSamples };
+        }
+        default:
+            return state;
+    }
+};
 
 const getSymbolDigits = (symbol: string) => {
     if (symbol.includes('JPY')) return 3;
@@ -64,6 +140,81 @@ const getErrorMessage = (err: unknown) => {
     return 'Network error';
 };
 
+const clamp = (value: number, min: number, max: number) => {
+    return Math.min(Math.max(value, min), max);
+};
+
+const formatChartTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+};
+
+const normalizeChartTimestamp = (timestamp: number | undefined, fallbackTimestamp?: number) => {
+    const rawTimestamp = typeof timestamp === 'number' && Number.isFinite(timestamp) && timestamp > 0
+        ? timestamp
+        : fallbackTimestamp ?? Date.now();
+
+    return rawTimestamp > 1_000_000_000_000 ? rawTimestamp : rawTimestamp * 1000;
+};
+
+const buildMiniMarketDepthLevels = (
+    bid: number,
+    ask: number,
+    volume: number,
+    digits: number
+) => {
+    const point = Math.pow(10, -digits);
+    const baseVolume = Math.max(volume, 0.01);
+    const largeVolume = Math.max(2, baseVolume * 17_000);
+    const smallVolume = Math.max(0.01, baseVolume * 200);
+    const volumes = [largeVolume, smallVolume, smallVolume, largeVolume];
+    const maxVolume = Math.max(...volumes);
+
+    const createLevel = (
+        side: MiniMarketDepthLevel['side'],
+        price: number,
+        levelVolume: number,
+        index: number
+    ): MiniMarketDepthLevel => ({
+        side,
+        price,
+        volume: levelVolume,
+        intensity: Math.max(8, (levelVolume / maxVolume) * 100),
+        isBest: index === 0,
+    });
+
+    const asks = volumes.map((levelVolume, index) => (
+        createLevel('ASK', ask + (volumes.length - 1 - index) * point, levelVolume, index)
+    ));
+    const bids = volumes.map((levelVolume, index) => (
+        createLevel('BID', bid - index * point, levelVolume, index)
+    ));
+
+    return { asks, bids };
+};
+
+const MarketDepthIcon = () => (
+    <svg
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+    >
+        <rect x="1.5" y="1.5" width="3" height="3" rx="0.6" fill="#ff4d57" />
+        <rect x="1.5" y="5.5" width="3" height="3" rx="0.6" fill="#ff4d57" opacity="0.75" />
+        <rect x="1.5" y="9.5" width="3" height="3" rx="0.6" fill="#ff4d57" opacity="0.5" />
+        <rect x="9.5" y="1.5" width="3" height="3" rx="0.6" fill="#2f8cff" opacity="0.5" />
+        <rect x="9.5" y="5.5" width="3" height="3" rx="0.6" fill="#2f8cff" opacity="0.75" />
+        <rect x="9.5" y="9.5" width="3" height="3" rx="0.6" fill="#2f8cff" />
+        <path d="M6.1 2.8H7.9M6.1 7H7.9M6.1 11.2H7.9" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+);
+
 const focusableSelector = [
     'a[href]',
     'button:not([disabled])',
@@ -89,15 +240,18 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [showMiniChart, setShowMiniChart] = useState(true);
+    const [showMiniMarketDepth, setShowMiniMarketDepth] = useState(false);
+    const [miniChartZoomIndex, setMiniChartZoomIndex] = useState(0);
+    const [showMiniChartGrid, setShowMiniChartGrid] = useState(true);
+    const [showMiniChartPriceLines, setShowMiniChartPriceLines] = useState(true);
     const dialogRef = useRef<HTMLDivElement>(null);
     const onCloseRef = useRef(onClose);
     const isDialogVisible = isOpen && position !== null;
 
     const tick = useCurrentTick(position?.symbol || '');
-
-    // Price history for mini chart
-    const bidHistoryRef = useRef<number[]>([]);
-    const askHistoryRef = useRef<number[]>([]);
+    const miniChartKey = isOpen && position ? getMiniChartKey(position, kind) : null;
+    const [miniChartState, dispatchMiniChart] = useReducer(miniChartReducer, initialMiniChartState);
 
     useEffect(() => {
         if (isOpen && position) {
@@ -109,18 +263,38 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
             setComment(position.comment ?? '');
             setError(null);
             setSuccessMessage(null);
-            bidHistoryRef.current = [];
-            askHistoryRef.current = [];
+            setShowMiniChart(true);
+            setShowMiniMarketDepth(false);
+            setMiniChartZoomIndex(0);
+            setShowMiniChartGrid(true);
+            setShowMiniChartPriceLines(true);
         }
     }, [isOpen, position]);
 
-    // Accumulate price history for mini chart
     useEffect(() => {
-        if (tick && isOpen) {
-            bidHistoryRef.current = [...bidHistoryRef.current.slice(-60), tick.bid];
-            askHistoryRef.current = [...askHistoryRef.current.slice(-60), tick.ask];
+        if (!miniChartKey) {
+            dispatchMiniChart({ type: 'clear' });
+            return;
         }
-    }, [tick, isOpen]);
+
+        dispatchMiniChart({ type: 'reset', key: miniChartKey });
+    }, [miniChartKey]);
+
+    useEffect(() => {
+        if (!miniChartKey || !tick || !Number.isFinite(tick.bid) || !Number.isFinite(tick.ask)) {
+            return;
+        }
+
+        dispatchMiniChart({
+            type: 'append',
+            key: miniChartKey,
+            sample: {
+                bid: tick.bid,
+                ask: tick.ask,
+                timestamp: normalizeChartTimestamp(tick.timestamp),
+            },
+        });
+    }, [miniChartKey, tick]);
 
     useEffect(() => {
         onCloseRef.current = onClose;
@@ -204,8 +378,29 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
     if (!isOpen || !position) return null;
 
     const digits = getSymbolDigits(position.symbol);
-    const bid = tick?.bid ?? position.openPrice;
-    const ask = tick?.ask ?? position.openPrice;
+    const previousMiniChartSample = miniChartKey && miniChartState.key === miniChartKey
+        ? miniChartState.samples[miniChartState.samples.length - 1]
+        : undefined;
+    const currentMiniChartSample: MiniChartSample = tick && Number.isFinite(tick.bid) && Number.isFinite(tick.ask)
+        ? {
+            bid: tick.bid,
+            ask: tick.ask,
+            timestamp: normalizeChartTimestamp(tick.timestamp, previousMiniChartSample?.timestamp),
+        }
+        : previousMiniChartSample ?? {
+            bid: position.openPrice,
+            ask: position.openPrice,
+            timestamp: Date.now(),
+        };
+    const miniChartSamples = miniChartKey
+        ? appendMiniChartSample(
+            miniChartState.key === miniChartKey ? miniChartState.samples : [],
+            currentMiniChartSample
+        )
+        : [currentMiniChartSample];
+    const latestMiniChartSample = miniChartSamples[miniChartSamples.length - 1] ?? currentMiniChartSample;
+    const bid = latestMiniChartSample.bid;
+    const ask = latestMiniChartSample.ask;
     const dialogTitleId = `modify-position-${position.id}-title`;
     const symbolFieldId = `modify-position-${position.id}-symbol`;
     const typeLabelId = `modify-position-${position.id}-type-label`;
@@ -225,27 +420,28 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
         try {
             const slVal = parseFloat(sl) || 0;
             const tpVal = parseFloat(tp) || 0;
-            console.log('[Modify] Sending modify request for ticket:', position.id, 'SL:', slVal, 'TP:', tpVal);
+            const nextComment = comment.trim();
 
             if (kind === 'pending-order') {
                 await api.orders.modifyPendingOrder(position.id, {
                     price: position.openPrice,
                     price_sl: slVal,
                     price_tp: tpVal,
+                    comment: nextComment,
                 });
             } else {
-                await api.positions.modifyPosition(position.id, { price_sl: slVal, price_tp: tpVal });
+                await api.positions.modifyPosition(position.id, { price_sl: slVal, price_tp: tpVal, comment: nextComment });
             }
 
             setSuccessMessage(kind === 'pending-order' ? 'Pending order modified successfully' : 'Position modified successfully');
             const store = useAppStore.getState();
             store.setPositions(store.positions.map(p =>
-                p.id === position.id ? { ...p, sl: slVal, tp: tpVal } : p
+                p.id === position.id ? { ...p, sl: slVal, tp: tpVal, comment: nextComment } : p
             ));
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new Event('rtx:force-refresh-positions'));
             }
-            setTimeout(() => onClose(slVal, tpVal), 600);
+            setTimeout(() => onClose(slVal, tpVal, nextComment), 600);
         } catch (err: unknown) {
             console.error('[Modify] Error:', err);
             setError(getErrorMessage(err));
@@ -349,68 +545,362 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
         }
     };
 
-    // Mini chart renderer
-    const renderMiniChart = () => {
-        const bidData = bidHistoryRef.current;
-        const askData = askHistoryRef.current;
-        if (bidData.length < 2) {
+    const canZoomInMiniChart = miniChartZoomIndex < MINI_CHART_ZOOM_LEVELS.length - 1;
+    const canZoomOutMiniChart = miniChartZoomIndex > 0;
+    const resetMiniChartView = () => {
+        setShowMiniChart(true);
+        setMiniChartZoomIndex(0);
+        setShowMiniChartGrid(true);
+        setShowMiniChartPriceLines(true);
+    };
+
+    const renderChartToolButton = (
+        label: string,
+        icon: ReactNode,
+        onClick?: () => void,
+        options?: { active?: boolean; disabled?: boolean }
+    ) => {
+        const active = options?.active ?? false;
+        const disabled = options?.disabled ?? false;
+
+        return (
+            <button
+                key={label}
+                type="button"
+                onClick={onClick}
+                disabled={disabled}
+                title={label}
+                aria-label={label}
+                aria-pressed={active}
+                className={[
+                    'flex h-[23px] w-[24px] shrink-0 items-center justify-center border text-[11px] transition-colors',
+                    active
+                        ? 'border-[#334f7d] bg-[#193a63] text-[#78b8ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
+                        : 'border-transparent bg-transparent text-[#9aa5b5] hover:border-[#314057] hover:bg-[#182130] hover:text-[#e5eefc]',
+                    disabled ? 'cursor-not-allowed opacity-35 hover:border-transparent hover:bg-transparent hover:text-[#9aa5b5]' : '',
+                ].join(' ')}
+            >
+                {icon}
+            </button>
+        );
+    };
+
+    const renderMiniChartToolbar = () => (
+        <div className="flex h-[31px] shrink-0 items-center gap-1 border-b border-[#263142] bg-[#111827] px-2">
+            {renderChartToolButton(
+                showMiniMarketDepth ? 'Hide market depth' : 'Show market depth',
+                <MarketDepthIcon />,
+                () => setShowMiniMarketDepth(value => !value),
+                { active: showMiniMarketDepth }
+            )}
+            {renderChartToolButton(
+                showMiniChart ? 'Hide chart' : 'Show chart',
+                <Activity size={14} strokeWidth={1.8} />,
+                () => setShowMiniChart(value => !value),
+                { active: showMiniChart }
+            )}
+            {renderChartToolButton('Candlestick chart', <ChartCandlestick size={14} strokeWidth={1.8} />, undefined, { disabled: true })}
+            <div className="mx-1 h-5 w-px bg-[#2d3a4f]" />
+            {renderChartToolButton(
+                showMiniChartGrid ? 'Hide grid' : 'Show grid',
+                <Grid3X3 size={14} strokeWidth={1.8} />,
+                () => setShowMiniChartGrid(value => !value),
+                { active: showMiniChartGrid, disabled: !showMiniChart }
+            )}
+            {renderChartToolButton(
+                showMiniChartPriceLines ? 'Hide price lines' : 'Show price lines',
+                <Crosshair size={14} strokeWidth={1.8} />,
+                () => setShowMiniChartPriceLines(value => !value),
+                { active: showMiniChartPriceLines, disabled: !showMiniChart }
+            )}
+            <div className="mx-1 h-5 w-px bg-[#2d3a4f]" />
+            {renderChartToolButton(
+                'Zoom in',
+                <ZoomIn size={14} strokeWidth={1.8} />,
+                () => setMiniChartZoomIndex(index => Math.min(index + 1, MINI_CHART_ZOOM_LEVELS.length - 1)),
+                { disabled: !showMiniChart || !canZoomInMiniChart }
+            )}
+            {renderChartToolButton(
+                'Zoom out',
+                <ZoomOut size={14} strokeWidth={1.8} />,
+                () => setMiniChartZoomIndex(index => Math.max(index - 1, 0)),
+                { disabled: !showMiniChart || !canZoomOutMiniChart }
+            )}
+            {renderChartToolButton('Fit chart', <RotateCcw size={14} strokeWidth={1.8} />, resetMiniChartView)}
+            <div className="ml-auto min-w-0 truncate font-mono text-[10px] text-[#718096]">
+                {MINI_CHART_ZOOM_LEVELS[miniChartZoomIndex].toFixed(2)}x
+            </div>
+        </div>
+    );
+
+    const renderMiniMarketDepth = () => {
+        const { asks, bids } = buildMiniMarketDepthLevels(bid, ask, actionVolume || position.volume, digits);
+        const spreadPoints = Math.max(0, Math.round((ask - bid) * Math.pow(10, digits)));
+
+        const renderDepthLevel = (level: MiniMarketDepthLevel) => {
+            const isAsk = level.side === 'ASK';
+            const barColor = isAsk ? 'rgba(255,77,87,0.32)' : 'rgba(47,140,255,0.32)';
+            const rowBackground = isAsk
+                ? level.isBest ? 'bg-[#351821]' : 'bg-[#201721]'
+                : level.isBest ? 'bg-[#14243f]' : 'bg-[#111c2c]';
+            const textColor = isAsk ? 'text-[#ff6a72]' : 'text-[#66a8ff]';
+            const tradeBorder = isAsk ? 'border-[#6b3239]' : 'border-[#2e527f]';
+            const tradeColor = isAsk ? 'border-t-[#ff7b82]' : 'border-t-[#79b3ff]';
+
             return (
-                <div className="w-full h-full flex items-center justify-center text-zinc-600 text-[10px]">
-                    <div className="text-center">
-                        <div className="text-zinc-400 font-bold mb-1">{position.symbol}</div>
-                        <div className="text-blue-400 font-mono">{bid.toFixed(digits)}</div>
-                        <div className="text-red-400 font-mono">{ask.toFixed(digits)}</div>
+                <div
+                    key={`${level.side}-${level.price}`}
+                    className={`grid h-[19px] grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#29344a] text-[10px] ${rowBackground}`}
+                >
+                    <div className="relative flex min-w-0 items-center justify-end overflow-hidden border-r border-[#29344a] pr-1 font-mono text-[#d7e2f2]">
+                        <div
+                            className="absolute inset-y-0 left-0"
+                            style={{ width: `${level.intensity}%`, backgroundColor: barColor }}
+                        />
+                        <span className="relative z-10">{level.volume.toFixed(2)}</span>
+                    </div>
+                    <div className={`flex min-w-0 items-center justify-end border-r border-[#29344a] pr-1.5 font-mono ${textColor}`}>
+                        {level.price.toFixed(digits)}
+                    </div>
+                    <div className="flex items-center justify-center">
+                        <button
+                            type="button"
+                            className={`flex h-[16px] w-[18px] items-center justify-center border bg-[#162030] ${tradeBorder}`}
+                            title="Use the Sell or Buy by Market buttons to trade"
+                            aria-label={`${level.side === 'ASK' ? 'Ask' : 'Bid'} depth level ${level.price.toFixed(digits)}`}
+                            onClick={() => setError('Use the Sell by Market or Buy by Market buttons to trade from this dialog.')}
+                        >
+                            <span className={`h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent ${tradeColor}`} />
+                        </button>
                     </div>
                 </div>
             );
-        }
+        };
 
-        const allPrices = [...bidData, ...askData];
-        const min = Math.min(...allPrices);
-        const max = Math.max(...allPrices);
+        return (
+            <div
+                role="region"
+                aria-label={`${position.symbol} market depth`}
+                className="flex h-full min-h-0 flex-col overflow-hidden border border-[#334057] bg-[#0d1420]"
+            >
+                <div className="grid h-[24px] shrink-0 grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#334057] bg-[#121b2a] text-[10px] text-[#b8c4d6]">
+                    <div className="flex items-center justify-center border-r border-[#334057]">Volume</div>
+                    <div className="flex items-center justify-center border-r border-[#334057]">Price</div>
+                    <div className="flex items-center justify-center">Trade</div>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                    <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
+                    {asks.map(renderDepthLevel)}
+                    <div className="flex h-[22px] items-center justify-center border-y border-[#3d4b64] bg-[#111827] font-mono text-[10px] text-[#8fa2bd]">
+                        Spread {spreadPoints}
+                    </div>
+                    {bids.map(renderDepthLevel)}
+                    <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
+                    <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
+                    <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
+                </div>
+            </div>
+        );
+    };
+
+    // Mini chart renderer
+    const renderMiniChart = () => {
+        const zoomLevel = MINI_CHART_ZOOM_LEVELS[miniChartZoomIndex];
+        const visibleSampleCount = zoomLevel > 1
+            ? Math.max(12, Math.ceil(miniChartSamples.length / zoomLevel))
+            : miniChartSamples.length;
+        const visibleMiniChartSamples = miniChartSamples.slice(-visibleSampleCount);
+        const bidData = visibleMiniChartSamples.map(sample => sample.bid);
+        const askData = visibleMiniChartSamples.map(sample => sample.ask);
+        const timeData = visibleMiniChartSamples.map(sample => sample.timestamp);
+        const hasHistory = visibleMiniChartSamples.length >= 2;
+        const effectiveBidData = hasHistory ? bidData : [bid, bid];
+        const effectiveAskData = hasHistory ? askData : [ask, ask];
+        const effectiveTimeData = hasHistory
+            ? timeData
+            : [latestMiniChartSample.timestamp - 60_000, latestMiniChartSample.timestamp];
+
+        const allPrices = [...effectiveBidData, ...effectiveAskData, bid, ask];
+        const rawMin = Math.min(...allPrices);
+        const rawMax = Math.max(...allPrices);
+        const rawRange = rawMax - rawMin;
+        const minimumRangePadding = Math.pow(10, -digits) * 6;
+        const rangePadding = Math.max(rawRange * 0.18, minimumRangePadding);
+        const min = rawMin - rangePadding;
+        const max = rawMax + rangePadding;
         const range = max - min || 1;
-        const w = 260;
-        const h = 220;
-        const pad = 20;
+
+        const w = 280;
+        const h = 430;
+        const plotLeft = 10;
+        const plotTop = 12;
+        const plotRight = 208;
+        const plotBottom = h - 28;
+        const plotWidth = plotRight - plotLeft;
+        const plotHeight = plotBottom - plotTop;
+        const timeAxisY = h - 12;
+        const tagX = plotRight + 6;
+        const tagWidth = 62;
+        const tagHeight = 16;
+        const minTagY = plotTop + 1;
+        const maxTagY = plotBottom - tagHeight - 1;
+        const gridFractions = [0, 0.25, 0.5, 0.75, 1];
+        const timeFractions = [0, 0.5, 1];
+        const chartBackground = '#0a0f18';
+        const plotBackground = '#0d1420';
+        const gridColor = '#263244';
+        const axisColor = '#8da0bb';
+        const borderColor = '#40506a';
+        const askColor = '#ff4d57';
+        const bidColor = '#2f8cff';
+        const labelColor = '#d7e2f2';
+        const mutedLabelColor = '#8fa2bd';
 
         const toPath = (data: number[]) => {
             return data.map((v, i) => {
-                const x = pad + (i / (data.length - 1)) * (w - pad * 2);
-                const y = h - pad - ((v - min) / range) * (h - pad * 2);
+                const x = plotLeft + (i / (data.length - 1)) * plotWidth;
+                const y = plotBottom - ((v - min) / range) * plotHeight;
                 return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
             }).join(' ');
         };
 
-        // Price labels on right
-        const bidY = h - pad - ((bid - min) / range) * (h - pad * 2);
-        const askY = h - pad - ((ask - min) / range) * (h - pad * 2);
+        const toY = (price: number) => plotBottom - ((price - min) / range) * plotHeight;
+        const bidY = clamp(toY(bid), plotTop, plotBottom);
+        const askY = clamp(toY(ask), plotTop, plotBottom);
+        const askTagY = clamp(askY - tagHeight / 2, minTagY, maxTagY);
+        const preferredBidTagY = clamp(bidY - tagHeight / 2, minTagY, maxTagY);
+        const minTagGap = tagHeight + 2;
+        const bidTagY = Math.abs(preferredBidTagY - askTagY) < minTagGap
+            ? clamp(
+                askTagY + minTagGap <= maxTagY ? askTagY + minTagGap : askTagY - minTagGap,
+                minTagY,
+                maxTagY
+            )
+            : preferredBidTagY;
+
+        const getAxisTime = (fraction: number) => {
+            const index = Math.round(fraction * (effectiveTimeData.length - 1));
+            return formatChartTime(effectiveTimeData[index]);
+        };
+
+        const renderPriceTag = (
+            label: string,
+            y: number,
+            tagY: number,
+            fill: string,
+            textColor = '#ffffff'
+        ) => (
+            <g key={fill}>
+                <line x1={plotRight} y1={y} x2={tagX} y2={tagY + tagHeight / 2} stroke={fill} strokeWidth="1" />
+                <rect x={tagX} y={tagY} width={tagWidth} height={tagHeight} rx={1} fill={fill} />
+                <text
+                    x={tagX + tagWidth / 2}
+                    y={tagY + 11}
+                    fill={textColor}
+                    fontSize="9"
+                    fontWeight="700"
+                    fontFamily="Consolas, monospace"
+                    textAnchor="middle"
+                >
+                    {label}
+                </text>
+            </g>
+        );
 
         return (
-            <svg width={w} height={h} className="w-full h-full">
-                {/* Grid lines */}
-                {/* Grid lines */}
-                {[0.25, 0.5, 0.75].map(f => {
-                    const y = pad + f * (h - pad * 2);
+            <svg
+                width={w}
+                height={h}
+                viewBox={`0 0 ${w} ${h}`}
+                className="h-full w-full"
+                role="img"
+                aria-label={`${position.symbol} bid and ask tick chart`}
+                preserveAspectRatio="xMidYMid meet"
+            >
+                <rect x={0} y={0} width={w} height={h} fill={chartBackground} />
+                <rect x={plotLeft} y={plotTop} width={plotWidth} height={plotHeight} fill={plotBackground} stroke={borderColor} strokeWidth="1" />
+
+                {gridFractions.map(f => {
+                    const y = plotTop + f * plotHeight;
                     const price = max - f * range;
                     return (
-                        <g key={f}>
-                            <line x1={pad} y1={y} x2={w - pad} y2={y} stroke="var(--chart-grid, #333)" strokeWidth="0.5" />
-                            <text x={w - pad + 4} y={y + 3} fill="var(--chart-axis, #666)" fontSize="8" fontFamily="monospace">{price.toFixed(digits)}</text>
+                        <g key={`price-${f}`}>
+                            {showMiniChartGrid && (
+                                <line x1={plotLeft} y1={y} x2={plotRight} y2={y} stroke={gridColor} strokeWidth="0.75" strokeDasharray="3 3" />
+                            )}
+                            <text
+                                x={plotRight + 5}
+                                y={clamp(y + 3, plotTop + 7, plotBottom - 2)}
+                                fill={axisColor}
+                                fontSize="8"
+                                fontFamily="Consolas, monospace"
+                            >
+                                {price.toFixed(digits)}
+                            </text>
                         </g>
                     );
                 })}
-                {/* Ask line (red) */}
-                <path d={toPath(askData)} fill="none" stroke="var(--chart-ask, #ef4444)" strokeWidth="1.5" />
-                {/* Bid line (blue) */}
-                <path d={toPath(bidData)} fill="none" stroke="var(--chart-bid, #8a8a8f)" strokeWidth="1.5" />
-                {/* Current price labels */}
-                <rect x={w - pad - 55} y={askY - 8} width={55} height={16} rx={2} fill="var(--chart-ask, #ef4444)" />
-                <text x={w - pad - 52} y={askY + 4} fill="white" fontSize="9" fontWeight="bold" fontFamily="monospace">{ask.toFixed(digits)}</text>
-                <rect x={w - pad - 55} y={bidY - 8} width={55} height={16} rx={2} fill="var(--chart-bid, #8a8a8f)" />
-                <text x={w - pad - 52} y={bidY + 4} fill="white" fontSize="9" fontWeight="bold" fontFamily="monospace">{bid.toFixed(digits)}</text>
-                {/* Symbol label */}
-                <text x={pad + 4} y={16} fill="var(--chart-text-bold, #888)" fontSize="10" fontWeight="bold">{position.symbol}</text>
-                <text x={pad + 4} y={28} fill="var(--chart-text-muted, #666)" fontSize="8">{bid.toFixed(digits)} / {ask.toFixed(digits)}</text>
+
+                {showMiniChartGrid && gridFractions.map(f => {
+                    const x = plotLeft + f * plotWidth;
+                    return (
+                        <line
+                            key={`time-grid-${f}`}
+                            x1={x}
+                            y1={plotTop}
+                            x2={x}
+                            y2={plotBottom}
+                            stroke={gridColor}
+                            strokeWidth="0.75"
+                            strokeDasharray="3 3"
+                        />
+                    );
+                })}
+
+                <line x1={plotRight} y1={plotTop} x2={plotRight} y2={plotBottom} stroke={borderColor} strokeWidth="1" />
+                <line x1={plotLeft} y1={plotBottom} x2={plotRight} y2={plotBottom} stroke={borderColor} strokeWidth="1" />
+
+                {showMiniChartPriceLines && (
+                    <>
+                        <line x1={plotLeft} y1={askY} x2={plotRight} y2={askY} stroke={askColor} strokeWidth="1" strokeDasharray="4 2" opacity="0.85" />
+                        <line x1={plotLeft} y1={bidY} x2={plotRight} y2={bidY} stroke={bidColor} strokeWidth="1" strokeDasharray="4 2" opacity="0.85" />
+                    </>
+                )}
+
+                <path d={toPath(effectiveAskData)} fill="none" stroke={askColor} strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={toPath(effectiveBidData)} fill="none" stroke={bidColor} strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+
+                {showMiniChartPriceLines && (
+                    <>
+                        {renderPriceTag(ask.toFixed(digits), askY, askTagY, askColor)}
+                        {renderPriceTag(bid.toFixed(digits), bidY, bidTagY, bidColor)}
+                    </>
+                )}
+
+                {timeFractions.map(f => {
+                    const x = plotLeft + f * plotWidth;
+                    const anchor = f === 0 ? 'start' : f === 1 ? 'end' : 'middle';
+                    return (
+                        <text
+                            key={`time-${f}`}
+                            x={x}
+                            y={timeAxisY}
+                            fill={axisColor}
+                            fontSize="8"
+                            fontFamily="Consolas, monospace"
+                            textAnchor={anchor}
+                        >
+                            {getAxisTime(f)}
+                        </text>
+                    );
+                })}
+
+                <text x={plotLeft + 3} y={plotTop + 10} fill={labelColor} fontSize="9" fontWeight="700" fontFamily="Consolas, monospace">
+                    {position.symbol}
+                </text>
+                <text x={plotLeft + 3} y={plotTop + 21} fill={mutedLabelColor} fontSize="8" fontFamily="Consolas, monospace">
+                    {bid.toFixed(digits)} / {ask.toFixed(digits)}
+                </text>
             </svg>
         );
     };
@@ -455,6 +945,9 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
     if (typeof document === 'undefined') return null;
 
+    const dialogWidthClass = showMiniMarketDepth ? 'w-[860px]' : 'w-[720px]';
+    const chartPanelWidthClass = showMiniMarketDepth ? 'w-[430px]' : 'w-[300px]';
+
     return createPortal(
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 p-3 backdrop-blur-[3px] rtx-modify-dialog-overlay sm:p-4">
             <div
@@ -463,7 +956,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 aria-modal="true"
                 aria-labelledby={dialogTitleId}
                 tabIndex={-1}
-                className="rtx-modify-dialog flex max-h-[calc(100vh-24px)] w-[720px] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-md border border-[#3f424a] bg-[#111217] shadow-[0_22px_70px_rgba(0,0,0,0.65)] sm:max-h-[calc(100vh-48px)] sm:max-w-[calc(100vw-32px)]"
+                className={`rtx-modify-dialog flex max-h-[calc(100vh-24px)] ${dialogWidthClass} max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-md border border-[#3f424a] bg-[#111217] shadow-[0_22px_70px_rgba(0,0,0,0.65)] sm:max-h-[calc(100vh-48px)] sm:max-w-[calc(100vw-32px)]`}
             >
                 {/* Title Bar - MT5 style with position info */}
                 <div className="flex h-[43px] shrink-0 items-center justify-between border-b border-[#3f424a] bg-[#2b2b2e] px-4">
@@ -482,15 +975,27 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 {/* Content */}
                 <div className="flex min-h-0 flex-1 overflow-hidden max-[640px]:flex-col">
                     {/* Left: Mini Chart */}
-                    <div className="flex w-[300px] shrink-0 flex-col border-r border-[#353842] bg-[#151518] max-[640px]:h-[180px] max-[640px]:w-full max-[640px]:border-r-0 max-[640px]:border-b">
-                        <div className="flex h-[30px] min-w-0 items-center border-b border-[#353842] px-3 font-mono text-[11px] text-zinc-300">
-                            <span className="min-w-0 truncate font-semibold text-zinc-200">{position.symbol}</span>
+                    <div className={`flex ${chartPanelWidthClass} shrink-0 flex-col border-r border-[#353842] bg-[#0a0f18] max-[640px]:h-[220px] max-[640px]:w-full max-[640px]:border-r-0 max-[640px]:border-b`}>
+                        <div className="flex h-[30px] min-w-0 items-center border-b border-[#263142] bg-[#0f1724] px-3 font-mono text-[11px] text-[#b8c4d6]">
+                            <span className="min-w-0 truncate font-semibold text-[#e6eefb]">{position.symbol}</span>
                             <span className="ml-2 shrink-0 text-[#4ea4ff]">{bid.toFixed(digits)}</span>
-                            <span className="mx-1 text-zinc-500">/</span>
+                            <span className="mx-1 text-[#697891]">/</span>
                             <span className="shrink-0 text-[#ff5d66]">{ask.toFixed(digits)}</span>
                         </div>
-                        <div className="flex-1 bg-[#141416] p-2">
-                            {renderMiniChart()}
+                        {renderMiniChartToolbar()}
+                        <div className="min-h-0 flex-1 bg-[#0a0f18] p-1.5">
+                            {showMiniMarketDepth ? (
+                                <div className={showMiniChart ? 'grid h-full min-h-0 grid-cols-[minmax(0,1fr)_154px] gap-1.5' : 'h-full'}>
+                                    {showMiniChart && (
+                                        <div className="min-h-0 overflow-hidden">
+                                            {renderMiniChart()}
+                                        </div>
+                                    )}
+                                    {renderMiniMarketDepth()}
+                                </div>
+                            ) : (
+                                showMiniChart ? renderMiniChart() : null
+                            )}
                         </div>
                     </div>
 

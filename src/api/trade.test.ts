@@ -396,10 +396,10 @@ describe('trade v2 API contract calls', () => {
       body: order,
     });
 
-    await tradingV2Api.modifyPosition(998877, { price_sl: 2320, price_tp: 2360 });
+    await tradingV2Api.modifyPosition(998877, { price_sl: 2320, price_tp: 2360, comment: 'updated-comment' });
     expect(lastFetchCall()).toMatchObject({
       url: `${RTX5_API_URL}/api/v2/positions/998877`,
-      body: { price_sl: 2320, price_tp: 2360 },
+      body: { price_sl: 2320, price_tp: 2360, comment: 'updated-comment' },
     });
 
     await tradingV2Api.cancelPendingOrder(112233);

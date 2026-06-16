@@ -7,11 +7,19 @@ import { CalendarTab } from './layout/CalendarTab';
 import { CodeBaseTab, ArticlesTab, ExpertsTab } from './layout/ResearchTabs';
 import { JournalTab } from './layout/JournalTab';
 import { HistoryDownloader } from './HistoryDownloader';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, type Trade } from '../store/useAppStore';
 import { useToolboxTradeData, type ToolboxTradePosition } from '../hooks/useToolboxTradeData';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
 import { formatPrice, getSymbolDigits } from '../utils/symbolUtils';
+import {
+    buildExposureSummary,
+    formatExposureVolume,
+    type ExposureAccountInput,
+    type ExposurePieSegment,
+    type ExposurePositionInput,
+} from './BottomDock.exposure';
+import { canUseProfitForAccountReconciliation, resolveTradeAccountMetrics, resolveTradeProfit } from './BottomDock.trade';
 
 // BottomDock reads trading data from the store directly to avoid re-rendering
 // the chart panel every time positions update (root cause of post-trade crashes).
@@ -211,8 +219,10 @@ export function BottomDock({
     // Value-level caches — prevent setState when broker sends new objects with same field values
     const cachedAccountSig = useRef<string>('');
     const cachedPositionsSig = useRef<string>('');
+    const pendingAccountSyncRef = useRef(0);
+    const [accountReconciliationSuspended, setAccountReconciliationSuspended] = useState(false);
 
-    const accountSig = (a: any) => !a ? '' : `${a.balance}|${a.equity}|${a.margin}|${a.freeMargin}|${a.marginLevel}`;
+    const accountSig = (a: any) => !a ? '' : `${a.balance}|${a.equity}|${a.margin}|${a.freeMargin}|${a.marginLevel}|${a.unrealizedPL}|${a.currency}|${a.credit ?? a.bonus ?? ''}`;
     const positionsSig = (ps: any[]) => ps.map(p => `${p.id}-${p.volume}-${p.sl}-${p.tp}-${p.currentPrice}-${p.unrealizedPnL}`).join('|');
 
     // Subscribe to store — throttle to 500ms so WebSocket bursts don't flicker the UI.
@@ -261,31 +271,57 @@ export function BottomDock({
     
     const [isResizing, setIsResizing] = useState(false);
 
-    const refreshTradeSoon = () => {
+    const suspendAccountReconciliation = () => {
+        pendingAccountSyncRef.current += 1;
+        setAccountReconciliationSuspended(true);
+
+        return () => {
+            pendingAccountSyncRef.current = Math.max(0, pendingAccountSyncRef.current - 1);
+            if (pendingAccountSyncRef.current === 0) {
+                setAccountReconciliationSuspended(false);
+            }
+        };
+    };
+
+    const refreshTradeSoon = (afterRefresh?: () => void) => {
         window.setTimeout(() => {
-            void toolboxTrade.refresh();
+            void toolboxTrade.refresh().finally(() => {
+                afterRefresh?.();
+            });
         }, 1500);
     };
 
     const handleTradeClosePosition = (id: number, volume?: number) => {
+        const releaseAccountReconciliation = suspendAccountReconciliation();
         toolboxTrade.removePosition(Number(id));
-        const result = onClosePosition(id, volume) as unknown;
-        if (result && typeof (result as any).finally === 'function') {
-            (result as any).finally(refreshTradeSoon);
-        } else {
-            refreshTradeSoon();
+        try {
+            const result = onClosePosition(id, volume) as unknown;
+            if (result && typeof (result as any).finally === 'function') {
+                (result as any).finally(() => refreshTradeSoon(releaseAccountReconciliation));
+            } else {
+                refreshTradeSoon(releaseAccountReconciliation);
+            }
+        } catch (error) {
+            refreshTradeSoon(releaseAccountReconciliation);
+            throw error;
         }
     };
 
     const handleTradeCloseBulk = (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => {
+        const releaseAccountReconciliation = suspendAccountReconciliation();
         if (!symbol) {
             toolboxTrade.removePositionsByMode(type);
         }
-        const result = onCloseBulk?.(type, symbol) as unknown;
-        if (result && typeof (result as any).finally === 'function') {
-            (result as any).finally(refreshTradeSoon);
-        } else {
-            refreshTradeSoon();
+        try {
+            const result = onCloseBulk?.(type, symbol) as unknown;
+            if (result && typeof (result as any).finally === 'function') {
+                (result as any).finally(() => refreshTradeSoon(releaseAccountReconciliation));
+            } else {
+                refreshTradeSoon(releaseAccountReconciliation);
+            }
+        } catch (error) {
+            refreshTradeSoon(releaseAccountReconciliation);
+            throw error;
         }
     };
 
@@ -394,6 +430,7 @@ export function BottomDock({
                         formatMoney={formatMoney}
                         formatDate={formatDate}
                         loading={toolboxTrade.loading}
+                        accountReconciliationSuspended={accountReconciliationSuspended}
                         error={toolboxTrade.error}
                         wsState={toolboxTrade.wsState}
                         restBaseUrl={toolboxTrade.restBaseUrl}
@@ -576,8 +613,10 @@ function TradeTab({
     formatMoney,
     formatDate,
     loading,
+    accountReconciliationSuspended,
     error,
 }: any) {
+    const isLoadingPositions = useAppStore(s => s.isLoadingPositions);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editSL, setEditSL] = useState("");
     const [editTP, setEditTP] = useState("");
@@ -596,16 +635,19 @@ function TradeTab({
     const syncingScrollRef = useRef<'table' | 'footer' | null>(null);
     const columnResizeRef = useRef<{ key: TradeColumnWidthKey; startX: number; startWidth: number } | null>(null);
 
-    // Local SL/TP overrides: track modified values since the Gateway API doesn't return them
-    const [slTpOverrides, setSlTpOverrides] = useState<Record<number, { sl: number; tp: number }>>({});
+    // Local trade overrides: track modified fields since the Gateway API can lag after modification.
+    const [tradeOverrides, setTradeOverrides] = useState<Record<number, { sl: number; tp: number; comment?: string }>>({});
 
     // Subscribe to positions instead of ticks for highspeed socket data
     // (Handled by the parent component, BottomDock, which passes throttled positions)
 
     useEffect(() => {
         const handleTradeModified = (e: any) => {
-            const { id, sl, tp } = e.detail;
-            setSlTpOverrides(prev => ({ ...prev, [id]: { sl, tp } }));
+            const { id, sl, tp, comment } = e.detail;
+            setTradeOverrides(prev => ({
+                ...prev,
+                [id]: { sl, tp, comment: comment ?? prev[id]?.comment },
+            }));
         };
         window.addEventListener('rtx:trade-modified', handleTradeModified);
         return () => window.removeEventListener('rtx:trade-modified', handleTradeModified);
@@ -652,7 +694,7 @@ function TradeTab({
         const newTP = parseFloat(editTP) || 0;
         onModifyPosition(pos.id, newSL, newTP);
         // Also update local overrides
-        setSlTpOverrides(prev => ({ ...prev, [pos.id]: { sl: newSL, tp: newTP } }));
+        setTradeOverrides(prev => ({ ...prev, [pos.id]: { sl: newSL, tp: newTP, comment: prev[pos.id]?.comment } }));
         setEditingId(null);
     };
 
@@ -661,14 +703,16 @@ function TradeTab({
         return positions.map((pos: any) => {
             const symbol = pos?.symbol ?? '';
             const livePrice = Number(pos?.currentPrice ?? 0);
-            const livePnL = Number(pos?.unrealizedPnL ?? 0);
+            const profitResolution = resolveTradeProfit(pos, { accountCurrency: account?.currency });
+            const livePnL = profitResolution.value;
             const openPrice = Number(pos?.openPrice ?? 0);
             const volume = Number(pos?.volume ?? 0);
 
-            // Apply local SL/TP overrides (since Gateway API doesn't return these)
-            const override = slTpOverrides[pos?.id];
+            // Apply local overrides while the Gateway API catches up.
+            const override = tradeOverrides[pos?.id];
             const sl = override?.sl ?? pos?.price_sl ?? pos?.sl ?? 0;
             const tp = override?.tp ?? pos?.price_tp ?? pos?.tp ?? 0;
+            const comment = override?.comment ?? pos?.comment ?? '';
 
             return {
                 ...pos,
@@ -679,20 +723,50 @@ function TradeTab({
                 tp: Number(tp ?? 0),
                 price_sl: Number(sl ?? 0),
                 price_tp: Number(tp ?? 0),
+                comment,
+                profit: livePnL,
+                unrealizedPnL: livePnL,
                 livePrice,
-                livePnL
+                livePnL,
+                profitSource: profitResolution.source,
+                profitWarnings: profitResolution.warnings,
             };
         });
-    }, [positions, slTpOverrides]);
+    }, [positions, tradeOverrides, account?.currency]);
 
-    // Position totals come from rows. Account metrics use REST/WS account/metrics as source of truth.
+    // Position totals come from rows. Account metrics use REST/WS account/metrics unless the
+    // backend derived fields stop reconciling with the visible MT-style position state.
     const totalLivePnL = useMemo(() => livePositions.reduce((acc, pos) => acc + (pos.livePnL || 0), 0), [livePositions]);
     const totalSwap = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.swap) || 0), 0), [livePositions]);
     const totalCommission = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.commission) || 0), 0), [livePositions]);
-    const liveEquity = Number.isFinite(Number(account?.equity)) ? Number(account?.equity) : (account?.balance || 0) + totalLivePnL;
-    const margin = Number(account?.margin || 0);
-    const liveFreeMargin = Number.isFinite(Number(account?.freeMargin)) ? Number(account?.freeMargin) : liveEquity - margin;
-    const liveMarginLevel = Number.isFinite(Number(account?.marginLevel)) ? Number(account?.marginLevel) : (margin > 0 ? (liveEquity / margin) * 100 : 0);
+    const canReconcileAccountMetrics = useMemo(() => (
+        !loading
+        && !accountReconciliationSuspended
+        && !isLoadingPositions
+        && livePositions.every(pos => canUseProfitForAccountReconciliation(pos.profitSource))
+    ), [accountReconciliationSuspended, isLoadingPositions, livePositions, loading]);
+    const accountMetricResolution = useMemo(() => resolveTradeAccountMetrics({
+        balance: account?.balance,
+        equity: account?.equity,
+        margin: account?.margin,
+        freeMargin: account?.freeMargin,
+        marginLevel: account?.marginLevel,
+        hasBackendEquity: account?.hasBackendEquity,
+        hasBackendFreeMargin: account?.hasBackendFreeMargin,
+        hasBackendMarginLevel: account?.hasBackendMarginLevel,
+        credit: account?.credit,
+        bonus: account?.bonus,
+    }, {
+        floatingProfit: totalLivePnL,
+        swap: totalSwap,
+        commission: totalCommission,
+        canReconcileEquity: canReconcileAccountMetrics,
+    }), [account, totalLivePnL, totalSwap, totalCommission, canReconcileAccountMetrics]);
+    const accountBalance = accountMetricResolution.balance;
+    const liveEquity = accountMetricResolution.equity;
+    const margin = accountMetricResolution.margin;
+    const liveFreeMargin = accountMetricResolution.freeMargin;
+    const liveMarginLevel = accountMetricResolution.marginLevel;
 
     const formatMarginLevel = (value: number) => {
         if (value <= 0 && livePositions.length === 0) return '\u221e';
@@ -1432,7 +1506,7 @@ ${rows}
                 <div className="flex min-w-full items-center gap-3 px-2 py-1" style={{ minWidth: visibleTradeTableWidth }}>
                     <Icon name="plus-circle" size="xs" className="text-zinc-400 mr-1 shrink-0" />
                     <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Positions:</span> <span>{livePositions.length}</span></span>
-                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Balance:</span> <BlinkingText value={account?.balance || 0} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} /></span>
+                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Balance:</span> <BlinkingText value={accountBalance} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} /></span>
                     <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Equity:</span> <BlinkingText value={liveEquity} formatFn={formatMoney} /></span>
                     <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Margin:</span> <BlinkingText value={margin} formatFn={formatMoney} /></span>
                     <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Free Margin:</span> <BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
@@ -1481,12 +1555,12 @@ ${rows}
             {/* Modify Position Dialog */}
             <ModifyPositionDialog
                 isOpen={modifyPosition !== null}
-                onClose={(modifiedSl?: number, modifiedTp?: number) => {
-                    // Capture the modified SL/TP values in local overrides
+                onClose={(modifiedSl?: number, modifiedTp?: number, modifiedComment?: string) => {
+                    // Capture modified values in local overrides while the backend refresh catches up.
                     if (modifyPosition && modifiedSl !== undefined && modifiedTp !== undefined) {
-                        setSlTpOverrides(prev => ({
+                        setTradeOverrides(prev => ({
                             ...prev,
-                            [modifyPosition.id]: { sl: modifiedSl, tp: modifiedTp }
+                            [modifyPosition.id]: { sl: modifiedSl, tp: modifiedTp, comment: modifiedComment ?? '' }
                         }));
                     }
                     setModifyPosition(null);
@@ -1497,81 +1571,206 @@ ${rows}
     );
 }
 
-function ExposureTab({ positions, formatMoney, account }: any) {
-    // Calculate exposure
+type ExposureTabProps = {
+    positions: ExposurePositionInput[];
+    formatMoney: (value: number | undefined | null) => string;
+    account: ExposureAccountInput | null;
+};
+
+const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
+    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180;
+    return {
+        x: centerX + radius * Math.cos(angleInRadians),
+        y: centerY + radius * Math.sin(angleInRadians),
+    };
+};
+
+const describePieSlice = (
+    centerX: number,
+    centerY: number,
+    radius: number,
+    startAngle: number,
+    endAngle: number
+) => {
+    const start = polarToCartesian(centerX, centerY, radius, endAngle);
+    const end = polarToCartesian(centerX, centerY, radius, startAngle);
+    const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+
+    return [
+        `M ${centerX} ${centerY}`,
+        `L ${start.x} ${start.y}`,
+        `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
+        'Z',
+    ].join(' ');
+};
+
+function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
     const exposure = useMemo(() => {
-        const map: Record<string, { volume: number, rate: number, usdValue: number, type: 'Long' | 'Short' | 'Net' }> = {};
-        positions.forEach((p: any) => {
-            const asset = p.symbol.substring(0, 3); // Simple 3-char assumption for base currency
-            if (!map[asset]) map[asset] = { volume: 0, rate: p.currentPrice || 1.0, usdValue: 0, type: 'Net' };
-            const isBuy = p.side === 'BUY';
-            map[asset].volume += p.volume * (isBuy ? 1 : -1);
-
-            // Calculate USD Value based on current price and standard lot size (100k)
-            const positionValue = p.volume * 100000 * (p.currentPrice || 1.0);
-            map[asset].usdValue += positionValue * (isBuy ? 1 : -1);
-
-            // Update rate to current price for display
-            map[asset].rate = p.currentPrice || 1.0;
-        });
-
-        // Add actual base currency exposure
-        const baseCur = account?.currency || 'USD';
-        const bal = account?.balance || 0;
-        if (bal > 0) {
-            map[baseCur] = { volume: bal, rate: 1.0, usdValue: bal, type: 'Long' };
-        }
-
-        return Object.entries(map).map(([asset, data]) => ({ asset, ...data }));
+        return buildExposureSummary(positions ?? [], account);
     }, [positions, account]);
 
+    const accountBalance = Number(account?.balance ?? 0);
+    const accountEquity = Number(account?.equity ?? accountBalance);
+    const accountMargin = Number(account?.margin ?? 0);
+    const accountFreeMargin = Number(account?.freeMargin ?? account?.free_margin ?? 0);
+    const accountMarginLevel = Number(account?.marginLevel ?? account?.margin_level ?? 0);
+
+    const renderLongPositionChart = (segments: ExposurePieSegment[]) => {
+        const visibleSegments = segments.filter(segment => segment.percent > 0);
+        const centerX = 96;
+        const centerY = 76;
+        const radius = 58;
+        const labelRadius = 74;
+
+        if (visibleSegments.length === 0) {
+            return (
+                <div className="flex h-[165px] items-center justify-center text-[10px] text-zinc-500">
+                    No long exposure
+                </div>
+            );
+        }
+
+        return (
+            <svg viewBox="0 0 192 165" className="h-[165px] w-full" role="img" aria-label="Long positions exposure chart">
+                <filter id="exposureGlow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#4a73ff" floodOpacity="0.5" />
+                </filter>
+                {visibleSegments.map((segment) => {
+                    if (segment.percent >= 0.999) {
+                        return (
+                            <circle
+                                key={segment.asset}
+                                cx={centerX}
+                                cy={centerY}
+                                r={radius}
+                                fill={segment.color}
+                                filter="url(#exposureGlow)"
+                                stroke="#1a1d2a"
+                                strokeWidth="1"
+                            />
+                        );
+                    }
+
+                    return (
+                        <path
+                            key={segment.asset}
+                            d={describePieSlice(centerX, centerY, radius, segment.startAngle, segment.endAngle)}
+                            fill={segment.color}
+                            filter="url(#exposureGlow)"
+                            stroke="#111827"
+                            strokeWidth="1"
+                        />
+                    );
+                })}
+                {visibleSegments.slice(0, 6).map((segment) => {
+                    const midAngle = (segment.startAngle + segment.endAngle) / 2;
+                    const edge = polarToCartesian(centerX, centerY, radius, midAngle);
+                    const label = polarToCartesian(centerX, centerY, labelRadius, midAngle);
+                    const textAnchor = label.x >= centerX ? 'start' : 'end';
+                    return (
+                        <g key={`${segment.asset}-label`}>
+                            <line x1={edge.x} y1={edge.y} x2={label.x} y2={label.y} stroke="#6b7280" strokeWidth="0.8" />
+                            <text
+                                x={label.x + (label.x >= centerX ? 4 : -4)}
+                                y={label.y + 3}
+                                fill="#d8deea"
+                                fontSize="9"
+                                fontFamily="Consolas, monospace"
+                                textAnchor={textAnchor}
+                            >
+                                {segment.asset}
+                            </text>
+                        </g>
+                    );
+                })}
+            </svg>
+        );
+    };
+
     return (
-        <div className="h-full flex bg-[#131316]">
+        <div className="h-full flex bg-[#131316] text-[11px]">
             {/* Table */}
-            <div className="flex-1 overflow-auto border-r border-zinc-700">
-                <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#131316] text-[#a0a0a0] z-10 font-bold text-[10px] uppercase tracking-widest border-b border-zinc-700/50">
-                        <tr>
-                            <th className="p-1 pl-2 w-24">Assets</th>
-                            <th className="p-1 w-24 text-right">Volume</th>
-                            <th className="p-1 w-24 text-right">Rate</th>
-                            <th className="p-1 w-24 text-right">USD</th>
-                            <th className="p-1 text-center">Graph</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[11px]">
-                        {exposure.map((exp: any, i: number) => (
-                            <tr key={exp.asset} className={`${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'}`}>
-                                <td className="p-1 pl-2 border-r border-zinc-800 font-bold text-[#ebc034]">{exp.asset}</td>
-                                <td className="p-1 border-r border-zinc-800 text-right">{exp.volume.toFixed(2)}</td>
-                                <td className="p-1 border-r border-zinc-800 text-right">{exp.rate.toFixed(5)}</td>
-                                <td className="p-1 border-r border-zinc-800 text-right">{formatMoney(exp.usdValue)}</td>
-                                <td className="p-1 px-4 align-middle">
-                                    <div className="w-full h-3 bg-zinc-800 rounded-sm overflow-hidden flex">
-                                        {exp.usdValue > 0 && <div className="h-full bg-zinc-8000" style={{ width: '60%' }}></div>}
-                                        {exp.usdValue < 0 && <div className="h-full bg-red-500" style={{ width: '40%' }}></div>}
-                                    </div>
-                                </td>
+            <div className="flex min-w-0 flex-1 flex-col border-r border-zinc-700">
+                <div className="min-h-0 flex-1 overflow-auto">
+                    <table className="w-full min-w-[720px] table-fixed border-collapse text-left">
+                        <thead className="sticky top-0 z-10 border-b border-zinc-700/70 bg-[#090d19] text-[10px] font-bold uppercase tracking-widest text-[#c9d1df]">
+                            <tr>
+                                <th className="w-[120px] border-r border-zinc-800 p-1 pl-2">Assets</th>
+                                <th className="w-[130px] border-r border-zinc-800 p-1 text-right">Volume</th>
+                                <th className="w-[130px] border-r border-zinc-800 p-1 text-right">Rate</th>
+                                <th className="w-[130px] border-r border-zinc-800 p-1 text-right">{exposure.accountCurrency}</th>
+                                <th className="p-1 text-center">Graph</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="font-mono text-[11px] text-zinc-200">
+                            {exposure.rows.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="h-16 text-center text-zinc-500">
+                                        No exposure
+                                    </td>
+                                </tr>
+                            ) : exposure.rows.map((exp, i) => {
+                                const isLong = exp.value >= 0;
+                                return (
+                                    <tr key={exp.asset} className={`${i % 2 === 0 ? 'bg-[#15161b]' : 'bg-[#101116]'}`}>
+                                        <td className="border-r border-zinc-800 p-1 pl-2 font-bold text-[#f4c542]">
+                                            <span className="mr-1 inline-flex h-[13px] w-[13px] items-center justify-center rounded-[2px] border border-[#ad8a11] bg-[#ffd735] text-[9px] font-black leading-none text-[#574800]">
+                                                $
+                                            </span>
+                                            {exp.asset}
+                                        </td>
+                                        <td className="border-r border-zinc-800 p-1 text-right">{formatExposureVolume(exp.asset, exp.volume)}</td>
+                                        <td className="border-r border-zinc-800 p-1 text-right">{exp.rate.toFixed(5)}</td>
+                                        <td className={`border-r border-zinc-800 p-1 text-right ${isLong ? 'text-zinc-100' : 'text-[#ff6670]'}`}>
+                                            {formatMoney(exp.value)}
+                                        </td>
+                                        <td className="p-1 px-4 align-middle">
+                                            <div className="relative h-[13px] w-full overflow-hidden rounded-[2px] bg-[#292b31]">
+                                                <div
+                                                    className={`absolute top-0 h-full ${isLong ? 'left-0 bg-[#3b45ff]' : 'right-0 bg-[#ff3344]'}`}
+                                                    style={{ width: `${exp.graphPercent}%` }}
+                                                />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                <div className="flex h-[24px] shrink-0 items-center gap-2 overflow-hidden border-t border-[#3a3d45] bg-[#2a2d34] px-2 font-mono text-[11px] font-bold text-[#f6f7fb]">
+                    <span>Balance: {formatMoney(accountBalance)} {exposure.accountCurrency}</span>
+                    <span>Equity: {formatMoney(accountEquity)}</span>
+                    <span>Margin: {formatMoney(accountMargin)}</span>
+                    <span>Free Margin: {formatMoney(accountFreeMargin)}</span>
+                    <span>Margin Level: {Number.isFinite(accountMarginLevel) ? accountMarginLevel.toFixed(2) : '0.00'} %</span>
+                </div>
             </div>
 
             {/* Pie Chart Area */}
-            <div className="w-64 bg-[#131316] flex flex-col items-center justify-center p-4">
-                <div className="text-[10px] text-zinc-400 mb-2 font-bold uppercase tracking-wider">Long Positions</div>
-                <div className="w-32 h-32 rounded-full border-4 border-zinc-600 flex items-center justify-center relative shadow-[0_0_15px_rgba(59,130,246,0.5)]">
-                    {/* Placeholder for SVG Pie */}
-                    <span className="text-[10px] text-zinc-500">USD</span>
+            <div className="flex w-[270px] shrink-0 flex-col bg-[#0d0e12] p-3">
+                <div className="mb-2 text-center text-[10px] font-bold uppercase tracking-wider text-zinc-400">Long Positions</div>
+                <div className="min-h-0 flex-1">
+                    {renderLongPositionChart(exposure.longSegments)}
+                </div>
+                <div className="mt-1 grid grid-cols-1 gap-1 text-[10px] text-zinc-400">
+                    {exposure.longSegments.slice(0, 4).map(segment => (
+                        <div key={segment.asset} className="flex items-center justify-between gap-2">
+                            <span className="flex min-w-0 items-center gap-1">
+                                <span className="h-2 w-2 shrink-0" style={{ backgroundColor: segment.color }} />
+                                <span className="truncate">{segment.asset}</span>
+                            </span>
+                            <span className="font-mono text-zinc-300">{(segment.percent * 100).toFixed(1)}%</span>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>
     );
 }
 
-function HistoryTab({ formatMoney }: any) {
-    const [orders, setOrders] = useState<any[]>([]);
+function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined | null) => string }) {
+    const [orders, setOrders] = useState<Trade[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'today' | 'week' | 'month' | 'all'>('all');
@@ -1584,9 +1783,9 @@ function HistoryTab({ formatMoney }: any) {
         try {
             const data = await tradeGatewayApi.getOrderHistory(login);
             setOrders(data);
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.warn('[History] Failed to load:', err);
-            setError(err?.message || 'Failed to load history');
+            setError(err instanceof Error ? err.message : 'Failed to load history');
         } finally {
             setLoading(false);
         }
@@ -1600,12 +1799,29 @@ function HistoryTab({ formatMoney }: any) {
         return orders.filter(o => Date.parse(o.closeTime || o.openTime || '') >= cutoff);
     }, [orders, filter]);
 
-    const formatTs = (value: string) => {
+    const formatTs = (value?: string) => {
         if (!value) return '-';
         return new Date(value).toLocaleString('en-US', {
             year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
         }).replace(',', '');
+    };
+
+    const formatPriceCell = (value: number | undefined, symbol: string) => (
+        Number.isFinite(value) && value !== 0 ? <PriceDisplay price={value} symbol={symbol} /> : '-'
+    );
+
+    const formatTradeStatus = (trade: Trade) => {
+        if (trade.status) return trade.status;
+        if (trade.closeTime) return 'closed';
+        return trade.type || '-';
+    };
+
+    const moneyColor = (value: number | undefined) => {
+        const numeric = Number(value ?? 0);
+        if (numeric > 0) return 'text-[#48d37f]';
+        if (numeric < 0) return 'text-[#ff4d5b]';
+        return 'text-zinc-400';
     };
 
     const typeColor = (type: string) => {
@@ -1626,7 +1842,7 @@ function HistoryTab({ formatMoney }: any) {
                     ))}
                 </div>
                 <div className="flex-1" />
-                <span className="text-[10px] text-zinc-500">{filteredOrders.length} orders</span>
+                <span className="text-[10px] text-zinc-500">{filteredOrders.length} records</span>
                 <button onClick={fetchHistory} disabled={loading}
                     className="text-[10px] px-2 py-0.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300 flex items-center gap-1">
                     <Icon name="refresh" size="xs" className={loading ? 'animate-spin' : ''} />
@@ -1635,14 +1851,14 @@ function HistoryTab({ formatMoney }: any) {
             </div>
 
             {/* States */}
-            {loading && <div className="flex-1 flex items-center justify-center text-zinc-500 text-xs">Loading order history…</div>}
+            {loading && <div className="flex-1 flex items-center justify-center text-zinc-500 text-xs">Loading closed trade history…</div>}
             {!loading && error && (
                 <div className="flex-1 flex flex-col items-center justify-center gap-2">
                     <button onClick={fetchHistory} className="text-[10px] px-3 py-1 bg-zinc-700 rounded hover:bg-zinc-600 text-zinc-300">Retry</button>
                 </div>
             )}
             {!loading && !error && filteredOrders.length === 0 && (
-                <div className="flex-1 flex items-center justify-center text-zinc-600 text-xs italic">No order history for this period</div>
+                <div className="flex-1 flex items-center justify-center text-zinc-600 text-xs italic">No closed trades for this period</div>
             )}
 
             {/* Table */}
@@ -1661,11 +1877,14 @@ function HistoryTab({ formatMoney }: any) {
                                 <th className="p-1 w-20 text-right">T/P</th>
                                 <th className="p-1 w-28 text-right">Close Time</th>
                                 <th className="p-1 w-22 text-right">Close Price</th>
-                                <th className="p-1 w-20 text-right">State</th>
+                                <th className="p-1 w-20 text-right">Commission</th>
+                                <th className="p-1 w-20 text-right">Swap</th>
+                                <th className="p-1 w-20 text-right">Profit</th>
+                                <th className="p-1 w-20 text-right">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[11px]">
-                            {filteredOrders.map((o: any, i: number) => (
+                            {filteredOrders.map((o, i) => (
                                 <tr key={`${o.type}-${o.id}-${i}`}
                                     className="rtx-history-row group transition-all duration-300 ease-in-out">
                                     <td className="p-1 pl-2 border-r border-zinc-800 text-zinc-500">{o.id ?? '-'}</td>
@@ -1676,19 +1895,22 @@ function HistoryTab({ formatMoney }: any) {
                                     </td>
                                     <td className="p-1 border-r border-zinc-800 font-bold text-zinc-100 pl-3">{o.symbol ?? '-'}</td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">
-                                        {o.openPrice ? <PriceDisplay price={o.openPrice} symbol={o.symbol} /> : '-'}
+                                        {formatPriceCell(o.openPrice, o.symbol)}
                                     </td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-500">
-                                        -
+                                        {formatPriceCell(o.sl, o.symbol)}
                                     </td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-500">
-                                        -
+                                        {formatPriceCell(o.tp, o.symbol)}
                                     </td>
-                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-400 text-[10px]">{formatTs(o.closeTime || o.openTime)}</td>
+                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-400 text-[10px]">{formatTs(o.closeTime)}</td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">
-                                        {o.closePrice ? <PriceDisplay price={o.closePrice} symbol={o.symbol} /> : '-'}
+                                        {formatPriceCell(o.closePrice, o.symbol)}
                                     </td>
-                                    <td className="p-1 pr-2 text-right text-zinc-500 text-[10px]">{o.type ?? '-'}</td>
+                                    <td className={`p-1 border-r border-zinc-800 text-right ${moneyColor(o.commission)}`}>{formatMoney(o.commission)}</td>
+                                    <td className={`p-1 border-r border-zinc-800 text-right ${moneyColor(o.swap)}`}>{formatMoney(o.swap)}</td>
+                                    <td className={`p-1 border-r border-zinc-800 text-right font-semibold ${moneyColor(o.profit)}`}>{formatMoney(o.profit)}</td>
+                                    <td className="p-1 pr-2 text-right text-zinc-500 text-[10px] capitalize">{formatTradeStatus(o)}</td>
                                 </tr>
                             ))}
                         </tbody>
