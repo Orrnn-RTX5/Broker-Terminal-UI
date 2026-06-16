@@ -11,6 +11,7 @@ import {
   LIVE_QUOTES_REST_POLL_INTERVAL_MS,
   normalizeInstrumentEnabled,
   readCachedActiveMarketSymbols,
+  useActiveMarketSymbols,
   useMarketInstruments,
   useLiveQuotes,
 } from './useLiveMarketData';
@@ -211,5 +212,27 @@ describe('active market symbol status cache', () => {
       availableCount: undefined,
       silentCount: undefined,
     });
+  });
+
+  it('loads feed status from the runtime API root without auth or dynamic URL rewrite', async () => {
+    apiGet.mockResolvedValueOnce({
+      symbol_status: [
+        { symbol: 'EURUSD', has_data: true, silent: false },
+        { symbol: 'XAUUSD', has_data: true, silent: true },
+      ],
+      available_symbols: ['EURUSD', 'XAUUSD'],
+      silent_symbols: ['XAUUSD'],
+    });
+
+    const { result, unmount } = renderHook(() => useActiveMarketSymbols());
+    await flushPromises();
+
+    expect(apiGet).toHaveBeenCalledWith('/ws/feed/status', expect.objectContaining({
+      skipAuth: true,
+      skipDynamicUrl: true,
+    }));
+    expect(result.current.symbols).toEqual(['EURUSD']);
+
+    unmount();
   });
 });

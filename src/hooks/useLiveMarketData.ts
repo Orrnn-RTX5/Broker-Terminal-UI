@@ -404,15 +404,8 @@ export function useActiveMarketSymbols() {
   const [symbols, setSymbols] = useState<string[]>(() => readCachedActiveMarketSymbols().symbols);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
 
   const reload = useCallback(async () => {
-    if (!isAuthenticated) {
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
@@ -420,6 +413,7 @@ export function useActiveMarketSymbols() {
       const response = await apiClient.get<any>('/ws/feed/status', {
         baseUrl: getApiRootBaseUrl(),
         skipAuth: true,
+        skipDynamicUrl: true,
       });
       const nextSymbols = extractActiveMarketSymbols(response);
 
@@ -444,7 +438,7 @@ export function useActiveMarketSymbols() {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
