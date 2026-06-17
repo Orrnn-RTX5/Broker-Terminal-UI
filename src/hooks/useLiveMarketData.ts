@@ -313,15 +313,35 @@ const extractSymbolList = (value: unknown): string[] => {
   }));
 };
 
+const hasPositiveQuoteValue = (value: unknown): boolean => toNumber(value) > 0;
+
+const rowHasLiveMarketData = (row: any): boolean => {
+  const hasData = parseBooleanish(row?.has_data ?? row?.hasData);
+  if (hasData === false) return false;
+
+  const hasQuote = parseBooleanish(row?.has_quote ?? row?.hasQuote);
+  if (hasQuote === false) return false;
+
+  const age = toOptionalNumber(row?.last_tick_age_sec ?? row?.lastTickAgeSec ?? row?.age_sec ?? row?.ageSec);
+  if (age !== undefined) return age >= 0 && age <= 90;
+
+  const silent = parseBooleanish(row?.silent);
+  if (silent !== undefined) return silent === false;
+
+  const time = toOptionalNumber(row?.time ?? row?.timestamp ?? row?.last_tick_time ?? row?.lastTickTime);
+  if (time !== undefined && time <= 0) return false;
+
+  if (hasQuote === true) return true;
+  return hasPositiveQuoteValue(row?.bid) || hasPositiveQuoteValue(row?.ask);
+};
+
 export const extractActiveMarketSymbols = (response: any): string[] => {
   const statusRows = Array.isArray(response?.symbol_status) ? response.symbol_status : [];
   const activeFromStatus = uniqueSymbols(statusRows
     .filter((row: any) => {
       const symbol = normalizeSymbol(row?.symbol ?? row?.name ?? row?.id);
       if (!symbol) return false;
-      const silent = parseBooleanish(row?.silent);
-      const hasData = parseBooleanish(row?.has_data ?? row?.hasData);
-      return silent === false && hasData !== false;
+      return rowHasLiveMarketData(row);
     })
     .map((row: any) => row?.symbol ?? row?.name ?? row?.id));
 
@@ -333,10 +353,6 @@ export const extractActiveMarketSymbols = (response: any): string[] => {
 
   if (available.length > 0 && hasSilentList) {
     return available.filter((symbol) => !silent.has(symbol));
-  }
-
-  if (available.length > 0 && parseBooleanish(response?.upstream_connected) !== false) {
-    return available;
   }
 
   return [];

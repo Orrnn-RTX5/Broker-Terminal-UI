@@ -188,6 +188,33 @@ describe('active market symbol status cache', () => {
     expect(active).toEqual(['EURUSD', 'BTCUSD']);
   });
 
+  it('keeps only fresh feed rows when tick age is present', () => {
+    const active = extractActiveMarketSymbols({
+      symbol_status: [
+        { symbol: 'EURUSD', has_data: true, last_tick_age_sec: 25 },
+        { symbol: 'XAUUSD', has_data: true, last_tick_age_sec: 90 },
+        { symbol: 'BTCUSD', has_data: true, last_tick_age_sec: 91 },
+        { symbol: 'US30', has_data: false, last_tick_age_sec: 5 },
+        { symbol: 'US500', has_data: true, last_tick_age_sec: -1 },
+      ],
+    });
+
+    expect(active).toEqual(['EURUSD', 'XAUUSD']);
+  });
+
+  it('accepts symbol rows with explicit live quote values', () => {
+    const active = extractActiveMarketSymbols({
+      symbol_status: [
+        { symbol: 'BTCUSD', has_quote: true, bid: 65000, ask: 65012 },
+        { symbol: 'XAUUSD', has_quote: true, bid: 0, ask: 4362 },
+        { symbol: 'AEX', has_quote: false, bid: 0, ask: 0 },
+        { symbol: 'DE30', time: 0, bid: 0, ask: 0 },
+      ],
+    });
+
+    expect(active).toEqual(['BTCUSD', 'XAUUSD']);
+  });
+
   it('falls back to available minus silent symbols when row status is not present', () => {
     const active = extractActiveMarketSymbols({
       available_symbols: ['EURUSD', 'XAUUSD', 'BTCUSD'],
@@ -195,6 +222,15 @@ describe('active market symbol status cache', () => {
     });
 
     expect(active).toEqual(['EURUSD', 'BTCUSD']);
+  });
+
+  it('does not treat an unqualified available-symbol list as live market data', () => {
+    const active = extractActiveMarketSymbols({
+      available_symbols: ['EURUSD', 'XAUUSD', 'BTCUSD'],
+      upstream_connected: true,
+    });
+
+    expect(active).toEqual([]);
   });
 
   it('reads normalized cached active symbols from broker-scoped local storage', () => {
