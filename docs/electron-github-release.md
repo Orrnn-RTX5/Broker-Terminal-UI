@@ -25,6 +25,7 @@ Configured:
 - `build/icon.ico` exists for the Windows installer.
 - `.github/workflows/electron-release.yml` builds on `windows-latest`.
 - The workflow uses the private source repo secret named `RELEASE_GH_TOKEN`.
+- The workflow initializes the public release repo with a README if it has no branches yet.
 
 Still required before each release:
 
@@ -269,6 +270,12 @@ Before every release:
 
 - The release was not published through `electron-builder --publish always`.
 - Rerun the Electron release workflow.
+
+`422 Repository is empty`
+
+- GitHub cannot create a release in a completely empty repository.
+- The workflow has an initialization step that creates the first `main` commit in `rtx5-orrnn/rtx5-terminal-releases` if needed.
+- If this still appears, confirm `RELEASE_GH_TOKEN` has write access to the public release repo.
 
 Updater sees no update
 

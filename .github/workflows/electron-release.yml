@@ -65,6 +65,53 @@ jobs:
       - name: Test
         run: npm.cmd run test:run
 
+      - name: Initialize public release repository if empty
+        shell: pwsh
+        env:
+          RELEASE_GH_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
+        run: |
+          $releaseRepoUrl = "https://x-access-token:$env:RELEASE_GH_TOKEN@github.com/$env:RELEASE_REPOSITORY.git"
+          $heads = git ls-remote --heads $releaseRepoUrl
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to access release repository $env:RELEASE_REPOSITORY with RELEASE_GH_TOKEN."
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($heads)) {
+            Write-Host "Release repository already has branches; skipping initialization."
+            exit 0
+          }
+
+          Write-Host "Release repository is empty; creating initial README commit."
+          $releaseDir = Join-Path $env:RUNNER_TEMP "rtx5-terminal-releases"
+          if (Test-Path $releaseDir) {
+            Remove-Item -Recurse -Force $releaseDir
+          }
+
+          git clone --quiet $releaseRepoUrl $releaseDir
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to clone empty release repository."
+          }
+
+          Push-Location $releaseDir
+          try {
+            git checkout -b main
+            @(
+              "# RTX Terminal Releases"
+              ""
+              "Public Electron auto-update release assets for RTX Terminal."
+              ""
+              "The source code lives in the private rtx5-orrnn/rtx5-broker-webterminal-ui repository."
+            ) | Set-Content -Path README.md -Encoding utf8
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add README.md
+            git commit -m "Initialize release repository"
+            git push --quiet origin main
+          } finally {
+            Pop-Location
+          }
+
       - name: Build and publish Electron release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
