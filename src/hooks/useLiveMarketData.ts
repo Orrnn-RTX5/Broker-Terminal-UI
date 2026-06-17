@@ -392,6 +392,7 @@ const writeCachedActiveMarketSymbols = (cache: ActiveMarketSymbolsCache, scope?:
 
 export const LIVE_QUOTES_REST_BATCH_SIZE = 50;
 export const LIVE_QUOTES_REST_POLL_INTERVAL_MS = 15000;
+export const ACTIVE_MARKET_SYMBOLS_REFRESH_INTERVAL_MS = 30000;
 
 export const getLiveQuoteRestBatches = (
   symbols: string[],
@@ -461,8 +462,12 @@ export function useActiveMarketSymbols() {
     reload().finally(() => {
       if (cancelled) return;
     });
+    const interval = window.setInterval(() => {
+      if (!cancelled) void reload();
+    }, ACTIVE_MARKET_SYMBOLS_REFRESH_INTERVAL_MS);
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
   }, [reload]);
 
