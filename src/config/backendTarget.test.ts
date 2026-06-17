@@ -167,6 +167,25 @@ describe('backend target resolver', () => {
     expect(broker.feed_url).toBe('ws://69.197.178.27:8090/ws/feed');
   });
 
+  it('prefers broker discovery domain URLs over server_ip in desktop sessions', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = { VITE_BACKEND_TARGET: 'desktop' };
+
+    const broker = normalizeBrokerInfoForTarget({
+      broker_id: 'gta_broker',
+      server_ip: '103.91.186.142',
+      server_port: 443,
+      server_url: 'https://services.growtradingacademy.com',
+      market_api_url: 'https://services.growtradingacademy.com',
+      ws_url: 'wss://services.growtradingacademy.com/ws/feed',
+      feed_ws_url: 'wss://services.growtradingacademy.com/ws/feed',
+    });
+
+    expect(broker.server_url).toBe('https://services.growtradingacademy.com');
+    expect(broker.market_api_url).toBe('https://services.growtradingacademy.com');
+    expect(broker.ws_url).toBe('wss://services.growtradingacademy.com/ws/v2');
+    expect(broker.feed_url).toBe('wss://services.growtradingacademy.com/ws/feed');
+  });
+
   it('prefers selected broker server_ip/server_port over stale desktop websocket URL fields', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = { VITE_BACKEND_TARGET: 'desktop' };
 

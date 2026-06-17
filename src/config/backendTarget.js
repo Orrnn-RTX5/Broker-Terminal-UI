@@ -227,6 +227,49 @@ const directUrlFromHostPort = (brokerInfo = {}) => {
   return `${protocol}://${authority}${port ? `:${port}` : ''}`;
 };
 
+const isIpLikeHost = (host = '') => {
+  const normalized = String(host || '').trim().replace(/^\[|\]$/g, '');
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized) || normalized.includes(':');
+};
+
+const isDomainLikeHost = (host = '') => {
+  const normalized = String(host || '').trim().toLowerCase().replace(/^\[|\]$/g, '');
+  return Boolean(
+    normalized
+    && !isIpLikeHost(normalized)
+    && !normalized.includes('_')
+    && (normalized === 'localhost' || /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(normalized))
+  );
+};
+
+const firstDomainHttpUrl = (...values) => {
+  for (const value of values) {
+    const normalized = normalizeHttpUrl(value);
+    if (!normalized) continue;
+    try {
+      const parsed = new URL(normalized);
+      if (isDomainLikeHost(parsed.hostname)) return normalized;
+    } catch {
+      // Ignore values that normalize but still fail URL parsing.
+    }
+  }
+  return '';
+};
+
+const firstDomainWsUrl = (...values) => {
+  for (const value of values) {
+    const normalized = normalizeWsUrl(value);
+    if (!normalized) continue;
+    try {
+      const parsed = new URL(normalized);
+      if (isDomainLikeHost(parsed.hostname)) return normalized;
+    } catch {
+      // Ignore values that normalize but still fail URL parsing.
+    }
+  }
+  return '';
+};
+
 const wsPath = (url, path) => {
   const normalized = normalizeWsUrl(url, isDesktopBackendTarget() ? 'ws' : 'wss');
   if (!normalized) return '';
@@ -282,7 +325,48 @@ export const getBackendTarget = () => {
 
 export const normalizeBrokerInfo = (brokerInfo = {}) => {
   if (!brokerInfo || typeof brokerInfo !== 'object') return {};
+  const domainBackendUrl = firstDomainHttpUrl(
+    brokerInfo.server_url,
+    brokerInfo.market_api_url,
+    brokerInfo.backend_url,
+    brokerInfo.public_backend_url,
+    brokerInfo.publicBackendUrl,
+    brokerInfo.web_backend_url,
+    brokerInfo.webBackendUrl,
+    brokerInfo.public_ext_api_url,
+    brokerInfo.publicExtApiUrl,
+    brokerInfo.web_ext_api_url,
+    brokerInfo.webExtApiUrl,
+    brokerInfo.API_HOST,
+    brokerInfo.api_host,
+    brokerInfo.API_HOST_EXT,
+    brokerInfo.api_host_ext,
+    brokerInfo.services_url,
+    brokerInfo.servicesUrl
+  );
+  const domainWsUrl = firstDomainWsUrl(
+    brokerInfo.ws_url,
+    brokerInfo.wss_url,
+    brokerInfo.public_ws_url,
+    brokerInfo.publicWsUrl,
+    brokerInfo.web_ws_url,
+    brokerInfo.webWsUrl,
+    brokerInfo.WS_HOST,
+    brokerInfo.ws_host
+  );
+  const domainFeedWsUrl = firstDomainWsUrl(
+    brokerInfo.feed_ws_url,
+    brokerInfo.feed_wss_url,
+    brokerInfo.feed_url,
+    brokerInfo.public_feed_ws_url,
+    brokerInfo.publicFeedWsUrl,
+    brokerInfo.web_feed_ws_url,
+    brokerInfo.webFeedWsUrl,
+    brokerInfo.WS_HOST,
+    brokerInfo.ws_host
+  );
   const directBackendUrl = normalizeHttpUrl(first(
+    domainBackendUrl,
     directUrlFromHostPort(brokerInfo),
     brokerInfo.desktop_backend_url,
     brokerInfo.desktopBackendUrl,
@@ -303,6 +387,7 @@ export const normalizeBrokerInfo = (brokerInfo = {}) => {
     brokerInfo.servicesUrl
   ), 'https');
   const desktopExtApiUrl = normalizeHttpUrl(first(
+    domainBackendUrl,
     brokerInfo.desktop_ext_api_url,
     brokerInfo.desktopExtApiUrl,
     brokerInfo.direct_ext_api_url,
@@ -321,6 +406,7 @@ export const normalizeBrokerInfo = (brokerInfo = {}) => {
     publicBackendUrl
   ), 'https');
   const desktopWsUrl = normalizeWsUrl(first(
+    domainWsUrl,
     directUrlFromHostPort(brokerInfo),
     brokerInfo.desktop_ws_url,
     brokerInfo.desktopWsUrl,
@@ -337,6 +423,7 @@ export const normalizeBrokerInfo = (brokerInfo = {}) => {
     brokerInfo.ws_host
   ), 'wss');
   const desktopFeedWsUrl = normalizeWsUrl(first(
+    domainFeedWsUrl,
     directUrlFromHostPort(brokerInfo),
     brokerInfo.desktop_feed_ws_url,
     brokerInfo.desktopFeedWsUrl,
