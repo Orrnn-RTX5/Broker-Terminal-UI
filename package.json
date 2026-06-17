@@ -56,8 +56,8 @@
     "publish": {
       "provider": "github",
       "owner": "rtx5-orrnn",
-      "repo": "rtx5-broker-webterminal-ui",
-      "private": true,
+      "repo": "rtx5-terminal-releases",
+      "private": false,
       "releaseType": "release"
     }
   },

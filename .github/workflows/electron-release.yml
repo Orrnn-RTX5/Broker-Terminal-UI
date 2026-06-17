@@ -1,0 +1,71 @@
+name: Electron Desktop Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version already present in package.json, for example 1.0.17"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release-windows:
+    name: Build and publish Windows release
+    runs-on: windows-latest
+
+    env:
+      RELEASE_REPOSITORY: rtx5-orrnn/rtx5-terminal-releases
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Check out source repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm.cmd ci
+
+      - name: Validate release inputs
+        shell: pwsh
+        env:
+          RELEASE_GH_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:RELEASE_GH_TOKEN)) {
+            throw "RELEASE_GH_TOKEN repository secret is required in the private source repo."
+          }
+
+          $version = "${{ inputs.version }}"
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid release version: $version"
+          }
+
+          $package = Get-Content package.json -Raw | ConvertFrom-Json
+          if ($package.version -ne $version) {
+            throw "package.json version '$($package.version)' does not match requested release '$version'."
+          }
+
+          $publish = $package.build.publish
+          if ($publish.provider -ne "github" -or $publish.owner -ne "rtx5-orrnn" -or $publish.repo -ne "rtx5-terminal-releases" -or $publish.private -ne $false) {
+            throw "Electron publish config must target public repo rtx5-orrnn/rtx5-terminal-releases."
+          }
+
+      - name: Typecheck
+        run: npm.cmd run typecheck
+
+      - name: Test
+        run: npm.cmd run test:run
+
+      - name: Build and publish Electron release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_GH_TOKEN }}
+        run: npm.cmd run electron:publish
