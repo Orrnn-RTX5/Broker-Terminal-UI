@@ -240,6 +240,13 @@ export const marketV2Api = {
   getSymbolStatus: (symbol: string, options?: ApiRequestOptions) =>
     apiClient.get<MarketStatus>(`/market/status/${encodeURIComponent(symbol)}`, v2Options(options)),
 
+  getAuthorizedInstruments: async (options?: ApiRequestOptions) => {
+    const payload = await apiClient.get<unknown>('/instruments', v2Options(options));
+    return extractInstrumentRows(payload)
+      .map(normalizeInstrumentRow)
+      .filter((instrument): instrument is Instrument => Boolean(instrument));
+  },
+
   getInstruments: async (options?: ApiRequestOptions) => {
     let lastError: unknown = null;
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { DockContainer, FloatingPanelsLayer, GlobalEdgeIndicators } from './DockContainer';
 import { TradingChart } from '../TradingChart';
@@ -13,11 +13,13 @@ import { NavigatorPanel } from '../layout/NavigatorPanel';
 import { BottomDock } from '../BottomDock';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { DockContainer as IDockContainer } from '../../services/dockManager';
+import { getUniqueSymbolNames, normalizeSymbolName } from '../../utils/symbolEligibility';
 
 interface DockWorkspaceProps {
     globalChartType: ChartType;
     globalTimeframe: Timeframe;
     allSymbols: unknown[];
+    chartSymbols?: unknown[];
     selectedSymbol: string;
     onSymbolSelect: (symbol: string) => void;
     onClosePosition: (id: string | number) => void;
@@ -26,20 +28,11 @@ interface DockWorkspaceProps {
     onCloseBulk: (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => void;
 }
 
-const normalizeSymbolName = (value: unknown): string => String(value ?? '').trim().toUpperCase();
-
-const getInstrumentSymbolName = (instrument: unknown): string => {
-    if (instrument && typeof instrument === 'object') {
-        const record = instrument as Record<string, unknown>;
-        return normalizeSymbolName(record.symbol ?? record.name ?? record.id);
-    }
-    return normalizeSymbolName(instrument);
-};
-
 export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     globalChartType,
     globalTimeframe,
     allSymbols,
+    chartSymbols,
     selectedSymbol,
     onSymbolSelect,
     onClosePosition,
@@ -48,15 +41,18 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     onCloseBulk
 }) => {
     const [isInitialized, setIsInitialized] = useState(false);
-    const allowedSymbolSet = useMemo(() => {
-        return new Set((Array.isArray(allSymbols) ? allSymbols : []).map(getInstrumentSymbolName).filter(Boolean));
+    const tradeSymbolSet = useMemo(() => {
+        return new Set(getUniqueSymbolNames(allSymbols));
     }, [allSymbols]);
+    const chartSymbolSet = useMemo(() => {
+        return new Set(getUniqueSymbolNames(chartSymbols ?? allSymbols));
+    }, [allSymbols, chartSymbols]);
 
-    const resolveAllowedSymbol = useCallback((value: unknown): string => {
+    const resolveChartSymbol = useCallback((value: unknown): string => {
         const symbol = normalizeSymbolName(value);
-        if (!symbol || allowedSymbolSet.size === 0) return '';
-        return allowedSymbolSet.has(symbol) ? symbol : '';
-    }, [allowedSymbolSet]);
+        if (!symbol || chartSymbolSet.size === 0) return '';
+        return chartSymbolSet.has(symbol) ? symbol : '';
+    }, [chartSymbolSet]);
 
     useEffect(() => {
         setIsInitialized(true);
@@ -66,7 +62,8 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
 
     const renderPanel = useCallback((panel: DockPanelConfig, isActive: boolean) => {
         if (panel.component === 'Chart') {
-            const chartSymbol = resolveAllowedSymbol(panel.props?.symbol) || resolveAllowedSymbol(selectedSymbol);
+            const chartSymbol = resolveChartSymbol(panel.props?.symbol) || resolveChartSymbol(selectedSymbol);
+            const tradeAllowed = chartSymbol ? tradeSymbolSet.has(chartSymbol) : false;
             // Show placeholder when not authenticated
             if (!isAuthenticated) {
                 return (
@@ -90,7 +87,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                     onDrop={e => {
                         e.preventDefault();
                         e.currentTarget.style.background = '#0e0e12';
-                        const draggedSymbol = resolveAllowedSymbol(e.dataTransfer.getData('text/plain'));
+                        const draggedSymbol = resolveChartSymbol(e.dataTransfer.getData('text/plain'));
                         if (draggedSymbol && draggedSymbol !== chartSymbol) {
                             useDockLayoutStore.getState().updatePanelProps(panel.id, {
                                 props: { ...panel.props, symbol: draggedSymbol },
@@ -108,6 +105,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                                     timeframe={panel.props?.timeframe || globalTimeframe}
                                     chartType={globalChartType}
                                     panelId={panel.id}
+                                    tradeAllowed={tradeAllowed}
                                 />
                             </ErrorBoundary>
                         </div>
@@ -162,7 +160,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => {
                         e.preventDefault();
-                        const draggedSymbol = resolveAllowedSymbol(e.dataTransfer.getData('text/plain'));
+                        const draggedSymbol = resolveChartSymbol(e.dataTransfer.getData('text/plain'));
                         if (draggedSymbol) {
                             window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: draggedSymbol } }));
                         }
@@ -175,7 +173,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     }, [
         isAuthenticated,
         globalChartType, globalTimeframe,
-        allSymbols, selectedSymbol, onSymbolSelect, resolveAllowedSymbol,
+        allSymbols, selectedSymbol, onSymbolSelect, resolveChartSymbol, tradeSymbolSet,
         onClosePosition, onModifyPosition, onCancelOrder, onCloseBulk
     ]);
 

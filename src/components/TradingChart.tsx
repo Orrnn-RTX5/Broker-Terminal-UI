@@ -395,6 +395,7 @@ interface TradingChartProps {
   timeframe?: Timeframe;
   chartType?: ChartType;
   panelId?: string;
+  tradeAllowed?: boolean;
 }
 
 export const TradingChart = React.memo(function TradingChart({
@@ -402,6 +403,7 @@ export const TradingChart = React.memo(function TradingChart({
   timeframe = 'M5',
   chartType = 'candlestick',
   panelId,
+  tradeAllowed = false,
 }: TradingChartProps) {
   const authToken = useAppStore((state) => state.authToken);
   const chartInstanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -4905,7 +4907,7 @@ export const TradingChart = React.memo(function TradingChart({
       <DrawingContextMenu onClose={() => { }} />
 
       {/* One-Click Trading Panel (Alt+T to toggle) */}
-      <OneClickTrading symbol={symbol} timeframe={timeframe} visible={showOneClick} />
+      <OneClickTrading symbol={symbol} timeframe={timeframe} visible={showOneClick} tradeAllowed={tradeAllowed} />
 
 
 

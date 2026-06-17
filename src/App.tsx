@@ -17,12 +17,19 @@ import { getTradeEntryPriceFromQuote } from './services/chartPriceGuards';
 import { resolveOptionalPositionTime, resolvePositionOpenTime } from './services/tradePositionTime';
 import { API_BASE_URL, WS_ENDPOINTS, updateDynamicUrls } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useActiveMarketSymbols } from './hooks/useLiveMarketData';
+import {
+  buildChartEligibleSymbolNames,
+  getInstrumentSymbolName,
+  getUniqueSymbolNames as getAllowedSymbolNames,
+  normalizeSymbolName,
+} from './utils/symbolEligibility';
 
 import { LastSymbolPanel } from './components/LastSymbolPanel';
 import { useLastSymbolStore } from './store/useLastSymbolStore';
 import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
-import { accountV2Api, tradingV2Api } from './api/trade';
+import { accountV2Api, marketV2Api, tradingV2Api } from './api/trade';
 import { tradeGatewayApi } from './api/tradeGateway';
 import { dispatchTradeOverlayCloseState } from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
@@ -106,20 +113,6 @@ const hasTokenExpiryElapsed = (expiresAt: unknown): boolean => {
 };
 
 const SELECTED_SYMBOL_STORAGE_KEY = 'rtx5_selected_symbol';
-
-const normalizeSymbolName = (value: unknown): string => String(value ?? '').trim().toUpperCase();
-
-const getInstrumentSymbolName = (instrument: unknown): string => {
-  if (instrument && typeof instrument === 'object') {
-    const record = instrument as Record<string, unknown>;
-    return normalizeSymbolName(record.symbol ?? record.name ?? record.id);
-  }
-  return normalizeSymbolName(instrument);
-};
-
-const getAllowedSymbolNames = (symbols: unknown[]): string[] => {
-  return Array.from(new Set((Array.isArray(symbols) ? symbols : []).map(getInstrumentSymbolName).filter(Boolean)));
-};
 
 interface Tick {
   symbol: string;
@@ -638,6 +631,10 @@ function App() {
   const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
   const [hasLoadedSymbols, setHasLoadedSymbols] = useState(false);
   const [allSymbols, setAllSymbols] = useState<unknown[]>([]);
+  const {
+    symbols: activeMarketSymbols,
+    settled: activeMarketSymbolsSettled,
+  } = useActiveMarketSymbols();
 
   const [enableHistoricalData] = useState(true);
 
@@ -1207,8 +1204,14 @@ function App() {
   }, []);
 
   const allowedSymbolNames = useMemo(() => getAllowedSymbolNames(allSymbols), [allSymbols]);
-  const allowedSymbolsKey = allowedSymbolNames.join(',');
   const allowedSymbolSet = useMemo(() => new Set(allowedSymbolNames), [allowedSymbolNames]);
+  const chartEligibleSymbolNames = useMemo(
+    () => buildChartEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols),
+    [activeMarketSymbols, allowedSymbolNames],
+  );
+  const chartEligibleSymbolsKey = chartEligibleSymbolNames.join(',');
+  const chartEligibleSymbolSet = useMemo(() => new Set(chartEligibleSymbolNames), [chartEligibleSymbolNames]);
+  const hasLoadedChartSymbols = hasLoadedSymbols && activeMarketSymbolsSettled;
 
   const getAllowedSymbol = useCallback((symbol: unknown): string => {
     const normalized = normalizeSymbolName(symbol);
@@ -1216,26 +1219,33 @@ function App() {
     return allowedSymbolSet.has(normalized) ? normalized : '';
   }, [allowedSymbolNames.length, allowedSymbolSet, hasLoadedSymbols]);
 
+  const getChartEligibleSymbol = useCallback((symbol: unknown): string => {
+    const normalized = normalizeSymbolName(symbol);
+    if (!normalized || !hasLoadedChartSymbols || chartEligibleSymbolNames.length === 0) return '';
+    return chartEligibleSymbolSet.has(normalized) ? normalized : '';
+  }, [chartEligibleSymbolNames.length, chartEligibleSymbolSet, hasLoadedChartSymbols]);
+
   // Symbol select handler: dispatch openChart event for consistent MT5 behavior
   const handleSymbolSelect = useCallback((symbol: string) => {
-    const allowedSymbol = getAllowedSymbol(symbol);
-    if (!allowedSymbol) return;
-    setSelectedSymbol(allowedSymbol);
+    const chartSymbol = getChartEligibleSymbol(symbol);
+    if (!chartSymbol) return;
+    setSelectedSymbol(chartSymbol);
     // Dispatch openChart. If the symbol already has a tab, we switch to it.
     // If not, we add it as a new tab.
-    window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: allowedSymbol, newTab: true } }));
-  }, [getAllowedSymbol]);
+    window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: chartSymbol, newTab: true } }));
+  }, [getChartEligibleSymbol]);
 
   // Multi-Chart State (Now managed by DockManager)
   useEffect(() => {
     // Sync selected symbol to persistence
-    if (!hasLoadedSymbols) return;
-    if (selectedSymbol && allowedSymbolSet.has(normalizeSymbolName(selectedSymbol))) {
-      localStorage.setItem(SELECTED_SYMBOL_STORAGE_KEY, selectedSymbol);
+    if (!hasLoadedChartSymbols) return;
+    const normalizedSelectedSymbol = normalizeSymbolName(selectedSymbol);
+    if (normalizedSelectedSymbol && chartEligibleSymbolSet.has(normalizedSelectedSymbol)) {
+      localStorage.setItem(SELECTED_SYMBOL_STORAGE_KEY, normalizedSelectedSymbol);
     } else {
       localStorage.removeItem(SELECTED_SYMBOL_STORAGE_KEY);
     }
-  }, [allowedSymbolSet, hasLoadedSymbols, selectedSymbol]);
+  }, [chartEligibleSymbolSet, hasLoadedChartSymbols, selectedSymbol]);
 
   useEffect(() => {
     localStorage.setItem('rtx5_timeframe', timeframe);
@@ -1827,7 +1837,7 @@ function App() {
 
       const symbolsToSubscribe = [...new Set([...watchlistSymbols, selectedSymbol].filter(Boolean))]
         .map(symbol => String(symbol).trim().toUpperCase())
-        .filter(symbol => Boolean(symbol) && allowedSymbolSet.has(symbol));
+        .filter(symbol => Boolean(symbol) && chartEligibleSymbolSet.has(symbol));
 
       console.log(`[WS] Connected! Subscribing to ${symbolsToSubscribe.length} v2 market channels from watchlist: ${activeWatchlist?.name || 'default'}`);
 
@@ -1838,7 +1848,7 @@ function App() {
         });
 
         const selected = normalizeSymbolName(selectedSymbol);
-        if (selected && allowedSymbolSet.has(selected)) {
+        if (selected && chartEligibleSymbolSet.has(selected)) {
           unsubscribers.push(subscribe(`candles.${selected}.${toV2Timeframe(timeframe as string)}`, () => undefined));
           unsubscribers.push(subscribe(`depth.${selected}`, () => undefined));
         }
@@ -1859,8 +1869,8 @@ function App() {
     subscribe,
     selectedSymbol,
     timeframe,
-    allowedSymbolsKey,
-    allowedSymbolSet,
+    chartEligibleSymbolsKey,
+    chartEligibleSymbolSet,
     useWatchlistStore.getState().activeWatchlistId,
     useWatchlistStore.getState().getActiveWatchlist()?.symbols.join(',')
   ]);
@@ -2162,16 +2172,18 @@ function App() {
     };
   }, [isAuthenticated, subscribe, getAcceptedChannelLogin, getLiveTradingLogin, markServerClosedTickets, markTradeWsMessage, reconcileOptimisticClosedPositions, refreshOrdersAndHistory]);
 
-  const placeOrder = useCallback(async (side: 'BUY' | 'SELL') => {
+  const placeOrder = useCallback(async (side: 'BUY' | 'SELL', requestedSymbol?: string) => {
     setOrderLoading(true);
     try {
       const loginId = getLiveTradingLogin();
       if (!loginId) return;
+      const submitSymbol = getAllowedSymbol(requestedSymbol || selectedSymbol);
+      if (!submitSymbol) return;
 
-      const chartEntryPrice = getChartEntryPriceForSymbol(selectedSymbol, side);
+      const chartEntryPrice = getChartEntryPriceForSymbol(submitSymbol, side);
       const chartEntryTime = new Date().toISOString();
       const result = await api.orders.placeMarketOrder({
-        symbol: selectedSymbol,
+        symbol: submitSymbol,
         side,
         volume,
         login: loginId,
@@ -2188,7 +2200,7 @@ function App() {
     } finally {
       setOrderLoading(false);
     }
-  }, [getLiveTradingLogin, selectedSymbol, volume, refreshPositions, refreshOrdersAndHistory]);
+  }, [getAllowedSymbol, getLiveTradingLogin, selectedSymbol, volume, refreshPositions, refreshOrdersAndHistory]);
 
   const handleOrderPanelSubmit = useCallback(async (order: {
     type: 'buy' | 'sell';
@@ -2198,7 +2210,7 @@ function App() {
     setOrderLoading(true);
     try {
       const side = order.type.toUpperCase() as 'BUY' | 'SELL';
-      const submitSymbol = getAllowedSymbol(order.symbol) || getAllowedSymbol(orderPanelSymbol) || selectedSymbol;
+      const submitSymbol = getAllowedSymbol(order.symbol) || getAllowedSymbol(orderPanelSymbol);
       if (!submitSymbol) return;
       const loginId = getLiveTradingLogin();
       if (!loginId) return;
@@ -2264,35 +2276,28 @@ function App() {
 
     setIsLoadingSymbols(true);
     setHasLoadedSymbols(false);
-    api.market.getSymbols()
+    marketV2Api.getAuthorizedInstruments()
       .then(data => {
         const symbols = (Array.isArray(data) ? data : []).filter(item => Boolean(getInstrumentSymbolName(item)));
         const nextAllowedSymbols = getAllowedSymbolNames(symbols);
-        const nextAllowedSet = new Set(nextAllowedSymbols);
         if (symbols.length > 0) {
           setAllSymbols(symbols);
-          useWatchlistStore.getState().sanitizeSymbols(nextAllowedSymbols);
           setSelectedSymbol(prev => {
             const current = normalizeSymbolName(prev);
-            if (current && nextAllowedSet.has(current)) return current;
+            if (current) return current;
 
             const saved = normalizeSymbolName(localStorage.getItem(SELECTED_SYMBOL_STORAGE_KEY));
-            if (saved && nextAllowedSet.has(saved)) return saved;
+            if (saved) return saved;
 
-            localStorage.removeItem(SELECTED_SYMBOL_STORAGE_KEY);
             return nextAllowedSymbols[0] || '';
           });
         } else {
           setAllSymbols([]);
-          setSelectedSymbol('');
-          localStorage.removeItem(SELECTED_SYMBOL_STORAGE_KEY);
         }
       })
       .catch(err => {
         console.error('Failed to fetch symbols:', err);
         setAllSymbols([]);
-        setSelectedSymbol('');
-        localStorage.removeItem(SELECTED_SYMBOL_STORAGE_KEY);
       })
       .finally(() => {
         setHasLoadedSymbols(true);
@@ -2301,12 +2306,15 @@ function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (!hasLoadedSymbols || allowedSymbolNames.length === 0) return;
+    if (!hasLoadedChartSymbols || chartEligibleSymbolNames.length === 0) return;
 
-    const fallbackSymbol = allowedSymbolSet.has(normalizeSymbolName(selectedSymbol))
+    const fallbackSymbol = chartEligibleSymbolSet.has(normalizeSymbolName(selectedSymbol))
       ? normalizeSymbolName(selectedSymbol)
-      : allowedSymbolNames[0];
+      : chartEligibleSymbolNames[0];
     if (!fallbackSymbol) return;
+    if (fallbackSymbol !== normalizeSymbolName(selectedSymbol)) {
+      setSelectedSymbol(fallbackSymbol);
+    }
 
     const store = useDockLayoutStore.getState();
     const layout = store.layout;
@@ -2322,7 +2330,7 @@ function App() {
 
         if (child?.component !== 'Chart') continue;
         const chartSymbol = normalizeSymbolName(child.props?.symbol ?? child.title?.split(',')[0]);
-        if (chartSymbol && allowedSymbolSet.has(chartSymbol)) continue;
+        if (chartSymbol && chartEligibleSymbolSet.has(chartSymbol)) continue;
 
         const nextTimeframe = child.props?.timeframe || timeframe;
         updates.push({
@@ -2342,7 +2350,7 @@ function App() {
         title: update.title,
       });
     });
-  }, [allowedSymbolNames, allowedSymbolSet, hasLoadedSymbols, selectedSymbol, timeframe]);
+  }, [chartEligibleSymbolNames, chartEligibleSymbolSet, hasLoadedChartSymbols, selectedSymbol, timeframe]);
 
 
   useEffect(() => {
@@ -2411,7 +2419,7 @@ function App() {
   // Keyboard shortcut handlers
   const handleOpenOrderPanel = useCallback((symbol: string, price: { bid: number; ask: number }) => {
     const requestedSymbol = normalizeSymbolName(symbol);
-    const allowedSymbol = requestedSymbol ? getAllowedSymbol(requestedSymbol) : selectedSymbol;
+    const allowedSymbol = getAllowedSymbol(requestedSymbol || selectedSymbol);
     if (!allowedSymbol) return;
     setOrderPanelOpen(prev => {
       if (prev) return false;
@@ -2438,7 +2446,7 @@ function App() {
       ? symbolOrEvent 
       : (symbolOrEvent.detail?.symbol || selectedSymbol);
     const hasRequestedSymbol = Boolean(normalizeSymbolName(requestedSymbol));
-    const symbol = hasRequestedSymbol ? getAllowedSymbol(requestedSymbol) : selectedSymbol;
+    const symbol = getAllowedSymbol(hasRequestedSymbol ? requestedSymbol : selectedSymbol);
     if (!symbol) return;
     
     if (showDOM && domSymbol === symbol) {
@@ -2547,7 +2555,7 @@ function App() {
 
     // 2. Chart & Navigation Handlers
     const handleOpenChart = (e: CustomEvent) => {
-      const symbol = getAllowedSymbol(e.detail?.symbol);
+      const symbol = getChartEligibleSymbol(e.detail?.symbol);
       if (!symbol) return;
       const newTab = e.detail?.newTab === true;
       const store = useDockLayoutStore.getState();
@@ -2665,7 +2673,7 @@ function App() {
 
     const handleOpenOrderDialog = (e: CustomEvent) => {
       const requestedSymbol = normalizeSymbolName(e.detail?.symbol);
-      const symbol = requestedSymbol ? getAllowedSymbol(requestedSymbol) : selectedSymbol;
+      const symbol = getAllowedSymbol(requestedSymbol || selectedSymbol);
       if (!symbol) return;
       const tick = useAppStore.getState().ticks[symbol];
       setOrderPanelSymbol(symbol);
@@ -2676,8 +2684,10 @@ function App() {
     const handleOpenNewOrder = () => {
       setOrderPanelOpen(prev => {
         if (prev) return false;
-        const tick = useAppStore.getState().ticks[selectedSymbol];
-        setOrderPanelSymbol(selectedSymbol);
+        const symbol = getAllowedSymbol(selectedSymbol);
+        if (!symbol) return false;
+        const tick = useAppStore.getState().ticks[symbol];
+        setOrderPanelSymbol(symbol);
         setOrderPanelPrice({ bid: tick?.bid || 0, ask: tick?.ask || 0 });
         return true;
       });
@@ -2690,8 +2700,8 @@ function App() {
 
     const handleChartSymbolChanged = (e: CustomEvent) => {
       const { symbol: sym, timeframe: tf } = e.detail || {};
-      const allowedSymbol = getAllowedSymbol(sym);
-      if (sym && allowedSymbol) setSelectedSymbol(allowedSymbol);
+      const chartSymbol = getChartEligibleSymbol(sym);
+      if (sym && chartSymbol) setSelectedSymbol(chartSymbol);
       if (tf) setTimeframe(tf);
     };
 
@@ -2777,7 +2787,7 @@ function App() {
       const allowedSymbol = getAllowedSymbol(tradeSymbol);
       if (tradeSymbol && !allowedSymbol) return;
       if (allowedSymbol) setSelectedSymbol(allowedSymbol);
-      placeOrder(side);
+      placeOrder(side, allowedSymbol || undefined);
     };
 
     const handleOpenChartProperties = (e: CustomEvent) => {
@@ -2844,7 +2854,7 @@ function App() {
     };
   }, [
     selectedSymbol, timeframe, placeOrder, handleOpenDOM, 
-    handleSaveWorkspace, handleOpenDataFolder, handlePrintChart, getAllowedSymbol
+    handleSaveWorkspace, handleOpenDataFolder, handlePrintChart, getAllowedSymbol, getChartEligibleSymbol
   ]);
 
 
@@ -2902,6 +2912,7 @@ function App() {
                       globalChartType={chartType}
                       globalTimeframe={timeframe}
                       allSymbols={allSymbols}
+                      chartSymbols={chartEligibleSymbolNames}
                       selectedSymbol={selectedSymbol}
                       onSymbolSelect={handleSymbolSelect}
                       onClosePosition={handleClosePosition}
@@ -2937,7 +2948,7 @@ function App() {
                     onPlaceOrder={(side, price, vol) => {
                       setVolume(vol);
                       console.log(`DOM Order: ${side} ${vol} @ ${price}`);
-                      placeOrder(side);
+                      placeOrder(side, domSymbol);
                     }}
                   />
                   {/* Right edge resize handle */}

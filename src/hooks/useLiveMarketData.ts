@@ -420,6 +420,7 @@ const extractInstrumentRows = (response: any): any[] => {
 export function useActiveMarketSymbols() {
   const [symbols, setSymbols] = useState<string[]>(() => readCachedActiveMarketSymbols().symbols);
   const [loading, setLoading] = useState(false);
+  const [settled, setSettled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -453,6 +454,7 @@ export function useActiveMarketSymbols() {
       setSymbols(cached.symbols);
       setError(err instanceof ApiError ? err.message : 'Failed to load active feed symbols');
     } finally {
+      setSettled(true);
       setLoading(false);
     }
   }, []);
@@ -471,7 +473,7 @@ export function useActiveMarketSymbols() {
     };
   }, [reload]);
 
-  return { symbols, loading, error, reload };
+  return { symbols, loading, settled, error, reload };
 }
 
 export function useMarketInstruments() {

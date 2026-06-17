@@ -17,6 +17,7 @@ interface OneClickTradingProps {
     symbol: string;
     visible: boolean;
     timeframe: string;
+    tradeAllowed?: boolean;
 }
 
 type LooseRecord = Record<string, unknown>;
@@ -72,7 +73,7 @@ const upsertImmediatePosition = (position: Position) => {
     store.setPositions(nextPositions);
 };
 
-export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visible, timeframe }) => {
+export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visible, timeframe, tradeAllowed = false }) => {
     const [volume, setVolume] = useState(0.01);
     const [isPlacing, setIsPlacing] = useState(false);
     const [flashSide, setFlashSide] = useState<'buy' | 'sell' | null>(null);
@@ -141,9 +142,14 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
 
     const isVolumeValid = Number.isFinite(volume) && volume > 0;
     const hasExecutablePrice = bid > 0 && ask > 0;
+    const canSubmitOrder = tradeAllowed && isVolumeValid && hasExecutablePrice;
 
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
         if (isPlacing) return;
+        if (!tradeAllowed) {
+            setError('Trading is not enabled for this symbol');
+            return;
+        }
         if (!symbol.trim()) {
             setError('Missing symbol');
             return;
@@ -190,7 +196,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
             setIsPlacing(false);
             setTimeout(() => setFlashSide(null), 500);
         }
-    }, [isPlacing, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin]);
+    }, [isPlacing, tradeAllowed, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin]);
 
     if (!visible || !symbol) return null;
 
@@ -261,7 +267,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                 {/* ── BUY Button ── */}
                 <button
                     onClick={() => placeOrder('buy')}
-                    disabled={isPlacing || !isVolumeValid || !hasExecutablePrice}
+                    disabled={isPlacing || !canSubmitOrder}
                     style={{
                         ...sharedButtonStyle,
                         background: flashSide === 'buy'
@@ -369,7 +375,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                 {/* ── SELL Button ── */}
                 <button
                     onClick={() => placeOrder('sell')}
-                    disabled={isPlacing || !isVolumeValid || !hasExecutablePrice}
+                    disabled={isPlacing || !canSubmitOrder}
                     style={{
                         ...sharedButtonStyle,
                         background: flashSide === 'sell'

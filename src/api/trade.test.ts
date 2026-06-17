@@ -226,6 +226,21 @@ describe('trade v2 API contract calls', () => {
     expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/instruments`);
   });
 
+  it('uses only authenticated v2 instruments for trade authorization symbols', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      instruments: [
+        { symbol: 'BTCUSD', enabled: true },
+      ],
+    }));
+
+    await expect(marketV2Api.getAuthorizedInstruments()).resolves.toEqual([
+      expect.objectContaining({ symbol: 'BTCUSD' }),
+    ]);
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/instruments`);
+  });
+
   it('normalizes legacy market symbols with snake_case trading flags', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       symbols: [

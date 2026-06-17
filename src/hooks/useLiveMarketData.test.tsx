@@ -261,12 +261,14 @@ describe('active market symbol status cache', () => {
     });
 
     const { result, unmount } = renderHook(() => useActiveMarketSymbols());
+    expect(result.current.settled).toBe(false);
     await flushPromises();
 
     expect(apiGet).toHaveBeenCalledWith('/ws/feed/status', expect.objectContaining({
       skipAuth: true,
       skipDynamicUrl: true,
     }));
+    expect(result.current.settled).toBe(true);
     expect(result.current.symbols).toEqual(['EURUSD']);
 
     unmount();
