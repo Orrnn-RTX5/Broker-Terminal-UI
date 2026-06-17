@@ -9,6 +9,9 @@ type TradeWsState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'erro
 export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'> & {
   account_login?: number;
   ticket?: number;
+  contractSize?: number;
+  contract_size?: number;
+  hasBackendProfit?: boolean;
   price_open?: number;
   price_current?: number;
   price_sl?: number;
@@ -60,6 +63,11 @@ const toNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(next) ? next : fallback;
 };
 
+const hasFiniteValue = (value: unknown): boolean => {
+  if (value === undefined || value === null || value === '') return false;
+  return Number.isFinite(Number(value));
+};
+
 const unwrapData = (value: any): any => {
   if (!value || typeof value !== 'object') return value;
   if (value.account) return value.account;
@@ -73,19 +81,29 @@ const unwrapData = (value: any): any => {
 
 export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Account => {
   const data = unwrapData(raw) ?? {};
+  const freeMarginRaw = data.free_margin ?? data.margin_free ?? data.freeMargin ?? data.margin_available;
+  const marginLevelRaw = data.margin_level ?? data.marginLevel;
+  const creditRaw = data.credit ?? data.credit_bonus ?? data.bonus;
+  const hasBackendEquity = hasFiniteValue(data.equity);
+  const hasBackendFreeMargin = hasFiniteValue(freeMarginRaw);
+  const hasBackendMarginLevel = hasFiniteValue(marginLevelRaw);
+
   return {
     balance: toNumber(data.balance, previous?.balance ?? 0),
-    equity: toNumber(data.equity ?? data.balance, previous?.equity ?? previous?.balance ?? 0),
+    equity: hasBackendEquity
+      ? toNumber(data.equity, previous?.equity ?? previous?.balance ?? 0)
+      : toNumber(previous?.equity ?? data.balance, previous?.balance ?? 0),
     margin: toNumber(data.used_margin ?? data.margin_used ?? data.margin ?? data.marginUsed, previous?.margin ?? 0),
-    freeMargin: toNumber(
-      data.free_margin ?? data.margin_free ?? data.freeMargin ?? data.margin_available,
-      previous?.freeMargin ?? 0,
-    ),
+    freeMargin: hasBackendFreeMargin ? toNumber(freeMarginRaw, previous?.freeMargin ?? 0) : toNumber(previous?.freeMargin, 0),
     unrealizedPL: toNumber(
       data.floating_pnl ?? data.floating ?? data.profit ?? data.unrealized_pl ?? data.unrealizedPL,
       previous?.unrealizedPL ?? 0,
     ),
-    marginLevel: toNumber(data.margin_level ?? data.marginLevel, previous?.marginLevel ?? 0),
+    marginLevel: hasBackendMarginLevel ? toNumber(marginLevelRaw, previous?.marginLevel ?? 0) : toNumber(previous?.marginLevel, 0),
+    credit: toNumber(creditRaw, previous?.credit ?? 0),
+    hasBackendEquity,
+    hasBackendFreeMargin,
+    hasBackendMarginLevel,
     currency: String(data.currency ?? previous?.currency ?? 'USD'),
     leverage: toNumber(data.leverage, previous?.leverage ?? 100),
   };
@@ -99,13 +117,17 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
   const normalized = normalizePosition(raw) as ToolboxTradePosition;
   const ticket = getPositionTicket(raw) || normalized.id;
   const priceCurrent = toNumber(raw?.price_current ?? raw?.current_price ?? normalized.currentPrice, normalized.currentPrice);
-  const profit = toNumber(raw?.profit ?? raw?.unrealized_pl ?? normalized.unrealizedPnL, normalized.unrealizedPnL);
+  const rawProfit = raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL;
+  const hasBackendProfit = rawProfit !== undefined && rawProfit !== null && rawProfit !== '' && Number.isFinite(Number(rawProfit));
+  const profit = hasBackendProfit ? toNumber(rawProfit, 0) : normalized.unrealizedPnL;
 
   return {
     ...normalized,
     id: ticket,
     ticket,
     account_login: raw?.account_login ?? raw?.login ?? normalized.account_login,
+    contractSize: toNumber(raw?.contractSize ?? raw?.contract_size ?? normalized.contractSize, 0) || undefined,
+    contract_size: toNumber(raw?.contract_size ?? raw?.contractSize ?? normalized.contract_size, 0) || undefined,
     price_open: toNumber(raw?.price_open ?? raw?.open_price ?? normalized.openPrice, normalized.openPrice),
     price_current: priceCurrent,
     price_sl: toNumber(raw?.price_sl ?? raw?.sl ?? normalized.sl, normalized.sl),
@@ -113,6 +135,7 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     currentPrice: priceCurrent,
     profit,
     unrealizedPnL: profit,
+    hasBackendProfit,
     swap: toNumber(raw?.swap ?? raw?.storage ?? normalized.swap, normalized.swap),
     commission: toNumber(raw?.commission ?? normalized.commission, normalized.commission),
     time_create: raw?.time_create ?? normalized.time_create,
@@ -127,6 +150,8 @@ const positionSignature = (position: ToolboxTradePosition): string => [
   position.symbol,
   position.side,
   position.volume,
+  position.contractSize ?? position.contract_size ?? '',
+  position.hasBackendProfit ?? '',
   position.price_open ?? position.openPrice,
   position.price_current ?? position.currentPrice,
   position.price_sl ?? position.sl,
@@ -152,6 +177,10 @@ const accountSignature = (account: Account | null): string => (
       account.freeMargin,
       account.marginLevel,
       account.unrealizedPL,
+      account.credit ?? 0,
+      account.hasBackendEquity ?? '',
+      account.hasBackendFreeMargin ?? '',
+      account.hasBackendMarginLevel ?? '',
       account.currency,
     ].join(':')
     : ''
@@ -168,17 +197,23 @@ const mergePatchIntoPosition = (
   raw: any,
 ): ToolboxTradePosition => {
   const next: ToolboxTradePosition = { ...existing };
+  const hasPricePatch = raw?.price_current !== undefined || raw?.current_price !== undefined || raw?.currentPrice !== undefined;
+  const hasProfitPatch = raw?.profit !== undefined || raw?.unrealized_pl !== undefined || raw?.unrealizedPnL !== undefined;
 
-  if (raw?.price_current !== undefined || raw?.current_price !== undefined || raw?.currentPrice !== undefined) {
+  if (hasPricePatch) {
     const price = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, existing.currentPrice);
     next.currentPrice = price;
     next.price_current = price;
+    if (!hasProfitPatch && price !== existing.currentPrice) {
+      next.hasBackendProfit = false;
+    }
   }
 
-  if (raw?.profit !== undefined || raw?.unrealized_pl !== undefined || raw?.unrealizedPnL !== undefined) {
+  if (hasProfitPatch) {
     const profit = toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, existing.unrealizedPnL);
     next.unrealizedPnL = profit;
     next.profit = profit;
+    next.hasBackendProfit = true;
   }
 
   if (raw?.swap !== undefined || raw?.storage !== undefined) {
@@ -279,6 +314,7 @@ const patchPositionsFromTick = (
       ...position,
       currentPrice,
       price_current: currentPrice,
+      hasBackendProfit: false,
       time_update: tickTime || position.time_update,
     };
   });

@@ -164,6 +164,7 @@ type ModifyPendingOrderPayload = {
   sl?: number;
   tp?: number;
   expiry?: number;
+  comment?: string;
   trailing_stop?: number;
   trailing_step?: number;
 };
@@ -189,6 +190,7 @@ const normalizeModifyPendingOrderRequest = (changes: ModifyPendingOrderRequest):
   sl: changes.sl ?? changes.price_sl,
   tp: changes.tp ?? changes.price_tp,
   expiry: changes.expiry ?? changes.expiration,
+  comment: changes.comment,
   trailing_stop: changes.trailing_stop,
   trailing_step: changes.trailing_step,
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getChartPriceFromQuote,
   getMedianCandlePrice,
   getRenderedCandleReferencePrice,
   getReferenceScaleFactor,
+  getTradeEntryPriceFromQuote,
   isPriceCompatibleWithCandles,
   normalizeCandlesToReference,
   normalizeCandlesToRenderedScale,
@@ -17,6 +19,31 @@ const candles = [
 ];
 
 describe('chart price guards', () => {
+  it('uses bid as the chart-rendered live price', () => {
+    expect(getChartPriceFromQuote({ bid: 65480.04, ask: 65484.53 })).toBe(65480.04);
+  });
+
+  it('falls back to ask or last when bid is unavailable', () => {
+    expect(getChartPriceFromQuote({ bid: 65480.04 })).toBe(65480.04);
+    expect(getChartPriceFromQuote({ ask: 65484.53 })).toBe(65484.53);
+    expect(getChartPriceFromQuote({ last: 65482.12 })).toBe(65482.12);
+    expect(getChartPriceFromQuote(null)).toBeNull();
+  });
+
+  it('uses executable side price for trade entry markers', () => {
+    const quote = { bid: 65304.89, ask: 65316.89 };
+
+    expect(getTradeEntryPriceFromQuote(quote, 'BUY')).toBe(65316.89);
+    expect(getTradeEntryPriceFromQuote(quote, 'SELL')).toBe(65304.89);
+  });
+
+  it('falls back defensively for trade entry markers when one side is missing', () => {
+    expect(getTradeEntryPriceFromQuote({ bid: 65304.89 }, 'BUY')).toBe(65304.89);
+    expect(getTradeEntryPriceFromQuote({ ask: 65316.89 }, 'SELL')).toBe(65316.89);
+    expect(getTradeEntryPriceFromQuote({ last: 65310.12 }, 'BUY')).toBe(65310.12);
+    expect(getTradeEntryPriceFromQuote(null, 'SELL')).toBeNull();
+  });
+
   it('accepts normal candle and quote drift', () => {
     expect(isPriceCompatibleWithCandles(4700, candles)).toBe(true);
     expect(normalizeCandlesToReference(candles, 4700)).toMatchObject({

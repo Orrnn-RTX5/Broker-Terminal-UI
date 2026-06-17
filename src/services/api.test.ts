@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { authApi as endpointAuthApi } from '../api/endpoints';
-import { API_V2_BASE_URL, RTX5_API_URL, isCleartextDowngradeAllowedHost, normalizeBrokerServerUrl } from '../config/api';
+import { API_V2_BASE_URL, RTX5_API_URL, isCleartextDowngradeAllowedHost, normalizeBrokerServerUrl, updateDynamicUrls } from '../config/api';
 import { api, journalApi } from './api';
 
 const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
@@ -23,6 +23,18 @@ const lastFetchCall = () => {
 
 const expectedLoginUrl = (baseUrl: string) =>
   `${normalizeBrokerServerUrl(baseUrl)}/api/v2/auth/login`;
+
+const originalWindowLocation = window.location;
+
+const clearStoredRouting = () => {
+  delete (window as Window & { electronAPI?: unknown }).electronAPI;
+  Object.defineProperty(window, 'location', {
+    value: originalWindowLocation,
+    configurable: true,
+  });
+  localStorage.clear();
+  updateDynamicUrls();
+};
 
 describe('broker server URL normalization', () => {
   it('preserves explicit HTTPS broker URLs unless HTTP-only mode is enabled', () => {
@@ -98,7 +110,7 @@ describe('login payload normalization', () => {
       account_login: 100001,
     })));
     delete (window as TestWindow).electronAPI;
-    localStorage.clear();
+    clearStoredRouting();
   });
 
   it('strips legacy server credentials from the lower auth endpoint payload', async () => {
@@ -165,7 +177,7 @@ describe('login payload normalization', () => {
 describe('pending order payload normalization', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ok: true })));
-    localStorage.clear();
+    clearStoredRouting();
   });
 
   it('maps UI pending create fields to backend account_login/sl/tp/expiry names', async () => {
@@ -273,7 +285,7 @@ describe('pending order payload normalization', () => {
 
 describe('broker config bootstrap', () => {
   beforeEach(() => {
-    localStorage.clear();
+    clearStoredRouting();
     sessionStorage.clear();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
       broker_name: 'RTX5 Trading',
@@ -299,7 +311,7 @@ describe('broker config bootstrap', () => {
 describe('analytics export endpoint wiring', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ positions: [{ ticket: 11, symbol: 'XAUUSD' }] })));
-    localStorage.clear();
+    clearStoredRouting();
   });
 
   it('quarantines unavailable PDF and performance exports without calling missing routes', async () => {
@@ -338,7 +350,7 @@ describe('journalApi.getLogs authentication', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ count: 0, logs: [] })));
     delete (window as TestWindow).electronAPI;
-    localStorage.clear();
+    clearStoredRouting();
   });
 
   it('attaches the stored Bearer token when present', async () => {

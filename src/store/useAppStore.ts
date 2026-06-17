@@ -53,6 +53,8 @@ export interface Position {
   quantity?: number;
   time_create?: string;
   time_update?: string;
+  chartEntryPrice?: number;
+  chartEntryTime?: string;
 }
 
 export interface Order {
@@ -76,6 +78,10 @@ export interface Account {
   freeMargin: number;
   unrealizedPL: number;
   marginLevel: number;
+  credit?: number;
+  hasBackendEquity?: boolean;
+  hasBackendFreeMargin?: boolean;
+  hasBackendMarginLevel?: boolean;
   currency: string;
   leverage: number;
 }
@@ -93,6 +99,14 @@ export interface Trade {
   profit: number;
   commission: number;
   swap: number;
+  sl?: number;
+  tp?: number;
+  status?: string;
+  positionId?: number;
+  orderTicket?: number;
+  dealTicket?: number;
+  entry?: string;
+  historySource?: 'closed-position' | 'deal' | 'order';
 }
 
 export interface SavedAccount {
@@ -492,6 +506,8 @@ export const useAppStore = create<AppState>()(
                   ...existing,
                   ...incoming,
                   symbol: incoming.symbol || existing.symbol,
+                  chartEntryPrice: incoming.chartEntryPrice ?? existing.chartEntryPrice,
+                  chartEntryTime: incoming.chartEntryTime ?? existing.chartEntryTime,
                 };
               } else {
                 // Partial P&L or quote updates — preserve all other existing properties!

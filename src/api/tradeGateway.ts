@@ -3,6 +3,7 @@ import type { Account, Position, Trade } from '../store/useAppStore';
 import { API_V2_BASE_URL, RTX5_WS_URL } from '../config/api';
 import { debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 import { decodeJwtPayload } from '../utils/jwt';
+import { resolvePositionOpenTime } from '../services/tradePositionTime';
 
 export type GatewayAccount = {
   login?: number;
@@ -51,6 +52,9 @@ export type GatewayPosition = {
   storage?: number;
   commission?: number;
   time_create?: number;
+  time_create_msc?: number;
+  time_open?: number;
+  time_msc?: number;
   time_ms?: number;
   time?: number;
   comment?: string;
@@ -62,11 +66,13 @@ export type GatewayDeal = {
   order_ticket?: number;
   order?: number;
   position_ticket?: number;
+  position_id?: number;
+  position?: number;
   account_login?: number;
   symbol?: string;
-  action?: string;
-  type?: string;
-  entry?: string;
+  action?: string | number;
+  type?: string | number;
+  entry?: string | number;
   volume?: number;
   price?: number;
   profit?: number;
@@ -151,6 +157,122 @@ const numberOr = (value: unknown, fallback: number): number => {
   return Number.isFinite(next) ? next : fallback;
 };
 
+const finiteNumberOrUndefined = (value: unknown): number | undefined => {
+  const next = Number(value);
+  return Number.isFinite(next) && next > 0 ? next : undefined;
+};
+
+const historyTime = (trade: Trade): number => {
+  const parsed = Date.parse(trade.closeTime || trade.openTime || '');
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeDealEntryKind = (value: unknown): string => {
+  const entry = String(value ?? '').trim().toLowerCase();
+  if (entry === '0') return 'entry_in';
+  if (entry === '1' || entry === '3') return 'entry_out';
+  if (entry === '2') return 'entry_inout';
+  return entry;
+};
+
+const dealEntryKind = (trade: Trade): string =>
+  normalizeDealEntryKind(trade.entry) || String(trade.type ?? '').trim().toLowerCase();
+
+const isEntryInDeal = (trade: Trade): boolean => {
+  const entry = dealEntryKind(trade);
+  return entry === 'entry_in' || entry === 'in' || entry.endsWith('_in');
+};
+
+const isEntryOutDeal = (trade: Trade): boolean => {
+  const entry = dealEntryKind(trade);
+  return entry === 'entry_out' || entry === 'out' || entry.endsWith('_out');
+};
+
+const isEntryInOutDeal = (trade: Trade): boolean => {
+  const entry = dealEntryKind(trade);
+  return entry === 'entry_inout' || entry === 'inout' || entry.endsWith('_inout');
+};
+
+const isClosedHistoryTrade = (trade: Trade): boolean => {
+  const status = String(trade.status ?? '').toLowerCase();
+  const type = String(trade.type ?? '').toLowerCase();
+  return (
+    status === 'closed' ||
+    type === 'closed' ||
+    type === 'closed_position' ||
+    isEntryOutDeal(trade) ||
+    isEntryInOutDeal(trade)
+  );
+};
+
+const historyPositionKey = (trade: Trade): string | null => {
+  const positionId = finiteNumberOrUndefined(trade.positionId);
+  if (positionId) return `${trade.symbol}:position:${positionId}`;
+
+  const looksLikePositionRow = trade.type === 'closed_position' || trade.type === 'closed';
+  if (looksLikePositionRow && finiteNumberOrUndefined(trade.id)) {
+    return `${trade.symbol}:position:${trade.id}`;
+  }
+
+  return null;
+};
+
+export const collapseDealHistory = (deals: Trade[]): Trade[] => {
+  const groups = new Map<string, Trade[]>();
+  const standalone: Trade[] = [];
+
+  for (const deal of deals) {
+    const isMtEntry = isEntryInDeal(deal) || isEntryOutDeal(deal) || isEntryInOutDeal(deal);
+    const groupTicket = finiteNumberOrUndefined(deal.positionId) ?? finiteNumberOrUndefined(deal.orderTicket);
+
+    if (isMtEntry && groupTicket) {
+      const key = `${deal.symbol}:position:${groupTicket}`;
+      const existing = groups.get(key) ?? [];
+      existing.push(deal);
+      groups.set(key, existing);
+      continue;
+    }
+
+    standalone.push(deal);
+  }
+
+  for (const groupDeals of groups.values()) {
+    const sorted = [...groupDeals].sort((a, b) => historyTime(a) - historyTime(b));
+    const openingDeal = sorted.find(isEntryInDeal) ?? sorted.find(isEntryInOutDeal);
+    if (!openingDeal) continue;
+
+    const closingDeals = sorted.filter((deal) => isEntryOutDeal(deal) || isEntryInOutDeal(deal));
+    const closingDeal = closingDeals.at(-1);
+    const profit = sorted.reduce((sum, deal) => sum + Number(deal.profit ?? 0), 0);
+    const commission = sorted.reduce((sum, deal) => sum + Number(deal.commission ?? 0), 0);
+    const swap = sorted.reduce((sum, deal) => sum + Number(deal.swap ?? 0), 0);
+    const closedVolume = closingDeals.reduce((sum, deal) => sum + Number(deal.volume ?? 0), 0);
+    const groupTicket = finiteNumberOrUndefined(openingDeal.positionId)
+      ?? finiteNumberOrUndefined(closingDeal?.positionId)
+      ?? finiteNumberOrUndefined(openingDeal.orderTicket)
+      ?? openingDeal.id;
+
+    standalone.push({
+      ...openingDeal,
+      id: groupTicket,
+      type: closingDeal ? 'closed' : openingDeal.type,
+      status: closingDeal ? 'closed' : 'open',
+      side: openingDeal.side || closingDeal?.side || '',
+      volume: closedVolume || openingDeal.volume || closingDeal?.volume || 0,
+      openPrice: openingDeal.openPrice,
+      closePrice: closingDeal ? (closingDeal.closePrice ?? closingDeal.openPrice) : undefined,
+      openTime: openingDeal.openTime,
+      closeTime: closingDeal ? (closingDeal.closeTime || closingDeal.openTime) : undefined,
+      profit,
+      commission,
+      swap,
+      historySource: 'deal',
+    });
+  }
+
+  return standalone;
+};
+
 export const normalizeAccount = (raw: GatewayAccount, previous?: Account | null): Account => ({
   balance: numberOr(raw?.balance, previous?.balance ?? 0),
   equity: numberOr(raw?.equity ?? raw?.balance, previous?.equity ?? previous?.balance ?? 0),
@@ -175,7 +297,7 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
     volume,
     openPrice,
     currentPrice,
-    openTime: toIsoFromSeconds(raw.time_create ?? raw.time_ms ?? raw.time),
+    openTime: resolvePositionOpenTime(raw),
     sl: Number(raw.price_sl ?? raw.sl ?? 0),
     tp: Number(raw.price_tp ?? raw.tp ?? 0),
     swap: Number(raw.swap ?? raw.storage ?? 0),
@@ -191,11 +313,17 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
 
 export const normalizeDeal = (raw: GatewayDeal, index = 0): Trade => {
   const action = String(raw.action ?? raw.type ?? '').toLowerCase();
-  const entry = String(raw.entry ?? '').toLowerCase();
-  const side = action.includes('sell') ? 'SELL' : action.includes('buy') ? 'BUY' : action.toUpperCase();
+  const entry = normalizeDealEntryKind(raw.entry);
+  const side = action.includes('sell') || action === '1'
+    ? 'SELL'
+    : action.includes('buy') || action === '0'
+      ? 'BUY'
+      : action.toUpperCase();
   const time = raw.time_ms ?? raw.time;
+  const dealTicket = finiteNumberOrUndefined(raw.ticket ?? raw.deal ?? index);
+  const positionId = finiteNumberOrUndefined(raw.position_ticket ?? raw.position_id ?? raw.position);
   return {
-    id: Number(raw.ticket ?? raw.deal ?? raw.position_ticket ?? index),
+    id: dealTicket ?? positionId ?? index,
     symbol: raw.symbol ?? '',
     type: entry || action || 'deal',
     side,
@@ -207,6 +335,11 @@ export const normalizeDeal = (raw: GatewayDeal, index = 0): Trade => {
     profit: Number(raw.profit ?? 0),
     commission: Number(raw.commission ?? 0),
     swap: Number(raw.swap ?? 0),
+    positionId,
+    orderTicket: finiteNumberOrUndefined(raw.order_ticket ?? raw.order),
+    dealTicket,
+    entry: entry || undefined,
+    historySource: 'deal',
   };
 };
 
@@ -225,6 +358,10 @@ export const normalizeClosedPosition = (raw: GatewayClosedPosition, index = 0): 
     profit: Number(raw.profit ?? 0),
     commission: Number(raw.commission ?? 0),
     swap: Number(raw.swap ?? raw.storage ?? 0),
+    sl: Number(raw.price_sl ?? raw.sl ?? 0),
+    tp: Number(raw.price_tp ?? raw.tp ?? 0),
+    status: 'closed',
+    historySource: 'closed-position',
   };
 };
 
@@ -244,6 +381,10 @@ export const normalizeOrder = (raw: GatewayOrder, index = 0): Trade => {
     profit: 0,
     commission: 0,
     swap: 0,
+    sl: Number(raw.price_sl ?? 0),
+    tp: Number(raw.price_tp ?? 0),
+    status: raw.status,
+    historySource: 'order',
   };
 };
 
@@ -328,21 +469,20 @@ export const tradeGatewayApi = {
   },
 
   async getOrderHistory(login: number): Promise<Trade[]> {
-    const [closedPositions, deals, orders] = await Promise.all([
+    const [closedPositions, deals] = await Promise.all([
       this.getClosedPositions(login).catch(() => []),
       this.getDeals(login).catch(() => []),
-      this.getOrders(login).catch(() => []),
     ]);
-    const merged = [...closedPositions, ...deals, ...orders];
+    const merged = [...closedPositions, ...collapseDealHistory(deals)].filter(isClosedHistoryTrade);
     const seen = new Set<string>();
     return merged
       .filter((trade) => {
-        const key = `${trade.type}:${trade.id}`;
+        const key = historyPositionKey(trade) ?? `${trade.type}:${trade.id}:${trade.openTime}:${trade.closeTime ?? ''}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
       })
-      .sort((a, b) => Date.parse(b.closeTime ?? b.openTime) - Date.parse(a.closeTime ?? a.openTime))
+      .sort((a, b) => historyTime(b) - historyTime(a))
       .slice(0, 500);
   },
 

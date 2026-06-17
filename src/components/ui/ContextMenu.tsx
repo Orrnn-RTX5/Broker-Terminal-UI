@@ -16,8 +16,11 @@ interface ContextMenuProps {
   onClose?: () => void;
   position?: { x: number; y: number };
   triggerSymbol?: string;
+  variant?: ContextMenuVariant;
   children?: React.ReactNode;
 }
+
+type ContextMenuVariant = 'dark' | 'mt5-light' | 'mt5-dark';
 
 interface SubMenuState {
   parentId: string;
@@ -155,10 +158,15 @@ function calculateSubmenuPosition(
 interface MenuItemProps {
   item: ContextMenuItemConfig;
   onClose: () => void;
-  onSubmenuOpen: (submenu: ContextMenuItemConfig[], rect: DOMRect) => void;
+  onSubmenuOpen: (submenu: ContextMenuItemConfig[], rect: DOMRect, parentIndex: number) => void;
   onSubmenuClose: () => void;
   isSubmenuActive: boolean;
   itemId: string;
+  itemIndex: number;
+  variant: ContextMenuVariant;
+  isPointerHovered?: boolean;
+  onPointerEnterItem?: () => void;
+  onPointerLeaveItem?: () => void;
   isFocused?: boolean;
 }
 
@@ -169,6 +177,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
   onSubmenuClose,
   isSubmenuActive,
   itemId,
+  itemIndex,
+  variant,
+  isPointerHovered = false,
+  onPointerEnterItem,
+  onPointerLeaveItem,
   isFocused = false
 }) => {
   const itemRef = useRef<HTMLDivElement>(null);
@@ -192,10 +205,10 @@ const MenuItem: React.FC<MenuItemProps> = ({
   useEffect(() => {
     if (hasSubmenu && hoverIntent.isHovering && itemRef.current) {
       const rect = itemRef.current.getBoundingClientRect();
-      onSubmenuOpen(item.submenu!, rect);
+      onSubmenuOpen(item.submenu!, rect, itemIndex);
       setIsHovered(true);
     }
-  }, [hoverIntent.isHovering, hasSubmenu, item.submenu, onSubmenuOpen]);
+  }, [hoverIntent.isHovering, hasSubmenu, item.submenu, itemIndex, onSubmenuOpen]);
 
   // Track safe zone and close submenu intelligently
   useEffect(() => {
@@ -241,7 +254,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
         setIsHovered(false);
       } else if (itemRef.current) {
         const rect = itemRef.current.getBoundingClientRect();
-        onSubmenuOpen(item.submenu!, rect);
+        onSubmenuOpen(item.submenu!, rect, itemIndex);
         setIsHovered(true);
       }
     } else if (item.action) {
@@ -254,6 +267,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const handleMouseEnter = (e: React.MouseEvent) => {
     setIsHovered(true);
+    onPointerEnterItem?.();
     hoverIntent.onMouseEnter(e);
 
     // For non-submenu items, close any active submenus immediately
@@ -268,20 +282,67 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const handleMouseLeave = (e: React.MouseEvent) => {
     setIsHovered(false);
+    onPointerLeaveItem?.();
     hoverIntent.onMouseLeave();
   };
 
+  const isMt5Light = variant === 'mt5-light';
+  const isMt5Dark = variant === 'mt5-dark';
+  const isMt5 = isMt5Light || isMt5Dark;
+
   if (item.divider) {
-    return <div className="h-[1px] bg-zinc-700 my-1 mx-2"></div>;
+    return (
+      <div
+        className={isMt5Light
+          ? "h-px bg-[#a7a7a7] my-[4px] mx-[5px]"
+          : isMt5Dark
+            ? "h-px bg-[#3e424b] my-[4px] mx-[5px]"
+            : "h-[1px] bg-zinc-700 my-1 mx-2"}
+      />
+    );
   }
+
+  const isActive = isMt5
+    ? !item.disabled && (isSubmenuActive || isFocused || isPointerHovered)
+    : isSubmenuActive || isHovered || isFocused;
+  const itemClassName = isMt5
+    ? `flex h-[23px] items-center px-[5px] py-0 cursor-default group relative ${item.disabled ? 'cursor-default' : ''}`
+    : `flex items-center px-3 py-1.5 cursor-pointer group relative ${isActive
+      ? 'bg-zinc-700 text-white'
+      : 'text-zinc-300 hover:bg-zinc-700 hover:text-white'
+      } ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
+  const itemStyle = isMt5Light
+    ? {
+      backgroundColor: isActive ? '#0078d7' : '#f2f2f2',
+      color: item.disabled ? '#8a8a8a' : (isActive ? '#ffffff' : '#000000'),
+    }
+    : isMt5Dark
+      ? {
+        backgroundColor: isActive ? '#0078d7' : '#15161a',
+        color: item.disabled ? '#8b9098' : (isActive ? '#ffffff' : '#e4e7ee'),
+      }
+      : undefined;
+  const iconClassName = isMt5
+    ? "w-[18px] flex items-center justify-center mr-[5px]"
+    : "w-5 flex items-center justify-center mr-1";
+  const customIconClassName = isMt5
+    ? "text-current"
+    : "text-zinc-400 group-hover:text-white";
+  const shortcutClassName = isMt5
+    ? "text-[12px] text-current ml-4"
+    : "text-[10px] text-zinc-500 group-hover:text-zinc-200 ml-4 font-mono";
+  const chevronClassName = isMt5
+    ? "ml-2 text-current"
+    : "ml-2 text-zinc-500 group-hover:text-white";
+  const labelClassName = isMt5
+    ? "min-w-0 flex-1 whitespace-nowrap"
+    : "flex-1";
 
   return (
     <div
       ref={itemRef}
-      className={`flex items-center px-3 py-1.5 cursor-pointer group relative ${isSubmenuActive || isHovered || isFocused
-        ? 'bg-zinc-700 text-white'
-        : 'text-zinc-300 hover:bg-zinc-700 hover:text-white'
-        } ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      className={itemClassName}
+      style={itemStyle}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
@@ -292,19 +353,31 @@ const MenuItem: React.FC<MenuItemProps> = ({
       aria-expanded={hasSubmenu && isSubmenuActive ? 'true' : 'false'}
       tabIndex={-1}
     >
-      <div className="w-5 flex items-center justify-center mr-1">
-        {item.checked && <Icon name="check" size="xs" />}
-        {item.icon && !item.checked && (
-          <span className="text-zinc-400 group-hover:text-white">{item.icon}</span>
+      <div className={iconClassName} aria-hidden="true">
+        {isMt5 ? (
+          item.checked ? (
+            <span className="block w-[14px] text-center text-[13px] font-normal leading-[13px]">
+              {'\u2713'}
+            </span>
+          ) : item.icon ? (
+            <span className={customIconClassName}>{item.icon}</span>
+          ) : null
+        ) : (
+          <>
+            {item.checked && <Icon name="check" size="xs" />}
+            {item.icon && !item.checked && (
+              <span className={customIconClassName}>{item.icon}</span>
+            )}
+          </>
         )}
       </div>
-      <span className="flex-1">{item.label}</span>
+      <span className={labelClassName}>{item.label}</span>
       {item.shortcut && (
-        <span className="text-[10px] text-zinc-500 group-hover:text-zinc-200 ml-4 font-mono">
+        <span className={shortcutClassName}>
           {item.shortcut}
         </span>
       )}
-      {hasSubmenu && <Icon name="chevron-right" size="xs" className="ml-2 text-zinc-500 group-hover:text-white" />}
+      {hasSubmenu && <Icon name="chevron-right" size="xs" className={chevronClassName} />}
     </div>
   );
 };
@@ -318,17 +391,21 @@ interface MenuProps {
   position: Position;
   onClose: () => void;
   zIndex: number;
+  variant: ContextMenuVariant;
   isSubmenu?: boolean;
+  triggerRect?: DOMRect;
 }
 
-const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu = false }) => {
+const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, isSubmenu = false, triggerRect }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
   const [activeSubmenu, setActiveSubmenu] = useState<{
     items: ContextMenuItemConfig[];
     triggerRect: DOMRect;
+    parentIndex: number;
   } | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [isPositioned, setIsPositioned] = useState(false);
 
@@ -340,9 +417,17 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
 
-      const newPos = isSubmenu
-        ? position // Submenu position already calculated by parent
-        : calculateMenuPosition(
+      const newPos = isSubmenu && triggerRect
+        ? calculateSubmenuPosition(
+          triggerRect,
+          rect.width,
+          rect.height,
+          viewportWidth,
+          viewportHeight
+        )
+        : isSubmenu
+          ? position
+          : calculateMenuPosition(
           position.x,
           position.y,
           rect.width,
@@ -351,18 +436,51 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu
           viewportHeight
         );
 
-      setAdjustedPosition(newPos);
-      setIsPositioned(true); // Prevent flash of mispositioned menu
+      setAdjustedPosition(prev => (
+        prev.x === newPos.x && prev.y === newPos.y ? prev : newPos
+      ));
+      setIsPositioned(prev => prev ? prev : true); // Prevent flash of mispositioned menu
     }
-  }, [position, isSubmenu]);
+  }, [
+    position.x,
+    position.y,
+    isSubmenu,
+    triggerRect?.left,
+    triggerRect?.right,
+    triggerRect?.top,
+    triggerRect?.bottom,
+    items,
+  ]);
 
-  const handleSubmenuOpen = useCallback((submenuItems: ContextMenuItemConfig[], rect: DOMRect) => {
-    setActiveSubmenu({ items: submenuItems, triggerRect: rect });
+  const handleSubmenuOpen = useCallback((submenuItems: ContextMenuItemConfig[], rect: DOMRect, parentIndex: number) => {
+    setActiveSubmenu(prev => {
+      if (
+        prev
+        && prev.parentIndex === parentIndex
+        && prev.items === submenuItems
+        && prev.triggerRect.left === rect.left
+        && prev.triggerRect.right === rect.right
+        && prev.triggerRect.top === rect.top
+        && prev.triggerRect.bottom === rect.bottom
+      ) {
+        return prev;
+      }
+      return { items: submenuItems, triggerRect: rect, parentIndex };
+    });
   }, []);
 
   const handleSubmenuClose = useCallback(() => {
-    setActiveSubmenu(null);
+    setActiveSubmenu(prev => prev === null ? prev : null);
   }, []);
+
+  useEffect(() => {
+    setActiveSubmenu(prev => {
+      if (!prev) return prev;
+      const nextItems = items[prev.parentIndex]?.submenu;
+      if (!nextItems || nextItems.length === 0) return null;
+      return prev.items === nextItems ? prev : { ...prev, items: nextItems };
+    });
+  }, [items]);
 
   // Keyboard navigation (MT5-style) with proper focus management
   useEffect(() => {
@@ -403,7 +521,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu
             const itemElement = itemRefs.current[itemIndex];
             if (itemElement) {
               const rect = itemElement.getBoundingClientRect();
-              handleSubmenuOpen(currentItem.submenu, rect);
+              handleSubmenuOpen(currentItem.submenu, rect, itemIndex);
             }
           }
           break;
@@ -428,7 +546,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu
             const itemElement = itemRefs.current[itemIndex];
             if (itemElement) {
               const rect = itemElement.getBoundingClientRect();
-              handleSubmenuOpen(selectedItem.submenu, rect);
+              handleSubmenuOpen(selectedItem.submenu, rect, itemIndex);
             }
           } else if (selectedItem?.action) {
             selectedItem.action();
@@ -487,7 +605,11 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu
     <>
       <div
         ref={menuRef}
-        className="fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-xs text-zinc-200 outline-none transition-opacity duration-100 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700"
+        className={variant === 'mt5-light'
+          ? "fixed w-[210px] bg-[#f2f2f2] border border-[#9a9a9a] shadow-[2px_2px_4px_rgba(0,0,0,0.35)] rounded-none py-[3px] text-[12px] leading-[18px] text-black outline-none transition-opacity duration-75 max-h-[80vh] overflow-y-auto"
+          : variant === 'mt5-dark'
+            ? "fixed w-[210px] bg-[#15161a] border border-[#4b5563] shadow-[2px_2px_6px_rgba(0,0,0,0.65)] rounded-none py-[3px] text-[12px] leading-[18px] text-[#e4e7ee] outline-none transition-opacity duration-75 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-[#15161a]"
+            : "fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-xs text-zinc-200 outline-none transition-opacity duration-100 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700"}
         style={{
           left: `${adjustedPosition.x}px`,
           top: `${adjustedPosition.y}px`,
@@ -504,8 +626,8 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu
         {items.map((item, index) => {
           const itemId = `item-${index}`;
           const nonDividerItems = items.filter(i => !i.divider && !i.disabled);
-          const nonDividerIndex = nonDividerItems.indexOf(item);
-          const isFocused = !item.divider && !item.disabled && nonDividerIndex === focusedIndex;
+          const focusedItem = focusedIndex >= 0 ? nonDividerItems[focusedIndex] : null;
+          const isFocused = !item.divider && !item.disabled && focusedItem === item;
 
           return (
             <div
@@ -517,8 +639,13 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu
                 onClose={onClose}
                 onSubmenuOpen={handleSubmenuOpen}
                 onSubmenuClose={handleSubmenuClose}
-                isSubmenuActive={activeSubmenu !== null && index === items.indexOf(item)}
+                isSubmenuActive={activeSubmenu !== null && activeSubmenu.parentIndex === index}
                 itemId={itemId}
+                itemIndex={index}
+                variant={variant}
+                isPointerHovered={hoveredIndex === index}
+                onPointerEnterItem={() => setHoveredIndex(index)}
+                onPointerLeaveItem={() => setHoveredIndex(prev => prev === index ? null : prev)}
                 isFocused={isFocused}
               />
             </div>
@@ -533,6 +660,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, isSubmenu
           triggerRect={activeSubmenu.triggerRect}
           onClose={onClose}
           zIndex={zIndex + 10} // Ensure submenus are always above parent menus
+          variant={variant}
         />
       )}
     </>
@@ -548,42 +676,22 @@ interface SubmenuPortalProps {
   triggerRect: DOMRect;
   onClose: () => void;
   zIndex: number;
+  variant: ContextMenuVariant;
 }
 
-const SubmenuPortal: React.FC<SubmenuPortalProps> = ({ items, triggerRect, onClose, zIndex }) => {
-  const submenuRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<Position>({ x: triggerRect.right, y: triggerRect.top });
-
-  useLayoutEffect(() => {
-    if (submenuRef.current) {
-      const rect = submenuRef.current.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      const newPos = calculateSubmenuPosition(
-        triggerRect,
-        rect.width,
-        rect.height,
-        viewportWidth,
-        viewportHeight
-      );
-
-      setPosition(newPos);
-    }
-  }, [triggerRect]);
+const SubmenuPortal: React.FC<SubmenuPortalProps> = ({ items, triggerRect, onClose, zIndex, variant }) => {
+  const initialPosition = { x: triggerRect.right, y: triggerRect.top };
 
   return (
-    <div
-      ref={submenuRef}
-      style={{
-        position: 'fixed',
-        left: `${position.x}px`,
-        top: `${position.y}px`,
-        zIndex
-      }}
-    >
-      <Menu items={items} position={position} onClose={onClose} zIndex={zIndex} isSubmenu />
-    </div>
+    <Menu
+      items={items}
+      position={initialPosition}
+      onClose={onClose}
+      zIndex={zIndex}
+      variant={variant}
+      isSubmenu
+      triggerRect={triggerRect}
+    />
   );
 };
 
@@ -596,6 +704,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onClose: externalOnClose,
   position: externalPosition,
   triggerSymbol,
+  variant = 'dark',
   children
 }) => {
   const [internalVisible, setInternalVisible] = useState(false);
@@ -666,7 +775,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           </div>
         </div>
       )}
-      <Menu items={items} position={position} onClose={onClose} zIndex={9999} />
+      <Menu items={items} position={position} onClose={onClose} zIndex={9999} variant={variant} />
     </div>,
     document.body
   ) : null;

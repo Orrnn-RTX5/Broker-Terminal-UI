@@ -379,6 +379,7 @@ export const positionsApi = {
     return endpoints.tradingApi.modifyPosition(ticket, {
       price_sl: data.price_sl,
       price_tp: data.price_tp,
+      comment: data.comment,
       trailing_stop: data.trailing_stop,
       trailing_step: data.trailing_step,
     });
@@ -489,6 +490,7 @@ export const ordersApi = {
       price_sl: data.price_sl ?? data.sl,
       price_tp: data.price_tp ?? data.tp,
       expiration: data.expiration ?? data.expiry,
+      comment: data.comment,
       trailing_stop: data.trailing_stop,
       trailing_step: data.trailing_step,
     });

@@ -1256,12 +1256,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab {
 }
 
 /* Bottom Dock Row Hovers */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-row:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-row:not(.rtx-trade-row--selected):hover,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-row:hover {
   background: #F3E5F5 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-row:hover td,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-row:not(.rtx-trade-row--selected):hover td,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-row:hover td {
   background: transparent !important;
 }
@@ -1633,29 +1633,29 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-shortcut-dialog h3 {
 }
 
 /* === Positions Panel Row Highlighting === */
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-even {
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-even:not(.rtx-trade-row--selected) {
   background-color: #ffffff !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-odd {
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-odd:not(.rtx-trade-row--selected) {
   background-color: #F3E5F5 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-even:hover,
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-odd:hover {
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-even:not(.rtx-trade-row--selected):hover,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-row-odd:not(.rtx-trade-row--selected):hover {
   background-color: #F3E5F5 !important;
 }
 
 /* === Trade Tab (Bottom Dock) Deep & Semibold Text === */
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:nth-child(odd) {
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected):nth-child(odd) {
   background-color: #ffffff !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:nth-child(even) {
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected):nth-child(even) {
   background-color: #F3E5F5 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:hover {
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected):hover {
   background-color: #F3E5F5 !important;
 }
 

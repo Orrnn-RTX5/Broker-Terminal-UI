@@ -21,6 +21,12 @@ export interface LiveQuoteGuardResult {
   shouldDropCandles: boolean;
 }
 
+interface ChartQuoteLike {
+  bid?: unknown;
+  ask?: unknown;
+  last?: unknown;
+}
+
 const COMPATIBLE_RATIO_LIMIT = 4;
 const POWER_OF_TEN_TOLERANCE = 0.02;
 const MAX_SCALE_POWER = 8;
@@ -28,6 +34,38 @@ const DEFAULT_INCOMPATIBLE_QUOTE_DROP_THRESHOLD = 3;
 
 const isFinitePositive = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
+
+export const getChartPriceFromQuote = (quote: ChartQuoteLike | null | undefined): number | null => {
+  if (!quote) return null;
+
+  const bid = Number(quote.bid);
+  const ask = Number(quote.ask);
+  const last = Number(quote.last);
+  if (isFinitePositive(bid)) return bid;
+  if (isFinitePositive(ask)) return ask;
+  return isFinitePositive(last) ? last : null;
+};
+
+export const getTradeEntryPriceFromQuote = (
+  quote: ChartQuoteLike | null | undefined,
+  side: 'BUY' | 'SELL',
+): number | null => {
+  if (!quote) return null;
+
+  const bid = Number(quote.bid);
+  const ask = Number(quote.ask);
+  const last = Number(quote.last);
+
+  if (side === 'BUY') {
+    if (isFinitePositive(ask)) return ask;
+    if (isFinitePositive(bid)) return bid;
+    return isFinitePositive(last) ? last : null;
+  }
+
+  if (isFinitePositive(bid)) return bid;
+  if (isFinitePositive(ask)) return ask;
+  return isFinitePositive(last) ? last : null;
+};
 
 export const getMedianCandlePrice = (candles: PriceCandle[]): number | null => {
   const prices = candles
