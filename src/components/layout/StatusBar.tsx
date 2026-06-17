@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Icon } from '../ui/Icon';
 import { ConnectionStatus } from '../ConnectionStatus';
 import type { UpdateStatusPayload } from '../../types/trading';
@@ -10,27 +10,39 @@ interface StatusBarProps {
 
 export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
     const appVersion = window.electron?.appVersion || '1.0.0';
-    const [updateLabel, setUpdateLabel] = useState('');
+    const hasUpdater = Boolean(window.electron?.updater);
+    const [updatePhase, setUpdatePhase] = useState<UpdateStatusPayload['status'] | 'idle'>('idle');
+    const [updateLabel, setUpdateLabel] = useState(hasUpdater ? 'Check updates' : '');
+    const [actionPending, setActionPending] = useState(false);
 
     useEffect(() => {
         if (!window.electron?.updater) return;
 
         const cleanup = window.electron.updater.onStatus((data: UpdateStatusPayload) => {
+            setUpdatePhase(data.status);
             switch (data.status) {
                 case 'checking':
                     setUpdateLabel('Checking...');
                     break;
+                case 'available':
+                    setUpdateLabel('Download update');
+                    setActionPending(false);
+                    break;
                 case 'downloading':
-                    setUpdateLabel(`Updating ${data.percent}%`);
+                    setUpdateLabel(`Downloading ${data.percent}%`);
                     break;
                 case 'downloaded':
-                    setUpdateLabel('Update ready');
+                    setUpdateLabel('Install update');
+                    setActionPending(false);
                     break;
                 case 'not-available':
-                    setUpdateLabel('');
+                    setUpdateLabel('Check updates');
+                    setUpdatePhase('idle');
+                    setActionPending(false);
                     break;
                 case 'error':
-                    setUpdateLabel('');
+                    setUpdateLabel('Retry update');
+                    setActionPending(false);
                     break;
                 default:
                     break;
@@ -39,6 +51,42 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
 
         return cleanup;
     }, []);
+
+    const handleUpdateClick = useCallback(async () => {
+        if (!window.electron?.updater || actionPending) return;
+        if (updatePhase === 'checking' || updatePhase === 'downloading') return;
+
+        if (updatePhase === 'available') {
+            setActionPending(true);
+            const result = await window.electron.updater.downloadNow();
+            if (!result.ok) {
+                setUpdatePhase('error');
+                setUpdateLabel('Retry update');
+            }
+            setActionPending(false);
+            return;
+        }
+
+        if (updatePhase === 'downloaded') {
+            window.electron.updater.installNow();
+            return;
+        }
+
+        setActionPending(true);
+        const result = await window.electron.updater.checkForUpdates();
+        if (!result.ok) {
+            setUpdatePhase('error');
+            setUpdateLabel('Retry update');
+        }
+        setActionPending(false);
+    }, [actionPending, updatePhase]);
+
+    const updateButtonDisabled = actionPending || updatePhase === 'checking' || updatePhase === 'downloading';
+    const updateButtonTone =
+        updatePhase === 'available' ? 'text-sky-700 hover:text-sky-900 border-sky-400/60 bg-sky-100/60'
+            : updatePhase === 'downloaded' ? 'text-emerald-700 hover:text-emerald-900 border-emerald-400/60 bg-emerald-100/60'
+                : updatePhase === 'error' ? 'text-red-700 hover:text-red-900 border-red-400/60 bg-red-100/60'
+                    : 'text-zinc-600 hover:text-black border-zinc-400/70 bg-zinc-100/60';
 
     return (
         <div className="bg-[#e1e1e1] border-t border-zinc-400 h-6 flex items-center justify-between px-2 text-[11px] font-sans text-black select-none z-50">
@@ -56,10 +104,16 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
                 )}
                 {/* Version & Update Status */}
                 <div className="flex items-center gap-1.5 border-l border-zinc-400 pl-4">
-                    {updateLabel && (
-                        <span className="text-blue-600 font-medium text-[10px]">
+                    {hasUpdater && updateLabel && (
+                        <button
+                            type="button"
+                            onClick={handleUpdateClick}
+                            disabled={updateButtonDisabled}
+                            className={`h-[18px] rounded border px-1.5 text-[10px] font-semibold leading-none transition-colors disabled:cursor-default disabled:opacity-70 ${updateButtonTone}`}
+                            title="Check for desktop app updates"
+                        >
                             {updateLabel}
-                        </span>
+                        </button>
                     )}
                     <span className="text-zinc-500 font-mono text-[10px]">
                         v{appVersion}

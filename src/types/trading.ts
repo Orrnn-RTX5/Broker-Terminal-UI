@@ -490,6 +490,13 @@ export type UpdateStatusPayload = {
   status: 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error';
   percent: number;
   message: string;
+  version?: string | null;
+};
+
+export type UpdateActionResult = {
+  ok: boolean;
+  version?: string | null;
+  error?: string;
 };
 
 declare global {
@@ -515,6 +522,8 @@ declare global {
       };
       updater: {
         onStatus: (callback: (data: UpdateStatusPayload) => void) => () => void;
+        checkForUpdates: () => Promise<UpdateActionResult>;
+        downloadNow: () => Promise<UpdateActionResult>;
         installNow: () => void;
       };
     };

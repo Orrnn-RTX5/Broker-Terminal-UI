@@ -19,9 +19,10 @@ app.commandLine.appendSwitch('force-gpu-mem-available-mb', '2048');
 
 
 // ─── Updater Configuration ───────────────────────────────────────────────────
-autoUpdater.autoDownload = true;
+autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.allowDowngrade = false;
+autoUpdater.allowPrerelease = false;
 
 // Suppress default electron-updater dialogs
 autoUpdater.logger = null;
@@ -30,12 +31,91 @@ autoUpdater.logger = null;
 // Keep the feed config in build metadata so public OTA URLs stay consistent across builds.
 
 let mainWindow = null;
+let latestUpdateInfo = null;
+let downloadedUpdateInfo = null;
+let checkForUpdatesPromise = null;
+let downloadUpdatePromise = null;
 
 // ─── Helper: Send update status to renderer ──────────────────────────────────
 function sendUpdateStatus(status, percent = 0, message = '') {
     if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-status', { status, percent, message });
+        const version = downloadedUpdateInfo?.version || latestUpdateInfo?.version || null;
+        mainWindow.webContents.send('update-status', { status, percent, message, version });
     }
+}
+
+function getUpdaterErrorMessage(err) {
+    if (err instanceof Error && err.message) return err.message;
+    return 'Update check failed';
+}
+
+function isPackagedForUpdates() {
+    if (app.isPackaged) return true;
+    sendUpdateStatus('error', 0, 'Updates are available only in the installed app.');
+    return false;
+}
+
+function checkForUpdatesFromRenderer() {
+    if (!isPackagedForUpdates()) {
+        return Promise.resolve({ ok: false, error: 'Updates are available only in the installed app.' });
+    }
+
+    if (checkForUpdatesPromise) return checkForUpdatesPromise;
+
+    checkForUpdatesPromise = autoUpdater.checkForUpdates()
+        .then((result) => ({
+            ok: true,
+            version: result?.updateInfo?.version || latestUpdateInfo?.version || null,
+        }))
+        .catch((err) => {
+            const message = getUpdaterErrorMessage(err);
+            console.error('[OTA] Update check failed:', message);
+            sendUpdateStatus('error', 0, message);
+            return { ok: false, error: message };
+        })
+        .finally(() => {
+            checkForUpdatesPromise = null;
+        });
+
+    return checkForUpdatesPromise;
+}
+
+function downloadUpdateFromRenderer() {
+    if (!isPackagedForUpdates()) {
+        return Promise.resolve({ ok: false, error: 'Updates are available only in the installed app.' });
+    }
+
+    if (downloadedUpdateInfo) {
+        sendUpdateStatus('downloaded', 100, `v${downloadedUpdateInfo.version} ready`);
+        return Promise.resolve({ ok: true, version: downloadedUpdateInfo.version });
+    }
+
+    if (!latestUpdateInfo) {
+        sendUpdateStatus('checking');
+        return checkForUpdatesFromRenderer().then((result) => {
+            if (!result.ok || !latestUpdateInfo) return result;
+            return downloadUpdateFromRenderer();
+        });
+    }
+
+    if (downloadUpdatePromise) return downloadUpdatePromise;
+
+    downloadUpdatePromise = autoUpdater.downloadUpdate()
+        .then(() => ({
+            ok: true,
+            version: downloadedUpdateInfo?.version || latestUpdateInfo?.version || null,
+        }))
+        .catch((err) => {
+            const message = getUpdaterErrorMessage(err);
+            console.error('[OTA] Update download failed:', message);
+            sendUpdateStatus('error', 0, message);
+            return { ok: false, error: message };
+        })
+        .finally(() => {
+            downloadUpdatePromise = null;
+        });
+
+    return downloadUpdatePromise;
 }
 
 // ─── Helper: Kill ghost processes ────────────────────────────────────────────
@@ -90,11 +170,15 @@ autoUpdater.on('checking-for-update', () => {
 
 autoUpdater.on('update-available', (info) => {
     console.log('[OTA] Update available:', info.version);
+    latestUpdateInfo = info;
+    downloadedUpdateInfo = null;
     sendUpdateStatus('available', 0, `v${info.version} available`);
 });
 
 autoUpdater.on('update-not-available', () => {
     console.log('[OTA] App is up to date.');
+    latestUpdateInfo = null;
+    downloadedUpdateInfo = null;
     sendUpdateStatus('not-available');
 });
 
@@ -106,6 +190,7 @@ autoUpdater.on('download-progress', (progress) => {
 
 autoUpdater.on('update-downloaded', (info) => {
     console.log('[OTA] Update downloaded:', info.version);
+    downloadedUpdateInfo = info;
     sendUpdateStatus('downloaded', 100, `v${info.version} ready`);
 });
 
@@ -120,11 +205,21 @@ ipcMain.on('get-app-version', (event) => {
 });
 
 ipcMain.on('install-update', async () => {
+    if (!downloadedUpdateInfo) {
+        console.warn('[OTA] Install requested before update download completed.');
+        sendUpdateStatus('error', 0, 'Download the update before installing.');
+        return;
+    }
+
     console.log('[OTA] Install requested — killing ghost processes then installing...');
     await killGhostProcesses();
     // isSilent = true, isForceRunAfter = true
     autoUpdater.quitAndInstall(true, true);
 });
+
+ipcMain.handle('check-for-updates', () => checkForUpdatesFromRenderer());
+
+ipcMain.handle('download-update', () => downloadUpdateFromRenderer());
 
 ipcMain.on('app-quit', () => {
     app.quit();

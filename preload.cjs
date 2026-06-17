@@ -63,6 +63,12 @@ contextBridge.exposeInMainWorld('electron', {
             // Return cleanup function
             return () => ipcRenderer.removeListener('update-status', handler);
         },
+        checkForUpdates: () => {
+            return ipcRenderer.invoke('check-for-updates');
+        },
+        downloadNow: () => {
+            return ipcRenderer.invoke('download-update');
+        },
         installNow: () => {
             ipcRenderer.send('install-update');
         },
