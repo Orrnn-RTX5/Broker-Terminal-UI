@@ -4,8 +4,9 @@ import { useWatchlistStore } from '../store/useWatchlistStore';
 import { MarketWatchContextMenu } from './MarketWatchContextMenu';
 import { SymbolInfo } from './SymbolInfo';
 import { PriceDisplay } from './ui/PriceDisplay';
-import { getSymbolDigits, formatPrice as formatPriceUtil } from '../utils/symbolUtils';
+import { formatPrice as formatPriceUtil } from '../utils/symbolUtils';
 import { useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../hooks/useLiveMarketData';
+import { formatMarketWatchSpread } from '../services/marketWatchSpread';
 
 interface MarketWatchProps {
     onSelectSymbol: (symbol: string) => void;
@@ -207,11 +208,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
 
     // Format spread in points (pips)
     const formatSpread = (spread: number, symbol: string) => {
-        if (!Number.isFinite(spread) || spread === 0) return '-';
-        const digits = getSymbolDigits(symbol);
-        const multiplier = Math.pow(10, digits);
-        const points = Math.round(spread * multiplier); 
-        return points.toString();
+        return formatMarketWatchSpread(spread, symbol);
     };
 
     // Format daily change as percentage

@@ -1288,14 +1288,14 @@ ${rows}
     };
 
     return (
-        <div className="h-full flex flex-col relative bg-[#131316] overflow-hidden">
+        <div className="rtx-trade-tab h-full flex flex-col relative bg-[#131316] overflow-hidden">
             <div
                 ref={tableScrollRef}
                 onScroll={() => syncHorizontalScroll('table')}
-                className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700"
+                className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700"
             >
                 <table
-                    className="w-full text-left border-collapse table-fixed"
+                    className="rtx-trade-table w-full text-left border-collapse table-fixed"
                     style={{ minWidth: visibleTradeTableWidth, fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif', fontVariantNumeric: 'tabular-nums' }}
                 >
                     <colgroup>
@@ -1305,7 +1305,7 @@ ${rows}
                         ))}
                         <col style={{ width: columnWidths.close }} />
                     </colgroup>
-                    <thead className="sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-semibold text-[10.5px] leading-[18px] uppercase border-y border-zinc-700/70 select-none shadow-[0_1px_0_0_rgba(255,255,255,0.04)]">
+                    <thead className="rtx-trade-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-semibold text-[10.5px] leading-[18px] uppercase border-y border-zinc-700/70 select-none shadow-[0_1px_0_0_rgba(255,255,255,0.04)]">
                         <tr>
                             {renderSortableHeader('symbol', 'Symbol', 'symbol')}
                             {visibleTradeColumns.map(column => {
@@ -1337,7 +1337,7 @@ ${rows}
                             <tr
                                 key={pos.id ?? i}
                                 aria-selected={isSelected}
-                                className={`rtx-trade-row h-[22px] ${isSelected ? 'rtx-trade-row--selected bg-[#0b63ce] hover:bg-[#0b63ce]' : `${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#101116]'} hover:bg-[#1b1d22]`} transition-colors group cursor-pointer`}
+                                className={`rtx-trade-row h-[22px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-pointer`}
                                 onClick={() => setSelectedPositionKey(positionKey)}
                                 onDoubleClick={() => {
                                     setSelectedPositionKey(positionKey);
@@ -1369,7 +1369,7 @@ ${rows}
 
                                 {/* side */}
                                 {isColumnVisible('side') && (
-                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 font-semibold ${isBuy ? 'text-[#45bff7]' : 'text-[#ff5f5f]'} text-[11px]`}>
+                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 font-semibold ${isBuy ? 'text-[#45bff7]' : 'text-[#ff2d2d]'} text-[11px]`}>
                                         <div className="flex items-center gap-1">
                                             {isBuy ? (
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -1470,7 +1470,7 @@ ${rows}
 
                                 {/* profit */}
                                 {isColumnVisible('profit') && (
-                                    <td className={`px-1.5 py-[2px] text-right font-semibold tabular-nums ${profitIsPositive ? 'text-[#2563eb]' : 'text-[#ff2d2d]'}`}>
+                                    <td className={`px-1.5 py-[2px] text-right font-semibold tabular-nums ${profitIsPositive ? 'text-[#22c55e]' : 'text-[#ff2d2d]'}`}>
                                         {profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue)}
                                     </td>
                                 )}
@@ -1485,7 +1485,7 @@ ${rows}
                                             event.stopPropagation();
                                             onClosePosition(pos.id);
                                         }}
-                                        className="mx-auto flex h-[17px] w-[17px] items-center justify-center rounded-sm border border-transparent text-[12px] font-semibold leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400"
+                                        className="rtx-trade-close-button mx-auto flex h-[17px] w-[17px] items-center justify-center rounded-sm border border-transparent text-[12px] font-semibold leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400"
                                     >
                                         x
                                     </button>
@@ -1518,7 +1518,7 @@ ${rows}
                         type="button"
                         onClick={() => onCloseBulk?.('WINNERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-bulk-close px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="rtx-trade-bulk-close rtx-trade-footer-action rtx-trade-footer-action--neutral px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         Close Winners
                     </button>
@@ -1526,7 +1526,7 @@ ${rows}
                         type="button"
                         onClick={() => onCloseBulk?.('LOSERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="rtx-trade-footer-action rtx-trade-footer-action--neutral px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         Close Losers
                     </button>
@@ -1534,13 +1534,13 @@ ${rows}
                         type="button"
                         onClick={() => onCloseBulk?.('ALL')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="px-2 py-0.5 rounded-sm border border-red-800/70 text-red-300 hover:bg-red-950/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="rtx-trade-footer-action rtx-trade-footer-action--danger px-2 py-0.5 rounded-sm border border-red-800/70 text-red-300 hover:bg-red-950/50 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         Close All
                     </button>
                     <span className="flex min-w-[136px] items-center justify-end gap-1 shrink-0 pr-1 text-right font-bold">
                         <span className="text-zinc-500">Floating P/L:</span>
-                        <BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL >= 0 ? "text-[#2563eb]" : "text-[#ff2d2d]"} />
+                        <BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-[#2563eb]"} />
                     </span>
                 </div>
             </div>

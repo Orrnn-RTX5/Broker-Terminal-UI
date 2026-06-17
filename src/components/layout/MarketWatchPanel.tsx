@@ -6,6 +6,7 @@ import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
 import { useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../../hooks/useLiveMarketData';
+import { formatMarketWatchSpread } from '../../services/marketWatchSpread';
 
 interface MarketWatchPanelProps {
   allSymbols: any[];
@@ -79,9 +80,7 @@ const MarketWatchRow: React.FC<{
       ? Number(rawDaily)
       : stats?.changePercent24h ?? null;
 
-  const spreadPips = symbol.includes('JPY')
-    ? Math.round(spread * 100)
-    : Math.round(spread * 10000);
+  const spreadPips = formatMarketWatchSpread(spread, symbol);
 
   const hasData = tick && (tick.bid > 0 || tick.ask > 0);
   const hasDailyData = dailyPct !== null;

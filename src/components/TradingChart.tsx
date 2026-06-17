@@ -41,6 +41,7 @@ import { captureFullPage } from '../services/screenshotService';
 import { indicatorManager } from '../services/indicatorManager';
 import { chartDataService } from '../services/chartDataService';
 import {
+  getChartPriceFromQuote,
   getMedianCandlePrice,
   getReferenceScaleFactor,
   isPriceCompatibleWithCandles,
@@ -52,7 +53,7 @@ import {
 } from '../services/chartPriceGuards';
 import { ChartTemplateDialog } from './ChartTemplateDialog';
 import { type ChartTemplate } from '../store/useTemplateStore';
-import { useChartSettingsStore } from '../store/useChartSettingsStore';
+import { useChartSettingsStore, type ChartProperties } from '../store/useChartSettingsStore';
 import {
   getTradingChartDefaultRightPadBars,
   getTradingChartDefaultVisibleBars,
@@ -68,6 +69,22 @@ import {
   findLargestChartCanvas,
   registerActiveChartSource,
 } from '../services/activeChartSource';
+import {
+  buildOptimisticClosedTradeSnapshot,
+  buildClosedTradeHistorySnapshots,
+  dispatchTradeOverlayCloseState,
+  filterActiveTradeKeysForHistory,
+  getTradeOverlayCloseState,
+  getTradeOverlayCloseTicketKeys,
+  getTradeOverlayRedrawDecision,
+  resolveNearestTradeOverlayCandleTime,
+  resolveStableTradeEntryTime,
+  shouldKeepMissingActiveTradeOverlay,
+  TRADE_OVERLAY_CLOSE_STATE_EVENT,
+  TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS,
+  type ClosedTradeOverlaySnapshot,
+  type TradeOverlayHistoryRow,
+} from '../services/tradeOverlayHistory';
 
 export type ChartType = 'candlestick' | 'bar' | 'line' | 'area';
 export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
@@ -80,6 +97,40 @@ const MIN_ADAPTIVE_BARS = 30;
 const MAX_ADAPTIVE_BARS = 200;
 const TRADE_LEVEL_OVERRIDES_STORAGE_KEY = 'rtx-trade-level-overrides-v1';
 const TRADE_LEVEL_OVERRIDE_TTL_MS = 5 * 60 * 1000;
+const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
+const REALTIME_SCROLL_THRESHOLD_BARS = 2;
+const TRANSPARENT_CHART_LINE = 'rgba(0, 0, 0, 0)';
+const TRADING_VIEW_GRID_OVERLAY_SIZE = '92px 50px';
+const LIVE_PRICE_UP_COLOR = '#089981';
+const LIVE_PRICE_DOWN_COLOR = '#f23645';
+
+const TRADING_VIEW_HANDLE_SCROLL = {
+  vertTouchDrag: false,
+  horzTouchDrag: true,
+  mouseWheel: true,
+  pressedMouseMove: true,
+} as const;
+
+const TRADING_VIEW_HANDLE_SCALE = {
+  axisPressedMouseMove: { time: true, price: true },
+  axisDoubleClickReset: { time: true, price: true },
+  mouseWheel: true,
+  pinch: true,
+} as const;
+
+const DRAWING_LOCK_HANDLE_SCROLL = {
+  vertTouchDrag: false,
+  horzTouchDrag: false,
+  mouseWheel: false,
+  pressedMouseMove: false,
+} as const;
+
+const DRAWING_LOCK_HANDLE_SCALE = {
+  axisPressedMouseMove: false,
+  axisDoubleClickReset: false,
+  mouseWheel: false,
+  pinch: false,
+} as const;
 
 type TradeLevelRole = 'ENTRY' | 'SL' | 'TP';
 
@@ -111,6 +162,195 @@ interface Candle {
   volume: number;
 }
 
+const getLivePriceOverlayColor = (
+  currentCandle: Candle | null,
+  activeCandleTime?: number,
+  nextClose?: number,
+): string => {
+  if (!currentCandle || !Number.isFinite(currentCandle.open)) return LIVE_PRICE_UP_COLOR;
+  if (activeCandleTime !== undefined && currentCandle.time !== activeCandleTime) return LIVE_PRICE_UP_COLOR;
+  const close = nextClose ?? currentCandle.close;
+  if (!Number.isFinite(close)) return LIVE_PRICE_UP_COLOR;
+  return close >= currentCandle.open ? LIVE_PRICE_UP_COLOR : LIVE_PRICE_DOWN_COLOR;
+};
+
+type ChartColorPalette = ChartProperties['colors'];
+type FormattedSeriesDatum =
+  | { time: Time; value: number }
+  | { time: Time; open: number; high: number; low: number; close: number };
+
+interface FormattedVolumeDatum {
+  time: Time;
+  value: number;
+  color: string;
+}
+
+interface TradingViewChartTheme {
+  background: string;
+  text: string;
+  grid: string;
+  scaleBorder: string;
+  crosshair: string;
+  candleUp: string;
+  candleDown: string;
+  barUp: string;
+  barDown: string;
+  wickUp: string;
+  wickDown: string;
+  line: string;
+  areaTop: string;
+  areaBottom: string;
+  volumeUp: string;
+  volumeDown: string;
+}
+
+const clampAlpha = (alpha: number): number => Math.max(0, Math.min(1, alpha));
+
+const colorWithAlpha = (color: string | undefined, alpha: number, fallback: string): string => {
+  if (!color) return fallback;
+  const nextAlpha = clampAlpha(alpha);
+  const trimmed = color.trim();
+  const shortHex = /^#([a-f\d])([a-f\d])([a-f\d])$/i.exec(trimmed);
+  if (shortHex) {
+    const [, r, g, b] = shortHex;
+    return `rgba(${parseInt(r + r, 16)}, ${parseInt(g + g, 16)}, ${parseInt(b + b, 16)}, ${nextAlpha})`;
+  }
+
+  const longHex = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(trimmed);
+  if (longHex) {
+    const [, r, g, b] = longHex;
+    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${nextAlpha})`;
+  }
+
+  const rgb = /^rgb\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/i.exec(trimmed);
+  if (rgb) {
+    const [, r, g, b] = rgb;
+    return `rgba(${r}, ${g}, ${b}, ${nextAlpha})`;
+  }
+
+  const rgba = /^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*[\d.]+\s*\)$/i.exec(trimmed);
+  if (rgba) {
+    const [, r, g, b] = rgba;
+    return `rgba(${r}, ${g}, ${b}, ${nextAlpha})`;
+  }
+
+  return fallback;
+};
+
+const getColorLuminance = (color: string | undefined): number | null => {
+  if (!color) return null;
+  const trimmed = color.trim();
+  const shortHex = /^#([a-f\d])([a-f\d])([a-f\d])$/i.exec(trimmed);
+  if (shortHex) {
+    const [, r, g, b] = shortHex;
+    return ((parseInt(r + r, 16) * 0.2126) + (parseInt(g + g, 16) * 0.7152) + (parseInt(b + b, 16) * 0.0722)) / 255;
+  }
+
+  const longHex = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(trimmed);
+  if (longHex) {
+    const [, r, g, b] = longHex;
+    return ((parseInt(r, 16) * 0.2126) + (parseInt(g, 16) * 0.7152) + (parseInt(b, 16) * 0.0722)) / 255;
+  }
+
+  const rgb = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:,\s*[\d.]+\s*)?\)$/i.exec(trimmed);
+  if (rgb) {
+    const [, r, g, b] = rgb;
+    return ((Number(r) * 0.2126) + (Number(g) * 0.7152) + (Number(b) * 0.0722)) / 255;
+  }
+
+  return null;
+};
+
+const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingViewChartTheme => {
+  const candleUp = colors.bullCandle || colors.barUp || '#089981';
+  const candleDown = colors.bearCandle || colors.barDown || '#f23645';
+  const barUp = colors.barUp || candleUp;
+  const barDown = colors.barDown || candleDown;
+  const line = colors.lineChart || '#2962ff';
+  const rawGrid = colors.grid || 'rgba(120, 144, 156, 0.28)';
+  const backgroundIsDark = (getColorLuminance(colors.background) ?? 0) < 0.45;
+  const gridOpacity = backgroundIsDark ? 0.1 : 0.08;
+  const grid = showGrid
+    ? colorWithAlpha(rawGrid, gridOpacity, backgroundIsDark ? 'rgba(148, 163, 184, 0.1)' : 'rgba(148, 163, 184, 0.12)')
+    : TRANSPARENT_CHART_LINE;
+
+  return {
+    background: colors.background || '#0e0e12',
+    text: colors.foreground || '#ffffff',
+    grid,
+    scaleBorder: colorWithAlpha(colors.foreground, 0.24, 'rgba(255, 255, 255, 0.24)'),
+    crosshair: colorWithAlpha(colors.foreground, 0.58, 'rgba(255, 255, 255, 0.58)'),
+    candleUp,
+    candleDown,
+    barUp,
+    barDown,
+    wickUp: barUp,
+    wickDown: barDown,
+    line,
+    areaTop: colorWithAlpha(line, 0.22, 'rgba(41, 98, 255, 0.22)'),
+    areaBottom: colorWithAlpha(line, 0, 'rgba(41, 98, 255, 0)'),
+    volumeUp: colorWithAlpha(barUp, 0.28, 'rgba(8, 153, 129, 0.28)'),
+    volumeDown: colorWithAlpha(barDown, 0.28, 'rgba(242, 54, 69, 0.28)'),
+  };
+};
+
+const formatChartSeriesData = (
+  candles: Candle[],
+  chartType: ChartType,
+  theme: TradingViewChartTheme,
+): {
+  sortedCandles: Candle[];
+  seriesData: FormattedSeriesDatum[];
+  volumeData: FormattedVolumeDatum[];
+} => {
+  const uniqueCandles = new Map<number, Candle>();
+  candles.forEach(candle => uniqueCandles.set(candle.time, candle));
+
+  const sortedCandles = Array.from(uniqueCandles.values())
+    .filter(candle =>
+      candle.open != null &&
+      candle.high != null &&
+      candle.low != null &&
+      candle.close != null &&
+      Number.isFinite(candle.open) &&
+      Number.isFinite(candle.high) &&
+      Number.isFinite(candle.low) &&
+      Number.isFinite(candle.close)
+    )
+    .sort((a, b) => a.time - b.time);
+
+  const seriesData: FormattedSeriesDatum[] = chartType === 'line' || chartType === 'area'
+    ? sortedCandles.map(candle => ({
+      time: candle.time as Time,
+      value: candle.close,
+    }))
+    : sortedCandles.map(candle => ({
+      time: candle.time as Time,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+    }));
+
+  const volumeData: FormattedVolumeDatum[] = sortedCandles.map(candle => ({
+    time: candle.time as Time,
+    value: candle.volume,
+    color: candle.close >= candle.open ? theme.volumeUp : theme.volumeDown,
+  }));
+
+  return { sortedCandles, seriesData, volumeData };
+};
+
+const shouldScrollToRealtime = (
+  chart: IChartApi | null,
+  autoScrollEnabled: boolean,
+  chartAutoScroll: boolean,
+): boolean => {
+  if (!chart || !autoScrollEnabled || !chartAutoScroll) return false;
+  const scrollPosition = chart.timeScale().scrollPosition();
+  return Number.isFinite(scrollPosition) && scrollPosition >= 0 && scrollPosition <= REALTIME_SCROLL_THRESHOLD_BARS;
+};
+
 type TradeSide = 'BUY' | 'SELL';
 
 interface ActiveTradeSnapshot {
@@ -126,18 +366,7 @@ interface ActiveTradeSnapshot {
   tp?: number;
 }
 
-interface ClosedTradeSnapshot {
-  key: string;
-  symbol: string;
-  side: TradeSide;
-  volume: number;
-  entryPrice: number;
-  entryTime: number;
-  exitPrice: number;
-  exitTime: number;
-  profit?: number;
-  source: 'mt5-history' | 'app-history' | 'optimistic';
-}
+type ClosedTradeSnapshot = ClosedTradeOverlaySnapshot;
 
 interface OverlayNodeData {
   kind: 'horizontal-line' | 'price-badge' | 'segment' | 'marker' | 'label';
@@ -151,6 +380,8 @@ interface OverlayNodeData {
   resolveEndPrice?: () => number | null;
   resolveEndTime?: () => number | null;
 }
+
+type TradeOverlayLayer = 'active' | 'history';
 
 interface PriceLevelOptions {
   tradeKey?: string;
@@ -314,10 +545,9 @@ export const TradingChart = React.memo(function TradingChart({
   // Tracks the last completed M1 candle time (seconds) received from the server store.
   // Shared between the 100ms poll interval and loadHistory so both stay in sync.
   const lastStoreCandleSecRef = useRef(0);
-  // Tracks whether the right-click context menu is open — read inside wheelHandler closure
-  const ctxMenuOpenRef = useRef(false);
-  // Tracks current bar spacing (px/bar) for the time-axis zoom gesture
+  // Tracks current bar spacing (px/bar) for toolbar zoom commands.
   const pixelsPerBarRef = useRef(2);
+  const resetVisibleRangeOnNextDataRef = useRef(true);
 
   // ── Live crosshair line DOM refs (no React state, direct DOM for 60fps) ──
   const crosshairLineRef = useRef<HTMLDivElement | null>(null);
@@ -350,37 +580,66 @@ export const TradingChart = React.memo(function TradingChart({
     }
   }, []);
 
-  const renderLivePriceOverlay = useCallback((bid: number) => {
-    livePriceRef.current = bid;
+  const paintLivePriceOverlay = useCallback((
+    livePrice: number,
+    y: number,
+    scaleW: number,
+    activeCandleTime?: number,
+    directionClose?: number,
+  ) => {
+    const line = livePriceLineRef.current;
+    const badge = livePriceBadgeRef.current;
+    if (!line || !badge) return;
+
+    const digits = getSymbolDigits(symbol);
+    const badgeColor = getLivePriceOverlayColor(currentCandleRef.current, activeCandleTime, directionClose);
+
+    line.style.top = `${y}px`;
+    line.style.right = `${scaleW}px`;
+    line.style.borderTopColor = badgeColor;
+    line.style.display = 'block';
+
+    badge.style.top = `${y}px`;
+    badge.style.width = `${scaleW}px`;
+    badge.style.background = badgeColor;
+    badge.textContent = livePrice.toFixed(digits);
+    badge.style.display = 'block';
+  }, [symbol]);
+
+  const renderLivePriceOverlay = useCallback((livePrice: number, activeCandleTime?: number, directionClose?: number) => {
+    livePriceRef.current = livePrice;
 
     if (!livePriceLineRef.current || !livePriceBadgeRef.current || !seriesRef.current) return;
 
-    const y = seriesRef.current.priceToCoordinate(bid);
+    const y = seriesRef.current.priceToCoordinate(livePrice);
     if (y === null || y === undefined) {
       hideLivePriceOverlay(false);
       return;
     }
 
-    const digits = getSymbolDigits(symbol);
-    const badgeColor = '#5A5A66'; // MT5-style solid gray
     const scaleW = seriesRef.current.priceScale().width();
+    paintLivePriceOverlay(livePrice, y, scaleW, activeCandleTime, directionClose);
+  }, [hideLivePriceOverlay, paintLivePriceOverlay]);
 
-    livePriceLineRef.current.style.top = `${y}px`;
-    livePriceLineRef.current.style.right = `${scaleW}px`;
-    livePriceLineRef.current.style.borderTopColor = badgeColor;
-    livePriceLineRef.current.style.display = 'block';
+  const repaintLivePriceOverlayFromCurrentPrice = useCallback((activeCandle: Candle) => {
+    const livePrice = livePriceRef.current;
+    if (livePrice === null || !livePriceLineRef.current || !livePriceBadgeRef.current || !seriesRef.current) return;
 
-    livePriceBadgeRef.current.style.top = `${y}px`;
-    livePriceBadgeRef.current.style.width = `${scaleW}px`;
-    livePriceBadgeRef.current.style.background = badgeColor;
-    livePriceBadgeRef.current.textContent = bid.toFixed(digits);
-    livePriceBadgeRef.current.style.display = 'block';
-  }, [hideLivePriceOverlay, symbol]);
+    const y = seriesRef.current.priceToCoordinate(livePrice);
+    if (y === null || y === undefined) {
+      hideLivePriceOverlay(false);
+      return;
+    }
+
+    const scaleW = seriesRef.current.priceScale().width();
+    paintLivePriceOverlay(livePrice, y, scaleW, activeCandle.time, activeCandle.close);
+  }, [hideLivePriceOverlay, paintLivePriceOverlay]);
 
   const resetEmptyHistoryState = useCallback((activeTf: Timeframe) => {
     candlesRef.current = [];
     currentCandleRef.current = null;
     prevPriceRef.current = null;
+    resetVisibleRangeOnNextDataRef.current = true;
     hideLivePriceOverlay();
     leftVisibleTimeRef.current = null;
     hasReachedBeginningRef.current = false;
@@ -389,11 +648,6 @@ export const TradingChart = React.memo(function TradingChart({
     resetLiveQuotePriceGuard();
     candleAggregationService.loadHistoricalCandles(symbol, activeTf as AggTimeframe, []);
   }, [hideLivePriceOverlay, resetLiveQuotePriceGuard, symbol]);
-
-  // Keep ctxMenuOpenRef in sync so the wheelHandler (closed over the ref) can read it
-  useEffect(() => {
-    ctxMenuOpenRef.current = ctxMenu.visible;
-  }, [ctxMenu.visible]);
 
   // Listen for Alt+T toggle-one-click-trading event from GlobalShortcuts
   useEffect(() => {
@@ -453,6 +707,15 @@ export const TradingChart = React.memo(function TradingChart({
     }
     return chartSettings.colors;
   }, [chartSettings.colors, chartSettings.colorScheme, isAdvancedUntitledLight]);
+  const chartTheme = useMemo(
+    () => buildChartTheme(chartColors, chartSettings.showGrid),
+    [chartColors, chartSettings.showGrid],
+  );
+  const chartThemeRef = useRef(chartTheme);
+
+  useEffect(() => {
+    chartThemeRef.current = chartTheme;
+  }, [chartTheme]);
 
   const normalizeChartTimeToUnixSeconds = useCallback((time: Time): number | null => {
     if (typeof time === 'number') {
@@ -487,13 +750,7 @@ export const TradingChart = React.memo(function TradingChart({
         return key ? ticks[key] : undefined;
       })();
 
-    const bid = Number(tick?.bid ?? tick?.last);
-    const ask = Number(tick?.ask ?? tick?.bid ?? tick?.last);
-    if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) {
-      return (bid + ask) / 2;
-    }
-    if (Number.isFinite(bid) && bid > 0) return bid;
-    return null;
+    return getChartPriceFromQuote(tick);
   }, [symbol]);
 
   const reconcileCandlesWithLiveQuote = useCallback((candles: Candle[], context: string): Candle[] => {
@@ -576,55 +833,46 @@ export const TradingChart = React.memo(function TradingChart({
     }
     isDisposedRef.current = false;
 
-    const rootStyle = getComputedStyle(document.body);
-    const textColor = rootStyle.getPropertyValue('--text-secondary').trim() || '#A1A1AA';
-
     console.log(`[TradingChart] Container size: ${containerRef.current.offsetWidth}x${containerRef.current.offsetHeight}`);
 
     const chart = createChart(containerRef.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: chartColors.background },
-        textColor: chartColors.foreground,
+        background: { type: ColorType.Solid, color: chartTheme.background },
+        textColor: chartTheme.text,
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: 'transparent' },
-        horzLines: { color: 'transparent' },
+        vertLines: { color: TRANSPARENT_CHART_LINE },
+        horzLines: { color: TRANSPARENT_CHART_LINE },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
         // Arrow/cursor is the default tool — hide crosshair lines until a drawing tool is selected
-        vertLine: { visible: false, color: chartColors.foreground, width: 1, style: 2, labelVisible: false },
-        horzLine: { visible: false, color: chartColors.foreground, width: 1, style: 2, labelVisible: false },
+        vertLine: { visible: false, color: chartTheme.crosshair, width: 1, style: 2, labelVisible: false },
+        horzLine: { visible: false, color: chartTheme.crosshair, width: 1, style: 2, labelVisible: false },
       },
-      handleScroll: {
-        vertTouchDrag: false,
-        horzTouchDrag: true,
-        mouseWheel: false,      // custom handler does the scrolling
-        pressedMouseMove: true, // body drag pans the chart; auto-scroll snaps back after inactivity
-      },
-      handleScale: {
-        axisPressedMouseMove: { time: false, price: true },  // MT5-style: drag price axis to zoom vertically
-        axisDoubleClickReset: { time: false, price: false },  // handled manually below
-        mouseWheel: false,      // wheel never zooms
-        pinch: false,
+      handleScroll: TRADING_VIEW_HANDLE_SCROLL,
+      handleScale: TRADING_VIEW_HANDLE_SCALE,
+      kineticScroll: {
+        touch: true,
+        mouse: true,
       },
       rightPriceScale: {
-        borderColor: chartColors.foreground,
-        scaleMargins: { top: 0.05, bottom: 0.32 },
+        borderColor: chartTheme.scaleBorder,
+        scaleMargins: { top: 0.05, bottom: 0.28 },
         autoScale: !chartSettings.scaleFixOneToOne,
       },
       timeScale: {
-        borderColor: chartColors.foreground,
+        borderColor: chartTheme.scaleBorder,
         timeVisible: true,
         secondsVisible: false,
         tickMarkMaxCharacterLength: getTradingChartTickMarkCharacterLength(timeframe),
-        barSpacing: 2,
-        minBarSpacing: 1,
+        barSpacing: 8,
+        minBarSpacing: 0.5,
         rightOffset: getTradingChartShiftRightOffset(timeframe, ctxChartShift),
         fixLeftEdge: false,
-        fixRightEdge: !ctxChartShift,
+        fixRightEdge: false,
       },
     });
 
@@ -640,10 +888,15 @@ export const TradingChart = React.memo(function TradingChart({
 
     const resetAutoScrollTimer = () => {
       if (autoScrollTimer) clearTimeout(autoScrollTimer);
-      if (isDisposedRef.current || !chartRef.current || !autoScrollEnabledRef.current || !chartSettings.chartAutoScroll) return;
+      if (isDisposedRef.current || !chartRef.current || !autoScrollEnabledRef.current || !chartSettingsRef.current.chartAutoScroll) return;
 
       autoScrollTimer = setTimeout(() => {
-        if (!isDisposedRef.current && chartRef.current && !isUserInteracting && autoScrollEnabledRef.current && chartSettings.chartAutoScroll) {
+        if (
+          !isDisposedRef.current &&
+          chartRef.current &&
+          !isUserInteracting &&
+          shouldScrollToRealtime(chartRef.current, autoScrollEnabledRef.current, chartSettingsRef.current.chartAutoScroll)
+        ) {
           chartRef.current.timeScale().scrollToRealTime();
         }
         autoScrollTimer = null;
@@ -660,89 +913,7 @@ export const TradingChart = React.memo(function TradingChart({
       resetAutoScrollTimer();
     };
 
-    let wheelEndTimer: ReturnType<typeof setTimeout> | null = null;
-    const wheelHandler = (e: WheelEvent) => {
-      // Block scroll while the right-click context menu is open
-      if (ctxMenuOpenRef.current) return;
-
-      // If scroll is happening inside a modal/dialog/popup, let the browser handle it natively
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        // Walk up the DOM — if we hit a dialog, modal overlay, or a scrollable container
-        // that is NOT the chart, bail out immediately so the dialog can scroll normally.
-        let node: HTMLElement | null = target;
-        while (node && node !== document.body) {
-          const tag = node.tagName?.toLowerCase();
-          const role = node.getAttribute?.('role')?.toLowerCase();
-          const cls = node.className || '';
-          if (
-            tag === 'dialog' ||
-            role === 'dialog' ||
-            role === 'listbox' ||
-            (typeof cls === 'string' && (
-              cls.includes('modal') ||
-              cls.includes('overlay') ||
-              cls.includes('popup') ||
-              cls.includes('dialog') ||
-              cls.includes('dropdown')
-            ))
-          ) {
-            return; // Let the modal handle its own scroll
-          }
-          // Also allow scroll in any element that itself has overflow scrolling
-          // and is NOT our chart container — this covers lists, grids, etc. inside dialogs
-          if (node !== containerRef.current && node !== document.documentElement) {
-            const style = window.getComputedStyle(node);
-            const overflowY = style.overflowY;
-            if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
-              return; // Let this scrollable element scroll natively
-            }
-          }
-          node = node.parentElement;
-        }
-      }
-
-      // Check if cursor is over the chart area using position, not DOM contains()
-      // contains() fails for overlays/legend that are siblings of containerRef
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const overChart = e.clientX >= rect.left && e.clientX <= rect.right &&
-        e.clientY >= rect.top && e.clientY <= rect.bottom;
-      if (!overChart) return;
-
-
-      e.preventDefault();
-      e.stopPropagation();
-      if (isDisposedRef.current || !chartRef.current) return;
-
-      const timeScale = chartRef.current.timeScale();
-      const visibleRange = timeScale.getVisibleLogicalRange();
-      if (!visibleRange) return;
-
-      // Scroll DOWN = pan left (older candles), Scroll UP = pan right (newer)
-      const barsPerScroll = Math.max(1, Math.round(Math.abs(e.deltaY) / 20));
-      const shift = e.deltaY > 0 ? -barsPerScroll : barsPerScroll;
-
-      console.log(`[Chart] Wheel: deltaY=${e.deltaY}, shift=${shift}`);
-
-      timeScale.setVisibleLogicalRange({
-        from: visibleRange.from + shift,
-        to: visibleRange.to + shift,
-      });
-
-      handleInteractionStart();
-      if (wheelEndTimer) clearTimeout(wheelEndTimer);
-      wheelEndTimer = setTimeout(() => {
-        handleInteractionEnd();
-        wheelEndTimer = null;
-      }, 200);
-    };
-    // Attach to window with capture:true — fires BEFORE any other handler
-    window.addEventListener('wheel', wheelHandler, { passive: false, capture: true });
-
     const chartContainer = containerRef.current;
-    let priceAxisCleanup: (() => void) | null = null;
-    let timeAxisCleanup: (() => void) | null = null;
 
     if (chartContainer) {
       // Track pointer/drag interactions for auto-scroll timer
@@ -752,207 +923,6 @@ export const TradingChart = React.memo(function TradingChart({
       chartContainer.addEventListener('touchstart', handleInteractionStart, { passive: true });
       chartContainer.addEventListener('touchend', handleInteractionEnd);
 
-      // ── Custom MT5-style price axis drag-to-zoom ─────────────────────
-      // lightweight-charts' built-in axisPressedMouseMove can conflict
-      // with handleScroll.pressedMouseMove:false, so we implement it manually.
-      const priceAxisEl = (() => {
-        // lightweight-charts v5 renders a table; the right price axis is the
-        // last <td> in the first row of the chart table.
-        const tables = chartContainer.querySelectorAll('table');
-        for (const table of tables) {
-          const tds = table.querySelectorAll('tr:first-child > td');
-          if (tds.length >= 2) {
-            return tds[tds.length - 1] as HTMLElement; // rightmost td = price axis
-          }
-        }
-        return null;
-      })();
-
-      // ── Shared reset helpers (MT5-style double-click defaults) ──────────
-      // These match the initial-load fit exactly so a reset truly returns the
-      // chart to its starting view — not just changes one option in isolation.
-      const resetPriceScaleToDefault = () => {
-        if (isDisposedRef.current || !chartRef.current) return;
-        chartRef.current.priceScale('right').applyOptions({
-          autoScale: true,
-          scaleMargins: { top: 0.05, bottom: 0.32 },
-        });
-      };
-
-      const resetTimeScaleToDefault = () => {
-        if (isDisposedRef.current || !chartRef.current) return;
-        const tf = prevTimeframeRef.current || timeframe;
-        const ts = chartRef.current.timeScale();
-        ts.applyOptions({
-          rightOffset: getTradingChartShiftRightOffset(tf, ctxChartShift),
-        });
-        const totalBars = candlesRef.current.length;
-        if (totalBars > 0) {
-          const visibleBars = computeAdaptiveVisibleBars(
-            containerRef.current,
-            chartRef.current,
-            totalBars,
-            getTradingChartDefaultVisibleBars(tf),
-          );
-          const rightPadBars = getTradingChartDefaultRightPadBars(tf);
-          ts.setVisibleLogicalRange({
-            from: totalBars - visibleBars,
-            to: totalBars + rightPadBars,
-          });
-          // Keep pixelsPerBarRef in sync with the effective spacing so the next
-          // time-axis drag starts from the visible spacing, not the legacy "2".
-          const chartW = Math.max(200, (containerRef.current?.offsetWidth || 1400)
-            - (chartRef.current.priceScale('right').width() || 60));
-          pixelsPerBarRef.current = chartW / (visibleBars + rightPadBars);
-        } else {
-          pixelsPerBarRef.current = TARGET_BAR_PX;
-        }
-        ts.scrollToRealTime();
-      };
-
-      if (priceAxisEl) {
-        const handlePriceAxisDown = (e: MouseEvent) => {
-          if (e.button !== 0) return; // left click only
-          e.preventDefault();
-          e.stopPropagation();
-
-          const startY = e.clientY;
-          const priceScale = chart.priceScale('right');
-          const opts = priceScale.options();
-          const startTop = opts.scaleMargins?.top ?? 0.1;
-          const startBottom = opts.scaleMargins?.bottom ?? 0.2;
-          const sensitivity = 0.003; // how fast zoom changes per pixel
-
-          // Disable autoScale so manual zoom takes effect
-          priceScale.applyOptions({ autoScale: false });
-
-          const onMove = (me: MouseEvent) => {
-            const dy = me.clientY - startY; // positive = dragging down
-            // Dragging DOWN = zoom out (increase margins)
-            // Dragging UP = zoom in (decrease margins)
-            const delta = dy * sensitivity;
-            const newTop = Math.max(0.01, Math.min(0.45, startTop + delta));
-            const newBottom = Math.max(0.01, Math.min(0.45, startBottom + delta));
-            priceScale.applyOptions({
-              scaleMargins: { top: newTop, bottom: newBottom },
-            });
-          };
-
-          const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-          };
-
-          window.addEventListener('mousemove', onMove);
-          window.addEventListener('mouseup', onUp);
-        };
-
-        priceAxisEl.style.cursor = 'ns-resize';
-        priceAxisEl.addEventListener('mousedown', handlePriceAxisDown);
-
-        priceAxisCleanup = () => {
-          priceAxisEl.removeEventListener('mousedown', handlePriceAxisDown);
-        };
-      }
-
-      // ── MT5-style time-axis drag-to-zoom + unified dblclick reset ────────
-      // Position-based hit-testing detects which region was double-clicked
-      // (time axis / price axis / chart body) and resets accordingly. This
-      // avoids the fragile DOM-selector approach for the price axis dblclick
-      // and adds the missing chart-body reset.
-      {
-        const TIME_AXIS_PX = 36; // height of the time-axis strip in px
-        const MIN_PX = 1;
-        // Allow zoom-in well past the adaptive default (~25px) so users can
-        // stretch candles much wider — matches MT5 where you can blow up a
-        // single candle to fill a big chunk of the screen.
-        const MAX_PX = 150;
-        const SENSITIVITY = 0.005;
-
-        const inTimeAxis = (e: MouseEvent) => {
-          const r = chartContainer.getBoundingClientRect();
-          return e.clientY >= r.bottom - TIME_AXIS_PX
-            && e.clientX >= r.left && e.clientX <= r.right;
-        };
-
-        const inPriceAxis = (e: MouseEvent) => {
-          const r = chartContainer.getBoundingClientRect();
-          const w = chartRef.current?.priceScale('right').width() || 60;
-          return e.clientX >= r.right - w
-            && e.clientY >= r.top && e.clientY < r.bottom - TIME_AXIS_PX;
-        };
-
-        const handleTimeAxisDown = (e: MouseEvent) => {
-          if (e.button !== 0 || !inTimeAxis(e)) return;
-          e.preventDefault();
-          e.stopPropagation();
-
-          let localSpacing = pixelsPerBarRef.current;
-          let pendingRaf = false;
-
-          const onMove = (me: MouseEvent) => {
-            if (me.movementX === 0) return;
-            const clamped = Math.max(MIN_PX, Math.min(MAX_PX,
-              localSpacing * Math.exp(-me.movementX * SENSITIVITY)));
-            if (clamped === localSpacing) return;
-            localSpacing = clamped;
-            pixelsPerBarRef.current = clamped;
-            if (!pendingRaf) {
-              pendingRaf = true;
-              requestAnimationFrame(() => {
-                if (!isDisposedRef.current && chartRef.current) {
-                  chartRef.current.timeScale().applyOptions({ barSpacing: localSpacing });
-                }
-                pendingRaf = false;
-              });
-            }
-          };
-
-          const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-          };
-
-          document.body.style.cursor = 'ew-resize';
-          document.body.style.userSelect = 'none';
-          window.addEventListener('mousemove', onMove);
-          window.addEventListener('mouseup', onUp);
-        };
-
-        const handleContainerDblClick = (e: MouseEvent) => {
-          if (!chartRef.current) return;
-          const onTime = inTimeAxis(e);
-          const onPrice = inPriceAxis(e);
-          e.preventDefault();
-          e.stopPropagation();
-          if (onTime && !onPrice) {
-            resetTimeScaleToDefault();
-          } else if (onPrice && !onTime) {
-            resetPriceScaleToDefault();
-          } else {
-            // Chart body OR corner (both axes) — reset both
-            resetTimeScaleToDefault();
-            resetPriceScaleToDefault();
-          }
-        };
-
-        const handleTimeAxisHover = (e: MouseEvent) => {
-          chartContainer.style.cursor = inTimeAxis(e) ? 'ew-resize' : '';
-        };
-
-        chartContainer.addEventListener('mousedown', handleTimeAxisDown, { capture: true });
-        chartContainer.addEventListener('dblclick', handleContainerDblClick);
-        chartContainer.addEventListener('mousemove', handleTimeAxisHover);
-
-        timeAxisCleanup = () => {
-          chartContainer.removeEventListener('mousedown', handleTimeAxisDown,
-            { capture: true } as EventListenerOptions);
-          chartContainer.removeEventListener('dblclick', handleContainerDblClick);
-          chartContainer.removeEventListener('mousemove', handleTimeAxisHover);
-        };
-      }
     } // end if (chartContainer)
 
     // Crosshair move for legend
@@ -992,9 +962,6 @@ export const TradingChart = React.memo(function TradingChart({
       indicatorManager.setChart(null);
       isDisposedRef.current = true;
       if (autoScrollTimer) clearTimeout(autoScrollTimer);
-      if (wheelEndTimer) clearTimeout(wheelEndTimer);
-      // Remove window-level wheel handler
-      window.removeEventListener('wheel', wheelHandler, { capture: true } as EventListenerOptions);
       if (chartContainer) {
         chartContainer.removeEventListener('pointerdown', handleInteractionStart);
         chartContainer.removeEventListener('pointerup', handleInteractionEnd);
@@ -1002,8 +969,6 @@ export const TradingChart = React.memo(function TradingChart({
         chartContainer.removeEventListener('touchstart', handleInteractionStart);
         chartContainer.removeEventListener('touchend', handleInteractionEnd);
       }
-      if (priceAxisCleanup) priceAxisCleanup();
-      if (timeAxisCleanup) timeAxisCleanup();
       chart.unsubscribeCrosshairMove(crosshairHandler);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeHandler);
 
@@ -1053,48 +1018,20 @@ export const TradingChart = React.memo(function TradingChart({
     const activeType = currentChartType || prevChartTypeRef.current || 'candlestick';
     const activeTimeframe = prevTimeframeRef.current || timeframe;
 
-    // Deduplicate and strictly sort ascending by time (required by lightweight-charts)
-    // Live tick aggregates can occasionally append duplicate times at the end of candlesRef
-    const uniqueCandles = new Map<number, Candle>();
-    candles.forEach(c => uniqueCandles.set(c.time, c));
-    const sortedCandles = Array.from(uniqueCandles.values())
-      .filter(c => c.open != null && c.high != null && c.low != null && c.close != null && !isNaN(c.open) && !isNaN(c.close))
-      .sort((a, b) => (a.time as number) - (b.time as number));
-
-    // Format data based on chart type
-    let formatted: any[];
-    if (activeType === 'line' || activeType === 'area') {
-      // Line and Area series need { time, value }
-      formatted = sortedCandles.map(c => ({
-        time: c.time as Time,
-        value: c.close,
-      }));
-    } else {
-      // Candlestick and Bar series need { time, open, high, low, close }
-      formatted = sortedCandles.map(c => ({
-        time: c.time as Time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      }));
-    }
-
-    const volumeData = sortedCandles.map(c => ({
-      time: c.time as Time,
-      value: c.volume,
-      color: c.close >= c.open ? 'rgba(0,200,150,0.25)' : 'rgba(255,77,79,0.25)',
-    }));
+    const { sortedCandles, seriesData, volumeData } = formatChartSeriesData(
+      candles,
+      activeType,
+      chartThemeRef.current,
+    );
 
     try {
-      seriesRef.current.setData(formatted);
+      seriesRef.current.setData(seriesData);
       volumeRef.current.setData(volumeData);
 
-      // Auto-fit to a comfortable MT5-style spacing — adapts to container width
-      // so candles render at ~25px wide regardless of panel size.
-      seriesRef.current.priceScale().applyOptions({ autoScale: true });
-      const totalBars = formatted.length;
-      if (totalBars > 0 && chartRef.current) {
+      // Initial/context-reset fit only. Live/history refreshes preserve the user's viewport.
+      const totalBars = seriesData.length;
+      if (totalBars > 0 && chartRef.current && resetVisibleRangeOnNextDataRef.current) {
+        seriesRef.current.priceScale().applyOptions({ autoScale: true });
         const visibleBars = computeAdaptiveVisibleBars(
           containerRef.current,
           chartRef.current,
@@ -1106,6 +1043,9 @@ export const TradingChart = React.memo(function TradingChart({
           from: totalBars - visibleBars,
           to: totalBars + rightPadBars,
         });
+        resetVisibleRangeOnNextDataRef.current = false;
+        syncLeftVisibleTime();
+      } else {
         syncLeftVisibleTime();
       }
 
@@ -1387,20 +1327,11 @@ export const TradingChart = React.memo(function TradingChart({
       // Re-hydrate the chart with the new full array 
       // WITHOUT snapping the viewport to the right edge
       const activeType = prevChartTypeRef.current || 'candlestick';
-      let formatted: any[];
-      if (activeType === 'line' || activeType === 'area') {
-        formatted = candlesRef.current.map(c => ({ time: c.time as Time, value: c.close }));
-      } else {
-        formatted = candlesRef.current.map(c => ({
-          time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close
-        }));
-      }
-
-      const volumeData = candlesRef.current.map(c => ({
-        time: c.time as Time,
-        value: c.volume,
-        color: c.close >= c.open ? 'rgba(0,200,150,0.25)' : 'rgba(255,77,79,0.25)',
-      }));
+      const { seriesData, volumeData } = formatChartSeriesData(
+        candlesRef.current,
+        activeType,
+        chartThemeRef.current,
+      );
 
       // Update series but maintain current left logical index so it visually stays in place
       if (seriesRef.current && volumeRef.current && chartRef.current) {
@@ -1408,7 +1339,7 @@ export const TradingChart = React.memo(function TradingChart({
         const timeScale = chartRef.current.timeScale();
         const currentPos = timeScale.scrollPosition();
 
-        seriesRef.current.setData(formatted);
+        seriesRef.current.setData(seriesData);
         volumeRef.current.setData(volumeData);
 
         // Shift position rightward so the view doesn't jump
@@ -1471,6 +1402,7 @@ export const TradingChart = React.memo(function TradingChart({
 
         candlesRef.current = [];
         currentCandleRef.current = null;
+        resetVisibleRangeOnNextDataRef.current = true;
         hasReachedBeginningRef.current = false;
         isLoadingMoreRef.current = false;
         resetLiveQuotePriceGuard();
@@ -1496,6 +1428,7 @@ export const TradingChart = React.memo(function TradingChart({
         candlesRef.current = [];
         currentCandleRef.current = null;
         prevPriceRef.current = null;
+        resetVisibleRangeOnNextDataRef.current = true;
         hasReachedBeginningRef.current = false;
         isLoadingMoreRef.current = false;
         resetLiveQuotePriceGuard();
@@ -1526,6 +1459,7 @@ export const TradingChart = React.memo(function TradingChart({
     prevChartTypeRef.current = chartType;
     prevSymbolRef.current = symbol;
     prevTimeframeRef.current = timeframe;
+    resetVisibleRangeOnNextDataRef.current = true;
 
     const hasCachedData = candlesRef.current.length > 0;
 
@@ -1533,6 +1467,7 @@ export const TradingChart = React.memo(function TradingChart({
       candlesRef.current = [];
       currentCandleRef.current = null;
       prevPriceRef.current = null;
+      resetVisibleRangeOnNextDataRef.current = true;
       resetLiveQuotePriceGuard();
     }
 
@@ -1560,21 +1495,21 @@ export const TradingChart = React.memo(function TradingChart({
     const digits = getSymbolDigits(symbol);
     const minMove = 1 / Math.pow(10, digits); // e.g. 0.01 for 2 digits, 0.00001 for 5
     const priceFormatOpts = { type: 'price' as const, precision: digits, minMove };
+    const theme = chartThemeRef.current;
 
     console.log(`[TradingChart] Creating series for chartType=${chartType}, symbol=${symbol}, digits=${digits}`);
 
     switch (chartType) {
       case 'candlestick':
         series = chart.addSeries(CandlestickSeries, {
-          upColor: '#ffffff',       // White fill for bullish body
-          downColor: '#000000',     // Black fill for bearish body (hollow look)
+          upColor: theme.candleUp,
+          downColor: theme.candleDown,
           borderVisible: true,
           wickVisible: true,
-          borderColor: '#00ff00',
-          borderUpColor: '#00ff00', // Lime green border for bullish
-          borderDownColor: '#00ff00',// Lime green border for bearish
-          wickUpColor: '#00ff00',   // Lime green wick
-          wickDownColor: '#00ff00', // Lime green wick
+          borderUpColor: theme.barUp,
+          borderDownColor: theme.barDown,
+          wickUpColor: theme.wickUp,
+          wickDownColor: theme.wickDown,
           priceFormat: priceFormatOpts,
           priceLineVisible: false,  // Hide built-in dashed last-value line
           lastValueVisible: false,  // Hide built-in axis label
@@ -1582,8 +1517,8 @@ export const TradingChart = React.memo(function TradingChart({
         break;
       case 'bar':
         series = chart.addSeries(BarSeries, {
-          upColor: '#00ff00',
-          downColor: '#00ff00',
+          upColor: theme.barUp,
+          downColor: theme.barDown,
           priceFormat: priceFormatOpts,
           priceLineVisible: false,
           lastValueVisible: false,
@@ -1591,7 +1526,7 @@ export const TradingChart = React.memo(function TradingChart({
         break;
       case 'line':
         series = chart.addSeries(LineSeries, {
-          color: '#2962FF',
+          color: theme.line,
           lineWidth: 2,
           priceFormat: priceFormatOpts,
           priceLineVisible: false,
@@ -1600,9 +1535,9 @@ export const TradingChart = React.memo(function TradingChart({
         break;
       case 'area':
         series = chart.addSeries(AreaSeries, {
-          lineColor: '#2962FF',
-          topColor: 'rgba(41, 98, 255, 0.4)',
-          bottomColor: 'rgba(41, 98, 255, 0.0)',
+          lineColor: theme.line,
+          topColor: theme.areaTop,
+          bottomColor: theme.areaBottom,
           priceFormat: priceFormatOpts,
           priceLineVisible: false,
           lastValueVisible: false,
@@ -1610,8 +1545,8 @@ export const TradingChart = React.memo(function TradingChart({
         break;
       default:
         series = chart.addSeries(CandlestickSeries, {
-          upColor: '#26a69a',
-          downColor: '#ef5350',
+          upColor: theme.candleUp,
+          downColor: theme.candleDown,
           priceFormat: priceFormatOpts,
           priceLineVisible: false,
           lastValueVisible: false,
@@ -1624,7 +1559,7 @@ export const TradingChart = React.memo(function TradingChart({
 
     // Create volume series
     const volSeries = chart.addSeries(HistogramSeries, {
-      color: '#26a69a',
+      color: theme.volumeUp,
       priceScaleId: '',
       priceFormat: { type: 'volume' },
       lastValueVisible: false,
@@ -1671,7 +1606,8 @@ export const TradingChart = React.memo(function TradingChart({
         if (!isDisposedRef.current && chartRef.current) {
           try {
             chartRef.current.applyOptions({
-              handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: false },
+              handleScroll: DRAWING_LOCK_HANDLE_SCROLL,
+              handleScale: DRAWING_LOCK_HANDLE_SCALE,
             });
           } catch (e) { /* disposed */ }
         }
@@ -1681,7 +1617,8 @@ export const TradingChart = React.memo(function TradingChart({
         if (!isDisposedRef.current && chartRef.current) {
           try {
             chartRef.current.applyOptions({
-              handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true },
+              handleScroll: TRADING_VIEW_HANDLE_SCROLL,
+              handleScale: TRADING_VIEW_HANDLE_SCALE,
             });
           } catch (e) { /* disposed */ }
         }
@@ -1906,7 +1843,7 @@ export const TradingChart = React.memo(function TradingChart({
     console.log(`[Chart] Applying chart shift: ${ctxChartShift}, rightOffset: ${rightOffset}`);
     chartRef.current.timeScale().applyOptions({
       rightOffset,
-      fixRightEdge: !ctxChartShift, // Must be false when shift is on, or rightOffset is blocked
+      fixRightEdge: false,
     });
   }, [ctxChartShift, timeframe]);
 
@@ -1960,30 +1897,25 @@ export const TradingChart = React.memo(function TradingChart({
     // Apply global layout and grid
     chart.applyOptions({
       layout: {
-        background: { type: ColorType.Solid, color: chartColors.background },
-        textColor: chartColors.foreground,
+        background: { type: ColorType.Solid, color: chartTheme.background },
+        textColor: chartTheme.text,
       },
       grid: {
-        vertLines: { color: 'transparent' },
-        horzLines: { color: 'transparent' },
+        vertLines: { color: TRANSPARENT_CHART_LINE },
+        horzLines: { color: TRANSPARENT_CHART_LINE },
       },
       crosshair: {
-        vertLine: { color: chartColors.foreground },
-        horzLine: { color: chartColors.foreground },
+        vertLine: { color: chartTheme.crosshair },
+        horzLine: { color: chartTheme.crosshair },
       },
-      handleScroll: {
-        pressedMouseMove: true,
-      },
-      handleScale: {
-        axisPressedMouseMove: { time: false, price: true },
-        axisDoubleClickReset: { time: false, price: false },
-      },
+      handleScroll: TRADING_VIEW_HANDLE_SCROLL,
+      handleScale: TRADING_VIEW_HANDLE_SCALE,
       rightPriceScale: {
-        borderColor: chartColors.foreground,
+        borderColor: chartTheme.scaleBorder,
         autoScale: !chartSettings.scaleFixOneToOne,
       },
       timeScale: {
-        borderColor: chartColors.foreground,
+        borderColor: chartTheme.scaleBorder,
       },
     });
 
@@ -1991,22 +1923,24 @@ export const TradingChart = React.memo(function TradingChart({
     if (seriesRef.current) {
       if (chartType === 'candlestick') {
         seriesRef.current.applyOptions({
-          upColor: chartSettings.colors.bullCandle,
-          downColor: chartSettings.colors.bearCandle,
-          wickUpColor: chartSettings.colors.barUp,
-          wickDownColor: chartSettings.colors.barDown,
-          borderUpColor: chartSettings.colors.barUp,
-          borderDownColor: chartSettings.colors.barDown,
+          upColor: chartTheme.candleUp,
+          downColor: chartTheme.candleDown,
+          wickUpColor: chartTheme.wickUp,
+          wickDownColor: chartTheme.wickDown,
+          borderUpColor: chartTheme.barUp,
+          borderDownColor: chartTheme.barDown,
         });
       } else if (chartType === 'bar') {
         seriesRef.current.applyOptions({
-          upColor: chartSettings.colors.barUp,
-          downColor: chartSettings.colors.barDown,
+          upColor: chartTheme.barUp,
+          downColor: chartTheme.barDown,
         });
       } else if (chartType === 'line' || chartType === 'area') {
         seriesRef.current.applyOptions({
-          lineColor: chartSettings.colors.lineChart,
-          color: chartSettings.colors.lineChart,
+          lineColor: chartTheme.line,
+          color: chartTheme.line,
+          topColor: chartTheme.areaTop,
+          bottomColor: chartTheme.areaBottom,
         });
       }
     }
@@ -2015,11 +1949,11 @@ export const TradingChart = React.memo(function TradingChart({
     if (volumeRef.current) {
       volumeRef.current.applyOptions({
         visible: chartSettings.showTickVolumes || chartSettings.showRealVolumes,
-        color: chartSettings.colors.volumes
+        color: chartTheme.volumeUp
       });
     }
 
-  }, [chartSettings, chartColors, chartType]);
+  }, [chartSettings, chartTheme, chartType]);
 
   // getTimeframeSeconds is imported from candleAggregationService (module scope)
   // so it is never a stale closure value after a timeframe switch.
@@ -2061,14 +1995,20 @@ export const TradingChart = React.memo(function TradingChart({
           seriesRef.current.update({ time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close });
         }
         if (volumeRef.current) {
+          const theme = chartThemeRef.current;
           volumeRef.current.update({
             time: c.time as Time, value: c.volume,
-            color: c.close >= c.open ? 'rgba(22,163,74,0.3)' : 'rgba(220,38,38,0.3)',
+            color: c.close >= c.open ? theme.volumeUp : theme.volumeDown,
           });
         }
         updateLegendDOM(c.open, c.high, c.low, c.close, c.volume);
         markCandlesReady();
-        if (isNewCandle && chartRef.current && !isDisposedRef.current) {
+        if (
+          isNewCandle &&
+          chartRef.current &&
+          !isDisposedRef.current &&
+          shouldScrollToRealtime(chartRef.current, autoScrollEnabledRef.current, chartSettingsRef.current.chartAutoScroll)
+        ) {
           try { chartRef.current.timeScale().scrollToRealTime(); } catch { }
         }
       } catch (e) {
@@ -2133,7 +2073,8 @@ export const TradingChart = React.memo(function TradingChart({
 
       if (!tick?.bid) return;
 
-      const price = (tick.bid + (tick.ask ?? tick.bid)) / 2;
+      const price = getChartPriceFromQuote(tick);
+      if (price == null) return;
       const livePriceMatchesRenderedScale = normalizeRenderedCandlesToLivePrice(price, activeTf);
       if (!livePriceMatchesRenderedScale || !isLivePriceSafeForCandles(price)) {
         const guard = updateLiveQuoteGuardState({
@@ -2152,6 +2093,7 @@ export const TradingChart = React.memo(function TradingChart({
           candlesRef.current = [];
           currentCandleRef.current = null;
           prevPriceRef.current = null;
+          resetVisibleRangeOnNextDataRef.current = true;
           leftVisibleTimeRef.current = null;
           lastStoreCandleSecRef.current = 0;
           try { seriesRef.current?.setData([]); } catch { }
@@ -2191,26 +2133,13 @@ export const TradingChart = React.memo(function TradingChart({
 
       // ── Update live price DOM line + badge ──
       if (livePriceLineRef.current && livePriceBadgeRef.current && seriesRef.current) {
-        const y = seriesRef.current.priceToCoordinate(tick.bid);
+        const y = seriesRef.current.priceToCoordinate(price);
         if (y !== null && y !== undefined) {
-          const digits = getSymbolDigits(symbol);
-          livePriceRef.current = tick.bid;
-
-          const badgeColor = '#5A5A66'; // MT5-style solid gray
+          livePriceRef.current = price;
 
           // Match exact price-scale width so badge overlays the axis labels 1:1
           const scaleW = seriesRef.current.priceScale().width();
-
-          livePriceLineRef.current.style.top = `${y}px`;
-          livePriceLineRef.current.style.right = `${scaleW}px`;
-          livePriceLineRef.current.style.borderTopColor = badgeColor;
-          livePriceLineRef.current.style.display = 'block';
-
-          livePriceBadgeRef.current.style.top = `${y}px`;
-          livePriceBadgeRef.current.style.width = `${scaleW}px`;
-          livePriceBadgeRef.current.style.background = badgeColor;
-          livePriceBadgeRef.current.textContent = tick.bid.toFixed(digits);
-          livePriceBadgeRef.current.style.display = 'block';
+          paintLivePriceOverlay(price, y, scaleW, candleTime, price);
         }
       }
 
@@ -2249,7 +2178,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       // Refresh after candle creation/update so the first live-only tick has a
       // price scale before we ask LightweightCharts for a coordinate.
-      renderLivePriceOverlay(tick.bid);
+      renderLivePriceOverlay(price, candleTime, price);
 
       // ── Auto Close Trade on SL/TP Cross ──
       activeTradeSnapshotsRef.current.forEach((trade) => {
@@ -2271,14 +2200,23 @@ export const TradingChart = React.memo(function TradingChart({
         if (shouldClose) {
           tradeAutoClosePendingRef.current.add(trade.key);
           const pId = trade.key.replace('trade:', '');
+          dispatchTradeOverlayCloseState([pId], 'pending');
           console.log(`[Chart] 🛑 Auto-closing trade ${pId} due to SL/TP cross`);
 
           api.positions.closePosition(String(pId)).then(() => {
             useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== Number(pId)));
+            dispatchTradeOverlayCloseState([pId], 'confirmed');
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+            const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+            if (Number.isFinite(login) && login > 0) {
+              window.dispatchEvent(new CustomEvent('rtx:refresh-trade-history-requested', {
+                detail: { login },
+              }));
+            }
           }).catch(err => {
             console.warn(`[Chart] Auto-close failed:`, err);
             tradeAutoClosePendingRef.current.delete(trade.key);
+            dispatchTradeOverlayCloseState([pId], 'failed');
           });
         }
       });
@@ -2317,6 +2255,7 @@ export const TradingChart = React.memo(function TradingChart({
         };
         candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
         push(currentCandleRef.current, false);
+        repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
         return;
       }
 
@@ -2332,6 +2271,7 @@ export const TradingChart = React.memo(function TradingChart({
         };
         candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
         push(currentCandleRef.current, true);
+        repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
         return;
       }
 
@@ -2351,6 +2291,7 @@ export const TradingChart = React.memo(function TradingChart({
           };
           candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
           push(currentCandleRef.current, false);
+          repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
         }
 
         // We no longer need to reschedule boundary timer here!
@@ -2374,6 +2315,9 @@ export const TradingChart = React.memo(function TradingChart({
         ) as Candle[];
         updateChartData(candlesRef.current);
         currentCandleRef.current = candlesRef.current[candlesRef.current.length - 1] ?? currentCandleRef.current;
+        if (currentCandleRef.current) {
+          repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+        }
         // Snapshot is the authoritative full bar set — dismiss the loader if we
         // were still waiting on history (covers the cold-start path where REST
         // returned empty and the WS catches up ~tens of seconds later).
@@ -2508,7 +2452,7 @@ export const TradingChart = React.memo(function TradingChart({
         setCtxChartShift(enabled);
         chartRef.current.timeScale().applyOptions({
           rightOffset,
-          fixRightEdge: !enabled,
+          fixRightEdge: false,
         });
         if (enabled) chartRef.current.timeScale().scrollToRealTime();
       } catch (e) { /* disposed */ }
@@ -2586,6 +2530,7 @@ export const TradingChart = React.memo(function TradingChart({
         // Clear existing data and reload
         candlesRef.current = [];
         currentCandleRef.current = null;
+        resetVisibleRangeOnNextDataRef.current = true;
         if (seriesRef.current) {
           try { seriesRef.current.setData([]); } catch (e) { }
         }
@@ -2616,8 +2561,8 @@ export const TradingChart = React.memo(function TradingChart({
       activeToolRef.current = null;
       if (chartRef.current) {
         chartRef.current.applyOptions({
-          handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true },
-          handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: { time: false, price: true } },
+          handleScroll: TRADING_VIEW_HANDLE_SCROLL,
+          handleScale: TRADING_VIEW_HANDLE_SCALE,
           ...(!crosshairEnabledRef.current && { crosshair: { vertLine: { visible: false }, horzLine: { visible: false } } }),
         });
       }
@@ -2649,8 +2594,8 @@ export const TradingChart = React.memo(function TradingChart({
         drawingManager.unselectAll();
         if (chartRef.current) {
           chartRef.current.applyOptions({
-            handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true },
-            handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: { time: false, price: true } },
+            handleScroll: TRADING_VIEW_HANDLE_SCROLL,
+            handleScale: TRADING_VIEW_HANDLE_SCALE,
             // Hide the crosshair lines — arrow mode shows no crosshair (MT5 style)
             ...(!crosshairEnabledRef.current && { crosshair: { vertLine: { visible: false }, horzLine: { visible: false } } }),
           });
@@ -2668,8 +2613,8 @@ export const TradingChart = React.memo(function TradingChart({
         // Drawing mode: disable pressedMouseMove so drag doesn't pan, only click places points
         if (chartRef.current) {
           chartRef.current.applyOptions({
-            handleScroll: { mouseWheel: false, pressedMouseMove: false, horzTouchDrag: false },
-            handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: false },
+            handleScroll: DRAWING_LOCK_HANDLE_SCROLL,
+            handleScale: DRAWING_LOCK_HANDLE_SCALE,
             // Show crosshair so user can precisely place drawing points
             ...(!crosshairEnabledRef.current && { crosshair: { vertLine: { visible: true }, horzLine: { visible: true } } }),
           });
@@ -2874,18 +2819,25 @@ export const TradingChart = React.memo(function TradingChart({
   // ─── Trade Annotations on Chart (MT5-style entry/exit markers + live trails) ───
   const TRADE_BUY_COLOR = '#22c55e';
   const TRADE_SELL_COLOR = '#ef4444';
-  const overlayNodesRef = useRef<HTMLElement[]>([]);
-  const overlayNodeDataRef = useRef<OverlayNodeData[]>([]);
+  const activeOverlayNodesRef = useRef<HTMLElement[]>([]);
+  const activeOverlayNodeDataRef = useRef<OverlayNodeData[]>([]);
+  const historyOverlayNodesRef = useRef<HTMLElement[]>([]);
+  const historyOverlayNodeDataRef = useRef<OverlayNodeData[]>([]);
   const frozenEntryTimesRef = useRef<Map<number | string, number>>(new Map());
   const activeTradeSnapshotsRef = useRef<Map<string, ActiveTradeSnapshot>>(new Map());
-  const optimisticClosedTradesRef = useRef<Map<string, ClosedTradeSnapshot>>(new Map());
+  const pendingMissingActiveTradesRef = useRef<Map<string, { trade: ActiveTradeSnapshot; missingSince: number }>>(new Map());
+  const closeSuppressedTradeKeysRef = useRef<Map<string, number>>(new Map());
+  const pendingClosedTradeSnapshotsRef = useRef<Map<string, ActiveTradeSnapshot>>(new Map());
+  const optimisticClosedTradeSnapshotsRef = useRef<Map<string, ClosedTradeSnapshot>>(new Map());
   const tradeHistoryRefreshTimerRef = useRef<number | null>(null);
+  const tradeMissingGraceTimerRef = useRef<number | null>(null);
   const tradeOverlayRafRef = useRef<number | null>(null);
   const tradeAutoClosePendingRef = useRef<Set<string>>(new Set());
   const tradeLevelOverridesRef = useRef<Map<string, TradeLevelOverride>>(new Map());
   const tradeLevelOverridesHydratedRef = useRef(false);
-  const lastTradeOverlaySignatureRef = useRef('');
-  const positionLabelsRef = overlayNodesRef;
+  const lastActiveTradeOverlaySignatureRef = useRef('');
+  const lastHistoryTradeOverlaySignatureRef = useRef('');
+  const positionLabelsRef = activeOverlayNodesRef;
   const positionLabelDataRef = useRef<any[]>([]);
 
   const hydrateTradeLevelOverrides = useCallback(() => {
@@ -2940,52 +2892,64 @@ export const TradingChart = React.memo(function TradingChart({
     }
   }, []);
 
-  const clearTradeOverlay = useCallback(() => {
-    for (const node of overlayNodesRef.current) {
+  const clearTradeOverlayLayer = useCallback((layer: TradeOverlayLayer) => {
+    const nodesRef = layer === 'active' ? activeOverlayNodesRef : historyOverlayNodesRef;
+    const dataRef = layer === 'active' ? activeOverlayNodeDataRef : historyOverlayNodeDataRef;
+
+    for (const node of nodesRef.current) {
       try {
         node.remove();
       } catch {
         // Ignore detached nodes.
       }
     }
-    overlayNodesRef.current = [];
-    overlayNodeDataRef.current = [];
-    lastTradeOverlaySignatureRef.current = '';
+    nodesRef.current = [];
+    dataRef.current = [];
+    if (layer === 'active') {
+      lastActiveTradeOverlaySignatureRef.current = '';
+    } else {
+      lastHistoryTradeOverlaySignatureRef.current = '';
+    }
   }, []);
 
-  const getNearestCandleByTime = useCallback((time: number): Candle | null => {
+  const clearTradeOverlay = useCallback(() => {
+    clearTradeOverlayLayer('active');
+    clearTradeOverlayLayer('history');
+  }, [clearTradeOverlayLayer]);
+
+  const getNearestCandleByTime = useCallback((time: number, maxDistanceSeconds?: number): Candle | null => {
     const candles = candlesRef.current;
-    if (!candles || candles.length === 0) return null;
+    const nearestTime = resolveNearestTradeOverlayCandleTime(
+      time,
+      candles,
+      currentCandleRef.current,
+      maxDistanceSeconds,
+    );
+    if (nearestTime == null) return null;
 
-    let lo = 0;
-    let hi = candles.length - 1;
-    let best = candles[0];
-
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      const candidate = candles[mid];
-      if (Math.abs(candidate.time - time) < Math.abs(best.time - time)) {
-        best = candidate;
-      }
-      if (candidate.time <= time) {
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
+    if (currentCandleRef.current?.time === nearestTime) {
+      return currentCandleRef.current;
     }
 
-    return best;
+    return candles.find((candle) => candle.time === nearestTime) ?? null;
   }, []);
 
   useEffect(() => {
     activeTradeSnapshotsRef.current.clear();
-    optimisticClosedTradesRef.current.clear();
+    pendingMissingActiveTradesRef.current.clear();
+    closeSuppressedTradeKeysRef.current.clear();
+    pendingClosedTradeSnapshotsRef.current.clear();
+    optimisticClosedTradeSnapshotsRef.current.clear();
     frozenEntryTimesRef.current.clear();
     clearTradeOverlay();
 
     if (tradeHistoryRefreshTimerRef.current !== null) {
       window.clearTimeout(tradeHistoryRefreshTimerRef.current);
       tradeHistoryRefreshTimerRef.current = null;
+    }
+    if (tradeMissingGraceTimerRef.current !== null) {
+      window.clearTimeout(tradeMissingGraceTimerRef.current);
+      tradeMissingGraceTimerRef.current = null;
     }
 
     window.dispatchEvent(new Event('rtx:force-refresh-positions'));
@@ -2996,123 +2960,130 @@ export const TradingChart = React.memo(function TradingChart({
 
     const series = seriesRef.current;
     const chart = chartRef.current;
-    const nodes = overlayNodesRef.current;
-    const data = overlayNodeDataRef.current;
+    const overlayLayers = [
+      { nodes: historyOverlayNodesRef.current, data: historyOverlayNodeDataRef.current },
+      { nodes: activeOverlayNodesRef.current, data: activeOverlayNodeDataRef.current },
+    ];
     const chartWidth = containerRef.current?.offsetWidth || 0;
     const chartHeight = containerRef.current?.offsetHeight || 0;
     const priceScaleWidth = series.priceScale().width();
 
-    for (let i = 0; i < nodes.length; i++) {
-      const el = nodes[i];
-      const node = data[i];
-      if (!el || !node) continue;
+    for (const { nodes, data } of overlayLayers) {
+      for (let i = 0; i < nodes.length; i++) {
+        const el = nodes[i];
+        const node = data[i];
+        if (!el || !node) continue;
 
-      try {
-        if (node.kind === 'horizontal-line' || node.kind === 'price-badge') {
-          if (node.price == null) {
-            el.style.display = 'none';
+        try {
+          if (node.kind === 'horizontal-line' || node.kind === 'price-badge') {
+            if (node.price == null) {
+              el.style.display = 'none';
+              continue;
+            }
+
+            const y = series.priceToCoordinate(node.price);
+            if (y == null || y < -20 || y > chartHeight + 20) {
+              el.style.display = 'none';
+              continue;
+            }
+
+            el.style.display = 'block';
+            el.style.top = `${y}px`;
+
+            if (node.kind === 'horizontal-line') {
+              el.style.left = '0px';
+              el.style.right = `${priceScaleWidth}px`;
+            } else {
+              el.style.width = `${priceScaleWidth}px`;
+            }
+
             continue;
           }
 
-          const y = series.priceToCoordinate(node.price);
-          if (y == null || y < -20 || y > chartHeight + 20) {
-            el.style.display = 'none';
+          if (node.kind === 'segment') {
+            if (node.price == null || node.time == null) {
+              el.style.display = 'none';
+              continue;
+            }
+
+            const endPrice = node.resolveEndPrice?.() ?? node.endPrice ?? null;
+            const endTime = node.resolveEndTime?.() ?? node.endTime ?? null;
+            if (endPrice == null || endTime == null) {
+              el.style.display = 'none';
+              continue;
+            }
+
+            const x1 = chart.timeScale().timeToCoordinate(node.time as Time);
+            const y1 = series.priceToCoordinate(node.price);
+            const x2 = chart.timeScale().timeToCoordinate(endTime as Time);
+            const y2 = series.priceToCoordinate(endPrice);
+            if (x1 == null || y1 == null || x2 == null || y2 == null) {
+              el.style.display = 'none';
+              continue;
+            }
+
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const length = Math.sqrt((dx * dx) + (dy * dy));
+            if (!Number.isFinite(length) || length <= 0.5) {
+              el.style.display = 'none';
+              continue;
+            }
+
+            el.style.display = 'block';
+            el.style.left = `${x1}px`;
+            el.style.top = `${y1}px`;
+            el.style.width = `${length}px`;
+            el.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
+            el.style.transformOrigin = '0 0';
             continue;
           }
 
-          el.style.display = 'block';
-          el.style.top = `${y}px`;
-
-          if (node.kind === 'horizontal-line') {
-            el.style.left = '0px';
-            el.style.right = `${priceScaleWidth}px`;
-          } else {
-            el.style.width = `${priceScaleWidth}px`;
-          }
-
-          continue;
-        }
-
-        if (node.kind === 'segment') {
           if (node.price == null || node.time == null) {
             el.style.display = 'none';
             continue;
           }
 
-          const endPrice = node.resolveEndPrice?.() ?? node.endPrice ?? null;
-          const endTime = node.resolveEndTime?.() ?? node.endTime ?? null;
-          if (endPrice == null || endTime == null) {
-            el.style.display = 'none';
-            continue;
-          }
-
-          const x1 = chart.timeScale().timeToCoordinate(node.time as Time);
-          const y1 = series.priceToCoordinate(node.price);
-          const x2 = chart.timeScale().timeToCoordinate(endTime as Time);
-          const y2 = series.priceToCoordinate(endPrice);
-          if (x1 == null || y1 == null || x2 == null || y2 == null) {
-            el.style.display = 'none';
-            continue;
-          }
-
-          const dx = x2 - x1;
-          const dy = y2 - y1;
-          const length = Math.sqrt((dx * dx) + (dy * dy));
-          if (!Number.isFinite(length) || length <= 0.5) {
+          const x = chart.timeScale().timeToCoordinate(node.time as Time);
+          const y = series.priceToCoordinate(node.price);
+          if (x == null || y == null || x < -24 || x > chartWidth + 24 || y < -24 || y > chartHeight + 24) {
             el.style.display = 'none';
             continue;
           }
 
           el.style.display = 'block';
-          el.style.left = `${x1}px`;
-          el.style.top = `${y1}px`;
-          el.style.width = `${length}px`;
-          el.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
-          el.style.transformOrigin = '0 0';
-          continue;
-        }
 
-        if (node.price == null || node.time == null) {
+          if (node.kind === 'marker') {
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            el.style.transform = node.markerSide === 'BUY'
+              ? 'translate(-50%, 0)'
+              : 'translate(-50%, -100%)';
+            continue;
+          }
+
+          if (node.kind === 'label') {
+            el.style.left = `${x + (node.labelOffsetX ?? 8)}px`;
+            el.style.top = `${y + (node.labelOffsetY ?? -18)}px`;
+          }
+        } catch {
           el.style.display = 'none';
-          continue;
         }
-
-        const x = chart.timeScale().timeToCoordinate(node.time as Time);
-        const y = series.priceToCoordinate(node.price);
-        if (x == null || y == null || x < -24 || x > chartWidth + 24 || y < -24 || y > chartHeight + 24) {
-          el.style.display = 'none';
-          continue;
-        }
-
-        el.style.display = 'block';
-
-        if (node.kind === 'marker') {
-          el.style.left = `${x}px`;
-          el.style.top = `${y}px`;
-          el.style.transform = node.markerSide === 'BUY'
-            ? 'translate(-50%, 0)'
-            : 'translate(-50%, -100%)';
-          continue;
-        }
-
-        if (node.kind === 'label') {
-          el.style.left = `${x + (node.labelOffsetX ?? 8)}px`;
-          el.style.top = `${y + (node.labelOffsetY ?? -18)}px`;
-        }
-      } catch {
-        el.style.display = 'none';
       }
     }
 
     if (livePriceRef.current !== null && livePriceLineRef.current && livePriceBadgeRef.current) {
       const y = series.priceToCoordinate(livePriceRef.current);
       if (y !== null && y !== undefined && y > 0) {
+        const badgeColor = getLivePriceOverlayColor(currentCandleRef.current);
         livePriceLineRef.current.style.display = 'block';
         livePriceLineRef.current.style.top = `${y}px`;
         livePriceLineRef.current.style.right = `${priceScaleWidth}px`;
+        livePriceLineRef.current.style.borderTopColor = badgeColor;
         livePriceBadgeRef.current.style.display = 'block';
         livePriceBadgeRef.current.style.top = `${y}px`;
         livePriceBadgeRef.current.style.width = `${priceScaleWidth}px`;
+        livePriceBadgeRef.current.style.background = badgeColor;
       }
     }
   }, []);
@@ -3201,7 +3172,7 @@ export const TradingChart = React.memo(function TradingChart({
       let bestDistance = Number.POSITIVE_INFINITY;
 
       for (const candidate of candidates) {
-        const nearest = getNearestCandleByTime(candidate);
+        const nearest = getNearestCandleByTime(candidate, timeframeSeconds / 2);
         if (!nearest) continue;
         const distance = Math.abs(nearest.time - candidate);
         if (distance < bestDistance) {
@@ -3211,12 +3182,6 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       return bestTime ?? alignTimeframeBoundarySeconds(normalizedTimestamp, activeTf as AggTimeframe, timeframeSeconds);
-    };
-
-    const formatTradeTime = (chartTimeSeconds: number) => {
-      const date = new Date((chartTimeSeconds + brokerTimeOffsetSec) * 1000);
-      if (Number.isNaN(date.getTime())) return '--:--';
-      return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
     };
 
     const getEntryColor = (side: TradeSide) => side === 'BUY' ? TRADE_BUY_COLOR : TRADE_SELL_COLOR;
@@ -3233,11 +3198,34 @@ export const TradingChart = React.memo(function TradingChart({
       if (quote > 0 && isLivePriceSafeForCandles(quote)) return quote;
       return fallbackPrice > 0 ? fallbackPrice : null;
     };
+    const buildImmediateClosedTrade = (trade: ActiveTradeSnapshot): ClosedTradeSnapshot | null => {
+      const exitPrice = getLiveTrailPrice(trade.side, trade.currentPrice || trade.entryPrice)
+        ?? trade.currentPrice
+        ?? trade.entryPrice;
+      const exitTime = getLiveTrailTime() ?? trade.currentTime ?? trade.entryTime;
+      return buildOptimisticClosedTradeSnapshot({
+        key: trade.key,
+        symbol: trade.symbol,
+        side: trade.side,
+        volume: trade.volume,
+        entryPrice: trade.entryPrice,
+        entryTime: trade.entryTime,
+        exitPrice,
+        exitTime,
+      });
+    };
     const deriveClosedTradeColor = (trade: ClosedTradeSnapshot) => {
       const pnl = trade.profit ?? (
         trade.side === 'BUY' ? trade.exitPrice - trade.entryPrice : trade.entryPrice - trade.exitPrice
       );
       return pnl >= 0 ? TRADE_BUY_COLOR : TRADE_SELL_COLOR;
+    };
+    const requestTradeHistoryRefresh = () => {
+      const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+      if (!Number.isFinite(login) || login <= 0) return;
+      window.dispatchEvent(new CustomEvent('rtx:refresh-trade-history-requested', {
+        detail: { login },
+      }));
     };
     const scheduleHistoryRefresh = () => {
       if (tradeHistoryRefreshTimerRef.current !== null) {
@@ -3245,7 +3233,7 @@ export const TradingChart = React.memo(function TradingChart({
       }
       tradeHistoryRefreshTimerRef.current = window.setTimeout(() => {
         tradeHistoryRefreshTimerRef.current = null;
-        window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+        requestTradeHistoryRefresh();
       }, 350);
     };
 
@@ -3285,46 +3273,52 @@ export const TradingChart = React.memo(function TradingChart({
 
     const formatSignaturePrice = (value?: number) => (Number(value) || 0).toFixed(digits);
 
-    const appendOverlayNode = (element: HTMLElement, node: OverlayNodeData) => {
+    const appendOverlayNode = (element: HTMLElement, node: OverlayNodeData, layer: TradeOverlayLayer) => {
+      const nodesRef = layer === 'active' ? activeOverlayNodesRef : historyOverlayNodesRef;
+      const dataRef = layer === 'active' ? activeOverlayNodeDataRef : historyOverlayNodeDataRef;
       overlayRef.current?.appendChild(element);
-      overlayNodesRef.current.push(element);
-      overlayNodeDataRef.current.push(node);
+      nodesRef.current.push(element);
+      dataRef.current.push(node);
     };
 
     const createArrowSvg = (side: TradeSide, color: string) => side === 'BUY'
       ? `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 1L11 6H8V15H4V6H1L6 1Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`
       : `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 15L1 10H4V1H8V10H11L6 15Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`;
 
-    const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string) => {
+    const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer) => {
       const marker = document.createElement('div');
       marker.title = title;
       marker.innerHTML = createArrowSvg(side, color);
       marker.style.cssText = 'position:absolute;z-index:14;pointer-events:none;';
-      appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side });
+      appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side }, layer);
     };
 
-    const createTradeLabel = (side: TradeSide, price: number, time: number, text: string, borderColor: string) => {
+    const formatHistoryLabelTime = (time: number): string => {
+      const date = new Date(time * 1000);
+      if (Number.isNaN(date.getTime())) return '';
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    };
+
+    const createTradeHistoryLabel = (side: TradeSide, price: number, time: number, color: string, layer: TradeOverlayLayer) => {
       const label = document.createElement('div');
-      label.textContent = text;
-      const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
-      const bg = isLight ? 'rgba(255, 255, 255, 0.92)' : 'rgba(10,15,24,0.92)';
-      const textCol = isLight ? '#101828' : '#e7edf5';
-      label.style.cssText = `position:absolute;padding:1px 5px;background:${bg};border:1px solid ${borderColor}66;border-radius:2px;color:${textCol};font-size:10px;line-height:1.25;font-family:Consolas,'Courier New',monospace;white-space:nowrap;z-index:15;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,0.35);`;
-      appendOverlayNode(label, { kind: 'label', price, time, labelOffsetX: 10, labelOffsetY: side === 'BUY' ? 2 : -18 });
+      const timeLabel = formatHistoryLabelTime(time);
+      label.textContent = `${side} ${price.toFixed(digits)}${timeLabel ? ` | ${timeLabel}` : ''}`;
+      label.style.cssText = `position:absolute;padding:2px 5px;background:rgba(9,14,22,0.94);border:1px solid ${color}aa;color:#e5edf4;font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;white-space:nowrap;z-index:15;pointer-events:none;border-radius:2px;line-height:13px;`;
+      appendOverlayNode(label, { kind: 'label', price, time, labelOffsetX: 10, labelOffsetY: -18 }, layer);
     };
 
-    const createTradeSegment = (price: number, time: number, color: string, lineStyle: 'solid' | 'dashed', endPrice?: number, endTime?: number, resolveEndPrice?: () => number | null, resolveEndTime?: () => number | null) => {
+    const createTradeSegment = (price: number, time: number, color: string, lineStyle: 'solid' | 'dashed', layer: TradeOverlayLayer, endPrice?: number, endTime?: number, resolveEndPrice?: () => number | null, resolveEndTime?: () => number | null) => {
       const line = document.createElement('div');
       line.style.cssText = `position:absolute;height:0;border-top:${lineStyle === 'solid' ? '1.5px solid' : '1px dashed'} ${color};z-index:${lineStyle === 'solid' ? 11 : 9};pointer-events:none;`;
-      appendOverlayNode(line, { kind: 'segment', price, time, endPrice, endTime, resolveEndPrice, resolveEndTime });
+      appendOverlayNode(line, { kind: 'segment', price, time, endPrice, endTime, resolveEndPrice, resolveEndTime }, layer);
     };
 
     const createPriceLevel = (labelText: string, price: number, color: string, options: PriceLevelOptions = {}) => {
       if (!(price > 0)) return;
 
       const line = document.createElement('div');
-      line.style.cssText = `position:absolute;height:0;border-top:1px dashed ${color}66;z-index:5;pointer-events:none;`;
-      appendOverlayNode(line, { kind: 'horizontal-line', price });
+      line.style.cssText = `position:absolute;height:0;border-top:1px dashed ${color}cc;z-index:12;pointer-events:none;`;
+      appendOverlayNode(line, { kind: 'horizontal-line', price }, 'active');
 
       const badge = document.createElement('div');
       badge.textContent = labelText;
@@ -3342,12 +3336,25 @@ export const TradingChart = React.memo(function TradingChart({
       const offsetDirection = offsetIndex % 2 === 0 ? 1 : -1;
       const offsetX = offsetIndex === 0 ? 0 : offsetDirection * offsetStep;
       const canDrag = Boolean(options.tradeKey && options.role);
-      badge.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${bg};border:1px solid ${borderCol};color:${color};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;white-space:nowrap;z-index:6;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'ns-resize' : 'default'};border-radius:2px;transform:translate(calc(-50% + ${offsetX}px), -50%);min-width:52px;text-align:center;`;
-      appendOverlayNode(badge, { kind: 'price-badge', price });
+      badge.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${bg};border:1px solid ${borderCol};color:${color};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;white-space:nowrap;z-index:16;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'ns-resize' : 'default'};border-radius:2px;transform:translate(calc(-50% + ${offsetX}px), -50%);min-width:52px;text-align:center;`;
+      appendOverlayNode(badge, { kind: 'price-badge', price }, 'active');
     };
 
-    const renderTradeOverlay = (force = false) => {
+    const pruneCloseSuppressedTradeKeys = (now = Date.now()) => {
+      closeSuppressedTradeKeysRef.current.forEach((expiresAt, key) => {
+        if (expiresAt <= now) {
+          closeSuppressedTradeKeysRef.current.delete(key);
+        }
+      });
+    };
+
+    const renderTradeOverlay = (options: boolean | { forceActive?: boolean; forceHistory?: boolean } = false) => {
       if (isDisposedRef.current || !seriesRef.current || !overlayRef.current) return;
+      const forceActive = typeof options === 'boolean' ? options : Boolean(options.forceActive);
+      const forceHistory = typeof options === 'boolean' ? options : Boolean(options.forceHistory);
+      const now = Date.now();
+      pruneCloseSuppressedTradeKeys(now);
+      const closeSuppressedTradeKeys = new Set(closeSuppressedTradeKeysRef.current.keys());
 
       const chartProperties = useChartSettingsStore.getState().symbolProperties[symbol]
         || useChartSettingsStore.getState().globalProperties;
@@ -3357,21 +3364,90 @@ export const TradingChart = React.memo(function TradingChart({
       const appPositions = Array.isArray(appState.positions) ? appState.positions : [];
       const appTrades = Array.isArray(appState.trades) ? appState.trades : [];
       const liveTrailTime = getLiveTrailTime();
+      const isMatchingTradeSymbol = (rawSymbol: unknown) => {
+        const positionSymbol = String(rawSymbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        if (!positionSymbol) return false;
+        return (
+          positionSymbol === normalizedChartSymbol
+          || positionSymbol.startsWith(normalizedChartSymbol)
+          || normalizedChartSymbol.startsWith(positionSymbol)
+        );
+      };
+      const getPositionId = (position: any): number | string | null => {
+        const rawId = position?.id ?? position?.ticket ?? position?.positionId ?? position?.position_id;
+        const id = String(rawId ?? '').trim();
+        return id ? id : null;
+      };
+      const getPositionSymbol = (position: any): string =>
+        String(position?.symbol ?? position?.instrument ?? position?.name ?? '');
+      const getPositionVolume = (position: any): number => Number(
+        position?.volume
+        ?? position?.quantity
+        ?? position?.volume_lots
+        ?? position?.lots
+        ?? 0,
+      ) || 0;
+      const getPositionSide = (position: any): TradeSide => {
+        const side = String(position?.side ?? position?.action ?? position?.type ?? '').trim().toUpperCase();
+        return side.includes('SELL') || side === '1' ? 'SELL' : 'BUY';
+      };
+      const getPositionOpenPrice = (position: any): number => pickPositiveNumber(
+        position?.chartEntryPrice,
+        position?.openPrice,
+        position?.open_price,
+        position?.price_open,
+        position?.priceOpen,
+      );
+      const getPositionCurrentPrice = (position: any): number => pickPositiveNumber(
+        position?.currentPrice,
+        position?.current_price,
+        position?.price_current,
+        position?.priceCurrent,
+        position?.price,
+      );
+      const getPositionOpenTime = (position: any): number | null => normalizeUnixSeconds(
+        position?.chartEntryTime
+        ?? position?.openTime
+        ?? position?.time_create
+        ?? position?.time_open
+        ?? position?.time_ms
+        ?? position?.time,
+      );
+      const rawActiveTradeKeys = new Set(
+        appPositions
+          .filter((position: any) => getPositionId(position) != null && getPositionVolume(position) > 0 && isMatchingTradeSymbol(getPositionSymbol(position)))
+          .map((position: any) => `trade:${String(getPositionId(position))}`),
+      );
+      const activeTradeKeys = filterActiveTradeKeysForHistory(rawActiveTradeKeys, closeSuppressedTradeKeys);
+      const mapHistoryTimestamp = (value: unknown): number =>
+        mapTradeTimestampToChartTime(value) ?? normalizeUnixSeconds(value) ?? 0;
+      const closedHistorySnapshots = buildClosedTradeHistorySnapshots({
+        rows: appTrades as TradeOverlayHistoryRow[],
+        symbol: normalizedChartSymbol,
+        mapTimestamp: mapHistoryTimestamp,
+        activeTradeKeys,
+      });
+      const realClosedTradeKeys = new Set(closedHistorySnapshots.map((trade) => trade.key));
+      realClosedTradeKeys.forEach((key) => {
+        optimisticClosedTradeSnapshotsRef.current.delete(key);
+        pendingClosedTradeSnapshotsRef.current.delete(key);
+      });
 
       const normalizedAppPositions = appPositions.map((position: any) => ({
-        id: position.id,
-        symbol: position.symbol,
-        side: position.side === 'SELL' ? 'SELL' as const : 'BUY' as const,
-        volume: Number(position.volume) || 0,
-        openPrice: Number(position.openPrice) || 0,
-        currentPrice: Number(position.currentPrice) || 0,
-        rawOpenTime: normalizeUnixSeconds(position.openTime),
-        sl: pickPositiveNumber(position.sl, position.price_sl),
-        tp: pickPositiveNumber(position.tp, position.price_tp),
+        id: getPositionId(position),
+        symbol: getPositionSymbol(position),
+        side: getPositionSide(position),
+        volume: getPositionVolume(position),
+        openPrice: getPositionOpenPrice(position),
+        currentPrice: getPositionCurrentPrice(position),
+        rawOpenTime: getPositionOpenTime(position),
+        sl: pickPositiveNumber(position.sl, position.price_sl, position.stopLoss, position.stop_loss),
+        tp: pickPositiveNumber(position.tp, position.price_tp, position.takeProfit, position.take_profit),
       }));
 
       const matchingPositions = normalizedAppPositions.filter((position) => {
         const positionSymbol = String(position.symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        if (!position.id || !positionSymbol) return false;
         return Number(position.volume) > 0 && (
           positionSymbol === normalizedChartSymbol
           || positionSymbol.startsWith(normalizedChartSymbol)
@@ -3383,13 +3459,23 @@ export const TradingChart = React.memo(function TradingChart({
 
       for (const position of matchingPositions) {
         const key = `trade:${String(position.id)}`;
-        const storedEntryTime = frozenEntryTimesRef.current.get(key);
-        const rawEntryTime = storedEntryTime ?? position.rawOpenTime ?? normalizeUnixSeconds(Date.now());
-        if (storedEntryTime == null && rawEntryTime != null) {
-          frozenEntryTimesRef.current.set(key, rawEntryTime);
+        if (closeSuppressedTradeKeys.has(key)) {
+          pendingMissingActiveTradesRef.current.delete(key);
+          continue;
         }
 
-        const entryTime = mapTradeTimestampToChartTime(rawEntryTime) ?? liveTrailTime ?? rawEntryTime ?? 0;
+        const storedEntryTime = frozenEntryTimesRef.current.get(key);
+        const rawEntryTime = position.rawOpenTime ?? normalizeUnixSeconds(Date.now());
+        const entryTime = resolveStableTradeEntryTime(
+          storedEntryTime,
+          rawEntryTime,
+          mapTradeTimestampToChartTime,
+          liveTrailTime,
+        );
+        if (storedEntryTime == null && entryTime > 0) {
+          frozenEntryTimesRef.current.set(key, entryTime);
+        }
+
         const entryPrice = position.openPrice > 0 ? position.openPrice : position.currentPrice;
         if (!(entryTime > 0) || !(entryPrice > 0)) continue;
 
@@ -3405,65 +3491,90 @@ export const TradingChart = React.memo(function TradingChart({
           sl: position.sl,
           tp: position.tp,
         });
-        optimisticClosedTradesRef.current.delete(key);
+        pendingMissingActiveTradesRef.current.delete(key);
       }
+
+      const renderActiveSnapshots = new Map(nextActiveSnapshots);
+      let nextMissingGraceDelayMs: number | null = null;
 
       activeTradeSnapshotsRef.current.forEach((previousTrade, key) => {
         if (previousTrade.symbol !== normalizedChartSymbol || nextActiveSnapshots.has(key)) return;
-        if (!optimisticClosedTradesRef.current.has(key)) {
-          optimisticClosedTradesRef.current.set(key, {
-            key,
-            symbol: previousTrade.symbol,
-            side: previousTrade.side,
-            volume: previousTrade.volume,
-            entryPrice: previousTrade.entryPrice,
-            entryTime: previousTrade.entryTime,
-            exitPrice: getLiveTrailPrice(previousTrade.side, previousTrade.currentPrice || previousTrade.entryPrice) ?? previousTrade.entryPrice,
-            exitTime: getLiveTrailTime() ?? previousTrade.currentTime ?? previousTrade.entryTime,
-            source: 'optimistic',
-          });
+        if (!shouldKeepMissingActiveTradeOverlay({
+          tradeKey: key,
+          closeSuppressedTradeKeys,
+          closedHistoryTradeKeys: realClosedTradeKeys,
+        })) {
+          pendingMissingActiveTradesRef.current.delete(key);
+          return;
+        }
+
+        if (!pendingMissingActiveTradesRef.current.has(key)) {
+          pendingMissingActiveTradesRef.current.set(key, { trade: previousTrade, missingSince: now });
           scheduleHistoryRefresh();
         }
       });
 
+      pendingMissingActiveTradesRef.current.forEach((pending, key) => {
+        if (
+          pending.trade.symbol !== normalizedChartSymbol
+          || nextActiveSnapshots.has(key)
+          || !shouldKeepMissingActiveTradeOverlay({
+            tradeKey: key,
+            closeSuppressedTradeKeys,
+            closedHistoryTradeKeys: realClosedTradeKeys,
+          })
+        ) {
+          pendingMissingActiveTradesRef.current.delete(key);
+          return;
+        }
+
+        const elapsedMs = now - pending.missingSince;
+        if (elapsedMs < TRADE_MISSING_POSITION_GRACE_MS) {
+          renderActiveSnapshots.set(key, pending.trade);
+          const remainingMs = TRADE_MISSING_POSITION_GRACE_MS - elapsedMs;
+          nextMissingGraceDelayMs = nextMissingGraceDelayMs == null
+            ? remainingMs
+            : Math.min(nextMissingGraceDelayMs, remainingMs);
+          return;
+        }
+
+        scheduleHistoryRefresh();
+        pendingMissingActiveTradesRef.current.delete(key);
+      });
+
       activeTradeSnapshotsRef.current = nextActiveSnapshots;
+
+      if (nextMissingGraceDelayMs != null) {
+        if (tradeMissingGraceTimerRef.current !== null) {
+          window.clearTimeout(tradeMissingGraceTimerRef.current);
+        }
+        tradeMissingGraceTimerRef.current = window.setTimeout(() => {
+          tradeMissingGraceTimerRef.current = null;
+          renderTradeOverlay({ forceActive: true });
+        }, Math.max(0, nextMissingGraceDelayMs + 25));
+      } else if (tradeMissingGraceTimerRef.current !== null) {
+        window.clearTimeout(tradeMissingGraceTimerRef.current);
+        tradeMissingGraceTimerRef.current = null;
+      }
 
       const closedTrades = new Map<string, ClosedTradeSnapshot>();
       const registerClosedTrade = (trade: ClosedTradeSnapshot) => {
         if (trade.entryPrice > 0 && trade.exitPrice > 0 && trade.entryTime > 0 && trade.exitTime > 0) {
           closedTrades.set(trade.key, trade);
-          optimisticClosedTradesRef.current.delete(trade.key);
         }
       };
 
       if (showTradeHistory) {
-        appTrades.forEach((trade: any) => {
-          const tradeSymbol = String(trade.symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-          if (tradeSymbol !== normalizedChartSymbol || trade.closePrice == null || trade.closeTime == null) return;
-
-          registerClosedTrade({
-            key: `trade:${String(trade.id)}`,
-            symbol: normalizedChartSymbol,
-            side: trade.side === 'SELL' ? 'SELL' : 'BUY',
-            volume: Number(trade.volume) || 0,
-            entryPrice: Number(trade.openPrice) || 0,
-            entryTime: mapTradeTimestampToChartTime(trade.openTime) ?? (normalizeUnixSeconds(trade.openTime) || 0),
-            exitPrice: Number(trade.closePrice) || 0,
-            exitTime: mapTradeTimestampToChartTime(trade.closeTime) ?? (normalizeUnixSeconds(trade.closeTime) || 0),
-            profit: Number(trade.profit ?? 0),
-            source: 'app-history',
-          });
-        });
-
-        optimisticClosedTradesRef.current.forEach((trade) => {
-          if (trade.symbol === normalizedChartSymbol && !closedTrades.has(trade.key)) {
-            closedTrades.set(trade.key, trade);
+        closedHistorySnapshots.forEach(registerClosedTrade);
+        optimisticClosedTradeSnapshotsRef.current.forEach((trade, key) => {
+          if (trade.symbol === normalizedChartSymbol && !closedTrades.has(key)) {
+            registerClosedTrade(trade);
           }
         });
       }
 
       const activeSignature = showTradeLevels
-        ? Array.from(nextActiveSnapshots.values())
+        ? Array.from(renderActiveSnapshots.values())
           .sort((a, b) => a.key.localeCompare(b.key))
           .map((trade) => {
             const levels = resolveTradeLevels(trade);
@@ -3492,76 +3603,95 @@ export const TradingChart = React.memo(function TradingChart({
             trade.source,
           ].join(':')).join('|')
         : '';
-      const nextSignature = [
+      const nextActiveSignature = [
         normalizedChartSymbol,
         timeframe,
         showTradeLevels ? 'levels:on' : 'levels:off',
-        showTradeHistory ? 'history:on' : 'history:off',
         activeSignature,
+      ].join('\n');
+      const nextHistorySignature = [
+        normalizedChartSymbol,
+        timeframe,
+        showTradeHistory ? 'history:on' : 'history:off',
         closedSignature,
       ].join('\n');
 
-      if (!force && nextSignature === lastTradeOverlaySignatureRef.current) {
+      const { activeChanged, historyChanged } = getTradeOverlayRedrawDecision({
+        lastActiveSignature: lastActiveTradeOverlaySignatureRef.current,
+        nextActiveSignature,
+        lastHistorySignature: lastHistoryTradeOverlaySignatureRef.current,
+        nextHistorySignature,
+        forceActive,
+        forceHistory,
+      });
+      if (!activeChanged && !historyChanged) {
         queueTradeOverlayRelayout();
         return;
       }
 
-      clearTradeOverlay();
-      lastTradeOverlaySignatureRef.current = nextSignature;
+      if (activeChanged) {
+        clearTradeOverlayLayer('active');
+        lastActiveTradeOverlaySignatureRef.current = nextActiveSignature;
 
-      if (showTradeLevels) {
-        const nextLevelOffset = createCollisionOffsetFactory();
-        nextActiveSnapshots.forEach((trade) => {
-          const entryColor = getEntryColor(trade.side);
-          const ticketLabel = getTradeTicketLabel(trade.key);
-          const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${trade.entryPrice.toFixed(digits)}`.trim();
-          createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, markerTitle, entryColor);
+        if (showTradeLevels) {
+          const nextLevelOffset = createCollisionOffsetFactory();
+          renderActiveSnapshots.forEach((trade) => {
+            const entryColor = getEntryColor(trade.side);
+            const ticketLabel = getTradeTicketLabel(trade.key);
+            const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${trade.entryPrice.toFixed(digits)}`.trim();
+            createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, markerTitle, entryColor, 'active');
 
-          createPriceLevel(
-            `${trade.side} ${trade.volume} ${ticketLabel}`.trim(),
-            trade.entryPrice,
-            entryColor,
-            {
-              tradeKey: trade.key,
-              role: 'ENTRY',
-              badgeOffsetIndex: nextLevelOffset('ENTRY', trade.entryPrice),
-              title: `${markerTitle}. Drag above/below to create TP or SL.`,
-            },
-          );
+            createPriceLevel(
+              `${trade.side} ${trade.volume} ${ticketLabel}`.trim(),
+              trade.entryPrice,
+              entryColor,
+              {
+                tradeKey: trade.key,
+                role: 'ENTRY',
+                badgeOffsetIndex: nextLevelOffset('ENTRY', trade.entryPrice),
+                title: `${markerTitle}. Drag above/below to create TP or SL.`,
+              },
+            );
 
-          const levels = resolveTradeLevels(trade);
-          if (levels.sl && levels.sl > 0) {
-            createPriceLevel(`SL ${ticketLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
-              tradeKey: trade.key,
-              role: 'SL',
-              badgeOffsetIndex: nextLevelOffset('SL', levels.sl),
-              title: `Stop Loss for ${ticketLabel || trade.key}`,
-            });
-          }
-          if (levels.tp && levels.tp > 0) {
-            createPriceLevel(`TP ${ticketLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
-              tradeKey: trade.key,
-              role: 'TP',
-              badgeOffsetIndex: nextLevelOffset('TP', levels.tp),
-              title: `Take Profit for ${ticketLabel || trade.key}`,
-            });
-          }
-        });
+            const levels = resolveTradeLevels(trade);
+            if (levels.sl && levels.sl > 0) {
+              createPriceLevel(`SL ${ticketLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
+                tradeKey: trade.key,
+                role: 'SL',
+                badgeOffsetIndex: nextLevelOffset('SL', levels.sl),
+                title: `Stop Loss for ${ticketLabel || trade.key}`,
+              });
+            }
+            if (levels.tp && levels.tp > 0) {
+              createPriceLevel(`TP ${ticketLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
+                tradeKey: trade.key,
+                role: 'TP',
+                badgeOffsetIndex: nextLevelOffset('TP', levels.tp),
+                title: `Take Profit for ${ticketLabel || trade.key}`,
+              });
+            }
+          });
+        }
       }
 
-      if (showTradeHistory) {
-        closedTrades.forEach((trade) => {
-          const entryColor = getEntryColor(trade.side);
-          const exitSide: TradeSide = trade.side === 'BUY' ? 'SELL' : 'BUY';
-          createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', trade.exitPrice, trade.exitTime);
-          createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor);
-          if (trade.source === 'optimistic') {
-            createTradeLabel(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.entryPrice.toFixed(digits)} | ${formatTradeTime(trade.entryTime)}`, entryColor);
-          }
-          createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} @ ${trade.exitPrice.toFixed(digits)}`, getExitColor(trade.side));
-        });
+      if (historyChanged) {
+        clearTradeOverlayLayer('history');
+        lastHistoryTradeOverlaySignatureRef.current = nextHistorySignature;
+
+        if (showTradeHistory) {
+          closedTrades.forEach((trade) => {
+            const entryColor = getEntryColor(trade.side);
+            const exitSide: TradeSide = trade.side === 'BUY' ? 'SELL' : 'BUY';
+            createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', 'history', trade.exitPrice, trade.exitTime);
+            createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor, 'history');
+            createTradeHistoryLabel(trade.side, trade.entryPrice, trade.entryTime, entryColor, 'history');
+            createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} @ ${trade.exitPrice.toFixed(digits)}`, getExitColor(trade.side), 'history');
+            createTradeHistoryLabel(exitSide, trade.exitPrice, trade.exitTime, getExitColor(trade.side), 'history');
+          });
+        }
       }
 
+      updateLabelPositions();
       queueTradeOverlayRelayout();
     };
 
@@ -3582,7 +3712,10 @@ export const TradingChart = React.memo(function TradingChart({
         return;
       }
 
-      if (currentTick !== previousTick && activeTradeSnapshotsRef.current.size > 0) {
+      if (
+        currentTick !== previousTick
+        && (activeTradeSnapshotsRef.current.size > 0 || pendingMissingActiveTradesRef.current.size > 0)
+      ) {
         queueTradeOverlayRelayout();
       }
     });
@@ -3605,9 +3738,51 @@ export const TradingChart = React.memo(function TradingChart({
     };
     const handleRefreshTradeOverlay = () => renderTradeOverlay();
     const handleFlushTradeOverlay = () => renderTradeOverlay(true);
+    const handleTradeOverlayCloseState = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const status = getTradeOverlayCloseState(detail);
+      const tradeKeys = getTradeOverlayCloseTicketKeys(detail);
+      if (!status || tradeKeys.length === 0) return;
+
+      if (status === 'failed') {
+        tradeKeys.forEach((key) => {
+          closeSuppressedTradeKeysRef.current.delete(key);
+          pendingClosedTradeSnapshotsRef.current.delete(key);
+          optimisticClosedTradeSnapshotsRef.current.delete(key);
+          tradeAutoClosePendingRef.current.delete(key);
+        });
+      } else {
+        const expiresAt = Date.now() + TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS;
+        tradeKeys.forEach((key) => {
+          const capturedTrade = activeTradeSnapshotsRef.current.get(key)
+            ?? pendingMissingActiveTradesRef.current.get(key)?.trade
+            ?? pendingClosedTradeSnapshotsRef.current.get(key);
+          if (capturedTrade) {
+            pendingClosedTradeSnapshotsRef.current.set(key, capturedTrade);
+          }
+          if (status === 'confirmed') {
+            const closedTrade = capturedTrade ? buildImmediateClosedTrade(capturedTrade) : null;
+            if (closedTrade) {
+              optimisticClosedTradeSnapshotsRef.current.set(key, closedTrade);
+              pendingClosedTradeSnapshotsRef.current.delete(key);
+            }
+          }
+          closeSuppressedTradeKeysRef.current.set(key, expiresAt);
+          activeTradeSnapshotsRef.current.delete(key);
+          pendingMissingActiveTradesRef.current.delete(key);
+          frozenEntryTimesRef.current.delete(key);
+          tradeAutoClosePendingRef.current.delete(key);
+        });
+        scheduleHistoryRefresh();
+      }
+
+      clearTradeOverlayLayer('active');
+      renderTradeOverlay({ forceActive: true, forceHistory: status !== 'failed' });
+    };
     window.addEventListener('rtx:force-refresh-positions', handleForceRefresh);
     window.addEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
     window.addEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
+    window.addEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
 
     return () => {
       unsubscribeAppStore();
@@ -3615,10 +3790,15 @@ export const TradingChart = React.memo(function TradingChart({
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
       window.removeEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
       window.removeEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
+      window.removeEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
 
       if (tradeHistoryRefreshTimerRef.current !== null) {
         window.clearTimeout(tradeHistoryRefreshTimerRef.current);
         tradeHistoryRefreshTimerRef.current = null;
+      }
+      if (tradeMissingGraceTimerRef.current !== null) {
+        window.clearTimeout(tradeMissingGraceTimerRef.current);
+        tradeMissingGraceTimerRef.current = null;
       }
       if (tradeOverlayRafRef.current !== null) {
         cancelAnimationFrame(tradeOverlayRafRef.current);
@@ -3630,7 +3810,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       clearTradeOverlay();
     };
-  }, [brokerTimeOffsetSec, clearTradeOverlay, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, symbol, timeframe, updateLabelPositions]);
+  }, [brokerTimeOffsetSec, clearTradeOverlay, clearTradeOverlayLayer, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, symbol, timeframe, updateLabelPositions]);
 
   useEffect(() => {
     if (candlesLoadedRev <= 0) return;
@@ -4303,8 +4483,8 @@ export const TradingChart = React.memo(function TradingChart({
         e.stopPropagation();
         if (chartRef.current) {
           chartRef.current.applyOptions({
-            handleScroll: { pressedMouseMove: false, horzTouchDrag: false },
-            handleScale: { axisPressedMouseMove: { time: false, price: false } }
+            handleScroll: DRAWING_LOCK_HANDLE_SCROLL,
+            handleScale: DRAWING_LOCK_HANDLE_SCALE,
           });
         }
 
@@ -4414,8 +4594,8 @@ export const TradingChart = React.memo(function TradingChart({
 
       if (chartRef.current) {
         chartRef.current.applyOptions({
-          handleScroll: { pressedMouseMove: true, horzTouchDrag: true },
-          handleScale: { axisPressedMouseMove: { time: false, price: true } }
+          handleScroll: TRADING_VIEW_HANDLE_SCROLL,
+          handleScale: TRADING_VIEW_HANDLE_SCALE,
         });
       }
     };
@@ -4620,17 +4800,15 @@ export const TradingChart = React.memo(function TradingChart({
       {/* Chart Container - must have explicit dimensions for lightweight-charts */}
       <div ref={containerRef} className="absolute inset-0 w-full h-full" />
 
-      {/* Static background grid overlay (MT5-style: does not move with pan/scroll) */}
       {chartSettings.showGrid && (
         <div
+          aria-hidden="true"
           className="absolute inset-0"
           style={{
             pointerEvents: 'none',
             zIndex: 1,
-            backgroundImage:
-              `linear-gradient(to right, ${chartColors.grid} 1px, transparent 1px), ` +
-              `linear-gradient(to bottom, ${chartColors.grid} 1px, transparent 1px)`,
-            backgroundSize: '80px 50px',
+            backgroundImage: `linear-gradient(to right, ${chartTheme.grid} 1px, transparent 1px), linear-gradient(to bottom, ${chartTheme.grid} 1px, transparent 1px)`,
+            backgroundSize: TRADING_VIEW_GRID_OVERLAY_SIZE,
           }}
         />
       )}
@@ -4687,7 +4865,7 @@ export const TradingChart = React.memo(function TradingChart({
         willChange: 'transform',
       }} />
 
-      {/* ── Live current-price line + badge (MT5 last-price indicator) ── */}
+      {/* ── Live current-price line + badge (TradingView-style last-price indicator) ── */}
       <div
         ref={livePriceLineRef}
         style={{
@@ -4696,7 +4874,7 @@ export const TradingChart = React.memo(function TradingChart({
           left: 0,
           right: 52,
           height: 0,
-          borderTop: '1px solid #5A5A66',
+          borderTop: `1px dashed ${LIVE_PRICE_UP_COLOR}`,
           pointerEvents: 'none',
           zIndex: 7,
           transform: 'translateY(-0.5px)',
@@ -4709,7 +4887,7 @@ export const TradingChart = React.memo(function TradingChart({
           top: -9999,
           right: 0,
           padding: '1px 4px',
-          background: '#5A5A66',
+          background: LIVE_PRICE_UP_COLOR,
           color: '#ffffff',
           fontSize: 11,
           fontFamily: "Consolas, 'Courier New', monospace",

@@ -13,6 +13,8 @@ import { useMarketDataStore } from './store/useMarketDataStore';
 import { useWatchlistStore } from './store/useWatchlistStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
 import { enqueueLiveTick } from './services/liveTickDispatcher';
+import { getTradeEntryPriceFromQuote } from './services/chartPriceGuards';
+import { resolveOptionalPositionTime, resolvePositionOpenTime } from './services/tradePositionTime';
 import { API_BASE_URL, WS_ENDPOINTS, updateDynamicUrls } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
 
@@ -22,6 +24,7 @@ import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
 import { accountV2Api, tradingV2Api } from './api/trade';
 import { tradeGatewayApi } from './api/tradeGateway';
+import { dispatchTradeOverlayCloseState } from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
 import { formatOrderError } from './utils/orderError';
 import { OneClickTrading } from './components/OneClickTrading';
@@ -147,6 +150,8 @@ interface Position {
   swap: number;
   commission: number;
   unrealizedPnL: number;
+  chartEntryPrice?: number;
+  chartEntryTime?: string;
 }
 
 interface TradeRestRead {
@@ -401,6 +406,7 @@ const normalizePositions = (payload: unknown): Position[] => {
     const openPrice = toNumber(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.price, 0);
     const currentPrice = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, openPrice);
     const rawSide = String(raw.side ?? '').toLowerCase();
+    const chartEntryTime = resolveOptionalPositionTime(raw.chartEntryTime ?? raw.chart_entry_time);
 
     return {
       id: Number.isFinite(parsedId) ? parsedId : index + 1,
@@ -409,14 +415,34 @@ const normalizePositions = (payload: unknown): Position[] => {
       volume: toNumber(raw.quantity ?? raw.volume, 0),
       openPrice,
       currentPrice,
-      openTime: String(raw.opened_at ?? raw.openTime ?? (raw.time_create ? new Date(toNumber(raw.time_create) * 1000).toISOString() : new Date().toISOString())),
+      openTime: resolvePositionOpenTime(raw, chartEntryTime),
       sl: toNumber(raw.price_sl ?? raw.sl, 0),
       tp: toNumber(raw.price_tp ?? raw.tp, 0),
       swap: toNumber(raw.swap, 0),
       commission: toNumber(raw.commission, 0),
       unrealizedPnL: toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0),
+      chartEntryPrice: toNumber(raw.chartEntryPrice, 0) || undefined,
+      chartEntryTime,
     };
   });
+};
+
+const getChartEntryPriceForSymbol = (symbol: string, side: 'BUY' | 'SELL'): number | undefined => {
+  const state = useAppStore.getState();
+  const tick = resolveTickFromLookup(state.ticks, state.tickLookup, symbol);
+  const entryPrice = getTradeEntryPriceFromQuote(tick, side);
+  return entryPrice ?? undefined;
+};
+
+const upsertImmediatePosition = (position: Position) => {
+  const store = useAppStore.getState();
+  const positions = store.positions as unknown as Position[];
+  const existingIndex = positions.findIndex((existing) => existing.id === position.id);
+  const nextPositions = existingIndex >= 0
+    ? positions.map((existing, index) => index === existingIndex ? { ...existing, ...position } : existing)
+    : [position, ...positions];
+
+  store.setPositions(nextPositions as any);
 };
 
 const getLivePositionPnL = (position: Position, tick?: Tick): number => {
@@ -1536,6 +1562,7 @@ function App() {
     closingTicketsRef.current.add(id);
 
     markLocalTradeMutation([id]);
+    dispatchTradeOverlayCloseState([id], 'pending');
     // Optimistically remove from the app store immediately.
     useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== id));
     // Trigger close sound
@@ -1544,9 +1571,15 @@ function App() {
     try {
       await api.positions.closePosition(String(id));
       markLocalTradeMutation();
-      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
+      dispatchTradeOverlayCloseState([id], 'confirmed');
+      const loginId = getLiveTradingLogin() || undefined;
+      refreshPositions(loginId, { allowWsCommit: true });
+      if (loginId) {
+        refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history after close:', err));
+      }
     } catch (err: any) {
       clearOptimisticClosedTickets([id]);
+      dispatchTradeOverlayCloseState([id], 'failed');
       console.error('Failed to close position:', err);
       refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
     } finally {
@@ -1595,6 +1628,7 @@ function App() {
       if (type === 'ALL' && !symbol) {
         optimisticTicketIds = useAppStore.getState().positions.map((position) => position.id);
         markLocalTradeMutation(optimisticTicketIds);
+        dispatchTradeOverlayCloseState(optimisticTicketIds, 'pending');
         useAppStore.getState().setPositions([]);
         await accountV2Api.closeAllPositions(accId);
       } else {
@@ -1609,14 +1643,18 @@ function App() {
 
         optimisticTicketIds = candidates.map((position) => position.id);
         markLocalTradeMutation(optimisticTicketIds);
+        dispatchTradeOverlayCloseState(optimisticTicketIds, 'pending');
         useAppStore.getState().setPositions(useAppStore.getState().positions.filter((position) => !optimisticTicketIds.includes(position.id)));
         await Promise.all(candidates.map((position) => tradingV2Api.closePosition(position.id)));
       }
 
       markLocalTradeMutation();
+      dispatchTradeOverlayCloseState(optimisticTicketIds, 'confirmed');
       refreshPositions(accId, { allowWsCommit: true });
+      refreshOrdersAndHistory(accId).catch(err => console.error('[Trade] Failed to refresh orders/history after bulk close:', err));
     } catch (err) {
       clearOptimisticClosedTickets(optimisticTicketIds);
+      dispatchTradeOverlayCloseState(optimisticTicketIds, 'failed');
       console.error('Bulk close failed:', err);
       refreshPositions(parsePositiveInt(accountId) || undefined, { allowWsCommit: true });
     }
@@ -1885,7 +1923,9 @@ function App() {
             if (POSITION_CLOSED_EVENTS.has(eventName) && ticket) {
               // Keep optimistic close suppression until REST confirms absence; WS snapshots can lag.
               markServerClosedTickets([ticket]);
+              dispatchTradeOverlayCloseState([ticket], 'confirmed');
               useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== ticket));
+              refreshOrdersAndHistory(acceptedLogin).catch(err => console.error('[WS POSITIONS HISTORY REFRESH ERROR]', err));
             } else if (data.data?.positions && Array.isArray(data.data.positions)) {
               const normalized = reconcileOptimisticClosedPositions(normalizePositions(data.data.positions));
               if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
@@ -2126,6 +2166,8 @@ function App() {
       const loginId = getLiveTradingLogin();
       if (!loginId) return;
 
+      const chartEntryPrice = getChartEntryPriceForSymbol(selectedSymbol, side);
+      const chartEntryTime = new Date().toISOString();
       const result = await api.orders.placeMarketOrder({
         symbol: selectedSymbol,
         side,
@@ -2133,6 +2175,10 @@ function App() {
         login: loginId,
       });
       console.log('[Trade] Order executed via trading API:', result);
+      const [immediatePosition] = normalizePositions([{ ...result, chartEntryPrice, chartEntryTime }]);
+      if (immediatePosition) {
+        upsertImmediatePosition(immediatePosition);
+      }
       refreshPositions(loginId);
       refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
     } catch (err: any) {
@@ -2155,6 +2201,8 @@ function App() {
       const loginId = getLiveTradingLogin();
       if (!loginId) return;
 
+      const chartEntryPrice = getChartEntryPriceForSymbol(submitSymbol, side);
+      const chartEntryTime = new Date().toISOString();
       const result = await api.orders.placeMarketOrder({
         symbol: submitSymbol,
         side,
@@ -2163,6 +2211,10 @@ function App() {
       });
 
       console.log('[Trade] Order executed from dialog via trading API:', result);
+      const [immediatePosition] = normalizePositions([{ ...result, chartEntryPrice, chartEntryTime }]);
+      if (immediatePosition) {
+        upsertImmediatePosition(immediatePosition);
+      }
       refreshPositions(loginId);
       refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history:', err));
     } catch (err: any) {
@@ -2180,17 +2232,24 @@ function App() {
     // Trigger close sound
     import('./utils/audio').then(m => m.playSystemSound('close'));
     markLocalTradeMutation([tradeId]);
+    dispatchTradeOverlayCloseState([tradeId], 'pending');
     useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== tradeId));
     try {
       await api.positions.closePosition(String(tradeId));
       markLocalTradeMutation();
-      refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true }); // fire-and-forget
+      dispatchTradeOverlayCloseState([tradeId], 'confirmed');
+      const loginId = getLiveTradingLogin() || undefined;
+      refreshPositions(loginId, { allowWsCommit: true }); // fire-and-forget
+      if (loginId) {
+        refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history after close:', err));
+      }
     } catch (err) {
       clearOptimisticClosedTickets([tradeId]);
+      dispatchTradeOverlayCloseState([tradeId], 'failed');
       console.error('Close failed:', err);
       refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
     }
-  }, [clearOptimisticClosedTickets, getLiveTradingLogin, markLocalTradeMutation, refreshPositions]);
+  }, [clearOptimisticClosedTickets, getLiveTradingLogin, markLocalTradeMutation, refreshOrdersAndHistory, refreshPositions]);
 
   // Fetch symbols from backend
   useEffect(() => {

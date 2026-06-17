@@ -5,9 +5,11 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore, type Position } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import api from '../services/api';
+import { getTradeEntryPriceFromQuote } from '../services/chartPriceGuards';
+import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import { getSymbolDigits } from '../utils/symbolUtils';
 import { formatPriceParts } from './ui/PriceDisplay';
 
@@ -16,6 +18,59 @@ interface OneClickTradingProps {
     visible: boolean;
     timeframe: string;
 }
+
+type LooseRecord = Record<string, unknown>;
+
+const toNumber = (value: unknown, fallback = 0): number => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+};
+
+const normalizeImmediatePosition = (
+    raw: unknown,
+    fallback: {
+        symbol: string;
+        side: 'BUY' | 'SELL';
+        volume: number;
+        chartEntryPrice?: number;
+        chartEntryTime: string;
+    },
+): Position | null => {
+    const record = raw && typeof raw === 'object' ? raw as LooseRecord : {};
+    const id = Number.parseInt(String(record.ticket ?? record.id ?? ''), 10);
+    if (!Number.isFinite(id) || id <= 0) return null;
+
+    const openPrice = toNumber(record.price_open ?? record.open_price ?? record.openPrice ?? record.price, fallback.chartEntryPrice ?? 0);
+    const currentPrice = toNumber(record.price_current ?? record.current_price ?? record.currentPrice, openPrice);
+    const rawSide = String(record.side ?? fallback.side).toLowerCase();
+
+    return {
+        id,
+        symbol: String(record.symbol ?? fallback.symbol),
+        side: rawSide === 'sell' || rawSide === 'short' ? 'SELL' : 'BUY',
+        volume: toNumber(record.volume ?? record.quantity, fallback.volume),
+        openPrice,
+        currentPrice,
+        openTime: resolvePositionOpenTime(record, fallback.chartEntryTime),
+        sl: toNumber(record.price_sl ?? record.sl, 0),
+        tp: toNumber(record.price_tp ?? record.tp, 0),
+        swap: toNumber(record.swap, 0),
+        commission: toNumber(record.commission, 0),
+        unrealizedPnL: toNumber(record.profit ?? record.unrealized_pl ?? record.unrealizedPnL, 0),
+        chartEntryPrice: fallback.chartEntryPrice,
+        chartEntryTime: fallback.chartEntryTime,
+    };
+};
+
+const upsertImmediatePosition = (position: Position) => {
+    const store = useAppStore.getState();
+    const existingIndex = store.positions.findIndex((existing) => existing.id === position.id);
+    const nextPositions = existingIndex >= 0
+        ? store.positions.map((existing, index) => index === existingIndex ? { ...existing, ...position } : existing)
+        : [position, ...store.positions];
+
+    store.setPositions(nextPositions);
+};
 
 export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visible, timeframe }) => {
     const [volume, setVolume] = useState(0.01);
@@ -107,12 +162,24 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
 
         try {
             const login = getAccountLogin();
-            await api.orders.placeMarketOrder({
+            const chartEntryPrice = getTradeEntryPriceFromQuote(tick, side.toUpperCase() as 'BUY' | 'SELL');
+            const chartEntryTime = new Date().toISOString();
+            const result = await api.orders.placeMarketOrder({
                 side,
                 symbol,
                 volume,
                 login,
             });
+            const immediatePosition = normalizeImmediatePosition(result, {
+                symbol,
+                side: side.toUpperCase() as 'BUY' | 'SELL',
+                volume,
+                chartEntryPrice: chartEntryPrice ?? undefined,
+                chartEntryTime,
+            });
+            if (immediatePosition) {
+                upsertImmediatePosition(immediatePosition);
+            }
             useLastSymbolStore.getState().setLastSymbol(symbol, side.toUpperCase() as 'BUY' | 'SELL');
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
         } catch (err: any) {

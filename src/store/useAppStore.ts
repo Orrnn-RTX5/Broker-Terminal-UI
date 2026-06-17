@@ -53,6 +53,8 @@ export interface Position {
   quantity?: number;
   time_create?: string;
   time_update?: string;
+  chartEntryPrice?: number;
+  chartEntryTime?: string;
 }
 
 export interface Order {
@@ -104,6 +106,7 @@ export interface Trade {
   orderTicket?: number;
   dealTicket?: number;
   entry?: string;
+  historySource?: 'closed-position' | 'deal' | 'order';
 }
 
 export interface SavedAccount {
@@ -503,6 +506,8 @@ export const useAppStore = create<AppState>()(
                   ...existing,
                   ...incoming,
                   symbol: incoming.symbol || existing.symbol,
+                  chartEntryPrice: incoming.chartEntryPrice ?? existing.chartEntryPrice,
+                  chartEntryTime: incoming.chartEntryTime ?? existing.chartEntryTime,
                 };
               } else {
                 // Partial P&L or quote updates — preserve all other existing properties!

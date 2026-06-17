@@ -88,6 +88,36 @@ describe('trade gateway normalization', () => {
     });
   });
 
+  it('normalizes refreshed position MT5 open-time aliases', () => {
+    expect(normalizePosition({
+      ticket: 991,
+      symbol: 'BTCUSD',
+      action: 0,
+      volume: 0.01,
+      price_open: 65316.89,
+      price_current: 65304.89,
+      time_open: 1760000180,
+    })).toMatchObject({
+      id: 991,
+      symbol: 'BTCUSD',
+      side: 'BUY',
+      openTime: new Date(1760000180 * 1000).toISOString(),
+    });
+
+    expect(normalizePosition({
+      ticket: 992,
+      symbol: 'BTCUSD',
+      action: 0,
+      volume: 0.01,
+      price_open: 65320.12,
+      price_current: 65304.89,
+      time_create_msc: 1760000245000,
+    })).toMatchObject({
+      id: 992,
+      openTime: new Date(1760000245000).toISOString(),
+    });
+  });
+
   it('normalizes deal identifiers, entry/action fields, and seconds timestamps', () => {
     expect(normalizeDeal({
       deal: 778899,
@@ -166,6 +196,102 @@ describe('trade gateway normalization', () => {
         swap: -0.01,
       }),
     ]);
+  });
+
+  it('collapses paired MT5 enum entry deals into one closed history trade', () => {
+    const deals = [
+      normalizeDeal({
+        deal: 1011,
+        position_ticket: 5011,
+        symbol: 'GBPUSD',
+        action: 0,
+        entry: 0,
+        volume: 0.01,
+        price: 1.34149,
+        time: 1760000000,
+      }),
+      normalizeDeal({
+        deal: 1012,
+        position_ticket: 5011,
+        symbol: 'GBPUSD',
+        action: 1,
+        entry: 1,
+        volume: 0.01,
+        price: 1.34324,
+        profit: 1.75,
+        time: 1760000300,
+      }),
+    ];
+
+    expect(collapseDealHistory(deals)).toEqual([
+      expect.objectContaining({
+        id: 5011,
+        symbol: 'GBPUSD',
+        type: 'closed',
+        status: 'closed',
+        side: 'BUY',
+        openPrice: 1.34149,
+        closePrice: 1.34324,
+        profit: 1.75,
+        historySource: 'deal',
+      }),
+    ]);
+  });
+
+  it('collapses paired MT5 entry deals grouped by position_id and position aliases', () => {
+    const deals = [
+      normalizeDeal({
+        deal: 1101,
+        position_id: 6001,
+        symbol: 'EURUSD',
+        action: 'deal_buy',
+        entry: 'entry_in',
+        volume: 0.02,
+        price: 1.0875,
+        time: 1760000000,
+      }),
+      normalizeDeal({
+        deal: 1102,
+        position: 6001,
+        symbol: 'EURUSD',
+        action: 'deal_sell',
+        entry: 'entry_out',
+        volume: 0.02,
+        price: 1.089,
+        profit: 3,
+        time: 1760003600,
+      }),
+    ];
+
+    expect(collapseDealHistory(deals)).toEqual([
+      expect.objectContaining({
+        id: 6001,
+        symbol: 'EURUSD',
+        type: 'closed',
+        status: 'closed',
+        openPrice: 1.0875,
+        closePrice: 1.089,
+        profit: 3,
+      }),
+    ]);
+  });
+
+  it('skips entry_out-only MT5 deal groups without an opening deal', () => {
+    const deals = [
+      normalizeDeal({
+        deal: 1201,
+        position_ticket: 7001,
+        symbol: 'USDJPY',
+        action: 'deal_sell',
+        entry: 'entry_out',
+        volume: 0.03,
+        price: 156.25,
+        profit: 8.5,
+        time: 1760003600,
+      }),
+    ];
+
+    expect(collapseDealHistory(deals)).toEqual([]);
   });
 
   it('returns collapsed deal history rows from getOrderHistory instead of raw entry rows', async () => {
