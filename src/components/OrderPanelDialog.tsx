@@ -52,7 +52,8 @@ export function getInstrumentConfig(sym: string, liveDigits?: number) {
   // 10^-digits otherwise — matching the heuristic defaults above.
   if (typeof liveDigits === 'number' && Number.isInteger(liveDigits) && liveDigits >= 0 && liveDigits <= 10) {
     const pipExponent = liveDigits >= 1 && (liveDigits === 3 || liveDigits === 5) ? liveDigits - 1 : liveDigits;
-    return { ...base, digits: liveDigits, pipSize: Math.pow(10, -pipExponent) };
+    const pipSize = Number((1 / Math.pow(10, pipExponent)).toFixed(pipExponent));
+    return { ...base, digits: liveDigits, pipSize };
   }
 
   return base;
