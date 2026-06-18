@@ -34,16 +34,26 @@ export interface LoginHeroBroker {
   logo_url?: string;
 }
 
+export const toPublicAssetPath = (assetPath: string, baseUrl = import.meta.env.BASE_URL): string => {
+  const normalizedPath = String(assetPath || '').trim().replace(/^\/+/, '');
+  if (!normalizedPath) return '';
+
+  const normalizedBase = String(baseUrl || '/').trim();
+  if (!normalizedBase || normalizedBase === '/') return `/${normalizedPath}`;
+
+  return `${normalizedBase.replace(/\/+$/, '')}/${normalizedPath}`;
+};
+
 const DEFAULT_LOGIN_HERO_ASSET: LoginHeroAsset = {
-  src: '/login/trading-desk-hero.webp',
-  mobileSrc: '/login/trading-desk-hero-mobile.webp',
+  src: toPublicAssetPath('login/trading-desk-hero.webp'),
+  mobileSrc: toPublicAssetPath('login/trading-desk-hero-mobile.webp'),
   width: 2048,
   height: 1152,
 };
 
 const GTA_LOGIN_HERO_ASSET: LoginHeroAsset = {
-  src: '/login/gta-hero-desktop-fit.webp',
-  mobileSrc: '/login/gta-hero-mobile.jpg',
+  src: toPublicAssetPath('login/gta-hero-desktop-fit.webp'),
+  mobileSrc: toPublicAssetPath('login/gta-hero-mobile.jpg'),
   width: 1024,
   height: 928,
   fit: 'cover',
@@ -53,8 +63,8 @@ const GTA_LOGIN_HERO_ASSET: LoginHeroAsset = {
 };
 
 const MYPROP_LOGIN_HERO_ASSET: LoginHeroAsset = {
-  src: '/login/myprop-hero-wide.png',
-  mobileSrc: '/login/myprop-hero-mobile.jpg',
+  src: toPublicAssetPath('login/myprop-hero-wide.png'),
+  mobileSrc: toPublicAssetPath('login/myprop-hero-mobile.jpg'),
   width: 1672,
   height: 941,
   fit: 'cover',

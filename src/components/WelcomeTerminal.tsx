@@ -19,7 +19,7 @@ import {
 } from '../config/backendTarget.js';
 import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
-import { resolveLoginHeroAsset, type LoginHeroAsset } from './welcomeHeroAssets';
+import { resolveLoginHeroAsset, toPublicAssetPath, type LoginHeroAsset } from './welcomeHeroAssets';
 
 interface BrokerServerItem {
     broker_id: string;
@@ -61,6 +61,7 @@ const LOGIN_FIELD_FOCUS = '#35d8b2';
 const LOGIN_TITLE_TEXT = 'Sign in to';
 const LOGIN_TITLE_REVEAL_DELAY_MS = 90;
 const LOGIN_TITLE_LOGO_INITIAL_DELAY_MS = LOGIN_TITLE_TEXT.replace(/\s/g, '').length * LOGIN_TITLE_REVEAL_DELAY_MS;
+const RTX5_TITLE_LOGO_SRC = toPublicAssetPath('brand/rtx5-logo.png');
 type LoginHeroFit = NonNullable<LoginHeroAsset['fit']>;
 type LoginHeroImageStyle = React.CSSProperties & {
     '--rtx-login-hero-fit': LoginHeroFit;
@@ -446,7 +447,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                         textAlign="left"
                                     >
                                         <img
-                                            src="/brand/rtx5-logo.png"
+                                            src={RTX5_TITLE_LOGO_SRC}
                                             alt=""
                                             aria-hidden="true"
                                             className="rtx-login-title-logo"

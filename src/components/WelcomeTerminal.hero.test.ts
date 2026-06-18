@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { resolveLoginHeroAsset } from './welcomeHeroAssets';
+import { resolveLoginHeroAsset, toPublicAssetPath } from './welcomeHeroAssets';
 
 type RuntimeWindow = Window & {
   RUNTIME_CONFIG?: Record<string, unknown>;
@@ -14,12 +14,17 @@ describe('resolveLoginHeroAsset', () => {
     delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
   });
 
+  it('resolves public asset paths for packaged Electron and web bases', () => {
+    expect(toPublicAssetPath('/login/trading-desk-hero.webp', './')).toBe('./login/trading-desk-hero.webp');
+    expect(toPublicAssetPath('/brand/rtx5-logo.png', '/')).toBe('/brand/rtx5-logo.png');
+  });
+
   it('keeps the default trading desk image for unbranded brokers', () => {
     expect(resolveLoginHeroAsset({
       broker_id: 'other-broker',
       broker_name: 'Other Broker',
       logo_url: '',
-    }).src).toBe('/login/trading-desk-hero.webp');
+    }).src).toBe(toPublicAssetPath('login/trading-desk-hero.webp'));
   });
 
   it('uses the GTA image for Grow Trading Academy broker identities', () => {
@@ -29,7 +34,7 @@ describe('resolveLoginHeroAsset', () => {
       logo_url: '',
     });
 
-    expect(growTradingAcademyAsset.src).toBe('/login/gta-hero-desktop-fit.webp');
+    expect(growTradingAcademyAsset.src).toBe(toPublicAssetPath('login/gta-hero-desktop-fit.webp'));
     expect(growTradingAcademyAsset.fit).toBe('cover');
     expect(growTradingAcademyAsset.position).toBe('center center');
     expect(growTradingAcademyAsset.mobileFit).toBe('contain');
@@ -38,7 +43,7 @@ describe('resolveLoginHeroAsset', () => {
       broker_id: 'gta_broker',
       broker_name: 'GTA',
       logo_url: '',
-    }).src).toBe('/login/gta-hero-desktop-fit.webp');
+    }).src).toBe(toPublicAssetPath('login/gta-hero-desktop-fit.webp'));
   });
 
   it('uses the MyProp image for MyProp broker identities', () => {
@@ -48,7 +53,7 @@ describe('resolveLoginHeroAsset', () => {
       logo_url: '',
     });
 
-    expect(myPropAsset.src).toBe('/login/myprop-hero-wide.png');
+    expect(myPropAsset.src).toBe(toPublicAssetPath('login/myprop-hero-wide.png'));
     expect(myPropAsset.fit).toBe('cover');
     expect(myPropAsset.mobileFit).toBe('contain');
   });
@@ -59,14 +64,14 @@ describe('resolveLoginHeroAsset', () => {
       API_HOST: 'https://services.myprop.trade',
     };
 
-    expect(resolveLoginHeroAsset(null).src).toBe('/login/myprop-hero-wide.png');
+    expect(resolveLoginHeroAsset(null).src).toBe(toPublicAssetPath('login/myprop-hero-wide.png'));
 
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
       API_HOST: 'https://services.growtradingacademy.com',
     };
 
-    expect(resolveLoginHeroAsset(null).src).toBe('/login/gta-hero-desktop-fit.webp');
+    expect(resolveLoginHeroAsset(null).src).toBe(toPublicAssetPath('login/gta-hero-desktop-fit.webp'));
   });
 
   it('does not let runtime identity override an already selected unbranded broker', () => {
@@ -79,6 +84,6 @@ describe('resolveLoginHeroAsset', () => {
       broker_id: 'other-broker',
       broker_name: 'Other Broker',
       logo_url: '',
-    }).src).toBe('/login/trading-desk-hero.webp');
+    }).src).toBe(toPublicAssetPath('login/trading-desk-hero.webp'));
   });
 });
