@@ -14,7 +14,7 @@ permissions:
 jobs:
   release-windows:
     name: Build and publish Windows release
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     env:
       RELEASE_REPOSITORY: rtx5-orrnn/rtx5-terminal-releases
