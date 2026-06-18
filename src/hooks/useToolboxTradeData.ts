@@ -485,6 +485,15 @@ export function useToolboxTradeData() {
     const nextSig = positionsSignature(positions);
     positionsRef.current = positions;
     syncTickSubscriptions(positions);
+    const storePositions = Array.isArray(useAppStore.getState().positions)
+      ? useAppStore.getState().positions as ToolboxTradePosition[]
+      : [];
+    if (positionsSignature(storePositions) !== nextSig) {
+      useAppStore.getState().setPositions(positions as Position[]);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
+      }
+    }
     if (previousSig === nextSig) return;
     setState((prev) => ({ ...prev, positions }));
   }, [syncTickSubscriptions]);

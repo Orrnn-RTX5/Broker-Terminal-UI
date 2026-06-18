@@ -1684,6 +1684,38 @@ html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .price-big {
   font-weight: 800 !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .rtx-trade-sl-value,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-red-300.bg-red-900\/20,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-\[\#ff7676\] {
+  color: #b42318 !important;
+  background-color: #fef3f2 !important;
+  border: 1px solid #fecdca !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .rtx-trade-tp-value,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-emerald-300.bg-emerald-900\/20,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-\[\#34dca0\] {
+  color: #027a48 !important;
+  background-color: #ecfdf3 !important;
+  border: 1px solid #abefc6 !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-profit-value--positive {
+  color: #027a48 !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-profit-value--negative {
+  color: #b42318 !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+}
+
 /* Deepen Profit & Loss text colors explicitly for readability in light mode */
 html.rtx-advanced-view.rtx-skin-untitled-light .text-\[\#4ade80\],
 html.rtx-advanced-view.rtx-skin-untitled-light .text-emerald-300,

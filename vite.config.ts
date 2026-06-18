@@ -1,11 +1,11 @@
-import type { Plugin } from 'vite'
+import type { Plugin, ProxyOptions } from 'vite'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import { lookup } from 'node:dns/promises'
 import * as http from 'node:http'
 import * as https from 'node:https'
-import { isIP, type LookupFunction } from 'node:net'
+import { isIP, type LookupFunction, type Socket } from 'node:net'
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -17,6 +17,80 @@ const HOP_BY_HOP_HEADERS = new Set([
   'transfer-encoding',
   'upgrade',
 ])
+
+type ViteProxyServer = Parameters<NonNullable<ProxyOptions['configure']>>[0]
+
+const EXPECTED_WS_PROXY_ABORT_CODES = new Set([
+  'ECONNABORTED',
+  'ECONNRESET',
+  'EPIPE',
+  'ERR_STREAM_DESTROYED',
+])
+
+const getErrorCode = (error: unknown): string => {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code?: unknown }).code || '')
+    : ''
+}
+
+const getErrorMessage = (error: unknown): string => {
+  return error instanceof Error ? error.message : String(error)
+}
+
+const isExpectedWsProxyAbort = (error: unknown): boolean => {
+  return EXPECTED_WS_PROXY_ABORT_CODES.has(getErrorCode(error))
+}
+
+const endSocketQuietly = (socket: Socket): void => {
+  if (!socket.destroyed) {
+    socket.end()
+  }
+}
+
+const replaceSocketErrorLogger = (label: string, socket: Socket): void => {
+  queueMicrotask(() => {
+    socket.removeAllListeners('error')
+    socket.on('error', (error) => {
+      if (isExpectedWsProxyAbort(error)) return
+      console.warn(`[vite] ${label} proxy socket error: ${getErrorMessage(error)}`)
+    })
+  })
+}
+
+const configureWsProxy = (
+  label: string,
+  options: { stripOrigin?: boolean } = {}
+): NonNullable<ProxyOptions['configure']> => {
+  return (proxy: ViteProxyServer) => {
+    queueMicrotask(() => {
+      proxy.removeAllListeners('error')
+      proxy.on('error', (error, req, res) => {
+        if (isExpectedWsProxyAbort(error)) {
+          if (!('req' in res)) endSocketQuietly(res)
+          return
+        }
+
+        const requestUrl = req.url ? ` ${req.url}` : ''
+        console.warn(`[vite] ${label} proxy error${requestUrl}: ${getErrorMessage(error)}`)
+        if ('req' in res) {
+          if (!res.headersSent && !res.writableEnded) {
+            res.writeHead(500, { 'Content-Type': 'text/plain' }).end()
+          }
+          return
+        }
+
+        endSocketQuietly(res)
+      })
+    })
+
+    proxy.on('proxyReqWs', (proxyReq, _req, socket) => {
+      if (options.stripOrigin) {
+        proxyReq.removeHeader('origin')
+      }
+      replaceSocketErrorLogger(label, socket)
+    })
+  }
+}
 
 const copyProxyHeaders = (headers: IncomingHttpHeaders): IncomingHttpHeaders => {
   const nextHeaders: IncomingHttpHeaders = {}
@@ -500,6 +574,7 @@ export default defineConfig(({ mode }) => {
         changeOrigin: true,
         secure: false,
         ws: true,
+        configure: configureWsProxy('fix-ws'),
       },
       '/__broker_feed_ws': {
         target: feedWsTarget,
@@ -507,11 +582,7 @@ export default defineConfig(({ mode }) => {
         secure: false,
         ws: true,
         rewrite: rewriteDynamicWsProxyPath,
-        configure: (proxy) => {
-          proxy.on('proxyReqWs', (proxyReq) => {
-            proxyReq.removeHeader('origin')
-          })
-        },
+        configure: configureWsProxy('broker feed ws', { stripOrigin: true }),
       }
     }
   },

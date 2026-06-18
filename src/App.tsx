@@ -577,7 +577,7 @@ function App() {
   const DEFAULT_CHART_TIMEFRAME: Timeframe = 'M5';
   const TIMEFRAME_MIGRATION_KEY = 'rtx5_timeframe_default_v2';
 
-  // Mount the Auto-Close Supervisor (tests tick state against SL/TP repeatedly)
+  // Mount the SL/TP refresh supervisor; broker/backend owns actual stop execution.
   useAutoCloseMonitor(500);
 
   // Start closed and restore only after a validated token or active authenticated store session.

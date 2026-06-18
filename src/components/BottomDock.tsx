@@ -1408,7 +1408,7 @@ ${rows}
                                                 onDoubleClick={e => e.stopPropagation()}
                                             />
                                         ) : (
-                                            <span className={(pos.price_sl ?? pos.sl) > 0 ? "text-[#ff7676] bg-red-950/20 px-1 rounded-sm cursor-pointer font-semibold" : "text-zinc-600 cursor-pointer"}>
+                                            <span className={(pos.price_sl ?? pos.sl) > 0 ? "rtx-trade-sl-value text-[#ff7676] bg-red-950/20 px-1 rounded-sm cursor-pointer font-semibold" : "text-zinc-600 cursor-pointer"}>
                                                 {formatTradeLevel(pos.price_sl ?? pos.sl, pos.symbol ?? '')}
                                             </span>
                                         )}
@@ -1428,7 +1428,7 @@ ${rows}
                                                 onDoubleClick={e => e.stopPropagation()}
                                             />
                                         ) : (
-                                            <span className={(pos.price_tp ?? pos.tp) > 0 ? "text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm cursor-pointer font-semibold" : "text-zinc-600 cursor-pointer"}>
+                                            <span className={(pos.price_tp ?? pos.tp) > 0 ? "rtx-trade-tp-value text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm cursor-pointer font-semibold" : "text-zinc-600 cursor-pointer"}>
                                                 {formatTradeLevel(pos.price_tp ?? pos.tp, pos.symbol ?? '')}
                                             </span>
                                         )}
@@ -1470,7 +1470,7 @@ ${rows}
 
                                 {/* profit */}
                                 {isColumnVisible('profit') && (
-                                    <td className={`px-1.5 py-[2px] text-right font-semibold tabular-nums ${profitIsPositive ? 'text-[#22c55e]' : 'text-[#ff2d2d]'}`}>
+                                    <td className={`px-1.5 py-[2px] text-right font-semibold tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`}>
                                         {profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue)}
                                     </td>
                                 )}

@@ -1,8 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import api from '../services/api';
 
-const PENDING_CLOSURES = new Set<number>();
+const PENDING_REFRESHES = new Set<number>();
 
 export function useAutoCloseMonitor(intervalMs = 500) {
     const isRunning = useRef(false);
@@ -24,7 +23,7 @@ export function useAutoCloseMonitor(intervalMs = 500) {
             }
 
             positions.forEach(pos => {
-                if (!pos.id || PENDING_CLOSURES.has(pos.id)) return;
+                if (!pos.id || PENDING_REFRESHES.has(pos.id)) return;
 
                 // Only check if we actually have SL or TP defined locally or from server
                 if ((!pos.sl || pos.sl === 0) && (!pos.tp || pos.tp === 0)) return;
@@ -41,38 +40,30 @@ export function useAutoCloseMonitor(intervalMs = 500) {
                 
                 const livePrice = isBuy ? tick.bid : tick.ask;
 
-                let shouldClose = false;
+                let shouldRefreshForCross = false;
                 let reason = '';
 
                 if (isBuy) {
-                    if (pos.tp > 0 && livePrice >= pos.tp) { shouldClose = true; reason = 'TP (Profit)'; }
-                    if (pos.sl > 0 && livePrice <= pos.sl) { shouldClose = true; reason = 'SL (Loss)'; }
+                    if (pos.tp > 0 && livePrice >= pos.tp) { shouldRefreshForCross = true; reason = 'TP (Profit)'; }
+                    if (pos.sl > 0 && livePrice <= pos.sl) { shouldRefreshForCross = true; reason = 'SL (Loss)'; }
                 } else {
-                    if (pos.tp > 0 && livePrice <= pos.tp) { shouldClose = true; reason = 'TP (Profit)'; }
-                    if (pos.sl > 0 && livePrice >= pos.sl) { shouldClose = true; reason = 'SL (Loss)'; }
+                    if (pos.tp > 0 && livePrice <= pos.tp) { shouldRefreshForCross = true; reason = 'TP (Profit)'; }
+                    if (pos.sl > 0 && livePrice >= pos.sl) { shouldRefreshForCross = true; reason = 'SL (Loss)'; }
                 }
 
-                if (shouldClose) {
-                    console.log(`[AutoClose] Triggered ${reason} for ticket ${pos.id} at live price ${livePrice}`);
-                    PENDING_CLOSURES.add(pos.id);
-                    
-                    api.positions.closePosition(String(pos.id))
-                        .then(() => {
-                            console.log(`[AutoClose] Successfully closed ticket ${pos.id}`);
-                            // Force an instant reactive update across the UI layer
-                            useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== pos.id));
-                            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-                            import('../utils/audio').then(m => {
-                                if (m.playSystemSound) m.playSystemSound('close');
-                            }).catch(() => {});
-                        })
-                        .catch(err => {
-                            console.error(`[AutoClose] Failed to close ticket ${pos.id}:`, err);
-                        })
-                        .finally(() => {
-                            // Release the lock after a few seconds in case it failed so we can retry later
-                            setTimeout(() => PENDING_CLOSURES.delete(pos.id), 5000);
-                        });
+                if (shouldRefreshForCross) {
+                    console.log(`[SLTPRefresh] ${reason} crossed for ticket ${pos.id} at live price ${livePrice}; requesting server refresh`);
+                    PENDING_REFRESHES.add(pos.id);
+
+                    window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+                    const login = Number.parseInt(String(appState.accountId ?? ''), 10);
+                    if (Number.isFinite(login) && login > 0) {
+                        window.dispatchEvent(new CustomEvent('rtx:refresh-trade-history-requested', {
+                            detail: { login },
+                        }));
+                    }
+
+                    setTimeout(() => PENDING_REFRESHES.delete(pos.id), 5000);
                 }
             });
         }, intervalMs);

@@ -106,6 +106,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                                     chartType={globalChartType}
                                     panelId={panel.id}
                                     tradeAllowed={tradeAllowed}
+                                    isActive={isActive}
                                 />
                             </ErrorBoundary>
                         </div>

@@ -65,6 +65,12 @@ import {
 } from '../utils/chartTimeFormat';
 import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
 import {
+  applyTradeLevelDragUpdate,
+  createTradeLevelOverrideFingerprint,
+  getTradeLevelDragMinDistance,
+  selectNearestTradeLevel,
+} from '../utils/tradeLevelDrag';
+import {
   activateActiveChartSource,
   findLargestChartCanvas,
   registerActiveChartSource,
@@ -97,9 +103,86 @@ const MIN_ADAPTIVE_BARS = 30;
 const MAX_ADAPTIVE_BARS = 200;
 const TRADE_LEVEL_OVERRIDES_STORAGE_KEY = 'rtx-trade-level-overrides-v1';
 const TRADE_LEVEL_OVERRIDE_TTL_MS = 5 * 60 * 1000;
+const TRADE_LEVEL_OPTIMISTIC_GRACE_MS = 15_000;
+const TRADE_LEVEL_HIT_AREA_PX = 24;
+const TRADE_LEVEL_MIN_DRAG_PX = 2;
 const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
 const REALTIME_SCROLL_THRESHOLD_BARS = 2;
 const TRANSPARENT_CHART_LINE = 'rgba(0, 0, 0, 0)';
+
+const parseCssColor = (value: string): { r: number; g: number; b: number } | null => {
+  const color = value.trim();
+  const hexMatch = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
+  if (hexMatch) {
+    const hex = hexMatch[1].length === 3
+      ? hexMatch[1].split('').map((part) => `${part}${part}`).join('')
+      : hexMatch[1];
+    return {
+      r: Number.parseInt(hex.slice(0, 2), 16),
+      g: Number.parseInt(hex.slice(2, 4), 16),
+      b: Number.parseInt(hex.slice(4, 6), 16),
+    };
+  }
+
+  const rgbMatch = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(color);
+  if (!rgbMatch) return null;
+  return {
+    r: Math.min(255, Math.max(0, Number(rgbMatch[1]))),
+    g: Math.min(255, Math.max(0, Number(rgbMatch[2]))),
+    b: Math.min(255, Math.max(0, Number(rgbMatch[3]))),
+  };
+};
+
+const isLightChartBackground = (background: string): boolean => {
+  const color = parseCssColor(background);
+  if (!color) return false;
+  return (0.2126 * color.r) + (0.7152 * color.g) + (0.0722 * color.b) >= 180;
+};
+
+type TradeOverlayCardTone = 'BUY' | 'SELL' | 'SL' | 'TP';
+
+interface TradeOverlayCardPalette {
+  background: string;
+  border: string;
+  text: string;
+  shadow: string;
+}
+
+const getTradeOverlayCardPalette = (
+  tone: TradeOverlayCardTone,
+  isLightSurface: boolean,
+): TradeOverlayCardPalette => {
+  const isPositiveTone = tone === 'BUY' || tone === 'TP';
+  if (isLightSurface) {
+    return isPositiveTone
+      ? {
+        background: 'rgba(236, 253, 243, 0.98)',
+        border: '#17b26a',
+        text: '#027a48',
+        shadow: 'box-shadow:0 1px 3px rgba(16,24,40,0.12);',
+      }
+      : {
+        background: 'rgba(254, 243, 242, 0.98)',
+        border: '#f04438',
+        text: '#b42318',
+        shadow: 'box-shadow:0 1px 3px rgba(16,24,40,0.12);',
+      };
+  }
+
+  return isPositiveTone
+    ? {
+      background: 'rgba(5, 46, 30, 0.96)',
+      border: '#22c55e',
+      text: '#bbf7d0',
+      shadow: 'box-shadow:0 2px 8px rgba(0,0,0,0.28);',
+    }
+    : {
+      background: 'rgba(69, 10, 10, 0.96)',
+      border: '#ef4444',
+      text: '#fecaca',
+      shadow: 'box-shadow:0 2px 8px rgba(0,0,0,0.28);',
+    };
+};
 const TRADING_VIEW_GRID_OVERLAY_SIZE = '92px 50px';
 const LIVE_PRICE_UP_COLOR = '#089981';
 const LIVE_PRICE_DOWN_COLOR = '#f23645';
@@ -138,6 +221,8 @@ interface TradeLevelOverride {
   sl: number;
   tp: number;
 }
+
+type TradeLevelModifyRequestId = number;
 
 const computeAdaptiveVisibleBars = (
   container: HTMLElement | null,
@@ -369,7 +454,7 @@ interface ActiveTradeSnapshot {
 type ClosedTradeSnapshot = ClosedTradeOverlaySnapshot;
 
 interface OverlayNodeData {
-  kind: 'horizontal-line' | 'price-badge' | 'segment' | 'marker' | 'label';
+  kind: 'horizontal-line' | 'price-badge' | 'price-hit-area' | 'segment' | 'marker' | 'label';
   price?: number;
   time?: number;
   endPrice?: number;
@@ -396,6 +481,7 @@ interface TradingChartProps {
   chartType?: ChartType;
   panelId?: string;
   tradeAllowed?: boolean;
+  isActive?: boolean;
 }
 
 export const TradingChart = React.memo(function TradingChart({
@@ -404,6 +490,7 @@ export const TradingChart = React.memo(function TradingChart({
   chartType = 'candlestick',
   panelId,
   tradeAllowed = false,
+  isActive = true,
 }: TradingChartProps) {
   const authToken = useAppStore((state) => state.authToken);
   const chartInstanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -569,6 +656,30 @@ export const TradingChart = React.memo(function TradingChart({
     incompatibleQuoteCountRef.current = reset.incompatibleQuoteCount;
   }, []);
 
+  const flushTradeOverlay = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+  }, []);
+
+  const refreshVisibleChartLayout = useCallback(() => {
+    if (isDisposedRef.current) return;
+
+    const chart = chartRef.current;
+    const container = containerRef.current;
+    if (chart && container) {
+      const { offsetWidth, offsetHeight } = container;
+      if (offsetWidth > 0 && offsetHeight > 0) {
+        try {
+          chart.applyOptions({ width: offsetWidth, height: offsetHeight });
+        } catch {
+          // Chart can be disposed during fast tab/workspace switches.
+        }
+      }
+    }
+
+    flushTradeOverlay();
+  }, [flushTradeOverlay]);
+
   const hideLivePriceOverlay = useCallback((clearPrice = true) => {
     if (clearPrice) livePriceRef.current = null;
     if (livePriceLineRef.current) {
@@ -718,6 +829,10 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     chartThemeRef.current = chartTheme;
   }, [chartTheme]);
+
+  const isChartSurfaceLight = useCallback(() => (
+    isLightChartBackground(chartThemeRef.current.background)
+  ), []);
 
   const normalizeChartTimeToUnixSeconds = useCallback((time: Time): number | null => {
     if (typeof time === 'number') {
@@ -1955,6 +2070,7 @@ export const TradingChart = React.memo(function TradingChart({
       });
     }
 
+    window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
   }, [chartSettings, chartTheme, chartType]);
 
   // getTimeframeSeconds is imported from candleAggregationService (module scope)
@@ -2180,44 +2296,39 @@ export const TradingChart = React.memo(function TradingChart({
       // price scale before we ask LightweightCharts for a coordinate.
       renderLivePriceOverlay(price, candleTime, price);
 
-      // ── Auto Close Trade on SL/TP Cross ──
+      // Backend/broker owns SL/TP execution. The frontend only refreshes server
+      // state when local ticks show a crossed level.
       activeTradeSnapshotsRef.current.forEach((trade) => {
-        if (tradeAutoClosePendingRef.current.has(trade.key)) return;
+        if (tradeLevelCrossRefreshPendingRef.current.has(trade.key)) return;
 
-        let shouldClose = false;
+        let shouldRefreshForCross = false;
 
-        // Current snapshot has sl/tp defined by the backend.
-        // We evaluate against live execution bounds for instant feedback.
+        // Do not close from local ticks: optimistic SL/TP edits can race with
+        // server validation and make the UI close an older position by mistake.
         if (trade.side === 'BUY') {
-          if (trade.sl != null && trade.sl > 0 && tick.bid <= trade.sl) shouldClose = true;
-          if (trade.tp != null && trade.tp > 0 && tick.bid >= trade.tp) shouldClose = true;
+          if (trade.sl != null && trade.sl > 0 && tick.bid <= trade.sl) shouldRefreshForCross = true;
+          if (trade.tp != null && trade.tp > 0 && tick.bid >= trade.tp) shouldRefreshForCross = true;
         } else {
           const closePrice = tick.ask ?? tick.bid;
-          if (trade.sl != null && trade.sl > 0 && closePrice >= trade.sl) shouldClose = true;
-          if (trade.tp != null && trade.tp > 0 && closePrice <= trade.tp) shouldClose = true;
+          if (trade.sl != null && trade.sl > 0 && closePrice >= trade.sl) shouldRefreshForCross = true;
+          if (trade.tp != null && trade.tp > 0 && closePrice <= trade.tp) shouldRefreshForCross = true;
         }
 
-        if (shouldClose) {
-          tradeAutoClosePendingRef.current.add(trade.key);
+        if (shouldRefreshForCross) {
+          tradeLevelCrossRefreshPendingRef.current.add(trade.key);
           const pId = trade.key.replace('trade:', '');
-          dispatchTradeOverlayCloseState([pId], 'pending');
-          console.log(`[Chart] 🛑 Auto-closing trade ${pId} due to SL/TP cross`);
+          console.log(`[Chart] SL/TP crossed for trade ${pId}; requesting server refresh`);
 
-          api.positions.closePosition(String(pId)).then(() => {
-            useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== Number(pId)));
-            dispatchTradeOverlayCloseState([pId], 'confirmed');
-            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-            const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
-            if (Number.isFinite(login) && login > 0) {
-              window.dispatchEvent(new CustomEvent('rtx:refresh-trade-history-requested', {
-                detail: { login },
-              }));
-            }
-          }).catch(err => {
-            console.warn(`[Chart] Auto-close failed:`, err);
-            tradeAutoClosePendingRef.current.delete(trade.key);
-            dispatchTradeOverlayCloseState([pId], 'failed');
-          });
+          window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+          const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+          if (Number.isFinite(login) && login > 0) {
+            window.dispatchEvent(new CustomEvent('rtx:refresh-trade-history-requested', {
+              detail: { login },
+            }));
+          }
+          window.setTimeout(() => {
+            tradeLevelCrossRefreshPendingRef.current.delete(trade.key);
+          }, 2500);
         }
       });
 
@@ -2394,6 +2505,7 @@ export const TradingChart = React.memo(function TradingChart({
               chartRef.current.applyOptions({ width: offsetWidth, height: offsetHeight });
               chartRef.current.timeScale().scrollToRealTime();
               console.log(`[TradingChart] Tab became visible — resized to ${offsetWidth}x${offsetHeight}`);
+              flushTradeOverlay();
             }
           }
         }
@@ -2403,7 +2515,26 @@ export const TradingChart = React.memo(function TradingChart({
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [flushTradeOverlay]);
+
+  useEffect(() => {
+    if (!isActive) return;
+
+    refreshVisibleChartLayout();
+
+    let secondFrameId: number | null = null;
+    const firstFrameId = window.requestAnimationFrame(() => {
+      refreshVisibleChartLayout();
+      secondFrameId = window.requestAnimationFrame(refreshVisibleChartLayout);
+    });
+    const timeoutId = window.setTimeout(refreshVisibleChartLayout, 120);
+
+    return () => {
+      window.cancelAnimationFrame(firstFrameId);
+      if (secondFrameId !== null) window.cancelAnimationFrame(secondFrameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [isActive, refreshVisibleChartLayout, symbol, timeframe]);
 
   // Native autoSize handles resizing internally
 
@@ -2832,12 +2963,16 @@ export const TradingChart = React.memo(function TradingChart({
   const tradeHistoryRefreshTimerRef = useRef<number | null>(null);
   const tradeMissingGraceTimerRef = useRef<number | null>(null);
   const tradeOverlayRafRef = useRef<number | null>(null);
-  const tradeAutoClosePendingRef = useRef<Set<string>>(new Set());
+  const tradeLevelCrossRefreshPendingRef = useRef<Set<string>>(new Set());
   const tradeLevelOverridesRef = useRef<Map<string, TradeLevelOverride>>(new Map());
+  const tradeLevelLastKnownLevelsRef = useRef<Map<string, TradeLevelOverride>>(new Map());
+  const tradeLevelModifyRequestSeqRef = useRef<TradeLevelModifyRequestId>(0);
+  const pendingTradeLevelModifyRequestsRef = useRef<Map<string, TradeLevelModifyRequestId>>(new Map());
+  const tradeLevelOptimisticGraceUntilRef = useRef<Map<string, number>>(new Map());
   const tradeLevelOverridesHydratedRef = useRef(false);
   const lastActiveTradeOverlaySignatureRef = useRef('');
   const lastHistoryTradeOverlaySignatureRef = useRef('');
-  const positionLabelsRef = activeOverlayNodesRef;
+  const positionLabelsRef = useRef<HTMLElement[]>([]);
   const positionLabelDataRef = useRef<any[]>([]);
 
   const hydrateTradeLevelOverrides = useCallback(() => {
@@ -2855,7 +2990,7 @@ export const TradingChart = React.memo(function TradingChart({
       rows.forEach((row) => {
         const key = typeof row?.key === 'string' ? row.key : '';
         const savedAt = Number(row?.savedAt ?? 0);
-        if (!key || !Number.isFinite(savedAt) || now - savedAt > TRADE_LEVEL_OVERRIDE_TTL_MS) return;
+        if (!key.startsWith('trade:') || !Number.isFinite(savedAt) || now - savedAt > TRADE_LEVEL_OVERRIDE_TTL_MS) return;
 
         const sl = Number(row?.sl) || 0;
         const tp = Number(row?.tp) || 0;
@@ -2874,7 +3009,7 @@ export const TradingChart = React.memo(function TradingChart({
     try {
       const savedAt = Date.now();
       const rows = Array.from(tradeLevelOverridesRef.current.entries())
-        .filter(([, levels]) => (levels.sl || 0) > 0 || (levels.tp || 0) > 0)
+        .filter(([key, levels]) => key.startsWith('trade:') && ((levels.sl || 0) > 0 || (levels.tp || 0) > 0))
         .map(([key, levels]) => ({
           key,
           sl: levels.sl || 0,
@@ -2903,6 +3038,17 @@ export const TradingChart = React.memo(function TradingChart({
         // Ignore detached nodes.
       }
     }
+    const overlayHost = overlayRef.current?.parentElement ?? overlayRef.current;
+    const staleSelector = layer === 'active'
+      ? '.rtx-trade-marker--active,.rtx-trade-active-segment,.rtx-trade-level-line,.rtx-trade-level-badge,.rtx-trade-level-hit-area'
+      : '.rtx-trade-marker--history,.rtx-trade-history-line,.rtx-trade-history-label';
+    overlayHost?.querySelectorAll(staleSelector).forEach((node) => {
+      try {
+        node.remove();
+      } catch {
+        // Ignore detached nodes.
+      }
+    });
     nodesRef.current = [];
     dataRef.current = [];
     if (layer === 'active') {
@@ -2941,6 +3087,9 @@ export const TradingChart = React.memo(function TradingChart({
     pendingClosedTradeSnapshotsRef.current.clear();
     optimisticClosedTradeSnapshotsRef.current.clear();
     frozenEntryTimesRef.current.clear();
+    tradeLevelLastKnownLevelsRef.current.clear();
+    pendingTradeLevelModifyRequestsRef.current.clear();
+    tradeLevelOptimisticGraceUntilRef.current.clear();
     clearTradeOverlay();
 
     if (tradeHistoryRefreshTimerRef.current !== null) {
@@ -2975,7 +3124,7 @@ export const TradingChart = React.memo(function TradingChart({
         if (!el || !node) continue;
 
         try {
-          if (node.kind === 'horizontal-line' || node.kind === 'price-badge') {
+          if (node.kind === 'horizontal-line' || node.kind === 'price-badge' || node.kind === 'price-hit-area') {
             if (node.price == null) {
               el.style.display = 'none';
               continue;
@@ -2990,7 +3139,7 @@ export const TradingChart = React.memo(function TradingChart({
             el.style.display = 'block';
             el.style.top = `${y}px`;
 
-            if (node.kind === 'horizontal-line') {
+            if (node.kind === 'horizontal-line' || node.kind === 'price-hit-area') {
               el.style.left = '0px';
               el.style.right = `${priceScaleWidth}px`;
             } else {
@@ -3237,9 +3386,115 @@ export const TradingChart = React.memo(function TradingChart({
       }, 350);
     };
 
+    const getTradeLevelStateKeys = (trade: ActiveTradeSnapshot): string[] => {
+      const fingerprint = createTradeLevelOverrideFingerprint({
+        symbol: trade.symbol,
+        side: trade.side,
+        volume: trade.volume,
+        entryPrice: trade.entryPrice,
+        entryTime: trade.entryTime,
+        digits,
+      });
+      return Array.from(new Set([trade.key, fingerprint]));
+    };
+
+    const getTradeLevelState = (
+      state: Map<string, TradeLevelOverride>,
+      trade: ActiveTradeSnapshot,
+    ): TradeLevelOverride | undefined => {
+      for (const key of getTradeLevelStateKeys(trade)) {
+        const levels = state.get(key);
+        if (!levels) continue;
+        if (key !== trade.key) state.set(trade.key, levels);
+        return levels;
+      }
+      return undefined;
+    };
+
+    const setTradeLevelState = (
+      state: Map<string, TradeLevelOverride>,
+      trade: ActiveTradeSnapshot,
+      levels: TradeLevelOverride,
+    ) => {
+      getTradeLevelStateKeys(trade).forEach((key) => state.set(key, levels));
+    };
+
+    const deleteTradeLevelState = (
+      state: Map<string, TradeLevelOverride>,
+      trade: ActiveTradeSnapshot,
+    ) => {
+      getTradeLevelStateKeys(trade).forEach((key) => state.delete(key));
+    };
+
+    const deleteTradeLevelStateByKey = (
+      state: Map<string, TradeLevelOverride>,
+      key: string,
+    ): boolean => state.delete(key);
+
+    const clearTradeLevelRuntimeState = (trade: ActiveTradeSnapshot): boolean => {
+      let changed = false;
+      getTradeLevelStateKeys(trade).forEach((key) => {
+        changed = deleteTradeLevelStateByKey(tradeLevelOverridesRef.current, key) || changed;
+        changed = deleteTradeLevelStateByKey(tradeLevelLastKnownLevelsRef.current, key) || changed;
+        pendingTradeLevelModifyRequestsRef.current.delete(key);
+        tradeLevelOptimisticGraceUntilRef.current.delete(key);
+      });
+      return changed;
+    };
+
+    const clearTradeLevelRuntimeStateByKey = (key: string): boolean => {
+      pendingTradeLevelModifyRequestsRef.current.delete(key);
+      tradeLevelOptimisticGraceUntilRef.current.delete(key);
+      const overrideDeleted = tradeLevelOverridesRef.current.delete(key);
+      const lastKnownDeleted = tradeLevelLastKnownLevelsRef.current.delete(key);
+      return overrideDeleted || lastKnownDeleted;
+    };
+
+    const hasPendingTradeLevelModifyRequest = (trade: ActiveTradeSnapshot): boolean =>
+      getTradeLevelStateKeys(trade).some((key) => pendingTradeLevelModifyRequestsRef.current.has(key));
+
+    const hasRecentTradeLevelModifyGrace = (trade: ActiveTradeSnapshot): boolean => {
+      let hasGrace = false;
+      const nowMs = Date.now();
+      getTradeLevelStateKeys(trade).forEach((key) => {
+        const expiresAt = tradeLevelOptimisticGraceUntilRef.current.get(key);
+        if (!expiresAt) return;
+        if (expiresAt > nowMs) {
+          hasGrace = true;
+        } else {
+          tradeLevelOptimisticGraceUntilRef.current.delete(key);
+        }
+      });
+      return hasGrace;
+    };
+
+    const rememberTradeLevels = (trade: ActiveTradeSnapshot, levels: TradeLevelOverride) => {
+      const normalized = {
+        sl: levels.sl > 0 ? levels.sl : 0,
+        tp: levels.tp > 0 ? levels.tp : 0,
+      };
+      if (normalized.sl > 0 || normalized.tp > 0) {
+        setTradeLevelState(tradeLevelLastKnownLevelsRef.current, trade, normalized);
+      } else if (!hasPendingTradeLevelModifyRequest(trade)) {
+        deleteTradeLevelState(tradeLevelLastKnownLevelsRef.current, trade);
+      }
+    };
+
     const resolveTradeLevels = (trade: ActiveTradeSnapshot): TradeLevelOverride => {
-      const override = tradeLevelOverridesRef.current.get(trade.key);
-      if (!override) return { sl: trade.sl || 0, tp: trade.tp || 0 };
+      const override = getTradeLevelState(tradeLevelOverridesRef.current, trade);
+      if (!override) {
+        const serverLevels = { sl: trade.sl || 0, tp: trade.tp || 0 };
+        const lastKnownLevels = getTradeLevelState(tradeLevelLastKnownLevelsRef.current, trade);
+        const hasRecentGrace = hasRecentTradeLevelModifyGrace(trade);
+        const levels = hasRecentGrace && lastKnownLevels
+          ? {
+            sl: serverLevels.sl > 0 ? serverLevels.sl : lastKnownLevels.sl || 0,
+            tp: serverLevels.tp > 0 ? serverLevels.tp : lastKnownLevels.tp || 0,
+          }
+          : serverLevels;
+        rememberTradeLevels(trade, levels);
+        return levels;
+      }
 
       const serverSl = trade.sl || 0;
       const serverTp = trade.tp || 0;
@@ -3249,22 +3504,29 @@ export const TradingChart = React.memo(function TradingChart({
       const tpSynced = overrideTp <= 0 || (serverTp > 0 && Math.abs(serverTp - overrideTp) <= priceTolerance);
 
       if (slSynced && tpSynced) {
-        tradeLevelOverridesRef.current.delete(trade.key);
+        rememberTradeLevels(trade, { sl: serverSl, tp: serverTp });
+        deleteTradeLevelState(tradeLevelOverridesRef.current, trade);
         persistTradeLevelOverrides();
         return { sl: serverSl, tp: serverTp };
       }
 
-      return {
+      const levels = {
         sl: overrideSl > 0 ? overrideSl : serverSl,
         tp: overrideTp > 0 ? overrideTp : serverTp,
       };
+      rememberTradeLevels(trade, levels);
+      return levels;
     };
 
     const createCollisionOffsetFactory = () => {
       const offsets = new Map<string, number>();
 
-      return (role: TradeLevelRole, price: number) => {
-        const key = `${role}:${price.toFixed(digits)}`;
+      return (_role: TradeLevelRole, price: number) => {
+        const y = seriesRef.current?.priceToCoordinate(price);
+        const bucket = y == null || !Number.isFinite(y)
+          ? price.toFixed(digits)
+          : String(Math.round(y / 18));
+        const key = bucket;
         const offsetIndex = offsets.get(key) ?? 0;
         offsets.set(key, offsetIndex + 1);
         return offsetIndex;
@@ -3281,12 +3543,20 @@ export const TradingChart = React.memo(function TradingChart({
       dataRef.current.push(node);
     };
 
+    const appendActiveInteractionNode = (element: HTMLElement, node: OverlayNodeData) => {
+      const host = overlayRef.current?.parentElement ?? overlayRef.current;
+      host?.appendChild(element);
+      activeOverlayNodesRef.current.push(element);
+      activeOverlayNodeDataRef.current.push(node);
+    };
+
     const createArrowSvg = (side: TradeSide, color: string) => side === 'BUY'
       ? `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 1L11 6H8V15H4V6H1L6 1Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`
       : `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 15L1 10H4V1H8V10H11L6 15Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`;
 
     const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer) => {
       const marker = document.createElement('div');
+      marker.className = `rtx-trade-marker rtx-trade-marker--${layer}`;
       marker.title = title;
       marker.innerHTML = createArrowSvg(side, color);
       marker.style.cssText = 'position:absolute;z-index:14;pointer-events:none;';
@@ -3299,16 +3569,19 @@ export const TradingChart = React.memo(function TradingChart({
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     };
 
-    const createTradeHistoryLabel = (side: TradeSide, price: number, time: number, color: string, layer: TradeOverlayLayer) => {
+    const createTradeHistoryLabel = (side: TradeSide, price: number, time: number, _color: string, layer: TradeOverlayLayer) => {
       const label = document.createElement('div');
       const timeLabel = formatHistoryLabelTime(time);
+      const palette = getTradeOverlayCardPalette(side, isChartSurfaceLight());
+      label.className = `rtx-trade-history-label rtx-trade-history-label--${side.toLowerCase()}`;
       label.textContent = `${side} ${price.toFixed(digits)}${timeLabel ? ` | ${timeLabel}` : ''}`;
-      label.style.cssText = `position:absolute;padding:2px 5px;background:rgba(9,14,22,0.94);border:1px solid ${color}aa;color:#e5edf4;font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;white-space:nowrap;z-index:15;pointer-events:none;border-radius:2px;line-height:13px;`;
+      label.style.cssText = `position:absolute;padding:2px 5px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:15;pointer-events:none;border-radius:2px;line-height:13px;${palette.shadow}`;
       appendOverlayNode(label, { kind: 'label', price, time, labelOffsetX: 10, labelOffsetY: -18 }, layer);
     };
 
     const createTradeSegment = (price: number, time: number, color: string, lineStyle: 'solid' | 'dashed', layer: TradeOverlayLayer, endPrice?: number, endTime?: number, resolveEndPrice?: () => number | null, resolveEndTime?: () => number | null) => {
       const line = document.createElement('div');
+      line.className = layer === 'history' ? 'rtx-trade-history-line' : 'rtx-trade-active-segment';
       line.style.cssText = `position:absolute;height:0;border-top:${lineStyle === 'solid' ? '1.5px solid' : '1px dashed'} ${color};z-index:${lineStyle === 'solid' ? 11 : 9};pointer-events:none;`;
       appendOverlayNode(line, { kind: 'segment', price, time, endPrice, endTime, resolveEndPrice, resolveEndTime }, layer);
     };
@@ -3317,8 +3590,19 @@ export const TradingChart = React.memo(function TradingChart({
       if (!(price > 0)) return;
 
       const line = document.createElement('div');
+      line.className = 'rtx-trade-level-line';
       line.style.cssText = `position:absolute;height:0;border-top:1px dashed ${color}cc;z-index:12;pointer-events:none;`;
       appendOverlayNode(line, { kind: 'horizontal-line', price }, 'active');
+
+      if (options.tradeKey && options.role) {
+        const hitArea = document.createElement('div');
+        hitArea.className = 'rtx-trade-level-hit-area';
+        hitArea.dataset.tradeKey = options.tradeKey;
+        hitArea.dataset.role = options.role;
+        if (options.title) hitArea.title = options.title;
+        hitArea.style.cssText = `position:absolute;height:${TRADE_LEVEL_HIT_AREA_PX}px;transform:translateY(-50%);z-index:15;pointer-events:auto;cursor:grab;background:transparent;touch-action:none;`;
+        appendActiveInteractionNode(hitArea, { kind: 'price-hit-area', price });
+      }
 
       const badge = document.createElement('div');
       badge.textContent = labelText;
@@ -3328,15 +3612,21 @@ export const TradingChart = React.memo(function TradingChart({
         badge.dataset.tradeKey = options.tradeKey;
         badge.dataset.role = options.role;
       }
-      const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
-      const bg = isLight ? 'rgba(255, 255, 255, 0.92)' : 'rgba(20,24,34,0.92)';
-      const borderCol = isLight ? '#e5e7eb' : '#3a4354';
+      const upperLabel = labelText.trim().toUpperCase();
+      const tone: TradeOverlayCardTone = options.role === 'TP' || upperLabel.startsWith('TP')
+        ? 'TP'
+        : options.role === 'SL' || upperLabel.startsWith('SL')
+          ? 'SL'
+          : upperLabel.startsWith('SELL')
+            ? 'SELL'
+            : 'BUY';
+      const palette = getTradeOverlayCardPalette(tone, isChartSurfaceLight());
       const offsetIndex = options.badgeOffsetIndex ?? 0;
       const offsetStep = Math.ceil(offsetIndex / 2) * 64;
       const offsetDirection = offsetIndex % 2 === 0 ? 1 : -1;
       const offsetX = offsetIndex === 0 ? 0 : offsetDirection * offsetStep;
       const canDrag = Boolean(options.tradeKey && options.role);
-      badge.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${bg};border:1px solid ${borderCol};color:${color};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;white-space:nowrap;z-index:16;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'ns-resize' : 'default'};border-radius:2px;transform:translate(calc(-50% + ${offsetX}px), -50%);min-width:52px;text-align:center;`;
+      badge.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translate(calc(-50% + ${offsetX}px), -50%);min-width:52px;text-align:center;touch-action:none;${palette.shadow}`;
       appendOverlayNode(badge, { kind: 'price-badge', price }, 'active');
     };
 
@@ -3428,10 +3718,18 @@ export const TradingChart = React.memo(function TradingChart({
         activeTradeKeys,
       });
       const realClosedTradeKeys = new Set(closedHistorySnapshots.map((trade) => trade.key));
+      let didClearClosedHistoryTradeLevels = false;
       realClosedTradeKeys.forEach((key) => {
+        const capturedTrade = activeTradeSnapshotsRef.current.get(key)
+          ?? pendingMissingActiveTradesRef.current.get(key)?.trade
+          ?? pendingClosedTradeSnapshotsRef.current.get(key);
+        didClearClosedHistoryTradeLevels = capturedTrade
+          ? clearTradeLevelRuntimeState(capturedTrade) || didClearClosedHistoryTradeLevels
+          : clearTradeLevelRuntimeStateByKey(key) || didClearClosedHistoryTradeLevels;
         optimisticClosedTradeSnapshotsRef.current.delete(key);
         pendingClosedTradeSnapshotsRef.current.delete(key);
       });
+      if (didClearClosedHistoryTradeLevels) persistTradeLevelOverrides();
 
       const normalizedAppPositions = appPositions.map((position: any) => ({
         id: getPositionId(position),
@@ -3530,7 +3828,9 @@ export const TradingChart = React.memo(function TradingChart({
 
         const elapsedMs = now - pending.missingSince;
         if (elapsedMs < TRADE_MISSING_POSITION_GRACE_MS) {
-          renderActiveSnapshots.set(key, pending.trade);
+          // Keep the missing snapshot only as a short-lived history bridge.
+          // Once the position is absent from the active positions list, do not
+          // draw active BUY/SELL or SL/TP levels for it.
           const remainingMs = TRADE_MISSING_POSITION_GRACE_MS - elapsedMs;
           nextMissingGraceDelayMs = nextMissingGraceDelayMs == null
             ? remainingMs
@@ -3573,11 +3873,11 @@ export const TradingChart = React.memo(function TradingChart({
         });
       }
 
+      const sortedActiveSnapshots = Array.from(renderActiveSnapshots.values())
+        .sort((a, b) => a.key.localeCompare(b.key));
       const activeSignature = showTradeLevels
-        ? Array.from(renderActiveSnapshots.values())
-          .sort((a, b) => a.key.localeCompare(b.key))
-          .map((trade) => {
-            const levels = resolveTradeLevels(trade);
+        ? sortedActiveSnapshots.map((trade) => {
+            const levels = nextActiveSnapshots.has(trade.key) ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
             return [
               trade.key,
               trade.side,
@@ -3635,7 +3935,8 @@ export const TradingChart = React.memo(function TradingChart({
 
         if (showTradeLevels) {
           const nextLevelOffset = createCollisionOffsetFactory();
-          renderActiveSnapshots.forEach((trade) => {
+          sortedActiveSnapshots.forEach((trade) => {
+            const isLiveActiveTrade = nextActiveSnapshots.has(trade.key);
             const entryColor = getEntryColor(trade.side);
             const ticketLabel = getTradeTicketLabel(trade.key);
             const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${trade.entryPrice.toFixed(digits)}`.trim();
@@ -3646,14 +3947,14 @@ export const TradingChart = React.memo(function TradingChart({
               trade.entryPrice,
               entryColor,
               {
-                tradeKey: trade.key,
-                role: 'ENTRY',
+                tradeKey: isLiveActiveTrade ? trade.key : undefined,
+                role: isLiveActiveTrade ? 'ENTRY' : undefined,
                 badgeOffsetIndex: nextLevelOffset('ENTRY', trade.entryPrice),
-                title: `${markerTitle}. Drag above/below to create TP or SL.`,
+                title: isLiveActiveTrade ? `${markerTitle}. Drag above/below to create TP or SL.` : markerTitle,
               },
             );
 
-            const levels = resolveTradeLevels(trade);
+            const levels = isLiveActiveTrade ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
             if (levels.sl && levels.sl > 0) {
               createPriceLevel(`SL ${ticketLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
                 tradeKey: trade.key,
@@ -3749,16 +4050,20 @@ export const TradingChart = React.memo(function TradingChart({
           closeSuppressedTradeKeysRef.current.delete(key);
           pendingClosedTradeSnapshotsRef.current.delete(key);
           optimisticClosedTradeSnapshotsRef.current.delete(key);
-          tradeAutoClosePendingRef.current.delete(key);
+          tradeLevelCrossRefreshPendingRef.current.delete(key);
         });
       } else {
         const expiresAt = Date.now() + TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS;
+        let didClearTradeLevels = false;
         tradeKeys.forEach((key) => {
           const capturedTrade = activeTradeSnapshotsRef.current.get(key)
             ?? pendingMissingActiveTradesRef.current.get(key)?.trade
             ?? pendingClosedTradeSnapshotsRef.current.get(key);
           if (capturedTrade) {
             pendingClosedTradeSnapshotsRef.current.set(key, capturedTrade);
+            didClearTradeLevels = clearTradeLevelRuntimeState(capturedTrade) || didClearTradeLevels;
+          } else {
+            didClearTradeLevels = clearTradeLevelRuntimeStateByKey(key) || didClearTradeLevels;
           }
           if (status === 'confirmed') {
             const closedTrade = capturedTrade ? buildImmediateClosedTrade(capturedTrade) : null;
@@ -3771,8 +4076,9 @@ export const TradingChart = React.memo(function TradingChart({
           activeTradeSnapshotsRef.current.delete(key);
           pendingMissingActiveTradesRef.current.delete(key);
           frozenEntryTimesRef.current.delete(key);
-          tradeAutoClosePendingRef.current.delete(key);
+          tradeLevelCrossRefreshPendingRef.current.delete(key);
         });
+        if (didClearTradeLevels) persistTradeLevelOverrides();
         scheduleHistoryRefresh();
       }
 
@@ -3896,6 +4202,7 @@ export const TradingChart = React.memo(function TradingChart({
         // SL / TP: dashed line already drawn above; right-side text-only badge
         const upperText = text.toUpperCase();
         const slTpLabel = upperText.includes('TP') ? 'TP' : upperText.includes('SL') ? 'SL' : text;
+        const palette = getTradeOverlayCardPalette(slTpLabel === 'TP' ? 'TP' : 'SL', isChartSurfaceLight());
 
         const badge = document.createElement('div');
         badge.className = 'rtx-position-badge';
@@ -3903,12 +4210,12 @@ export const TradingChart = React.memo(function TradingChart({
           position: absolute;
           right: 0;
           padding: 1px 5px;
-          background: #2a2a38;
-          border: 1px solid #444460;
-          color: ${color};
+          background: ${palette.background};
+          border: 1px solid ${palette.border};
+          color: ${palette.text};
           font-size: 10px;
           font-family: Consolas, 'Courier New', monospace;
-          font-weight: 600;
+          font-weight: 700;
           white-space: nowrap;
           z-index: 6;
           pointer-events: none;
@@ -3917,6 +4224,7 @@ export const TradingChart = React.memo(function TradingChart({
           letter-spacing: 0.02em;
           min-width: 52px;
           text-align: center;
+          ${palette.shadow}
         `;
         badge.textContent = slTpLabel;
         overlayEl.appendChild(badge);
@@ -4408,32 +4716,219 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    const interactionRoot = container.parentElement ?? container;
 
     let dragLineOverlay: HTMLDivElement | null = null;
     let dragBadgeOverlay: HTMLDivElement | null = null;
     let dragState: {
       tradeObj: ActiveTradeSnapshot;
-      role: 'SL' | 'TP';
       grabbedType: 'ENTRY' | 'SL' | 'TP';
+      startY: number;
     } | null = null;
+    let capturedPointerElement: HTMLElement | null = null;
+    let capturedPointerId: number | null = null;
+    let previousRootCursor = '';
+    let previousContainerCursor = '';
+    let previousBodyCursor = '';
+    let previousUserSelect = '';
+    let dragCursorActive = false;
+    let tradeHoverCursorActive = false;
 
     const getChartY = (e: PointerEvent) => {
       const rect = container.getBoundingClientRect();
       return e.clientY - rect.top;
     };
 
+    const isPointerInsideChart = (e: PointerEvent) => {
+      const rect = container.getBoundingClientRect();
+      return (
+        e.clientX >= rect.left
+        && e.clientX <= rect.right
+        && e.clientY >= rect.top
+        && e.clientY <= rect.bottom
+      );
+    };
+
+    const getEntryDragDirection = (y: number, startY: number): 1 | -1 | null => {
+      if (Math.abs(y - startY) < TRADE_LEVEL_MIN_DRAG_PX) return null;
+      return y < startY ? 1 : -1;
+    };
+
+    const getPriceScaleOffset = () => seriesRef.current?.priceScale().width() ?? 52;
+
+    const getTradeLevelStateKeys = (trade: ActiveTradeSnapshot): string[] => {
+      const digits = getSymbolDigits(trade.symbol);
+      const fingerprint = createTradeLevelOverrideFingerprint({
+        symbol: trade.symbol,
+        side: trade.side,
+        volume: trade.volume,
+        entryPrice: trade.entryPrice,
+        entryTime: trade.entryTime,
+        digits,
+      });
+      return Array.from(new Set([trade.key, fingerprint]));
+    };
+
+    const getTradeLevelState = (
+      state: Map<string, TradeLevelOverride>,
+      trade: ActiveTradeSnapshot,
+    ): TradeLevelOverride | undefined => {
+      for (const key of getTradeLevelStateKeys(trade)) {
+        const levels = state.get(key);
+        if (!levels) continue;
+        if (key !== trade.key) state.set(trade.key, levels);
+        return levels;
+      }
+      return undefined;
+    };
+
+    const setTradeLevelState = (
+      state: Map<string, TradeLevelOverride>,
+      trade: ActiveTradeSnapshot,
+      levels: TradeLevelOverride,
+    ) => {
+      getTradeLevelStateKeys(trade).forEach((key) => state.set(key, levels));
+    };
+
+    const deleteTradeLevelState = (
+      state: Map<string, TradeLevelOverride>,
+      trade: ActiveTradeSnapshot,
+    ) => {
+      getTradeLevelStateKeys(trade).forEach((key) => state.delete(key));
+    };
+
+    const getDragRoleColor = (role: 'SL' | 'TP') => role === 'TP' ? '#00a256' : '#eb415c';
+
+    const findClosestLevelForTrade = (
+      trade: ActiveTradeSnapshot,
+      y: number,
+      maxDistance: number,
+    ): { grabbedType: 'ENTRY' | 'SL' | 'TP'; distance: number } | null => {
+      if (!seriesRef.current) return null;
+
+      const override = getTradeLevelState(tradeLevelOverridesRef.current, trade);
+      const lastKnown = getTradeLevelState(tradeLevelLastKnownLevelsRef.current, trade);
+      const getLevelY = (price: number | undefined) => (
+        price && price > 0 && seriesRef.current
+          ? seriesRef.current.priceToCoordinate(price)
+          : null
+      );
+
+      const sl = override && override.sl > 0
+        ? override.sl
+        : lastKnown && lastKnown.sl > 0
+          ? lastKnown.sl
+          : trade.sl;
+      const tp = override && override.tp > 0
+        ? override.tp
+        : lastKnown && lastKnown.tp > 0
+          ? lastKnown.tp
+          : trade.tp;
+
+      return selectNearestTradeLevel([
+        { grabbedType: 'ENTRY', y: getLevelY(trade.entryPrice) },
+        { grabbedType: 'SL', y: getLevelY(sl) },
+        { grabbedType: 'TP', y: getLevelY(tp) },
+      ], y, maxDistance);
+    };
+
+    const findClosestTradeLevel = (
+      y: number,
+      maxDistance: number,
+    ): { tradeObj: ActiveTradeSnapshot; grabbedType: 'ENTRY' | 'SL' | 'TP'; distance: number } | null => {
+      let closest: { tradeObj: ActiveTradeSnapshot; grabbedType: 'ENTRY' | 'SL' | 'TP'; distance: number } | null = null;
+
+      activeTradeSnapshotsRef.current.forEach((trade) => {
+        const nearestLevel = findClosestLevelForTrade(trade, y, closest?.distance ?? maxDistance);
+        if (nearestLevel) {
+          closest = {
+            tradeObj: trade,
+            grabbedType: nearestLevel.grabbedType,
+            distance: nearestLevel.distance,
+          };
+        }
+      });
+
+      return closest;
+    };
+
+    const beginPointerCapture = (target: HTMLElement | null, pointerId: number) => {
+      capturedPointerElement = target ?? interactionRoot;
+      capturedPointerId = pointerId;
+      try {
+        capturedPointerElement.setPointerCapture(pointerId);
+      } catch {
+        capturedPointerElement = null;
+        capturedPointerId = null;
+      }
+    };
+
+    const releasePointerCapture = () => {
+      if (capturedPointerElement && capturedPointerId !== null) {
+        try {
+          if (capturedPointerElement.hasPointerCapture(capturedPointerId)) {
+            capturedPointerElement.releasePointerCapture(capturedPointerId);
+          }
+        } catch {
+          // Pointer capture can already be released by the browser on pointercancel.
+        }
+      }
+      capturedPointerElement = null;
+      capturedPointerId = null;
+    };
+
+    const beginDragCursor = () => {
+      previousRootCursor = interactionRoot.style.cursor;
+      previousContainerCursor = container.style.cursor;
+      previousBodyCursor = document.body.style.cursor;
+      previousUserSelect = document.body.style.userSelect;
+      interactionRoot.style.cursor = 'grabbing';
+      container.style.cursor = 'grabbing';
+      container.querySelectorAll('canvas').forEach((canvas) => {
+        (canvas as HTMLElement).style.cursor = 'grabbing';
+      });
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      dragCursorActive = true;
+    };
+
+    const endDragCursor = () => {
+      if (!dragCursorActive) return;
+      interactionRoot.style.cursor = previousRootCursor;
+      container.style.cursor = previousContainerCursor;
+      container.querySelectorAll('canvas').forEach((canvas) => {
+        (canvas as HTMLElement).style.cursor = 'default';
+      });
+      document.body.style.cursor = previousBodyCursor;
+      document.body.style.userSelect = previousUserSelect;
+      dragCursorActive = false;
+    };
+
+    const setTradeHoverCursor = (active: boolean) => {
+      if (dragCursorActive || (!active && !tradeHoverCursorActive)) return;
+      tradeHoverCursorActive = active;
+      const cursor = active ? 'grab' : 'default';
+      interactionRoot.style.cursor = active ? cursor : '';
+      container.style.cursor = active ? cursor : '';
+      container.querySelectorAll('canvas').forEach((canvas) => {
+        (canvas as HTMLElement).style.cursor = cursor;
+      });
+    };
+
     const handlePointerDown = (e: PointerEvent) => {
-      // Only trigger on left-click and if an active tool is not enabled (i.e. crosshair is active)
-      if (e.button !== 0 || !seriesRef.current || activeToolRef.current !== null) return;
+      // Trade levels get first priority when the pointer is actually on/near one.
+      if (e.button !== 0 || !seriesRef.current) return;
       if (chartSettingsRef.current.showTradeLevels === false) return;
 
       const y = getChartY(e);
       let closestTrade: ActiveTradeSnapshot | null = null;
       let grabbedType: 'ENTRY' | 'SL' | 'TP' = 'ENTRY';
-      let minDistance = 10; // 10px snap bounds
 
       const targetBadge = e.target instanceof Element
         ? e.target.closest('.rtx-trade-level-badge') as HTMLElement | null
+        : null;
+      const targetLevel = e.target instanceof Element
+        ? e.target.closest('.rtx-trade-level-badge, .rtx-trade-level-hit-area') as HTMLElement | null
         : null;
       const targetTradeKey = targetBadge?.dataset.tradeKey;
       const targetRole = targetBadge?.dataset.role as TradeLevelRole | undefined;
@@ -4446,41 +4941,21 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       if (!closestTrade) {
-        activeTradeSnapshotsRef.current.forEach(trade => {
-          const entryY = seriesRef.current!.priceToCoordinate(trade.entryPrice);
-          if (entryY !== null) {
-            const dist = Math.abs(entryY - y);
-            if (dist < minDistance) {
-              minDistance = dist;
-              closestTrade = trade;
-              grabbedType = 'ENTRY';
-            }
-          }
-          const override = tradeLevelOverridesRef.current.get(trade.key);
-          const currentSl = override && override.sl > 0 ? override.sl : trade.sl;
-          if (currentSl && currentSl > 0) {
-            const slY = seriesRef.current!.priceToCoordinate(currentSl);
-            if (slY !== null && Math.abs(slY - y) < minDistance) {
-              minDistance = Math.abs(slY - y);
-              closestTrade = trade;
-              grabbedType = 'SL';
-            }
-          }
-          const currentTp = override && override.tp > 0 ? override.tp : trade.tp;
-          if (currentTp && currentTp > 0) {
-            const tpY = seriesRef.current!.priceToCoordinate(currentTp);
-            if (tpY !== null && Math.abs(tpY - y) < minDistance) {
-              minDistance = Math.abs(tpY - y);
-              closestTrade = trade;
-              grabbedType = 'TP';
-            }
-          }
-        });
+        const nearestTradeLevel = findClosestTradeLevel(y, TRADE_LEVEL_HIT_AREA_PX / 2);
+        if (nearestTradeLevel) {
+          closestTrade = nearestTradeLevel.tradeObj;
+          grabbedType = nearestTradeLevel.grabbedType;
+        }
       }
+
+      if (!closestTrade && activeToolRef.current !== null) return;
 
       if (closestTrade) {
         e.preventDefault();
         e.stopPropagation();
+        setTradeHoverCursor(false);
+        beginPointerCapture(targetLevel, e.pointerId);
+        beginDragCursor();
         if (chartRef.current) {
           chartRef.current.applyOptions({
             handleScroll: DRAWING_LOCK_HANDLE_SCROLL,
@@ -4488,16 +4963,14 @@ export const TradingChart = React.memo(function TradingChart({
           });
         }
 
-        dragState = { tradeObj: closestTrade, role: grabbedType === 'ENTRY' ? 'SL' : grabbedType, grabbedType };
+        dragState = { tradeObj: closestTrade, grabbedType, startY: y };
 
         dragLineOverlay = document.createElement('div');
-        dragLineOverlay.style.cssText = `position:absolute;left:0;right:52px;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translateY(${y}px)`;
+        dragLineOverlay.style.cssText = `position:absolute;left:0;right:${getPriceScaleOffset()}px;top:0;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translate3d(0, ${y}px, 0);will-change:transform;`;
 
         dragBadgeOverlay = document.createElement('div');
-        const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
-        const badgeBg = isLight ? 'rgba(255, 255, 255, 0.92)' : '#2a2a38';
-        const borderCol = isLight ? '#e5e7eb' : 'transparent';
-        dragBadgeOverlay.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${badgeBg};border:1px solid ${borderCol};font-size:10px;font-family:Consolas,monospace;font-weight:600;z-index:1000;pointer-events:none;border-radius:2px;transform:translate(-50%, calc(-50% + ${y}px));`;
+        const initialPalette = getTradeOverlayCardPalette(grabbedType === 'TP' ? 'TP' : 'SL', isChartSurfaceLight());
+        dragBadgeOverlay.style.cssText = `position:absolute;left:50%;top:0;padding:1px 5px;background:${initialPalette.background};border:1px solid ${initialPalette.border};color:${initialPalette.text};font-size:10px;font-family:Consolas,monospace;font-weight:700;z-index:1000;pointer-events:none;border-radius:2px;transform:translate(-50%, calc(-50% + ${y}px));will-change:transform;opacity:0;${initialPalette.shadow}`;
 
         overlayRef.current?.appendChild(dragLineOverlay);
         overlayRef.current?.appendChild(dragBadgeOverlay);
@@ -4505,82 +4978,183 @@ export const TradingChart = React.memo(function TradingChart({
     };
 
     const handlePointerMove = (e: PointerEvent) => {
-      if (!dragState || !dragLineOverlay || !dragBadgeOverlay || !seriesRef.current) return;
-      const y = getChartY(e);
-      const price = seriesRef.current.coordinateToPrice(y as any);
-      if (price === null) return;
-
-      const { tradeObj, grabbedType } = dragState;
-      let role: 'SL' | 'TP' = grabbedType === 'ENTRY' ? 'SL' : grabbedType;
-      let color = '#eb415c'; // RED
-
-      if (grabbedType === 'ENTRY') {
-        if (tradeObj.side === 'BUY') {
-          if (price > tradeObj.entryPrice) { role = 'TP'; color = '#00a256'; }
-        } else {
-          if (price < tradeObj.entryPrice) { role = 'TP'; color = '#00a256'; }
+      if (!dragState) {
+        if (
+          !seriesRef.current
+          || activeToolRef.current !== null
+          || chartSettingsRef.current.showTradeLevels === false
+          || !isPointerInsideChart(e)
+        ) {
+          setTradeHoverCursor(false);
+          return;
         }
-      } else {
-        color = role === 'TP' ? '#00a256' : '#eb415c';
+        setTradeHoverCursor(Boolean(findClosestTradeLevel(getChartY(e), TRADE_LEVEL_HIT_AREA_PX / 2)));
+        return;
       }
 
-      // 5-pip deadzone to avoid accidental triggering
-      const ptDist = Math.abs(price - tradeObj.entryPrice);
-      const minDistance = 5 * Math.pow(10, -getSymbolDigits(tradeObj.symbol));
-      if (ptDist < minDistance) {
+      if (!dragLineOverlay || !dragBadgeOverlay || !seriesRef.current) return;
+      if (capturedPointerId !== null && e.pointerId !== capturedPointerId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const y = getChartY(e);
+      const rawPrice = seriesRef.current.coordinateToPrice(y as any);
+      if (rawPrice === null) return;
+
+      const { tradeObj, grabbedType, startY } = dragState;
+      const digits = getSymbolDigits(tradeObj.symbol);
+      const minStopDistance = getTradeLevelDragMinDistance(digits);
+      const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
+      const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, startY) : null;
+
+      // Entry-line clicks are ignored, but any real vertical drag should create SL/TP.
+      // Existing SL/TP levels remain freely repositionable.
+      const hasRealEntryDrag = entryDragDirection !== null;
+      const showPreview = grabbedType !== 'ENTRY' || hasRealEntryDrag;
+      const previewUpdate = showPreview
+        ? applyTradeLevelDragUpdate({
+          side: tradeObj.side,
+          grabbedType,
+          entryPrice: tradeObj.entryPrice,
+          finalPrice: rawPrice,
+          currentSl: tradeObj.sl,
+          currentTp: tradeObj.tp,
+          digits,
+          currentPrice: liveCurrentPrice,
+          minStopDistance,
+          minEntryDistance: grabbedType === 'ENTRY' ? minStopDistance : undefined,
+          snapEntryToMinDistance: grabbedType === 'ENTRY',
+          entryDragDirection: entryDragDirection ?? undefined,
+        })
+        : null;
+
+      if (!previewUpdate || !Number.isFinite(previewUpdate.price) || previewUpdate.price <= 0) {
         dragLineOverlay.style.borderTopColor = 'transparent';
         dragBadgeOverlay.style.opacity = '0';
-      } else {
-        dragLineOverlay.style.borderTopColor = color;
-        dragBadgeOverlay.style.opacity = '1';
+        dragLineOverlay.style.transform = `translate3d(0, ${y}px, 0)`;
+        dragBadgeOverlay.style.transform = `translate(-50%, calc(-50% + ${y}px))`;
+        return;
       }
 
-      dragState.role = role;
-      dragLineOverlay.style.transform = `translateY(${y}px)`;
+      const price = previewUpdate.price;
+      const role = previewUpdate.role;
+      const color = getDragRoleColor(role);
+      const palette = getTradeOverlayCardPalette(role, isChartSurfaceLight());
 
-      dragBadgeOverlay.style.color = color;
-      dragBadgeOverlay.textContent = `${role} ${price.toFixed(getSymbolDigits(tradeObj.symbol))}`;
-      dragBadgeOverlay.style.transform = `translate(-50%, calc(-50% + ${y}px))`;
+      // Draw at the clamped price coordinate so the level sticks to the broker-valid
+      // boundary instead of following the pointer into a zone the broker would reject.
+      const clampedY = seriesRef.current.priceToCoordinate(price);
+      const drawY = clampedY === null || !Number.isFinite(clampedY) ? y : (clampedY as number);
+
+      dragLineOverlay.style.borderTopColor = color;
+      dragBadgeOverlay.style.opacity = '1';
+      dragLineOverlay.style.transform = `translate3d(0, ${drawY}px, 0)`;
+
+      dragBadgeOverlay.style.background = palette.background;
+      dragBadgeOverlay.style.borderColor = palette.border;
+      dragBadgeOverlay.style.color = palette.text;
+      dragBadgeOverlay.style.boxShadow = palette.shadow.replace(/^box-shadow:/, '').replace(/;$/, '');
+      dragBadgeOverlay.textContent = `${role} ${price.toFixed(digits)}`;
+      dragBadgeOverlay.style.transform = `translate(-50%, calc(-50% + ${drawY}px))`;
     };
 
     const handlePointerUp = (e: PointerEvent) => {
       if (!dragState) return;
+      if (capturedPointerId !== null && e.pointerId !== capturedPointerId) return;
+      e.preventDefault();
+      e.stopPropagation();
 
       if (seriesRef.current) {
         const y = getChartY(e);
-        const finalPrice = seriesRef.current.coordinateToPrice(y as any);
-        const { tradeObj, role } = dragState;
+        const rawFinalPrice = seriesRef.current.coordinateToPrice(y as any);
+        const { tradeObj, grabbedType, startY } = dragState;
 
-        if (finalPrice !== null) {
-          const ptDist = Math.abs(finalPrice - tradeObj.entryPrice);
-          const minDistance = 5 * Math.pow(10, -getSymbolDigits(tradeObj.symbol));
-          if (ptDist >= minDistance) {
-            const ticket = Number(tradeObj.key.replace('trade:', ''));
-            if (ticket) {
-              const existingOverrides = tradeLevelOverridesRef.current.get(tradeObj.key);
-              const currentSl = existingOverrides && existingOverrides.sl > 0 ? existingOverrides.sl : tradeObj.sl;
-              const currentTp = existingOverrides && existingOverrides.tp > 0 ? existingOverrides.tp : tradeObj.tp;
+        if (rawFinalPrice !== null) {
+          const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, startY) : null;
+          const hasRealEntryDrag = entryDragDirection !== null;
+          if (!(grabbedType === 'ENTRY' && !hasRealEntryDrag)) {
+            const existingOverrides = getTradeLevelState(tradeLevelOverridesRef.current, tradeObj);
+            const lastKnownLevels = getTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj);
+            const currentSl = existingOverrides && existingOverrides.sl > 0
+              ? existingOverrides.sl
+              : lastKnownLevels && lastKnownLevels.sl > 0
+                ? lastKnownLevels.sl
+                : tradeObj.sl;
+            const currentTp = existingOverrides && existingOverrides.tp > 0
+              ? existingOverrides.tp
+              : lastKnownLevels && lastKnownLevels.tp > 0
+                ? lastKnownLevels.tp
+                : tradeObj.tp;
+            const digits = getSymbolDigits(tradeObj.symbol);
+            const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
+            const update = applyTradeLevelDragUpdate({
+              side: tradeObj.side,
+              grabbedType,
+              entryPrice: tradeObj.entryPrice,
+              finalPrice: rawFinalPrice,
+              currentSl,
+              currentTp,
+              digits,
+              currentPrice: liveCurrentPrice,
+              minStopDistance: getTradeLevelDragMinDistance(digits),
+              minEntryDistance: grabbedType === 'ENTRY' ? getTradeLevelDragMinDistance(digits) : undefined,
+              snapEntryToMinDistance: grabbedType === 'ENTRY',
+              entryDragDirection: entryDragDirection ?? undefined,
+            });
 
-              const sl = role === 'SL' ? finalPrice : currentSl;
-              const tp = role === 'TP' ? finalPrice : currentTp;
+            if (update) {
+              const ticket = Number(tradeObj.key.replace('trade:', ''));
+              if (ticket) {
+                const { sl, tp } = update;
+                const previousLevels = {
+                  sl: currentSl || 0,
+                  tp: currentTp || 0,
+                };
+                const requestId = tradeLevelModifyRequestSeqRef.current + 1;
+                const requestKeys = getTradeLevelStateKeys(tradeObj);
+                tradeLevelModifyRequestSeqRef.current = requestId;
+                const optimisticGraceUntil = Date.now() + TRADE_LEVEL_OPTIMISTIC_GRACE_MS;
+                requestKeys.forEach((key) => pendingTradeLevelModifyRequestsRef.current.set(key, requestId));
+                requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.set(key, optimisticGraceUntil));
+                const isCurrentRequest = () => requestKeys.some((key) => (
+                  pendingTradeLevelModifyRequestsRef.current.get(key) === requestId
+                ));
+                const clearCurrentRequest = () => {
+                  requestKeys.forEach((key) => {
+                    if (pendingTradeLevelModifyRequestsRef.current.get(key) === requestId) {
+                      pendingTradeLevelModifyRequestsRef.current.delete(key);
+                    }
+                  });
+                };
 
-              // Optimistically set UI level overrides immediately
-              tradeLevelOverridesRef.current.set(tradeObj.key, { sl: sl || 0, tp: tp || 0 });
-              persistTradeLevelOverrides();
-              window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
-              window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
+                // Optimistically set UI level overrides immediately
+                setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, { sl: sl || 0, tp: tp || 0 });
+                setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, { sl: sl || 0, tp: tp || 0 });
+                persistTradeLevelOverrides();
+                window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
+                window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
 
-              api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 })
-                .then(() => {
-                  window.setTimeout(() => window.dispatchEvent(new Event('rtx:force-refresh-positions')), 250);
-                })
-                .catch(err => {
-                  console.error('[Chart] Failed to modify SL/TP:', err);
-                  // On outright error, revert override
-                  tradeLevelOverridesRef.current.delete(tradeObj.key);
-                  persistTradeLevelOverrides();
-                  window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
-                });
+                api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 })
+                  .then(() => {
+                    if (!isCurrentRequest()) return;
+                    clearCurrentRequest();
+                    window.setTimeout(() => window.dispatchEvent(new Event('rtx:force-refresh-positions')), 250);
+                  })
+                  .catch(err => {
+                    if (!isCurrentRequest()) return;
+                    clearCurrentRequest();
+                    requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.delete(key));
+                    console.error('[Chart] Failed to modify SL/TP:', err);
+                    if ((previousLevels.sl || 0) > 0 || (previousLevels.tp || 0) > 0) {
+                      setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, previousLevels);
+                      setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, previousLevels);
+                    } else {
+                      deleteTradeLevelState(tradeLevelOverridesRef.current, tradeObj);
+                      deleteTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj);
+                    }
+                    persistTradeLevelOverrides();
+                    window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+                  });
+              }
             }
           }
         }
@@ -4591,6 +5165,9 @@ export const TradingChart = React.memo(function TradingChart({
       dragLineOverlay = null;
       dragBadgeOverlay = null;
       dragState = null;
+      releasePointerCapture();
+      endDragCursor();
+      setTradeHoverCursor(false);
 
       if (chartRef.current) {
         chartRef.current.applyOptions({
@@ -4600,16 +5177,39 @@ export const TradingChart = React.memo(function TradingChart({
       }
     };
 
-    container.addEventListener('pointerdown', handlePointerDown);
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-
-    return () => {
-      container.removeEventListener('pointerdown', handlePointerDown);
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
+    const handlePointerCancel = () => {
+      if (!dragState && !dragLineOverlay && !dragBadgeOverlay) return;
       if (dragLineOverlay) dragLineOverlay.remove();
       if (dragBadgeOverlay) dragBadgeOverlay.remove();
+      dragLineOverlay = null;
+      dragBadgeOverlay = null;
+      dragState = null;
+      releasePointerCapture();
+      endDragCursor();
+      setTradeHoverCursor(false);
+      if (chartRef.current) {
+        chartRef.current.applyOptions({
+          handleScroll: TRADING_VIEW_HANDLE_SCROLL,
+          handleScale: TRADING_VIEW_HANDLE_SCALE,
+        });
+      }
+    };
+
+    interactionRoot.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
+
+    return () => {
+      interactionRoot.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
+      if (dragLineOverlay) dragLineOverlay.remove();
+      if (dragBadgeOverlay) dragBadgeOverlay.remove();
+      releasePointerCapture();
+      endDragCursor();
+      setTradeHoverCursor(false);
     };
   }, [persistTradeLevelOverrides]);
 
