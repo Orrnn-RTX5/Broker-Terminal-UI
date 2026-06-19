@@ -54,7 +54,8 @@ describe('resolveLoginHeroAsset', () => {
     });
 
     expect(myPropAsset.src).toBe(toPublicAssetPath('login/myprop-hero-wide.png'));
-    expect(myPropAsset.fit).toBe('cover');
+    expect(myPropAsset.fit).toBe('contain');
+    expect(myPropAsset.position).toBe('center center');
     expect(myPropAsset.mobileFit).toBe('contain');
   });
 

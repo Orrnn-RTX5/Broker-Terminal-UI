@@ -67,8 +67,8 @@ const MYPROP_LOGIN_HERO_ASSET: LoginHeroAsset = {
   mobileSrc: toPublicAssetPath('login/myprop-hero-mobile.jpg'),
   width: 1672,
   height: 941,
-  fit: 'cover',
-  position: 'left center',
+  fit: 'contain',
+  position: 'center center',
   mobileFit: 'contain',
   mobilePosition: 'center center',
 };

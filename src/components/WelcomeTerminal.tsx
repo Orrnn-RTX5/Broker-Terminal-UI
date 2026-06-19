@@ -5,7 +5,7 @@
  */
 
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { ArrowRight, ChevronDown, Eye, EyeOff, Lock, User } from 'lucide-react';
+import { ArrowRight, ChevronDown, Eye, EyeOff, Lock, Maximize2, Minus, User, X } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
 import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL, toLocalDevProxyUrl } from '../config/api';
@@ -382,18 +382,61 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
         '--rtx-login-hero-mobile-fit': loginHeroAsset.mobileFit ?? desktopHeroFit,
         '--rtx-login-hero-mobile-position': loginHeroAsset.mobilePosition ?? desktopHeroPosition,
     };
+    const hasElectronWindowControls = typeof window !== 'undefined' && Boolean(window.electron?.window);
+    const handleWindowControl = (
+        event: React.MouseEvent<HTMLButtonElement>,
+        action: 'close' | 'minimize' | 'maximize',
+    ) => {
+        event.preventDefault();
+        event.stopPropagation();
+        window.electron?.window?.[action]?.();
+    };
 
     return (
         <div
             onContextMenu={e => e.stopPropagation()}
             onMouseDownCapture={e => {
                 const target = e.target as HTMLElement;
-                if (!target.closest('[data-welcome-card]')) {
+                if (!target.closest('[data-welcome-card], [data-window-controls]')) {
                     e.stopPropagation();
                 }
             }}
             className="rtx-login-overlay"
         >
+            {hasElectronWindowControls && (
+                <div className="rtx-login-window-controls" data-window-controls role="toolbar" aria-label="Window controls">
+                    <button
+                        type="button"
+                        className="rtx-login-window-control is-close"
+                        aria-label="Close"
+                        title="Close"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => handleWindowControl(e, 'close')}
+                    >
+                        <X size={14} strokeWidth={2.2} aria-hidden="true" />
+                    </button>
+                    <button
+                        type="button"
+                        className="rtx-login-window-control is-minimize"
+                        aria-label="Minimize"
+                        title="Minimize"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => handleWindowControl(e, 'minimize')}
+                    >
+                        <Minus size={15} strokeWidth={2.3} aria-hidden="true" />
+                    </button>
+                    <button
+                        type="button"
+                        className="rtx-login-window-control is-maximize"
+                        aria-label="Maximize"
+                        title="Maximize"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => handleWindowControl(e, 'maximize')}
+                    >
+                        <Maximize2 size={13} strokeWidth={2.1} aria-hidden="true" />
+                    </button>
+                </div>
+            )}
             <div className="rtx-login-stage">
                 <aside className="rtx-login-visual" aria-hidden="true" style={loginHeroVisualStyle}>
                     <picture>
@@ -740,6 +783,69 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 .rtx-login-overlay select,
                 .rtx-login-overlay textarea {
                     font-family: inherit;
+                }
+
+                .rtx-login-window-controls {
+                    position: fixed;
+                    top: max(12px, env(safe-area-inset-top));
+                    left: max(14px, env(safe-area-inset-left));
+                    z-index: 4;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 7px;
+                    padding: 4px;
+                    border: 1px solid rgba(53, 216, 178, 0.18);
+                    border-radius: 999px;
+                    background: rgba(3, 9, 12, 0.62);
+                    box-shadow:
+                        0 12px 28px rgba(0, 0, 0, 0.28),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+                    backdrop-filter: blur(16px);
+                    -webkit-app-region: no-drag;
+                }
+
+                .rtx-login-window-control {
+                    width: 28px;
+                    height: 28px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 0;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border-radius: 999px;
+                    background: rgba(255, 255, 255, 0.055);
+                    color: #d6f7ef;
+                    cursor: pointer;
+                    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+                }
+
+                .rtx-login-window-control:hover {
+                    transform: translateY(-1px);
+                    background: rgba(255, 255, 255, 0.12);
+                    border-color: rgba(255, 255, 255, 0.16);
+                    color: #ffffff;
+                }
+
+                .rtx-login-window-control:focus-visible {
+                    outline: 2px solid rgba(53, 216, 178, 0.74);
+                    outline-offset: 2px;
+                }
+
+                .rtx-login-window-control.is-close:hover {
+                    background: rgba(239, 68, 68, 0.88);
+                    border-color: rgba(248, 113, 113, 0.78);
+                }
+
+                .rtx-login-window-control.is-minimize:hover {
+                    background: rgba(245, 158, 11, 0.82);
+                    border-color: rgba(251, 191, 36, 0.72);
+                    color: #08100e;
+                }
+
+                .rtx-login-window-control.is-maximize:hover {
+                    background: rgba(53, 216, 178, 0.82);
+                    border-color: rgba(91, 245, 207, 0.68);
+                    color: #04110f;
                 }
 
                 .rtx-login-stage {

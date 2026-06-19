@@ -1,7 +1,7 @@
 {
   "name": "rtx-terminal",
   "private": true,
-  "version": "1.0.20",
+  "version": "1.0.21",
   "description": "RTX Terminal - Professional Trading Terminal",
   "author": "RTX",
   "type": "module",
