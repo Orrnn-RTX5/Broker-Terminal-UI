@@ -1501,24 +1501,27 @@ ${rows}
             <div
                 ref={footerScrollRef}
                 onScroll={() => syncHorizontalScroll('footer')}
-                className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full overflow-x-auto text-[11px] font-bold text-zinc-300 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] scrollbar-thin scrollbar-thumb-zinc-700"
+                className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full overflow-x-auto overflow-y-hidden text-[11px] font-bold text-zinc-300 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] scrollbar-thin scrollbar-thumb-zinc-700"
             >
-                <div className="flex min-w-full items-center gap-3 px-2 py-1" style={{ minWidth: visibleTradeTableWidth }}>
-                    <Icon name="plus-circle" size="xs" className="text-zinc-400 mr-1 shrink-0" />
-                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Positions:</span> <span>{livePositions.length}</span></span>
-                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Balance:</span> <BlinkingText value={accountBalance} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} /></span>
-                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Equity:</span> <BlinkingText value={liveEquity} formatFn={formatMoney} /></span>
-                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Margin:</span> <BlinkingText value={margin} formatFn={formatMoney} /></span>
-                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Free Margin:</span> <BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
-                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Margin Level:</span> <span>{formatMarginLevel(liveMarginLevel)}</span></span>
-                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Swap:</span> <span className={totalSwap < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalSwap)}</span></span>
-                    <span className="flex gap-1 shrink-0"><span className="rtx-trade-metric-label text-zinc-500">Commission:</span> <span className={totalCommission < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalCommission)}</span></span>
-                    <div className="flex-1"></div>
+                <div className="rtx-trade-footer-inner flex w-max min-w-full items-center gap-1.5 px-2 py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
+                    <span className="rtx-trade-footer-status inline-flex h-5 shrink-0 items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-1.5">
+                        <Icon name="plus-circle" size="xs" className="text-zinc-400 shrink-0" />
+                    </span>
+                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Positions</span><span>{livePositions.length}</span></span>
+                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Balance</span><BlinkingText value={accountBalance} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} /></span>
+                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Equity</span><BlinkingText value={liveEquity} formatFn={formatMoney} /></span>
+                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Margin</span><BlinkingText value={margin} formatFn={formatMoney} /></span>
+                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Free Margin</span><BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
+                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Margin Level</span><span>{formatMarginLevel(liveMarginLevel)}</span></span>
+                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Swap</span><span className={totalSwap < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalSwap)}</span></span>
+                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Commission</span><span className={totalCommission < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalCommission)}</span></span>
+                    <div className="flex-1 min-w-2"></div>
+                    <div className="rtx-trade-footer-actions flex shrink-0 items-center gap-1.5 pl-1">
                     <button
                         type="button"
                         onClick={() => onCloseBulk?.('WINNERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-bulk-close rtx-trade-footer-action rtx-trade-footer-action--neutral px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="rtx-trade-bulk-close rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-2 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         Close Winners
                     </button>
@@ -1526,7 +1529,7 @@ ${rows}
                         type="button"
                         onClick={() => onCloseBulk?.('LOSERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-footer-action rtx-trade-footer-action--neutral px-2 py-0.5 rounded-sm border border-zinc-700 text-zinc-300 hover:bg-zinc-700/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-2 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         Close Losers
                     </button>
@@ -1534,12 +1537,13 @@ ${rows}
                         type="button"
                         onClick={() => onCloseBulk?.('ALL')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-footer-action rtx-trade-footer-action--danger px-2 py-0.5 rounded-sm border border-red-800/70 text-red-300 hover:bg-red-950/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="rtx-trade-footer-action rtx-trade-footer-action--danger inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-red-800/70 px-2 text-[10px] font-bold leading-none text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         Close All
                     </button>
-                    <span className="flex min-w-[136px] items-center justify-end gap-1 shrink-0 pr-1 text-right font-bold">
-                        <span className="text-zinc-500">Floating P/L:</span>
+                    </div>
+                    <span className="rtx-trade-footer-floating inline-flex h-5 min-w-[124px] shrink-0 items-center justify-end gap-1 whitespace-nowrap rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-2 text-right font-bold leading-none">
+                        <span className="text-zinc-500">Floating P/L</span>
                         <BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-[#2563eb]"} />
                     </span>
                 </div>

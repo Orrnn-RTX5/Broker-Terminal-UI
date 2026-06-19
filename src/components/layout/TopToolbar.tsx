@@ -20,6 +20,11 @@ import { NotificationCenter } from '../notifications/NotificationCenter';
 import { useNotificationStore } from '../../store/useNotificationStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
+import {
+    defaultChartProperties,
+    useChartSettingsStore,
+    type ChartProperties,
+} from '../../store/useChartSettingsStore';
 import { brokerV2Api } from '../../api/trade';
 import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
 import { configApi } from '../../services/api';
@@ -442,6 +447,7 @@ const MainToolbar = ({
     const [showUserMenu, setShowUserMenu] = useState(false);
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [showDrawingDropdown, setShowDrawingDropdown] = useState(false);
+    const [showHistoryOverlayMenu, setShowHistoryOverlayMenu] = useState(false);
     const [showCrosshair, setShowCrosshair] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
     const [advancedViewEnabled, setAdvancedViewEnabled] = useState(() => {
@@ -457,7 +463,10 @@ const MainToolbar = ({
     const advancedOptionsRef = useRef<HTMLDivElement>(null);
     const advancedOptionsDropdownRef = useRef<HTMLDivElement>(null);
     const drawingDropdownRef = useRef<HTMLDivElement>(null);
+    const historyOverlayRef = useRef<HTMLDivElement>(null);
+    const historyOverlayDropdownRef = useRef<HTMLDivElement>(null);
     const accountId = useAppStore((s) => s.accountId) || '---';
+    const tradeHistorySettings = useChartSettingsStore((state) => state.symbolProperties[symbol] || state.globalProperties);
 
     useEffect(() => {
         const root = document.documentElement;
@@ -525,21 +534,37 @@ const MainToolbar = ({
             const clickedUserMenu = !!userMenuRef.current?.contains(target) || !!dropdownRef.current?.contains(target);
             const clickedAdvancedOptions = !!advancedOptionsRef.current?.contains(target) || !!advancedOptionsDropdownRef.current?.contains(target);
             const clickedDrawing = !!drawingDropdownRef.current?.contains(target);
+            const clickedHistoryOverlay = !!historyOverlayRef.current?.contains(target) || !!historyOverlayDropdownRef.current?.contains(target);
 
             if (!clickedDrawing) setShowDrawingDropdown(false);
+            if (!clickedHistoryOverlay) setShowHistoryOverlayMenu(false);
             if (!clickedUserMenu && !clickedAdvancedOptions) {
                 setShowUserMenu(false);
                 setShowAdvancedOptions(false);
             }
         };
-        if (showUserMenu || showAdvancedOptions) {
+        if (showUserMenu || showAdvancedOptions || showHistoryOverlayMenu) {
             document.addEventListener('mousedown', handleClickOutside);
         }
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showUserMenu, showAdvancedOptions]);
+    }, [showUserMenu, showAdvancedOptions, showHistoryOverlayMenu]);
 
     const updateAdvancedOptions = (patch: Partial<AdvancedViewOptions>) => {
         setAdvancedOptions((current) => ({ ...current, ...patch }));
+    };
+
+    const updateTradeHistorySetting = <K extends keyof ChartProperties>(key: K, value: ChartProperties[K]) => {
+        const store = useChartSettingsStore.getState();
+        store.updateGlobalProperty(key, value);
+        store.updateSymbolProperty(symbol, key, value);
+        window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+    };
+
+    const resetTradeHistorySettings = () => {
+        updateTradeHistorySetting('showTradeHistory', defaultChartProperties.showTradeHistory);
+        updateTradeHistorySetting('showTradeHistoryBoxes', defaultChartProperties.showTradeHistoryBoxes);
+        updateTradeHistorySetting('tradeHistoryLineOpacity', defaultChartProperties.tradeHistoryLineOpacity);
+        updateTradeHistorySetting('tradeHistoryBoxOpacity', defaultChartProperties.tradeHistoryBoxOpacity);
     };
 
     const handleLogout = () => {
@@ -705,6 +730,119 @@ const MainToolbar = ({
                     captureFullPage();
                 }} />
             </MT5Group>
+
+            <MT5Divider />
+
+            {/* Group 11: Trade history overlay controls */}
+            <div ref={historyOverlayRef} className="relative flex items-center">
+                <button
+                    type="button"
+                    title="Trade History Overlays"
+                    aria-label="Trade History Overlays"
+                    aria-haspopup="menu"
+                    aria-expanded={showHistoryOverlayMenu}
+                    onClick={() => {
+                        setShowUserMenu(false);
+                        setShowAdvancedOptions(false);
+                        setShowHistoryOverlayMenu((open) => !open);
+                    }}
+                    className={`flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all shadow-sm ${tradeHistorySettings.showTradeHistory
+                        ? advancedViewEnabled
+                            ? 'border-[#7E57C2] bg-[#7E57C2] text-white'
+                            : 'border-blue-500/30 bg-blue-500/15 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
+                        : advancedViewEnabled
+                            ? 'border-[#d0d5dd] bg-white text-[#475467] hover:border-[#7E57C2] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
+                            : 'border-transparent bg-transparent text-zinc-400 hover:border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-300'
+                        }`}
+                >
+                    <SlidersHorizontal size={15} strokeWidth={1.6} />
+                </button>
+
+                {showHistoryOverlayMenu && ReactDOM.createPortal(
+                    <div
+                        ref={historyOverlayDropdownRef}
+                        className="fixed z-[9999] w-[236px] rounded-[5px] border border-zinc-700/80 bg-[#151820] p-3 text-[11px] text-zinc-200 shadow-2xl shadow-black/50 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:bg-white [.rtx-advanced-view_&]:text-gray-800 [.rtx-advanced-view_&]:shadow-xl"
+                        style={{
+                            top: (historyOverlayRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
+                            left: Math.min(
+                                historyOverlayRef.current?.getBoundingClientRect().left ?? 0,
+                                Math.max(8, window.innerWidth - 244),
+                            ),
+                        }}
+                        role="menu"
+                        aria-label="Trade history overlay controls"
+                    >
+                        <div className="mb-2 flex items-center justify-between border-b border-zinc-700/70 pb-2 [.rtx-advanced-view_&]:border-gray-100">
+                            <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-400 [.rtx-advanced-view_&]:text-gray-500">Trade History</span>
+                            <button
+                                type="button"
+                                className="rounded-[3px] border border-zinc-700 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:text-gray-600 [.rtx-advanced-view_&]:hover:bg-gray-50"
+                                onClick={resetTradeHistorySettings}
+                            >
+                                Reset
+                            </button>
+                        </div>
+
+                        <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
+                            <span className="font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">History marks</span>
+                            <input
+                                type="checkbox"
+                                checked={tradeHistorySettings.showTradeHistory !== false}
+                                onChange={(event) => updateTradeHistorySetting('showTradeHistory', event.target.checked)}
+                                className="h-3.5 w-3.5 accent-blue-500"
+                            />
+                        </label>
+
+                        <label className={`mb-3 flex items-center justify-between gap-3 rounded-[4px] px-1 py-1 ${tradeHistorySettings.showTradeHistory === false ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50'}`}>
+                            <span className="font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Text boxes</span>
+                            <input
+                                type="checkbox"
+                                checked={tradeHistorySettings.showTradeHistoryBoxes !== false}
+                                disabled={tradeHistorySettings.showTradeHistory === false}
+                                onChange={(event) => updateTradeHistorySetting('showTradeHistoryBoxes', event.target.checked)}
+                                className="h-3.5 w-3.5 accent-blue-500"
+                            />
+                        </label>
+
+                        <div className={`space-y-2 rounded-[4px] border border-zinc-800/80 bg-zinc-950/35 p-2 [.rtx-advanced-view_&]:border-gray-100 [.rtx-advanced-view_&]:bg-gray-50 ${tradeHistorySettings.showTradeHistory === false ? 'opacity-45' : ''}`}>
+                            <label className="block">
+                                <div className="mb-1 flex items-center justify-between">
+                                    <span className="font-semibold text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Lines</span>
+                                    <span className="font-mono text-[10px] text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryLineOpacity}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    disabled={tradeHistorySettings.showTradeHistory === false}
+                                    value={tradeHistorySettings.tradeHistoryLineOpacity}
+                                    onChange={(event) => updateTradeHistorySetting('tradeHistoryLineOpacity', Number(event.target.value))}
+                                    className="w-full accent-blue-500"
+                                />
+                            </label>
+
+                            <label className="block">
+                                <div className="mb-1 flex items-center justify-between">
+                                    <span className="font-semibold text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Boxes</span>
+                                    <span className="font-mono text-[10px] text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryBoxOpacity}%</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={100}
+                                    step={5}
+                                    disabled={tradeHistorySettings.showTradeHistory === false || tradeHistorySettings.showTradeHistoryBoxes === false}
+                                    value={tradeHistorySettings.tradeHistoryBoxOpacity}
+                                    onChange={(event) => updateTradeHistorySetting('tradeHistoryBoxOpacity', Number(event.target.value))}
+                                    className="w-full accent-blue-500"
+                                />
+                            </label>
+                        </div>
+                    </div>,
+                    document.body,
+                )}
+            </div>
 
             {/* Spacer pushing the rest to the right (if space permits) */}
             <div className="flex-1" />

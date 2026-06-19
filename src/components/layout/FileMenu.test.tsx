@@ -70,6 +70,21 @@ vi.mock('../../services/api', () => ({
     }
 }));
 
+vi.mock('../../hooks/useDesktopRelease', () => ({
+    useDesktopRelease: () => ({
+        release: {
+            version: '9.9.9',
+            tagName: 'v9.9.9',
+            releaseUrl: 'https://github.com/rtx5-orrnn/rtx5-terminal-releases/releases/tag/v9.9.9',
+            downloadUrl: 'https://github.com/rtx5-orrnn/rtx5-terminal-releases/releases/download/v9.9.9/RTX.Terminal.Setup.9.9.9.exe',
+            assetName: 'RTX.Terminal.Setup.9.9.9.exe',
+            assetSize: 123,
+        },
+        status: 'ready',
+        error: null,
+    }),
+}));
+
 // 4. Mock chartPrinter service
 vi.mock('../../services/chartPrinter', () => ({
     chartPrinter: {
@@ -166,6 +181,8 @@ describe('FileMenu Component', () => {
             expect(screen.getByText('Save')).toBeInTheDocument();
             expect(screen.getByText('Save As Picture')).toBeInTheDocument();
             expect(screen.getByText('Open Data Folder')).toBeInTheDocument();
+            expect(screen.getByText('Download Desktop App')).toBeInTheDocument();
+            expect(screen.getByText('v9.9.9')).toBeInTheDocument();
             expect(screen.getByText('Print')).toBeInTheDocument();
             expect(screen.getByText('Print Preview')).toBeInTheDocument();
             expect(screen.getByText('Print Setup')).toBeInTheDocument();

@@ -33,6 +33,9 @@ export interface ChartProperties {
   showObjectDescriptions: boolean;
   showTradeLevels: boolean;
   showTradeHistory: boolean;
+  showTradeHistoryBoxes: boolean;
+  tradeHistoryLineOpacity: number;
+  tradeHistoryBoxOpacity: number;
 
   // Colors
   colorScheme: ColorScheme;
@@ -76,6 +79,9 @@ export const defaultChartProperties: ChartProperties = {
   showObjectDescriptions: false,
   showTradeLevels: true,
   showTradeHistory: true,
+  showTradeHistoryBoxes: true,
+  tradeHistoryLineOpacity: 75,
+  tradeHistoryBoxOpacity: 90,
 
   colorScheme: "Green on Black",
   colors: {
@@ -93,6 +99,47 @@ export const defaultChartProperties: ChartProperties = {
     lastPriceLine: "#00C000",
     stopLevels: "#EF4444",
   },
+};
+
+export const clampChartOpacityPercent = (value: unknown, fallback: number): number => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(numeric)));
+};
+
+type PersistedChartProperties = Partial<Omit<ChartProperties, "colors">> & {
+  colors?: Partial<ChartProperties["colors"]>;
+};
+
+export const normalizeChartProperties = (properties?: PersistedChartProperties | null): ChartProperties => ({
+  ...defaultChartProperties,
+  ...(properties ?? {}),
+  showTradeHistoryBoxes: properties?.showTradeHistoryBoxes ?? defaultChartProperties.showTradeHistoryBoxes,
+  tradeHistoryLineOpacity: clampChartOpacityPercent(
+    properties?.tradeHistoryLineOpacity,
+    defaultChartProperties.tradeHistoryLineOpacity,
+  ),
+  tradeHistoryBoxOpacity: clampChartOpacityPercent(
+    properties?.tradeHistoryBoxOpacity,
+    defaultChartProperties.tradeHistoryBoxOpacity,
+  ),
+  colors: {
+    ...defaultChartProperties.colors,
+    ...(properties?.colors ?? {}),
+  },
+});
+
+const normalizeSymbolProperties = (
+  symbolProperties?: Record<string, PersistedChartProperties> | null,
+): Record<string, ChartProperties> => {
+  if (!symbolProperties) return {};
+
+  return Object.fromEntries(
+    Object.entries(symbolProperties).map(([symbol, properties]) => [
+      symbol,
+      normalizeChartProperties(properties),
+    ]),
+  );
 };
 
 interface ChartSettingsState {
@@ -210,6 +257,15 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
     {
       name: "rtx-chart-settings",
       storage: createJSONStorage(() => localStorage),
+      merge: (persisted, current) => {
+        const persistedState = persisted as Partial<ChartSettingsState> | undefined;
+        return {
+          ...current,
+          ...persistedState,
+          globalProperties: normalizeChartProperties(persistedState?.globalProperties),
+          symbolProperties: normalizeSymbolProperties(persistedState?.symbolProperties),
+        };
+      },
     },
   ),
 );

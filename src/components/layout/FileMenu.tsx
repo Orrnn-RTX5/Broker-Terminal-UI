@@ -13,6 +13,12 @@ import {
     getActiveChartSource,
     type ResolvedActiveChartSource,
 } from '../../services/activeChartSource';
+import { useDesktopRelease } from '../../hooks/useDesktopRelease';
+import {
+    getDesktopReleaseButtonTitle,
+    getDesktopReleaseVersionLabel,
+    openDesktopReleaseDownload,
+} from '../../services/desktopRelease';
 
 type ElectronRuntime = NonNullable<Window['electron']> & {
     app?: {
@@ -209,6 +215,10 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const [showExitDialog, setShowExitDialog] = useState(false);
     const [showOpenAccountDialog, setShowOpenAccountDialog] = useState(false);
     const [newChartOpen, setNewChartOpen] = useState(false);
+    const showDesktopDownload = typeof window !== 'undefined' && !window.electron;
+    const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload });
+    const desktopReleaseVersionLabel = getDesktopReleaseVersionLabel(desktopReleaseState.release);
+    const desktopReleaseMetaLabel = desktopReleaseVersionLabel || (desktopReleaseState.status === 'loading' ? 'Latest' : '');
 
     // Dynamic symbol loading for New Chart menu
     const [availableSymbols, setAvailableSymbols] = useState<SymbolData[]>([]);
@@ -323,6 +333,10 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         if (window.electron) {
             window.electron.shell.openPath('./data');
         }
+    };
+
+    const handleDownloadDesktop = () => {
+        openDesktopReleaseDownload(desktopReleaseState.release);
     };
 
     const handlePrint = async () => {
@@ -572,6 +586,22 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="flex-1">{t('menu.file.openDataFolder')}</span>
                     <span className="text-[10px] text-zinc-500 font-mono tracking-tighter">Ctrl+Shift+D</span>
                 </button>
+
+                {showDesktopDownload && (
+                    <button
+                        onClick={handleDownloadDesktop}
+                        className="w-full flex items-center gap-3 px-2 py-1.5 text-[12px] rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
+                        title={getDesktopReleaseButtonTitle(desktopReleaseState.release)}
+                    >
+                        <div className="w-4 flex items-center justify-center text-sky-400 group-hover:text-sky-300 [.rtx-advanced-view_&]:text-sky-600">
+                            <Icon name="download" size="sm" />
+                        </div>
+                        <span className="flex-1">Download Desktop App</span>
+                        {desktopReleaseMetaLabel && (
+                            <span className="rounded-[3px] border border-zinc-600/70 [.rtx-advanced-view_&]:border-gray-300 bg-zinc-900/70 [.rtx-advanced-view_&]:bg-gray-100 px-1.5 py-[1px] text-[10px] text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 font-mono leading-none">{desktopReleaseMetaLabel}</span>
+                        )}
+                    </button>
+                )}
 
                 <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
 

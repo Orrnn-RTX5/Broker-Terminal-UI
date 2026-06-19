@@ -32,6 +32,7 @@ interface ChartContextMenuProps {
     autoScroll?: boolean;
     chartShift?: boolean;
     showTradeLevels?: boolean;
+    showTradeHistory?: boolean;
     onChangeChartType: (type: ChartType) => void;
     onChangeTimeframe: (tf: Timeframe) => void;
     onToggleOneClickTrading: () => void;
@@ -40,6 +41,7 @@ interface ChartContextMenuProps {
     onToggleAutoScroll: () => void;
     onToggleChartShift: () => void;
     onToggleTradeLevels?: () => void;
+    onToggleTradeHistory?: () => void;
     onOpenProperties: () => void;
     onSaveAsPicture: () => void;
     onPrintChart: () => void;
@@ -250,6 +252,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     autoScroll = false,
     chartShift = false,
     showTradeLevels = true,
+    showTradeHistory = true,
     onChangeChartType,
     onChangeTimeframe,
     onToggleOneClickTrading,
@@ -258,6 +261,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     onToggleAutoScroll,
     onToggleChartShift,
     onToggleTradeLevels,
+    onToggleTradeHistory,
     onOpenProperties,
     onSaveAsPicture,
     onPrintChart,
@@ -462,6 +466,16 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 checked={showTradeLevels}
                 disabled={!onToggleTradeLevels}
                 onClick={() => { onToggleTradeLevels?.(); onClose(); }}
+            />
+
+            <MenuItem
+                icon={showTradeHistory
+                    ? <Eye size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />
+                    : <EyeOff size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
+                label={showTradeHistory ? 'Hide Trade History' : 'Show Trade History'}
+                checked={showTradeHistory}
+                disabled={!onToggleTradeHistory}
+                onClick={() => { onToggleTradeHistory?.(); onClose(); }}
             />
 
             <MenuSeparator />

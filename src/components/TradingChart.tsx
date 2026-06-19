@@ -53,7 +53,12 @@ import {
 } from '../services/chartPriceGuards';
 import { ChartTemplateDialog } from './ChartTemplateDialog';
 import { type ChartTemplate } from '../store/useTemplateStore';
-import { useChartSettingsStore, type ChartProperties } from '../store/useChartSettingsStore';
+import {
+  clampChartOpacityPercent,
+  defaultChartProperties,
+  useChartSettingsStore,
+  type ChartProperties,
+} from '../store/useChartSettingsStore';
 import {
   getTradingChartDefaultRightPadBars,
   getTradingChartDefaultVisibleBars,
@@ -355,10 +360,12 @@ const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingV
   const barDown = colors.barDown || candleDown;
   const line = colors.lineChart || '#2962ff';
   const rawGrid = colors.grid || 'rgba(120, 144, 156, 0.28)';
-  const backgroundIsDark = (getColorLuminance(colors.background) ?? 0) < 0.45;
-  const gridOpacity = backgroundIsDark ? 0.1 : 0.08;
+  const backgroundLuminance = getColorLuminance(colors.background) ?? 0;
+  const backgroundIsDark = backgroundLuminance < 0.45;
+  const gridLuminance = getColorLuminance(rawGrid);
+  const lightGrid = gridLuminance === null || gridLuminance > 0.86 ? '#d0d5dd' : rawGrid;
   const grid = showGrid
-    ? colorWithAlpha(rawGrid, gridOpacity, backgroundIsDark ? 'rgba(148, 163, 184, 0.1)' : 'rgba(148, 163, 184, 0.12)')
+    ? (backgroundIsDark ? colorWithAlpha(rawGrid, 0.1, 'rgba(148, 163, 184, 0.1)') : lightGrid)
     : TRANSPARENT_CHART_LINE;
 
   return {
@@ -617,6 +624,10 @@ export const TradingChart = React.memo(function TradingChart({
     const state = useChartSettingsStore.getState();
     return state.symbolProperties[symbol]?.showTradeLevels ?? state.globalProperties.showTradeLevels;
   });
+  const [ctxShowTradeHistory, setCtxShowTradeHistory] = useState(() => {
+    const state = useChartSettingsStore.getState();
+    return state.symbolProperties[symbol]?.showTradeHistory ?? state.globalProperties.showTradeHistory;
+  });
   const [localChartType, setLocalChartType] = useState<ChartType>(chartType);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateDialogMode, setTemplateDialogMode] = useState<'save' | 'load'>('save');
@@ -790,6 +801,7 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     chartSettingsRef.current = chartSettings;
     setCtxShowTradeLevels(chartSettings.showTradeLevels);
+    setCtxShowTradeHistory(chartSettings.showTradeHistory);
   }, [chartSettings]);
 
   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
@@ -3564,12 +3576,12 @@ export const TradingChart = React.memo(function TradingChart({
       ? `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 1L11 6H8V15H4V6H1L6 1Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`
       : `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 15L1 10H4V1H8V10H11L6 15Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`;
 
-    const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer) => {
+    const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer, opacity = 1) => {
       const marker = document.createElement('div');
       marker.className = `rtx-trade-marker rtx-trade-marker--${layer}`;
       marker.title = title;
       marker.innerHTML = createArrowSvg(side, color);
-      marker.style.cssText = 'position:absolute;z-index:14;pointer-events:none;';
+      marker.style.cssText = `position:absolute;z-index:14;pointer-events:none;opacity:${opacity};`;
       appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side }, layer);
     };
 
@@ -3579,20 +3591,20 @@ export const TradingChart = React.memo(function TradingChart({
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     };
 
-    const createTradeHistoryLabel = (side: TradeSide, price: number, time: number, _color: string, layer: TradeOverlayLayer) => {
+    const createTradeHistoryLabel = (side: TradeSide, price: number, time: number, _color: string, layer: TradeOverlayLayer, opacity = 1) => {
       const label = document.createElement('div');
       const timeLabel = formatHistoryLabelTime(time);
       const palette = getTradeOverlayCardPalette(side, isChartSurfaceLight());
       label.className = `rtx-trade-history-label rtx-trade-history-label--${side.toLowerCase()}`;
       label.textContent = `${side} ${price.toFixed(digits)}${timeLabel ? ` | ${timeLabel}` : ''}`;
-      label.style.cssText = `position:absolute;padding:2px 5px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:15;pointer-events:none;border-radius:2px;line-height:13px;${palette.shadow}`;
+      label.style.cssText = `position:absolute;padding:2px 5px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:15;pointer-events:none;border-radius:2px;line-height:13px;opacity:${opacity};${palette.shadow}`;
       appendOverlayNode(label, { kind: 'label', price, time, labelOffsetX: 10, labelOffsetY: -18 }, layer);
     };
 
-    const createTradeSegment = (price: number, time: number, color: string, lineStyle: 'solid' | 'dashed', layer: TradeOverlayLayer, endPrice?: number, endTime?: number, resolveEndPrice?: () => number | null, resolveEndTime?: () => number | null) => {
+    const createTradeSegment = (price: number, time: number, color: string, lineStyle: 'solid' | 'dashed', layer: TradeOverlayLayer, endPrice?: number, endTime?: number, resolveEndPrice?: () => number | null, resolveEndTime?: () => number | null, opacity = 1) => {
       const line = document.createElement('div');
       line.className = layer === 'history' ? 'rtx-trade-history-line' : 'rtx-trade-active-segment';
-      line.style.cssText = `position:absolute;height:0;border-top:${lineStyle === 'solid' ? '1.5px solid' : '1px dashed'} ${color};z-index:${lineStyle === 'solid' ? 11 : 9};pointer-events:none;`;
+      line.style.cssText = `position:absolute;height:0;border-top:${lineStyle === 'solid' ? '1.5px solid' : '1px dashed'} ${color};z-index:${lineStyle === 'solid' ? 11 : 9};pointer-events:none;opacity:${opacity};`;
       appendOverlayNode(line, { kind: 'segment', price, time, endPrice, endTime, resolveEndPrice, resolveEndTime }, layer);
     };
 
@@ -3669,6 +3681,17 @@ export const TradingChart = React.memo(function TradingChart({
         || useChartSettingsStore.getState().globalProperties;
       const showTradeLevels = chartProperties.showTradeLevels !== false;
       const showTradeHistory = chartProperties.showTradeHistory !== false;
+      const showTradeHistoryBoxes = chartProperties.showTradeHistoryBoxes !== false;
+      const tradeHistoryLineOpacityPercent = clampChartOpacityPercent(
+        chartProperties.tradeHistoryLineOpacity,
+        defaultChartProperties.tradeHistoryLineOpacity,
+      );
+      const tradeHistoryBoxOpacityPercent = clampChartOpacityPercent(
+        chartProperties.tradeHistoryBoxOpacity,
+        defaultChartProperties.tradeHistoryBoxOpacity,
+      );
+      const tradeHistoryLineOpacity = tradeHistoryLineOpacityPercent / 100;
+      const tradeHistoryBoxOpacity = tradeHistoryBoxOpacityPercent / 100;
       const appState = useAppStore.getState();
       const appPositions = Array.isArray(appState.positions) ? appState.positions : [];
       const appTrades = Array.isArray(appState.trades) ? appState.trades : [];
@@ -3965,6 +3988,9 @@ export const TradingChart = React.memo(function TradingChart({
         normalizedChartSymbol,
         timeframe,
         showTradeHistory ? 'history:on' : 'history:off',
+        showTradeHistoryBoxes ? 'boxes:on' : 'boxes:off',
+        `line-opacity:${tradeHistoryLineOpacityPercent}`,
+        `box-opacity:${tradeHistoryBoxOpacityPercent}`,
         closedSignature,
       ].join('\n');
 
@@ -4040,11 +4066,15 @@ export const TradingChart = React.memo(function TradingChart({
           closedTrades.forEach((trade) => {
             const entryColor = getEntryColor(trade.side);
             const exitSide: TradeSide = trade.side === 'BUY' ? 'SELL' : 'BUY';
-            createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', 'history', trade.exitPrice, trade.exitTime);
-            createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor, 'history');
-            createTradeHistoryLabel(trade.side, trade.entryPrice, trade.entryTime, entryColor, 'history');
-            createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} @ ${trade.exitPrice.toFixed(digits)}`, getExitColor(trade.side), 'history');
-            createTradeHistoryLabel(exitSide, trade.exitPrice, trade.exitTime, getExitColor(trade.side), 'history');
+            createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', 'history', trade.exitPrice, trade.exitTime, undefined, undefined, tradeHistoryLineOpacity);
+            createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor, 'history', tradeHistoryLineOpacity);
+            if (showTradeHistoryBoxes) {
+              createTradeHistoryLabel(trade.side, trade.entryPrice, trade.entryTime, entryColor, 'history', tradeHistoryBoxOpacity);
+            }
+            createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} @ ${trade.exitPrice.toFixed(digits)}`, getExitColor(trade.side), 'history', tradeHistoryLineOpacity);
+            if (showTradeHistoryBoxes) {
+              createTradeHistoryLabel(exitSide, trade.exitPrice, trade.exitTime, getExitColor(trade.side), 'history', tradeHistoryBoxOpacity);
+            }
           });
         }
       }
@@ -4084,6 +4114,9 @@ export const TradingChart = React.memo(function TradingChart({
       if (
         currentProperties.showTradeLevels !== previousProperties.showTradeLevels
         || currentProperties.showTradeHistory !== previousProperties.showTradeHistory
+        || currentProperties.showTradeHistoryBoxes !== previousProperties.showTradeHistoryBoxes
+        || currentProperties.tradeHistoryLineOpacity !== previousProperties.tradeHistoryLineOpacity
+        || currentProperties.tradeHistoryBoxOpacity !== previousProperties.tradeHistoryBoxOpacity
       ) {
         renderTradeOverlay(true);
       }
@@ -4726,6 +4759,17 @@ export const TradingChart = React.memo(function TradingChart({
       return next;
     });
   }, []);
+
+  const handleCtxToggleTradeHistory = useCallback(() => {
+    setCtxShowTradeHistory(prev => {
+      const next = !prev;
+      const store = useChartSettingsStore.getState();
+      store.updateGlobalProperty('showTradeHistory', next);
+      store.updateSymbolProperty(symbol, 'showTradeHistory', next);
+      window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+      return next;
+    });
+  }, [symbol]);
 
   const handleCtxZoomIn = useCallback(() => {
     commandBus.dispatch({ type: 'ZOOM_IN', payload: {} });
@@ -5585,6 +5629,7 @@ export const TradingChart = React.memo(function TradingChart({
         autoScroll={ctxAutoScroll}
         chartShift={ctxChartShift}
         showTradeLevels={ctxShowTradeLevels}
+        showTradeHistory={ctxShowTradeHistory}
         onChangeChartType={handleCtxChartTypeChange}
         onChangeTimeframe={handleCtxTimeframeChange}
         onToggleOneClickTrading={() => setShowOneClick(prev => !prev)}
@@ -5593,6 +5638,7 @@ export const TradingChart = React.memo(function TradingChart({
         onToggleAutoScroll={handleCtxToggleAutoScroll}
         onToggleChartShift={handleCtxToggleChartShift}
         onToggleTradeLevels={handleCtxToggleTradeLevels}
+        onToggleTradeHistory={handleCtxToggleTradeHistory}
         onOpenProperties={handleCtxOpenProperties}
         onSaveAsPicture={handleCtxSaveAsPicture}
         onPrintChart={() => window.print()}

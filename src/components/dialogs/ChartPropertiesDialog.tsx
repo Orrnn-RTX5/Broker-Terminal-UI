@@ -104,6 +104,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
                     { key: 'showObjectDescriptions', label: 'Show object descriptions' },
                     { key: 'showTradeLevels', label: 'Show trade levels' },
                     { key: 'showTradeHistory', label: 'Show trade history' },
+                    { key: 'showTradeHistoryBoxes', label: 'Show trade history boxes' },
                   ].map(({ key, label }) => (
                     <label key={key} className="rtx-cp-checkbox-row flex items-center gap-2 cursor-pointer group hover:bg-white/5 px-2 py-0.5 -mx-2 rounded transition-colors">
                       <input 
@@ -117,6 +118,40 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
                       <span className="rtx-cp-checkbox-label text-[13px] text-[#ccc] group-hover:text-white transition-colors">{label}</span>
                     </label>
                   ))}
+                  <div className="mt-2 space-y-2 border-t border-[#333] pt-2">
+                    <label className={`block px-2 ${!state.showTradeHistory ? 'opacity-50' : ''}`}>
+                      <div className="mb-1 flex items-center justify-between text-[12px] text-[#ccc]">
+                        <span>Trade history line opacity</span>
+                        <span className="font-mono">{state.tradeHistoryLineOpacity}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={state.tradeHistoryLineOpacity}
+                        disabled={!state.showTradeHistory}
+                        onChange={(e) => updateGlobalProperty('tradeHistoryLineOpacity', Number(e.target.value))}
+                        className="w-full accent-blue-500"
+                      />
+                    </label>
+                    <label className={`block px-2 ${!state.showTradeHistory || !state.showTradeHistoryBoxes ? 'opacity-50' : ''}`}>
+                      <div className="mb-1 flex items-center justify-between text-[12px] text-[#ccc]">
+                        <span>Trade history box opacity</span>
+                        <span className="font-mono">{state.tradeHistoryBoxOpacity}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={state.tradeHistoryBoxOpacity}
+                        disabled={!state.showTradeHistory || !state.showTradeHistoryBoxes}
+                        onChange={(e) => updateGlobalProperty('tradeHistoryBoxOpacity', Number(e.target.value))}
+                        className="w-full accent-blue-500"
+                      />
+                    </label>
+                  </div>
                 </div>
               )}
 
