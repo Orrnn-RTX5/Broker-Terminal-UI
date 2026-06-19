@@ -84,6 +84,7 @@ import {
   getTradeOverlayCloseTicketKeys,
   getTradeOverlayRedrawDecision,
   resolveNearestTradeOverlayCandleTime,
+  resolveStableTradeEntryPrice,
   resolveStableTradeEntryTime,
   shouldKeepMissingActiveTradeOverlay,
   TRADE_OVERLAY_CLOSE_STATE_EVENT,
@@ -106,6 +107,7 @@ const TRADE_LEVEL_OVERRIDE_TTL_MS = 5 * 60 * 1000;
 const TRADE_LEVEL_OPTIMISTIC_GRACE_MS = 15_000;
 const TRADE_LEVEL_HIT_AREA_PX = 24;
 const TRADE_LEVEL_MIN_DRAG_PX = 2;
+const TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS = 15_000;
 const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
 const REALTIME_SCROLL_THRESHOLD_BARS = 2;
 const TRANSPARENT_CHART_LINE = 'rgba(0, 0, 0, 0)';
@@ -2316,6 +2318,10 @@ export const TradingChart = React.memo(function TradingChart({
 
         if (shouldRefreshForCross) {
           tradeLevelCrossRefreshPendingRef.current.add(trade.key);
+          tradeLevelCrossCloseCandidatesRef.current.set(
+            trade.key,
+            Date.now() + TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS,
+          );
           const pId = trade.key.replace('trade:', '');
           console.log(`[Chart] SL/TP crossed for trade ${pId}; requesting server refresh`);
 
@@ -2955,6 +2961,7 @@ export const TradingChart = React.memo(function TradingChart({
   const historyOverlayNodesRef = useRef<HTMLElement[]>([]);
   const historyOverlayNodeDataRef = useRef<OverlayNodeData[]>([]);
   const frozenEntryTimesRef = useRef<Map<number | string, number>>(new Map());
+  const frozenEntryPricesRef = useRef<Map<number | string, number>>(new Map());
   const activeTradeSnapshotsRef = useRef<Map<string, ActiveTradeSnapshot>>(new Map());
   const pendingMissingActiveTradesRef = useRef<Map<string, { trade: ActiveTradeSnapshot; missingSince: number }>>(new Map());
   const closeSuppressedTradeKeysRef = useRef<Map<string, number>>(new Map());
@@ -2964,6 +2971,7 @@ export const TradingChart = React.memo(function TradingChart({
   const tradeMissingGraceTimerRef = useRef<number | null>(null);
   const tradeOverlayRafRef = useRef<number | null>(null);
   const tradeLevelCrossRefreshPendingRef = useRef<Set<string>>(new Set());
+  const tradeLevelCrossCloseCandidatesRef = useRef<Map<string, number>>(new Map());
   const tradeLevelOverridesRef = useRef<Map<string, TradeLevelOverride>>(new Map());
   const tradeLevelLastKnownLevelsRef = useRef<Map<string, TradeLevelOverride>>(new Map());
   const tradeLevelModifyRequestSeqRef = useRef<TradeLevelModifyRequestId>(0);
@@ -3087,9 +3095,11 @@ export const TradingChart = React.memo(function TradingChart({
     pendingClosedTradeSnapshotsRef.current.clear();
     optimisticClosedTradeSnapshotsRef.current.clear();
     frozenEntryTimesRef.current.clear();
+    frozenEntryPricesRef.current.clear();
     tradeLevelLastKnownLevelsRef.current.clear();
     pendingTradeLevelModifyRequestsRef.current.clear();
     tradeLevelOptimisticGraceUntilRef.current.clear();
+    tradeLevelCrossCloseCandidatesRef.current.clear();
     clearTradeOverlay();
 
     if (tradeHistoryRefreshTimerRef.current !== null) {
@@ -3638,12 +3648,21 @@ export const TradingChart = React.memo(function TradingChart({
       });
     };
 
+    const pruneTradeLevelCrossCloseCandidates = (now = Date.now()) => {
+      tradeLevelCrossCloseCandidatesRef.current.forEach((expiresAt, key) => {
+        if (expiresAt <= now) {
+          tradeLevelCrossCloseCandidatesRef.current.delete(key);
+        }
+      });
+    };
+
     const renderTradeOverlay = (options: boolean | { forceActive?: boolean; forceHistory?: boolean } = false) => {
       if (isDisposedRef.current || !seriesRef.current || !overlayRef.current) return;
       const forceActive = typeof options === 'boolean' ? options : Boolean(options.forceActive);
       const forceHistory = typeof options === 'boolean' ? options : Boolean(options.forceHistory);
       const now = Date.now();
       pruneCloseSuppressedTradeKeys(now);
+      pruneTradeLevelCrossCloseCandidates(now);
       const closeSuppressedTradeKeys = new Set(closeSuppressedTradeKeysRef.current.keys());
 
       const chartProperties = useChartSettingsStore.getState().symbolProperties[symbol]
@@ -3728,6 +3747,7 @@ export const TradingChart = React.memo(function TradingChart({
           : clearTradeLevelRuntimeStateByKey(key) || didClearClosedHistoryTradeLevels;
         optimisticClosedTradeSnapshotsRef.current.delete(key);
         pendingClosedTradeSnapshotsRef.current.delete(key);
+        tradeLevelCrossCloseCandidatesRef.current.delete(key);
       });
       if (didClearClosedHistoryTradeLevels) persistTradeLevelOverrides();
 
@@ -3774,7 +3794,15 @@ export const TradingChart = React.memo(function TradingChart({
           frozenEntryTimesRef.current.set(key, entryTime);
         }
 
-        const entryPrice = position.openPrice > 0 ? position.openPrice : position.currentPrice;
+        const storedEntryPrice = frozenEntryPricesRef.current.get(key);
+        const entryPrice = resolveStableTradeEntryPrice(
+          storedEntryPrice,
+          position.openPrice,
+          position.currentPrice,
+        );
+        if (storedEntryPrice == null && entryPrice > 0) {
+          frozenEntryPricesRef.current.set(key, entryPrice);
+        }
         if (!(entryTime > 0) || !(entryPrice > 0)) continue;
 
         nextActiveSnapshots.set(key, {
@@ -3793,7 +3821,9 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       const renderActiveSnapshots = new Map(nextActiveSnapshots);
+      const visuallyRetainedActiveTradeKeys = new Set<string>();
       let nextMissingGraceDelayMs: number | null = null;
+      let didClearCrossClosedTradeLevels = false;
 
       activeTradeSnapshotsRef.current.forEach((previousTrade, key) => {
         if (previousTrade.symbol !== normalizedChartSymbol || nextActiveSnapshots.has(key)) return;
@@ -3827,10 +3857,28 @@ export const TradingChart = React.memo(function TradingChart({
         }
 
         const elapsedMs = now - pending.missingSince;
+        const crossedLevelCandidateExpiresAt = tradeLevelCrossCloseCandidatesRef.current.get(key) ?? 0;
+        if (crossedLevelCandidateExpiresAt > now) {
+          const closedTrade = buildImmediateClosedTrade(pending.trade);
+          if (closedTrade) {
+            optimisticClosedTradeSnapshotsRef.current.set(key, closedTrade);
+          }
+          pendingClosedTradeSnapshotsRef.current.delete(key);
+          pendingMissingActiveTradesRef.current.delete(key);
+          closeSuppressedTradeKeysRef.current.set(key, now + TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS);
+          tradeLevelCrossCloseCandidatesRef.current.delete(key);
+          tradeLevelCrossRefreshPendingRef.current.delete(key);
+          didClearCrossClosedTradeLevels = clearTradeLevelRuntimeState(pending.trade) || didClearCrossClosedTradeLevels;
+          scheduleHistoryRefresh();
+          return;
+        }
+
         if (elapsedMs < TRADE_MISSING_POSITION_GRACE_MS) {
-          // Keep the missing snapshot only as a short-lived history bridge.
-          // Once the position is absent from the active positions list, do not
-          // draw active BUY/SELL or SL/TP levels for it.
+          // Broker/account feeds can briefly emit an empty or partial positions
+          // snapshot between live updates. Keep drawing the last confirmed levels
+          // during the grace window so active trade lines do not blink off.
+          renderActiveSnapshots.set(key, pending.trade);
+          visuallyRetainedActiveTradeKeys.add(key);
           const remainingMs = TRADE_MISSING_POSITION_GRACE_MS - elapsedMs;
           nextMissingGraceDelayMs = nextMissingGraceDelayMs == null
             ? remainingMs
@@ -3841,6 +3889,8 @@ export const TradingChart = React.memo(function TradingChart({
         scheduleHistoryRefresh();
         pendingMissingActiveTradesRef.current.delete(key);
       });
+
+      if (didClearCrossClosedTradeLevels) persistTradeLevelOverrides();
 
       activeTradeSnapshotsRef.current = nextActiveSnapshots;
 
@@ -3877,7 +3927,9 @@ export const TradingChart = React.memo(function TradingChart({
         .sort((a, b) => a.key.localeCompare(b.key));
       const activeSignature = showTradeLevels
         ? sortedActiveSnapshots.map((trade) => {
-            const levels = nextActiveSnapshots.has(trade.key) ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
+            const levels = nextActiveSnapshots.has(trade.key) || visuallyRetainedActiveTradeKeys.has(trade.key)
+              ? resolveTradeLevels(trade)
+              : { sl: 0, tp: 0 };
             return [
               trade.key,
               trade.side,
@@ -3937,6 +3989,7 @@ export const TradingChart = React.memo(function TradingChart({
           const nextLevelOffset = createCollisionOffsetFactory();
           sortedActiveSnapshots.forEach((trade) => {
             const isLiveActiveTrade = nextActiveSnapshots.has(trade.key);
+            const isVisuallyRetainedTrade = visuallyRetainedActiveTradeKeys.has(trade.key);
             const entryColor = getEntryColor(trade.side);
             const ticketLabel = getTradeTicketLabel(trade.key);
             const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${trade.entryPrice.toFixed(digits)}`.trim();
@@ -3954,21 +4007,25 @@ export const TradingChart = React.memo(function TradingChart({
               },
             );
 
-            const levels = isLiveActiveTrade ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
+            const levels = isLiveActiveTrade || isVisuallyRetainedTrade ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
             if (levels.sl && levels.sl > 0) {
               createPriceLevel(`SL ${ticketLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
-                tradeKey: trade.key,
-                role: 'SL',
+                tradeKey: isLiveActiveTrade ? trade.key : undefined,
+                role: isLiveActiveTrade ? 'SL' : undefined,
                 badgeOffsetIndex: nextLevelOffset('SL', levels.sl),
-                title: `Stop Loss for ${ticketLabel || trade.key}`,
+                title: isVisuallyRetainedTrade
+                  ? `Stop Loss for ${ticketLabel || trade.key}. Waiting for position refresh.`
+                  : `Stop Loss for ${ticketLabel || trade.key}`,
               });
             }
             if (levels.tp && levels.tp > 0) {
               createPriceLevel(`TP ${ticketLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
-                tradeKey: trade.key,
-                role: 'TP',
+                tradeKey: isLiveActiveTrade ? trade.key : undefined,
+                role: isLiveActiveTrade ? 'TP' : undefined,
                 badgeOffsetIndex: nextLevelOffset('TP', levels.tp),
-                title: `Take Profit for ${ticketLabel || trade.key}`,
+                title: isVisuallyRetainedTrade
+                  ? `Take Profit for ${ticketLabel || trade.key}. Waiting for position refresh.`
+                  : `Take Profit for ${ticketLabel || trade.key}`,
               });
             }
           });
@@ -4051,6 +4108,7 @@ export const TradingChart = React.memo(function TradingChart({
           pendingClosedTradeSnapshotsRef.current.delete(key);
           optimisticClosedTradeSnapshotsRef.current.delete(key);
           tradeLevelCrossRefreshPendingRef.current.delete(key);
+          tradeLevelCrossCloseCandidatesRef.current.delete(key);
         });
       } else {
         const expiresAt = Date.now() + TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS;
@@ -4076,7 +4134,9 @@ export const TradingChart = React.memo(function TradingChart({
           activeTradeSnapshotsRef.current.delete(key);
           pendingMissingActiveTradesRef.current.delete(key);
           frozenEntryTimesRef.current.delete(key);
+          frozenEntryPricesRef.current.delete(key);
           tradeLevelCrossRefreshPendingRef.current.delete(key);
+          tradeLevelCrossCloseCandidatesRef.current.delete(key);
         });
         if (didClearTradeLevels) persistTradeLevelOverrides();
         scheduleHistoryRefresh();

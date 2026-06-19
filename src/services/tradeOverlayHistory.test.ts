@@ -7,6 +7,7 @@ import {
   getTradeOverlayCloseTicketKeys,
   getTradeOverlayRedrawDecision,
   resolveNearestTradeOverlayCandleTime,
+  resolveStableTradeEntryPrice,
   resolveStableTradeEntryTime,
   shouldKeepMissingActiveTradeOverlay,
   type TradeOverlayHistoryRow,
@@ -283,6 +284,22 @@ describe('trade overlay close suppression helpers', () => {
       () => 1760000340,
       1760000400,
     )).toBe(1760000340);
+  });
+
+  it('keeps an already resolved trade entry price stable across current-price updates', () => {
+    expect(resolveStableTradeEntryPrice(
+      1.34149,
+      1.34210,
+      1.34210,
+    )).toBe(1.34149);
+  });
+
+  it('uses a live fallback entry price only until a price has been frozen', () => {
+    expect(resolveStableTradeEntryPrice(
+      null,
+      0,
+      1.34210,
+    )).toBe(1.34210);
   });
 
   it('extracts unique active trade keys from close event detail', () => {

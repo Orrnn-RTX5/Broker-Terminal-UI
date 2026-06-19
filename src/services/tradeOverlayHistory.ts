@@ -226,6 +226,22 @@ export const resolveStableTradeEntryTime = (
   return fallbackTime != null && Number.isFinite(fallbackTime) && fallbackTime > 0 ? fallbackTime : 0;
 };
 
+export const resolveStableTradeEntryPrice = (
+  storedEntryPrice: number | null | undefined,
+  rawEntryPrice: number | null | undefined,
+  fallbackPrice: number | null | undefined,
+): number => {
+  if (storedEntryPrice != null && Number.isFinite(storedEntryPrice) && storedEntryPrice > 0) {
+    return storedEntryPrice;
+  }
+
+  if (rawEntryPrice != null && Number.isFinite(rawEntryPrice) && rawEntryPrice > 0) {
+    return rawEntryPrice;
+  }
+
+  return fallbackPrice != null && Number.isFinite(fallbackPrice) && fallbackPrice > 0 ? fallbackPrice : 0;
+};
+
 export const buildOptimisticClosedTradeSnapshot = ({
   key,
   symbol,

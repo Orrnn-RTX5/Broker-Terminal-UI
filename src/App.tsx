@@ -1954,9 +1954,28 @@ function App() {
                 if (optimisticClosedTicketsRef.current.has(normalized.id)) return;
                 const storePositions = useAppStore.getState().positions;
                 const storeIndex = storePositions.findIndex(position => position.id === normalized.id);
+                const hasOwnValue = (record: unknown, keys: string[]) => (
+                  !!record
+                  && typeof record === 'object'
+                  && keys.some((key) => Object.prototype.hasOwnProperty.call(record, key))
+                );
+                const hasExplicitOpenPrice = hasOwnValue(payload, ['price_open', 'open_price', 'openPrice']);
+                const hasExplicitOpenTime = hasOwnValue(payload, ['time_create', 'time_ms', 'time', 'time_open', 'opened_at', 'chartEntryTime', 'chart_entry_time']);
+                const hasExplicitSl = hasOwnValue(payload, ['price_sl', 'sl', 'stopLoss', 'stop_loss']);
+                const hasExplicitTp = hasOwnValue(payload, ['price_tp', 'tp', 'takeProfit', 'take_profit']);
                 const nextStorePositions = storeIndex < 0
                   ? [...storePositions, normalized]
-                  : storePositions.map((position, index) => index === storeIndex ? { ...position, ...normalized } : position);
+                  : storePositions.map((position, index) => index === storeIndex
+                    ? {
+                      ...position,
+                      ...normalized,
+                      openPrice: hasExplicitOpenPrice ? normalized.openPrice : position.openPrice,
+                      open_price: hasExplicitOpenPrice ? normalized.openPrice : position.open_price,
+                      openTime: hasExplicitOpenTime ? normalized.openTime : position.openTime,
+                      sl: hasExplicitSl ? normalized.sl : position.sl,
+                      tp: hasExplicitTp ? normalized.tp : position.tp,
+                    }
+                    : position);
                 useAppStore.getState().setPositions(nextStorePositions as any);
               }
             }

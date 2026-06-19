@@ -324,7 +324,26 @@ class AccountSocketManager {
       const existingIdx = current.findIndex(p => p.id === normalized.id);
       if (existingIdx >= 0) {
         const updated = [...current];
-        updated[existingIdx] = { ...updated[existingIdx], ...normalized };
+        const existing = updated[existingIdx] as any;
+        const hasOwnValue = (record: any, keys: string[]): boolean => (
+          !!record
+          && typeof record === 'object'
+          && keys.some((key) => Object.prototype.hasOwnProperty.call(record, key))
+        );
+        const hasExplicitOpenPrice = hasOwnValue(rawPosition, ['price_open', 'open_price', 'openPrice']);
+        const hasExplicitOpenTime = hasOwnValue(rawPosition, ['time_create', 'time_ms', 'time', 'time_open', 'opened_at']);
+        const hasExplicitSl = hasOwnValue(rawPosition, ['price_sl', 'sl', 'stopLoss', 'stop_loss']);
+        const hasExplicitTp = hasOwnValue(rawPosition, ['price_tp', 'tp', 'takeProfit', 'take_profit']);
+        updated[existingIdx] = {
+          ...existing,
+          ...normalized,
+          openPrice: hasExplicitOpenPrice ? normalized.openPrice : existing.openPrice,
+          open_price: hasExplicitOpenPrice ? (normalized as any).open_price : existing.open_price,
+          openTime: hasExplicitOpenTime ? normalized.openTime : existing.openTime,
+          time_create: hasExplicitOpenTime ? (normalized as any).time_create : existing.time_create,
+          sl: hasExplicitSl ? normalized.sl : existing.sl,
+          tp: hasExplicitTp ? normalized.tp : existing.tp,
+        };
         store.setPositions(updated);
       } else if (normalized.id) {
         store.setPositions([normalized, ...current]);
