@@ -746,12 +746,12 @@ const MainToolbar = ({
                         setShowAdvancedOptions(false);
                         setShowHistoryOverlayMenu((open) => !open);
                     }}
-                    className={`flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all shadow-sm ${tradeHistorySettings.showTradeHistory
+                    className={`rtx-trade-history-overlay-button flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all ${showHistoryOverlayMenu
                         ? advancedViewEnabled
                             ? 'border-[#7E57C2] bg-[#7E57C2] text-white'
                             : 'border-blue-500/30 bg-blue-500/15 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
                         : advancedViewEnabled
-                            ? 'border-[#d0d5dd] bg-white text-[#475467] hover:border-[#7E57C2] hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
+                            ? 'border-transparent bg-transparent text-[#475467] shadow-none hover:border-transparent hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
                             : 'border-transparent bg-transparent text-zinc-400 hover:border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-300'
                         }`}
                 >

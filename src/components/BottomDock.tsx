@@ -1369,7 +1369,7 @@ ${rows}
 
                                 {/* side */}
                                 {isColumnVisible('side') && (
-                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 font-semibold ${isBuy ? 'text-[#45bff7]' : 'text-[#ff2d2d]'} text-[11px]`}>
+                                    <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 font-semibold text-[11px]`}>
                                         <div className="flex items-center gap-1">
                                             {isBuy ? (
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>

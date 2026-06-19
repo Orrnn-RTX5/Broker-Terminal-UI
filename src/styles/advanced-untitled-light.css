@@ -1621,6 +1621,15 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-mt5-divider {
   display: none !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-history-overlay-button[aria-expanded="false"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-history-overlay-button[aria-expanded="false"]:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-history-overlay-button[aria-expanded="false"]:focus,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-history-overlay-button[aria-expanded="false"]:focus-visible {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .text-green-400 {
   color: #027a48 !important;
   /* Darker green */
@@ -1761,6 +1770,20 @@ html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-r
   text-shadow: none !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--buy,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--buy svg,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--buy span {
+  color: #2563eb !important;
+  font-weight: 700 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--sell,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--sell svg,
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--sell span {
+  color: #dc2626 !important;
+  font-weight: 700 !important;
+}
+
 /* Deepen Profit & Loss text colors explicitly for readability in light mode */
 html.rtx-advanced-view.rtx-skin-untitled-light .text-\[\#4ade80\],
 html.rtx-advanced-view.rtx-skin-untitled-light .text-emerald-300,
@@ -1780,10 +1803,15 @@ html.rtx-advanced-view.rtx-skin-untitled-light .text-red-500 {
 }
 
 /* Explicitly override the default text color for BUY/SELL columns in Trade tab */
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-emerald-500,
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-blue-400 {
+  color: #2563eb !important;
+  /* Blue for BUY */
+  font-weight: 700 !important;
+  font-size: 11px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-emerald-500 {
   color: #027a48 !important;
-  /* Deep Green for BUY */
   font-weight: 700 !important;
   font-size: 11px !important;
 }
