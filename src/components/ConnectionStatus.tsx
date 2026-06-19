@@ -60,24 +60,24 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
   const getStatusDisplay = () => {
     switch (state) {
       case 'connected':
-        return { color: 'bg-green-500', text: 'Connected', icon: Wifi, iconColor: 'text-green-600' };
+        return { color: 'bg-green-500', text: 'Connected', icon: Wifi, iconColor: 'text-green-400 [.rtx-advanced-view_&]:text-green-600' };
       case 'connecting':
-        return { color: 'bg-yellow-500', text: 'Connecting...', icon: RefreshCw, iconColor: 'text-yellow-600 animate-spin' };
+        return { color: 'bg-yellow-500', text: 'Connecting...', icon: RefreshCw, iconColor: 'text-yellow-400 [.rtx-advanced-view_&]:text-yellow-600 animate-spin' };
       case 'disconnected':
-        return { color: 'bg-red-500', text: 'Disconnected', icon: WifiOff, iconColor: 'text-red-600' };
+        return { color: 'bg-red-500', text: 'Disconnected', icon: WifiOff, iconColor: 'text-red-400 [.rtx-advanced-view_&]:text-red-600' };
       case 'offline':
-        return { color: 'bg-gray-500', text: 'Offline', icon: WifiOff, iconColor: 'text-gray-600' };
+        return { color: 'bg-gray-500', text: 'Offline', icon: WifiOff, iconColor: 'text-gray-400 [.rtx-advanced-view_&]:text-gray-600' };
       case 'reconnecting':
-        return { color: 'bg-yellow-500', text: 'Connecting...', icon: RefreshCw, iconColor: 'text-yellow-600 animate-spin' };
+        return { color: 'bg-yellow-500', text: 'Connecting...', icon: RefreshCw, iconColor: 'text-yellow-400 [.rtx-advanced-view_&]:text-yellow-600 animate-spin' };
       case 'error':
-        return { color: 'bg-red-600', text: 'Error', icon: AlertTriangle, iconColor: 'text-red-700' };
+        return { color: 'bg-red-600', text: 'Error', icon: AlertTriangle, iconColor: 'text-red-400 [.rtx-advanced-view_&]:text-red-700' };
       default:
-        return { color: 'bg-gray-500', text: 'Unknown', icon: WifiOff, iconColor: 'text-gray-600' };
+        return { color: 'bg-gray-500', text: 'Unknown', icon: WifiOff, iconColor: 'text-gray-400 [.rtx-advanced-view_&]:text-gray-600' };
     }
   };
 
   const status = isStale
-    ? { color: 'bg-orange-500', text: 'Stale Data', icon: AlertTriangle, iconColor: 'text-orange-600' }
+    ? { color: 'bg-orange-500', text: 'Stale Data', icon: AlertTriangle, iconColor: 'text-orange-400 [.rtx-advanced-view_&]:text-orange-600' }
     : getStatusDisplay();
   const StatusIcon = status.icon;
 
@@ -104,17 +104,17 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
       {/* Status Indicator (Clickable) */}
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center gap-1.5 hover:bg-zinc-300/50 px-2 py-0.5 rounded transition-colors"
+        className="flex items-center gap-1.5 px-2 py-0.5 rounded text-zinc-200 transition-colors hover:bg-white/5 hover:text-white [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:hover:bg-zinc-300/50"
         title="Click for connection details"
       >
         <div className={`w-2 h-2 rounded-full ${status.color} shadow-sm`} />
-        <span className="font-medium text-black text-[11px]">
+        <span className="font-medium text-[11px]">
           {state === 'connected' 
             ? (metrics.lastLatency > 0 ? `Connected ${metrics.lastLatency}ms` : 'Connected')
             : status.text}
         </span>
         {isStale && (
-          <span className="text-orange-600 text-[10px] font-medium ml-1">(Stale)</span>
+          <span className="text-orange-400 text-[10px] font-medium ml-1 [.rtx-advanced-view_&]:text-orange-600">(Stale)</span>
         )}
         <StatusIcon size={12} className={status.iconColor} />
       </button>

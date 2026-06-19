@@ -255,9 +255,9 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
             <div
                 style={{
                     display: 'flex',
-                    background: 'rgba(15, 23, 42, 0.4)',
-                    backdropFilter: 'blur(16px)',
-                    WebkitBackdropFilter: 'blur(16px)',
+                    background: 'rgba(15, 23, 42, 0.22)',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
                     border: '1px solid rgba(255,255,255,0.1)',
                     borderRadius: '0px',
                     overflow: 'hidden',
@@ -271,15 +271,15 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     style={{
                         ...sharedButtonStyle,
                         background: flashSide === 'buy'
-                            ? 'linear-gradient(180deg, rgba(30,58,138,0.8) 0%, rgba(30,58,138,0.9) 100%)'
-                            : 'linear-gradient(180deg, rgba(37,99,235,0.85) 0%, rgba(29,78,216,0.85) 50%, rgba(30,64,175,0.95) 100%)',
+                            ? 'linear-gradient(180deg, rgba(30,58,138,0.66) 0%, rgba(30,58,138,0.74) 100%)'
+                            : 'linear-gradient(180deg, rgba(37,99,235,0.68) 0%, rgba(29,78,216,0.68) 50%, rgba(30,64,175,0.78) 100%)',
                         borderRight: 'none',
                         borderRadius: '0px'
                     }}
-                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(59,130,246,0.9) 0%, rgba(37,99,235,0.9) 50%, rgba(29,78,216,0.95) 100%)'; }}
-                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(37,99,235,0.85) 0%, rgba(29,78,216,0.85) 50%, rgba(30,64,175,0.95) 100%)'; }}
+                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(59,130,246,0.76) 0%, rgba(37,99,235,0.76) 50%, rgba(29,78,216,0.84) 100%)'; }}
+                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(37,99,235,0.68) 0%, rgba(29,78,216,0.68) 50%, rgba(30,64,175,0.78) 100%)'; }}
                 >
-                    <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.7)', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.86)', letterSpacing: '1px', textTransform: 'uppercase' }}>
                         BUY
                     </span>
                     <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1, marginTop: 2 }}>
@@ -319,7 +319,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         height: btnHeight,
                         minHeight: btnHeight,
                         maxHeight: btnHeight,
-                        background: 'linear-gradient(180deg, #1f2937 0%, #111827 100%)',
+                        background: 'linear-gradient(180deg, rgba(31,41,55,0.72) 0%, rgba(17,24,39,0.76) 100%)',
                         borderLeft: '1px solid rgba(255,255,255,0.15)',
                         borderRight: '1px solid rgba(255,255,255,0.15)',
                         boxSizing: 'border-box',
@@ -347,7 +347,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         }}
                         style={{
                             width: 42, height: 20,
-                            background: '#0f172a',
+                            background: 'rgba(15,23,42,0.78)',
                             border: '1px solid #374151',
                             borderRadius: 0,
                             color: '#fff',
@@ -379,15 +379,15 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     style={{
                         ...sharedButtonStyle,
                         background: flashSide === 'sell'
-                            ? 'linear-gradient(180deg, rgba(153,27,27,0.8) 0%, rgba(127,29,29,0.9) 100%)'
-                            : 'linear-gradient(180deg, rgba(220,38,38,0.85) 0%, rgba(185,28,28,0.85) 50%, rgba(153,27,27,0.95) 100%)',
+                            ? 'linear-gradient(180deg, rgba(153,27,27,0.66) 0%, rgba(127,29,29,0.74) 100%)'
+                            : 'linear-gradient(180deg, rgba(220,38,38,0.68) 0%, rgba(185,28,28,0.68) 50%, rgba(153,27,27,0.78) 100%)',
                         borderLeft: 'none',
                         borderRadius: '0px'
                     }}
-                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(239,68,68,0.9) 0%, rgba(220,38,38,0.9) 50%, rgba(185,28,28,0.95) 100%)'; }}
-                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(220,38,38,0.85) 0%, rgba(185,28,28,0.85) 50%, rgba(153,27,27,0.95) 100%)'; }}
+                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(239,68,68,0.76) 0%, rgba(220,38,38,0.76) 50%, rgba(185,28,28,0.84) 100%)'; }}
+                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(220,38,38,0.68) 0%, rgba(185,28,28,0.68) 50%, rgba(153,27,27,0.78) 100%)'; }}
                 >
-                    <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.7)', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.86)', letterSpacing: '1px', textTransform: 'uppercase' }}>
                         SELL
                     </span>
                     <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1, marginTop: 2 }}>

@@ -12,6 +12,7 @@ import { useToolboxTradeData, type ToolboxTradePosition } from '../hooks/useTool
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
 import { formatPrice, getSymbolDigits } from '../utils/symbolUtils';
+import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
 import {
     buildExposureSummary,
     formatExposureVolume,
@@ -63,12 +64,28 @@ type TradeColumnDef = {
     minWidth: number;
     maxWidth: number;
 };
+type TradeFooterMetricKey =
+    | 'positions'
+    | 'balance'
+    | 'equity'
+    | 'margin'
+    | 'freeMargin'
+    | 'marginLevel'
+    | 'swap'
+    | 'commission';
+
+type TradeFooterMetricVisibility = Record<TradeFooterMetricKey, boolean>;
+type TradeFooterMetricDef = {
+    key: TradeFooterMetricKey;
+    label: string;
+};
 
 const TRADE_COLUMN_STORAGE_KEY = 'rtx5_trade_columns_v3';
 const TRADE_COLUMN_WIDTH_STORAGE_KEY = 'rtx5_trade_column_widths_v1';
 const TRADE_PROFIT_MODE_STORAGE_KEY = 'rtx5_trade_profit_mode';
 const TRADE_VOLUME_MODE_STORAGE_KEY = 'rtx5_trade_volume_mode';
 const TRADE_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY = 'rtx5_trade_show_on_charts_auto_update';
+const TRADE_FOOTER_METRIC_STORAGE_KEY = 'rtx5_trade_footer_metrics_v1';
 
 const TRADE_COLUMN_DEFS: TradeColumnDef[] = [
     { key: 'ticket', label: 'Ticket', defaultWidth: 96, minWidth: 70, maxWidth: 180 },
@@ -102,6 +119,26 @@ const DEFAULT_TRADE_COLUMNS: TradeColumnVisibility = {
     accountLogin: false,
     timeUpdate: false,
     comment: false,
+};
+
+const TRADE_FOOTER_METRIC_DEFS: TradeFooterMetricDef[] = [
+    { key: 'positions', label: 'Positions' },
+    { key: 'balance', label: 'Balance' },
+    { key: 'equity', label: 'Equity' },
+    { key: 'margin', label: 'Margin' },
+    { key: 'freeMargin', label: 'Free Margin' },
+    { key: 'marginLevel', label: 'Margin Level' },
+    { key: 'swap', label: 'Swap' },
+    { key: 'commission', label: 'Commission' },
+];
+
+const ALL_TRADE_FOOTER_METRICS: TradeFooterMetricVisibility = TRADE_FOOTER_METRIC_DEFS.reduce((acc, metric) => {
+    acc[metric.key] = true;
+    return acc;
+}, {} as TradeFooterMetricVisibility);
+
+const DEFAULT_TRADE_FOOTER_METRICS: TradeFooterMetricVisibility = {
+    ...ALL_TRADE_FOOTER_METRICS,
 };
 
 const TRADE_FIXED_COLUMN_DEFS: Record<'symbol' | 'close', Omit<TradeColumnDef, 'key'> & { key: 'symbol' | 'close' }> = {
@@ -600,8 +637,37 @@ function ToolboxTab() {
 }
 
 function BlinkingText({ value, formatFn, prefix = '', suffix = '', defaultColor = 'text-zinc-100' }: any) {
-    // Disabled the blinking/flashing color transition effect as per user request ("this section background blink i dont want")
-    return <span className={`${defaultColor} px-0.5 rounded-sm inline-block`}>{prefix}{formatFn ? formatFn(value) : value}{suffix}</span>;
+    const [changeColor, setChangeColor] = useState<string | null>(null);
+    const previousValueRef = useRef<number | null>(null);
+    const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const numericValue = Number(value);
+
+    useEffect(() => {
+        if (!Number.isFinite(numericValue)) return;
+
+        const previousValue = previousValueRef.current;
+        if (previousValue !== null && numericValue !== previousValue) {
+            setChangeColor(numericValue > previousValue ? 'text-[#22c55e]' : 'text-[#ff2d2d]');
+            if (clearTimerRef.current) {
+                clearTimeout(clearTimerRef.current);
+            }
+            clearTimerRef.current = setTimeout(() => setChangeColor(null), 900);
+        }
+
+        previousValueRef.current = numericValue;
+
+        return () => {
+            if (clearTimerRef.current) {
+                clearTimeout(clearTimerRef.current);
+            }
+        };
+    }, [numericValue]);
+
+    return (
+        <span className={`${changeColor ?? defaultColor} px-0.5 rounded-sm inline-block transition-colors duration-150`}>
+            {prefix}{formatFn ? formatFn(value) : value}{suffix}
+        </span>
+    );
 }
 
 function TradeTab({
@@ -617,14 +683,17 @@ function TradeTab({
     error,
 }: any) {
     const isLoadingPositions = useAppStore(s => s.isLoadingPositions);
+    const accountId = useAppStore(s => s.accountId);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editSL, setEditSL] = useState("");
     const [editTP, setEditTP] = useState("");
     const [modifyPosition, setModifyPosition] = useState<any>(null);
     const [sortState, setSortState] = useState<TradeSortState>(null);
     const [tradeContextMenu, setTradeContextMenu] = useState<{ x: number; y: number; position: ToolboxTradePosition } | null>(null);
+    const [footerMetricMenu, setFooterMetricMenu] = useState<{ x: number; y: number } | null>(null);
     const [columnVisibility, setColumnVisibility] = useState<TradeColumnVisibility>(() => safeReadJson(TRADE_COLUMN_STORAGE_KEY, DEFAULT_TRADE_COLUMNS));
     const [columnWidths, setColumnWidths] = useState<TradeColumnWidths>(() => normalizeTradeColumnWidths(safeReadJson(TRADE_COLUMN_WIDTH_STORAGE_KEY, DEFAULT_TRADE_COLUMN_WIDTHS)));
+    const [footerMetricVisibility, setFooterMetricVisibility] = useState<TradeFooterMetricVisibility>(() => safeReadJson(TRADE_FOOTER_METRIC_STORAGE_KEY, DEFAULT_TRADE_FOOTER_METRICS));
     const [profitMode, setProfitMode] = useState<TradeProfitMode>(() => safeReadString(TRADE_PROFIT_MODE_STORAGE_KEY, ['money', 'points'] as const, 'money'));
     const [volumeMode, setVolumeMode] = useState<TradeVolumeMode>(() => safeReadString(TRADE_VOLUME_MODE_STORAGE_KEY, ['lots', 'amounts'] as const, 'lots'));
     const [showOnChartsAutoUpdate, setShowOnChartsAutoUpdate] = useState<boolean>(() => safeReadBoolean(TRADE_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY, true));
@@ -644,6 +713,10 @@ function TradeTab({
     useEffect(() => {
         const handleTradeModified = (e: any) => {
             const { id, sl, tp, comment } = e.detail;
+            const existingPosition = useAppStore.getState().positions.find((position) => position.id === Number(id));
+            rememberTradeHistoryPositionLevels([
+                { ...(existingPosition ?? {}), id, sl, tp, price_sl: sl, price_tp: tp },
+            ], useAppStore.getState().accountId);
             setTradeOverrides(prev => ({
                 ...prev,
                 [id]: { sl, tp, comment: comment ?? prev[id]?.comment },
@@ -660,6 +733,10 @@ function TradeTab({
     useEffect(() => {
         window.localStorage.setItem(TRADE_COLUMN_WIDTH_STORAGE_KEY, JSON.stringify(columnWidths));
     }, [columnWidths]);
+
+    useEffect(() => {
+        window.localStorage.setItem(TRADE_FOOTER_METRIC_STORAGE_KEY, JSON.stringify(footerMetricVisibility));
+    }, [footerMetricVisibility]);
 
     useEffect(() => {
         window.localStorage.setItem(TRADE_PROFIT_MODE_STORAGE_KEY, profitMode);
@@ -693,6 +770,9 @@ function TradeTab({
         const newSL = parseFloat(editSL) || 0;
         const newTP = parseFloat(editTP) || 0;
         onModifyPosition(pos.id, newSL, newTP);
+        rememberTradeHistoryPositionLevels([
+            { ...pos, sl: newSL, tp: newTP, price_sl: newSL, price_tp: newTP },
+        ], accountId);
         // Also update local overrides
         setTradeOverrides(prev => ({ ...prev, [pos.id]: { sl: newSL, tp: newTP, comment: prev[pos.id]?.comment } }));
         setEditingId(null);
@@ -733,6 +813,25 @@ function TradeTab({
             };
         });
     }, [positions, tradeOverrides, account?.currency]);
+
+    const livePositionLevelSignature = useMemo(() => (
+        livePositions
+            .map((pos: any) => [
+                pos?.id ?? '',
+                pos?.symbol ?? '',
+                pos?.side ?? '',
+                pos?.volume ?? '',
+                pos?.openPrice ?? pos?.price_open ?? '',
+                pos?.openTime ?? pos?.time_create ?? '',
+                pos?.price_sl ?? pos?.sl ?? '',
+                pos?.price_tp ?? pos?.tp ?? '',
+            ].join(':'))
+            .join('|')
+    ), [livePositions]);
+
+    useEffect(() => {
+        rememberTradeHistoryPositionLevels(livePositions, accountId);
+    }, [accountId, livePositionLevelSignature]);
 
     // Position totals come from rows. Account metrics use REST/WS account/metrics unless the
     // backend derived fields stop reconciling with the visible MT-style position state.
@@ -841,6 +940,55 @@ function TradeTab({
         setColumnVisibility(DEFAULT_TRADE_COLUMNS);
         setColumnWidths(DEFAULT_TRADE_COLUMN_WIDTHS);
     }, []);
+
+    const isFooterMetricVisible = useCallback((key: TradeFooterMetricKey) => footerMetricVisibility[key] !== false, [footerMetricVisibility]);
+
+    const toggleFooterMetric = useCallback((key: TradeFooterMetricKey) => {
+        setFooterMetricVisibility(prev => ({ ...prev, [key]: prev[key] === false }));
+    }, []);
+
+    const resetFooterMetrics = useCallback(() => {
+        setFooterMetricVisibility({ ...DEFAULT_TRADE_FOOTER_METRICS });
+    }, []);
+
+    const footerMetricMenuItems = useMemo<ContextMenuItemConfig[]>(() => [
+        { label: 'Reset Metrics', action: resetFooterMetrics, autoClose: false },
+        { divider: true, label: '' },
+        ...TRADE_FOOTER_METRIC_DEFS.map(metric => ({
+            label: metric.label,
+            checked: isFooterMetricVisible(metric.key),
+            action: () => toggleFooterMetric(metric.key),
+            autoClose: false,
+        })),
+    ], [isFooterMetricVisible, resetFooterMetrics, toggleFooterMetric]);
+
+    const visibleFooterMetrics = useMemo(
+        () => TRADE_FOOTER_METRIC_DEFS.filter(metric => isFooterMetricVisible(metric.key)),
+        [isFooterMetricVisible]
+    );
+
+    const renderFooterMetricValue = (key: TradeFooterMetricKey) => {
+        switch (key) {
+            case 'positions':
+                return <BlinkingText value={livePositions.length} />;
+            case 'balance':
+                return <BlinkingText value={accountBalance} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} />;
+            case 'equity':
+                return <BlinkingText value={liveEquity} formatFn={formatMoney} />;
+            case 'margin':
+                return <BlinkingText value={margin} formatFn={formatMoney} />;
+            case 'freeMargin':
+                return <BlinkingText value={liveFreeMargin} formatFn={formatMoney} />;
+            case 'marginLevel':
+                return <BlinkingText value={liveMarginLevel} formatFn={formatMarginLevel} />;
+            case 'swap':
+                return <BlinkingText value={totalSwap} formatFn={formatMoney} defaultColor={totalSwap < 0 ? 'text-[#f87171]' : 'text-zinc-300'} />;
+            case 'commission':
+                return <BlinkingText value={totalCommission} formatFn={formatMoney} defaultColor={totalCommission < 0 ? 'text-[#f87171]' : 'text-zinc-300'} />;
+            default:
+                return null;
+        }
+    };
 
     const visibleTradeColumns = useMemo(
         () => TRADE_COLUMN_DEFS.filter(column => isColumnVisible(column.key)),
@@ -1503,25 +1651,34 @@ ${rows}
                 onScroll={() => syncHorizontalScroll('footer')}
                 className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full overflow-x-auto overflow-y-hidden text-[11px] font-bold text-zinc-300 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] scrollbar-thin scrollbar-thumb-zinc-700"
             >
-                <div className="rtx-trade-footer-inner flex w-max min-w-full items-center gap-1.5 px-2 py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
-                    <span className="rtx-trade-footer-status inline-flex h-5 shrink-0 items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-1.5">
-                        <Icon name="plus-circle" size="xs" className="text-zinc-400 shrink-0" />
-                    </span>
-                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Positions</span><span>{livePositions.length}</span></span>
-                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Balance</span><BlinkingText value={accountBalance} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} /></span>
-                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Equity</span><BlinkingText value={liveEquity} formatFn={formatMoney} /></span>
-                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Margin</span><BlinkingText value={margin} formatFn={formatMoney} /></span>
-                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Free Margin</span><BlinkingText value={liveFreeMargin} formatFn={formatMoney} /></span>
-                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Margin Level</span><span>{formatMarginLevel(liveMarginLevel)}</span></span>
-                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Swap</span><span className={totalSwap < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalSwap)}</span></span>
-                    <span className="rtx-trade-footer-metric"><span className="rtx-trade-metric-label text-zinc-500">Commission</span><span className={totalCommission < 0 ? 'text-[#f87171]' : 'text-zinc-300'}>{formatMoney(totalCommission)}</span></span>
+                <div className="rtx-trade-footer-inner flex w-max min-w-full items-center gap-1 px-1.5 py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
+                    <button
+                        type="button"
+                        className="rtx-trade-footer-status inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-0 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
+                        title="Footer metrics"
+                        aria-label="Footer metrics"
+                        aria-haspopup="menu"
+                        aria-expanded={footerMetricMenu !== null}
+                        onClick={(event) => {
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            setFooterMetricMenu({ x: rect.left, y: rect.bottom + 2 });
+                        }}
+                    >
+                        <Icon name="plus-circle" size="xs" className="text-current shrink-0" />
+                    </button>
+                    {visibleFooterMetrics.map(metric => (
+                        <span key={metric.key} className="rtx-trade-footer-metric">
+                            <span className="rtx-trade-metric-label text-zinc-500">{metric.label}</span>
+                            {renderFooterMetricValue(metric.key)}
+                        </span>
+                    ))}
                     <div className="flex-1 min-w-2"></div>
-                    <div className="rtx-trade-footer-actions flex shrink-0 items-center gap-1.5 pl-1">
+                    <div className="rtx-trade-footer-actions flex shrink-0 items-center gap-1 pl-0.5">
                     <button
                         type="button"
                         onClick={() => onCloseBulk?.('WINNERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-bulk-close rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-2 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rtx-trade-bulk-close rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         Close Winners
                     </button>
@@ -1529,7 +1686,7 @@ ${rows}
                         type="button"
                         onClick={() => onCloseBulk?.('LOSERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-2 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         Close Losers
                     </button>
@@ -1537,17 +1694,25 @@ ${rows}
                         type="button"
                         onClick={() => onCloseBulk?.('ALL')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-footer-action rtx-trade-footer-action--danger inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-red-800/70 px-2 text-[10px] font-bold leading-none text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rtx-trade-footer-action rtx-trade-footer-action--danger inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-red-800/70 px-1.5 text-[10px] font-bold leading-none text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         Close All
                     </button>
                     </div>
-                    <span className="rtx-trade-footer-floating inline-flex h-5 min-w-[124px] shrink-0 items-center justify-end gap-1 whitespace-nowrap rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-2 text-right font-bold leading-none">
-                        <span className="text-zinc-500">Floating P/L</span>
+                    <span className="rtx-trade-footer-floating inline-flex h-5 min-w-[112px] shrink-0 items-center justify-end gap-1 whitespace-nowrap rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-1.5 text-right font-bold leading-none">
+                        <span className="text-zinc-100">Floating P/L</span>
                         <BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-[#2563eb]"} />
                     </span>
                 </div>
             </div>
+            {footerMetricMenu && (
+                <ContextMenu
+                    variant={isLightSkin ? "mt5-light" : "mt5-dark"}
+                    items={footerMetricMenuItems}
+                    position={footerMetricMenu}
+                    onClose={() => setFooterMetricMenu(null)}
+                />
+            )}
             {tradeContextMenu && (
                 <ContextMenu
                     variant={isLightSkin ? "mt5-light" : "mt5-dark"}

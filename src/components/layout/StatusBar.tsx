@@ -92,34 +92,34 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
 
     const updateButtonDisabled = actionPending || updatePhase === 'checking' || updatePhase === 'downloading';
     const updateButtonTone =
-        updatePhase === 'available' ? 'text-sky-700 hover:text-sky-900 border-sky-400/60 bg-sky-100/60'
-            : updatePhase === 'downloaded' ? 'text-emerald-700 hover:text-emerald-900 border-emerald-400/60 bg-emerald-100/60'
-                : updatePhase === 'error' ? 'text-red-700 hover:text-red-900 border-red-400/60 bg-red-100/60'
-                    : 'text-zinc-600 hover:text-black border-zinc-400/70 bg-zinc-100/60';
+        updatePhase === 'available' ? 'text-sky-300 hover:text-sky-100 border-sky-500/50 bg-sky-500/10 [.rtx-advanced-view_&]:text-sky-700 [.rtx-advanced-view_&]:hover:text-sky-900 [.rtx-advanced-view_&]:border-sky-400/60 [.rtx-advanced-view_&]:bg-sky-100/60'
+            : updatePhase === 'downloaded' ? 'text-emerald-300 hover:text-emerald-100 border-emerald-500/50 bg-emerald-500/10 [.rtx-advanced-view_&]:text-emerald-700 [.rtx-advanced-view_&]:hover:text-emerald-900 [.rtx-advanced-view_&]:border-emerald-400/60 [.rtx-advanced-view_&]:bg-emerald-100/60'
+                : updatePhase === 'error' ? 'text-red-300 hover:text-red-100 border-red-500/50 bg-red-500/10 [.rtx-advanced-view_&]:text-red-700 [.rtx-advanced-view_&]:hover:text-red-900 [.rtx-advanced-view_&]:border-red-400/60 [.rtx-advanced-view_&]:bg-red-100/60'
+                    : 'text-zinc-400 hover:text-zinc-100 border-zinc-700 bg-zinc-900/60 [.rtx-advanced-view_&]:text-zinc-600 [.rtx-advanced-view_&]:hover:text-black [.rtx-advanced-view_&]:border-zinc-400/70 [.rtx-advanced-view_&]:bg-zinc-100/60';
     const desktopDownloadVersionLabel = desktopReleaseVersionLabel || (desktopReleaseState.status === 'loading' ? 'Latest' : '');
 
     return (
-        <div className="bg-[#e1e1e1] border-t border-zinc-400 h-6 flex items-center justify-between px-2 text-[11px] font-sans text-black select-none z-50">
-            <div className="text-zinc-600 font-medium">
+        <div className="h-6 flex items-center justify-between border-t border-[#2a3342] bg-[#10151d] px-2 text-[11px] font-sans text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] select-none z-50 [.rtx-advanced-view_&]:border-zinc-400 [.rtx-advanced-view_&]:bg-[#e1e1e1] [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:shadow-none">
+            <div className="text-zinc-400 font-medium [.rtx-advanced-view_&]:text-zinc-600">
                 For Help, press F1
             </div>
             <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 border-r border-zinc-400 pr-4">
-                    <Icon name="server" size="xs" className="text-zinc-500" />
-                    <span className="font-medium text-black">RTX 5 Web Terminal</span>
+                <div className="flex items-center gap-2 border-r border-zinc-700 pr-4 [.rtx-advanced-view_&]:border-zinc-400">
+                    <Icon name="server" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-zinc-500" />
+                    <span className="font-medium text-zinc-100 [.rtx-advanced-view_&]:text-black">RTX 5 Web Terminal</span>
                     {showDesktopDownload && (
                         <>
-                            <span className="h-3 w-px bg-zinc-400/70" aria-hidden="true" />
+                            <span className="h-3 w-px bg-zinc-700/80 [.rtx-advanced-view_&]:bg-zinc-400/70" aria-hidden="true" />
                             <button
                                 type="button"
                                 onClick={() => openDesktopReleaseDownload(desktopReleaseState.release)}
-                                className="group h-[18px] inline-flex items-center gap-1.5 rounded-[4px] border border-zinc-400/70 bg-gradient-to-b from-white to-zinc-100 px-1.5 text-[10px] font-semibold leading-none text-zinc-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors hover:border-zinc-500 hover:from-white hover:to-zinc-200 hover:text-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500/70"
+                                className="group h-[18px] inline-flex items-center gap-1.5 rounded-[3px] border border-transparent bg-transparent px-0.5 text-[10px] font-semibold leading-none text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500/70 [.rtx-advanced-view_&]:text-zinc-700 [.rtx-advanced-view_&]:hover:text-black"
                                 title={getDesktopReleaseButtonTitle(desktopReleaseState.release)}
                             >
-                                <Icon name="download" size="xs" className="text-zinc-500 group-hover:text-zinc-700" />
+                                <Icon name="download" size="xs" className="text-zinc-400 [.rtx-advanced-view_&]:text-zinc-500" />
                                 <span>Desktop App</span>
                                 {desktopDownloadVersionLabel && (
-                                    <span className="rounded-[3px] border border-zinc-300 bg-zinc-200/80 px-1 py-[1px] font-mono text-[9px] font-semibold leading-none text-zinc-600">
+                                    <span className="font-mono text-[9px] font-semibold leading-none text-zinc-500 [.rtx-advanced-view_&]:text-zinc-600">
                                         {desktopDownloadVersionLabel}
                                     </span>
                                 )}
@@ -132,7 +132,7 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
                     <ConnectionStatus wsRef={wsRef} reconnectCallback={reconnectCallback} />
                 )}
                 {/* Version & Update Status */}
-                <div className="flex items-center gap-1.5 border-l border-zinc-400 pl-4">
+                <div className="flex items-center gap-1.5 border-l border-zinc-700 pl-4 [.rtx-advanced-view_&]:border-zinc-400">
                     {hasUpdater && updateLabel && (
                         <button
                             type="button"
@@ -144,7 +144,7 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
                             {updateLabel}
                         </button>
                     )}
-                    <span className="text-zinc-500 font-mono text-[10px]">
+                    <span className="text-zinc-500 font-mono text-[10px] [.rtx-advanced-view_&]:text-zinc-500">
                         v{appVersion}
                     </span>
                 </div>

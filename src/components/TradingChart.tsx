@@ -36,6 +36,7 @@ import { OneClickTrading } from './OneClickTrading';
 import { DrawingContextMenu } from './DrawingContextMenu';
 import { PriceDisplay } from './ui/PriceDisplay';
 import { getSymbolDigits } from '../utils/symbolUtils';
+import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
 import { ChartContextMenu } from './ChartContextMenu';
 import { captureFullPage } from '../services/screenshotService';
 import { indicatorManager } from '../services/indicatorManager';
@@ -113,6 +114,8 @@ const TRADE_LEVEL_OPTIMISTIC_GRACE_MS = 15_000;
 const TRADE_LEVEL_HIT_AREA_PX = 24;
 const TRADE_LEVEL_MIN_DRAG_PX = 2;
 const TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS = 15_000;
+const TRADE_LEVEL_BADGE_LEFT_INSET_PX = 10;
+const TRADE_LEVEL_BADGE_STACK_OFFSET_PX = 76;
 const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
 const REALTIME_SCROLL_THRESHOLD_BARS = 2;
 const TRANSPARENT_CHART_LINE = 'rgba(0, 0, 0, 0)';
@@ -163,13 +166,13 @@ const getTradeOverlayCardPalette = (
   if (isLightSurface) {
     return isPositiveTone
       ? {
-        background: 'rgba(236, 253, 243, 0.98)',
+        background: 'rgba(236, 253, 243, 0.9)',
         border: '#17b26a',
         text: '#027a48',
         shadow: 'box-shadow:0 1px 3px rgba(16,24,40,0.12);',
       }
       : {
-        background: 'rgba(254, 243, 242, 0.98)',
+        background: 'rgba(254, 243, 242, 0.9)',
         border: '#f04438',
         text: '#b42318',
         shadow: 'box-shadow:0 1px 3px rgba(16,24,40,0.12);',
@@ -178,13 +181,13 @@ const getTradeOverlayCardPalette = (
 
   return isPositiveTone
     ? {
-      background: 'rgba(5, 46, 30, 0.96)',
+      background: 'rgba(5, 46, 30, 0.9)',
       border: '#22c55e',
       text: '#bbf7d0',
       shadow: 'box-shadow:0 2px 8px rgba(0,0,0,0.28);',
     }
     : {
-      background: 'rgba(69, 10, 10, 0.96)',
+      background: 'rgba(69, 10, 10, 0.9)',
       border: '#ef4444',
       text: '#fecaca',
       shadow: 'box-shadow:0 2px 8px rgba(0,0,0,0.28);',
@@ -271,6 +274,9 @@ type FormattedSeriesDatum =
   | { time: Time; value: number }
   | { time: Time; open: number; high: number; low: number; close: number };
 
+const CHART_AXIS_FONT_FAMILY = '"Inter", "Segoe UI", Tahoma, Arial, sans-serif';
+const CHART_AXIS_FONT_SIZE = 11;
+
 interface FormattedVolumeDatum {
   time: Time;
   value: number;
@@ -280,6 +286,7 @@ interface FormattedVolumeDatum {
 interface TradingViewChartTheme {
   background: string;
   text: string;
+  axisText: string;
   grid: string;
   scaleBorder: string;
   crosshair: string;
@@ -371,6 +378,9 @@ const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingV
   return {
     background: colors.background || '#0e0e12',
     text: colors.foreground || '#ffffff',
+    axisText: backgroundIsDark
+      ? colorWithAlpha(colors.foreground, 0.72, 'rgba(226, 232, 240, 0.72)')
+      : colorWithAlpha(colors.foreground, 0.7, 'rgba(71, 84, 103, 0.7)'),
     grid,
     scaleBorder: colorWithAlpha(colors.foreground, 0.24, 'rgba(255, 255, 255, 0.24)'),
     crosshair: colorWithAlpha(colors.foreground, 0.58, 'rgba(255, 255, 255, 0.58)'),
@@ -970,7 +980,9 @@ export const TradingChart = React.memo(function TradingChart({
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: chartTheme.background },
-        textColor: chartTheme.text,
+        textColor: chartTheme.axisText,
+        fontFamily: CHART_AXIS_FONT_FAMILY,
+        fontSize: CHART_AXIS_FONT_SIZE,
         attributionLogo: false,
       },
       grid: {
@@ -2029,7 +2041,9 @@ export const TradingChart = React.memo(function TradingChart({
     chart.applyOptions({
       layout: {
         background: { type: ColorType.Solid, color: chartTheme.background },
-        textColor: chartTheme.text,
+        textColor: chartTheme.axisText,
+        fontFamily: CHART_AXIS_FONT_FAMILY,
+        fontSize: CHART_AXIS_FONT_SIZE,
       },
       grid: {
         vertLines: { color: TRANSPARENT_CHART_LINE },
@@ -3165,7 +3179,9 @@ export const TradingChart = React.memo(function TradingChart({
               el.style.left = '0px';
               el.style.right = `${priceScaleWidth}px`;
             } else {
-              el.style.width = `${priceScaleWidth}px`;
+              const leftInset = Number.parseFloat(el.dataset.leftInset ?? '') || 0;
+              el.style.width = 'max-content';
+              el.style.maxWidth = `${Math.max(96, chartWidth - priceScaleWidth - leftInset - 12)}px`;
             }
 
             continue;
@@ -3303,6 +3319,8 @@ export const TradingChart = React.memo(function TradingChart({
       const ticket = tradeKey.replace(/^trade:/, '');
       return ticket ? `#${ticket.slice(-6)}` : '';
     };
+
+    const formatTradeLevelBadgePrice = (price: number): string => price.toFixed(digits);
 
     const priceTolerance = Math.max(Math.pow(10, -digits), Number.EPSILON);
 
@@ -3644,11 +3662,11 @@ export const TradingChart = React.memo(function TradingChart({
             : 'BUY';
       const palette = getTradeOverlayCardPalette(tone, isChartSurfaceLight());
       const offsetIndex = options.badgeOffsetIndex ?? 0;
-      const offsetStep = Math.ceil(offsetIndex / 2) * 64;
-      const offsetDirection = offsetIndex % 2 === 0 ? 1 : -1;
-      const offsetX = offsetIndex === 0 ? 0 : offsetDirection * offsetStep;
+      const offsetX = offsetIndex * TRADE_LEVEL_BADGE_STACK_OFFSET_PX;
+      const leftInset = TRADE_LEVEL_BADGE_LEFT_INSET_PX + offsetX;
       const canDrag = Boolean(options.tradeKey && options.role);
-      badge.style.cssText = `position:absolute;left:50%;padding:1px 5px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translate(calc(-50% + ${offsetX}px), -50%);min-width:52px;text-align:center;touch-action:none;${palette.shadow}`;
+      badge.dataset.leftInset = String(leftInset);
+      badge.style.cssText = `position:absolute;left:${leftInset}px;display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;${palette.shadow}`;
       appendOverlayNode(badge, { kind: 'price-badge', price }, 'active');
     };
 
@@ -4018,11 +4036,12 @@ export const TradingChart = React.memo(function TradingChart({
             const isVisuallyRetainedTrade = visuallyRetainedActiveTradeKeys.has(trade.key);
             const entryColor = getEntryColor(trade.side);
             const ticketLabel = getTradeTicketLabel(trade.key);
-            const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${trade.entryPrice.toFixed(digits)}`.trim();
+            const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
+            const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${entryPriceLabel}`.trim();
             createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, markerTitle, entryColor, 'active');
 
             createPriceLevel(
-              `${trade.side} ${trade.volume} ${ticketLabel}`.trim(),
+              `${trade.side} ${trade.volume} ${entryPriceLabel}`.trim(),
               trade.entryPrice,
               entryColor,
               {
@@ -4035,7 +4054,8 @@ export const TradingChart = React.memo(function TradingChart({
 
             const levels = isLiveActiveTrade || isVisuallyRetainedTrade ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
             if (levels.sl && levels.sl > 0) {
-              createPriceLevel(`SL ${ticketLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
+              const stopLossPriceLabel = formatTradeLevelBadgePrice(levels.sl);
+              createPriceLevel(`SL ${stopLossPriceLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
                 tradeKey: isLiveActiveTrade ? trade.key : undefined,
                 role: isLiveActiveTrade ? 'SL' : undefined,
                 badgeOffsetIndex: nextLevelOffset('SL', levels.sl),
@@ -4045,7 +4065,8 @@ export const TradingChart = React.memo(function TradingChart({
               });
             }
             if (levels.tp && levels.tp > 0) {
-              createPriceLevel(`TP ${ticketLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
+              const takeProfitPriceLabel = formatTradeLevelBadgePrice(levels.tp);
+              createPriceLevel(`TP ${takeProfitPriceLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
                 tradeKey: isLiveActiveTrade ? trade.key : undefined,
                 role: isLiveActiveTrade ? 'TP' : undefined,
                 badgeOffsetIndex: nextLevelOffset('TP', levels.tp),
@@ -5074,7 +5095,7 @@ export const TradingChart = React.memo(function TradingChart({
 
         dragBadgeOverlay = document.createElement('div');
         const initialPalette = getTradeOverlayCardPalette(grabbedType === 'TP' ? 'TP' : 'SL', isChartSurfaceLight());
-        dragBadgeOverlay.style.cssText = `position:absolute;left:50%;top:0;padding:1px 5px;background:${initialPalette.background};border:1px solid ${initialPalette.border};color:${initialPalette.text};font-size:10px;font-family:Consolas,monospace;font-weight:700;z-index:1000;pointer-events:none;border-radius:2px;transform:translate(-50%, calc(-50% + ${y}px));will-change:transform;opacity:0;${initialPalette.shadow}`;
+        dragBadgeOverlay.style.cssText = `position:absolute;left:${TRADE_LEVEL_BADGE_LEFT_INSET_PX}px;top:0;padding:1px 5px;background:${initialPalette.background};border:1px solid ${initialPalette.border};color:${initialPalette.text};font-size:10px;font-family:Consolas,monospace;font-weight:700;z-index:1000;pointer-events:none;border-radius:2px;transform:translateY(calc(-50% + ${y}px));will-change:transform;opacity:0;${initialPalette.shadow}`;
 
         overlayRef.current?.appendChild(dragLineOverlay);
         overlayRef.current?.appendChild(dragBadgeOverlay);
@@ -5135,7 +5156,7 @@ export const TradingChart = React.memo(function TradingChart({
         dragLineOverlay.style.borderTopColor = 'transparent';
         dragBadgeOverlay.style.opacity = '0';
         dragLineOverlay.style.transform = `translate3d(0, ${y}px, 0)`;
-        dragBadgeOverlay.style.transform = `translate(-50%, calc(-50% + ${y}px))`;
+        dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${y}px))`;
         return;
       }
 
@@ -5158,7 +5179,7 @@ export const TradingChart = React.memo(function TradingChart({
       dragBadgeOverlay.style.color = palette.text;
       dragBadgeOverlay.style.boxShadow = palette.shadow.replace(/^box-shadow:/, '').replace(/;$/, '');
       dragBadgeOverlay.textContent = `${role} ${price.toFixed(digits)}`;
-      dragBadgeOverlay.style.transform = `translate(-50%, calc(-50% + ${drawY}px))`;
+      dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${drawY}px))`;
     };
 
     const handlePointerUp = (e: PointerEvent) => {
@@ -5234,6 +5255,20 @@ export const TradingChart = React.memo(function TradingChart({
                 setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, { sl: sl || 0, tp: tp || 0 });
                 setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, { sl: sl || 0, tp: tp || 0 });
                 persistTradeLevelOverrides();
+                rememberTradeHistoryPositionLevels([
+                  {
+                    id: ticket,
+                    symbol: tradeObj.symbol,
+                    side: tradeObj.side,
+                    volume: tradeObj.volume,
+                    entryPrice: tradeObj.entryPrice,
+                    entryTime: tradeObj.entryTime,
+                    sl: sl || 0,
+                    tp: tp || 0,
+                    price_sl: sl || 0,
+                    price_tp: tp || 0,
+                  },
+                ], useAppStore.getState().accountId);
                 window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
                 window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
 

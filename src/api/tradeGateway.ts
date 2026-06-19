@@ -4,6 +4,7 @@ import { API_V2_BASE_URL, RTX5_WS_URL } from '../config/api';
 import { debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 import { decodeJwtPayload } from '../utils/jwt';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
+import { enrichTradesWithCachedLevels } from '../utils/tradeHistoryLevelCache';
 
 export type GatewayAccount = {
   login?: number;
@@ -475,7 +476,7 @@ export const tradeGatewayApi = {
     ]);
     const merged = [...closedPositions, ...collapseDealHistory(deals)].filter(isClosedHistoryTrade);
     const seen = new Set<string>();
-    return merged
+    const history = merged
       .filter((trade) => {
         const key = historyPositionKey(trade) ?? `${trade.type}:${trade.id}:${trade.openTime}:${trade.closeTime ?? ''}`;
         if (seen.has(key)) return false;
@@ -484,6 +485,7 @@ export const tradeGatewayApi = {
       })
       .sort((a, b) => historyTime(b) - historyTime(a))
       .slice(0, 500);
+    return enrichTradesWithCachedLevels(history, login);
   },
 
   async getBalanceHistory(login: number, limit = 10) {

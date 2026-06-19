@@ -70,6 +70,7 @@ const MarketWatchRow: React.FC<{
 }> = ({ symbol, isSelected, onClick, contextMenuItems, showAsk, showSpread, showDaily, rowRef }) => {
   const tick = useTick(symbol);
   const bidDirection = tick?.bidDirection ?? 'none';
+  const askDirection = tick?.askDirection ?? 'none';
   const bid = tick?.bid ?? 0;
   const ask = tick?.ask ?? 0;
   const spread = tick?.spread ?? (ask - bid);
@@ -88,6 +89,8 @@ const MarketWatchRow: React.FC<{
 
   const bidFlash = usePriceFlash(bid);
   const askFlash = usePriceFlash(ask);
+  const bidPriceDirection = bidFlash ?? (bidDirection !== 'none' ? bidDirection : null);
+  const askPriceDirection = askFlash ?? (askDirection !== 'none' ? askDirection : null);
 
   const dailyPositive = hasDailyData && dailyPct! > 0;
   const dailyNegative = hasDailyData && dailyPct! < 0;
@@ -148,7 +151,7 @@ const MarketWatchRow: React.FC<{
 
         {/* Bid — most important: bright, large, tabular */}
         <td style={{ padding: '3px 5px', textAlign: 'right' }}>
-          <span className={`rtx-market-watch__price rtx-market-watch__price--bid${bidFlash ? ` rtx-market-watch__price--${bidFlash}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
+          <span className={`rtx-market-watch__price rtx-market-watch__price--bid${bidPriceDirection ? ` rtx-market-watch__price--${bidPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
             display: 'inline-block',
             fontSize: 12,
             fontWeight: 600,
@@ -172,7 +175,7 @@ const MarketWatchRow: React.FC<{
         {/* Ask — secondary, slightly softer */}
         {showAsk && (
           <td style={{ padding: '3px 5px', textAlign: 'right' }}>
-            <span className={`rtx-market-watch__price rtx-market-watch__price--ask${askFlash ? ` rtx-market-watch__price--${askFlash}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
+            <span className={`rtx-market-watch__price rtx-market-watch__price--ask${askPriceDirection ? ` rtx-market-watch__price--${askPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
               display: 'inline-block',
               fontSize: 12,
               fontWeight: 500,

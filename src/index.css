@@ -190,7 +190,7 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-footer {
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer > div {
   min-height: 28px;
-  gap: 6px;
+  gap: 4px;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-status,
@@ -206,8 +206,8 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-footer-metric {
   align-items: center;
   flex-shrink: 0;
   height: 20px;
-  gap: 4px;
-  padding: 0 6px;
+  gap: 3px;
+  padding: 0 4px;
   border-radius: 3px;
   line-height: 1;
   white-space: nowrap;
@@ -230,7 +230,7 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-footer .rtx-trade-metric-label {
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-action {
-  min-width: 78px;
+  min-width: 68px;
   height: 20px;
   border-radius: 3px !important;
   background: rgba(15, 23, 42, 0.64) !important;

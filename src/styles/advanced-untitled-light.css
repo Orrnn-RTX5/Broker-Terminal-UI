@@ -142,6 +142,25 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(.border-blue-500\/20, .bor
   border-color: #e9d7fe !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-advanced-grid-button {
+  background: #ffffff !important;
+  border-color: #d0d5dd !important;
+  color: #475467 !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-advanced-grid-button:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-advanced-grid-button[aria-expanded="true"] {
+  background: #7e57c2 !important;
+  border-color: #7e57c2 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(126, 87, 194, 0.16), var(--shadow-sm) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-advanced-grid-button svg {
+  color: inherit !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light :where(.text-emerald-300, .text-emerald-400, .text-green-400, .text-green-500) {
   color: #027a48 !important;
 }
@@ -676,7 +695,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart .dock-re
 
 /* === OneClickTrading Advanced Mode (Restored) === */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct>div:first-child {
-  background: #ffffff !important;
+  background: rgba(255, 255, 255, 0.42) !important;
   border: 1px solid #e2e8f0 !important;
   border-radius: 0 !important;
   /* PERFECT SQUARE */
@@ -693,30 +712,30 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct>div:first-child>div {
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct>div:first-child>button {}
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct>div:first-child>div {
-  background: #ffffff !important;
+  background: rgba(255, 255, 255, 0.52) !important;
 }
 
 /* Buy Button - Blue */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct>div:first-child>button:first-child {
-  background: #2563eb !important;
+  background: rgba(37, 99, 235, 0.68) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct>div:first-child>button:first-child:hover:not(:disabled) {
-  background: #1d4ed8 !important;
+  background: rgba(29, 78, 216, 0.78) !important;
 }
 
 /* Sell Button - Red */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct>div:first-child>button:last-child {
-  background: #dc2626 !important;
+  background: rgba(220, 38, 38, 0.68) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct>div:first-child>button:last-child:hover:not(:disabled) {
-  background: #b91c1c !important;
+  background: rgba(185, 28, 28, 0.78) !important;
 }
 
 /* Middle volume control */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct input {
-  background: #ffffff !important;
+  background: rgba(255, 255, 255, 0.82) !important;
   border: 1px solid #e2e8f0 !important;
   border-radius: 2px !important;
   color: #101828 !important;
@@ -796,7 +815,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer {
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer > div {
   min-height: 28px;
-  gap: 6px;
+  gap: 4px;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer-status,
@@ -812,8 +831,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer-metric {
   align-items: center;
   flex-shrink: 0;
   height: 20px;
-  gap: 4px;
-  padding: 0 6px;
+  gap: 3px;
+  padding: 0 4px;
   border-radius: 3px;
   line-height: 1;
   white-space: nowrap;
@@ -872,34 +891,68 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-time-btn.bg-zinc-600
   color: #ffffff !important;
 }
 
-/* Market Watch text un-fade and bolding */
+/* Market Watch: keep the dark terminal's compact mono rhythm in the light skin */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__symbol {
   color: #101828 !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.015em !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price {
   color: #101828 !important;
+  font-family: var(--font-mono) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price--bid {
+  color: #101828 !important;
   font-weight: 600 !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price--ask {
+  color: #344054 !important;
+  font-weight: 500 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price--empty {
+  color: #98a2b3 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price .price-display {
+  color: inherit !important;
+}
+
 /* Specifically override the inline green/red so they pop in light mode */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price--up,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: rgb(74, 222, 128)"],
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: #4ade80"] {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: rgb(34, 197, 94)"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: #4ade80"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: #22c55e"] {
   color: #16a34a !important;
-  /* darker green */
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price--down,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: rgb(248, 113, 113)"],
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: #f87171"] {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: rgb(239, 68, 68)"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: #f87171"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price[style*="color: #ef4444"] {
   color: #dc2626 !important;
-  /* darker red */
 }
 
-/* Bigger last two digits */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__daily--up {
+  color: #16a34a !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__daily--down {
+  color: #dc2626 !important;
+}
+
+/* Keep the MT5 split digits slim in Market Watch light mode */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price .price-big {
-  font-size: 16px !important;
-  font-weight: 900 !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
 }
 
 /* Advanced Mode row hovers */

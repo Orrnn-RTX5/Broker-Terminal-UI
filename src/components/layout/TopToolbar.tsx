@@ -6,7 +6,7 @@ import {
     FileText, TrendingUp, BarChart2, CandlestickChart, LineChart,
     ZoomIn, ZoomOut, LayoutGrid,
     MousePointer2, Crosshair, ArrowUpDown, MoveHorizontal, MoveVertical,
-    Minus, Pencil, Type, Shapes, Camera, Search, User, Shield,
+    Pencil, Type, Shapes, Camera, Search, User, Shield,
     LogOut, GitCommitHorizontal, AlignCenter, BookMarked, RefreshCw,
     PanelBottomOpen, LayoutPanelTop, SlidersHorizontal
 } from 'lucide-react';
@@ -235,21 +235,9 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
     const activeAccount = savedAccounts.find(a => String(a.login) === String(accountId));
     const serverName = activeAccount?.server || localStorage.getItem('rtx_broker_server') || DEFAULT_BROKER_SERVER;
 
-    const [isMaximized, setIsMaximized] = React.useState(false);
     const [logoUrl, setLogoUrl] = useState<string>('');
     const [marginMode, setMarginMode] = useState<string>('Hedge');
     const [logoError, setLogoError] = useState<boolean>(false);
-
-    // Sync initial maximize state and subscribe to changes
-    React.useEffect(() => {
-        const electronWin = (window as any).electron?.window;
-        if (!electronWin) return;
-        // Get initial state
-        electronWin.isMaximized().then(setIsMaximized).catch(() => { });
-        // Listen for changes
-        const cleanup = electronWin.onMaximizeChange((val: boolean) => setIsMaximized(val));
-        return cleanup;
-    }, []);
 
     React.useEffect(() => {
         let active = true;
@@ -310,10 +298,6 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
         };
     }, [accountId, serverName]);
 
-    const handleMinimize = () => (window as any).electron?.window?.minimize();
-    const handleMaximize = () => (window as any).electron?.window?.maximize();
-    const handleClose = () => (window as any).electron?.window?.close();
-
     const displayLogo = logoUrl && !logoError ? getLogoUrl(logoUrl) : './titlebar-icon.png';
     const terminalTitle = `${WEB_TERMINAL_TITLE} - ${accountId} - ${marginMode} - ${symbol},${timeframe.toUpperCase()}`;
 
@@ -332,51 +316,6 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
                 />
                 <span>{terminalTitle}</span>
             </div>
-
-            {/* Right: Window Controls — no-drag so clicks register */}
-            <div
-                className="flex items-center gap-0 h-full"
-                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            >
-                {/* Minimize */}
-                <button
-                    className="h-full px-3 hover:bg-white/20 hover:shadow-[0_0_10px_rgba(255,255,255,0.2)] transition-all duration-300 rounded-sm transition-colors flex items-center justify-center"
-                    onClick={handleMinimize}
-                    title="Minimize"
-                >
-                    <Minus size={10} className="text-zinc-400" strokeWidth={1.8} />
-                </button>
-
-                {/* Maximize / Restore */}
-                <button
-                    className="h-full px-3 hover:bg-white/20 hover:shadow-[0_0_10px_rgba(255,255,255,0.2)] transition-all duration-300 rounded-sm transition-colors flex items-center justify-center"
-                    onClick={handleMaximize}
-                    title={isMaximized ? 'Restore' : 'Maximize'}
-                >
-                    {isMaximized ? (
-                        /* Restore icon: two overlapping squares */
-                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="text-zinc-400" stroke="currentColor" strokeWidth="1.5">
-                            <rect x="3" y="1" width="8" height="8" rx="1" />
-                            <path d="M1 4v6a1 1 0 001 1h6" />
-                        </svg>
-                    ) : (
-                        /* Maximize icon: single square */
-                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="text-zinc-400" stroke="currentColor" strokeWidth="1.5">
-                            <rect x="1" y="1" width="10" height="10" rx="1" />
-                        </svg>
-                    )}
-                </button>
-
-                {/* Close */}
-                <button
-                    className="h-full px-4 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.6)] transition-all duration-300 rounded-sm hover:text-white transition-colors flex items-center justify-center group"
-                    onClick={handleClose}
-                    title="Close"
-                >
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="text-zinc-400 group-hover:text-white"><path d="M2 2l8 8M10 2l-8 8" /></svg>
-                </button>
-            </div>
-
         </div>
     );
 };
@@ -412,6 +351,30 @@ const DEFAULT_ADVANCED_OPTIONS: AdvancedViewOptions = {
     chartSurface: 'white',
     focusChart: false,
 };
+
+const ADVANCED_FONT_SIZE_OPTIONS: { value: AdvancedFontSize; label: string }[] = [
+    { value: 'small', label: 'Small' },
+    { value: 'normal', label: 'Normal' },
+    { value: 'large', label: 'Large' },
+];
+
+const ADVANCED_DENSITY_OPTIONS: { value: AdvancedDensity; label: string }[] = [
+    { value: 'comfortable', label: 'Comfort' },
+    { value: 'compact', label: 'Compact' },
+];
+
+const ADVANCED_ACCENT_OPTIONS: { value: AdvancedAccent; label: string }[] = [
+    { value: 'purple', label: 'Purple' },
+    { value: 'blue', label: 'Blue' },
+    { value: 'green', label: 'Green' },
+    { value: 'amber', label: 'Amber' },
+];
+
+const ADVANCED_SURFACE_OPTIONS: { value: AdvancedChartSurface; label: string }[] = [
+    { value: 'white', label: 'White' },
+    { value: 'soft', label: 'Soft' },
+    { value: 'paper', label: 'Paper' },
+];
 
 function loadAdvancedOptions(): AdvancedViewOptions {
     try {
@@ -605,6 +568,46 @@ const MainToolbar = ({
     const getDividerClass = () => {
         return advancedViewEnabled ? 'bg-[#e5e7eb]' : 'bg-zinc-700/50';
     };
+
+    const getAdvancedMenuOptionClass = (isSelected: boolean) => {
+        if (advancedViewEnabled) {
+            return isSelected
+                ? 'border-[#7E57C2] bg-[#7E57C2] text-white shadow-sm'
+                : 'border-[#d0d5dd] bg-white text-[#475467] hover:border-[#7E57C2] hover:bg-[#F3E5F5] hover:text-[#7E57C2]';
+        }
+
+        return isSelected
+            ? 'border-blue-500/40 bg-blue-500/15 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.12)]'
+            : 'border-zinc-700 bg-[#10131a] text-zinc-400 hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-300';
+    };
+
+    const getAdvancedGridButtonClass = () => {
+        if (advancedViewEnabled) {
+            return showAdvancedOptions
+                ? 'border-[#7E57C2] bg-[#7E57C2] text-white shadow-sm'
+                : 'border-[#d0d5dd] bg-white text-[#475467] shadow-sm hover:border-[#7E57C2] hover:bg-[#7E57C2] hover:text-white';
+        }
+
+        if (showAdvancedOptions) {
+            return 'border-blue-500/30 bg-blue-500/15 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]';
+        }
+
+        return 'border-transparent bg-transparent text-zinc-400 hover:border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-300';
+    };
+
+    const advancedMenuPanelClass = advancedViewEnabled
+        ? 'border-gray-200 bg-white text-gray-800 shadow-xl'
+        : 'border-zinc-700/80 bg-[#151820] text-zinc-200 shadow-2xl shadow-black/50';
+
+    const advancedMenuHeaderClass = advancedViewEnabled
+        ? 'border-gray-100 text-[#101828]'
+        : 'border-zinc-700/70 text-zinc-100';
+
+    const advancedMenuLabelClass = advancedViewEnabled ? 'text-[#475467]' : 'text-zinc-400';
+
+    const advancedMenuSegmentClass = advancedViewEnabled
+        ? 'border-[#d0d5dd] bg-[#f9fafb]'
+        : 'border-zinc-700 bg-[#0f1117]';
 
     return (
         <div className="flex items-center bg-[#131316] border-b border-white/10 h-[40px] px-1.5 shadow-sm select-none overflow-x-auto no-scrollbar gap-[2px]">
@@ -850,50 +853,142 @@ const MainToolbar = ({
             {/* Group 10: Far right controls */}
             <MT5Group>
                 <MT5Btn icon={<Search size={15} strokeWidth={1.5} />} title="Search" />
-                <MT5Btn
-                    icon={<LayoutGrid size={15} strokeWidth={1.5} />}
-                    title="Advanced View"
-                    active={advancedViewEnabled}
-                    onClick={() => {
-                        setAdvancedViewEnabled((enabled) => {
-                            const next = !enabled;
-                            if (!next) setShowAdvancedOptions(false);
-                            return next;
-                        });
-                    }}
-                />
+                <div className="relative" ref={advancedOptionsRef}>
+                    <button
+                        type="button"
+                        title="Advanced View Settings"
+                        aria-label="Advanced View Settings"
+                        aria-haspopup="menu"
+                        aria-expanded={showAdvancedOptions}
+                        onClick={() => {
+                            setShowUserMenu(false);
+                            setShowHistoryOverlayMenu(false);
+                            setShowAdvancedOptions((open) => !open);
+                        }}
+                        className={`rtx-advanced-grid-button flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all ${getAdvancedGridButtonClass()}`}
+                    >
+                        <LayoutGrid size={15} strokeWidth={1.5} />
+                    </button>
 
-                {advancedViewEnabled && (
-                    <>
-                        {/* Focus Chart Toggle inline */}
-                        <button
-                            className={`ml-2 px-2.5 py-1 text-[11px] font-semibold rounded shadow-sm transition-colors border ${advancedOptions.focusChart
-                                ? 'bg-[#7E57C2] text-white border-[#7E57C2]'
-                                : 'bg-white text-[#101828] border-[#d0d5dd] hover:bg-[#f9fafb]'
-                                }`}
-                            onClick={() => updateAdvancedOptions({ focusChart: !advancedOptions.focusChart })}
-                            title="Toggle Focus Chart"
+                    {showAdvancedOptions && ReactDOM.createPortal(
+                        <div
+                            ref={advancedOptionsDropdownRef}
+                            className={`fixed z-[9999] w-[276px] rounded-[5px] border p-3 text-[11px] ${advancedMenuPanelClass}`}
+                            style={{
+                                top: (advancedOptionsRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
+                                right: Math.max(8, window.innerWidth - (advancedOptionsRef.current?.getBoundingClientRect().right ?? window.innerWidth)),
+                            }}
+                            role="menu"
+                            aria-label="Advanced View settings"
                         >
-                            Focus Chart
-                        </button>
-
-                        {/* Density Native Select inline */}
-                        <div className="ml-2 flex items-center bg-white border border-[#d0d5dd] rounded shadow-sm overflow-hidden h-[26px]">
-                            <select
-                                className="px-2 w-full h-full text-[11px] font-medium text-[#475467] bg-transparent outline-none cursor-pointer hover:bg-[#f9fafb] appearance-none"
-                                value={advancedOptions.density}
-                                onChange={(e) => updateAdvancedOptions({ density: e.target.value as 'comfortable' | 'compact' })}
-                                title="UI Density"
-                            >
-                                <option value="comfortable">Comfort</option>
-                                <option value="compact">Compact</option>
-                            </select>
-                            <div className="pointer-events-none px-1 text-[#667085]">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                            <div className={`mb-3 flex items-center justify-between border-b pb-2 ${advancedMenuHeaderClass}`}>
+                                <span className="text-[11px] font-bold uppercase tracking-wide">Advanced View</span>
+                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${advancedViewEnabled ? 'bg-[#F3E5F5] text-[#7E57C2]' : 'bg-zinc-800 text-zinc-400'}`}>
+                                    {advancedViewEnabled ? 'Light' : 'Dark'}
+                                </span>
                             </div>
-                        </div>
-                    </>
-                )}
+
+                            <div className="space-y-3">
+                                <div>
+                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Mode</div>
+                                    <div className={`grid grid-cols-2 overflow-hidden rounded border ${advancedMenuSegmentClass}`}>
+                                        {([
+                                            { value: 'classic', label: 'Dark' },
+                                            { value: 'advanced', label: 'Light' },
+                                        ] as const).map((mode) => {
+                                            const selected = (advancedViewEnabled ? 'advanced' : 'classic') === mode.value;
+                                            return (
+                                                <button
+                                                    key={mode.value}
+                                                    type="button"
+                                                    className={`h-7 border-r text-[11px] font-semibold last:border-r-0 ${getAdvancedMenuOptionClass(selected)}`}
+                                                    onClick={() => setAdvancedViewEnabled(mode.value === 'advanced')}
+                                                >
+                                                    {mode.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <label className={`flex cursor-pointer items-center justify-between gap-3 rounded px-1 py-1 ${advancedViewEnabled ? 'hover:bg-[#F3E5F5]' : 'hover:bg-white/5'}`}>
+                                    <span className={`text-[11px] font-semibold ${advancedMenuLabelClass}`}>Focus Chart</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={advancedOptions.focusChart}
+                                        onChange={(event) => updateAdvancedOptions({ focusChart: event.target.checked })}
+                                        className="h-3.5 w-3.5 accent-[#7E57C2]"
+                                    />
+                                </label>
+
+                                <div>
+                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Density</div>
+                                    <div className={`grid grid-cols-2 gap-1 rounded border p-1 ${advancedMenuSegmentClass}`}>
+                                        {ADVANCED_DENSITY_OPTIONS.map((option) => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                className={`h-7 rounded border text-[11px] font-semibold ${getAdvancedMenuOptionClass(advancedOptions.density === option.value)}`}
+                                                onClick={() => updateAdvancedOptions({ density: option.value })}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Font Size</div>
+                                    <div className={`grid grid-cols-3 gap-1 rounded border p-1 ${advancedMenuSegmentClass}`}>
+                                        {ADVANCED_FONT_SIZE_OPTIONS.map((option) => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                className={`h-7 rounded border text-[11px] font-semibold ${getAdvancedMenuOptionClass(advancedOptions.fontSize === option.value)}`}
+                                                onClick={() => updateAdvancedOptions({ fontSize: option.value })}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Accent</div>
+                                    <div className={`grid grid-cols-4 gap-1 rounded border p-1 ${advancedMenuSegmentClass}`}>
+                                        {ADVANCED_ACCENT_OPTIONS.map((option) => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                className={`h-7 rounded border text-[10px] font-semibold ${getAdvancedMenuOptionClass(advancedOptions.accent === option.value)}`}
+                                                onClick={() => updateAdvancedOptions({ accent: option.value })}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Chart Surface</div>
+                                    <div className={`grid grid-cols-3 gap-1 rounded border p-1 ${advancedMenuSegmentClass}`}>
+                                        {ADVANCED_SURFACE_OPTIONS.map((option) => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                className={`h-7 rounded border text-[11px] font-semibold ${getAdvancedMenuOptionClass(advancedOptions.chartSurface === option.value)}`}
+                                                onClick={() => updateAdvancedOptions({ chartSurface: option.value })}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+                </div>
 
                 <>
                     {/* Crosshair toggle — before drawing tools */}

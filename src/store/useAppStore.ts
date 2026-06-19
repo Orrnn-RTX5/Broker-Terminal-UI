@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { useSystemJournalStore } from './useSystemJournalStore';
+import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
 
 export interface Tick {
   symbol: string;
@@ -491,8 +492,8 @@ export const useAppStore = create<AppState>()(
         setSelectedSymbol: (symbol) => set({ selectedSymbol: symbol }),
 
         setPositions: (positions) =>
-          set((state) => ({
-            positions: positions.map((incoming) => {
+          set((state) => {
+            const nextPositions = positions.map((incoming) => {
               const existing = state.positions.find((p) => p.id === incoming.id);
               if (!existing) return incoming;
 
@@ -530,8 +531,12 @@ export const useAppStore = create<AppState>()(
                   time_create: incoming.time_create || existing.time_create,
                 };
               }
-            }),
-          })),
+            });
+
+            rememberTradeHistoryPositionLevels(nextPositions, state.accountId);
+
+            return { positions: nextPositions };
+          }),
 
         setOrders: (orders) => set({ orders }),
 
