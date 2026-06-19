@@ -133,7 +133,7 @@ describe('trade candle normalization and websocket cleanup', () => {
       },
     }, 'M1')).toEqual([
       { time: 1760000400, open: 1.21, high: 1.26, low: 1.2, close: 1.24, volume: 10 },
-      { time: 1760000520, open: 1.2, high: 1.25, low: 1.19, close: 1.22, volume: 8 },
+      { time: 1760000520, open: 1.2, high: 1.25, low: 1.19, close: 1.22, volume: 8, tickVolume: 8 },
     ]);
   });
 
@@ -148,8 +148,8 @@ describe('trade candle normalization and websocket cleanup', () => {
         ],
       },
     }, 'M1')).toEqual([
-      { time: 1760005200, open: 1.2, high: 1.25, low: 1.18, close: 1.22, volume: 12 },
-      { time: 1760005260, open: 1.22, high: 1.3, low: 1.21, close: 1.28, volume: 9 },
+      { time: 1760005200, open: 1.2, high: 1.25, low: 1.18, close: 1.22, volume: 12, tickVolume: 12 },
+      { time: 1760005260, open: 1.22, high: 1.3, low: 1.21, close: 1.28, volume: 9, tickVolume: 9 },
     ]);
   });
 

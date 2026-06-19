@@ -33,6 +33,8 @@ export interface CandlePayload {
   low: number;
   close: number;
   volume: number;
+  tickVolume?: number;
+  realVolume?: number;
 }
 
 export type CandleCallback = (candle: CandlePayload) => void;
@@ -289,6 +291,15 @@ class CandleSocketManager {
   private handleCandlePayload(symbol: string, timeframe: string, payload: any): void {
     const candle = payload?.candle ?? payload;
     if (!candle) return;
+    const tickVolume = Number(
+      candle.tick_volume
+      ?? candle.tickVolume
+      ?? candle.tick_count
+      ?? candle.tickCount
+      ?? candle.volume
+      ?? 0
+    );
+    const realVolume = Number(candle.real_volume ?? candle.realVolume);
 
     const normalized: CandlePayload = {
       symbol: symbol.toUpperCase(),
@@ -298,7 +309,9 @@ class CandleSocketManager {
       high: Number(candle.high ?? 0),
       low: Number(candle.low ?? 0),
       close: Number(candle.close ?? 0),
-      volume: Number(candle.volume ?? candle.tick_count ?? 0),
+      volume: Number.isFinite(tickVolume) ? tickVolume : 0,
+      ...(Number.isFinite(tickVolume) ? { tickVolume } : {}),
+      ...(Number.isFinite(realVolume) ? { realVolume } : {}),
     };
 
     if (!normalized.time || !Number.isFinite(normalized.open)) return;

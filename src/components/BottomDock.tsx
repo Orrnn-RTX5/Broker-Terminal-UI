@@ -239,6 +239,52 @@ const TABS: { id: TabType; icon?: any }[] = [
     { id: 'Journal' },
 ];
 
+const TAB_HOVER_COMMENTS: Record<TabType, string> = {
+    Trade: 'Open positions and live account summary',
+    History: 'Closed orders and account history',
+    Exposure: 'Asset exposure by currency and symbol',
+    Toolbox: 'Terminal toolbox commands and utilities',
+    'Historical Data': 'Download historical candle data',
+    News: 'Market news messages',
+    Mailbox: 'Broker mailbox messages',
+    Calendar: 'Economic calendar events',
+    Company: 'Broker company information',
+    Alerts: 'Price and terminal alerts',
+    Articles: 'Research articles',
+    'Code Base': 'Scripts, indicators, and code resources',
+    Experts: 'Expert advisor messages',
+    Journal: 'Terminal logs and connection events',
+};
+
+const TRADE_COLUMN_HOVER_COMMENTS: Record<TradeColumnWidthKey, string> = {
+    symbol: 'Instrument for the open position',
+    ticket: 'Unique order or position ticket',
+    time: 'Position open time',
+    side: 'Order side: buy or sell',
+    volume: 'Position volume in lots',
+    priceOpen: 'Price at which the position was opened',
+    sl: 'Stop Loss level. Double-click a value to modify it',
+    tp: 'Take Profit level. Double-click a value to modify it',
+    priceCurrent: 'Current market price used for live P/L',
+    swap: 'Accumulated overnight swap',
+    accountLogin: 'Trading account login',
+    timeUpdate: 'Last position update time',
+    comment: 'Position comment',
+    profit: 'Floating profit or loss for the position',
+    close: 'Close this position',
+};
+
+const TRADE_FOOTER_METRIC_COMMENTS: Record<TradeFooterMetricKey, string> = {
+    positions: 'Number of open positions',
+    balance: 'Account balance excluding floating P/L',
+    equity: 'Balance plus current floating P/L',
+    margin: 'Margin currently used by open positions',
+    freeMargin: 'Available margin after used margin',
+    marginLevel: 'Equity divided by margin, shown as a percent',
+    swap: 'Total swap for open positions',
+    commission: 'Total commission for open positions',
+};
+
 export function BottomDock({
     height,
     onHeightChange,
@@ -515,6 +561,8 @@ export function BottomDock({
                 {TABS.map((tab) => (
                     <button
                         key={tab.id}
+                        title={TAB_HOVER_COMMENTS[tab.id]}
+                        aria-label={TAB_HOVER_COMMENTS[tab.id]}
                         onClick={() => setActiveTab(tab.id)}
                         className={`rtx-dock-tab h-[27px] px-4 text-[11px] font-normal whitespace-nowrap rounded-none border-r border-zinc-800 border-t transition-colors duration-75 relative
                         ${activeTab === tab.id
@@ -990,6 +1038,37 @@ function TradeTab({
         }
     };
 
+    const getFooterMetricComment = (key: TradeFooterMetricKey) => {
+        let value = '';
+        switch (key) {
+            case 'positions':
+                value = String(livePositions.length);
+                break;
+            case 'balance':
+                value = `${formatMoney(accountBalance)} ${account?.currency || 'USD'}`;
+                break;
+            case 'equity':
+                value = formatMoney(liveEquity);
+                break;
+            case 'margin':
+                value = formatMoney(margin);
+                break;
+            case 'freeMargin':
+                value = formatMoney(liveFreeMargin);
+                break;
+            case 'marginLevel':
+                value = formatMarginLevel(liveMarginLevel);
+                break;
+            case 'swap':
+                value = formatMoney(totalSwap);
+                break;
+            case 'commission':
+                value = formatMoney(totalCommission);
+                break;
+        }
+        return `${TRADE_FOOTER_METRIC_COMMENTS[key]}: ${value}`;
+    };
+
     const visibleTradeColumns = useMemo(
         () => TRADE_COLUMN_DEFS.filter(column => isColumnVisible(column.key)),
         [isColumnVisible]
@@ -1382,6 +1461,7 @@ ${rows}
         <button
             type="button"
             aria-label={`Resize ${getTradeColumnDef(key).label} column`}
+            title={`Resize ${getTradeColumnDef(key).label} column`}
             tabIndex={-1}
             className={`absolute right-0 top-0 z-20 h-full w-[5px] translate-x-1/2 cursor-col-resize border-0 bg-transparent p-0 ${resizingColumn === key ? 'bg-sky-400/70' : 'hover:bg-sky-400/50'}`}
             onMouseDown={(event) => startColumnResize(event, key)}
@@ -1405,10 +1485,12 @@ ${rows}
         <th
             className={`relative px-1.5 py-[3px] ${key === 'symbol' ? 'pl-2' : ''} ${align === 'right' ? 'text-right' : 'text-left'} border-r border-zinc-700/70`}
             style={{ width: columnWidths[key] }}
+            title={TRADE_COLUMN_HOVER_COMMENTS[key]}
             aria-sort={sortState?.column === sortColumn ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
         >
             <button
                 type="button"
+                title={`Sort by ${label}`}
                 onClick={() => toggleSort(sortColumn)}
                 className={`flex w-full items-center gap-1 pr-2 hover:text-white ${align === 'right' ? 'justify-end text-right' : 'justify-between text-left'}`}
             >
@@ -1428,6 +1510,7 @@ ${rows}
                 key={column.key}
                 className={`relative px-1.5 py-[3px] ${isLeftAligned ? 'text-left' : 'text-right'} border-r border-zinc-700/70`}
                 style={{ width: columnWidths[column.key] }}
+                title={TRADE_COLUMN_HOVER_COMMENTS[column.key]}
             >
                 <span className="block pr-2">{column.label}</span>
                 {renderColumnResizeHandle(column.key)}
@@ -1462,7 +1545,7 @@ ${rows}
                                 if (column.key === 'profit') return renderSortableHeader('profit', column.label, 'profit', 'right');
                                 return renderHeader(column);
                             })}
-                            <th className="px-0.5 py-[3px] text-center" style={{ width: columnWidths.close }} aria-label="Close position"></th>
+                            <th className="px-0.5 py-[3px] text-center" style={{ width: columnWidths.close }} aria-label="Close position" title={TRADE_COLUMN_HOVER_COMMENTS.close}></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[11px] leading-[18px] font-normal">
@@ -1481,9 +1564,25 @@ ${rows}
                             const profitIsPositive = profitMode === 'points' ? pointsValue >= 0 : pnlValue >= 0;
                             const positionKey = getPositionKey(pos);
                             const isSelected = selectedPositionKey === positionKey;
+                            const symbolLabel = pos.symbol ?? '-';
+                            const ticketLabel = String(pos.ticket ?? pos.id ?? '-');
+                            const timeLabel = formatTradeTime(pos.time_create);
+                            const sideLabel = String(pos.side ?? '').toLowerCase() || '-';
+                            const volumeLabel = String(formatTradeVolume(pos));
+                            const openPriceLabel = formatTradePrice(pos.price_open ?? pos.openPrice, symbolLabel);
+                            const slLabel = formatTradeLevel(pos.price_sl ?? pos.sl, symbolLabel);
+                            const tpLabel = formatTradeLevel(pos.price_tp ?? pos.tp, symbolLabel);
+                            const currentPriceLabel = formatTradePrice(pos.price_current ?? pos.currentPrice, symbolLabel);
+                            const swapLabel = formatMoney(pos.swap);
+                            const accountLoginLabel = String(pos.account_login ?? '-');
+                            const timeUpdateLabel = formatTradeTime(pos.time_update);
+                            const commentLabel = String(pos.comment || '-');
+                            const profitLabel = profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue);
+                            const rowComment = `${symbolLabel} ${sideLabel} ${volumeLabel} lots, ticket ${ticketLabel}. Double-click to modify, right-click for more options.`;
                             return (
                             <tr
                                 key={pos.id ?? i}
+                                title={rowComment}
                                 aria-selected={isSelected}
                                 className={`rtx-trade-row h-[22px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-pointer`}
                                 onClick={() => setSelectedPositionKey(positionKey)}
@@ -1494,58 +1593,58 @@ ${rows}
                                 onContextMenu={(event) => handleTradeContextMenu(event, pos)}
                             >
                                 {/* symbol */}
-                                <td className="px-1.5 py-[2px] pl-2 border-r border-zinc-800 font-semibold text-zinc-100 whitespace-nowrap">
+                                <td className="px-1.5 py-[2px] pl-2 border-r border-zinc-800 font-semibold text-zinc-100 whitespace-nowrap" title={`Symbol: ${symbolLabel}`}>
                                     <span className="inline-flex items-center gap-1.5">
                                         <span className={`h-[11px] w-[7px] rounded-[1px] border ${isBuy ? 'border-sky-400 text-sky-300' : 'border-red-400 text-red-300'} flex items-center justify-center text-[8px] leading-none`}>
                                             {isBuy ? '+' : '-'}
                                         </span>
-                                        <span>{pos.symbol ?? '-'}</span>
+                                        <span>{symbolLabel}</span>
                                     </span>
                                 </td>
 
                                 {/* ticket */}
                                 {isColumnVisible('ticket') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#d8dde8] font-normal tabular-nums whitespace-nowrap">{pos.ticket ?? pos.id}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#d8dde8] font-normal tabular-nums whitespace-nowrap" title={`Ticket: ${ticketLabel}`}>{ticketLabel}</td>
                                 )}
 
                                 {/* time_create */}
                                 {isColumnVisible('time') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap text-[11px]">
-                                        {formatTradeTime(pos.time_create)}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap text-[11px]" title={`Open time: ${timeLabel}`}>
+                                        {timeLabel}
                                     </td>
                                 )}
 
                                 {/* side */}
                                 {isColumnVisible('side') && (
-                                    <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 font-semibold text-[11px]`}>
+                                    <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 font-semibold text-[11px]`} title={`Side / Type: ${sideLabel}`}>
                                         <div className="flex items-center gap-1">
                                             {isBuy ? (
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
                                             ) : (
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
                                             )}
-                                            <span>{String(pos.side).toLowerCase()}</span>
+                                            <span>{sideLabel}</span>
                                         </div>
                                     </td>
                                 )}
 
                                 {/* volume */}
                                 {isColumnVisible('volume') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right font-semibold text-zinc-100 tabular-nums">
-                                        {formatTradeVolume(pos)}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right font-semibold text-zinc-100 tabular-nums" title={`Volume: ${volumeLabel} lots`}>
+                                        {volumeLabel}
                                     </td>
                                 )}
 
                                 {/* price_open */}
                                 {isColumnVisible('priceOpen') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] tabular-nums">
-                                        {formatTradePrice(pos.price_open ?? pos.openPrice, pos.symbol ?? '')}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] tabular-nums" title={`Open price: ${openPriceLabel}`}>
+                                        {openPriceLabel}
                                     </td>
                                 )}
 
                                 {/* price_sl */}
                                 {isColumnVisible('sl') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" onDoubleClick={(event) => { event.stopPropagation(); startEditing(pos); }}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" title={`Stop Loss: ${slLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); startEditing(pos); }}>
                                         {editingId === pos.id ? (
                                             <input
                                                 className="h-[17px] w-full bg-zinc-800 text-white text-right px-1 text-[11px] outline-none ring-1 ring-sky-500/70"
@@ -1557,7 +1656,7 @@ ${rows}
                                             />
                                         ) : (
                                             <span className={(pos.price_sl ?? pos.sl) > 0 ? "rtx-trade-sl-value text-[#ff7676] bg-red-950/20 px-1 rounded-sm cursor-pointer font-semibold" : "text-zinc-600 cursor-pointer"}>
-                                                {formatTradeLevel(pos.price_sl ?? pos.sl, pos.symbol ?? '')}
+                                                {slLabel}
                                             </span>
                                         )}
                                     </td>
@@ -1565,7 +1664,7 @@ ${rows}
 
                                 {/* price_tp */}
                                 {isColumnVisible('tp') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" onDoubleClick={(event) => { event.stopPropagation(); startEditing(pos); }}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" title={`Take Profit: ${tpLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); startEditing(pos); }}>
                                         {editingId === pos.id ? (
                                             <input
                                                 className="h-[17px] w-full bg-zinc-800 text-white text-right px-1 text-[11px] outline-none ring-1 ring-sky-500/70"
@@ -1577,7 +1676,7 @@ ${rows}
                                             />
                                         ) : (
                                             <span className={(pos.price_tp ?? pos.tp) > 0 ? "rtx-trade-tp-value text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm cursor-pointer font-semibold" : "text-zinc-600 cursor-pointer"}>
-                                                {formatTradeLevel(pos.price_tp ?? pos.tp, pos.symbol ?? '')}
+                                                {tpLabel}
                                             </span>
                                         )}
                                     </td>
@@ -1585,41 +1684,41 @@ ${rows}
 
                                 {/* price_current */}
                                 {isColumnVisible('priceCurrent') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-zinc-100 font-semibold tabular-nums">
-                                        {formatTradePrice(pos.price_current ?? pos.currentPrice, pos.symbol ?? '')}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-zinc-100 font-semibold tabular-nums" title={`Current price: ${currentPriceLabel}`}>
+                                        {currentPriceLabel}
                                     </td>
                                 )}
 
                                 {/* swap */}
                                 {isColumnVisible('swap') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#8d95a3] tabular-nums">{formatMoney(pos.swap)}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#8d95a3] tabular-nums" title={`Swap: ${swapLabel}`}>{swapLabel}</td>
                                 )}
 
                                 {/* account_login */}
                                 {isColumnVisible('accountLogin') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums">
-                                        {pos.account_login ?? '-'}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums" title={`Account login: ${accountLoginLabel}`}>
+                                        {accountLoginLabel}
                                     </td>
                                 )}
 
                                 {/* time_update */}
                                 {isColumnVisible('timeUpdate') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums">
-                                        {formatTradeTime(pos.time_update)}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
+                                        {timeUpdateLabel}
                                     </td>
                                 )}
 
                                 {/* comment */}
                                 {isColumnVisible('comment') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] text-[11px] truncate" title={String(pos.comment ?? '')}>
-                                        {pos.comment || '-'}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] text-[11px] truncate" title={`Comment: ${commentLabel}`}>
+                                        {commentLabel}
                                     </td>
                                 )}
 
                                 {/* profit */}
                                 {isColumnVisible('profit') && (
-                                    <td className={`px-1.5 py-[2px] text-right font-semibold tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`}>
-                                        {profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue)}
+                                    <td className={`px-1.5 py-[2px] text-right font-semibold tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${profitMode === 'points' ? 'Profit points' : 'Profit'}: ${profitLabel}`}>
+                                        {profitLabel}
                                     </td>
                                 )}
 
@@ -1628,7 +1727,7 @@ ${rows}
                                     <button
                                         type="button"
                                         aria-label={`Close position ${pos.ticket ?? pos.id}`}
-                                        title="Close position"
+                                        title={`Close position ${ticketLabel}`}
                                         onClick={(event) => {
                                             event.stopPropagation();
                                             onClosePosition(pos.id);
@@ -1655,7 +1754,7 @@ ${rows}
                     <button
                         type="button"
                         className="rtx-trade-footer-status inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-0 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
-                        title="Footer metrics"
+                        title="Select footer metrics"
                         aria-label="Footer metrics"
                         aria-haspopup="menu"
                         aria-expanded={footerMetricMenu !== null}
@@ -1667,7 +1766,7 @@ ${rows}
                         <Icon name="plus-circle" size="xs" className="text-current shrink-0" />
                     </button>
                     {visibleFooterMetrics.map(metric => (
-                        <span key={metric.key} className="rtx-trade-footer-metric">
+                        <span key={metric.key} className="rtx-trade-footer-metric" title={getFooterMetricComment(metric.key)}>
                             <span className="rtx-trade-metric-label text-zinc-500">{metric.label}</span>
                             {renderFooterMetricValue(metric.key)}
                         </span>
@@ -1676,6 +1775,7 @@ ${rows}
                     <div className="rtx-trade-footer-actions flex shrink-0 items-center gap-1 pl-0.5">
                     <button
                         type="button"
+                        title="Close all profitable positions"
                         onClick={() => onCloseBulk?.('WINNERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
                         className="rtx-trade-bulk-close rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1684,6 +1784,7 @@ ${rows}
                     </button>
                     <button
                         type="button"
+                        title="Close all losing positions"
                         onClick={() => onCloseBulk?.('LOSERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
                         className="rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1692,6 +1793,7 @@ ${rows}
                     </button>
                     <button
                         type="button"
+                        title="Close all open positions"
                         onClick={() => onCloseBulk?.('ALL')}
                         disabled={!onCloseBulk || livePositions.length === 0}
                         className="rtx-trade-footer-action rtx-trade-footer-action--danger inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-red-800/70 px-1.5 text-[10px] font-bold leading-none text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1699,7 +1801,7 @@ ${rows}
                         Close All
                     </button>
                     </div>
-                    <span className="rtx-trade-footer-floating inline-flex h-5 min-w-[112px] shrink-0 items-center justify-end gap-1 whitespace-nowrap rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-1.5 text-right font-bold leading-none">
+                    <span className="rtx-trade-footer-floating inline-flex h-5 min-w-[112px] shrink-0 items-center justify-end gap-1 whitespace-nowrap rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-1.5 text-right font-bold leading-none" title={`Floating P/L: ${formatMoney(totalLivePnL)}`}>
                         <span className="text-zinc-100">Floating P/L</span>
                         <BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-[#2563eb]"} />
                     </span>

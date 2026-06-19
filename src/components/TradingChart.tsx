@@ -255,7 +255,27 @@ interface Candle {
   low: number;
   close: number;
   volume: number;
+  tickVolume?: number;
+  realVolume?: number;
 }
+
+type VolumeDisplaySettings = Pick<ChartProperties, 'showTickVolumes' | 'showRealVolumes'>;
+
+const finiteVolumeOrNull = (value: unknown): number | null => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+const getDisplayVolume = (candle: Candle, settings: VolumeDisplaySettings): number => {
+  if (settings.showRealVolumes && !settings.showTickVolumes) {
+    return finiteVolumeOrNull(candle.realVolume) ?? 0;
+  }
+
+  return finiteVolumeOrNull(candle.tickVolume)
+    ?? finiteVolumeOrNull(candle.volume)
+    ?? finiteVolumeOrNull(candle.realVolume)
+    ?? 0;
+};
 
 const getLivePriceOverlayColor = (
   currentCandle: Candle | null,
@@ -402,6 +422,7 @@ const formatChartSeriesData = (
   candles: Candle[],
   chartType: ChartType,
   theme: TradingViewChartTheme,
+  volumeSettings: VolumeDisplaySettings,
 ): {
   sortedCandles: Candle[];
   seriesData: FormattedSeriesDatum[];
@@ -438,7 +459,7 @@ const formatChartSeriesData = (
 
   const volumeData: FormattedVolumeDatum[] = sortedCandles.map(candle => ({
     time: candle.time as Time,
-    value: candle.volume,
+    value: getDisplayVolume(candle, volumeSettings),
     color: candle.close >= candle.open ? theme.volumeUp : theme.volumeDown,
   }));
 
@@ -1085,7 +1106,7 @@ export const TradingChart = React.memo(function TradingChart({
       } else {
         const c = currentCandleRef.current;
         if (c) {
-          updateLegendDOM(c.open, c.high, c.low, c.close, c.volume);
+          updateLegendDOM(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
         }
       }
     };
@@ -1165,6 +1186,7 @@ export const TradingChart = React.memo(function TradingChart({
       candles,
       activeType,
       chartThemeRef.current,
+      chartSettingsRef.current,
     );
 
     try {
@@ -1356,7 +1378,7 @@ export const TradingChart = React.memo(function TradingChart({
         const normalizedTime = alignTimeframeBoundarySeconds(last.time, activeTf as AggTimeframe, tfSec);
 
         currentCandleRef.current = { ...last, time: normalizedTime };
-        updateLegendDOM(last.open, last.high, last.low, last.close, last.volume);
+        updateLegendDOM(last.open, last.high, last.low, last.close, getDisplayVolume(last, chartSettingsRef.current));
         console.log(`[Chart] Last candle time: ${last.time} → normalized to TF boundary: ${normalizedTime} (${activeTf})`);
 
         // Advance the store candle cursor so the 100ms poll doesn't re-process
@@ -1474,6 +1496,7 @@ export const TradingChart = React.memo(function TradingChart({
         candlesRef.current,
         activeType,
         chartThemeRef.current,
+        chartSettingsRef.current,
       );
 
       // Update series but maintain current left logical index so it visually stays in place
@@ -2096,10 +2119,21 @@ export const TradingChart = React.memo(function TradingChart({
         visible: chartSettings.showTickVolumes || chartSettings.showRealVolumes,
         color: chartTheme.volumeUp
       });
+      const { volumeData } = formatChartSeriesData(
+        candlesRef.current,
+        prevChartTypeRef.current || chartType,
+        chartTheme,
+        chartSettings,
+      );
+      volumeRef.current.setData(volumeData);
+      const current = currentCandleRef.current;
+      if (current) {
+        updateLegendDOM(current.open, current.high, current.low, current.close, getDisplayVolume(current, chartSettings));
+      }
     }
 
     window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
-  }, [chartSettings, chartTheme, chartType]);
+  }, [chartSettings, chartTheme, chartType, updateLegendDOM]);
 
   // getTimeframeSeconds is imported from candleAggregationService (module scope)
   // so it is never a stale closure value after a timeframe switch.
@@ -2142,12 +2176,13 @@ export const TradingChart = React.memo(function TradingChart({
         }
         if (volumeRef.current) {
           const theme = chartThemeRef.current;
+          const displayVolume = getDisplayVolume(c, chartSettingsRef.current);
           volumeRef.current.update({
-            time: c.time as Time, value: c.volume,
+            time: c.time as Time, value: displayVolume,
             color: c.close >= c.open ? theme.volumeUp : theme.volumeDown,
           });
         }
-        updateLegendDOM(c.open, c.high, c.low, c.close, c.volume);
+        updateLegendDOM(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
         markCandlesReady();
         if (
           isNewCandle &&
@@ -2180,7 +2215,7 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       const open = openPrice ?? done.close; // MT5 rule: open = previous close (no gap)
-      const newCandle: Candle = { time: newTime, open, high: open, low: open, close: open, volume: 0 };
+      const newCandle: Candle = { time: newTime, open, high: open, low: open, close: open, volume: 0, tickVolume: 0 };
       currentCandleRef.current = newCandle;
       console.log(`[Chart] ✅ Rollover done → ${new Date(newTime * 1000).toISOString()}`);
       push(newCandle, true);
@@ -2291,7 +2326,7 @@ export const TradingChart = React.memo(function TradingChart({
       // ── Candle rollover or update ──────────────────────────────────────────
       if (!currentCandleRef.current) {
         // Very first tick — create the forming candle.
-        currentCandleRef.current = { time: candleTime, open: price, high: price, low: price, close: price, volume: 1 };
+        currentCandleRef.current = { time: candleTime, open: price, high: price, low: price, close: price, volume: 1, tickVolume: 1 };
         push(currentCandleRef.current, true);
       } else if (candleTime > currentCandleRef.current.time) {
         // rollover() with real first tick price allows true gaps to render properly.
@@ -2300,6 +2335,7 @@ export const TradingChart = React.memo(function TradingChart({
         // the next tick loop cycle, or updated later by FIX update.
         if (currentCandleRef.current && currentCandleRef.current.time === candleTime) {
           currentCandleRef.current.volume = 1; // Mark as seen
+          currentCandleRef.current.tickVolume = 1;
         }
       } else {
         // Same candle — update OHLCV in-place.
@@ -2311,11 +2347,13 @@ export const TradingChart = React.memo(function TradingChart({
           currentCandleRef.current.low = price;
           currentCandleRef.current.close = price;
           currentCandleRef.current.volume = 1;
+          currentCandleRef.current.tickVolume = 1;
         } else {
           currentCandleRef.current.high = Math.max(currentCandleRef.current.high, price);
           currentCandleRef.current.low = Math.min(currentCandleRef.current.low, price);
           currentCandleRef.current.close = price;
           currentCandleRef.current.volume += 1;
+          currentCandleRef.current.tickVolume = (currentCandleRef.current.tickVolume ?? currentCandleRef.current.volume - 1) + 1;
         }
         push(currentCandleRef.current, false);
       }
@@ -2388,14 +2426,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       // 2. Is this an update to the CURRENTLY forming bar?
       if (currentCandleRef.current && c.time === currentCandleRef.current.time) {
-        currentCandleRef.current = {
-          time: c.time,
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          volume: c.volume,
-        };
+        currentCandleRef.current = { ...c };
         candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
         push(currentCandleRef.current, false);
         repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
@@ -2404,14 +2435,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       // 3. Server is telling us about a TRULY NEW candle (c.time > current.time)
       if (!currentCandleRef.current) {
-        currentCandleRef.current = {
-          time: c.time,
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          volume: c.volume,
-        };
+        currentCandleRef.current = { ...c };
         candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
         push(currentCandleRef.current, true);
         repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
@@ -2424,14 +2448,7 @@ export const TradingChart = React.memo(function TradingChart({
 
         // Immediately apply server's data to it
         if (currentCandleRef.current && currentCandleRef.current.time === c.time) {
-          currentCandleRef.current = {
-            time: c.time,
-            open: c.open,
-            high: c.high,
-            low: c.low,
-            close: c.close,
-            volume: c.volume,
-          };
+          currentCandleRef.current = { ...c };
           candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
           push(currentCandleRef.current, false);
           repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);

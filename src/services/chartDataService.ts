@@ -22,6 +22,8 @@ export type OHLCData = {
   low: number;
   close: number;
   volume: number;
+  tickVolume?: number;
+  realVolume?: number;
 };
 
 export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
@@ -139,6 +141,12 @@ const toSeconds = (value: unknown): number => {
   return raw > 1_000_000_000_000 ? Math.floor(raw / 1000) : Math.floor(raw);
 };
 
+const toFiniteNumber = (value: unknown): number | undefined => {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
 const CANDLE_ARRAY_KEYS = [
   'candles',
   'bars',
@@ -200,6 +208,8 @@ export class ChartDataService {
       low: input[3],
       close: input[4],
       volume: input[5],
+      tick_volume: input[5],
+      real_volume: input[7],
     } : input;
     const rawTime = toSeconds(
       row.time
@@ -218,23 +228,40 @@ export class ChartDataService {
     const high = Number(row.high ?? row.High ?? row.HIGH ?? row.h);
     const low = Number(row.low ?? row.Low ?? row.LOW ?? row.l);
     const close = Number(row.close ?? row.Close ?? row.CLOSE ?? row.c);
-    const volume = Number(
+    const tickVolume = toFiniteNumber(
+      row.tick_volume
+      ?? row.tickVolume
+      ?? row.tick_count
+      ?? row.tickCount
+      ?? row.ticks
+      ?? row.TICK_VOLUME
+      ?? row.TICK_COUNT
+    );
+    const realVolume = toFiniteNumber(
+      row.real_volume
+      ?? row.realVolume
+      ?? row.REAL_VOLUME
+    );
+    const legacyVolume = toFiniteNumber(
       row.volume
       ?? row.Volume
       ?? row.VOLUME
       ?? row.v
-      ?? row.tick_count
-      ?? row.tickCount
-      ?? row.tick_volume
-      ?? row.tickVolume
-      ?? row.real_volume
-      ?? row.realVolume
-      ?? 0
     );
+    const volume = tickVolume ?? legacyVolume ?? realVolume ?? 0;
 
     if (!time || ![open, high, low, close].every(Number.isFinite)) return null;
 
-    return { time, open, high, low, close, volume: Number.isFinite(volume) ? volume : 0 };
+    return {
+      time,
+      open,
+      high,
+      low,
+      close,
+      volume: Number.isFinite(volume) ? volume : 0,
+      ...(tickVolume !== undefined ? { tickVolume } : {}),
+      ...(realVolume !== undefined ? { realVolume } : {}),
+    };
   }
 
   normalizeCandles(input: any, timeframe?: string): OHLCData[] {
@@ -429,7 +456,8 @@ export class ChartDataService {
           high: price,
           low: price,
           close: price,
-          volume: tick.volume || 0
+          volume: tick.volume || 0,
+          tickVolume: tick.volume || 0,
         });
       } else {
         // Update existing candle
@@ -438,6 +466,7 @@ export class ChartDataService {
         candle.low = Math.min(candle.low, price);
         candle.close = price;
         candle.volume += tick.volume || 0;
+        candle.tickVolume = (candle.tickVolume ?? 0) + (tick.volume || 0);
       }
     }
 

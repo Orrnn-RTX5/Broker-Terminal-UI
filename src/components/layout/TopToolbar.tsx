@@ -352,35 +352,15 @@ const DEFAULT_ADVANCED_OPTIONS: AdvancedViewOptions = {
     focusChart: false,
 };
 
-const ADVANCED_FONT_SIZE_OPTIONS: { value: AdvancedFontSize; label: string }[] = [
-    { value: 'small', label: 'Small' },
-    { value: 'normal', label: 'Normal' },
-    { value: 'large', label: 'Large' },
-];
-
-const ADVANCED_DENSITY_OPTIONS: { value: AdvancedDensity; label: string }[] = [
-    { value: 'comfortable', label: 'Comfort' },
-    { value: 'compact', label: 'Compact' },
-];
-
-const ADVANCED_ACCENT_OPTIONS: { value: AdvancedAccent; label: string }[] = [
-    { value: 'purple', label: 'Purple' },
-    { value: 'blue', label: 'Blue' },
-    { value: 'green', label: 'Green' },
-    { value: 'amber', label: 'Amber' },
-];
-
-const ADVANCED_SURFACE_OPTIONS: { value: AdvancedChartSurface; label: string }[] = [
-    { value: 'white', label: 'White' },
-    { value: 'soft', label: 'Soft' },
-    { value: 'paper', label: 'Paper' },
-];
-
 function loadAdvancedOptions(): AdvancedViewOptions {
     try {
         const raw = localStorage.getItem(ADVANCED_OPTIONS_STORAGE_KEY);
         if (!raw) return DEFAULT_ADVANCED_OPTIONS;
-        return { ...DEFAULT_ADVANCED_OPTIONS, ...JSON.parse(raw) };
+        const parsed = JSON.parse(raw);
+        return {
+            ...DEFAULT_ADVANCED_OPTIONS,
+            focusChart: Boolean(parsed?.focusChart),
+        };
     } catch {
         return DEFAULT_ADVANCED_OPTIONS;
     }
@@ -873,7 +853,7 @@ const MainToolbar = ({
                     {showAdvancedOptions && ReactDOM.createPortal(
                         <div
                             ref={advancedOptionsDropdownRef}
-                            className={`fixed z-[9999] w-[276px] rounded-[5px] border p-3 text-[11px] ${advancedMenuPanelClass}`}
+                            className={`fixed z-[9999] w-[252px] rounded-[5px] border p-3 text-[11px] ${advancedMenuPanelClass}`}
                             style={{
                                 top: (advancedOptionsRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
                                 right: Math.max(8, window.innerWidth - (advancedOptionsRef.current?.getBoundingClientRect().right ?? window.innerWidth)),
@@ -920,70 +900,6 @@ const MainToolbar = ({
                                         className="h-3.5 w-3.5 accent-[#7E57C2]"
                                     />
                                 </label>
-
-                                <div>
-                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Density</div>
-                                    <div className={`grid grid-cols-2 gap-1 rounded border p-1 ${advancedMenuSegmentClass}`}>
-                                        {ADVANCED_DENSITY_OPTIONS.map((option) => (
-                                            <button
-                                                key={option.value}
-                                                type="button"
-                                                className={`h-7 rounded border text-[11px] font-semibold ${getAdvancedMenuOptionClass(advancedOptions.density === option.value)}`}
-                                                onClick={() => updateAdvancedOptions({ density: option.value })}
-                                            >
-                                                {option.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Font Size</div>
-                                    <div className={`grid grid-cols-3 gap-1 rounded border p-1 ${advancedMenuSegmentClass}`}>
-                                        {ADVANCED_FONT_SIZE_OPTIONS.map((option) => (
-                                            <button
-                                                key={option.value}
-                                                type="button"
-                                                className={`h-7 rounded border text-[11px] font-semibold ${getAdvancedMenuOptionClass(advancedOptions.fontSize === option.value)}`}
-                                                onClick={() => updateAdvancedOptions({ fontSize: option.value })}
-                                            >
-                                                {option.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Accent</div>
-                                    <div className={`grid grid-cols-4 gap-1 rounded border p-1 ${advancedMenuSegmentClass}`}>
-                                        {ADVANCED_ACCENT_OPTIONS.map((option) => (
-                                            <button
-                                                key={option.value}
-                                                type="button"
-                                                className={`h-7 rounded border text-[10px] font-semibold ${getAdvancedMenuOptionClass(advancedOptions.accent === option.value)}`}
-                                                onClick={() => updateAdvancedOptions({ accent: option.value })}
-                                            >
-                                                {option.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Chart Surface</div>
-                                    <div className={`grid grid-cols-3 gap-1 rounded border p-1 ${advancedMenuSegmentClass}`}>
-                                        {ADVANCED_SURFACE_OPTIONS.map((option) => (
-                                            <button
-                                                key={option.value}
-                                                type="button"
-                                                className={`h-7 rounded border text-[11px] font-semibold ${getAdvancedMenuOptionClass(advancedOptions.chartSurface === option.value)}`}
-                                                onClick={() => updateAdvancedOptions({ chartSurface: option.value })}
-                                            >
-                                                {option.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
                             </div>
                         </div>,
                         document.body,
