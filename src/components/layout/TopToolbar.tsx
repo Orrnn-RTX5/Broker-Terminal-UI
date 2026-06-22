@@ -15,6 +15,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcut';
 import { SHORTCUT_CATEGORIES } from '../../services/keyboardShortcutManager';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { Command } from '../../types/commands';
+import type { Broker, BrokerServer } from '../../types/api';
 import { NotificationBadge } from '../notifications/NotificationBadge';
 import { NotificationCenter } from '../notifications/NotificationCenter';
 import { useNotificationStore } from '../../store/useNotificationStore';
@@ -219,14 +220,77 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
 // --- Sub-Components ---
 
-const getLogoUrl = (url?: string) => {
-    if (!url) return '';
-    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
-        return url;
+const normalizeHeaderText = (value: unknown): string => String(value || '').trim();
+
+const getStoredHeaderValue = (key: string): string => {
+    if (typeof window === 'undefined') return '';
+    return normalizeHeaderText(localStorage.getItem(key));
+};
+
+const getStoredLogoUrl = (): string => getStoredHeaderValue('logo_url');
+
+const normalizeLogoBaseUrl = (value: unknown): string => {
+    const normalized = normalizeServerUrl(normalizeHeaderText(value));
+    return normalized.replace(/\/api\/v\d+\/?$/i, '').replace(/\/$/, '');
+};
+
+const getLogoUrl = (url?: string, baseCandidates: string[] = []) => {
+    const rawUrl = normalizeHeaderText(url);
+    if (!rawUrl) return '';
+    if (/^(?:https?:|data:|blob:)/i.test(rawUrl)) {
+        return rawUrl;
     }
-    const base = (RTX5_API_URL || '').replace(/\/$/, '');
-    const path = url.startsWith('/') ? url : `/${url}`;
+    if (rawUrl.startsWith('./')) {
+        return rawUrl;
+    }
+
+    const base = [
+        ...baseCandidates,
+        getStoredHeaderValue('server_url'),
+        getStoredHeaderValue('backend_url'),
+        RTX5_API_URL,
+    ].map(normalizeLogoBaseUrl).find(Boolean);
+    if (!base) return rawUrl;
+
+    const path = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
     return `${base}${path}`;
+};
+
+type BrokerTitleConfig = {
+    name?: string;
+    brokerName?: string;
+    logo_url?: string;
+};
+
+const matchesBrokerServer = (server: BrokerServer, serverName: string): boolean => {
+    const target = normalizeHeaderText(serverName).toLowerCase();
+    if (!target) return false;
+
+    return [
+        server.server,
+        server.server_url,
+        server.backend_url,
+        server.market_api_url,
+        server.broker_id,
+        server.broker_name,
+    ].some((value) => normalizeHeaderText(value).toLowerCase() === target);
+};
+
+const resolveBrokerDisplayName = (
+    serverName: string,
+    config: BrokerTitleConfig | null,
+    matchedServer?: BrokerServer,
+    brokers: Broker[] = [],
+): string => {
+    const matchedBroker = matchedServer?.broker_id
+        ? brokers.find((broker) => broker.broker_id === matchedServer.broker_id)
+        : undefined;
+
+    return normalizeHeaderText(matchedServer?.broker_name)
+        || normalizeHeaderText(matchedBroker?.name)
+        || normalizeHeaderText(config?.brokerName)
+        || normalizeHeaderText(config?.name)
+        || serverName;
 };
 
 const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string }) => {
@@ -235,12 +299,18 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
     const activeAccount = savedAccounts.find(a => String(a.login) === String(accountId));
     const serverName = activeAccount?.server || localStorage.getItem('rtx_broker_server') || DEFAULT_BROKER_SERVER;
 
-    const [logoUrl, setLogoUrl] = useState<string>('');
+    const [logoUrl, setLogoUrl] = useState<string>(() => getStoredLogoUrl());
+    const [logoBaseCandidates, setLogoBaseCandidates] = useState<string[]>([]);
+    const [brokerName, setBrokerName] = useState<string>(serverName);
     const [marginMode, setMarginMode] = useState<string>('Hedge');
     const [logoError, setLogoError] = useState<boolean>(false);
 
     React.useEffect(() => {
         let active = true;
+        setBrokerName(serverName);
+        setLogoUrl(getStoredLogoUrl());
+        setLogoBaseCandidates([]);
+        setLogoError(false);
 
         const fetchDetails = async () => {
             try {
@@ -262,33 +332,48 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
                     }
                 }
 
-                // 2. Find broker ID and logo from server matching
+                // 2. Find broker ID, broker name, and logo from server matching
                 const matchedServer = servers.find(
-                    (s: any) => s.server?.toLowerCase() === serverName.toLowerCase()
+                    (server) => matchesBrokerServer(server, serverName)
                 );
+                const brokersList = brokersData?.brokers || [];
 
-                let finalLogoUrl = '';
+                let finalLogoUrl = getStoredLogoUrl();
+                let nextLogoBaseCandidates: string[] = [];
                 if (matchedServer) {
+                    nextLogoBaseCandidates = [
+                        matchedServer.server_url || '',
+                        matchedServer.backend_url || '',
+                        matchedServer.market_api_url || '',
+                    ];
+
                     if (matchedServer.logo_url) {
                         finalLogoUrl = matchedServer.logo_url;
                     }
 
                     // If no logo_url on server, cross-reference with broker list using broker_id
                     if (!finalLogoUrl && matchedServer.broker_id) {
-                        const brokersList = brokersData?.brokers || [];
                         const matchedBroker = brokersList.find(
-                            (b: any) => b.broker_id === matchedServer.broker_id
+                            (broker) => broker.broker_id === matchedServer.broker_id
                         );
                         if (matchedBroker?.logo_url) {
                             finalLogoUrl = matchedBroker.logo_url;
                         }
                     }
                 }
+                if (!finalLogoUrl && config?.logo_url) {
+                    finalLogoUrl = config.logo_url;
+                }
 
+                setBrokerName(resolveBrokerDisplayName(serverName, config, matchedServer, brokersList));
                 setLogoUrl(finalLogoUrl);
+                setLogoBaseCandidates(nextLogoBaseCandidates);
                 setLogoError(false); // Reset error state on server/logo change
             } catch (err) {
                 console.error('[HeaderBar] Error loading dynamic titlebar info:', err);
+                setBrokerName(serverName);
+                setLogoUrl(getStoredLogoUrl());
+                setLogoBaseCandidates([]);
             }
         };
 
@@ -298,8 +383,8 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
         };
     }, [accountId, serverName]);
 
-    const displayLogo = logoUrl && !logoError ? getLogoUrl(logoUrl) : './titlebar-icon.png';
-    const terminalTitle = `${WEB_TERMINAL_TITLE} - ${accountId} - ${marginMode} - ${symbol},${timeframe.toUpperCase()}`;
+    const displayLogo = logoUrl && !logoError ? getLogoUrl(logoUrl, logoBaseCandidates) : './titlebar-icon.png';
+    const terminalTitle = `${WEB_TERMINAL_TITLE} - ${accountId} - ${brokerName} - ${marginMode} - ${symbol},${timeframe.toUpperCase()}`;
 
     return (
         <div
@@ -310,7 +395,7 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
             <div className="flex items-center gap-2 px-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                 <img
                     src={displayLogo}
-                    alt="RTX Logo"
+                    alt={`${brokerName} Logo`}
                     className="w-4 h-4 object-contain ml-1 rounded-sm"
                     onError={() => setLogoError(true)}
                 />
@@ -506,6 +591,7 @@ const MainToolbar = ({
     const resetTradeHistorySettings = () => {
         updateTradeHistorySetting('showTradeHistory', defaultChartProperties.showTradeHistory);
         updateTradeHistorySetting('showTradeHistoryBoxes', defaultChartProperties.showTradeHistoryBoxes);
+        updateTradeHistorySetting('showTradeHistoryArrows', defaultChartProperties.showTradeHistoryArrows);
         updateTradeHistorySetting('tradeHistoryLineOpacity', defaultChartProperties.tradeHistoryLineOpacity);
         updateTradeHistorySetting('tradeHistoryBoxOpacity', defaultChartProperties.tradeHistoryBoxOpacity);
     };
@@ -767,7 +853,7 @@ const MainToolbar = ({
                         </div>
 
                         <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                            <span className="font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">History marks</span>
+                            <span className="font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Lines</span>
                             <input
                                 type="checkbox"
                                 checked={tradeHistorySettings.showTradeHistory !== false}
@@ -776,18 +862,27 @@ const MainToolbar = ({
                             />
                         </label>
 
-                        <label className={`mb-3 flex items-center justify-between gap-3 rounded-[4px] px-1 py-1 ${tradeHistorySettings.showTradeHistory === false ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50'}`}>
+                        <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
                             <span className="font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Text boxes</span>
                             <input
                                 type="checkbox"
                                 checked={tradeHistorySettings.showTradeHistoryBoxes !== false}
-                                disabled={tradeHistorySettings.showTradeHistory === false}
                                 onChange={(event) => updateTradeHistorySetting('showTradeHistoryBoxes', event.target.checked)}
                                 className="h-3.5 w-3.5 accent-blue-500"
                             />
                         </label>
 
-                        <div className={`space-y-2 rounded-[4px] border border-zinc-800/80 bg-zinc-950/35 p-2 [.rtx-advanced-view_&]:border-gray-100 [.rtx-advanced-view_&]:bg-gray-50 ${tradeHistorySettings.showTradeHistory === false ? 'opacity-45' : ''}`}>
+                        <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
+                            <span className="font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Arrows</span>
+                            <input
+                                type="checkbox"
+                                checked={tradeHistorySettings.showTradeHistoryArrows !== false}
+                                onChange={(event) => updateTradeHistorySetting('showTradeHistoryArrows', event.target.checked)}
+                                className="h-3.5 w-3.5 accent-blue-500"
+                            />
+                        </label>
+
+                        <div className="space-y-2 rounded-[4px] border border-zinc-800/80 bg-zinc-950/35 p-2 [.rtx-advanced-view_&]:border-gray-100 [.rtx-advanced-view_&]:bg-gray-50">
                             <label className="block">
                                 <div className="mb-1 flex items-center justify-between">
                                     <span className="font-semibold text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Lines</span>
@@ -815,7 +910,7 @@ const MainToolbar = ({
                                     min={0}
                                     max={100}
                                     step={5}
-                                    disabled={tradeHistorySettings.showTradeHistory === false || tradeHistorySettings.showTradeHistoryBoxes === false}
+                                    disabled={tradeHistorySettings.showTradeHistoryBoxes === false}
                                     value={tradeHistorySettings.tradeHistoryBoxOpacity}
                                     onChange={(event) => updateTradeHistorySetting('tradeHistoryBoxOpacity', Number(event.target.value))}
                                     className="w-full accent-blue-500"

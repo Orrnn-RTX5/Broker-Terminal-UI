@@ -25,6 +25,20 @@ interface GlobalShortcutsProps {
   isOrderPanelOpen: boolean;
 }
 
+const setVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
+  const store = useChartSettingsStore.getState();
+  store.updateGlobalProperty('showTickVolumes', visible);
+  store.updateGlobalProperty('showRealVolumes', false);
+  if (activeSymbol) {
+    store.updateSymbolProperty(activeSymbol, 'showTickVolumes', visible);
+    store.updateSymbolProperty(activeSymbol, 'showRealVolumes', false);
+  }
+  Object.keys(store.symbolProperties).forEach((symbol) => {
+    store.updateSymbolProperty(symbol, 'showTickVolumes', visible);
+    store.updateSymbolProperty(symbol, 'showRealVolumes', false);
+  });
+};
+
 export function GlobalShortcuts({
   onOpenOrderPanel,
   onQuickBuy,
@@ -273,7 +287,8 @@ export function GlobalShortcuts({
       handler: () => {
         showFeedback('Toggle Volumes (Ctrl+K)');
         const store = useChartSettingsStore.getState();
-        store.updateGlobalProperty('showTickVolumes', !store.globalProperties.showTickVolumes);
+        const current = selectedSymbol ? (store.symbolProperties[selectedSymbol] || store.globalProperties) : store.globalProperties;
+        setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), selectedSymbol);
       }
     },
 
@@ -407,7 +422,9 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Toggle Volume (Ctrl+L)');
-        window.dispatchEvent(new CustomEvent('chart-toggle-volume'));
+        const store = useChartSettingsStore.getState();
+        const current = selectedSymbol ? (store.symbolProperties[selectedSymbol] || store.globalProperties) : store.globalProperties;
+        setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), selectedSymbol);
       }
     },
     {
@@ -419,7 +436,9 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Toggle Volume (Ctrl+K)');
-        window.dispatchEvent(new CustomEvent('chart-toggle-volume'));
+        const store = useChartSettingsStore.getState();
+        const current = selectedSymbol ? (store.symbolProperties[selectedSymbol] || store.globalProperties) : store.globalProperties;
+        setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), selectedSymbol);
       }
     },
     {

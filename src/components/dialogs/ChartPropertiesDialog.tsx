@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useChartSettingsStore, ColorScheme } from '../../store/useChartSettingsStore';
+import { useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
 
 interface ChartPropertiesDialogProps {
   isOpen: boolean;
@@ -9,11 +9,63 @@ interface ChartPropertiesDialogProps {
   timeframe: string;
 }
 
+const showOptions = [
+  { key: 'showTicker', label: 'Show ticker' },
+  { key: 'showOHLC', label: 'Show OHLC' },
+  { key: 'showQuickTradingButtons', label: 'Show quick trading buttons' },
+  { key: 'showBidPriceLine', label: 'Show bid price line' },
+  { key: 'showAskPriceLine', label: 'Show ask price line' },
+  { key: 'showLastPriceLine', label: 'Show last price line' },
+  { key: 'showPeriodSeparators', label: 'Show period separators' },
+  { key: 'showGrid', label: 'Show grid' },
+  { key: 'showTickVolumes', label: 'Show tick volumes' },
+  { key: 'showRealVolumes', label: 'Show real volumes' },
+  { key: 'showObjectDescriptions', label: 'Show object descriptions' },
+  { key: 'showTradeLevels', label: 'Show trade levels' },
+  { key: 'showTradeHistory', label: 'Show trade history lines' },
+  { key: 'showTradeHistoryBoxes', label: 'Show trade history boxes' },
+  { key: 'showTradeHistoryArrows', label: 'Show trade history arrows' },
+] as const satisfies ReadonlyArray<{
+  key: keyof Pick<
+    ChartProperties,
+    | 'showTicker'
+    | 'showOHLC'
+    | 'showQuickTradingButtons'
+    | 'showBidPriceLine'
+    | 'showAskPriceLine'
+    | 'showLastPriceLine'
+    | 'showPeriodSeparators'
+    | 'showGrid'
+    | 'showTickVolumes'
+    | 'showRealVolumes'
+    | 'showObjectDescriptions'
+    | 'showTradeLevels'
+    | 'showTradeHistory'
+    | 'showTradeHistoryBoxes'
+    | 'showTradeHistoryArrows'
+  >;
+  label: string;
+}>;
+
 export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ isOpen, onClose, symbol, timeframe }) => {
   const [activeTab, setActiveTab] = useState<'Common' | 'Show' | 'Colors'>('Common');
   
-  const { globalProperties, updateGlobalProperty, updateGlobalColor, applyPresetScheme, resetToDefaults } = useChartSettingsStore();
+  const {
+    globalProperties,
+    symbolProperties,
+    updateGlobalProperty,
+    updateGlobalColor,
+    updateSymbolProperty,
+    applyPresetScheme,
+    resetToDefaults,
+  } = useChartSettingsStore();
   const state = globalProperties;
+  const showState = symbolProperties[symbol] || globalProperties;
+
+  const updateVisibleChartProperty = <K extends keyof ChartProperties>(key: K, value: ChartProperties[K]) => {
+    updateGlobalProperty(key, value);
+    updateSymbolProperty(symbol, key, value);
+  };
 
   if (!isOpen) return null;
 
@@ -90,64 +142,49 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
             <div className="rtx-cp-tab-content flex-1 overflow-y-auto pl-1 pr-2 custom-scrollbar">
               {activeTab === 'Show' && (
                 <div className="grid grid-cols-1 gap-1.5 py-2">
-                  {[
-                    { key: 'showTicker', label: 'Show ticker' },
-                    { key: 'showOHLC', label: 'Show OHLC' },
-                    { key: 'showQuickTradingButtons', label: 'Show quick trading buttons' },
-                    { key: 'showBidPriceLine', label: 'Show bid price line' },
-                    { key: 'showAskPriceLine', label: 'Show ask price line' },
-                    { key: 'showLastPriceLine', label: 'Show last price line' },
-                    { key: 'showPeriodSeparators', label: 'Show period separators' },
-                    { key: 'showGrid', label: 'Show grid' },
-                    { key: 'showTickVolumes', label: 'Show tick volumes' },
-                    { key: 'showRealVolumes', label: 'Show real volumes' },
-                    { key: 'showObjectDescriptions', label: 'Show object descriptions' },
-                    { key: 'showTradeLevels', label: 'Show trade levels' },
-                    { key: 'showTradeHistory', label: 'Show trade history' },
-                    { key: 'showTradeHistoryBoxes', label: 'Show trade history boxes' },
-                  ].map(({ key, label }) => (
+                  {showOptions.map(({ key, label }) => (
                     <label key={key} className="rtx-cp-checkbox-row flex items-center gap-2 cursor-pointer group hover:bg-white/5 px-2 py-0.5 -mx-2 rounded transition-colors">
                       <input 
                         type="checkbox" 
                         className="rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444] cursor-pointer w-3.5 h-3.5" 
-                        checked={state[key as keyof typeof state] as boolean}
+                        checked={showState[key as keyof typeof showState] as boolean}
                         onChange={(e) => {
-                          updateGlobalProperty(key as any, e.target.checked);
+                          updateVisibleChartProperty(key, e.target.checked);
                         }}
                       />
                       <span className="rtx-cp-checkbox-label text-[13px] text-[#ccc] group-hover:text-white transition-colors">{label}</span>
                     </label>
                   ))}
                   <div className="mt-2 space-y-2 border-t border-[#333] pt-2">
-                    <label className={`block px-2 ${!state.showTradeHistory ? 'opacity-50' : ''}`}>
+                    <label className={`block px-2 ${!showState.showTradeHistory ? 'opacity-50' : ''}`}>
                       <div className="mb-1 flex items-center justify-between text-[12px] text-[#ccc]">
                         <span>Trade history line opacity</span>
-                        <span className="font-mono">{state.tradeHistoryLineOpacity}%</span>
+                        <span className="font-mono">{showState.tradeHistoryLineOpacity}%</span>
                       </div>
                       <input
                         type="range"
                         min={0}
                         max={100}
                         step={5}
-                        value={state.tradeHistoryLineOpacity}
-                        disabled={!state.showTradeHistory}
-                        onChange={(e) => updateGlobalProperty('tradeHistoryLineOpacity', Number(e.target.value))}
+                        value={showState.tradeHistoryLineOpacity}
+                        disabled={!showState.showTradeHistory}
+                        onChange={(e) => updateVisibleChartProperty('tradeHistoryLineOpacity', Number(e.target.value))}
                         className="w-full accent-blue-500"
                       />
                     </label>
-                    <label className={`block px-2 ${!state.showTradeHistory || !state.showTradeHistoryBoxes ? 'opacity-50' : ''}`}>
+                    <label className={`block px-2 ${!showState.showTradeHistoryBoxes ? 'opacity-50' : ''}`}>
                       <div className="mb-1 flex items-center justify-between text-[12px] text-[#ccc]">
                         <span>Trade history box opacity</span>
-                        <span className="font-mono">{state.tradeHistoryBoxOpacity}%</span>
+                        <span className="font-mono">{showState.tradeHistoryBoxOpacity}%</span>
                       </div>
                       <input
                         type="range"
                         min={0}
                         max={100}
                         step={5}
-                        value={state.tradeHistoryBoxOpacity}
-                        disabled={!state.showTradeHistory || !state.showTradeHistoryBoxes}
-                        onChange={(e) => updateGlobalProperty('tradeHistoryBoxOpacity', Number(e.target.value))}
+                        value={showState.tradeHistoryBoxOpacity}
+                        disabled={!showState.showTradeHistoryBoxes}
+                        onChange={(e) => updateVisibleChartProperty('tradeHistoryBoxOpacity', Number(e.target.value))}
                         className="w-full accent-blue-500"
                       />
                     </label>

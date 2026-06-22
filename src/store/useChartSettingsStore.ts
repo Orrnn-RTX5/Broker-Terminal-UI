@@ -34,6 +34,7 @@ export interface ChartProperties {
   showTradeLevels: boolean;
   showTradeHistory: boolean;
   showTradeHistoryBoxes: boolean;
+  showTradeHistoryArrows: boolean;
   tradeHistoryLineOpacity: number;
   tradeHistoryBoxOpacity: number;
 
@@ -74,12 +75,13 @@ export const defaultChartProperties: ChartProperties = {
   showLastPriceLine: false,
   showPeriodSeparators: false,
   showGrid: true,
-  showTickVolumes: true,
+  showTickVolumes: false,
   showRealVolumes: false,
   showObjectDescriptions: false,
   showTradeLevels: true,
   showTradeHistory: true,
   showTradeHistoryBoxes: true,
+  showTradeHistoryArrows: true,
   tradeHistoryLineOpacity: 25,
   tradeHistoryBoxOpacity: 40,
 
@@ -101,6 +103,8 @@ export const defaultChartProperties: ChartProperties = {
   },
 };
 
+const VOLUME_BARS_DEFAULT_MIGRATION_VERSION = 1;
+
 export const clampChartOpacityPercent = (value: unknown, fallback: number): number => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
@@ -115,6 +119,7 @@ export const normalizeChartProperties = (properties?: PersistedChartProperties |
   ...defaultChartProperties,
   ...(properties ?? {}),
   showTradeHistoryBoxes: properties?.showTradeHistoryBoxes ?? defaultChartProperties.showTradeHistoryBoxes,
+  showTradeHistoryArrows: properties?.showTradeHistoryArrows ?? defaultChartProperties.showTradeHistoryArrows,
   tradeHistoryLineOpacity: clampChartOpacityPercent(
     properties?.tradeHistoryLineOpacity,
     defaultChartProperties.tradeHistoryLineOpacity,
@@ -142,9 +147,45 @@ const normalizeSymbolProperties = (
   );
 };
 
+const hideVolumeBars = (properties: ChartProperties): ChartProperties => ({
+  ...properties,
+  showTickVolumes: false,
+  showRealVolumes: false,
+});
+
+export const applyVolumeBarsDefaultMigration = (
+  globalProperties: ChartProperties,
+  symbolProperties: Record<string, ChartProperties>,
+  migrationVersion?: number,
+): {
+  globalProperties: ChartProperties;
+  symbolProperties: Record<string, ChartProperties>;
+  volumeBarsDefaultMigrationVersion: number;
+} => {
+  if ((migrationVersion ?? 0) >= VOLUME_BARS_DEFAULT_MIGRATION_VERSION) {
+    return {
+      globalProperties,
+      symbolProperties,
+      volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
+    };
+  }
+
+  return {
+    globalProperties: hideVolumeBars(globalProperties),
+    symbolProperties: Object.fromEntries(
+      Object.entries(symbolProperties).map(([symbol, properties]) => [
+        symbol,
+        hideVolumeBars(properties),
+      ]),
+    ),
+    volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
+  };
+};
+
 interface ChartSettingsState {
   globalProperties: ChartProperties;
   symbolProperties: Record<string, ChartProperties>; // Allow specific overrides per chart symbol
+  volumeBarsDefaultMigrationVersion: number;
 
   updateGlobalProperty: <K extends keyof ChartProperties>(
     key: K,
@@ -168,6 +209,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
     (set) => ({
       globalProperties: { ...defaultChartProperties },
       symbolProperties: {},
+      volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
 
       updateGlobalProperty: (key, value) => {
         set((state) => ({
@@ -251,7 +293,10 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       },
 
       resetToDefaults: () => {
-        set({ globalProperties: { ...defaultChartProperties } });
+        set({
+          globalProperties: { ...defaultChartProperties },
+          volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
+        });
       },
     }),
     {
@@ -259,11 +304,16 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       storage: createJSONStorage(() => localStorage),
       merge: (persisted, current) => {
         const persistedState = persisted as Partial<ChartSettingsState> | undefined;
+        const migrated = applyVolumeBarsDefaultMigration(
+          normalizeChartProperties(persistedState?.globalProperties),
+          normalizeSymbolProperties(persistedState?.symbolProperties),
+          persistedState?.volumeBarsDefaultMigrationVersion,
+        );
+
         return {
           ...current,
           ...persistedState,
-          globalProperties: normalizeChartProperties(persistedState?.globalProperties),
-          symbolProperties: normalizeSymbolProperties(persistedState?.symbolProperties),
+          ...migrated,
         };
       },
     },

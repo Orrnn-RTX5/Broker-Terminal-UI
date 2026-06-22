@@ -57,6 +57,7 @@ import { AccountPanel } from './components/AccountPanel';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { ChartPropertiesDialog } from './components/dialogs/ChartPropertiesDialog';
 import { useConfirmStore } from './store/useConfirmStore';
+import { useChartSettingsStore } from './store/useChartSettingsStore';
 
 // Services
 import { windowManager, type LayoutMode } from './services/windowManager';
@@ -76,6 +77,17 @@ import { useNotificationStore } from './store/useNotificationStore';
 
 // Alerts
 import { useAlertStore } from './store/useAlertStore';
+
+const setChartVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
+  const store = useChartSettingsStore.getState();
+  store.updateGlobalProperty('showTickVolumes', visible);
+  store.updateGlobalProperty('showRealVolumes', false);
+
+  if (activeSymbol) {
+    store.updateSymbolProperty(activeSymbol, 'showTickVolumes', visible);
+    store.updateSymbolProperty(activeSymbol, 'showRealVolumes', false);
+  }
+};
 
 // Helper to get auth headers for fetch
 const getAuthHeaders = (): Record<string, string> => {
@@ -3216,6 +3228,12 @@ function App() {
             onClose={() => setShowIndicatorNavigator(false)}
             initialCategory={indicatorNavCategory}
             onAddIndicator={(indicator: IndicatorInfo) => {
+              if (indicator.category === 'Volume' && indicator.name === 'Volume') {
+                setChartVolumeBarsVisible(true, selectedSymbol || undefined);
+                setShowIndicatorNavigator(false);
+                return;
+              }
+
               commandBus.dispatch({
                 type: 'ADD_INDICATOR',
                 payload: { name: indicator.name, params: indicator.parameters ?? {} }

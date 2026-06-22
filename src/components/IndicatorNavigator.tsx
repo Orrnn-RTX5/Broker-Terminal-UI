@@ -205,10 +205,10 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
         </div>
 
         {/* Category Tabs */}
-        <div className="flex gap-2 px-4 py-2 border-b border-zinc-800 overflow-x-auto">
+        <div className="flex flex-wrap gap-2 px-4 py-2 border-b border-zinc-800 overflow-visible">
           <button
             onClick={() => setSelectedCategory(null)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === null
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium leading-none transition-colors ${selectedCategory === null
                 ? 'bg-emerald-500/20 text-emerald-400'
                 : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
               }`}
@@ -219,7 +219,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
             <button
               key={category}
               onClick={() => setSelectedCategory(category)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${selectedCategory === category
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium leading-none transition-colors ${selectedCategory === category
                   ? 'bg-emerald-500/20 text-emerald-400'
                   : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
                 }`}
@@ -280,7 +280,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
                           }}
                           className="ml-2 px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs rounded transition-colors"
                         >
-                          Add
+                          {indicator.id === 'volume' ? 'Enable' : 'Add'}
                         </button>
                       </div>
                     </div>

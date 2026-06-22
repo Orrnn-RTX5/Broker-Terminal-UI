@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyVolumeBarsDefaultMigration,
   clampChartOpacityPercent,
   defaultChartProperties,
   normalizeChartProperties,
 } from './useChartSettingsStore';
 
 describe('chart settings trade history overlay defaults', () => {
+  it('hides chart volume bars by default', () => {
+    expect(defaultChartProperties.showTickVolumes).toBe(false);
+    expect(defaultChartProperties.showRealVolumes).toBe(false);
+  });
+
   it('keeps closed trade history overlays visible by default with reduced clutter opacity', () => {
     expect(defaultChartProperties.showTradeHistory).toBe(true);
     expect(defaultChartProperties.showTradeHistoryBoxes).toBe(true);
+    expect(defaultChartProperties.showTradeHistoryArrows).toBe(true);
     expect(defaultChartProperties.tradeHistoryLineOpacity).toBe(25);
     expect(defaultChartProperties.tradeHistoryBoxOpacity).toBe(40);
   });
@@ -24,11 +31,58 @@ describe('chart settings trade history overlay defaults', () => {
     const normalized = normalizeChartProperties(oldPersistedProperties);
 
     expect(normalized.showTradeHistory).toBe(false);
+    expect(normalized.showTickVolumes).toBe(false);
+    expect(normalized.showRealVolumes).toBe(false);
     expect(normalized.showTradeHistoryBoxes).toBe(true);
+    expect(normalized.showTradeHistoryArrows).toBe(true);
     expect(normalized.tradeHistoryLineOpacity).toBe(25);
     expect(normalized.tradeHistoryBoxOpacity).toBe(40);
     expect(normalized.colors.background).toBe('#101010');
     expect(normalized.colors.foreground).toBe(defaultChartProperties.colors.foreground);
+  });
+
+  it('migrates old persisted visible volume bars to hidden once', () => {
+    const oldPersistedProperties = normalizeChartProperties({
+      showTickVolumes: true,
+      showRealVolumes: true,
+    });
+
+    const migrated = applyVolumeBarsDefaultMigration(
+      oldPersistedProperties,
+      { XAUUSD: oldPersistedProperties },
+      undefined,
+    );
+
+    expect(migrated.globalProperties.showTickVolumes).toBe(false);
+    expect(migrated.globalProperties.showRealVolumes).toBe(false);
+    expect(migrated.symbolProperties.XAUUSD.showTickVolumes).toBe(false);
+    expect(migrated.symbolProperties.XAUUSD.showRealVolumes).toBe(false);
+  });
+
+  it('preserves visible volume preference after volume default migration has run', () => {
+    const migratedProperties = normalizeChartProperties({
+      showTickVolumes: true,
+      showRealVolumes: false,
+    });
+
+    const migrated = applyVolumeBarsDefaultMigration(
+      migratedProperties,
+      {},
+      1,
+    );
+
+    expect(migrated.globalProperties.showTickVolumes).toBe(true);
+    expect(migrated.globalProperties.showRealVolumes).toBe(false);
+  });
+
+  it('normalizes explicit visible volume settings before migration', () => {
+    const normalized = normalizeChartProperties({
+      showTickVolumes: true,
+      showRealVolumes: false,
+    });
+
+    expect(normalized.showTickVolumes).toBe(true);
+    expect(normalized.showRealVolumes).toBe(false);
   });
 
   it('clamps persisted opacity values into slider range', () => {

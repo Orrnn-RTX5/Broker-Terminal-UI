@@ -22,6 +22,20 @@ interface MenuItem {
     scrollableChildren?: boolean;
 }
 
+const setVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
+    const store = useChartSettingsStore.getState();
+    store.updateGlobalProperty('showTickVolumes', visible);
+    store.updateGlobalProperty('showRealVolumes', false);
+    if (activeSymbol) {
+        store.updateSymbolProperty(activeSymbol, 'showTickVolumes', visible);
+        store.updateSymbolProperty(activeSymbol, 'showRealVolumes', false);
+    }
+    Object.keys(store.symbolProperties).forEach((symbol) => {
+        store.updateSymbolProperty(symbol, 'showTickVolumes', visible);
+        store.updateSymbolProperty(symbol, 'showRealVolumes', false);
+    });
+};
+
 export const MenuBar = () => {
     const { t, i18n } = useTranslation();
     const { theme, setTheme } = useTheme();
@@ -57,6 +71,7 @@ export const MenuBar = () => {
     const [availableSymbols, setAvailableSymbols] = useState<any[]>([]);
     const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
     const isAuthenticated = useAppStore(state => state.isAuthenticated);
+    const selectedSymbol = useAppStore(state => state.selectedSymbol);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -306,8 +321,7 @@ export const MenuBar = () => {
             { label: t('menu.charts.grid'), shortcut: 'Ctrl+G', icon: <Icon name="grid-3x3" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('showGrid', !s.globalProperties.showGrid); setActiveMenu(null); } },
             { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('chartAutoScroll', !s.globalProperties.chartAutoScroll); setActiveMenu(null); } },
             { label: t('menu.charts.chartShift'), icon: <Icon name="chart-shift" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); const next = !s.globalProperties.chartShift; s.updateGlobalProperty('chartShift', next); window.dispatchEvent(new CustomEvent('rtx:chartShift', { detail: { enabled: next } })); setActiveMenu(null); } },
-            { label: t('menu.charts.volumes'), shortcut: 'Ctrl+L', icon: <Icon name="bar-chart-3" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('showTickVolumes', !s.globalProperties.showTickVolumes); setActiveMenu(null); } },
-            { label: t('menu.charts.tickVolumes') },
+            { label: t('menu.charts.volumes'), shortcut: 'Ctrl+K', icon: <Icon name="bar-chart-3" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); const current = selectedSymbol ? (s.symbolProperties[selectedSymbol] || s.globalProperties) : s.globalProperties; setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), selectedSymbol); setActiveMenu(null); } },
             { divider: true, label: '' },
             { label: t('menu.charts.zoomIn'), shortcut: '+', action: () => { commandBus.dispatch({ type: 'ZOOM_IN', payload: {} }); setActiveMenu(null); } },
             { label: t('menu.charts.zoomOut'), shortcut: '-', action: () => { commandBus.dispatch({ type: 'ZOOM_OUT', payload: {} }); setActiveMenu(null); } },

@@ -124,6 +124,7 @@ const TRADE_LEVEL_BADGE_LEFT_INSET_PX = 10;
 const TRADE_LEVEL_BADGE_STACK_OFFSET_PX = 76;
 const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
 const REALTIME_SCROLL_THRESHOLD_BARS = 2;
+const LIVE_CHART_UPDATE_INTERVAL_MS = 50;
 const TRANSPARENT_CHART_LINE = 'rgba(0, 0, 0, 0)';
 
 const parseCssColor = (value: string): { r: number; g: number; b: number } | null => {
@@ -699,6 +700,7 @@ export const TradingChart = React.memo(function TradingChart({
   const livePriceLineRef = useRef<HTMLDivElement | null>(null);
   const livePriceBadgeRef = useRef<HTMLDivElement | null>(null);
   const livePriceRef = useRef<number | null>(null);
+  const livePriceRepaintFrameRef = useRef<number | null>(null);
   const leftVisibleTimeRef = useRef<number | null>(null);
   const lastAcceptedQuoteRef = useRef<number | null>(null);
   const incompatibleQuoteCountRef = useRef(0);
@@ -735,6 +737,10 @@ export const TradingChart = React.memo(function TradingChart({
 
   const hideLivePriceOverlay = useCallback((clearPrice = true) => {
     if (clearPrice) livePriceRef.current = null;
+    if (livePriceRepaintFrameRef.current !== null && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(livePriceRepaintFrameRef.current);
+      livePriceRepaintFrameRef.current = null;
+    }
     if (livePriceLineRef.current) {
       livePriceLineRef.current.style.display = 'none';
       livePriceLineRef.current.style.top = '-9999px';
@@ -772,33 +778,35 @@ export const TradingChart = React.memo(function TradingChart({
     badge.style.display = 'block';
   }, [symbol]);
 
-  const renderLivePriceOverlay = useCallback((livePrice: number, activeCandleTime?: number, directionClose?: number) => {
-    livePriceRef.current = livePrice;
-
-    if (!livePriceLineRef.current || !livePriceBadgeRef.current || !seriesRef.current) return;
-
-    const y = seriesRef.current.priceToCoordinate(livePrice);
-    if (y === null || y === undefined) {
-      hideLivePriceOverlay(false);
-      return;
-    }
-
-    const scaleW = seriesRef.current.priceScale().width();
-    paintLivePriceOverlay(livePrice, y, scaleW, activeCandleTime, directionClose);
-  }, [hideLivePriceOverlay, paintLivePriceOverlay]);
-
   const repaintLivePriceOverlayFromCurrentPrice = useCallback((activeCandle: Candle) => {
-    const livePrice = livePriceRef.current;
-    if (livePrice === null || !livePriceLineRef.current || !livePriceBadgeRef.current || !seriesRef.current) return;
+    const livePrice = Number(activeCandle.close);
+    if (!Number.isFinite(livePrice) || !livePriceLineRef.current || !livePriceBadgeRef.current || !seriesRef.current) return;
 
-    const y = seriesRef.current.priceToCoordinate(livePrice);
-    if (y === null || y === undefined) {
-      hideLivePriceOverlay(false);
-      return;
+    const paint = () => {
+      if (isDisposedRef.current || !livePriceLineRef.current || !livePriceBadgeRef.current || !seriesRef.current) return;
+
+      livePriceRef.current = livePrice;
+      const y = seriesRef.current.priceToCoordinate(livePrice);
+      if (y === null || y === undefined) {
+        hideLivePriceOverlay(false);
+        return;
+      }
+
+      const scaleW = seriesRef.current.priceScale().width();
+      paintLivePriceOverlay(livePrice, y, scaleW, activeCandle.time, activeCandle.close);
+    };
+
+    paint();
+
+    if (typeof window !== 'undefined') {
+      if (livePriceRepaintFrameRef.current !== null) {
+        window.cancelAnimationFrame(livePriceRepaintFrameRef.current);
+      }
+      livePriceRepaintFrameRef.current = window.requestAnimationFrame(() => {
+        livePriceRepaintFrameRef.current = null;
+        paint();
+      });
     }
-
-    const scaleW = seriesRef.current.priceScale().width();
-    paintLivePriceOverlay(livePrice, y, scaleW, activeCandle.time, activeCandle.close);
   }, [hideLivePriceOverlay, paintLivePriceOverlay]);
 
   const resetEmptyHistoryState = useCallback((activeTf: Timeframe) => {
@@ -2233,7 +2241,7 @@ export const TradingChart = React.memo(function TradingChart({
     // (Local clock boundary pollers removed because they broke sequence synchronicity with the broker)
     scheduleBoundaryTimerRef.current = () => { /* no-op: tick loop handles it natively */ };
 
-    // ── Main tick polling loop (100ms) ─────────────────────────────────────────
+    // ── Main tick polling loop ─────────────────────────────────────────
     const interval = setInterval(() => {
       if (isDisposedRef.current || isRebuildingRef.current || !seriesRef.current) return;
       const activeTf = prevTimeframeRef.current || timeframe;
@@ -2320,17 +2328,6 @@ export const TradingChart = React.memo(function TradingChart({
       lastTickKey = key;
 
       // ── Update live price DOM line + badge ──
-      if (livePriceLineRef.current && livePriceBadgeRef.current && seriesRef.current) {
-        const y = seriesRef.current.priceToCoordinate(price);
-        if (y !== null && y !== undefined) {
-          livePriceRef.current = price;
-
-          // Match exact price-scale width so badge overlays the axis labels 1:1
-          const scaleW = seriesRef.current.priceScale().width();
-          paintLivePriceOverlay(price, y, scaleW, candleTime, price);
-        }
-      }
-
 
       // ── Candle rollover or update ──────────────────────────────────────────
       if (!currentCandleRef.current) {
@@ -2369,7 +2366,9 @@ export const TradingChart = React.memo(function TradingChart({
 
       // Refresh after candle creation/update so the first live-only tick has a
       // price scale before we ask LightweightCharts for a coordinate.
-      renderLivePriceOverlay(price, candleTime, price);
+      if (currentCandleRef.current) {
+        repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+      }
 
       // Backend/broker owns SL/TP execution. The frontend only refreshes server
       // state when local ticks show a crossed level.
@@ -2413,7 +2412,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       // Keep aggregation service in sync (for higher-TF panels).
       candleAggregationService.processTick({ symbol, bid: tick.bid, ask: tick.ask ?? tick.bid, timestamp: ts * 1000, volume: 1 });
-    }, 100);
+    }, LIVE_CHART_UPDATE_INTERVAL_MS);
 
     // ── FIX WebSocket: server-confirmed completed candles ──────────────────────
     const applyServerCandle = (c: Candle) => {
@@ -3877,6 +3876,8 @@ export const TradingChart = React.memo(function TradingChart({
       const showTradeLevels = chartProperties.showTradeLevels !== false;
       const showTradeHistory = chartProperties.showTradeHistory !== false;
       const showTradeHistoryBoxes = chartProperties.showTradeHistoryBoxes !== false;
+      const showTradeHistoryArrows = chartProperties.showTradeHistoryArrows !== false;
+      const showAnyTradeHistoryOverlay = showTradeHistory || showTradeHistoryBoxes || showTradeHistoryArrows;
       const tradeHistoryLineOpacityPercent = clampChartOpacityPercent(
         chartProperties.tradeHistoryLineOpacity,
         defaultChartProperties.tradeHistoryLineOpacity,
@@ -4138,7 +4139,7 @@ export const TradingChart = React.memo(function TradingChart({
         return hasVisibleSpan && canResolveOverlayTime(trade.entryTime) && canResolveOverlayTime(trade.exitTime);
       };
 
-      if (showTradeHistory) {
+      if (showAnyTradeHistoryOverlay) {
         getTradeOverlayOptimisticClosedSnapshots(normalizedChartSymbol).forEach((trade) => {
           if (rawActiveTradeKeys.has(trade.key)) {
             forgetTradeOverlayOptimisticClosedSnapshot(trade.key);
@@ -4193,7 +4194,7 @@ export const TradingChart = React.memo(function TradingChart({
             ].join(':');
           }).join('|')
         : '';
-      const closedSignature = showTradeHistory
+      const closedSignature = showAnyTradeHistoryOverlay
         ? Array.from(closedTrades.values())
           .sort((a, b) => a.key.localeCompare(b.key))
           .map((trade) => [
@@ -4216,8 +4217,9 @@ export const TradingChart = React.memo(function TradingChart({
       const nextHistorySignature = [
         normalizedChartSymbol,
         timeframe,
-        showTradeHistory ? 'history:on' : 'history:off',
+        showTradeHistory ? 'history-lines:on' : 'history-lines:off',
         showTradeHistoryBoxes ? 'boxes:on' : 'boxes:off',
+        showTradeHistoryArrows ? 'arrows:on' : 'arrows:off',
         `line-opacity:${tradeHistoryLineOpacityPercent}`,
         `box-opacity:${tradeHistoryBoxOpacityPercent}`,
         closedSignature,
@@ -4313,17 +4315,23 @@ export const TradingChart = React.memo(function TradingChart({
         clearTradeOverlayLayer('history');
         lastHistoryTradeOverlaySignatureRef.current = nextHistorySignature;
 
-        if (showTradeHistory) {
+        if (showAnyTradeHistoryOverlay) {
           closedTrades.forEach((trade) => {
             const entryColor = getEntryColor(trade.side);
             const exitSide: TradeSide = trade.side === 'BUY' ? 'SELL' : 'BUY';
             const ticketLabel = getTradeTicketLabel(trade.key);
-            createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', 'history', trade.exitPrice, trade.exitTime, undefined, undefined, tradeHistoryLineOpacity);
-            createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} ${ticketLabel} @ ${trade.entryPrice.toFixed(digits)}`.trim(), entryColor, 'history', tradeHistoryLineOpacity);
+            if (showTradeHistory) {
+              createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', 'history', trade.exitPrice, trade.exitTime, undefined, undefined, tradeHistoryLineOpacity);
+            }
+            if (showTradeHistoryArrows) {
+              createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} ${ticketLabel} @ ${trade.entryPrice.toFixed(digits)}`.trim(), entryColor, 'history', 1);
+            }
             if (showTradeHistoryBoxes) {
               createTradeHistoryLabel(trade.side, trade.entryPrice, trade.entryTime, entryColor, 'history', tradeHistoryBoxOpacity, ticketLabel);
             }
-            createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} ${ticketLabel} @ ${trade.exitPrice.toFixed(digits)}`.trim(), getExitColor(trade.side), 'history', tradeHistoryLineOpacity);
+            if (showTradeHistoryArrows) {
+              createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} ${ticketLabel} @ ${trade.exitPrice.toFixed(digits)}`.trim(), getExitColor(trade.side), 'history', 1);
+            }
             if (showTradeHistoryBoxes) {
               createTradeHistoryLabel(exitSide, trade.exitPrice, trade.exitTime, getExitColor(trade.side), 'history', tradeHistoryBoxOpacity, ticketLabel);
             }
@@ -4367,6 +4375,7 @@ export const TradingChart = React.memo(function TradingChart({
         currentProperties.showTradeLevels !== previousProperties.showTradeLevels
         || currentProperties.showTradeHistory !== previousProperties.showTradeHistory
         || currentProperties.showTradeHistoryBoxes !== previousProperties.showTradeHistoryBoxes
+        || currentProperties.showTradeHistoryArrows !== previousProperties.showTradeHistoryArrows
         || currentProperties.tradeHistoryLineOpacity !== previousProperties.tradeHistoryLineOpacity
         || currentProperties.tradeHistoryBoxOpacity !== previousProperties.tradeHistoryBoxOpacity
       ) {
@@ -4998,9 +5007,14 @@ export const TradingChart = React.memo(function TradingChart({
   }, []);
 
   const handleCtxToggleVolumes = useCallback(() => {
-    const currentVols = useChartSettingsStore.getState().globalProperties.showTickVolumes;
-    useChartSettingsStore.getState().updateGlobalProperty('showTickVolumes', !currentVols);
-  }, []);
+    const store = useChartSettingsStore.getState();
+    const currentProperties = store.symbolProperties[symbol] || store.globalProperties;
+    const next = !(currentProperties.showTickVolumes || currentProperties.showRealVolumes);
+    store.updateGlobalProperty('showTickVolumes', next);
+    store.updateGlobalProperty('showRealVolumes', false);
+    store.updateSymbolProperty(symbol, 'showTickVolumes', next);
+    store.updateSymbolProperty(symbol, 'showRealVolumes', false);
+  }, [symbol]);
 
   const handleCtxToggleAutoScroll = useCallback(() => {
     setCtxAutoScroll(prev => {
@@ -5919,7 +5933,7 @@ export const TradingChart = React.memo(function TradingChart({
         currentTimeframe={prevTimeframeRef.current || timeframe}
         oneClickTrading={showOneClick}
         showGrid={chartSettings.showGrid}
-        showVolumes={chartSettings.showTickVolumes}
+        showVolumes={chartSettings.showTickVolumes || chartSettings.showRealVolumes}
         autoScroll={ctxAutoScroll}
         chartShift={ctxChartShift}
         showTradeLevels={ctxShowTradeLevels}
@@ -5957,7 +5971,7 @@ export const TradingChart = React.memo(function TradingChart({
           chartType: localChartType,
           timeframe: timeframe,
           showGrid: chartSettings.showGrid,
-          showVolumes: chartSettings.showTickVolumes,
+          showVolumes: chartSettings.showTickVolumes || chartSettings.showRealVolumes,
           indicators: [], // Should be real indicators
           drawingTools: [],
           colors: { background: '#0e0e12', grid: '#222226', candle: { up: '#00c896', down: '#ff4d4f', border: '#378658' }, volume: { up: '#00c896', down: '#ff4d4f' } }

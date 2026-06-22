@@ -7,6 +7,117 @@ import { LoginDialog } from '../LoginDialog';
 import { ChangePasswordDialog } from '../ChangePasswordDialog';
 import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
+import { brokerV2Api } from '../../api/trade';
+import { RTX5_API_URL, normalizeServerUrl } from '../../config/api';
+import type { Broker, BrokerServer } from '../../types/api';
+
+type BrokerLogoInfo = {
+    logoUrl: string;
+    baseCandidates: string[];
+    brokerName: string;
+};
+
+const normalizeNavigatorText = (value: unknown): string => String(value || '').trim();
+
+const getStoredNavigatorValue = (key: string): string => {
+    if (typeof window === 'undefined') return '';
+    return normalizeNavigatorText(localStorage.getItem(key));
+};
+
+const normalizeLogoBaseUrl = (value: unknown): string => {
+    const normalized = normalizeServerUrl(normalizeNavigatorText(value));
+    return normalized.replace(/\/api\/v\d+\/?$/i, '').replace(/\/$/, '');
+};
+
+const resolveNavigatorLogoUrl = (url: string, baseCandidates: string[]): string => {
+    const rawUrl = normalizeNavigatorText(url);
+    if (!rawUrl) return '';
+    if (/^(?:https?:|data:|blob:)/i.test(rawUrl) || rawUrl.startsWith('./')) {
+        return rawUrl;
+    }
+
+    const base = [
+        ...baseCandidates,
+        getStoredNavigatorValue('server_url'),
+        getStoredNavigatorValue('backend_url'),
+        RTX5_API_URL,
+    ].map(normalizeLogoBaseUrl).find(Boolean);
+    if (!base) return rawUrl;
+
+    const path = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
+    return `${base}${path}`;
+};
+
+const matchesBrokerServer = (server: BrokerServer, serverName: string): boolean => {
+    const target = normalizeNavigatorText(serverName).toLowerCase();
+    if (!target) return false;
+
+    return [
+        server.server,
+        server.server_url,
+        server.backend_url,
+        server.market_api_url,
+        server.broker_id,
+        server.broker_name,
+    ].some((value) => normalizeNavigatorText(value).toLowerCase() === target);
+};
+
+const matchesCurrentStoredBroker = (serverName: string): boolean => {
+    const target = normalizeNavigatorText(serverName).toLowerCase();
+    if (!target) return false;
+
+    return [
+        'rtx_broker_server',
+        'server_url',
+        'backend_url',
+        'market_api_url',
+        'broker_id',
+        'rtx_broker_id',
+        'broker_name',
+    ].some((key) => getStoredNavigatorValue(key).toLowerCase() === target);
+};
+
+const getStoredBrokerLogoInfo = (serverName: string): BrokerLogoInfo | null => {
+    const logoUrl = getStoredNavigatorValue('logo_url');
+    if (!logoUrl || !matchesCurrentStoredBroker(serverName)) return null;
+
+    return {
+        logoUrl,
+        brokerName: getStoredNavigatorValue('broker_name') || serverName,
+        baseCandidates: [
+            getStoredNavigatorValue('server_url'),
+            getStoredNavigatorValue('backend_url'),
+            getStoredNavigatorValue('market_api_url'),
+        ],
+    };
+};
+
+const buildBrokerLogoInfo = (
+    serverName: string,
+    servers: BrokerServer[],
+    brokers: Broker[],
+): BrokerLogoInfo | null => {
+    const matchedServer = servers.find((server) => matchesBrokerServer(server, serverName));
+    if (!matchedServer) return getStoredBrokerLogoInfo(serverName);
+
+    const matchedBroker = matchedServer.broker_id
+        ? brokers.find((broker) => broker.broker_id === matchedServer.broker_id)
+        : undefined;
+    const logoUrl = normalizeNavigatorText(matchedServer.logo_url) || normalizeNavigatorText(matchedBroker?.logo_url);
+    if (!logoUrl) return getStoredBrokerLogoInfo(serverName);
+
+    return {
+        logoUrl,
+        brokerName: normalizeNavigatorText(matchedServer.broker_name)
+            || normalizeNavigatorText(matchedBroker?.name)
+            || serverName,
+        baseCandidates: [
+            matchedServer.server_url || '',
+            matchedServer.backend_url || '',
+            matchedServer.market_api_url || '',
+        ],
+    };
+};
 
 export const NavigatorPanel: React.FC = () => {
     const accountId = useAppStore(state => state.accountId);
@@ -20,6 +131,7 @@ export const NavigatorPanel: React.FC = () => {
     const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
     const [selectedAccountForPassword, setSelectedAccountForPassword] = useState<SavedAccount | null>(null);
     const [switchingLogin] = useState<number | null>(null);
+    const [brokerLogos, setBrokerLogos] = useState<Record<string, BrokerLogoInfo>>({});
 
     useEffect(() => {
         localStorage.removeItem('rtx_saved_password');
@@ -31,6 +143,50 @@ export const NavigatorPanel: React.FC = () => {
 
     // Group accounts by server
     const servers = Array.from(new Set(savedAccounts.map(a => a.server)));
+    const serverNamesForLogos = servers.length > 0 ? servers : [getStoredBrokerServer()];
+    const serverLogoKey = serverNamesForLogos.join('\u001f');
+
+    useEffect(() => {
+        let active = true;
+        const serverNames = serverNamesForLogos.map(normalizeNavigatorText).filter(Boolean);
+
+        setBrokerLogos((current) => {
+            const next = { ...current };
+            serverNames.forEach((serverName) => {
+                const storedLogo = getStoredBrokerLogoInfo(serverName);
+                if (storedLogo) next[serverName] = storedLogo;
+            });
+            return next;
+        });
+
+        const loadBrokerLogos = async () => {
+            try {
+                const [brokerServers, brokersData] = await Promise.all([
+                    brokerV2Api.getServers().catch(() => []),
+                    brokerV2Api.getBrokers().catch(() => ({ brokers: [], count: 0 })),
+                ]);
+                if (!active) return;
+
+                const brokers = brokersData?.brokers || [];
+                setBrokerLogos((current) => {
+                    const next = { ...current };
+                    serverNames.forEach((serverName) => {
+                        const logoInfo = buildBrokerLogoInfo(serverName, brokerServers, brokers);
+                        if (logoInfo) next[serverName] = logoInfo;
+                    });
+                    return next;
+                });
+            } catch (error) {
+                console.error('[NavigatorPanel] Failed to load broker logos:', error);
+            }
+        };
+
+        loadBrokerLogos();
+
+        return () => {
+            active = false;
+        };
+    }, [serverLogoKey]);
 
     const handleLoginToAccount = (acc?: SavedAccount) => {
         if (acc) {
@@ -123,7 +279,7 @@ export const NavigatorPanel: React.FC = () => {
                                 <TreeItem
                                     key={serverName}
                                     label={serverName}
-                                    icon={<Icon name="server" size="sm" className="text-amber-400" />}
+                                    icon={<BrokerServerIcon serverName={serverName} logoInfo={brokerLogos[serverName]} />}
                                     defaultOpen
                                     isLast={isLastServer && savedAccounts.length > 0}
                                 >
@@ -156,7 +312,13 @@ export const NavigatorPanel: React.FC = () => {
                         {savedAccounts.length === 0 && (
                             <TreeItem
                                 label={getStoredBrokerServer()}
-                                icon={<Icon name="server" size="sm" className="text-zinc-400" />}
+                                icon={
+                                    <BrokerServerIcon
+                                        serverName={getStoredBrokerServer()}
+                                        logoInfo={brokerLogos[getStoredBrokerServer()]}
+                                        muted
+                                    />
+                                }
                                 defaultOpen
                                 isLast
                             >
@@ -229,6 +391,39 @@ export const NavigatorPanel: React.FC = () => {
         </div>
     );
 };
+
+function BrokerServerIcon({
+    serverName,
+    logoInfo,
+    muted = false,
+}: {
+    serverName: string;
+    logoInfo?: BrokerLogoInfo;
+    muted?: boolean;
+}) {
+    const [hasError, setHasError] = useState(false);
+    const logoUrl = logoInfo?.logoUrl || '';
+
+    useEffect(() => {
+        setHasError(false);
+    }, [serverName, logoUrl]);
+
+    if (logoInfo && logoUrl && !hasError) {
+        const logoSrc = resolveNavigatorLogoUrl(logoUrl, logoInfo.baseCandidates);
+        if (logoSrc) {
+            return (
+                <img
+                    src={logoSrc}
+                    alt={`${logoInfo.brokerName || serverName} Logo`}
+                    className={`inline-block h-[14px] w-[14px] flex-shrink-0 rounded-sm object-contain ${muted ? 'opacity-70' : ''}`}
+                    onError={() => setHasError(true)}
+                />
+            );
+        }
+    }
+
+    return <Icon name="server" size="sm" className={muted ? 'text-zinc-400' : 'text-amber-400'} />;
+}
 
 /** MT5-style account icon - person silhouette with color */
 function AccountIcon({ isActive, isLive }: { isActive: boolean; isLive: boolean }) {
