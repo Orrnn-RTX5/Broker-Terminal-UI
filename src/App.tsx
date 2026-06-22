@@ -31,7 +31,10 @@ import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
 import { accountV2Api, marketV2Api, tradingV2Api } from './api/trade';
 import { tradeGatewayApi } from './api/tradeGateway';
-import { dispatchTradeOverlayCloseState } from './services/tradeOverlayHistory';
+import {
+  dispatchTradeOverlayCloseState,
+  type TradeOverlayCloseSnapshotPayload,
+} from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
 import { formatOrderError } from './utils/orderError';
 import { OneClickTrading } from './components/OneClickTrading';
@@ -460,6 +463,64 @@ const getLivePositionPnL = (position: Position, tick?: Tick): number => {
 
   const priceDiff = position.side === 'BUY' ? (livePrice - openPrice) : (openPrice - livePrice);
   return priceDiff * volume * multiplier;
+};
+
+const normalizeCloseSnapshotSide = (side: string): 'BUY' | 'SELL' =>
+  String(side ?? '').trim().toUpperCase().includes('SELL') ? 'SELL' : 'BUY';
+
+const getTradeExitPriceFromQuote = (
+  tick: Tick | undefined,
+  side: 'BUY' | 'SELL',
+): number | null => {
+  if (!tick) return null;
+
+  const bid = Number(tick.bid);
+  const ask = Number(tick.ask);
+  const last = Number(tick.last);
+
+  if (side === 'BUY') {
+    if (Number.isFinite(bid) && bid > 0) return bid;
+    if (Number.isFinite(ask) && ask > 0) return ask;
+    return Number.isFinite(last) && last > 0 ? last : null;
+  }
+
+  if (Number.isFinite(ask) && ask > 0) return ask;
+  if (Number.isFinite(bid) && bid > 0) return bid;
+  return Number.isFinite(last) && last > 0 ? last : null;
+};
+
+const buildTradeOverlayCloseSnapshots = (positions: readonly Position[]): TradeOverlayCloseSnapshotPayload[] => {
+  if (positions.length === 0) return [];
+
+  const { ticks, tickLookup } = useAppStore.getState();
+  const closeTime = Date.now();
+
+  return positions.flatMap((position): TradeOverlayCloseSnapshotPayload[] => {
+    const side = normalizeCloseSnapshotSide(position.side);
+    const tick = resolveTickFromLookup(ticks, tickLookup, position.symbol);
+    const entryPrice = Number(position.chartEntryPrice || position.openPrice || 0);
+    const entryTime = position.chartEntryTime || position.openTime;
+    const exitPrice = getTradeExitPriceFromQuote(tick, side)
+      ?? (Number(position.currentPrice) > 0 ? Number(position.currentPrice) : 0);
+
+    if (!position.id || !position.symbol || !(entryPrice > 0) || !entryTime || !(exitPrice > 0)) {
+      return [];
+    }
+
+    return [{
+      ticketId: position.id,
+      symbol: position.symbol,
+      side,
+      volume: position.volume,
+      entryPrice,
+      entryTime,
+      exitPrice,
+      exitTime: closeTime,
+      currentPrice: exitPrice,
+      closeTime,
+      profit: getLivePositionPnL(position, tick),
+    }];
+  });
 };
 
 const normalizeAccountSummary = (payload: unknown, prev?: Account | null): Account => {
@@ -1572,8 +1633,11 @@ function App() {
     }
     closingTicketsRef.current.add(id);
 
+    const closeSnapshots = buildTradeOverlayCloseSnapshots(
+      useAppStore.getState().positions.filter((position) => position.id === id) as Position[],
+    );
     markLocalTradeMutation([id]);
-    dispatchTradeOverlayCloseState([id], 'pending');
+    dispatchTradeOverlayCloseState([id], 'pending', { snapshots: closeSnapshots });
     // Optimistically remove from the app store immediately.
     useAppStore.getState().setPositions(useAppStore.getState().positions.filter(p => p.id !== id));
     // Trigger close sound
@@ -1582,7 +1646,7 @@ function App() {
     try {
       await api.positions.closePosition(String(id));
       markLocalTradeMutation();
-      dispatchTradeOverlayCloseState([id], 'confirmed');
+      dispatchTradeOverlayCloseState([id], 'confirmed', { snapshots: closeSnapshots });
       const loginId = getLiveTradingLogin() || undefined;
       refreshPositions(loginId, { allowWsCommit: true });
       if (loginId) {
@@ -1632,14 +1696,17 @@ function App() {
     if (!confirm(`Close ${type} positions?`)) return;
 
     let optimisticTicketIds: number[] = [];
+    let optimisticCloseSnapshots: TradeOverlayCloseSnapshotPayload[] = [];
     try {
       const accId = parsePositiveInt(accountId);
       if (!accId) return;
 
       if (type === 'ALL' && !symbol) {
-        optimisticTicketIds = useAppStore.getState().positions.map((position) => position.id);
+        const positionsToClose = useAppStore.getState().positions as Position[];
+        optimisticTicketIds = positionsToClose.map((position) => position.id);
+        optimisticCloseSnapshots = buildTradeOverlayCloseSnapshots(positionsToClose);
         markLocalTradeMutation(optimisticTicketIds);
-        dispatchTradeOverlayCloseState(optimisticTicketIds, 'pending');
+        dispatchTradeOverlayCloseState(optimisticTicketIds, 'pending', { snapshots: optimisticCloseSnapshots });
         useAppStore.getState().setPositions([]);
         await accountV2Api.closeAllPositions(accId);
       } else {
@@ -1653,14 +1720,15 @@ function App() {
         });
 
         optimisticTicketIds = candidates.map((position) => position.id);
+        optimisticCloseSnapshots = buildTradeOverlayCloseSnapshots(candidates);
         markLocalTradeMutation(optimisticTicketIds);
-        dispatchTradeOverlayCloseState(optimisticTicketIds, 'pending');
+        dispatchTradeOverlayCloseState(optimisticTicketIds, 'pending', { snapshots: optimisticCloseSnapshots });
         useAppStore.getState().setPositions(useAppStore.getState().positions.filter((position) => !optimisticTicketIds.includes(position.id)));
         await Promise.all(candidates.map((position) => tradingV2Api.closePosition(position.id)));
       }
 
       markLocalTradeMutation();
-      dispatchTradeOverlayCloseState(optimisticTicketIds, 'confirmed');
+      dispatchTradeOverlayCloseState(optimisticTicketIds, 'confirmed', { snapshots: optimisticCloseSnapshots });
       refreshPositions(accId, { allowWsCommit: true });
       refreshOrdersAndHistory(accId).catch(err => console.error('[Trade] Failed to refresh orders/history after bulk close:', err));
     } catch (err) {
@@ -2264,13 +2332,16 @@ function App() {
     }
     // Trigger close sound
     import('./utils/audio').then(m => m.playSystemSound('close'));
+    const closeSnapshots = buildTradeOverlayCloseSnapshots(
+      useAppStore.getState().positions.filter((position) => position.id === tradeId) as Position[],
+    );
     markLocalTradeMutation([tradeId]);
-    dispatchTradeOverlayCloseState([tradeId], 'pending');
+    dispatchTradeOverlayCloseState([tradeId], 'pending', { snapshots: closeSnapshots });
     useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== tradeId));
     try {
       await api.positions.closePosition(String(tradeId));
       markLocalTradeMutation();
-      dispatchTradeOverlayCloseState([tradeId], 'confirmed');
+      dispatchTradeOverlayCloseState([tradeId], 'confirmed', { snapshots: closeSnapshots });
       const loginId = getLiveTradingLogin() || undefined;
       refreshPositions(loginId, { allowWsCommit: true }); // fire-and-forget
       if (loginId) {

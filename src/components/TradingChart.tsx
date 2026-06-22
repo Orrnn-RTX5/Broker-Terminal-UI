@@ -86,16 +86,22 @@ import {
   buildClosedTradeHistorySnapshots,
   dispatchTradeOverlayCloseState,
   filterActiveTradeKeysForHistory,
+  forgetTradeOverlayOptimisticClosedSnapshot,
+  getTradeOverlayOptimisticClosedSnapshots,
+  getTradeOverlayCloseSnapshots,
   getTradeOverlayCloseState,
   getTradeOverlayCloseTicketKeys,
   getTradeOverlayRedrawDecision,
   resolveNearestTradeOverlayCandleTime,
   resolveStableTradeEntryPrice,
   resolveStableTradeEntryTime,
+  resolveTradeOverlaySegmentGeometry,
   shouldKeepMissingActiveTradeOverlay,
+  shouldUseClosedTradeHistorySnapshot,
   TRADE_OVERLAY_CLOSE_STATE_EVENT,
   TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS,
   type ClosedTradeOverlaySnapshot,
+  type TradeOverlayCloseSnapshotSeed,
   type TradeOverlayHistoryRow,
 } from '../services/tradeOverlayHistory';
 
@@ -502,6 +508,7 @@ interface OverlayNodeData {
   markerSide?: TradeSide;
   labelOffsetX?: number;
   labelOffsetY?: number;
+  resolveTime?: () => number | null;
   resolveEndPrice?: () => number | null;
   resolveEndTime?: () => number | null;
 }
@@ -513,6 +520,8 @@ interface PriceLevelOptions {
   role?: TradeLevelRole;
   badgeOffsetIndex?: number;
   title?: string;
+  labelVariant?: 'badge' | 'lineText';
+  lineColor?: string;
 }
 
 interface TradingChartProps {
@@ -2999,11 +3008,13 @@ export const TradingChart = React.memo(function TradingChart({
   // ─── Trade Annotations on Chart (MT5-style entry/exit markers + live trails) ───
   const TRADE_BUY_COLOR = '#22c55e';
   const TRADE_SELL_COLOR = '#ef4444';
+  const TRADE_ENTRY_LINE_COLOR = '#a8adb7';
   const activeOverlayNodesRef = useRef<HTMLElement[]>([]);
   const activeOverlayNodeDataRef = useRef<OverlayNodeData[]>([]);
   const historyOverlayNodesRef = useRef<HTMLElement[]>([]);
   const historyOverlayNodeDataRef = useRef<OverlayNodeData[]>([]);
   const frozenEntryTimesRef = useRef<Map<number | string, number>>(new Map());
+  const stableActiveMarkerTimesRef = useRef<Map<number | string, number>>(new Map());
   const frozenEntryPricesRef = useRef<Map<number | string, number>>(new Map());
   const activeTradeSnapshotsRef = useRef<Map<string, ActiveTradeSnapshot>>(new Map());
   const pendingMissingActiveTradesRef = useRef<Map<string, { trade: ActiveTradeSnapshot; missingSince: number }>>(new Map());
@@ -3025,6 +3036,35 @@ export const TradingChart = React.memo(function TradingChart({
   const lastHistoryTradeOverlaySignatureRef = useRef('');
   const positionLabelsRef = useRef<HTMLElement[]>([]);
   const positionLabelDataRef = useRef<any[]>([]);
+
+  const getFrozenEntryTimeKey = (tradeKey: number | string, chartTimeframe: Timeframe | string) =>
+    `${String(tradeKey)}::${String(chartTimeframe)}`;
+
+  const clearFrozenEntryTime = (tradeKey: number | string) => {
+    const directKey = String(tradeKey);
+    const scopedPrefix = `${directKey}::`;
+    frozenEntryTimesRef.current.delete(tradeKey);
+    frozenEntryTimesRef.current.delete(directKey);
+    Array.from(frozenEntryTimesRef.current.keys()).forEach((key) => {
+      if (String(key).startsWith(scopedPrefix)) {
+        frozenEntryTimesRef.current.delete(key);
+      }
+    });
+  };
+
+  const clearStableActiveMarkerTime = (tradeKey: number | string) => {
+    const directKey = String(tradeKey);
+    const markerKey = `${directKey}:marker`;
+    const scopedPrefix = `${markerKey}::`;
+    stableActiveMarkerTimesRef.current.delete(tradeKey);
+    stableActiveMarkerTimesRef.current.delete(directKey);
+    stableActiveMarkerTimesRef.current.delete(markerKey);
+    Array.from(stableActiveMarkerTimesRef.current.keys()).forEach((key) => {
+      if (String(key).startsWith(scopedPrefix)) {
+        stableActiveMarkerTimesRef.current.delete(key);
+      }
+    });
+  };
 
   const hydrateTradeLevelOverrides = useCallback(() => {
     if (tradeLevelOverridesHydratedRef.current || typeof window === 'undefined') return;
@@ -3138,6 +3178,7 @@ export const TradingChart = React.memo(function TradingChart({
     pendingClosedTradeSnapshotsRef.current.clear();
     optimisticClosedTradeSnapshotsRef.current.clear();
     frozenEntryTimesRef.current.clear();
+    stableActiveMarkerTimesRef.current.clear();
     frozenEntryPricesRef.current.clear();
     tradeLevelLastKnownLevelsRef.current.clear();
     pendingTradeLevelModifyRequestsRef.current.clear();
@@ -3169,6 +3210,23 @@ export const TradingChart = React.memo(function TradingChart({
     const chartWidth = containerRef.current?.offsetWidth || 0;
     const chartHeight = containerRef.current?.offsetHeight || 0;
     const priceScaleWidth = series.priceScale().width();
+    const resolveTimeCoordinate = (time: unknown): number | null => {
+      const numericTime = Number(time);
+      if (!Number.isFinite(numericTime) || numericTime <= 0) return null;
+
+      const directCoordinate = chart.timeScale().timeToCoordinate(numericTime as Time);
+      if (directCoordinate != null) return directCoordinate;
+
+      const activeTf = prevTimeframeRef.current || timeframe;
+      const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
+      const nearest = getNearestCandleByTime(
+        numericTime,
+        Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
+      );
+      if (!nearest?.time) return null;
+
+      return chart.timeScale().timeToCoordinate(nearest.time as Time);
+    };
 
     for (const { nodes, data } of overlayLayers) {
       for (let i = 0; i < nodes.length; i++) {
@@ -3217,28 +3275,27 @@ export const TradingChart = React.memo(function TradingChart({
               continue;
             }
 
-            const x1 = chart.timeScale().timeToCoordinate(node.time as Time);
+            const x1 = resolveTimeCoordinate(node.time);
             const y1 = series.priceToCoordinate(node.price);
-            const x2 = chart.timeScale().timeToCoordinate(endTime as Time);
+            const x2 = resolveTimeCoordinate(endTime);
             const y2 = series.priceToCoordinate(endPrice);
-            if (x1 == null || y1 == null || x2 == null || y2 == null) {
-              el.style.display = 'none';
-              continue;
-            }
-
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            const length = Math.sqrt((dx * dx) + (dy * dy));
-            if (!Number.isFinite(length) || length <= 0.5) {
+            const geometry = resolveTradeOverlaySegmentGeometry({
+              x1,
+              y1,
+              x2,
+              y2,
+              minLengthPx: el.classList.contains('rtx-trade-history-line') ? 24 : 0,
+            });
+            if (!geometry) {
               el.style.display = 'none';
               continue;
             }
 
             el.style.display = 'block';
-            el.style.left = `${x1}px`;
-            el.style.top = `${y1}px`;
-            el.style.width = `${length}px`;
-            el.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
+            el.style.left = `${geometry.left}px`;
+            el.style.top = `${geometry.top}px`;
+            el.style.width = `${geometry.width}px`;
+            el.style.transform = `rotate(${geometry.angleDeg}deg)`;
             el.style.transformOrigin = '0 0';
             continue;
           }
@@ -3248,7 +3305,13 @@ export const TradingChart = React.memo(function TradingChart({
             continue;
           }
 
-          const x = chart.timeScale().timeToCoordinate(node.time as Time);
+          let x = resolveTimeCoordinate(node.time);
+          if (x == null && node.resolveTime) {
+            const fallbackX = resolveTimeCoordinate(node.resolveTime());
+            if (fallbackX != null) {
+              x = fallbackX;
+            }
+          }
           const y = series.priceToCoordinate(node.price);
           if (x == null || y == null || x < -24 || x > chartWidth + 24 || y < -24 || y > chartHeight + 24) {
             el.style.display = 'none';
@@ -3334,7 +3397,7 @@ export const TradingChart = React.memo(function TradingChart({
 
     const getTradeTicketLabel = (tradeKey: string): string => {
       const ticket = tradeKey.replace(/^trade:/, '');
-      return ticket ? `#${ticket.slice(-6)}` : '';
+      return ticket ? `#${ticket}` : '';
     };
 
     const formatTradeLevelBadgePrice = (price: number): string => price.toFixed(digits);
@@ -3378,7 +3441,7 @@ export const TradingChart = React.memo(function TradingChart({
       let bestDistance = Number.POSITIVE_INFINITY;
 
       for (const candidate of candidates) {
-        const nearest = getNearestCandleByTime(candidate, timeframeSeconds / 2);
+        const nearest = getNearestCandleByTime(candidate, timeframeSeconds);
         if (!nearest) continue;
         const distance = Math.abs(nearest.time - candidate);
         if (distance < bestDistance) {
@@ -3396,6 +3459,36 @@ export const TradingChart = React.memo(function TradingChart({
       currentCandleRef.current?.time
       ?? candlesRef.current[candlesRef.current.length - 1]?.time
       ?? null;
+    const getActiveMarkerTimeKey = (tradeKey: string) =>
+      getFrozenEntryTimeKey(`${tradeKey}:marker`, prevTimeframeRef.current || timeframe);
+    const getStoredActiveMarkerTime = (tradeKey: string): number | null => {
+      const storedTime = stableActiveMarkerTimesRef.current.get(getActiveMarkerTimeKey(tradeKey));
+      return storedTime != null && Number.isFinite(storedTime) && storedTime > 0 ? storedTime : null;
+    };
+    const canResolveOverlayTime = (time: unknown): boolean => {
+      const numericTime = Number(time);
+      if (!Number.isFinite(numericTime) || numericTime <= 0) return false;
+
+      const directCoordinate = chartRef.current?.timeScale().timeToCoordinate(numericTime as Time);
+      if (directCoordinate != null) return true;
+
+      const activeTf = prevTimeframeRef.current || timeframe;
+      const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
+      return Boolean(getNearestCandleByTime(
+        numericTime,
+        Number.isFinite(timeframeSeconds) && timeframeSeconds > 0 ? timeframeSeconds : undefined,
+      ));
+    };
+    const resolveClosedEntryTime = (trade: ActiveTradeSnapshot): number => {
+      if (canResolveOverlayTime(trade.entryTime)) return trade.entryTime;
+
+      const storedMarkerTime = getStoredActiveMarkerTime(trade.key);
+      if (storedMarkerTime != null && canResolveOverlayTime(storedMarkerTime)) {
+        return storedMarkerTime;
+      }
+
+      return trade.entryTime;
+    };
     const getLiveTrailPrice = (side: TradeSide, fallbackPrice: number): number | null => {
       const tick = resolveSymbolTick(useAppStore.getState().ticks);
       const quote = side === 'BUY'
@@ -3404,22 +3497,81 @@ export const TradingChart = React.memo(function TradingChart({
       if (quote > 0 && isLivePriceSafeForCandles(quote)) return quote;
       return fallbackPrice > 0 ? fallbackPrice : null;
     };
-    const buildImmediateClosedTrade = (trade: ActiveTradeSnapshot): ClosedTradeSnapshot | null => {
-      const exitPrice = getLiveTrailPrice(trade.side, trade.currentPrice || trade.entryPrice)
+    const resolveCloseSnapshotOverlayTime = (rawTime: unknown, fallbackTime?: number | null): number => {
+      const mappedTime = mapTradeTimestampToChartTime(rawTime);
+      if (mappedTime != null && canResolveOverlayTime(mappedTime)) return mappedTime;
+
+      const normalizedTime = normalizeUnixSeconds(rawTime);
+      if (normalizedTime != null && canResolveOverlayTime(normalizedTime)) return normalizedTime;
+
+      if (fallbackTime != null && Number.isFinite(fallbackTime) && fallbackTime > 0) {
+        return fallbackTime;
+      }
+
+      return mappedTime ?? normalizedTime ?? 0;
+    };
+    const buildImmediateClosedTrade = (
+      trade: ActiveTradeSnapshot,
+      existingTrade?: ClosedTradeSnapshot | null,
+    ): ClosedTradeSnapshot | null => {
+      const exitPrice = existingTrade?.exitPrice
+        ?? getLiveTrailPrice(trade.side, trade.currentPrice || trade.entryPrice)
         ?? trade.currentPrice
         ?? trade.entryPrice;
-      const exitTime = getLiveTrailTime() ?? trade.currentTime ?? trade.entryTime;
+      const exitTime = existingTrade?.exitTime
+        ?? getLiveTrailTime()
+        ?? trade.currentTime
+        ?? trade.entryTime;
       return buildOptimisticClosedTradeSnapshot({
         key: trade.key,
         symbol: trade.symbol,
         side: trade.side,
         volume: trade.volume,
-        entryPrice: trade.entryPrice,
-        entryTime: trade.entryTime,
+        entryPrice: existingTrade?.entryPrice ?? trade.entryPrice,
+        entryTime: existingTrade?.entryTime ?? resolveClosedEntryTime(trade),
         exitPrice,
         exitTime,
+        profit: existingTrade?.profit,
       });
     };
+    const buildClosedTradeFromEventSnapshot = (
+      snapshot: TradeOverlayCloseSnapshotSeed,
+      capturedTrade?: ActiveTradeSnapshot | null,
+      existingTrade?: ClosedTradeSnapshot | null,
+    ): ClosedTradeSnapshot | null => {
+      const entryFallbackTime = existingTrade?.entryTime
+        ?? (capturedTrade ? resolveClosedEntryTime(capturedTrade) : null);
+      const entryTime = existingTrade?.entryTime
+        ?? resolveCloseSnapshotOverlayTime(snapshot.entryTime, entryFallbackTime);
+      const exitFallbackTime = existingTrade?.exitTime
+        ?? getLiveTrailTime()
+        ?? capturedTrade?.currentTime
+        ?? entryTime;
+      const exitTime = existingTrade?.exitTime
+        ?? resolveCloseSnapshotOverlayTime(snapshot.exitTime, exitFallbackTime);
+
+      return buildOptimisticClosedTradeSnapshot({
+        ...snapshot,
+        entryPrice: existingTrade?.entryPrice ?? snapshot.entryPrice,
+        entryTime,
+        exitPrice: existingTrade?.exitPrice ?? snapshot.exitPrice,
+        exitTime,
+        profit: snapshot.profit ?? existingTrade?.profit,
+      });
+    };
+    const mapStoredClosedTradeToChart = (trade: ClosedTradeSnapshot): ClosedTradeSnapshot | null => (
+      buildOptimisticClosedTradeSnapshot({
+        key: trade.key,
+        symbol: trade.symbol,
+        side: trade.side,
+        volume: trade.volume,
+        entryPrice: trade.entryPrice,
+        entryTime: resolveCloseSnapshotOverlayTime(trade.entryTime, trade.entryTime),
+        exitPrice: trade.exitPrice,
+        exitTime: resolveCloseSnapshotOverlayTime(trade.exitTime, trade.exitTime),
+        profit: trade.profit,
+      })
+    );
     const deriveClosedTradeColor = (trade: ClosedTradeSnapshot) => {
       const pnl = trade.profit ?? (
         trade.side === 'BUY' ? trade.exitPrice - trade.entryPrice : trade.entryPrice - trade.exitPrice
@@ -3611,13 +3763,13 @@ export const TradingChart = React.memo(function TradingChart({
       ? `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 1L11 6H8V15H4V6H1L6 1Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`
       : `<svg width="8" height="11" viewBox="0 0 12 16" fill="none"><path d="M6 15L1 10H4V1H8V10H11L6 15Z" fill="${color}" stroke="#e5edf4" stroke-width="0.85" stroke-linejoin="round"/></svg>`;
 
-    const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer, opacity = 1) => {
+    const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer, opacity = 1, resolveTime?: () => number | null) => {
       const marker = document.createElement('div');
       marker.className = `rtx-trade-marker rtx-trade-marker--${layer}`;
       marker.title = title;
       marker.innerHTML = createArrowSvg(side, color);
       marker.style.cssText = `position:absolute;z-index:14;pointer-events:none;opacity:${opacity};`;
-      appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side }, layer);
+      appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side, resolveTime }, layer);
     };
 
     const formatHistoryLabelTime = (time: number): string => {
@@ -3626,12 +3778,13 @@ export const TradingChart = React.memo(function TradingChart({
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     };
 
-    const createTradeHistoryLabel = (side: TradeSide, price: number, time: number, _color: string, layer: TradeOverlayLayer, opacity = 1) => {
+    const createTradeHistoryLabel = (side: TradeSide, price: number, time: number, _color: string, layer: TradeOverlayLayer, opacity = 1, ticketLabel = '') => {
       const label = document.createElement('div');
       const timeLabel = formatHistoryLabelTime(time);
       const palette = getTradeOverlayCardPalette(side, isChartSurfaceLight());
+      const ticketText = ticketLabel ? ` ${ticketLabel}` : '';
       label.className = `rtx-trade-history-label rtx-trade-history-label--${side.toLowerCase()}`;
-      label.textContent = `${side} ${price.toFixed(digits)}${timeLabel ? ` | ${timeLabel}` : ''}`;
+      label.textContent = `${side}${ticketText} ${price.toFixed(digits)}${timeLabel ? ` | ${timeLabel}` : ''}`;
       label.style.cssText = `position:absolute;padding:2px 5px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:15;pointer-events:none;border-radius:2px;line-height:13px;opacity:${opacity};${palette.shadow}`;
       appendOverlayNode(label, { kind: 'label', price, time, labelOffsetX: 10, labelOffsetY: -18 }, layer);
     };
@@ -3639,7 +3792,11 @@ export const TradingChart = React.memo(function TradingChart({
     const createTradeSegment = (price: number, time: number, color: string, lineStyle: 'solid' | 'dashed', layer: TradeOverlayLayer, endPrice?: number, endTime?: number, resolveEndPrice?: () => number | null, resolveEndTime?: () => number | null, opacity = 1) => {
       const line = document.createElement('div');
       line.className = layer === 'history' ? 'rtx-trade-history-line' : 'rtx-trade-active-segment';
-      line.style.cssText = `position:absolute;height:0;border-top:${lineStyle === 'solid' ? '1.5px solid' : '1px dashed'} ${color};z-index:${lineStyle === 'solid' ? 11 : 9};pointer-events:none;opacity:${opacity};`;
+      const thickness = lineStyle === 'solid' ? 2 : 1;
+      const background = lineStyle === 'solid'
+        ? color
+        : `repeating-linear-gradient(to right, ${color} 0 6px, transparent 6px 10px)`;
+      line.style.cssText = `position:absolute;height:${thickness}px;background:${background};border:0;border-radius:999px;z-index:${lineStyle === 'solid' ? 13 : 9};pointer-events:none;opacity:${opacity};transform-origin:0 50%;will-change:transform,width;`;
       appendOverlayNode(line, { kind: 'segment', price, time, endPrice, endTime, resolveEndPrice, resolveEndTime }, layer);
     };
 
@@ -3648,7 +3805,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       const line = document.createElement('div');
       line.className = 'rtx-trade-level-line';
-      line.style.cssText = `position:absolute;height:0;border-top:1px dashed ${color}cc;z-index:12;pointer-events:none;`;
+      line.style.cssText = `position:absolute;height:0;border-top:1px dashed ${(options.lineColor ?? color)}cc;z-index:12;pointer-events:none;`;
       appendOverlayNode(line, { kind: 'horizontal-line', price }, 'active');
 
       if (options.tradeKey && options.role) {
@@ -3682,8 +3839,11 @@ export const TradingChart = React.memo(function TradingChart({
       const offsetX = offsetIndex * TRADE_LEVEL_BADGE_STACK_OFFSET_PX;
       const leftInset = TRADE_LEVEL_BADGE_LEFT_INSET_PX + offsetX;
       const canDrag = Boolean(options.tradeKey && options.role);
+      const isLineTextLabel = options.labelVariant === 'lineText';
       badge.dataset.leftInset = String(leftInset);
-      badge.style.cssText = `position:absolute;left:${leftInset}px;display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;${palette.shadow}`;
+      badge.style.cssText = isLineTextLabel
+        ? `position:absolute;left:${leftInset}px;display:block;padding:0 2px;background:transparent;border:0;color:${color};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;line-height:13px;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:0;transform:translateY(calc(-100% - 1px));width:max-content;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:left;touch-action:none;letter-spacing:0;text-shadow:0 1px 2px rgba(0,0,0,0.28);`
+        : `position:absolute;left:${leftInset}px;display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;${palette.shadow}`;
       appendOverlayNode(badge, { kind: 'price-badge', price }, 'active');
     };
 
@@ -3803,7 +3963,6 @@ export const TradingChart = React.memo(function TradingChart({
         didClearClosedHistoryTradeLevels = capturedTrade
           ? clearTradeLevelRuntimeState(capturedTrade) || didClearClosedHistoryTradeLevels
           : clearTradeLevelRuntimeStateByKey(key) || didClearClosedHistoryTradeLevels;
-        optimisticClosedTradeSnapshotsRef.current.delete(key);
         pendingClosedTradeSnapshotsRef.current.delete(key);
         tradeLevelCrossCloseCandidatesRef.current.delete(key);
       });
@@ -3840,7 +3999,9 @@ export const TradingChart = React.memo(function TradingChart({
           continue;
         }
 
-        const storedEntryTime = frozenEntryTimesRef.current.get(key);
+        const activeTf = prevTimeframeRef.current || timeframe;
+        const scopedEntryTimeKey = getFrozenEntryTimeKey(key, activeTf);
+        const storedEntryTime = frozenEntryTimesRef.current.get(scopedEntryTimeKey);
         const rawEntryTime = position.rawOpenTime ?? normalizeUnixSeconds(Date.now());
         const entryTime = resolveStableTradeEntryTime(
           storedEntryTime,
@@ -3849,7 +4010,7 @@ export const TradingChart = React.memo(function TradingChart({
           liveTrailTime,
         );
         if (storedEntryTime == null && entryTime > 0) {
-          frozenEntryTimesRef.current.set(key, entryTime);
+          frozenEntryTimesRef.current.set(scopedEntryTimeKey, entryTime);
         }
 
         const storedEntryPrice = frozenEntryPricesRef.current.get(key);
@@ -3971,12 +4132,45 @@ export const TradingChart = React.memo(function TradingChart({
           closedTrades.set(trade.key, trade);
         }
       };
+      const hasRenderableClosedTradePath = (trade: ClosedTradeSnapshot): boolean => {
+        const hasVisibleSpan = Math.abs(trade.entryTime - trade.exitTime) > 0
+          || Math.abs(trade.entryPrice - trade.exitPrice) > priceTolerance;
+        return hasVisibleSpan && canResolveOverlayTime(trade.entryTime) && canResolveOverlayTime(trade.exitTime);
+      };
 
       if (showTradeHistory) {
-        closedHistorySnapshots.forEach(registerClosedTrade);
+        getTradeOverlayOptimisticClosedSnapshots(normalizedChartSymbol).forEach((trade) => {
+          if (rawActiveTradeKeys.has(trade.key)) {
+            forgetTradeOverlayOptimisticClosedSnapshot(trade.key);
+            return;
+          }
+          const chartTrade = mapStoredClosedTradeToChart(trade);
+          if (chartTrade) {
+            registerClosedTrade(chartTrade);
+          }
+        });
         optimisticClosedTradeSnapshotsRef.current.forEach((trade, key) => {
-          if (trade.symbol === normalizedChartSymbol && !closedTrades.has(key)) {
+          if (rawActiveTradeKeys.has(key)) {
+            optimisticClosedTradeSnapshotsRef.current.delete(key);
+            return;
+          }
+          if (trade.symbol === normalizedChartSymbol) {
             registerClosedTrade(trade);
+          }
+        });
+        closedHistorySnapshots.forEach((trade) => {
+          const existingTrade = closedTrades.get(trade.key);
+          const backendHasRenderablePath = hasRenderableClosedTradePath(trade);
+          if (shouldUseClosedTradeHistorySnapshot({
+            existingTrade,
+            candidateTrade: trade,
+            canRenderTradePath: hasRenderableClosedTradePath,
+          })) {
+            registerClosedTrade(trade);
+            if (backendHasRenderablePath) {
+              optimisticClosedTradeSnapshotsRef.current.delete(trade.key);
+              forgetTradeOverlayOptimisticClosedSnapshot(trade.key);
+            }
           }
         });
       }
@@ -4055,10 +4249,25 @@ export const TradingChart = React.memo(function TradingChart({
             const ticketLabel = getTradeTicketLabel(trade.key);
             const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
             const markerTitle = `${trade.side} ${trade.volume} ${ticketLabel} @ ${entryPriceLabel}`.trim();
-            createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, markerTitle, entryColor, 'active');
+            const activeMarkerTimeKey = getActiveMarkerTimeKey(trade.key);
+            let stableActiveMarkerTime = stableActiveMarkerTimesRef.current.get(activeMarkerTimeKey) ?? null;
+            if (!(stableActiveMarkerTime != null && stableActiveMarkerTime > 0) && trade.currentTime > 0) {
+              stableActiveMarkerTime = trade.currentTime;
+              stableActiveMarkerTimesRef.current.set(activeMarkerTimeKey, stableActiveMarkerTime);
+            }
+            createTradeMarker(
+              trade.side,
+              trade.entryPrice,
+              trade.entryTime,
+              markerTitle,
+              entryColor,
+              'active',
+              1,
+              () => stableActiveMarkerTimesRef.current.get(activeMarkerTimeKey) ?? stableActiveMarkerTime,
+            );
 
             createPriceLevel(
-              `${trade.side} ${trade.volume} ${entryPriceLabel}`.trim(),
+              `${trade.side} ${ticketLabel} ${trade.volume} at ${entryPriceLabel}`.trim(),
               trade.entryPrice,
               entryColor,
               {
@@ -4066,30 +4275,34 @@ export const TradingChart = React.memo(function TradingChart({
                 role: isLiveActiveTrade ? 'ENTRY' : undefined,
                 badgeOffsetIndex: nextLevelOffset('ENTRY', trade.entryPrice),
                 title: isLiveActiveTrade ? `${markerTitle}. Drag above/below to create TP or SL.` : markerTitle,
+                labelVariant: 'lineText',
+                lineColor: TRADE_ENTRY_LINE_COLOR,
               },
             );
 
             const levels = isLiveActiveTrade || isVisuallyRetainedTrade ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
             if (levels.sl && levels.sl > 0) {
               const stopLossPriceLabel = formatTradeLevelBadgePrice(levels.sl);
-              createPriceLevel(`SL ${stopLossPriceLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
+              createPriceLevel(`SL ${ticketLabel} ${stopLossPriceLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
                 tradeKey: isLiveActiveTrade ? trade.key : undefined,
                 role: isLiveActiveTrade ? 'SL' : undefined,
                 badgeOffsetIndex: nextLevelOffset('SL', levels.sl),
                 title: isVisuallyRetainedTrade
-                  ? `Stop Loss for ${ticketLabel || trade.key}. Waiting for position refresh.`
-                  : `Stop Loss for ${ticketLabel || trade.key}`,
+                  ? `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}. Waiting for position refresh.`
+                  : `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}`,
+                labelVariant: 'lineText',
               });
             }
             if (levels.tp && levels.tp > 0) {
               const takeProfitPriceLabel = formatTradeLevelBadgePrice(levels.tp);
-              createPriceLevel(`TP ${takeProfitPriceLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
+              createPriceLevel(`TP ${ticketLabel} ${takeProfitPriceLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
                 tradeKey: isLiveActiveTrade ? trade.key : undefined,
                 role: isLiveActiveTrade ? 'TP' : undefined,
                 badgeOffsetIndex: nextLevelOffset('TP', levels.tp),
                 title: isVisuallyRetainedTrade
-                  ? `Take Profit for ${ticketLabel || trade.key}. Waiting for position refresh.`
-                  : `Take Profit for ${ticketLabel || trade.key}`,
+                  ? `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}. Waiting for position refresh.`
+                  : `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}`,
+                labelVariant: 'lineText',
               });
             }
           });
@@ -4104,14 +4317,15 @@ export const TradingChart = React.memo(function TradingChart({
           closedTrades.forEach((trade) => {
             const entryColor = getEntryColor(trade.side);
             const exitSide: TradeSide = trade.side === 'BUY' ? 'SELL' : 'BUY';
+            const ticketLabel = getTradeTicketLabel(trade.key);
             createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', 'history', trade.exitPrice, trade.exitTime, undefined, undefined, tradeHistoryLineOpacity);
-            createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} @ ${trade.entryPrice.toFixed(digits)}`, entryColor, 'history', tradeHistoryLineOpacity);
+            createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, `${trade.side} ${trade.volume} ${ticketLabel} @ ${trade.entryPrice.toFixed(digits)}`.trim(), entryColor, 'history', tradeHistoryLineOpacity);
             if (showTradeHistoryBoxes) {
-              createTradeHistoryLabel(trade.side, trade.entryPrice, trade.entryTime, entryColor, 'history', tradeHistoryBoxOpacity);
+              createTradeHistoryLabel(trade.side, trade.entryPrice, trade.entryTime, entryColor, 'history', tradeHistoryBoxOpacity, ticketLabel);
             }
-            createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} @ ${trade.exitPrice.toFixed(digits)}`, getExitColor(trade.side), 'history', tradeHistoryLineOpacity);
+            createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${exitSide} ${trade.volume} ${ticketLabel} @ ${trade.exitPrice.toFixed(digits)}`.trim(), getExitColor(trade.side), 'history', tradeHistoryLineOpacity);
             if (showTradeHistoryBoxes) {
-              createTradeHistoryLabel(exitSide, trade.exitPrice, trade.exitTime, getExitColor(trade.side), 'history', tradeHistoryBoxOpacity);
+              createTradeHistoryLabel(exitSide, trade.exitPrice, trade.exitTime, getExitColor(trade.side), 'history', tradeHistoryBoxOpacity, ticketLabel);
             }
           });
         }
@@ -4172,12 +4386,16 @@ export const TradingChart = React.memo(function TradingChart({
       const status = getTradeOverlayCloseState(detail);
       const tradeKeys = getTradeOverlayCloseTicketKeys(detail);
       if (!status || tradeKeys.length === 0) return;
+      const closeSnapshotsByKey = new Map(
+        getTradeOverlayCloseSnapshots(detail).map((snapshot) => [snapshot.key, snapshot]),
+      );
 
       if (status === 'failed') {
         tradeKeys.forEach((key) => {
           closeSuppressedTradeKeysRef.current.delete(key);
           pendingClosedTradeSnapshotsRef.current.delete(key);
           optimisticClosedTradeSnapshotsRef.current.delete(key);
+          forgetTradeOverlayOptimisticClosedSnapshot(key);
           tradeLevelCrossRefreshPendingRef.current.delete(key);
           tradeLevelCrossCloseCandidatesRef.current.delete(key);
         });
@@ -4194,18 +4412,31 @@ export const TradingChart = React.memo(function TradingChart({
           } else {
             didClearTradeLevels = clearTradeLevelRuntimeStateByKey(key) || didClearTradeLevels;
           }
-          if (status === 'confirmed') {
-            const closedTrade = capturedTrade ? buildImmediateClosedTrade(capturedTrade) : null;
-            if (closedTrade) {
-              optimisticClosedTradeSnapshotsRef.current.set(key, closedTrade);
+          const eventCloseSnapshot = closeSnapshotsByKey.get(key);
+          const existingClosedTrade = optimisticClosedTradeSnapshotsRef.current.get(key);
+          const closedTrade = eventCloseSnapshot
+            ? buildClosedTradeFromEventSnapshot(eventCloseSnapshot, capturedTrade, existingClosedTrade)
+            : capturedTrade
+              ? buildImmediateClosedTrade(capturedTrade, existingClosedTrade)
+              : existingClosedTrade ?? null;
+          if (closedTrade) {
+            optimisticClosedTradeSnapshotsRef.current.set(key, closedTrade);
+          }
+          if (capturedTrade) {
+            if (status === 'confirmed') {
               pendingClosedTradeSnapshotsRef.current.delete(key);
             }
+          } else if (status === 'confirmed') {
+            pendingClosedTradeSnapshotsRef.current.delete(key);
           }
           closeSuppressedTradeKeysRef.current.set(key, expiresAt);
           activeTradeSnapshotsRef.current.delete(key);
           pendingMissingActiveTradesRef.current.delete(key);
-          frozenEntryTimesRef.current.delete(key);
-          frozenEntryPricesRef.current.delete(key);
+          if (status === 'confirmed') {
+            clearFrozenEntryTime(key);
+            clearStableActiveMarkerTime(key);
+            frozenEntryPricesRef.current.delete(key);
+          }
           tradeLevelCrossRefreshPendingRef.current.delete(key);
           tradeLevelCrossCloseCandidatesRef.current.delete(key);
         });
@@ -4865,7 +5096,7 @@ export const TradingChart = React.memo(function TradingChart({
     let dragState: {
       tradeObj: ActiveTradeSnapshot;
       grabbedType: 'ENTRY' | 'SL' | 'TP';
-      startY: number;
+      entryAnchorY: number;
     } | null = null;
     let capturedPointerElement: HTMLElement | null = null;
     let capturedPointerId: number | null = null;
@@ -4894,6 +5125,12 @@ export const TradingChart = React.memo(function TradingChart({
     const getEntryDragDirection = (y: number, startY: number): 1 | -1 | null => {
       if (Math.abs(y - startY) < TRADE_LEVEL_MIN_DRAG_PX) return null;
       return y < startY ? 1 : -1;
+    };
+
+    const getFinitePriceCoordinate = (price: number): number | null => {
+      if (!seriesRef.current || !(price > 0)) return null;
+      const coordinate = seriesRef.current.priceToCoordinate(price);
+      return coordinate !== null && Number.isFinite(coordinate) ? (coordinate as number) : null;
     };
 
     const getPriceScaleOffset = () => seriesRef.current?.priceScale().width() ?? 52;
@@ -5105,14 +5342,18 @@ export const TradingChart = React.memo(function TradingChart({
           });
         }
 
-        dragState = { tradeObj: closestTrade, grabbedType, startY: y };
+        const entryAnchorY = grabbedType === 'ENTRY'
+          ? getFinitePriceCoordinate(closestTrade.entryPrice) ?? y
+          : y;
+        const initialOverlayY = grabbedType === 'ENTRY' ? entryAnchorY : y;
+        dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY };
 
         dragLineOverlay = document.createElement('div');
-        dragLineOverlay.style.cssText = `position:absolute;left:0;right:${getPriceScaleOffset()}px;top:0;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translate3d(0, ${y}px, 0);will-change:transform;`;
+        dragLineOverlay.style.cssText = `position:absolute;left:0;right:${getPriceScaleOffset()}px;top:0;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translate3d(0, ${initialOverlayY}px, 0);will-change:transform;`;
 
         dragBadgeOverlay = document.createElement('div');
         const initialPalette = getTradeOverlayCardPalette(grabbedType === 'TP' ? 'TP' : 'SL', isChartSurfaceLight());
-        dragBadgeOverlay.style.cssText = `position:absolute;left:${TRADE_LEVEL_BADGE_LEFT_INSET_PX}px;top:0;padding:1px 5px;background:${initialPalette.background};border:1px solid ${initialPalette.border};color:${initialPalette.text};font-size:10px;font-family:Consolas,monospace;font-weight:700;z-index:1000;pointer-events:none;border-radius:2px;transform:translateY(calc(-50% + ${y}px));will-change:transform;opacity:0;${initialPalette.shadow}`;
+        dragBadgeOverlay.style.cssText = `position:absolute;left:${TRADE_LEVEL_BADGE_LEFT_INSET_PX}px;top:0;padding:1px 5px;background:${initialPalette.background};border:1px solid ${initialPalette.border};color:${initialPalette.text};font-size:10px;font-family:Consolas,monospace;font-weight:700;z-index:1000;pointer-events:none;border-radius:2px;transform:translateY(calc(-50% + ${initialOverlayY}px));will-change:transform;opacity:0;${initialPalette.shadow}`;
 
         overlayRef.current?.appendChild(dragLineOverlay);
         overlayRef.current?.appendChild(dragBadgeOverlay);
@@ -5142,11 +5383,11 @@ export const TradingChart = React.memo(function TradingChart({
       const rawPrice = seriesRef.current.coordinateToPrice(y as any);
       if (rawPrice === null) return;
 
-      const { tradeObj, grabbedType, startY } = dragState;
+      const { tradeObj, grabbedType, entryAnchorY } = dragState;
       const digits = getSymbolDigits(tradeObj.symbol);
       const minStopDistance = getTradeLevelDragMinDistance(digits);
       const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
-      const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, startY) : null;
+      const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
 
       // Entry-line clicks are ignored, but any real vertical drag should create SL/TP.
       // Existing SL/TP levels remain freely repositionable.
@@ -5170,10 +5411,11 @@ export const TradingChart = React.memo(function TradingChart({
         : null;
 
       if (!previewUpdate || !Number.isFinite(previewUpdate.price) || previewUpdate.price <= 0) {
+        const idleY = grabbedType === 'ENTRY' ? entryAnchorY : y;
         dragLineOverlay.style.borderTopColor = 'transparent';
         dragBadgeOverlay.style.opacity = '0';
-        dragLineOverlay.style.transform = `translate3d(0, ${y}px, 0)`;
-        dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${y}px))`;
+        dragLineOverlay.style.transform = `translate3d(0, ${idleY}px, 0)`;
+        dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${idleY}px))`;
         return;
       }
 
@@ -5208,10 +5450,10 @@ export const TradingChart = React.memo(function TradingChart({
       if (seriesRef.current) {
         const y = getChartY(e);
         const rawFinalPrice = seriesRef.current.coordinateToPrice(y as any);
-        const { tradeObj, grabbedType, startY } = dragState;
+        const { tradeObj, grabbedType, entryAnchorY } = dragState;
 
         if (rawFinalPrice !== null) {
-          const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, startY) : null;
+          const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
           const hasRealEntryDrag = entryDragDirection !== null;
           if (!(grabbedType === 'ENTRY' && !hasRealEntryDrag)) {
             const existingOverrides = getTradeLevelState(tradeLevelOverridesRef.current, tradeObj);

@@ -9,8 +9,8 @@ describe('chart settings trade history overlay defaults', () => {
   it('keeps closed trade history overlays visible by default with reduced clutter opacity', () => {
     expect(defaultChartProperties.showTradeHistory).toBe(true);
     expect(defaultChartProperties.showTradeHistoryBoxes).toBe(true);
-    expect(defaultChartProperties.tradeHistoryLineOpacity).toBe(75);
-    expect(defaultChartProperties.tradeHistoryBoxOpacity).toBe(90);
+    expect(defaultChartProperties.tradeHistoryLineOpacity).toBe(25);
+    expect(defaultChartProperties.tradeHistoryBoxOpacity).toBe(40);
   });
 
   it('hydrates old persisted chart settings with the new trade history overlay fields', () => {
@@ -25,8 +25,8 @@ describe('chart settings trade history overlay defaults', () => {
 
     expect(normalized.showTradeHistory).toBe(false);
     expect(normalized.showTradeHistoryBoxes).toBe(true);
-    expect(normalized.tradeHistoryLineOpacity).toBe(75);
-    expect(normalized.tradeHistoryBoxOpacity).toBe(90);
+    expect(normalized.tradeHistoryLineOpacity).toBe(25);
+    expect(normalized.tradeHistoryBoxOpacity).toBe(40);
     expect(normalized.colors.background).toBe('#101010');
     expect(normalized.colors.foreground).toBe(defaultChartProperties.colors.foreground);
   });

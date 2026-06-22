@@ -5,6 +5,7 @@ export type TradeOverlayCloseState = 'pending' | 'confirmed' | 'failed';
 
 export const TRADE_OVERLAY_CLOSE_STATE_EVENT = 'rtx:trade-overlay-close-state';
 export const TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS = 5 * 60 * 1000;
+const TRADE_OVERLAY_OPTIMISTIC_HISTORY_TTL_MS = 30 * 60 * 1000;
 
 export type TradeOverlayHistoryRow = Record<string, unknown> & {
   id?: unknown;
@@ -49,6 +50,28 @@ export interface TradeOverlayCloseSnapshotSeed {
   profit?: number;
 }
 
+export type TradeOverlayCloseSnapshotPayload = Record<string, unknown> & {
+  ticketId?: unknown;
+  ticket?: unknown;
+  id?: unknown;
+  positionId?: unknown;
+  key?: unknown;
+  symbol?: unknown;
+  side?: unknown;
+  volume?: unknown;
+  entryPrice?: unknown;
+  entryTime?: unknown;
+  exitPrice?: unknown;
+  exitTime?: unknown;
+  currentPrice?: unknown;
+  closeTime?: unknown;
+  profit?: unknown;
+};
+
+interface TradeOverlayCloseStateDispatchOptions {
+  snapshots?: readonly TradeOverlayCloseSnapshotPayload[];
+}
+
 interface TradeOverlayCandleTimeSource {
   time?: unknown;
 }
@@ -80,6 +103,34 @@ interface MissingActiveTradeOverlayOptions {
   closedHistoryTradeKeys?: ReadonlySet<string>;
 }
 
+interface ClosedTradeSnapshotReplacementOptions {
+  existingTrade: ClosedTradeOverlaySnapshot | undefined;
+  candidateTrade: ClosedTradeOverlaySnapshot;
+  canRenderTradePath: (trade: ClosedTradeOverlaySnapshot) => boolean;
+}
+
+interface TradeOverlaySegmentGeometryOptions {
+  x1: number | null | undefined;
+  y1: number | null | undefined;
+  x2: number | null | undefined;
+  y2: number | null | undefined;
+  minLengthPx?: number;
+}
+
+export interface TradeOverlaySegmentGeometry {
+  left: number;
+  top: number;
+  width: number;
+  angleDeg: number;
+}
+
+interface StoredOptimisticClosedTradeSnapshot {
+  snapshot: ClosedTradeOverlaySnapshot;
+  expiresAt: number;
+}
+
+const optimisticClosedTradeSnapshotStore = new Map<string, StoredOptimisticClosedTradeSnapshot>();
+
 export const getTradeOverlayRedrawDecision = ({
   lastActiveSignature,
   nextActiveSignature,
@@ -92,6 +143,70 @@ export const getTradeOverlayRedrawDecision = ({
   historyChanged: forceHistory || nextHistorySignature !== lastHistorySignature,
 });
 
+export const shouldUseClosedTradeHistorySnapshot = ({
+  existingTrade,
+  candidateTrade,
+  canRenderTradePath,
+}: ClosedTradeSnapshotReplacementOptions): boolean => {
+  if (!existingTrade) return true;
+  if (canRenderTradePath(candidateTrade)) return true;
+  return !canRenderTradePath(existingTrade);
+};
+
+export const resolveTradeOverlaySegmentGeometry = ({
+  x1,
+  y1,
+  x2,
+  y2,
+  minLengthPx = 0,
+}: TradeOverlaySegmentGeometryOptions): TradeOverlaySegmentGeometry | null => {
+  if (
+    x1 == null
+    || y1 == null
+    || x2 == null
+    || y2 == null
+    || !Number.isFinite(x1)
+    || !Number.isFinite(y1)
+    || !Number.isFinite(x2)
+    || !Number.isFinite(y2)
+  ) {
+    return null;
+  }
+
+  let dx = x2 - x1;
+  let dy = y2 - y1;
+  let length = Math.sqrt((dx * dx) + (dy * dy));
+  const minimumLength = Number.isFinite(minLengthPx) && minLengthPx > 0 ? minLengthPx : 0;
+
+  if (minimumLength > 0 && (!Number.isFinite(length) || length <= 0.5)) {
+    dx = minimumLength;
+    dy = 0;
+    length = minimumLength;
+  } else if (minimumLength > 0 && length < minimumLength) {
+    const scale = minimumLength / length;
+    dx *= scale;
+    dy *= scale;
+    length = minimumLength;
+  }
+
+  if (!Number.isFinite(length) || length <= 0.5) return null;
+
+  return {
+    left: x1,
+    top: y1,
+    width: length,
+    angleDeg: Math.atan2(dy, dx) * 180 / Math.PI,
+  };
+};
+
+const pruneOptimisticClosedTradeSnapshotStore = (now = Date.now()) => {
+  optimisticClosedTradeSnapshotStore.forEach((value, key) => {
+    if (value.expiresAt <= now) {
+      optimisticClosedTradeSnapshotStore.delete(key);
+    }
+  });
+};
+
 const normalizeSymbol = (value: unknown): string =>
   String(value ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 
@@ -101,6 +216,71 @@ const getTicket = (value: unknown): string | null => {
   const numericTicket = Number(ticket);
   if (Number.isFinite(numericTicket) && numericTicket <= 0) return null;
   return ticket;
+};
+
+const parseTradeTimestampString = (value: string): number | null => {
+  const match = value.trim().match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:[ T](\d{1,2})(?::(\d{1,2})(?::(\d{1,2}))?)?)?$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4] ?? 0);
+  const minute = Number(match[5] ?? 0);
+  const second = Number(match[6] ?? 0);
+
+  if (
+    !Number.isInteger(year)
+    || !Number.isInteger(month)
+    || !Number.isInteger(day)
+    || month < 1
+    || month > 12
+    || day < 1
+    || day > 31
+    || hour < 0
+    || hour > 23
+    || minute < 0
+    || minute > 59
+    || second < 0
+    || second > 59
+  ) {
+    return null;
+  }
+
+  const timestampMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  return Number.isNaN(timestampMs) ? null : Math.floor(timestampMs / 1000);
+};
+
+const normalizeCloseSnapshotTime = (value: unknown): number => {
+  if (value == null || value === '') return 0;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value > 1_000_000_000_000 ? Math.floor(value / 1000) : Math.floor(value);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric) && trimmed !== '') {
+      return numeric > 1_000_000_000_000 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+    }
+    const tradeTimestamp = parseTradeTimestampString(trimmed);
+    if (tradeTimestamp != null) return tradeTimestamp;
+    const parsed = Date.parse(trimmed);
+    return Number.isNaN(parsed) ? 0 : Math.floor(parsed / 1000);
+  }
+  return 0;
+};
+
+const positiveCloseSnapshotNumber = (...values: unknown[]): number => {
+  for (const value of values) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  }
+  return 0;
+};
+
+const normalizeCloseSnapshotSide = (value: unknown): TradeOverlaySide => {
+  const side = String(value ?? '').trim().toUpperCase();
+  return side.includes('SELL') || side === '1' ? 'SELL' : 'BUY';
 };
 
 export const getTradeOverlayTicketKey = (value: unknown): string | null => {
@@ -143,18 +323,70 @@ export const getTradeOverlayCloseTicketKeys = (detail: unknown): string[] => {
   return Array.from(keys);
 };
 
+export const getTradeOverlayCloseSnapshots = (detail: unknown): TradeOverlayCloseSnapshotSeed[] => {
+  if (!detail || typeof detail !== 'object') return [];
+
+  const record = detail as Record<string, unknown>;
+  const rawSnapshots = Array.isArray(record.snapshots)
+    ? record.snapshots
+    : Array.isArray(record.positions)
+      ? record.positions
+      : [];
+
+  return rawSnapshots.flatMap((snapshot): TradeOverlayCloseSnapshotSeed[] => {
+    if (!snapshot || typeof snapshot !== 'object') return [];
+
+    const row = snapshot as TradeOverlayCloseSnapshotPayload;
+    const key = String(row.key ?? '').startsWith('trade:')
+      ? String(row.key)
+      : getTradeOverlayTicketKey(row.ticketId ?? row.ticket ?? row.id ?? row.positionId ?? row.position_id ?? row.position_ticket);
+    const symbol = normalizeSymbol(row.symbol);
+    const entryPrice = positiveCloseSnapshotNumber(row.entryPrice, row.openPrice, row.open_price, row.price_open);
+    const entryTime = normalizeCloseSnapshotTime(row.entryTime ?? row.openTime ?? row.open_time ?? row.time_open);
+    const exitPrice = positiveCloseSnapshotNumber(row.exitPrice, row.currentPrice, row.closePrice, row.price_current, row.current_price, row.close_price);
+    const exitTime = normalizeCloseSnapshotTime(row.exitTime ?? row.closeTime ?? row.close_time);
+
+    if (!key || !symbol || !(entryPrice > 0) || !(entryTime > 0) || !(exitPrice > 0) || !(exitTime > 0)) {
+      return [];
+    }
+
+    return [{
+      key,
+      symbol,
+      side: normalizeCloseSnapshotSide(row.side ?? row.type),
+      volume: Number(row.volume ?? row.quantity ?? row.volume_lots ?? row.lots) || 0,
+      entryPrice,
+      entryTime,
+      exitPrice,
+      exitTime,
+      profit: Number.isFinite(Number(row.profit)) ? Number(row.profit) : undefined,
+    }];
+  });
+};
+
 export const dispatchTradeOverlayCloseState = (
   ticketIds: readonly unknown[],
   status: TradeOverlayCloseState,
+  options: TradeOverlayCloseStateDispatchOptions = {},
 ) => {
   if (typeof window === 'undefined') return;
 
   const tickets = ticketIds.map(getTicket).filter((ticket): ticket is string => ticket != null);
   if (tickets.length === 0) return;
 
-  window.dispatchEvent(new CustomEvent(TRADE_OVERLAY_CLOSE_STATE_EVENT, {
-    detail: { status, ticketIds: tickets },
-  }));
+  const detail = {
+    status,
+    ticketIds: tickets,
+    ...(options.snapshots?.length ? { snapshots: options.snapshots } : {}),
+  };
+
+  if (status === 'failed') {
+    clearTradeOverlayOptimisticClosedSnapshots(tickets.map((ticket) => `trade:${ticket}`));
+  } else {
+    rememberTradeOverlayOptimisticClosedSnapshots(detail);
+  }
+
+  window.dispatchEvent(new CustomEvent(TRADE_OVERLAY_CLOSE_STATE_EVENT, { detail }));
 };
 
 export const filterActiveTradeKeysForHistory = (
@@ -276,6 +508,42 @@ export const buildOptimisticClosedTradeSnapshot = ({
     profit,
     source: 'app-history',
   };
+};
+
+export const rememberTradeOverlayOptimisticClosedSnapshots = (detail: unknown, now = Date.now()) => {
+  const expiresAt = now + TRADE_OVERLAY_OPTIMISTIC_HISTORY_TTL_MS;
+  getTradeOverlayCloseSnapshots(detail).forEach((seed) => {
+    const snapshot = buildOptimisticClosedTradeSnapshot(seed);
+    if (snapshot) {
+      optimisticClosedTradeSnapshotStore.set(snapshot.key, { snapshot, expiresAt });
+    }
+  });
+};
+
+export const clearTradeOverlayOptimisticClosedSnapshots = (keys?: readonly string[]) => {
+  if (!keys) {
+    optimisticClosedTradeSnapshotStore.clear();
+    return;
+  }
+
+  keys.forEach((key) => optimisticClosedTradeSnapshotStore.delete(key));
+};
+
+export const forgetTradeOverlayOptimisticClosedSnapshot = (key: string) => {
+  optimisticClosedTradeSnapshotStore.delete(key);
+};
+
+export const getTradeOverlayOptimisticClosedSnapshots = (
+  symbol: unknown,
+  now = Date.now(),
+): ClosedTradeOverlaySnapshot[] => {
+  pruneOptimisticClosedTradeSnapshotStore(now);
+  const normalizedSymbol = normalizeSymbol(symbol);
+  if (!normalizedSymbol) return [];
+
+  return Array.from(optimisticClosedTradeSnapshotStore.values())
+    .map((value) => value.snapshot)
+    .filter((snapshot) => snapshot.symbol === normalizedSymbol);
 };
 
 const getHistorySource = (row: TradeOverlayHistoryRow): TradeOverlayHistorySource | null => {

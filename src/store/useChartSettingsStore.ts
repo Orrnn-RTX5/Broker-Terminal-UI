@@ -80,8 +80,8 @@ export const defaultChartProperties: ChartProperties = {
   showTradeLevels: true,
   showTradeHistory: true,
   showTradeHistoryBoxes: true,
-  tradeHistoryLineOpacity: 75,
-  tradeHistoryBoxOpacity: 90,
+  tradeHistoryLineOpacity: 25,
+  tradeHistoryBoxOpacity: 40,
 
   colorScheme: "Green on Black",
   colors: {

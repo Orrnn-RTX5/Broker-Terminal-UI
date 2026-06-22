@@ -132,13 +132,15 @@ const TRADE_FOOTER_METRIC_DEFS: TradeFooterMetricDef[] = [
     { key: 'commission', label: 'Commission' },
 ];
 
-const ALL_TRADE_FOOTER_METRICS: TradeFooterMetricVisibility = TRADE_FOOTER_METRIC_DEFS.reduce((acc, metric) => {
-    acc[metric.key] = true;
-    return acc;
-}, {} as TradeFooterMetricVisibility);
-
 const DEFAULT_TRADE_FOOTER_METRICS: TradeFooterMetricVisibility = {
-    ...ALL_TRADE_FOOTER_METRICS,
+    positions: false,
+    balance: true,
+    equity: true,
+    margin: true,
+    freeMargin: true,
+    marginLevel: true,
+    swap: false,
+    commission: false,
 };
 
 const TRADE_FIXED_COLUMN_DEFS: Record<'symbol' | 'close', Omit<TradeColumnDef, 'key'> & { key: 'symbol' | 'close' }> = {

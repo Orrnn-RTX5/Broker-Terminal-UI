@@ -2,14 +2,20 @@ import { describe, expect, it } from 'vitest';
 import {
   buildOptimisticClosedTradeSnapshot,
   buildClosedTradeHistorySnapshots,
+  clearTradeOverlayOptimisticClosedSnapshots,
   filterActiveTradeKeysForHistory,
+  getTradeOverlayOptimisticClosedSnapshots,
+  getTradeOverlayCloseSnapshots,
   getTradeOverlayCloseState,
   getTradeOverlayCloseTicketKeys,
   getTradeOverlayRedrawDecision,
+  rememberTradeOverlayOptimisticClosedSnapshots,
   resolveNearestTradeOverlayCandleTime,
   resolveStableTradeEntryPrice,
   resolveStableTradeEntryTime,
+  resolveTradeOverlaySegmentGeometry,
   shouldKeepMissingActiveTradeOverlay,
+  shouldUseClosedTradeHistorySnapshot,
   type TradeOverlayHistoryRow,
 } from './tradeOverlayHistory';
 
@@ -310,6 +316,114 @@ describe('trade overlay close suppression helpers', () => {
     })).toEqual(['trade:270', 'trade:313']);
   });
 
+  it('extracts normalized close snapshots from close event detail', () => {
+    expect(getTradeOverlayCloseSnapshots({
+      snapshots: [
+        {
+          ticketId: 270,
+          symbol: 'gbp/usd',
+          side: 'BUY',
+          volume: '0.01',
+          entryPrice: '1.34149',
+          entryTime: 1760000000000,
+          exitPrice: '1.34324',
+          closeTime: 1760000300000,
+        },
+      ],
+    })).toEqual([
+      expect.objectContaining({
+        key: 'trade:270',
+        symbol: 'GBPUSD',
+        side: 'BUY',
+        volume: 0.01,
+        entryPrice: 1.34149,
+        entryTime: 1760000000,
+        exitPrice: 1.34324,
+        exitTime: 1760000300,
+      }),
+    ]);
+  });
+
+  it('parses MT5-style close snapshot timestamps', () => {
+    expect(getTradeOverlayCloseSnapshots({
+      snapshots: [
+        {
+          ticketId: 271,
+          symbol: 'GBPUSD',
+          side: 'SELL',
+          volume: '0.01',
+          entryPrice: '1.34149',
+          entryTime: '2026.06.22 14:35:34',
+          exitPrice: '1.34020',
+          closeTime: '2026.06.22 14:40:07',
+        },
+      ],
+    })).toEqual([
+      expect.objectContaining({
+        key: 'trade:271',
+        side: 'SELL',
+        entryTime: Math.floor(Date.UTC(2026, 5, 22, 14, 35, 34) / 1000),
+        exitTime: Math.floor(Date.UTC(2026, 5, 22, 14, 40, 7) / 1000),
+      }),
+    ]);
+  });
+
+  it('ignores incomplete close snapshots without an entry-to-exit path', () => {
+    expect(getTradeOverlayCloseSnapshots({
+      snapshots: [
+        {
+          ticketId: 270,
+          symbol: 'GBPUSD',
+          side: 'BUY',
+          entryPrice: 1.34149,
+          entryTime: 1760000000,
+          exitPrice: 0,
+          closeTime: 1760000300,
+        },
+      ],
+    })).toEqual([]);
+  });
+
+  it('keeps close-all snapshots available for charts mounted after the close event', () => {
+    clearTradeOverlayOptimisticClosedSnapshots();
+
+    rememberTradeOverlayOptimisticClosedSnapshots({
+      snapshots: [
+        {
+          ticketId: 270,
+          symbol: 'XAUUSD',
+          side: 'BUY',
+          volume: 0.01,
+          entryPrice: 4207.47,
+          entryTime: 1760000000,
+          exitPrice: 4206.42,
+          closeTime: 1760000300,
+        },
+        {
+          ticketId: 271,
+          symbol: 'GBPUSD',
+          side: 'BUY',
+          volume: 0.01,
+          entryPrice: 1.32231,
+          entryTime: 1760000100,
+          exitPrice: 1.32245,
+          closeTime: 1760000300,
+        },
+      ],
+    }, 1_760_000_300_000);
+
+    expect(getTradeOverlayOptimisticClosedSnapshots('GBP/USD', 1_760_000_301_000)).toEqual([
+      expect.objectContaining({
+        key: 'trade:271',
+        symbol: 'GBPUSD',
+        entryPrice: 1.32231,
+        exitPrice: 1.32245,
+      }),
+    ]);
+
+    clearTradeOverlayOptimisticClosedSnapshots();
+  });
+
   it('parses close event state and ignores unknown statuses', () => {
     expect(getTradeOverlayCloseState({ status: 'failed' })).toBe('failed');
     expect(getTradeOverlayCloseState({ status: 'unknown' })).toBeNull();
@@ -362,6 +476,56 @@ describe('trade overlay close suppression helpers', () => {
       exitPrice: 0,
       exitTime: 1760000300,
     })).toBeNull();
+  });
+
+  it('keeps a complete optimistic connector over point-only backend history', () => {
+    const completeOptimistic = buildOptimisticClosedTradeSnapshot({
+      key: 'trade:270',
+      symbol: 'GBPUSD',
+      side: 'BUY',
+      volume: 0.01,
+      entryPrice: 1.34149,
+      entryTime: 1760000000,
+      exitPrice: 1.34324,
+      exitTime: 1760000300,
+    });
+    const pointOnlyBackend = buildOptimisticClosedTradeSnapshot({
+      key: 'trade:270',
+      symbol: 'GBPUSD',
+      side: 'BUY',
+      volume: 0.01,
+      entryPrice: 1.34149,
+      entryTime: 1760000000,
+      exitPrice: 1.34149,
+      exitTime: 1760000000,
+    });
+    expect(completeOptimistic).not.toBeNull();
+    expect(pointOnlyBackend).not.toBeNull();
+
+    const canRenderTradePath = (trade: NonNullable<typeof completeOptimistic>) =>
+      Math.abs(trade.entryTime - trade.exitTime) > 0
+      || Math.abs(trade.entryPrice - trade.exitPrice) > 0.00001;
+
+    expect(shouldUseClosedTradeHistorySnapshot({
+      existingTrade: completeOptimistic ?? undefined,
+      candidateTrade: pointOnlyBackend!,
+      canRenderTradePath,
+    })).toBe(false);
+  });
+
+  it('keeps same-candle history connectors visible with a minimum segment length', () => {
+    expect(resolveTradeOverlaySegmentGeometry({
+      x1: 420,
+      y1: 180,
+      x2: 420,
+      y2: 180,
+      minLengthPx: 24,
+    })).toEqual({
+      left: 420,
+      top: 180,
+      width: 24,
+      angleDeg: 0,
+    });
   });
 });
 
