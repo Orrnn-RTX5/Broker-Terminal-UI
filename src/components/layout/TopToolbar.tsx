@@ -8,7 +8,8 @@ import {
     MousePointer2, Crosshair, ArrowUpDown, MoveHorizontal, MoveVertical,
     Pencil, Type, Shapes, Camera, Search, User, Shield,
     LogOut, GitCommitHorizontal, AlignCenter, BookMarked, RefreshCw,
-    PanelBottomOpen, LayoutPanelTop, SlidersHorizontal
+    PanelBottomOpen, LayoutPanelTop, SlidersHorizontal,
+    Minus, Square, Copy, X
 } from 'lucide-react';
 import { useToolbarState } from '../../hooks/useToolbarState';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcut';
@@ -262,6 +263,8 @@ type BrokerTitleConfig = {
     logo_url?: string;
 };
 
+type ElectronWindowApi = NonNullable<Window['electron']>['window'];
+
 const matchesBrokerServer = (server: BrokerServer, serverName: string): boolean => {
     const target = normalizeHeaderText(serverName).toLowerCase();
     if (!target) return false;
@@ -401,6 +404,77 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
                 />
                 <span>{terminalTitle}</span>
             </div>
+            <WindowControls />
+        </div>
+    );
+};
+
+const WindowControls = () => {
+    const [electronWindow, setElectronWindow] = useState<ElectronWindowApi | null>(null);
+    const [isMaximized, setIsMaximized] = useState(false);
+
+    useEffect(() => {
+        const windowApi = window.electron?.window;
+        if (!windowApi) return;
+
+        setElectronWindow(windowApi);
+
+        let isActive = true;
+        windowApi.isMaximized()
+            .then((maximized) => {
+                if (isActive) setIsMaximized(maximized);
+            })
+            .catch(() => {
+                if (isActive) setIsMaximized(false);
+            });
+
+        const unsubscribe = windowApi.onMaximizeChange((maximized) => {
+            setIsMaximized(maximized);
+        });
+
+        return () => {
+            isActive = false;
+            unsubscribe();
+        };
+    }, []);
+
+    if (!electronWindow) return null;
+
+    const buttonClassName = 'h-9 w-11 inline-flex items-center justify-center text-slate-300 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-400';
+
+    return (
+        <div
+            className="ml-auto flex h-9 items-center"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+            <button
+                type="button"
+                aria-label="Minimize window"
+                className={buttonClassName}
+                onClick={() => electronWindow.minimize()}
+            >
+                <Minus size={14} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+            <button
+                type="button"
+                aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
+                className={buttonClassName}
+                onClick={() => electronWindow.maximize()}
+            >
+                {isMaximized ? (
+                    <Copy size={13} strokeWidth={1.8} aria-hidden="true" />
+                ) : (
+                    <Square size={12} strokeWidth={1.8} aria-hidden="true" />
+                )}
+            </button>
+            <button
+                type="button"
+                aria-label="Close window"
+                className={`${buttonClassName} hover:bg-red-600 hover:text-white`}
+                onClick={() => electronWindow.close()}
+            >
+                <X size={15} strokeWidth={1.8} aria-hidden="true" />
+            </button>
         </div>
     );
 };
