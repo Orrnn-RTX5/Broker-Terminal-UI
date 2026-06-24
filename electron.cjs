@@ -49,9 +49,11 @@ function getUpdaterErrorMessage(err) {
     return 'Update check failed';
 }
 
-function isPackagedForUpdates() {
+function isPackagedForUpdates(options = {}) {
     if (app.isPackaged) return true;
-    sendUpdateStatus('error', 0, 'Updates are available only in the installed app.');
+    if (options.notify !== false) {
+        sendUpdateStatus('error', 0, 'Updates are available only in the installed app.');
+    }
     return false;
 }
 
@@ -202,6 +204,12 @@ autoUpdater.on('error', (err) => {
 // ─── IPC Handlers ────────────────────────────────────────────────────────────
 ipcMain.on('get-app-version', (event) => {
     event.returnValue = app.getVersion();
+});
+
+ipcMain.on('get-app-runtime-info', (event) => {
+    event.returnValue = {
+        isPackaged: app.isPackaged,
+    };
 });
 
 ipcMain.on('install-update', async () => {
@@ -369,6 +377,7 @@ function createWindow() {
     // ─── Schedule Update Checks ──────────────────────────────────────────────
     // Initial check after 5 seconds
     setTimeout(() => {
+        if (!isPackagedForUpdates({ notify: false })) return;
         console.log('[OTA] Running startup update check...');
         autoUpdater.checkForUpdates().catch((err) => {
             console.error('[OTA] Startup check failed:', err.message);
@@ -377,6 +386,7 @@ function createWindow() {
 
     // Periodic check every 60 minutes
     setInterval(() => {
+        if (!isPackagedForUpdates({ notify: false })) return;
         console.log('[OTA] Running periodic update check...');
         autoUpdater.checkForUpdates().catch((err) => {
             console.error('[OTA] Periodic check failed:', err.message);

@@ -503,6 +503,7 @@ declare global {
   interface Window {
     electron?: {
       appVersion: string;
+      isPackaged: boolean;
       shell: {
         openPath: (path: string) => Promise<string>;
         openExternal: (url: string) => Promise<void>;
@@ -521,6 +522,7 @@ declare global {
         removeListener: (channel: string, func: (...args: unknown[]) => void) => void;
       };
       updater: {
+        isSupported: boolean;
         onStatus: (callback: (data: UpdateStatusPayload) => void) => () => void;
         checkForUpdates: () => Promise<UpdateActionResult>;
         downloadNow: () => Promise<UpdateActionResult>;

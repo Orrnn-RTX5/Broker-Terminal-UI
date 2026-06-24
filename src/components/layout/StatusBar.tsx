@@ -16,8 +16,8 @@ interface StatusBarProps {
 
 export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
     const appVersion = window.electron?.appVersion || '1.0.0';
-    const hasUpdater = Boolean(window.electron?.updater);
-    const showDesktopDownload = !window.electron;
+    const hasUpdater = Boolean(window.electron?.updater?.isSupported);
+    const showDesktopDownload = !window.electron || !window.electron.isPackaged;
     const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload });
     const desktopReleaseVersionLabel = getDesktopReleaseVersionLabel(desktopReleaseState.release);
     const [updatePhase, setUpdatePhase] = useState<UpdateStatusPayload['status'] | 'idle'>('idle');
@@ -25,7 +25,7 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
     const [actionPending, setActionPending] = useState(false);
 
     useEffect(() => {
-        if (!window.electron?.updater) return;
+        if (!window.electron?.updater?.isSupported) return;
 
         const cleanup = window.electron.updater.onStatus((data: UpdateStatusPayload) => {
             setUpdatePhase(data.status);

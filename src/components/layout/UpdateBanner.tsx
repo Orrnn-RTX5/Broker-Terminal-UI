@@ -21,7 +21,7 @@ export function UpdateBanner() {
     const [actionPending, setActionPending] = useState(false);
 
     useEffect(() => {
-        if (!window.electron?.updater) return;
+        if (!window.electron?.updater?.isSupported) return;
 
         const cleanup = window.electron.updater.onStatus((data: UpdateStatusPayload) => {
             switch (data.status) {
@@ -88,7 +88,7 @@ export function UpdateBanner() {
         }
     }, []);
 
-    if (phase === 'idle' || dismissed || !window.electron?.updater) {
+    if (phase === 'idle' || dismissed || !window.electron?.updater?.isSupported) {
         return null;
     }
 

@@ -10,9 +10,13 @@ const isAllowedExternalUrl = (value) => {
     }
 };
 
+const runtimeInfo = ipcRenderer.sendSync('get-app-runtime-info');
+const isPackaged = Boolean(runtimeInfo?.isPackaged);
+
 contextBridge.exposeInMainWorld('electron', {
     // App version from package.json
     appVersion: ipcRenderer.sendSync('get-app-version'),
+    isPackaged,
 
     // Shell utilities
     shell: {
@@ -57,6 +61,7 @@ contextBridge.exposeInMainWorld('electron', {
 
  
     updater: {
+        isSupported: isPackaged,
         onStatus: (callback) => {
             const handler = (_event, data) => callback(data);
             ipcRenderer.on('update-status', handler);
