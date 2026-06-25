@@ -204,9 +204,6 @@ const mergePatchIntoPosition = (
     const price = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, existing.currentPrice);
     next.currentPrice = price;
     next.price_current = price;
-    if (!hasProfitPatch && price !== existing.currentPrice) {
-      next.hasBackendProfit = false;
-    }
   }
 
   if (hasProfitPatch) {
@@ -292,7 +289,7 @@ export const patchToolboxPositions = (
   return next;
 };
 
-const patchPositionsFromTick = (
+export const patchPositionsFromTick = (
   current: ToolboxTradePosition[],
   tick: any,
 ): ToolboxTradePosition[] => {
@@ -314,7 +311,6 @@ const patchPositionsFromTick = (
       ...position,
       currentPrice,
       price_current: currentPrice,
-      hasBackendProfit: false,
       time_update: tickTime || position.time_update,
     };
   });

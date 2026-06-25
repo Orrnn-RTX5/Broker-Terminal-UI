@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeToolboxAccount,
+  patchPositionsFromTick,
   patchToolboxPositions,
   replaceToolboxPositions,
 } from './useToolboxTradeData';
@@ -101,7 +102,7 @@ describe('useToolboxTradeData helpers', () => {
     expect(patched.find((position) => position.id === 102)).toBe(initial.find((position) => position.id === 102));
   });
 
-  it('invalidates backend profit when current price changes without fresh profit', () => {
+  it('preserves backend profit when current price changes without fresh profit', () => {
     const initial = replaceToolboxPositions([], [
       {
         ticket: 101,
@@ -128,7 +129,37 @@ describe('useToolboxTradeData helpers', () => {
       currentPrice: 1.34705,
       price_current: 1.34705,
       profit: 0.37,
-      hasBackendProfit: false,
+      hasBackendProfit: true,
+    });
+  });
+
+  it('preserves backend BTC profit on quote tick updates', () => {
+    const initial = replaceToolboxPositions([], [
+      {
+        ticket: 501,
+        account_login: 200020,
+        symbol: 'BTCUSD',
+        side: 'sell',
+        volume: 0.01,
+        price_open: 62945.81,
+        price_current: 61140.24,
+        profit: 1805.57,
+      },
+    ]);
+
+    const patched = patchPositionsFromTick(initial, {
+      symbol: 'BTCUSD',
+      bid: 61117.14,
+      ask: 61129.14,
+      timestamp: 1774503999,
+    });
+
+    expect(patched[0]).toMatchObject({
+      currentPrice: 61129.14,
+      price_current: 61129.14,
+      profit: 1805.57,
+      unrealizedPnL: 1805.57,
+      hasBackendProfit: true,
     });
   });
 
