@@ -1403,7 +1403,7 @@ export const TradingChart = React.memo(function TradingChart({
           volumeRef.current.setData(volumeData);
 
           if (currentScrollPosition !== null) {
-            timeScale.scrollToPosition(currentScrollPosition + addedCount, false);
+            timeScale.scrollToPosition(currentScrollPosition, false);
           }
         }
 
@@ -1701,17 +1701,15 @@ export const TradingChart = React.memo(function TradingChart({
         chartSettingsRef.current,
       );
 
-      // Update series but maintain current left logical index so it visually stays in place
+      // Update series but keep the same distance from the latest candle.
       if (seriesRef.current && volumeRef.current && chartRef.current) {
-        // Temporarily save current range
         const timeScale = chartRef.current.timeScale();
         const currentPos = timeScale.scrollPosition();
 
         seriesRef.current.setData(seriesData);
         volumeRef.current.setData(volumeData);
 
-        // Shift position rightward so the view doesn't jump
-        timeScale.scrollToPosition(currentPos + reconciledNewCandles.length, false);
+        timeScale.scrollToPosition(currentPos, false);
       }
 
       // Update aggregation service history with these older ones too
