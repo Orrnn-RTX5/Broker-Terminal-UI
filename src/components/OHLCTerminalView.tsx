@@ -60,7 +60,9 @@ export const OHLCTerminalView: React.FC<OHLCTerminalViewProps> = ({
     const timeframesToShow = showMultipleTimeframes ? TIMEFRAMES : [selectedTf];
 
     const newRows: OHLCRow[] = timeframesToShow.map(tf => {
-      const candles = candleAggregationService.getCandles(symbol, tf, true, true);
+      const candles = candleAggregationService
+        .getCandles(symbol, tf, true, false)
+        .filter(candle => !candle.isSynthetic);
       const lastCandle = candles[candles.length - 1];
       const prevCandle = candles.length > 1 ? candles[candles.length - 2] : null;
 

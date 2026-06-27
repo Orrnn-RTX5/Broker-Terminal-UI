@@ -4,8 +4,8 @@
  * Changes vs original:
  *  1. fillCandleGaps()          — pure utility: inserts synthetic doji bars for missing periods
  *  2. Late-tick grace window    — ticks up to 2× TF period late can still update forming candle
- *  3. M1 gap detection          — processCompletedM1 fills synthetic M1s when a tick skips periods
- *  4. getCandles(fillGaps flag) — opt-in gap-fill at read time (chart gets continuous timeline)
+ *  3. M1 gap handling           — skipped periods are left empty unless explicitly gap-filled
+ *  4. getCandles(fillGaps flag) — opt-in gap-fill at read time for non-display uses
  *  5. All completed candles remain immutable; only forming candles accept late ticks
  */
 
@@ -152,23 +152,6 @@ export function fillCandleGaps(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Build a synthetic doji candle that carries a price forward (used internally
- * when M1 gaps are detected while processing ticks so higher-TF math stays dense).
- */
-function makeSyntheticM1(time: number, prevClose: number): OHLCV {
-  return {
-    time,
-    open:  prevClose,
-    high:  prevClose,
-    low:   prevClose,
-    close: prevClose,
-    volume: 0,
-    isComplete:  true,
-    isSynthetic: true,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // SymbolCandleBuilder
 // ---------------------------------------------------------------------------
@@ -243,9 +226,6 @@ export class SymbolCandleBuilder {
         this.m1Forming.isComplete = true;
         this.m1Completed.push(this.m1Forming);
         this.trimM1History();
-
-        // Fill any skipped M1 periods before propagating to higher TFs
-        this.fillM1GapAndPropagate(this.m1Forming, m1TimeSeconds, updates);
 
         // Propagate the completed M1 to higher TFs
         this.processCompletedM1(this.m1Forming, updates);
@@ -401,9 +381,9 @@ export class SymbolCandleBuilder {
    *
    * @param timeframe     Target timeframe.
    * @param includeForming  Append the live forming candle (default true).
-   * @param fillGaps      Fill missing periods with synthetic doji candles so
-   *                      the timeline is continuous (default false).
-   *                      Enable for chart rendering and indicator calculation.
+   * @param fillGaps      Fill missing periods with synthetic doji candles
+   *                      (default false). Keep false for user-visible charts
+   *                      so only real broker/backend candles are displayed.
    */
   getCandles(
     timeframe: Timeframe,
@@ -492,36 +472,6 @@ export class SymbolCandleBuilder {
       }
 
       updates.set(tf, data.forming);
-    }
-  }
-
-  /**
-   * When a tick crosses an M1 boundary and the gap is > 1 period, synthesise
-   * intermediate M1 doji candles so that higher-TF aggregation math stays dense.
-   *
-   * This prevents a situation like: real M1 at 11:00, next real tick at 11:06
-   * producing a single M5 bar that is missing the 11:01–11:05 M1 contributions.
-   */
-  private fillM1GapAndPropagate(
-    prevM1: OHLCV,
-    nextRealM1BucketSec: number,
-    updates: Map<Timeframe, OHLCV>,
-  ): void {
-    const M1_SEC = 60;
-    const expectedNextM1 = prevM1.time + M1_SEC;
-
-    if (nextRealM1BucketSec <= expectedNextM1) return; // no gap
-
-    // Insert synthetic M1 candles for each skipped minute
-    const skipped = Math.round((nextRealM1BucketSec - expectedNextM1) / M1_SEC);
-    const maxSyntheticM1 = 500; // safety cap
-
-    for (let k = 0; k < Math.min(skipped, maxSyntheticM1); k++) {
-      const synTime = expectedNextM1 + k * M1_SEC;
-      const synCandle = makeSyntheticM1(synTime, prevM1.close);
-      this.m1Completed.push(synCandle);
-      this.trimM1History();
-      this.processCompletedM1(synCandle, updates);
     }
   }
 
@@ -723,8 +673,7 @@ export class CandleAggregationService {
    * Return candles for a symbol and timeframe.
    *
    * @param fillGaps  When true, missing periods are filled with synthetic doji
-   *                  candles so the timeline is continuous.  Enable for chart
-   *                  rendering and indicator calculation.
+   *                  candles. Keep false for user-visible charts.
    */
   getCandles(
     symbol:        string,

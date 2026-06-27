@@ -114,6 +114,9 @@ export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' 
 const TARGET_BAR_PX = 25;
 const MIN_ADAPTIVE_BARS = 30;
 const MAX_ADAPTIVE_BARS = 200;
+const INITIAL_HISTORY_COUNT = 500;
+const HISTORY_BATCH_SIZE = 5000;
+const HISTORY_MAX_BATCHES = 200;
 const TRADE_LEVEL_OVERRIDES_STORAGE_KEY = 'rtx-trade-level-overrides-v1';
 const TRADE_LEVEL_OVERRIDE_TTL_MS = 5 * 60 * 1000;
 const TRADE_LEVEL_OPTIMISTIC_GRACE_MS = 15_000;
@@ -283,6 +286,29 @@ const getDisplayVolume = (candle: Candle, settings: VolumeDisplaySettings): numb
     ?? finiteVolumeOrNull(candle.realVolume)
     ?? 0;
 };
+
+const mergeCandleCollections = (...collections: Array<readonly Candle[]>): Candle[] => {
+  const byTime = new Map<number, Candle>();
+  collections.forEach(collection => {
+    collection.forEach(candle => {
+      const existing = byTime.get(candle.time);
+      byTime.set(candle.time, existing ? { ...existing, ...candle } : candle);
+    });
+  });
+  return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+};
+
+const getValidSortedCandles = (candles: Candle[]): Candle[] => (
+  candles
+    .filter(c => c.open != null && c.high != null && c.low != null && c.close != null && !isNaN(c.open) && !isNaN(c.close))
+    .sort((a, b) => (a.time as number) - (b.time as number))
+);
+
+const applyBrokerTimeOffset = (candles: Candle[], offsetSeconds: number): Candle[] => (
+  offsetSeconds === 0
+    ? candles
+    : candles.map(candle => ({ ...candle, time: candle.time - offsetSeconds }))
+);
 
 const getLivePriceOverlayColor = (
   currentCandle: Candle | null,
@@ -711,6 +737,37 @@ export const TradingChart = React.memo(function TradingChart({
     incompatibleQuoteCountRef.current = reset.incompatibleQuoteCount;
   }, []);
 
+  const mergeCandleIntoRef = useCallback((incoming: Candle) => {
+    const candles = candlesRef.current;
+    const lastIndex = candles.length - 1;
+    const last = candles[lastIndex];
+
+    if (!last) {
+      candles.push(incoming);
+      return;
+    }
+
+    if (incoming.time === last.time) {
+      candles[lastIndex] = { ...last, ...incoming };
+      return;
+    }
+
+    if (incoming.time > last.time) {
+      candles.push(incoming);
+      return;
+    }
+
+    const existingIndex = candles.findIndex(candle => candle.time === incoming.time);
+    if (existingIndex >= 0) {
+      candles[existingIndex] = { ...candles[existingIndex], ...incoming };
+      return;
+    }
+
+    const insertAt = candles.findIndex(candle => candle.time > incoming.time);
+    if (insertAt >= 0) candles.splice(insertAt, 0, incoming);
+    else candles.push(incoming);
+  }, []);
+
   const flushTradeOverlay = useCallback(() => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
@@ -834,6 +891,7 @@ export const TradingChart = React.memo(function TradingChart({
   const isLoadingMoreRef = useRef(false);
   const hasReachedBeginningRef = useRef(false);
   const loadMoreHistoryRef = useRef<(() => Promise<void>) | null>(null);
+  const historyLoadSeqRef = useRef(0);
   // Exposes scheduleBoundaryTimer from inside the live-tick effect so loadHistory
   // can kick it as soon as currentCandleRef is populated (they run in parallel).
   const scheduleBoundaryTimerRef = useRef<(() => void) | null>(null);
@@ -1264,6 +1322,109 @@ export const TradingChart = React.memo(function TradingChart({
     candleAggregationService.loadHistoricalCandles(symbol, activeTf as AggTimeframe, ohlcvCandles);
   }, [symbol]);
 
+  const loadRemainingHistoryInBackground = useCallback(async (
+    loadSeq: number,
+    activeTf: Timeframe,
+    initialOlderThanRaw: number,
+    brokerOffsetSeconds: number,
+  ) => {
+    if (!symbol || !Number.isFinite(initialOlderThanRaw)) return;
+
+    let olderThanRaw = initialOlderThanRaw;
+    let batchIndex = 0;
+
+    while (batchIndex < HISTORY_MAX_BATCHES) {
+      if (
+        isDisposedRef.current
+        || historyLoadSeqRef.current !== loadSeq
+        || hasReachedBeginningRef.current
+      ) {
+        return;
+      }
+
+      isLoadingMoreRef.current = true;
+
+      let olderCandles: Candle[];
+      try {
+        olderCandles = await chartDataService.fetchCandles({
+          symbol,
+          timeframe: activeTf,
+          count: HISTORY_BATCH_SIZE,
+          to: Math.floor(olderThanRaw) - 1,
+        });
+      } catch (err) {
+        console.warn('[Chart] Background history load failed:', err);
+        return;
+      } finally {
+        isLoadingMoreRef.current = false;
+      }
+
+      if (isDisposedRef.current || historyLoadSeqRef.current !== loadSeq) return;
+
+      const rawBatch = getValidSortedCandles(olderCandles);
+      const newRawCandles = rawBatch.filter(c => c.time < olderThanRaw);
+
+      if (newRawCandles.length === 0) {
+        hasReachedBeginningRef.current = true;
+        console.log(`[Chart] Background history reached beginning for ${symbol} ${activeTf}`);
+        return;
+      }
+
+      const nextOlderThanRaw = newRawCandles[0]?.time;
+      const adjustedCandles = applyBrokerTimeOffset(newRawCandles, brokerOffsetSeconds);
+      const reconciledNewCandles = reconcileCandlesWithLiveQuote(adjustedCandles, 'background older history');
+
+      if (reconciledNewCandles.length === 0) {
+        console.warn(`[Chart] Stopping background history for ${symbol} ${activeTf}; older batch did not match rendered price scale.`);
+        return;
+      }
+
+      const previousLength = candlesRef.current.length;
+      const currentScrollPosition = chartRef.current?.timeScale().scrollPosition() ?? null;
+      candlesRef.current = mergeCandleCollections(
+        reconciledNewCandles,
+        candlesRef.current,
+        currentCandleRef.current ? [currentCandleRef.current] : [],
+      );
+      const addedCount = Math.max(0, candlesRef.current.length - previousLength);
+
+      if (addedCount > 0) {
+        const activeType = prevChartTypeRef.current || 'candlestick';
+        const { seriesData, volumeData } = formatChartSeriesData(
+          candlesRef.current,
+          activeType,
+          chartThemeRef.current,
+          chartSettingsRef.current,
+        );
+
+        if (seriesRef.current && volumeRef.current && chartRef.current) {
+          const timeScale = chartRef.current.timeScale();
+          seriesRef.current.setData(seriesData);
+          volumeRef.current.setData(volumeData);
+
+          if (currentScrollPosition !== null) {
+            timeScale.scrollToPosition(currentScrollPosition + addedCount, false);
+          }
+        }
+
+        console.log(`[Chart] Background history added ${addedCount} older candles for ${symbol} ${activeTf} (total ${candlesRef.current.length})`);
+        setCandlesLoadedRev(r => r + 1);
+      }
+
+      if (!nextOlderThanRaw || nextOlderThanRaw === olderThanRaw) {
+        hasReachedBeginningRef.current = true;
+        return;
+      }
+
+      olderThanRaw = nextOlderThanRaw;
+      batchIndex += 1;
+
+      await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+    }
+
+    console.warn(`[Chart] Background history paused after ${HISTORY_MAX_BATCHES} batches for ${symbol} ${activeTf}. More history can still load with left-scroll.`);
+  }, [reconcileCandlesWithLiveQuote, symbol]);
+
   const normalizeRenderedCandlesToLivePrice = useCallback((price: number, activeTf: Timeframe): boolean => {
     const candles = candlesRef.current;
     if (candles.length === 0) return true;
@@ -1300,12 +1461,23 @@ export const TradingChart = React.memo(function TradingChart({
     console.log(`[Chart] Loading history for ${symbol}, timeframe: ${activeTf}`);
 
     try {
+      const loadSeq = historyLoadSeqRef.current + 1;
+      historyLoadSeqRef.current = loadSeq;
+      const isCurrentHistoryLoad = () => !isDisposedRef.current && historyLoadSeqRef.current === loadSeq;
+      hasReachedBeginningRef.current = false;
+      isLoadingMoreRef.current = false;
+
       let candles: Candle[] = await chartDataService.fetchCandles({
         symbol,
         timeframe: activeTf,
-        count: 500,
+        count: INITIAL_HISTORY_COUNT,
       });
-      console.log(`[Chart] Received ${candles.length} candles`);
+
+      if (!isCurrentHistoryLoad()) return;
+
+      candles = getValidSortedCandles(candles);
+      const oldestRawHistoryTime = candles[0]?.time;
+      console.log(`[Chart] Received initial ${candles.length} candles; older history will load in background`);
 
       // If API returns empty candles, initialize series so live ticks can build candles
       if (candles.length === 0) {
@@ -1343,10 +1515,10 @@ export const TradingChart = React.memo(function TradingChart({
       // while live WebSocket ticks stream in UTC. If the REST history is placed
       // artificially in the 'future', it prevents the live ticks from ever 
       // rolling over the chart. We detect >5 min forward drift and shift it back.
+      let detectedBrokerOffsetSecs = 0;
       if (candles.length > 0) {
         const lastCandleTime = candles[candles.length - 1].time as number;
         const trueUtcSecs = Date.now() / 1000;
-        let detectedBrokerOffsetSecs = 0;
 
         if (lastCandleTime > trueUtcSecs + 300) {
           const rawOffset = lastCandleTime - trueUtcSecs;
@@ -1362,6 +1534,12 @@ export const TradingChart = React.memo(function TradingChart({
 
         setBrokerTimeOffsetSec(detectedBrokerOffsetSecs);
       }
+
+      candles = mergeCandleCollections(
+        candles,
+        candlesRef.current,
+        currentCandleRef.current ? [currentCandleRef.current] : [],
+      );
 
       candlesRef.current = candles;
 
@@ -1417,8 +1595,17 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }
 
-      // Full history rendered — let the overlay fade.
+      // Initial page rendered; older real candles continue loading in the background.
       setLoadingPhase('ready');
+
+      if (oldestRawHistoryTime) {
+        void loadRemainingHistoryInBackground(
+          loadSeq,
+          activeTf,
+          oldestRawHistoryTime,
+          detectedBrokerOffsetSecs,
+        );
+      }
     } catch (err: any) {
       console.warn('[Chart] Failed to load history:', err);
       // REST failed: keep the overlay up, but advance the label so users know
@@ -1427,7 +1614,7 @@ export const TradingChart = React.memo(function TradingChart({
     } finally {
       setCandlesLoadedRev(r => r + 1);
     }
-  }, [symbol, timeframe, reconcileCandlesWithLiveQuote, resetEmptyHistoryState, resetLiveQuotePriceGuard, updateChartData]);
+  }, [symbol, timeframe, loadRemainingHistoryInBackground, reconcileCandlesWithLiveQuote, resetEmptyHistoryState, resetLiveQuotePriceGuard, updateChartData]);
 
   // Keep loadHistoryRef in sync so the boundary poller can trigger a silent refresh
   useEffect(() => {
@@ -1464,14 +1651,14 @@ export const TradingChart = React.memo(function TradingChart({
     if (!oldestCandle) return;
 
     isLoadingMoreRef.current = true;
-    console.log(`[Chart] Infinite scroll: Fetching 5000 more candles before ${oldestCandle.time}`);
+    console.log(`[Chart] Infinite scroll: Fetching ${HISTORY_BATCH_SIZE} more candles before ${oldestCandle.time}`);
 
     try {
       const olderCandles: Candle[] = await chartDataService.fetchCandles({
         symbol,
         timeframe,
-        count: 5000,
-        to: Math.floor(oldestCandle.time),
+        count: HISTORY_BATCH_SIZE,
+        to: Math.floor(oldestCandle.time + brokerTimeOffsetSec) - 1,
       });
 
       if (olderCandles.length === 0) {
@@ -1480,24 +1667,22 @@ export const TradingChart = React.memo(function TradingChart({
         return;
       }
 
-      // If we got fewer than requested, we probably hit the beginning of the market data
-      if (olderCandles.length < 4000) {
-        hasReachedBeginningRef.current = true;
-      }
+      const adjustedOlderCandles = applyBrokerTimeOffset(
+        getValidSortedCandles(olderCandles),
+        brokerTimeOffsetSec,
+      );
 
       // Filter out overlapping candles
-      const newCandles = olderCandles.filter(c => c.time < oldestCandle.time);
+      const newCandles = adjustedOlderCandles.filter(c => c.time < oldestCandle.time);
       if (newCandles.length === 0) {
         hasReachedBeginningRef.current = true;
         return;
       }
 
-      newCandles.sort((a, b) => (a.time as number) - (b.time as number));
       console.log(`[Chart] Fetched ${newCandles.length} older candles`);
 
       // Filter out any candles with null/NaN OHLC values to prevent chart crashes
-      const validNewCandles = newCandles.filter(c => c.open != null && c.high != null && c.low != null && c.close != null && !isNaN(c.open) && !isNaN(c.close));
-      const reconciledNewCandles = reconcileCandlesWithLiveQuote(validNewCandles, 'older history');
+      const reconciledNewCandles = reconcileCandlesWithLiveQuote(newCandles, 'older history');
       if (reconciledNewCandles.length === 0) {
         console.warn(`[Chart] Ignoring ${symbol} older history batch because no candles survived price reconciliation.`);
         return;
@@ -1546,7 +1731,7 @@ export const TradingChart = React.memo(function TradingChart({
     } finally {
       isLoadingMoreRef.current = false;
     }
-  }, [symbol, timeframe, reconcileCandlesWithLiveQuote]);
+  }, [brokerTimeOffsetSec, symbol, timeframe, reconcileCandlesWithLiveQuote]);
 
   // Keep ref pointing to the latest loadMoreHistory
   useEffect(() => {
@@ -2228,7 +2413,6 @@ export const TradingChart = React.memo(function TradingChart({
       const tail = candlesRef.current[candlesRef.current.length - 1];
       if (!tail || tail.time !== done.time) {
         candlesRef.current.push(done);
-        if (candlesRef.current.length > 600) candlesRef.current = candlesRef.current.slice(-600);
       }
 
       const open = openPrice ?? done.close; // MT5 rule: open = previous close (no gap)
@@ -2426,7 +2610,7 @@ export const TradingChart = React.memo(function TradingChart({
       if (currentCandleRef.current && c.time < currentCandleRef.current.time) {
         // LightweightCharts cannot update historical datums via update(); merge the
         // authoritative server correction and repaint the full sorted set instead.
-        candlesRef.current = chartDataService.mergeCandle(candlesRef.current, c, 1000) as Candle[];
+        mergeCandleIntoRef(c);
         updateChartData(candlesRef.current);
         if (candlesRef.current.length > 0) markCandlesReady();
         return;
@@ -2435,7 +2619,7 @@ export const TradingChart = React.memo(function TradingChart({
       // 2. Is this an update to the CURRENTLY forming bar?
       if (currentCandleRef.current && c.time === currentCandleRef.current.time) {
         currentCandleRef.current = { ...c };
-        candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
+        mergeCandleIntoRef(currentCandleRef.current);
         push(currentCandleRef.current, false);
         repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
         return;
@@ -2444,7 +2628,7 @@ export const TradingChart = React.memo(function TradingChart({
       // 3. Server is telling us about a TRULY NEW candle (c.time > current.time)
       if (!currentCandleRef.current) {
         currentCandleRef.current = { ...c };
-        candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
+        mergeCandleIntoRef(currentCandleRef.current);
         push(currentCandleRef.current, true);
         repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
         return;
@@ -2457,7 +2641,7 @@ export const TradingChart = React.memo(function TradingChart({
         // Immediately apply server's data to it
         if (currentCandleRef.current && currentCandleRef.current.time === c.time) {
           currentCandleRef.current = { ...c };
-          candlesRef.current = chartDataService.mergeCandle(candlesRef.current, currentCandleRef.current, 1000) as Candle[];
+          mergeCandleIntoRef(currentCandleRef.current);
           push(currentCandleRef.current, false);
           repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
         }
@@ -2477,10 +2661,7 @@ export const TradingChart = React.memo(function TradingChart({
         if (reconciledSnapshot.length === 0) return;
         const latestClose = reconciledSnapshot[reconciledSnapshot.length - 1]?.close;
         if (latestClose && !normalizeRenderedCandlesToLivePrice(latestClose, prevTimeframeRef.current || streamTimeframe)) return;
-        candlesRef.current = reconciledSnapshot.reduce(
-          (acc, candle) => chartDataService.mergeCandle(acc, candle, 1000),
-          candlesRef.current,
-        ) as Candle[];
+        reconciledSnapshot.forEach(candle => mergeCandleIntoRef(candle));
         updateChartData(candlesRef.current);
         currentCandleRef.current = candlesRef.current[candlesRef.current.length - 1] ?? currentCandleRef.current;
         if (currentCandleRef.current) {

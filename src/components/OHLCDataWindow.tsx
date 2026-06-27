@@ -46,7 +46,9 @@ export const OHLCDataWindow: React.FC<OHLCDataWindowProps> = ({
   };
 
   const updateData = useCallback(() => {
-    const candles = candleAggregationService.getCandles(symbol, timeframe, true, true);
+    const candles = candleAggregationService
+      .getCandles(symbol, timeframe, true, false)
+      .filter(candle => !candle.isSynthetic);
 
     if (candles.length > 0) {
       setCurrentCandle(candles[candles.length - 1]);

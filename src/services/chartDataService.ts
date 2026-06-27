@@ -312,7 +312,7 @@ export class ChartDataService {
   }
 
   async fetchCandles(options: FetchCandlesOptions): Promise<OHLCData[]> {
-    const { symbol, timeframe, count = 500, from, to, signal } = options;
+    const { symbol, timeframe, count, from, to, signal } = options;
     const apiTf = this.normalizeTimeframe(timeframe);
     const apiV2BaseUrl = runtimeApiV2BaseUrl();
     const token = getAuthToken();
