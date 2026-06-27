@@ -73,7 +73,9 @@ export function useFixMarketData({
    */
   const updateCandlesFromService = useCallback(() => {
     const currentTf = getCurrentTimeframe();
-    const candles = candleAggregationService.getCandles(symbolRef.current, currentTf, true, true);
+    const candles = candleAggregationService
+      .getCandles(symbolRef.current, currentTf, true, false)
+      .filter(candle => !candle.isSynthetic);
 
     if (candles.length > 0) {
       setHistoricalData(candles);
@@ -136,12 +138,14 @@ export function useFixMarketData({
       );
     }
 
-    const visibleCandles = candleAggregationService.getCandles(
-      symbolRef.current,
-      getCurrentTimeframe(),
-      true,
-      true
-    );
+    const visibleCandles = candleAggregationService
+      .getCandles(
+        symbolRef.current,
+        getCurrentTimeframe(),
+        true,
+        false
+      )
+      .filter(candle => !candle.isSynthetic);
 
     const candlesToDisplay = visibleCandles.length > 0 ? visibleCandles : normalizedCandles;
     const latestCandle = candlesToDisplay[candlesToDisplay.length - 1];

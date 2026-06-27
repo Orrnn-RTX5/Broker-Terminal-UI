@@ -62,7 +62,9 @@ export function useLiveCandleStream(
     candleAggregationService.addCompletedCandle(symbol, validTimeframe, candle);
 
     // Get merged candles (REST history + live)
-    const merged = candleAggregationService.getCandles(symbol, validTimeframe, true, true);
+    const merged = candleAggregationService
+      .getCandles(symbol, validTimeframe, true, false)
+      .filter(candle => !candle.isSynthetic);
     setCandles(merged);
     setLastUpdate(Date.now());
 
@@ -84,7 +86,9 @@ export function useLiveCandleStream(
     candleAggregationService.processTick(tickData);
 
     // Get updated candles
-    const merged = candleAggregationService.getCandles(symbol, validTimeframe, true, true);
+    const merged = candleAggregationService
+      .getCandles(symbol, validTimeframe, true, false)
+      .filter(candle => !candle.isSynthetic);
     if (merged.length > 0) {
       setCandles(merged);
       setLastUpdate(Date.now());

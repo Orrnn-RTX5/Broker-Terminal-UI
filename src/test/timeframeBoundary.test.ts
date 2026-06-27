@@ -65,4 +65,18 @@ describe('timeframeBoundary', () => {
       },
     ]);
   });
+
+  it('does not synthesize missing M1 candles when live ticks skip periods', () => {
+    const builder = new SymbolCandleBuilder('EURUSD');
+    const firstMinute = utcSeconds(2025, 10, 9, 12, 0);
+    const nextRealMinute = utcSeconds(2025, 10, 9, 12, 6);
+
+    builder.processTick({ symbol: 'EURUSD', bid: 1.1, ask: 1.2, timestamp: firstMinute });
+    builder.processTick({ symbol: 'EURUSD', bid: 1.3, ask: 1.4, timestamp: nextRealMinute });
+
+    const candles = builder.getCandles('M1');
+
+    expect(candles.map(candle => candle.time)).toEqual([firstMinute, nextRealMinute]);
+    expect(candles.every(candle => candle.isSynthetic !== true)).toBe(true);
+  });
 });

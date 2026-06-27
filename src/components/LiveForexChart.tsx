@@ -122,7 +122,7 @@ export const LiveForexChart: React.FC<LiveForexChartProps> = ({
             onCandle: (candle) => {
                 if (disposed) return;
                 const repaint = chartDataService.shouldRepaintForCandle(candlesRef.current, candle);
-                candlesRef.current = chartDataService.mergeCandle(candlesRef.current, candle, 1000);
+                candlesRef.current = chartDataService.mergeCandle(candlesRef.current, candle);
                 if (repaint) {
                     updateChart(candlesRef.current);
                 } else {
@@ -194,7 +194,6 @@ export const LiveForexChart: React.FC<LiveForexChartProps> = ({
             const candles = await chartDataService.fetchCandles({
                 symbol: selectedSymbol,
                 timeframe: selectedTimeframe,
-                count: 200,
                 signal,
             });
             if (isDisposed()) return;

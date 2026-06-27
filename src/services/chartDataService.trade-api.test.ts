@@ -210,6 +210,23 @@ describe('trade candle normalization and websocket cleanup', () => {
     );
   });
 
+  it('omits the candle limit query param when no count is requested', async () => {
+    localStorage.setItem('auth_token', 'jwt-token');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new ChartDataService();
+    await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15' })).resolves.toHaveLength(1);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${(buildBrokerApiV2() || API_V2_BASE_URL).replace(/\/$/, '')}/candles/EUR%2FUSD?timeframe=M15`,
+      expect.any(Object),
+    );
+  });
+
   it('routes broker-discovered REST candles through the selected desktop broker', async () => {
     await withWindowLocation({ protocol: 'http:', hostname: 'localhost' }, async () => {
       localStorage.setItem('server_url', 'https://broker.example.com');
