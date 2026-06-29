@@ -5,6 +5,7 @@ export interface LoginHeroAsset {
   mobileSrc?: string;
   width: number;
   height: number;
+  theme?: 'achiever';
   fit?: 'cover' | 'contain';
   position?: string;
   mobileFit?: 'cover' | 'contain';
@@ -17,6 +18,21 @@ export interface LoginHeroBroker {
   id?: string | number;
   name?: string;
   domain?: string;
+  domains?: string[] | string;
+  webterminal_domain?: string;
+  web_terminal_domain?: string;
+  webterminal_url?: string;
+  web_terminal_url?: string;
+  frontend_domain?: string;
+  frontend_url?: string;
+  client_domain?: string;
+  client_url?: string;
+  login_domain?: string;
+  login_url?: string;
+  admin_domain?: string;
+  admin_url?: string;
+  manager_domain?: string;
+  manager_url?: string;
   server?: string;
   server_url?: string;
   backend_url?: string;
@@ -73,6 +89,18 @@ const MYPROP_LOGIN_HERO_ASSET: LoginHeroAsset = {
   mobilePosition: 'center center',
 };
 
+const ACHIEVER_LOGIN_HERO_ASSET: LoginHeroAsset = {
+  src: toPublicAssetPath('login/achiever-hero-desktop-fit.png'),
+  mobileSrc: toPublicAssetPath('login/achiever-hero-mobile.jpg'),
+  width: 1024,
+  height: 928,
+  theme: 'achiever',
+  fit: 'cover',
+  position: 'center center',
+  mobileFit: 'contain',
+  mobilePosition: 'center center',
+};
+
 const LOGIN_HERO_BROKER_URL_FIELDS = [
   'API_HOST',
   'API_HOST_EXT',
@@ -89,8 +117,40 @@ const LOGIN_HERO_BROKER_URL_FIELDS = [
   'server_url',
 ] as const satisfies readonly (keyof LoginHeroBroker)[];
 
+const LOGIN_HERO_BROKER_DOMAIN_FIELDS = [
+  'domain',
+  'domains',
+  'webterminal_domain',
+  'web_terminal_domain',
+  'webterminal_url',
+  'web_terminal_url',
+  'frontend_domain',
+  'frontend_url',
+  'client_domain',
+  'client_url',
+  'login_domain',
+  'login_url',
+  'admin_domain',
+  'admin_url',
+  'manager_domain',
+  'manager_url',
+] as const satisfies readonly (keyof LoginHeroBroker)[];
+
 const compactBrokerHeroIdentity = (value: string): string =>
   value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const ACHIEVER_BROKER_COMPACT_IDENTITIES = new Set([
+  'achieverfinancials',
+  'achiever',
+  'achiver',
+]);
+
+const ACHIEVER_BROKER_HOSTS = new Set([
+  'admin.achieverfinancials.com',
+  'manager.achieverfinancials.com',
+  'webterminal.achieverfinancials.com',
+  'service.achieverfinancials.com',
+]);
 
 const identityIncludes = (identityParts: readonly string[], matcher: string): boolean => {
   const compactMatcher = compactBrokerHeroIdentity(matcher);
@@ -107,6 +167,46 @@ const cleanIdentityParts = (parts: readonly unknown[]): string[] =>
     .map(value => String(value || '').trim())
     .filter((value): value is string => Boolean(value));
 
+const expandDelimitedIdentityParts = (value: unknown): unknown[] => {
+  if (Array.isArray(value)) {
+    return value.flatMap(item => expandDelimitedIdentityParts(item));
+  }
+
+  if (typeof value === 'string') {
+    return value.split(',');
+  }
+
+  return [value];
+};
+
+const getIdentityHostname = (identity: string): string => {
+  const normalizedIdentity = identity.trim().toLowerCase();
+  if (!normalizedIdentity) return '';
+
+  const urlCandidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(normalizedIdentity)
+    ? normalizedIdentity
+    : `https://${normalizedIdentity}`;
+
+  try {
+    return new URL(urlCandidate).hostname.replace(/^www\./, '');
+  } catch {
+    return normalizedIdentity.split(/[/?#:]/, 1)[0].replace(/^www\./, '');
+  }
+};
+
+const identityMatchesBroker = (
+  identityParts: readonly string[],
+  compactIdentities: ReadonlySet<string>,
+  hostnames: ReadonlySet<string>,
+): boolean =>
+  identityParts.some(part => {
+    const compactIdentity = compactBrokerHeroIdentity(part);
+    if (compactIdentities.has(compactIdentity)) return true;
+
+    const hostname = getIdentityHostname(part);
+    return Boolean(hostname && hostnames.has(hostname));
+  });
+
 const getRuntimeHeroIdentityParts = (): string[] => {
   if (typeof window === 'undefined') return [];
 
@@ -122,8 +222,8 @@ const getBrokerHeroIdentityParts = (broker: LoginHeroBroker): string[] =>
     broker.broker_name,
     broker.id,
     broker.name,
-    broker.domain,
     broker.server,
+    ...LOGIN_HERO_BROKER_DOMAIN_FIELDS.flatMap(field => expandDelimitedIdentityParts(broker[field])),
     ...LOGIN_HERO_BROKER_URL_FIELDS.map(field => broker[field]),
   ]);
 
@@ -132,6 +232,14 @@ export const resolveLoginHeroAsset = (broker: LoginHeroBroker | null | undefined
 
   if (identityIncludes(identityParts, 'myprop')) {
     return MYPROP_LOGIN_HERO_ASSET;
+  }
+
+  if (identityMatchesBroker(
+    identityParts,
+    ACHIEVER_BROKER_COMPACT_IDENTITIES,
+    ACHIEVER_BROKER_HOSTS,
+  )) {
+    return ACHIEVER_LOGIN_HERO_ASSET;
   }
 
   if (

@@ -21,9 +21,11 @@ import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
 import { resolveLoginHeroAsset, toPublicAssetPath, type LoginHeroAsset } from './welcomeHeroAssets';
 
-interface BrokerServerItem {
+export interface BrokerServerItem {
     broker_id: string;
     broker_name: string;
+    id?: string | number;
+    name?: string;
     server?: string;
     server_ip?: string;
     server_port?: number;
@@ -44,8 +46,25 @@ interface BrokerServerItem {
     web_ext_api_url?: string;
     services_url?: string;
     servicesUrl?: string;
+    domain?: string;
+    domains?: string[] | string;
+    webterminal_domain?: string;
+    web_terminal_domain?: string;
+    webterminal_url?: string;
+    web_terminal_url?: string;
+    frontend_domain?: string;
+    frontend_url?: string;
+    client_domain?: string;
+    client_url?: string;
+    login_domain?: string;
+    login_url?: string;
+    admin_domain?: string;
+    admin_url?: string;
+    manager_domain?: string;
+    manager_url?: string;
     logo_url: string;
     region?: string;
+    [key: string]: unknown;
 }
 
 interface WelcomeTerminalProps {
@@ -58,6 +77,10 @@ const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').
 const RTX5_GREEN = '#80c33f';
 const LOGIN_FIELD_BORDER = '#24424a';
 const LOGIN_FIELD_FOCUS = '#35d8b2';
+const LOGIN_FIELD_FOCUS_SHADOW = '0 0 0 3px rgba(53, 216, 178, 0.12)';
+const ACHIEVER_LOGIN_FIELD_BORDER = '#1d3f68';
+const ACHIEVER_LOGIN_FIELD_FOCUS = '#2f8cff';
+const ACHIEVER_LOGIN_FIELD_FOCUS_SHADOW = '0 0 0 3px rgba(47, 140, 255, 0.16)';
 const LOGIN_TITLE_TEXT = 'Sign in to';
 const LOGIN_TITLE_REVEAL_DELAY_MS = 90;
 const LOGIN_TITLE_LOGO_INITIAL_DELAY_MS = LOGIN_TITLE_TEXT.replace(/\s/g, '').length * LOGIN_TITLE_REVEAL_DELAY_MS;
@@ -85,7 +108,26 @@ const RUNTIME_BROKER_URL_FIELDS = [
     'server_url',
 ] as const satisfies readonly (keyof BrokerServerItem)[];
 
-const normalizeComparableRuntimeUrl = (value: string | number | undefined): string => {
+const BROKER_IDENTITY_DOMAIN_FIELDS = [
+    'domain',
+    'domains',
+    'webterminal_domain',
+    'web_terminal_domain',
+    'webterminal_url',
+    'web_terminal_url',
+    'frontend_domain',
+    'frontend_url',
+    'client_domain',
+    'client_url',
+    'login_domain',
+    'login_url',
+    'admin_domain',
+    'admin_url',
+    'manager_domain',
+    'manager_url',
+] as const satisfies readonly (keyof BrokerServerItem)[];
+
+const normalizeComparableRuntimeUrl = (value: unknown): string => {
     const normalized = normalizeBrokerServerUrl(String(value || '').trim()).replace(/\/+$/, '');
     if (!normalized) return '';
 
@@ -105,12 +147,68 @@ const getBrokerRuntimeUrls = (broker: BrokerServerItem): string[] =>
         .map(field => normalizeComparableRuntimeUrl(broker[field]))
         .filter((value): value is string => Boolean(value));
 
-const findBrokerForRuntimeTarget = (brokers: BrokerServerItem[]): BrokerServerItem | undefined => {
+export const findBrokerForRuntimeTarget = (brokers: BrokerServerItem[]): BrokerServerItem | undefined => {
     const runtimeTarget = normalizeComparableRuntimeUrl(getBackendTarget());
     if (!runtimeTarget) return undefined;
 
     return brokers.find(broker => getBrokerRuntimeUrls(broker).includes(runtimeTarget));
 };
+
+const normalizeComparableHostname = (value: unknown): string => {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+
+    const candidate = raw.startsWith('//') || /^[a-z][a-z\d+.-]*:\/\//i.test(raw)
+        ? raw
+        : `https://${raw}`;
+
+    try {
+        return new URL(candidate).hostname.replace(/^www\./i, '').toLowerCase();
+    } catch {
+        return raw
+            .replace(/^[a-z][a-z\d+.-]*:\/\//i, '')
+            .replace(/^\/+/, '')
+            .split(/[/?#:]/)[0]
+            .replace(/^www\./i, '')
+            .toLowerCase();
+    }
+};
+
+const normalizeIdentityHostnames = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+        return value.flatMap(item => normalizeIdentityHostnames(item));
+    }
+
+    return String(value || '')
+        .split(',')
+        .map(item => normalizeComparableHostname(item))
+        .filter((item): item is string => Boolean(item));
+};
+
+const getBrokerIdentityHostnames = (broker: BrokerServerItem): string[] =>
+    BROKER_IDENTITY_DOMAIN_FIELDS
+        .flatMap(field => normalizeIdentityHostnames(broker[field]));
+
+const getRuntimeHostname = (): string => {
+    if (typeof window === 'undefined') return '';
+    return normalizeComparableHostname(window.location?.hostname || '');
+};
+
+export const findBrokerForRuntimeDomain = (
+    brokers: BrokerServerItem[],
+    runtimeHostname = getRuntimeHostname()
+): BrokerServerItem | undefined => {
+    const hostname = normalizeComparableHostname(runtimeHostname);
+    if (!hostname) return undefined;
+
+    return brokers.find(broker => getBrokerIdentityHostnames(broker).includes(hostname));
+};
+
+export const findBrokerForWebRuntime = (
+    brokers: BrokerServerItem[],
+    runtimeHostname = getRuntimeHostname()
+): BrokerServerItem | undefined =>
+    findBrokerForRuntimeTarget(brokers) || findBrokerForRuntimeDomain(brokers, runtimeHostname);
 
 const brokerMatchesLookup = (broker: BrokerServerItem, value: string | number | null | undefined): boolean => {
     const lookup = String(value || '').trim().toLowerCase();
@@ -218,7 +316,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 setBrokerListStatus('ready');
 
                 const savedBrokerId = localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id');
-                const runtimeBroker = isDesktopBrokerSelection ? undefined : findBrokerForRuntimeTarget(data);
+                const runtimeBroker = isDesktopBrokerSelection ? undefined : findBrokerForWebRuntime(data);
                 const savedBroker = isDesktopBrokerSelection ? data.find(b => brokerMatchesLookup(b, savedBrokerId)) : undefined;
                 const configuredBrokerId = DEFAULT_BROKER_ID;
                 const configuredBroker = data.find(b => brokerMatchesLookup(b, configuredBrokerId));
@@ -371,6 +469,19 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
             || String(broker.region || '').toLowerCase().includes(query);
     });
     const loginHeroAsset = resolveLoginHeroAsset(selectedBroker);
+    const isAchieverLoginTheme = loginHeroAsset.theme === 'achiever';
+    const loginOverlayClassName = isAchieverLoginTheme
+        ? 'rtx-login-overlay rtx-login-overlay--achiever'
+        : 'rtx-login-overlay';
+    const loginFieldBlurBorder = isAchieverLoginTheme ? ACHIEVER_LOGIN_FIELD_BORDER : LOGIN_FIELD_BORDER;
+    const loginFieldFocus = isAchieverLoginTheme ? ACHIEVER_LOGIN_FIELD_FOCUS : LOGIN_FIELD_FOCUS;
+    const loginFieldFocusShadow = isAchieverLoginTheme
+        ? ACHIEVER_LOGIN_FIELD_FOCUS_SHADOW
+        : LOGIN_FIELD_FOCUS_SHADOW;
+    const brokerStatusTone = isAchieverLoginTheme && healthStatus === 'online'
+        ? ACHIEVER_LOGIN_FIELD_FOCUS
+        : healthTone;
+    const activeLabelStyle = isAchieverLoginTheme ? achieverLabelStyle : labelStyle;
     const loginHeroVisualStyle: React.CSSProperties = {
         backgroundColor: '#020507',
     };
@@ -401,7 +512,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     e.stopPropagation();
                 }
             }}
-            className="rtx-login-overlay"
+            className={loginOverlayClassName}
         >
             {hasElectronWindowControls && (
                 <div className="rtx-login-window-controls" data-window-controls role="toolbar" aria-label="Window controls">
@@ -518,8 +629,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                         <strong>{selectedBrokerName}</strong>
                                     </div>
                                 </div>
-                                <span className="rtx-broker-state" style={{ color: healthTone }}>
-                                    <span style={{ background: healthTone }} />
+                                <span className="rtx-broker-state" style={{ color: brokerStatusTone }}>
+                                    <span style={{ background: brokerStatusTone }} />
                                     {healthLabel}
                                 </span>
                             </div>
@@ -532,7 +643,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                             <form onSubmit={handleSubmit} className="rtx-login-form">
                                 <div>
-                                    <label htmlFor="rtxAccountId" style={labelStyle}>Account ID</label>
+                                    <label htmlFor="rtxAccountId" style={activeLabelStyle}>Account ID</label>
                                     <div className="rtx-input-shell">
                                         <User size={18} strokeWidth={1.8} aria-hidden="true" />
                                         <input
@@ -549,13 +660,13 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                             onFocus={e => {
                                                 const shell = e.currentTarget.parentElement;
                                                 if (!shell) return;
-                                                shell.style.borderColor = LOGIN_FIELD_FOCUS;
-                                                shell.style.boxShadow = '0 0 0 3px rgba(53, 216, 178, 0.12)';
+                                                shell.style.borderColor = loginFieldFocus;
+                                                shell.style.boxShadow = loginFieldFocusShadow;
                                             }}
                                             onBlur={e => {
                                                 const shell = e.currentTarget.parentElement;
                                                 if (!shell) return;
-                                                shell.style.borderColor = LOGIN_FIELD_BORDER;
+                                                shell.style.borderColor = loginFieldBlurBorder;
                                                 shell.style.boxShadow = 'none';
                                             }}
                                         />
@@ -563,7 +674,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                 </div>
 
                                 <div>
-                                    <label htmlFor="rtxPassword" style={labelStyle}>Password</label>
+                                    <label htmlFor="rtxPassword" style={activeLabelStyle}>Password</label>
                                     <div className="rtx-input-shell">
                                         <Lock size={18} strokeWidth={1.8} aria-hidden="true" />
                                         <input
@@ -579,13 +690,13 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                             onFocus={e => {
                                                 const shell = e.currentTarget.parentElement;
                                                 if (!shell) return;
-                                                shell.style.borderColor = LOGIN_FIELD_FOCUS;
-                                                shell.style.boxShadow = '0 0 0 3px rgba(53, 216, 178, 0.12)';
+                                                shell.style.borderColor = loginFieldFocus;
+                                                shell.style.boxShadow = loginFieldFocusShadow;
                                             }}
                                             onBlur={e => {
                                                 const shell = e.currentTarget.parentElement;
                                                 if (!shell) return;
-                                                shell.style.borderColor = LOGIN_FIELD_BORDER;
+                                                shell.style.borderColor = loginFieldBlurBorder;
                                                 shell.style.boxShadow = 'none';
                                             }}
                                         />
@@ -607,7 +718,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                 </div>
 
                                 <div className="rtx-broker-field">
-                                    <label htmlFor="rtxBrokerServer" style={labelStyle}>Broker Server</label>
+                                    <label htmlFor="rtxBrokerServer" style={activeLabelStyle}>Broker Server</label>
                                     <div
                                         ref={isDesktopBrokerSelection ? dropdownRef : undefined}
                                         className={`rtx-broker-input-wrap ${isDesktopBrokerSelection ? 'is-selectable' : 'is-locked'}`}
@@ -665,7 +776,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                             }}
                                         />
                                         <div className="rtx-broker-input-state" aria-hidden="true">
-                                            <span style={{ background: healthTone }} />
+                                            <span style={{ background: brokerStatusTone }} />
                                             {isDesktopBrokerSelection && (
                                                 <ChevronDown
                                                     size={14}
@@ -2131,6 +2242,134 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     font-size: 14px;
                 }
 
+                @media (min-width: 901px) {
+                    .rtx-login-overlay--achiever .rtx-login-panel-wrap {
+                        background:
+                            linear-gradient(180deg, #0b1220 0%, #08101c 48%, #050a14 100%);
+                        box-shadow:
+                            inset 1px 0 0 rgba(47, 140, 255, 0.24),
+                            inset 10px 0 24px rgba(0, 0, 0, 0.18);
+                    }
+                }
+
+                .rtx-login-overlay--achiever .rtx-login-panel {
+                    border-color: rgba(47, 140, 255, 0.34);
+                    background:
+                        linear-gradient(180deg, rgba(8, 18, 34, 0.92) 0%, rgba(5, 11, 22, 0.86) 100%);
+                    box-shadow:
+                        0 16px 34px rgba(0, 0, 0, 0.26),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.055),
+                        inset 0 0 0 1px rgba(47, 140, 255, 0.055);
+                }
+
+                .rtx-login-overlay--achiever .rtx-form-header::after {
+                    background:
+                        linear-gradient(90deg, rgba(47, 140, 255, 0.72), rgba(20, 92, 210, 0.34) 44%, transparent 100%);
+                }
+
+                .rtx-login-overlay--achiever .rtx-login-title-logo {
+                    filter: drop-shadow(0 10px 18px rgba(47, 140, 255, 0.14));
+                }
+
+                .rtx-login-overlay--achiever .rtx-broker-strip {
+                    border-color: rgba(47, 140, 255, 0.38);
+                    background:
+                        linear-gradient(135deg, rgba(11, 26, 48, 0.96) 0%, rgba(7, 17, 32, 0.9) 54%, rgba(5, 10, 20, 0.98) 100%);
+                }
+
+                .rtx-login-overlay--achiever .rtx-broker-strip::before {
+                    background:
+                        linear-gradient(90deg, rgba(47, 140, 255, 0.16), transparent 46%),
+                        linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 48%);
+                }
+
+                .rtx-login-overlay--achiever .rtx-route-logo {
+                    border-color: rgba(47, 140, 255, 0.54);
+                    background:
+                        linear-gradient(145deg, rgba(13, 43, 88, 0.98), rgba(7, 18, 35, 0.98));
+                }
+
+                .rtx-login-overlay--achiever .rtx-input-shell {
+                    border-color: #1d3f68;
+                    background:
+                        linear-gradient(180deg, rgba(8, 20, 36, 0.82), rgba(5, 12, 24, 0.82));
+                    color: #88a9d8;
+                }
+
+                .rtx-login-overlay--achiever .rtx-input-shell:focus-within {
+                    border-color: #2f8cff;
+                    background:
+                        linear-gradient(180deg, rgba(9, 27, 50, 0.92), rgba(6, 17, 32, 0.92));
+                    box-shadow:
+                        0 0 0 2px rgba(47, 140, 255, 0.16);
+                }
+
+                .rtx-login-overlay--achiever .rtx-input-shell input {
+                    caret-color: #2f8cff;
+                }
+
+                .rtx-login-overlay--achiever .rtx-input-shell input:-webkit-autofill,
+                .rtx-login-overlay--achiever .rtx-input-shell input:-webkit-autofill:hover,
+                .rtx-login-overlay--achiever .rtx-input-shell input:-webkit-autofill:focus,
+                .rtx-login-overlay--achiever .rtx-broker-input-wrap input:-webkit-autofill,
+                .rtx-login-overlay--achiever .rtx-broker-input-wrap input:-webkit-autofill:hover,
+                .rtx-login-overlay--achiever .rtx-broker-input-wrap input:-webkit-autofill:focus {
+                    box-shadow: 0 0 0 1000px #071326 inset !important;
+                }
+
+                .rtx-login-overlay--achiever .rtx-password-toggle {
+                    color: #88a9d8;
+                }
+
+                .rtx-login-overlay--achiever .rtx-password-toggle:hover,
+                .rtx-login-overlay--achiever .rtx-password-toggle:focus-visible {
+                    color: #d7e8ff;
+                    background: rgba(47, 140, 255, 0.1);
+                }
+
+                .rtx-login-overlay--achiever .rtx-broker-input-wrap.is-locked input {
+                    border-color: #1d3f68 !important;
+                    background: rgba(6, 16, 31, 0.8) !important;
+                }
+
+                .rtx-login-overlay--achiever .rtx-broker-menu {
+                    border-color: #263f66;
+                    background: #0b1524;
+                }
+
+                .rtx-login-overlay--achiever .rtx-broker-option:hover,
+                .rtx-login-overlay--achiever .rtx-broker-option.is-selected {
+                    background: #12233a;
+                }
+
+                .rtx-login-overlay--achiever .rtx-broker-option em {
+                    color: #2f8cff;
+                }
+
+                .rtx-login-overlay--achiever .rtx-remember-row input {
+                    accent-color: #2f8cff;
+                }
+
+                .rtx-login-overlay--achiever .rtx-login-button {
+                    background: linear-gradient(180deg, #3f9bff 0%, #176fe8 100%);
+                    color: #f8fbff;
+                    box-shadow:
+                        inset 0 1px 0 rgba(255, 255, 255, 0.24),
+                        0 12px 24px rgba(23, 111, 232, 0.16);
+                }
+
+                .rtx-login-overlay--achiever .rtx-login-button:hover:not(:disabled) {
+                    background: linear-gradient(180deg, #55a8ff 0%, #1265d7 100%);
+                    box-shadow:
+                        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+                        0 14px 28px rgba(23, 111, 232, 0.2);
+                }
+
+                .rtx-login-overlay--achiever .rtx-spinner {
+                    border-color: rgba(248, 251, 255, 0.32);
+                    border-top-color: rgba(248, 251, 255, 0.92);
+                }
+
                 @media (max-width: 1180px) {
                     .rtx-login-stage {
                         grid-template-columns: minmax(0, 55%) minmax(490px, 45%);
@@ -2623,6 +2862,11 @@ const labelStyle: React.CSSProperties = {
     letterSpacing: 0,
     marginBottom: 10,
     fontFamily: 'var(--font-login-sans, var(--font-sans))',
+};
+
+const achieverLabelStyle: React.CSSProperties = {
+    ...labelStyle,
+    color: '#b8cdf0',
 };
 
 const inputStyle: React.CSSProperties = {

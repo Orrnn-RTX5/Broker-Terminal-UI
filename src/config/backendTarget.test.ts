@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DESKTOP_BACKEND_FALLBACK,
   SHARED_DISCOVERY_FALLBACK,
@@ -19,12 +21,17 @@ type RuntimeWindow = Window & {
 };
 
 const runtimeWindow = window as RuntimeWindow;
+const backendTargetSourcePath = resolve(process.cwd(), 'src/config/backendTarget.js');
 
 describe('backend target resolver', () => {
   beforeEach(() => {
     delete runtimeWindow.electronAPI;
     delete runtimeWindow.RUNTIME_CONFIG;
     delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('uses the shared public broker backend for browser sessions', () => {
@@ -100,6 +107,37 @@ describe('backend target resolver', () => {
     expect(getBackendTarget()).toBe('https://testbrokerbackend.orrnn.com');
     expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://testbrokerbackend.orrnn.com/ws/v2');
     expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://testbrokerbackend.orrnn.com/ws/feed');
+  });
+
+  it('accepts Achiever service runtime API and websocket hosts while keeping shared discovery', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://service.achieverfinancials.com',
+      API_HOST_EXT: 'https://service.achieverfinancials.com',
+      DISCOVERY_BASE_URL: 'https://superbackend.orrnn.com',
+      WS_HOST: 'wss://service.achieverfinancials.com',
+      FEED_BROKER_ID: 'achiever-financials',
+      FEED_BROKER_TOKEN: 'feed-secret',
+    };
+
+    expect(getBackendTarget()).toBe('https://service.achieverfinancials.com');
+    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://service.achieverfinancials.com/ws/v2');
+    expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://service.achieverfinancials.com/ws/feed');
+    expect(getRuntimeDiscoveryBaseUrl()).toBe('https://superbackend.orrnn.com');
+  });
+
+  it('does not read or expose feed broker tokens through build-time backend target env', () => {
+    vi.stubEnv('VITE_FEED_BROKER_TOKEN', 'feed-secret');
+    vi.stubEnv('FEED_BROKER_TOKEN', 'feed-secret');
+
+    expect(getBackendTarget()).toBe(WEB_BACKEND_FALLBACK);
+    expect(getRuntimeDiscoveryBaseUrl()).toBe(SHARED_DISCOVERY_FALLBACK);
+    expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://backend.orrnn.com/ws/feed');
+
+    const source = readFileSync(backendTargetSourcePath, 'utf8');
+    expect(source).not.toMatch(/import\.meta\.env(?:\?\.)?\s*\[/);
+    expect(source).not.toContain('VITE_FEED_BROKER_TOKEN');
+    expect(source).not.toContain('FEED_BROKER_TOKEN');
   });
 
   it('rejects unsafe runtime API and WS hosts in web mode', () => {

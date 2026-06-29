@@ -319,6 +319,7 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const isAllowedPublicBrokerHostname = (hostname: string): boolean => {
   const normalized = hostname.toLowerCase();
   return (normalized.startsWith('services.')
+    || normalized === 'service.achieverfinancials.com'
     || normalized === 'backend.orrnn.com'
     || normalized === 'testbrokerbackend.orrnn.com')
     && !LOCAL_HOSTS.has(normalized)

@@ -21,9 +21,29 @@ const runtimeConfig = () => {
   };
 };
 
+const buildTimeEnvValues = () => ({
+  BACKEND_TARGET: import.meta.env.BACKEND_TARGET || '',
+  VITE_BACKEND_TARGET: import.meta.env.VITE_BACKEND_TARGET || '',
+  BACKEND_MODE: import.meta.env.BACKEND_MODE || '',
+  VITE_BACKEND_MODE: import.meta.env.VITE_BACKEND_MODE || '',
+  VITE_API_HOST: import.meta.env.VITE_API_HOST || '',
+  VITE_API_HOST_EXT: import.meta.env.VITE_API_HOST_EXT || '',
+  VITE_API_URL: import.meta.env.VITE_API_URL || '',
+  VITE_BACKEND_URL: import.meta.env.VITE_BACKEND_URL || '',
+  VITE_WS_HOST: import.meta.env.VITE_WS_HOST || '',
+  VITE_WS_URL: import.meta.env.VITE_WS_URL || '',
+  VITE_RTX5_WS_URL: import.meta.env.VITE_RTX5_WS_URL || '',
+  VITE_MARKET_WS_URL: import.meta.env.VITE_MARKET_WS_URL || '',
+  VITE_DISCOVERY_BASE_URL: import.meta.env.VITE_DISCOVERY_BASE_URL || '',
+  VITE_BROKER_DISCOVERY_URL: import.meta.env.VITE_BROKER_DISCOVERY_URL || '',
+  VITE_DESKTOP_BACKEND_URL: import.meta.env.VITE_DESKTOP_BACKEND_URL || '',
+  VITE_DIRECT_BACKEND_URL: import.meta.env.VITE_DIRECT_BACKEND_URL || '',
+});
+
 const envValue = (key) => {
   try {
-    return import.meta.env?.[key] || '';
+    const values = buildTimeEnvValues();
+    return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : '';
   } catch {
     return '';
   }
@@ -89,6 +109,7 @@ const normalizeWsUrl = (value, fallbackProtocol = 'wss') => {
 const isAllowedPublicBrokerHostname = (hostname = '') => {
   const normalized = String(hostname || '').trim().toLowerCase();
   return normalized.startsWith('services.')
+    || normalized === 'service.achieverfinancials.com'
     || normalized === 'backend.orrnn.com'
     || normalized === 'testbrokerbackend.orrnn.com';
 };
