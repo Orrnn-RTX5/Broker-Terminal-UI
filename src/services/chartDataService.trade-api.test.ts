@@ -153,6 +153,26 @@ describe('trade candle normalization and websocket cleanup', () => {
     ]);
   });
 
+  it('keeps positive legacy volume when tick volume is reported as zero', () => {
+    const service = new ChartDataService();
+
+    expect(service.normalizeCandles({
+      candles: [
+        {
+          time: 1760005265,
+          open: 1.22,
+          high: 1.3,
+          low: 1.21,
+          close: 1.28,
+          tick_volume: 0,
+          volume: 25,
+        },
+      ],
+    }, 'M1')).toEqual([
+      { time: 1760005260, open: 1.22, high: 1.3, low: 1.21, close: 1.28, volume: 25, tickVolume: 0 },
+    ]);
+  });
+
   it('normalizes weekly and monthly candles without falling back to minute buckets', () => {
     const service = new ChartDataService();
 
@@ -525,6 +545,44 @@ describe('trade candle normalization and websocket cleanup', () => {
 
     expect(parseSent(ws).at(-1)).toEqual({ action: 'unsubscribe', channel: 'candles.EURUSD.M15', channels: ['candles.EURUSD.M15'] });
     expect(ws.closedWith).toEqual({ code: 1000, reason: 'Chart candle subscription closed' });
+  });
+
+  it('requires matching symbol and timeframe metadata for channel-less candle stream messages', () => {
+    localStorage.setItem('auth_token', 'jwt-token');
+    const service = new ChartDataService();
+    const onSnapshot = vi.fn();
+    const onCandle = vi.fn();
+
+    const subscription = service.subscribeCandles({
+      symbol: 'eur/usd',
+      timeframe: '15m',
+      onSnapshot,
+      onCandle,
+    });
+
+    const ws = FakeWebSocket.instances[0];
+    const candle = { time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 };
+
+    ws.emit({ channel: 'candles.GBPUSD.M15', data: candle });
+    ws.emit({ type: 'candle', symbol: 'GBPUSD', timeframe: 'M15', data: candle });
+    ws.emit({ type: 'candle', symbol: 'EURUSD', timeframe: 'M5', data: candle });
+    ws.emit({ type: 'candle', data: candle });
+    ws.emit({ type: 'snapshot', symbol: 'GBPUSD', period: 'M15', data: { candles: [candle] } });
+
+    expect(onSnapshot).not.toHaveBeenCalled();
+    expect(onCandle).not.toHaveBeenCalled();
+
+    ws.emit({ type: 'snapshot', symbol: 'EUR/USD', period: '15m', data: { candles: [candle] } });
+    ws.emit({ type: 'candle', symbol: 'EUR/USD', timeframe: 'M15', data: candle });
+    ws.emit({ channel: 'candles.EURUSD.M15', data: { ...candle, close: 1.6 } });
+
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+    expect(onSnapshot).toHaveBeenCalledWith([candle]);
+    expect(onCandle).toHaveBeenCalledTimes(2);
+    expect(onCandle).toHaveBeenNthCalledWith(1, candle);
+    expect(onCandle).toHaveBeenNthCalledWith(2, { ...candle, close: 1.6 });
+
+    subscription.close();
   });
 
   it('subscribes once per trade socket channel and removes the websocket subscription after the last handler', () => {

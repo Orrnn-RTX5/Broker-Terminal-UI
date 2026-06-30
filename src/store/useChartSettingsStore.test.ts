@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyPeriodSeparatorsDefaultMigration,
   applyVolumeBarsDefaultMigration,
   clampChartOpacityPercent,
   defaultChartProperties,
@@ -20,6 +21,10 @@ describe('chart settings trade history overlay defaults', () => {
     expect(defaultChartProperties.tradeHistoryBoxOpacity).toBe(40);
   });
 
+  it('shows period separators by default', () => {
+    expect(defaultChartProperties.showPeriodSeparators).toBe(true);
+  });
+
   it('hydrates old persisted chart settings with the new trade history overlay fields', () => {
     const oldPersistedProperties = {
       showTradeHistory: false,
@@ -33,12 +38,50 @@ describe('chart settings trade history overlay defaults', () => {
     expect(normalized.showTradeHistory).toBe(false);
     expect(normalized.showTickVolumes).toBe(false);
     expect(normalized.showRealVolumes).toBe(false);
+    expect(normalized.showPeriodSeparators).toBe(true);
     expect(normalized.showTradeHistoryBoxes).toBe(true);
     expect(normalized.showTradeHistoryArrows).toBe(true);
     expect(normalized.tradeHistoryLineOpacity).toBe(25);
     expect(normalized.tradeHistoryBoxOpacity).toBe(40);
     expect(normalized.colors.background).toBe('#101010');
     expect(normalized.colors.foreground).toBe(defaultChartProperties.colors.foreground);
+  });
+
+  it('preserves explicit hidden period separators from persisted settings', () => {
+    const normalized = normalizeChartProperties({
+      showPeriodSeparators: false,
+    });
+
+    expect(normalized.showPeriodSeparators).toBe(false);
+  });
+
+  it('migrates old persisted period separator defaults to visible once', () => {
+    const oldPersistedProperties = normalizeChartProperties({
+      showPeriodSeparators: false,
+    });
+
+    const migrated = applyPeriodSeparatorsDefaultMigration(
+      oldPersistedProperties,
+      { XAUUSD: oldPersistedProperties },
+      undefined,
+    );
+
+    expect(migrated.globalProperties.showPeriodSeparators).toBe(true);
+    expect(migrated.symbolProperties.XAUUSD.showPeriodSeparators).toBe(true);
+  });
+
+  it('preserves hidden period separator preference after migration has run', () => {
+    const migratedProperties = normalizeChartProperties({
+      showPeriodSeparators: false,
+    });
+
+    const migrated = applyPeriodSeparatorsDefaultMigration(
+      migratedProperties,
+      {},
+      1,
+    );
+
+    expect(migrated.globalProperties.showPeriodSeparators).toBe(false);
   });
 
   it('migrates old persisted visible volume bars to hidden once', () => {

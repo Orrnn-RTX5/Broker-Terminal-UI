@@ -11,6 +11,11 @@ import { useTradeFacingData } from '../hooks/useTradeFacingData';
 import { getAuthToken } from '../api/client';
 import { tradeApi } from '../api/trade';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
+import { chartDataService, type OHLCData } from '../services/chartDataService';
+import {
+    buildMarketClosedGapSeries,
+    isPotentialMarketClosedPlaceholderCandle,
+} from '../utils/marketClosedGaps';
 
 // Icons as React components for better performance
 const Icons = {
@@ -251,18 +256,21 @@ const Icons = {
     ),
 };
 
-interface OHLC {
-    time: number;
-    open: number;
-    high: number;
-    low: number;
-    close: number;
-    volume?: number;
-}
-
 type ChartTool = 'crosshair' | 'trendline' | 'horizontal' | 'vertical' | 'fibonacci' | 'brush' | 'text' | 'measure' | 'zoom_in' | 'zoom_out';
 type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1D' | '1W' | '1M';
 type Indicator = 'MA' | 'EMA' | 'RSI' | 'MACD' | 'BB' | 'Volume';
+type DashboardMarketGapOptions = {
+    symbol: string;
+    timeframe: string;
+    brokerOffsetSeconds?: number;
+};
+type HistoricalDataRequest = {
+    id: number;
+    key: string;
+};
+
+const MAX_DASHBOARD_CANDLES = 500;
+
 const toContractTimeframe = (timeframe: Timeframe): string => ({
     '1m': 'M1',
     '5m': 'M5',
@@ -275,6 +283,207 @@ const toContractTimeframe = (timeframe: Timeframe): string => ({
     '1M': 'MN',
 }[timeframe]);
 
+const SOCKET_TIMEFRAME_ALIASES: Record<string, string> = {
+    M1: 'M1',
+    M5: 'M5',
+    M15: 'M15',
+    M30: 'M30',
+    H1: 'H1',
+    H4: 'H4',
+    D1: 'D1',
+    W1: 'W1',
+    MN: 'MN',
+    MN1: 'MN',
+    '1m': 'M1',
+    '5m': 'M5',
+    '15m': 'M15',
+    '30m': 'M30',
+    '1h': 'H1',
+    '4h': 'H4',
+    '1d': 'D1',
+    '1D': 'D1',
+    '1w': 'W1',
+    '1W': 'W1',
+    '1M': 'MN',
+    '1min': 'M1',
+    '5min': 'M5',
+    '15min': 'M15',
+    '30min': 'M30',
+    '1hour': 'H1',
+    '4hour': 'H4',
+};
+
+const SOCKET_TIMEFRAME_SECONDS: Record<string, string> = {
+    '60': 'M1',
+    '300': 'M5',
+    '900': 'M15',
+    '1800': 'M30',
+    '3600': 'H1',
+    '14400': 'H4',
+    '86400': 'D1',
+    '604800': 'W1',
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+    typeof value === 'object' && value !== null
+);
+
+const isAbortError = (error: unknown): boolean => (
+    isRecord(error) && error.name === 'AbortError'
+);
+
+const normalizeSocketTimeframe = (value: unknown): string | null => {
+    if (typeof value !== 'string' && typeof value !== 'number') return null;
+
+    const rawValue = String(value).trim();
+    if (!rawValue) return null;
+
+    return SOCKET_TIMEFRAME_ALIASES[rawValue]
+        ?? SOCKET_TIMEFRAME_ALIASES[rawValue.toUpperCase()]
+        ?? SOCKET_TIMEFRAME_ALIASES[rawValue.toLowerCase()]
+        ?? SOCKET_TIMEFRAME_SECONDS[rawValue]
+        ?? null;
+};
+
+const normalizeSocketSymbol = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+
+    const normalized = value.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    return normalized || null;
+};
+
+const getSocketChannel = (payload: unknown): string => {
+    if (!isRecord(payload)) return '';
+
+    const channel = payload.channel ?? payload.topic;
+    return typeof channel === 'string' ? channel : '';
+};
+
+const getSocketPayload = (message: unknown): unknown => {
+    if (!isRecord(message)) return message;
+
+    return message.data ?? message.payload ?? message;
+};
+
+const getSocketPayloadSymbol = (payload: unknown): string | null => {
+    if (!isRecord(payload)) return null;
+
+    return normalizeSocketSymbol(payload.symbol ?? payload.Symbol ?? payload.SYMBOL ?? payload.s);
+};
+
+const getSocketPayloadTimeframe = (payload: unknown): string | null => {
+    if (!isRecord(payload)) return null;
+
+    const timeframeFields = ['timeframe', 'time_frame', 'tf', 'period', 'interval', 'granularity'] as const;
+    for (const field of timeframeFields) {
+        const timeframe = normalizeSocketTimeframe(payload[field]);
+        if (timeframe) return timeframe;
+    }
+
+    return null;
+};
+
+const hasDashboardOhlcPayload = (payload: unknown): boolean => {
+    if (Array.isArray(payload)) return payload.length > 0;
+    if (!isRecord(payload)) return false;
+
+    if (payload.open != null && payload.close != null) return true;
+    if (Array.isArray(payload.candles) || Array.isArray(payload.snapshot)) return true;
+
+    const nestedCandle = payload.candle ?? payload.bar ?? payload.rate;
+    return nestedCandle !== undefined && hasDashboardOhlcPayload(nestedCandle);
+};
+
+const isMatchingDashboardCandleMessage = (
+    message: unknown,
+    payload: unknown,
+    expectedChannel: string,
+    expectedSymbol: string,
+    expectedTimeframe: string,
+): boolean => {
+    if (getSocketChannel(message) === expectedChannel || getSocketChannel(payload) === expectedChannel) {
+        return true;
+    }
+
+    const payloadSymbol = getSocketPayloadSymbol(payload) ?? getSocketPayloadSymbol(message);
+    if (payloadSymbol !== normalizeSocketSymbol(expectedSymbol)) return false;
+
+    const payloadTimeframe = getSocketPayloadTimeframe(payload) ?? getSocketPayloadTimeframe(message);
+    return payloadTimeframe === expectedTimeframe && hasDashboardOhlcPayload(payload);
+};
+
+const getDashboardCandleVolume = (candle: OHLCData): number => (
+    Number(candle.volume ?? candle.tickVolume ?? candle.realVolume ?? 0) || 0
+);
+
+const toDashboardCandlestickData = (candle: OHLCData): CandlestickData<Time> => ({
+    time: candle.time as Time,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+});
+
+const toDashboardVolumeData = (candle: OHLCData) => ({
+    time: candle.time as Time,
+    value: getDashboardCandleVolume(candle),
+    color: candle.close >= candle.open ? '#10B98133' : '#EF444433',
+});
+
+const normalizeDashboardCandlePayload = (payload: unknown, timeframe: string): OHLCData[] => {
+    const normalizedCandles = chartDataService.normalizeCandles(payload, timeframe);
+    if (normalizedCandles.length > 0) return normalizedCandles;
+
+    if (isRecord(payload)) {
+        if (Array.isArray(payload.snapshot)) {
+            const snapshotCandles = chartDataService.normalizeCandles(payload.snapshot, timeframe);
+            if (snapshotCandles.length > 0) return snapshotCandles;
+        }
+
+        const nestedCandle = payload.candle ?? payload.bar ?? payload.rate;
+        if (nestedCandle !== undefined) {
+            const candle = chartDataService.normalizeCandle(nestedCandle, timeframe);
+            return candle ? [candle] : [];
+        }
+    }
+
+    const candle = chartDataService.normalizeCandle(payload, timeframe);
+    return candle ? [candle] : [];
+};
+
+const getRenderedDashboardCandles = (
+    candles: readonly OHLCData[],
+    options: DashboardMarketGapOptions,
+): OHLCData[] => (
+    buildMarketClosedGapSeries(candles, options).candles
+);
+
+const getRenderableLiveDashboardCandles = (
+    payload: unknown,
+    options: DashboardMarketGapOptions,
+): OHLCData[] => (
+    getRenderedDashboardCandles(
+        normalizeDashboardCandlePayload(payload, options.timeframe),
+        options,
+    ).filter(candle => !isPotentialMarketClosedPlaceholderCandle(candle, options))
+);
+
+const mergeDashboardCandles = (
+    current: readonly OHLCData[],
+    incoming: readonly OHLCData[],
+): OHLCData[] => {
+    if (incoming.length === 0) return [...current];
+
+    const byTime = new Map<number, OHLCData>();
+    current.forEach(candle => byTime.set(candle.time, candle));
+    incoming.forEach(candle => byTime.set(candle.time, candle));
+
+    const merged = Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+    return merged.length > MAX_DASHBOARD_CANDLES
+        ? merged.slice(-MAX_DASHBOARD_CANDLES)
+        : merged;
+};
+
 const ProfessionalTradingDashboard: React.FC = () => {
     useTradeFacingData(undefined, 15000);
     const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -283,6 +492,10 @@ const ProfessionalTradingDashboard: React.FC = () => {
     const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
     const indicatorSeriesRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
     const wsRef = useRef<WebSocket | null>(null);
+    const renderedCandlesRef = useRef<OHLCData[]>([]);
+    const formingCandleRef = useRef<OHLCData | null>(null);
+    const historicalRequestSequenceRef = useRef(0);
+    const activeHistoricalRequestRef = useRef<HistoricalDataRequest | null>(null);
 
     // Chart Tab State
     const [openCharts, setOpenCharts] = useState<{ symbol: string; timeframe: Timeframe }[]>([
@@ -476,9 +689,11 @@ const ProfessionalTradingDashboard: React.FC = () => {
         window.addEventListener('resize', handleResize);
 
         // Load initial data
-        fetchHistoricalData();
+        const historyController = new AbortController();
+        void fetchHistoricalData(historyController.signal);
 
         return () => {
+            historyController.abort();
             window.removeEventListener('resize', handleResize);
             if (chartRef.current) {
                 chartRef.current.remove();
@@ -549,126 +764,128 @@ const ProfessionalTradingDashboard: React.FC = () => {
         });
     }, [activeIndicators]);
 
+    const updateDashboardStatsFromCandles = (
+        candles: readonly OHLCData[],
+        options?: { updateCurrentPrice?: boolean },
+    ) => {
+        const shouldUpdateCurrentPrice = options?.updateCurrentPrice ?? true;
+
+        if (candles.length === 0) {
+            if (shouldUpdateCurrentPrice) setCurrentPrice(0);
+            setPriceChange(0);
+            setPriceChangePercent(0);
+            setHigh24h(0);
+            setLow24h(0);
+            setVolume24h(0);
+            formingCandleRef.current = null;
+            return;
+        }
+
+        const latest = candles[candles.length - 1];
+        const first = candles[0];
+        const lastClose = latest.close;
+        const firstOpen = first.open;
+
+        if (shouldUpdateCurrentPrice) setCurrentPrice(lastClose);
+        setPriceChange(lastClose - firstOpen);
+        setPriceChangePercent(firstOpen !== 0 ? ((lastClose - firstOpen) / firstOpen) * 100 : 0);
+        setHigh24h(Math.max(...candles.map(candle => candle.high)));
+        setLow24h(Math.min(...candles.map(candle => candle.low)));
+        setVolume24h(candles.reduce((sum, candle) => sum + getDashboardCandleVolume(candle), 0));
+        formingCandleRef.current = latest;
+    };
+
     // Fetch historical data
-    const fetchHistoricalData = async () => {
+    const fetchHistoricalData = async (signal?: AbortSignal) => {
+        const apiTimeframe = toContractTimeframe(selectedTimeframe);
+        const requestKey = `${selectedSymbol}.${apiTimeframe}`;
+        const requestId = historicalRequestSequenceRef.current + 1;
+        historicalRequestSequenceRef.current = requestId;
+        activeHistoricalRequestRef.current = { id: requestId, key: requestKey };
+
+        const isActiveRequest = () => (
+            !signal?.aborted &&
+            activeHistoricalRequestRef.current?.id === requestId &&
+            activeHistoricalRequestRef.current.key === requestKey
+        );
+
         try {
-            const apiTimeframe = toContractTimeframe(selectedTimeframe);
             const response = await fetch(
-                tradeGatewayApi.getHistoryUrl(selectedSymbol, apiTimeframe, 500)
+                tradeGatewayApi.getHistoryUrl(selectedSymbol, apiTimeframe, 500),
+                signal ? { signal } : undefined,
             );
-            const rawData = await response.json();
-            const candlesArray = Array.isArray(rawData) ? rawData : (rawData.candles || []);
+            if (!isActiveRequest()) return;
 
-            if (candlesArray.length > 0 && candleSeriesRef.current && volumeSeriesRef.current) {
-                const formattedCandles: CandlestickData<Time>[] = candlesArray.map((c: any) => ({
-                    time: (c.time || c.timestamp) as Time,
-                    open: c.open,
-                    high: c.high,
-                    low: c.low,
-                    close: c.close,
-                }));
+            const rawData: unknown = await response.json();
+            if (!isActiveRequest()) return;
 
-                const formattedVolumes = candlesArray.map((c: any) => ({
-                    time: (c.time || c.timestamp) as Time,
-                    value: c.volume || c.tick_count || 0,
-                    color: c.close >= c.open ? '#10B98133' : '#EF444433',
-                }));
+            const normalizedCandles = normalizeDashboardCandlePayload(rawData, apiTimeframe);
+            const renderedCandles = getRenderedDashboardCandles(normalizedCandles, {
+                symbol: selectedSymbol,
+                timeframe: apiTimeframe,
+            });
+            if (!isActiveRequest()) return;
 
-                candleSeriesRef.current.setData(formattedCandles);
-                volumeSeriesRef.current.setData(formattedVolumes);
+            if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
 
-                // Update price info
-                const latest = candlesArray[candlesArray.length - 1];
-                const first = candlesArray[0];
-                const lastClose = latest.close;
-                const firstOpen = first.open;
-
-                setCurrentPrice(lastClose);
-                setPriceChange(lastClose - firstOpen);
-                setPriceChangePercent(((lastClose - firstOpen) / firstOpen) * 100);
-
-                const highs = candlesArray.map((c: any) => c.high);
-                const lows = candlesArray.map((c: any) => c.low);
-                setHigh24h(Math.max(...highs));
-                setLow24h(Math.min(...lows));
-
-                const totalVolume = candlesArray.reduce((sum: number, c: any) => sum + (c.volume || 0), 0);
-                setVolume24h(totalVolume);
-
-                // Set the current forming candle
-                formingCandleRef.current = {
-                    time: (latest.time || latest.timestamp),
-                    open: latest.open,
-                    high: latest.high,
-                    low: latest.low,
-                    close: latest.close,
-                    volume: latest.volume || latest.tick_count || 0
-                };
-            }
+            renderedCandlesRef.current = renderedCandles;
+            candleSeriesRef.current.setData(renderedCandles.map(toDashboardCandlestickData));
+            volumeSeriesRef.current.setData(renderedCandles.map(toDashboardVolumeData));
+            updateDashboardStatsFromCandles(renderedCandles);
         } catch (error) {
+            if (signal?.aborted || isAbortError(error)) return;
             console.error('Error fetching historical data:', error);
         }
     };
-
-    const formingCandleRef = useRef<OHLC | null>(null);
 
     // WebSocket connection for live updates
     useEffect(() => {
         const token = getAuthToken() || undefined;
         const socket = new WebSocket(buildApiV2WsUrl(token));
         const apiTimeframe = toContractTimeframe(selectedTimeframe);
+        const marketGapOptions: DashboardMarketGapOptions = {
+            symbol: selectedSymbol,
+            timeframe: apiTimeframe,
+        };
         const handleMessage = (event: MessageEvent) => {
             try {
-                const message = JSON.parse(event.data);
-                const channel = String(message.channel ?? '');
-                const data = message.data ?? message.payload ?? message;
+                const message: unknown = JSON.parse(event.data);
+                const channel = getSocketChannel(message);
+                const data = getSocketPayload(message);
+                const candleChannel = `candles.${selectedSymbol}.${apiTimeframe}`;
 
                 // Handle 'tick' for current price display (Bid/Ask/Spread)
-                if (channel === `ticks.${selectedSymbol}` || (data.symbol === selectedSymbol && data.bid != null)) {
-                    const price = data.bid;
-                    const ask = data.ask || price;
+                const tickData = isRecord(data) ? data : {};
+                if (channel === `ticks.${selectedSymbol}` || (tickData.symbol === selectedSymbol && tickData.bid != null)) {
+                    const price = Number(tickData.bid);
+                    const ask = Number(tickData.ask ?? price);
 
-                    setCurrentPrice(price);
-                    setBidPrice(price);
-                    setAskPrice(ask);
+                    if (Number.isFinite(price)) {
+                        setCurrentPrice(price);
+                        setBidPrice(price);
+                        setAskPrice(Number.isFinite(ask) ? ask : price);
+                    }
 
                     // Note: Chart updates are now handled via 'candle_update' from server
                     // to ensure consistency and performance.
                 }
 
                 // Handle 'candle_update' for Chart
-                if (channel === `candles.${selectedSymbol}.${apiTimeframe}` || (data.symbol === selectedSymbol && data.open != null && data.close != null)) {
-                    const candle = Array.isArray(data) ? data[data.length - 1] : data;
-                    const candleVal = {
-                        time: candle.time as Time,
-                        open: candle.open,
-                        high: candle.high,
-                        low: candle.low,
-                        close: candle.close,
-                    };
+                if (isMatchingDashboardCandleMessage(message, data, candleChannel, selectedSymbol, apiTimeframe)) {
+                    const liveCandles = getRenderableLiveDashboardCandles(data, marketGapOptions);
+                    if (liveCandles.length === 0) return;
 
-                    const volumeVal = {
-                        time: candle.time as Time,
-                        value: candle.volume || candle.tick_count || 0,
-                        color: candle.close >= candle.open ? '#10B98133' : '#EF444433'
-                    };
+                    liveCandles.forEach(candle => {
+                        if (candleSeriesRef.current) {
+                            candleSeriesRef.current.update(toDashboardCandlestickData(candle));
+                        }
+                        if (volumeSeriesRef.current) {
+                            volumeSeriesRef.current.update(toDashboardVolumeData(candle));
+                        }
+                    });
 
-                    if (candleSeriesRef.current) {
-                        candleSeriesRef.current.update(candleVal);
-                    }
-                    if (volumeSeriesRef.current) {
-                        volumeSeriesRef.current.update(volumeVal);
-                    }
-
-                    // Update forming candle ref for other logic if needed
-                    formingCandleRef.current = {
-                        time: candle.time,
-                        open: candle.open,
-                        high: candle.high,
-                        low: candle.low,
-                        close: candle.close,
-                        volume: candle.volume || candle.tick_count || 0
-                    };
+                    renderedCandlesRef.current = mergeDashboardCandles(renderedCandlesRef.current, liveCandles);
+                    updateDashboardStatsFromCandles(renderedCandlesRef.current, { updateCurrentPrice: false });
                 }
             } catch (error) {
                 console.error('WebSocket message error:', error);
@@ -690,7 +907,12 @@ const ProfessionalTradingDashboard: React.FC = () => {
 
     // Refetch chart history when selected symbol changes
     useEffect(() => {
-        fetchHistoricalData();
+        const historyController = new AbortController();
+        void fetchHistoricalData(historyController.signal);
+
+        return () => {
+            historyController.abort();
+        };
     }, [selectedSymbol, selectedTimeframe]);
 
     const toggleIndicator = (indicator: Indicator) => {

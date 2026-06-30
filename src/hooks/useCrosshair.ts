@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react';
 import type { RefObject } from 'react';
-import type { IChartApi, ISeriesApi } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
+import { formatTradingChartCrosshairLabel } from '../utils/chartTimeFormat';
 
 interface CursorState {
   x: number;
@@ -15,6 +16,7 @@ export interface UseCrosshairOptions {
   enabled: boolean;
   digits?: number;
   timeframe?: string;
+  brokerOffsetSeconds?: number;
 }
 
 export interface CrosshairRefs {
@@ -32,6 +34,7 @@ export function useCrosshair({
   enabled,
   digits = 5,
   timeframe = 'M1',
+  brokerOffsetSeconds = 0,
 }: UseCrosshairOptions): CrosshairRefs {
   const vertLineRef   = useRef<HTMLDivElement>(null);
   const horizLineRef  = useRef<HTMLDivElement>(null);
@@ -91,17 +94,6 @@ export function useCrosshair({
     container.addEventListener('pointermove', onPointerMove, { passive: true });
     container.addEventListener('pointerleave', onPointerLeave);
 
-    const formatTime = (unixSec: number): string => {
-      const d = new Date(unixSec * 1000);
-      const p = (n: number) => String(n).padStart(2, '0');
-      if (timeframe === 'D1' || timeframe === 'W1' || timeframe === 'MN')
-        return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
-      if (timeframe === 'H1' || timeframe === 'H4')
-        return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
-      return `${p(d.getHours())}:${p(d.getMinutes())}`;
-    };
-
-
     const tick = () => {
       rafIdRef.current = requestAnimationFrame(tick);
 
@@ -145,7 +137,13 @@ export function useCrosshair({
       const tl = timeLabelRef.current;
       if (tl) {
         const timeVal = ts.coordinateToTime(snappedX);
-        if (timeVal !== null) tl.textContent = formatTime(timeVal as number);
+        if (timeVal !== null) {
+          tl.textContent = formatTradingChartCrosshairLabel(
+            timeVal as Time,
+            timeframe,
+            brokerOffsetSeconds,
+          );
+        }
         const lw = tl.offsetWidth;
         tl.style.opacity = '1';
         tl.style.transform = `translate3d(${snappedX - lw / 2}px,${H - 22}px,0)`;
@@ -173,7 +171,7 @@ export function useCrosshair({
       hideAll();
     };
 
-  }, [enabled, digits, timeframe]);
+  }, [enabled, digits, timeframe, brokerOffsetSeconds]);
 
   return { vertLineRef, horizLineRef, centerRef, timeLabelRef, priceLabelRef };
 }

@@ -66,6 +66,14 @@ describe('chartTimeFormat', () => {
     expect(formatTradingChartCrosshairLabel(timestamp, 'MN')).toBe('Apr 2026');
   });
 
+  it('formats BusinessDay crosshair labels with a stable date', () => {
+    expect(formatTradingChartCrosshairLabel({ year: 2026, month: 4, day: 1 }, 'D1')).toBe('1 Apr 2026');
+  });
+
+  it('formats string crosshair labels with broker offset for intraday charts', () => {
+    expect(formatTradingChartCrosshairLabel('2026-04-01T10:25:00Z', 'M5', 2 * 60 * 60)).toBe('1 Apr 2026 12:25');
+  });
+
   it('uses the nav timeframe config for tick label width', () => {
     expect(getTradingChartTickMarkCharacterLength('M1')).toBe(5);
     expect(getTradingChartTickMarkCharacterLength('M5')).toBe(5);

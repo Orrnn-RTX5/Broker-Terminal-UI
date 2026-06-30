@@ -662,6 +662,16 @@ const MainToolbar = ({
         window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
     };
 
+    const togglePeriodSeparators = () => {
+        const nextValue = !(tradeHistorySettings.showPeriodSeparators !== false);
+        const store = useChartSettingsStore.getState();
+        store.updateGlobalProperty('showPeriodSeparators', nextValue);
+        store.updateSymbolProperty(symbol, 'showPeriodSeparators', nextValue);
+        setShowUserMenu(false);
+        setShowAdvancedOptions(false);
+        setShowHistoryOverlayMenu(false);
+    };
+
     const resetTradeHistorySettings = () => {
         updateTradeHistorySetting('showTradeHistory', defaultChartProperties.showTradeHistory);
         updateTradeHistorySetting('showTradeHistoryBoxes', defaultChartProperties.showTradeHistoryBoxes);
@@ -878,6 +888,24 @@ const MainToolbar = ({
 
             {/* Group 11: Trade history overlay controls */}
             <div ref={historyOverlayRef} className="relative flex items-center">
+                <button
+                    type="button"
+                    title={tradeHistorySettings.showPeriodSeparators !== false ? 'Hide Period Separators' : 'Show Period Separators'}
+                    aria-label={tradeHistorySettings.showPeriodSeparators !== false ? 'Hide Period Separators' : 'Show Period Separators'}
+                    aria-pressed={tradeHistorySettings.showPeriodSeparators !== false}
+                    onClick={togglePeriodSeparators}
+                    className={`rtx-period-separator-toggle flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all ${tradeHistorySettings.showPeriodSeparators !== false
+                        ? advancedViewEnabled
+                            ? 'border-[#7E57C2] bg-[#F3E5F5] text-[#7E57C2]'
+                            : 'border-blue-500/30 bg-blue-500/15 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
+                        : advancedViewEnabled
+                            ? 'border-transparent bg-transparent text-[#475467] shadow-none hover:border-transparent hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
+                            : 'border-transparent bg-transparent text-zinc-400 hover:border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-300'
+                        }`}
+                >
+                    <GitCommitHorizontal size={15} strokeWidth={1.6} />
+                </button>
+
                 <button
                     type="button"
                     title="Trade History Overlays"

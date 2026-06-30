@@ -36,6 +36,16 @@ import { OneClickTrading } from './OneClickTrading';
 import { DrawingContextMenu } from './DrawingContextMenu';
 import { PriceDisplay } from './ui/PriceDisplay';
 import { getSymbolDigits } from '../utils/symbolUtils';
+import {
+  buildMarketClosedGapSeries,
+  getMarketGapTimeframeSeconds,
+  isPotentialMarketClosedPlaceholderCandle as isPotentialMarketClosedPlaceholderCandleForMarketSession,
+  type MarketClosedGapCandle,
+} from '../utils/marketClosedGaps';
+import {
+  getPeriodSeparators,
+  type PeriodSeparator,
+} from '../utils/periodSeparators';
 import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
 import { ChartContextMenu } from './ChartContextMenu';
 import { captureFullPage } from '../services/screenshotService';
@@ -324,8 +334,14 @@ const getLivePriceOverlayColor = (
 
 type ChartColorPalette = ChartProperties['colors'];
 type FormattedSeriesDatum =
+  | { time: Time }
   | { time: Time; value: number }
   | { time: Time; open: number; high: number; low: number; close: number };
+
+const SESSION_GAP_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4']);
+const DENSE_MINUTE_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5']);
+const MIN_SESSION_GAP_SEPARATOR_SECONDS = 12 * 60 * 60;
+const MINUTE_SEPARATOR_PIXEL_DEDUP_DISTANCE = 10;
 
 const CHART_AXIS_FONT_FAMILY = '"Inter", "Segoe UI", Tahoma, Arial, sans-serif';
 const CHART_AXIS_FONT_SIZE = 11;
@@ -355,6 +371,75 @@ interface TradingViewChartTheme {
   volumeUp: string;
   volumeDown: string;
 }
+
+const shouldAddMarketGapSessionSeparator = (
+  previousCandle: Candle,
+  firstCandleAfterGap: Candle,
+  timeframe: Timeframe | string,
+): boolean => {
+  const normalizedTimeframe = String(timeframe).toUpperCase();
+  const expectedGapSeconds = getMarketGapTimeframeSeconds(normalizedTimeframe);
+  if (!expectedGapSeconds || !SESSION_GAP_SEPARATOR_TIMEFRAMES.has(normalizedTimeframe)) {
+    return false;
+  }
+
+  const actualGapSeconds = firstCandleAfterGap.time - previousCandle.time;
+  return Number.isFinite(actualGapSeconds) &&
+    actualGapSeconds > expectedGapSeconds * 3 &&
+    actualGapSeconds >= MIN_SESSION_GAP_SEPARATOR_SECONDS;
+};
+
+const isDenseMinuteSeparatorTimeframe = (timeframe: Timeframe | string): boolean => (
+  DENSE_MINUTE_SEPARATOR_TIMEFRAMES.has(String(timeframe).toUpperCase())
+);
+
+const getSeparatorPriority = (separator: PeriodSeparator): number => {
+  switch (separator.type) {
+    case 'session_gap':
+      return 4;
+    case 'year':
+      return 3;
+    case 'month':
+      return 2;
+    case 'day':
+      return 1;
+    default:
+      return 0;
+  }
+};
+
+export const shouldRecomputeMarketGapSeparatorsForCandle = (
+  candles: Candle[],
+  candle: Candle,
+  marketGapOptions?: {
+    symbol: string;
+    timeframe: Timeframe | string;
+    brokerOffsetSeconds?: number;
+  },
+): boolean => {
+  if (!marketGapOptions || !Number.isFinite(candle.time)) return false;
+
+  const sortedCandles = getValidSortedCandles(candles);
+  const candleIndex = sortedCandles.findIndex(item => item.time === candle.time);
+  if (candleIndex <= 0) return false;
+
+  const { gaps } = buildMarketClosedGapSeries(sortedCandles, marketGapOptions);
+  return gaps.some(gap => gap.endTime === candle.time);
+};
+
+export const isPotentialMarketClosedPlaceholderCandle = (
+  candle: MarketClosedGapCandle,
+  options: {
+    symbol: string;
+    timeframe: Timeframe | string;
+    brokerOffsetSeconds?: number;
+  },
+): boolean => {
+  return isPotentialMarketClosedPlaceholderCandleForMarketSession(candle, {
+    ...options,
+    timeframe: String(options.timeframe),
+  });
+};
 
 const clampAlpha = (alpha: number): number => Math.max(0, Math.min(1, alpha));
 
@@ -451,15 +536,21 @@ const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingV
   };
 };
 
-const formatChartSeriesData = (
+export const formatChartSeriesData = (
   candles: Candle[],
   chartType: ChartType,
   theme: TradingViewChartTheme,
   volumeSettings: VolumeDisplaySettings,
+  marketGapOptions?: {
+    symbol: string;
+    timeframe: Timeframe | string;
+    brokerOffsetSeconds?: number;
+  },
 ): {
   sortedCandles: Candle[];
   seriesData: FormattedSeriesDatum[];
   volumeData: FormattedVolumeDatum[];
+  periodSeparators: PeriodSeparator[];
 } => {
   const uniqueCandles = new Map<number, Candle>();
   candles.forEach(candle => uniqueCandles.set(candle.time, candle));
@@ -477,12 +568,59 @@ const formatChartSeriesData = (
     )
     .sort((a, b) => a.time - b.time);
 
+  const { candles: renderedCandles, gaps: marketGaps } = marketGapOptions
+    ? buildMarketClosedGapSeries(sortedCandles, marketGapOptions)
+    : { candles: sortedCandles, gaps: [] };
+  const basePeriodSeparators = marketGapOptions
+    ? getPeriodSeparators(
+      renderedCandles,
+      marketGapOptions.timeframe,
+      marketGapOptions.brokerOffsetSeconds ?? 0,
+    )
+    : [];
+  const periodSeparatorByTime = new Map<number, PeriodSeparator>();
+  basePeriodSeparators.forEach(separator => {
+    periodSeparatorByTime.set(separator.time, separator);
+  });
+  marketGaps.forEach(gap => {
+    const separatorTime = gap.endTime;
+    if (!Number.isFinite(separatorTime)) return;
+    const insertionIndex = renderedCandles.findIndex(candle => candle.time === separatorTime);
+    const firstCandleAfterGap = renderedCandles[insertionIndex];
+    const previousCandle = renderedCandles[insertionIndex - 1];
+    if (!firstCandleAfterGap || !previousCandle) return;
+    if (!shouldAddMarketGapSessionSeparator(previousCandle, firstCandleAfterGap, marketGapOptions?.timeframe ?? '')) {
+      return;
+    }
+
+    periodSeparatorByTime.set(firstCandleAfterGap.time, {
+      time: firstCandleAfterGap.time,
+      index: insertionIndex,
+      type: 'session_gap',
+    });
+  });
+  if (marketGapOptions && isDenseMinuteSeparatorTimeframe(marketGapOptions.timeframe)) {
+    marketGaps.forEach(gap => {
+      periodSeparatorByTime.forEach((separator, time) => {
+        if (
+          separator.type !== 'session_gap' &&
+          time > gap.startTime &&
+          time < gap.endTime
+        ) {
+          periodSeparatorByTime.delete(time);
+        }
+      });
+    });
+  }
+  const periodSeparators = Array.from(periodSeparatorByTime.values())
+    .sort((a, b) => a.time - b.time);
+
   const seriesData: FormattedSeriesDatum[] = chartType === 'line' || chartType === 'area'
-    ? sortedCandles.map(candle => ({
+    ? renderedCandles.map(candle => ({
       time: candle.time as Time,
       value: candle.close,
     }))
-    : sortedCandles.map(candle => ({
+    : renderedCandles.map(candle => ({
       time: candle.time as Time,
       open: candle.open,
       high: candle.high,
@@ -490,13 +628,18 @@ const formatChartSeriesData = (
       close: candle.close,
     }));
 
-  const volumeData: FormattedVolumeDatum[] = sortedCandles.map(candle => ({
+  const volumeData: FormattedVolumeDatum[] = renderedCandles.map(candle => ({
     time: candle.time as Time,
     value: getDisplayVolume(candle, volumeSettings),
     color: candle.close >= candle.open ? theme.volumeUp : theme.volumeDown,
   }));
 
-  return { sortedCandles, seriesData, volumeData };
+  return {
+    sortedCandles: renderedCandles,
+    seriesData,
+    volumeData,
+    periodSeparators,
+  };
 };
 
 const shouldScrollToRealtime = (
@@ -597,12 +740,33 @@ export const TradingChart = React.memo(function TradingChart({
   // Tracks current active drawing tool — used inside event-handler closures
   const activeToolRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const periodSeparatorsRef = useRef<PeriodSeparator[]>([]);
+  const periodSeparatorNodesRef = useRef<HTMLDivElement[]>([]);
+  const periodSeparatorRenderPendingRef = useRef(false);
   const chartExportMetadataRef = useRef({ symbol, timeframe: activeTimeframe });
+
+  const clearPeriodSeparators = useCallback(() => {
+    for (const marker of periodSeparatorNodesRef.current) {
+      try {
+        marker.remove();
+      } catch {
+        // Ignore detached marker nodes.
+      }
+    }
+    periodSeparatorNodesRef.current = [];
+  }, []);
 
   // Custom crosshair
   const [crosshairEnabled, setCrosshairEnabled] = useState(false);
   const crosshairEnabledRef = useRef(false);
   crosshairEnabledRef.current = crosshairEnabled;
+  const [brokerTimeOffsetSec, setBrokerTimeOffsetSec] = useState(0);
+  const brokerTimeOffsetSecRef = useRef(0);
+
+  useEffect(() => {
+    brokerTimeOffsetSecRef.current = brokerTimeOffsetSec;
+  }, [brokerTimeOffsetSec]);
+
   const { vertLineRef, horizLineRef, centerRef, timeLabelRef, priceLabelRef } = useCrosshair({
     chartRef,
     seriesRef,
@@ -610,6 +774,7 @@ export const TradingChart = React.memo(function TradingChart({
     enabled: crosshairEnabled,
     digits: getSymbolDigits(symbol),
     timeframe,
+    brokerOffsetSeconds: brokerTimeOffsetSec,
   });
 
   useEffect(() => {
@@ -699,7 +864,6 @@ export const TradingChart = React.memo(function TradingChart({
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [templateDialogMode, setTemplateDialogMode] = useState<'save' | 'load'>('save');
   const [candlesLoadedRev, setCandlesLoadedRev] = useState(0);
-  const [brokerTimeOffsetSec, setBrokerTimeOffsetSec] = useState(0);
 
   const markCandlesReady = useCallback(() => {
     setApiError(null);
@@ -876,9 +1040,11 @@ export const TradingChart = React.memo(function TradingChart({
     hasReachedBeginningRef.current = false;
     isLoadingMoreRef.current = false;
     lastStoreCandleSecRef.current = 0;
+    periodSeparatorsRef.current = [];
+    clearPeriodSeparators();
     resetLiveQuotePriceGuard();
     candleAggregationService.loadHistoricalCandles(symbol, activeTf as AggTimeframe, []);
-  }, [hideLivePriceOverlay, resetLiveQuotePriceGuard, symbol]);
+  }, [clearPeriodSeparators, hideLivePriceOverlay, resetLiveQuotePriceGuard, symbol]);
 
   // Listen for Alt+T toggle-one-click-trading event from GlobalShortcuts
   useEffect(() => {
@@ -953,6 +1119,131 @@ export const TradingChart = React.memo(function TradingChart({
   const isChartSurfaceLight = useCallback(() => (
     isLightChartBackground(chartThemeRef.current.background)
   ), []);
+
+  const renderPeriodSeparators = useCallback(() => {
+    clearPeriodSeparators();
+
+    if (isDisposedRef.current || !chartRef.current || !overlayRef.current) return;
+    if (!chartSettingsRef.current.showPeriodSeparators) return;
+
+    const separators = periodSeparatorsRef.current;
+    if (separators.length === 0) return;
+
+    const chart = chartRef.current;
+    const timeScale = chart.timeScale();
+    const chartWidth = containerRef.current?.offsetWidth ?? overlayRef.current.offsetWidth;
+    const color = isChartSurfaceLight()
+      ? 'rgba(15, 23, 42, 0.82)'
+      : 'rgba(241, 245, 249, 0.94)';
+
+    const resolveSeparatorCoordinate = (separator: PeriodSeparator): number | null => {
+      const directCoordinate = timeScale.timeToCoordinate(separator.time as Time);
+      if (directCoordinate != null && Number.isFinite(directCoordinate)) return directCoordinate;
+
+      const activeTf = prevTimeframeRef.current || timeframe;
+      const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
+      const maxDistanceSeconds = Number.isFinite(timeframeSeconds) && timeframeSeconds > 0
+        ? timeframeSeconds * 1.5
+        : Number.POSITIVE_INFINITY;
+      let nearest: Candle | null = null;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+
+      for (const candle of candlesRef.current) {
+        const distance = Math.abs(candle.time - separator.time);
+        if (distance < nearestDistance) {
+          nearest = candle;
+          nearestDistance = distance;
+        }
+      }
+
+      if (!nearest || nearestDistance > maxDistanceSeconds) return null;
+      const fallbackCoordinate = chart.timeScale().timeToCoordinate(nearest.time as Time);
+      return fallbackCoordinate != null && Number.isFinite(fallbackCoordinate)
+        ? fallbackCoordinate
+        : null;
+    };
+
+    const rawRenderCandidates: Array<{ separator: PeriodSeparator; x: number }> = [];
+    separators.forEach(separator => {
+      const x = resolveSeparatorCoordinate(separator);
+      if (x == null || !Number.isFinite(x) || x < -2 || x > chartWidth + 2) return;
+      rawRenderCandidates.push({ separator, x });
+    });
+
+    const activeTf = prevTimeframeRef.current || timeframe;
+    const renderCandidates = isDenseMinuteSeparatorTimeframe(activeTf)
+      ? rawRenderCandidates
+        .sort((left, right) => left.x - right.x)
+        .reduce<Array<{ separator: PeriodSeparator; x: number }>>((deduped, candidate) => {
+          const previous = deduped[deduped.length - 1];
+          if (!previous || Math.abs(candidate.x - previous.x) > MINUTE_SEPARATOR_PIXEL_DEDUP_DISTANCE) {
+            deduped.push(candidate);
+            return deduped;
+          }
+
+          const candidatePriority = getSeparatorPriority(candidate.separator);
+          const previousPriority = getSeparatorPriority(previous.separator);
+          if (
+            candidatePriority > previousPriority ||
+            (candidatePriority === previousPriority && candidate.separator.time > previous.separator.time)
+          ) {
+            deduped[deduped.length - 1] = candidate;
+          }
+          return deduped;
+        }, [])
+      : rawRenderCandidates;
+
+    renderCandidates.forEach(({ separator, x }) => {
+
+      const marker = document.createElement('div');
+      marker.className = `rtx-period-separator rtx-period-separator--${separator.type}`;
+      marker.title = `Period separator: ${separator.type.replace('_', ' ')}`;
+      marker.setAttribute('aria-hidden', 'true');
+      marker.dataset.separatorTime = String(separator.time);
+      marker.dataset.separatorType = separator.type;
+      marker.style.cssText = `
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: ${Math.round(x)}px;
+        width: 1px;
+        background-image: repeating-linear-gradient(to bottom, ${color} 0 2px, transparent 2px 6px);
+        background-repeat: repeat-y;
+        opacity: 1;
+        z-index: 25;
+        pointer-events: none;
+        transform: translateX(-0.5px);
+      `;
+
+      overlayRef.current?.appendChild(marker);
+      periodSeparatorNodesRef.current.push(marker);
+    });
+  }, [clearPeriodSeparators, isChartSurfaceLight]);
+
+  const schedulePeriodSeparatorRender = useCallback(() => {
+    if (typeof window === 'undefined') {
+      renderPeriodSeparators();
+      return;
+    }
+
+    if (periodSeparatorRenderPendingRef.current) return;
+    periodSeparatorRenderPendingRef.current = true;
+
+    window.requestAnimationFrame(() => {
+      periodSeparatorRenderPendingRef.current = false;
+      renderPeriodSeparators();
+      window.requestAnimationFrame(renderPeriodSeparators);
+      window.setTimeout(renderPeriodSeparators, 80);
+    });
+  }, [renderPeriodSeparators]);
+
+  const isPotentialMarketClosedPlaceholder = useCallback((candle: Candle): boolean => {
+    return isPotentialMarketClosedPlaceholderCandle(candle, {
+      symbol: prevSymbolRef.current || symbol,
+      timeframe: prevTimeframeRef.current || timeframe,
+      brokerOffsetSeconds: brokerTimeOffsetSecRef.current,
+    });
+  }, [symbol, timeframe]);
 
   const normalizeChartTimeToUnixSeconds = useCallback((time: Time): number | null => {
     if (typeof time === 'number') {
@@ -1210,6 +1501,7 @@ export const TradingChart = React.memo(function TradingChart({
       }
       chart.unsubscribeCrosshairMove(crosshairHandler);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeHandler);
+      clearPeriodSeparators();
 
       // Delay cleanup to allow any pending lightweight-charts requestAnimationFrame 
       // loops to finish, preventing "Object is disposed" runtime panics.
@@ -1256,17 +1548,25 @@ export const TradingChart = React.memo(function TradingChart({
     // Determine the active chart type
     const activeType = currentChartType || prevChartTypeRef.current || 'candlestick';
     const activeTimeframe = prevTimeframeRef.current || timeframe;
+    const activeSymbol = prevSymbolRef.current || symbol;
 
-    const { sortedCandles, seriesData, volumeData } = formatChartSeriesData(
+    const { sortedCandles, seriesData, volumeData, periodSeparators } = formatChartSeriesData(
       candles,
       activeType,
       chartThemeRef.current,
       chartSettingsRef.current,
+      {
+        symbol: activeSymbol,
+        timeframe: activeTimeframe,
+        brokerOffsetSeconds: brokerTimeOffsetSecRef.current,
+      },
     );
+    periodSeparatorsRef.current = periodSeparators;
 
     try {
       seriesRef.current.setData(seriesData);
       volumeRef.current.setData(volumeData);
+      schedulePeriodSeparatorRender();
 
       // Initial/context-reset fit only. Live/history refreshes preserve the user's viewport.
       const totalBars = seriesData.length;
@@ -1390,17 +1690,24 @@ export const TradingChart = React.memo(function TradingChart({
 
       if (addedCount > 0) {
         const activeType = prevChartTypeRef.current || 'candlestick';
-        const { seriesData, volumeData } = formatChartSeriesData(
+        const { seriesData, volumeData, periodSeparators } = formatChartSeriesData(
           candlesRef.current,
           activeType,
           chartThemeRef.current,
           chartSettingsRef.current,
+          {
+            symbol,
+            timeframe: activeTf,
+            brokerOffsetSeconds,
+          },
         );
+        periodSeparatorsRef.current = periodSeparators;
 
         if (seriesRef.current && volumeRef.current && chartRef.current) {
           const timeScale = chartRef.current.timeScale();
           seriesRef.current.setData(seriesData);
           volumeRef.current.setData(volumeData);
+          schedulePeriodSeparatorRender();
 
           if (currentScrollPosition !== null) {
             timeScale.scrollToPosition(currentScrollPosition, false);
@@ -1423,7 +1730,7 @@ export const TradingChart = React.memo(function TradingChart({
     }
 
     console.warn(`[Chart] Background history paused after ${HISTORY_MAX_BATCHES} batches for ${symbol} ${activeTf}. More history can still load with left-scroll.`);
-  }, [reconcileCandlesWithLiveQuote, symbol]);
+  }, [reconcileCandlesWithLiveQuote, schedulePeriodSeparatorRender, symbol]);
 
   const normalizeRenderedCandlesToLivePrice = useCallback((price: number, activeTf: Timeframe): boolean => {
     const candles = candlesRef.current;
@@ -1694,12 +2001,18 @@ export const TradingChart = React.memo(function TradingChart({
       // Re-hydrate the chart with the new full array 
       // WITHOUT snapping the viewport to the right edge
       const activeType = prevChartTypeRef.current || 'candlestick';
-      const { seriesData, volumeData } = formatChartSeriesData(
+      const { seriesData, volumeData, periodSeparators } = formatChartSeriesData(
         candlesRef.current,
         activeType,
         chartThemeRef.current,
         chartSettingsRef.current,
+        {
+          symbol,
+          timeframe,
+          brokerOffsetSeconds: brokerTimeOffsetSec,
+        },
       );
+      periodSeparatorsRef.current = periodSeparators;
 
       // Update series but keep the same distance from the latest candle.
       if (seriesRef.current && volumeRef.current && chartRef.current) {
@@ -1708,6 +2021,7 @@ export const TradingChart = React.memo(function TradingChart({
 
         seriesRef.current.setData(seriesData);
         volumeRef.current.setData(volumeData);
+        schedulePeriodSeparatorRender();
 
         timeScale.scrollToPosition(currentPos, false);
       }
@@ -1729,7 +2043,7 @@ export const TradingChart = React.memo(function TradingChart({
     } finally {
       isLoadingMoreRef.current = false;
     }
-  }, [brokerTimeOffsetSec, symbol, timeframe, reconcileCandlesWithLiveQuote]);
+  }, [brokerTimeOffsetSec, schedulePeriodSeparatorRender, symbol, timeframe, reconcileCandlesWithLiveQuote]);
 
   // Keep ref pointing to the latest loadMoreHistory
   useEffect(() => {
@@ -1768,6 +2082,8 @@ export const TradingChart = React.memo(function TradingChart({
 
         candlesRef.current = [];
         currentCandleRef.current = null;
+        periodSeparatorsRef.current = [];
+        clearPeriodSeparators();
         resetVisibleRangeOnNextDataRef.current = true;
         hasReachedBeginningRef.current = false;
         isLoadingMoreRef.current = false;
@@ -1794,6 +2110,8 @@ export const TradingChart = React.memo(function TradingChart({
         candlesRef.current = [];
         currentCandleRef.current = null;
         prevPriceRef.current = null;
+        periodSeparatorsRef.current = [];
+        clearPeriodSeparators();
         resetVisibleRangeOnNextDataRef.current = true;
         hasReachedBeginningRef.current = false;
         isLoadingMoreRef.current = false;
@@ -1833,6 +2151,8 @@ export const TradingChart = React.memo(function TradingChart({
       candlesRef.current = [];
       currentCandleRef.current = null;
       prevPriceRef.current = null;
+      periodSeparatorsRef.current = [];
+      clearPeriodSeparators();
       resetVisibleRangeOnNextDataRef.current = true;
       resetLiveQuotePriceGuard();
     }
@@ -2186,7 +2506,7 @@ export const TradingChart = React.memo(function TradingChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(timeRangeHandler);
 
     isRebuildingRef.current = false; // Safe to resume ticks and resizes
-  }, [chartType, symbol, loadHistory, resetLiveQuotePriceGuard, updateChartData]); // Note: intentional omit chartSettings
+  }, [chartType, symbol, loadHistory, resetLiveQuotePriceGuard, updateChartData, clearPeriodSeparators]); // Note: intentional omit chartSettings
 
 
 
@@ -2243,6 +2563,7 @@ export const TradingChart = React.memo(function TradingChart({
 
     const handleVisibleRangeChange = () => {
       syncLeftVisibleTime();
+      schedulePeriodSeparatorRender();
     };
 
     syncLeftVisibleTime();
@@ -2253,7 +2574,7 @@ export const TradingChart = React.memo(function TradingChart({
         chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       } catch { }
     };
-  }, [syncLeftVisibleTime, timeframe, candlesLoadedRev]);
+  }, [schedulePeriodSeparatorRender, syncLeftVisibleTime, timeframe, candlesLoadedRev]);
 
   // Watch chart settings and hot-apply to chart without unmounting
   useEffect(() => {
@@ -2319,13 +2640,20 @@ export const TradingChart = React.memo(function TradingChart({
         visible: chartSettings.showTickVolumes || chartSettings.showRealVolumes,
         color: chartTheme.volumeUp
       });
-      const { volumeData } = formatChartSeriesData(
+      const { volumeData, periodSeparators } = formatChartSeriesData(
         candlesRef.current,
         prevChartTypeRef.current || chartType,
         chartTheme,
         chartSettings,
+        {
+          symbol: prevSymbolRef.current || symbol,
+          timeframe: prevTimeframeRef.current || timeframe,
+          brokerOffsetSeconds: brokerTimeOffsetSecRef.current,
+        },
       );
+      periodSeparatorsRef.current = periodSeparators;
       volumeRef.current.setData(volumeData);
+      schedulePeriodSeparatorRender();
       const current = currentCandleRef.current;
       if (current) {
         updateLegendDOM(current.open, current.high, current.low, current.close, getDisplayVolume(current, chartSettings));
@@ -2333,7 +2661,7 @@ export const TradingChart = React.memo(function TradingChart({
     }
 
     window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
-  }, [chartSettings, chartTheme, chartType, updateLegendDOM]);
+  }, [chartSettings, chartTheme, chartType, schedulePeriodSeparatorRender, symbol, timeframe, updateLegendDOM]);
 
   // getTimeframeSeconds is imported from candleAggregationService (module scope)
   // so it is never a stale closure value after a timeframe switch.
@@ -2357,6 +2685,57 @@ export const TradingChart = React.memo(function TradingChart({
 
     // ── State (local to this effect closure) ──────────────────────────────────
     let lastTickKey = '';          // dedup: ts+price
+    let lastMarketGapSeriesRefreshTime: number | null = null;
+
+    const refreshMarketGapSeriesForCandle = (c: Candle): boolean => {
+      if (isDisposedRef.current || !seriesRef.current || !volumeRef.current || !chartRef.current) {
+        return false;
+      }
+
+      const activeType = prevChartTypeRef.current || 'candlestick';
+      const activeSymbol = prevSymbolRef.current || symbol;
+      const activeTf = prevTimeframeRef.current || timeframe;
+      const marketGapOptions = {
+        symbol: activeSymbol,
+        timeframe: activeTf,
+        brokerOffsetSeconds: brokerTimeOffsetSecRef.current,
+      };
+      const candlesForFormatting = mergeCandleCollections(candlesRef.current, [c]);
+      if (!shouldRecomputeMarketGapSeparatorsForCandle(candlesForFormatting, c, marketGapOptions)) {
+        return false;
+      }
+      if (lastMarketGapSeriesRefreshTime === c.time) {
+        return false;
+      }
+
+      const timeScale = chartRef.current.timeScale();
+      const currentScrollPosition = timeScale.scrollPosition();
+      const shouldKeepRealtime = shouldScrollToRealtime(
+        chartRef.current,
+        autoScrollEnabledRef.current,
+        chartSettingsRef.current.chartAutoScroll,
+      );
+      const { seriesData, volumeData, periodSeparators } = formatChartSeriesData(
+        candlesForFormatting,
+        activeType,
+        chartThemeRef.current,
+        chartSettingsRef.current,
+        marketGapOptions,
+      );
+      seriesRef.current.setData(seriesData);
+      volumeRef.current.setData(volumeData);
+      periodSeparatorsRef.current = periodSeparators;
+      schedulePeriodSeparatorRender();
+
+      if (shouldKeepRealtime) {
+        try { timeScale.scrollToRealTime(); } catch { }
+      } else if (Number.isFinite(currentScrollPosition)) {
+        try { timeScale.scrollToPosition(currentScrollPosition, false); } catch { }
+      }
+
+      lastMarketGapSeriesRefreshTime = c.time;
+      return true;
+    };
 
     // ── pushCandleToChart ──────────────────────────────────────────────────────
     // Pushes one candle update to lightweight-charts.
@@ -2384,6 +2763,9 @@ export const TradingChart = React.memo(function TradingChart({
         }
         updateLegendDOM(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
         markCandlesReady();
+        if (isNewCandle) {
+          refreshMarketGapSeriesForCandle(c);
+        }
         if (
           isNewCandle &&
           chartRef.current &&
@@ -2471,6 +2853,8 @@ export const TradingChart = React.memo(function TradingChart({
           candlesRef.current = [];
           currentCandleRef.current = null;
           prevPriceRef.current = null;
+          periodSeparatorsRef.current = [];
+          clearPeriodSeparators();
           resetVisibleRangeOnNextDataRef.current = true;
           leftVisibleTimeRef.current = null;
           lastStoreCandleSecRef.current = 0;
@@ -2618,7 +3002,12 @@ export const TradingChart = React.memo(function TradingChart({
       if (currentCandleRef.current && c.time === currentCandleRef.current.time) {
         currentCandleRef.current = { ...c };
         mergeCandleIntoRef(currentCandleRef.current);
-        push(currentCandleRef.current, false);
+        if (isPotentialMarketClosedPlaceholder(currentCandleRef.current)) {
+          updateChartData(candlesRef.current);
+        } else {
+          refreshMarketGapSeriesForCandle(currentCandleRef.current);
+          push(currentCandleRef.current, false);
+        }
         repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
         return;
       }
@@ -2627,7 +3016,12 @@ export const TradingChart = React.memo(function TradingChart({
       if (!currentCandleRef.current) {
         currentCandleRef.current = { ...c };
         mergeCandleIntoRef(currentCandleRef.current);
-        push(currentCandleRef.current, true);
+        if (isPotentialMarketClosedPlaceholder(currentCandleRef.current)) {
+          updateChartData(candlesRef.current);
+        } else {
+          refreshMarketGapSeriesForCandle(currentCandleRef.current);
+          push(currentCandleRef.current, true);
+        }
         repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
         return;
       }
@@ -2640,7 +3034,12 @@ export const TradingChart = React.memo(function TradingChart({
         if (currentCandleRef.current && currentCandleRef.current.time === c.time) {
           currentCandleRef.current = { ...c };
           mergeCandleIntoRef(currentCandleRef.current);
-          push(currentCandleRef.current, false);
+          if (isPotentialMarketClosedPlaceholder(currentCandleRef.current)) {
+            updateChartData(candlesRef.current);
+          } else {
+            refreshMarketGapSeriesForCandle(currentCandleRef.current);
+            push(currentCandleRef.current, false);
+          }
           repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
         }
 
@@ -2742,6 +3141,7 @@ export const TradingChart = React.memo(function TradingChart({
               chartRef.current.timeScale().scrollToRealTime();
               console.log(`[TradingChart] Tab became visible — resized to ${offsetWidth}x${offsetHeight}`);
               flushTradeOverlay();
+              schedulePeriodSeparatorRender();
             }
           }
         }
@@ -2751,26 +3151,30 @@ export const TradingChart = React.memo(function TradingChart({
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [flushTradeOverlay]);
+  }, [flushTradeOverlay, schedulePeriodSeparatorRender]);
 
   useEffect(() => {
     if (!isActive) return;
 
-    refreshVisibleChartLayout();
+    const refreshLayoutAndGaps = () => {
+      refreshVisibleChartLayout();
+      schedulePeriodSeparatorRender();
+    };
 
+    refreshLayoutAndGaps();
     let secondFrameId: number | null = null;
     const firstFrameId = window.requestAnimationFrame(() => {
-      refreshVisibleChartLayout();
-      secondFrameId = window.requestAnimationFrame(refreshVisibleChartLayout);
+      refreshLayoutAndGaps();
+      secondFrameId = window.requestAnimationFrame(refreshLayoutAndGaps);
     });
-    const timeoutId = window.setTimeout(refreshVisibleChartLayout, 120);
+    const timeoutId = window.setTimeout(refreshLayoutAndGaps, 120);
 
     return () => {
       window.cancelAnimationFrame(firstFrameId);
       if (secondFrameId !== null) window.cancelAnimationFrame(secondFrameId);
       window.clearTimeout(timeoutId);
     };
-  }, [isActive, refreshVisibleChartLayout, symbol, timeframe]);
+  }, [isActive, refreshVisibleChartLayout, schedulePeriodSeparatorRender, symbol, timeframe]);
 
   // Native autoSize handles resizing internally
 
@@ -2897,6 +3301,8 @@ export const TradingChart = React.memo(function TradingChart({
         // Clear existing data and reload
         candlesRef.current = [];
         currentCandleRef.current = null;
+        periodSeparatorsRef.current = [];
+        clearPeriodSeparators();
         resetVisibleRangeOnNextDataRef.current = true;
         if (seriesRef.current) {
           try { seriesRef.current.setData([]); } catch (e) { }
@@ -6005,7 +6411,16 @@ export const TradingChart = React.memo(function TradingChart({
       )}
 
       {/* Drawing Overlay — always pointer-events:none so chart canvas receives all mouse events */}
-      <div ref={overlayRef} className="chart-drawing-overlay absolute inset-0" style={{ pointerEvents: 'none', zIndex: 10 }} />
+      <div
+        ref={overlayRef}
+        className="chart-drawing-overlay absolute inset-0"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          zIndex: 10,
+        }}
+      />
 
       {/* ── Custom crosshair — 5 GPU-composited divs, all pointer-events:none ── */}
       {/* Vertical line: 1px wide, full height, snapped to nearest candle X */}

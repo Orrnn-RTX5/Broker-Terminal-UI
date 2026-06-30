@@ -133,6 +133,12 @@ const buildQuery = (params: Record<string, string | number | undefined>): string
 const normalizeSymbol = (symbol: string): string =>
   symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
+const normalizeApiTimeframeValue = (timeframe: unknown): ApiTimeframe | null => {
+  if (timeframe === undefined || timeframe === null || timeframe === '') return null;
+  const normalized = String(timeframe).trim().toUpperCase();
+  return TIMEFRAME_ALIASES[normalized] ?? null;
+};
+
 const toSeconds = (value: unknown): number => {
   const raw = typeof value === 'string' && Number.isNaN(Number(value))
     ? new Date(value).getTime() / 1000
@@ -192,10 +198,115 @@ const extractCandles = (payload: any): any[] => {
 const extractCandle = (payload: any): any | null =>
   payload?.candle ?? payload?.data?.candle ?? payload?.payload?.candle ?? payload?.data ?? null;
 
+type UnknownRecord = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is UnknownRecord =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+const metadataText = (value: unknown): string | null => {
+  if (typeof value === 'string') return value.trim() || null;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+};
+
+const SYMBOL_METADATA_KEYS = [
+  'symbol',
+  'Symbol',
+  'SYMBOL',
+  'instrument',
+  'Instrument',
+  'INSTRUMENT',
+  'pair',
+  'Pair',
+  'PAIR',
+] as const;
+
+const TIMEFRAME_METADATA_KEYS = [
+  'timeframe',
+  'timeFrame',
+  'time_frame',
+  'Timeframe',
+  'TIMEFRAME',
+  'tf',
+  'TF',
+  'period',
+  'Period',
+  'PERIOD',
+  'interval',
+  'Interval',
+  'INTERVAL',
+  'resolution',
+  'Resolution',
+  'RESOLUTION',
+] as const;
+
+const METADATA_WRAPPER_KEYS = [
+  'data',
+  'payload',
+  'result',
+  'response',
+  'body',
+  'candle',
+  'bar',
+  'rate',
+  'message',
+] as const;
+
+const findMetadataText = (
+  value: unknown,
+  keys: readonly string[],
+  depth = 0,
+): string | null => {
+  if (depth > 4) return null;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findMetadataText(item, keys, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  if (!isRecord(value)) return null;
+
+  for (const key of keys) {
+    const found = metadataText(value[key]);
+    if (found) return found;
+  }
+
+  for (const key of METADATA_WRAPPER_KEYS) {
+    const found = findMetadataText(value[key], keys, depth + 1);
+    if (found) return found;
+  }
+
+  return null;
+};
+
+const getMessageChannel = (message: unknown): string | null => {
+  if (!isRecord(message)) return null;
+  return metadataText(message.channel) ?? metadataText(message.topic);
+};
+
+const messageMatchesCandleSubscription = (
+  message: unknown,
+  channel: string,
+  symbol: string,
+  timeframe: ApiTimeframe,
+): boolean => {
+  const messageChannel = getMessageChannel(message);
+  if (messageChannel) return messageChannel === channel;
+
+  const messageSymbol = findMetadataText(message, SYMBOL_METADATA_KEYS);
+  const messageTimeframe = findMetadataText(message, TIMEFRAME_METADATA_KEYS);
+  if (!messageSymbol || !messageTimeframe) return false;
+
+  return normalizeSymbol(messageSymbol) === symbol
+    && normalizeApiTimeframeValue(messageTimeframe) === timeframe;
+};
+
 export class ChartDataService {
   normalizeTimeframe(timeframe: string): ApiTimeframe {
-    const normalized = timeframe.trim().toUpperCase();
-    return TIMEFRAME_ALIASES[normalized] ?? 'M1';
+    return normalizeApiTimeframeValue(timeframe) ?? 'M1';
   }
 
   normalizeCandle(input: any, timeframe?: string): OHLCData | null {
@@ -248,7 +359,9 @@ export class ChartDataService {
       ?? row.VOLUME
       ?? row.v
     );
-    const volume = tickVolume ?? legacyVolume ?? realVolume ?? 0;
+    const positiveVolume = [tickVolume, legacyVolume, realVolume]
+      .find(value => value !== undefined && value > 0);
+    const volume = positiveVolume ?? tickVolume ?? legacyVolume ?? realVolume ?? 0;
 
     if (!time || ![open, high, low, close].every(Number.isFinite)) return null;
 
@@ -394,8 +507,7 @@ export class ChartDataService {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          const messageChannel = message.channel ?? message.topic;
-          if (messageChannel && messageChannel !== channel) return;
+          if (!messageMatchesCandleSubscription(message, channel, symbol, apiTf)) return;
 
           const snapshot = extractCandles(message);
           if (snapshot.length > 0) {

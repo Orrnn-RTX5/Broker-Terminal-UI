@@ -73,7 +73,7 @@ export const defaultChartProperties: ChartProperties = {
   showBidPriceLine: true,
   showAskPriceLine: false,
   showLastPriceLine: false,
-  showPeriodSeparators: false,
+  showPeriodSeparators: true,
   showGrid: true,
   showTickVolumes: false,
   showRealVolumes: false,
@@ -104,6 +104,7 @@ export const defaultChartProperties: ChartProperties = {
 };
 
 const VOLUME_BARS_DEFAULT_MIGRATION_VERSION = 1;
+const PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION = 1;
 
 export const clampChartOpacityPercent = (value: unknown, fallback: number): number => {
   const numeric = Number(value);
@@ -182,10 +183,45 @@ export const applyVolumeBarsDefaultMigration = (
   };
 };
 
+const showPeriodSeparators = (properties: ChartProperties): ChartProperties => ({
+  ...properties,
+  showPeriodSeparators: true,
+});
+
+export const applyPeriodSeparatorsDefaultMigration = (
+  globalProperties: ChartProperties,
+  symbolProperties: Record<string, ChartProperties>,
+  migrationVersion?: number,
+): {
+  globalProperties: ChartProperties;
+  symbolProperties: Record<string, ChartProperties>;
+  periodSeparatorsDefaultMigrationVersion: number;
+} => {
+  if ((migrationVersion ?? 0) >= PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION) {
+    return {
+      globalProperties,
+      symbolProperties,
+      periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
+    };
+  }
+
+  return {
+    globalProperties: showPeriodSeparators(globalProperties),
+    symbolProperties: Object.fromEntries(
+      Object.entries(symbolProperties).map(([symbol, properties]) => [
+        symbol,
+        showPeriodSeparators(properties),
+      ]),
+    ),
+    periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
+  };
+};
+
 interface ChartSettingsState {
   globalProperties: ChartProperties;
   symbolProperties: Record<string, ChartProperties>; // Allow specific overrides per chart symbol
   volumeBarsDefaultMigrationVersion: number;
+  periodSeparatorsDefaultMigrationVersion: number;
 
   updateGlobalProperty: <K extends keyof ChartProperties>(
     key: K,
@@ -210,6 +246,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       globalProperties: { ...defaultChartProperties },
       symbolProperties: {},
       volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
+      periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
 
       updateGlobalProperty: (key, value) => {
         set((state) => ({
@@ -296,6 +333,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
         set({
           globalProperties: { ...defaultChartProperties },
           volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
+          periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
         });
       },
     }),
@@ -304,15 +342,21 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       storage: createJSONStorage(() => localStorage),
       merge: (persisted, current) => {
         const persistedState = persisted as Partial<ChartSettingsState> | undefined;
-        const migrated = applyVolumeBarsDefaultMigration(
+        const volumeMigrated = applyVolumeBarsDefaultMigration(
           normalizeChartProperties(persistedState?.globalProperties),
           normalizeSymbolProperties(persistedState?.symbolProperties),
           persistedState?.volumeBarsDefaultMigrationVersion,
+        );
+        const migrated = applyPeriodSeparatorsDefaultMigration(
+          volumeMigrated.globalProperties,
+          volumeMigrated.symbolProperties,
+          persistedState?.periodSeparatorsDefaultMigrationVersion,
         );
 
         return {
           ...current,
           ...persistedState,
+          volumeBarsDefaultMigrationVersion: volumeMigrated.volumeBarsDefaultMigrationVersion,
           ...migrated,
         };
       },
