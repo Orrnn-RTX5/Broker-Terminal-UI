@@ -37,6 +37,14 @@ export type Command =
     type: 'ZOOM_OUT';
     payload: Record<string, never>;
   }
+  | {
+    type: 'SCROLL_TO_REALTIME';
+    payload: Record<string, never>;
+  }
+  | {
+    type: 'RESET_CHART_VIEWPORT';
+    payload: Record<string, never>;
+  }
   // Window Management Commands
   | {
     type: 'TILE_WINDOWS';

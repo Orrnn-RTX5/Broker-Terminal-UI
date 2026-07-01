@@ -2,9 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { defaultChartProperties } from '../store/useChartSettingsStore';
 import {
   formatChartSeriesData,
+  getLeftVisibleTimeFromLogicalRange,
+  getRenderedPrependedBarCount,
+  getVisibleLogicalRangeAnchoredToTime,
   isPotentialMarketClosedPlaceholderCandle,
   shouldRecomputeMarketGapSeparatorsForCandle,
-} from './TradingChart';
+  shouldRestoreProtectedHistoryForFullRender,
+  TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
+} from './TradingChart.helpers';
 
 const utcSeconds = (year: number, month: number, day: number, hour = 0, minute = 0) =>
   Date.UTC(year, month - 1, day, hour, minute) / 1000;
@@ -73,6 +78,68 @@ const closedSessionRun = (
 );
 
 describe('formatChartSeriesData market gap separators', () => {
+  it('disables implicit live new-bar viewport shifting for M1 charts', () => {
+    expect(TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS).toEqual({
+      shiftVisibleRangeOnNewBar: false,
+      allowShiftVisibleRangeOnWhitespaceReplacement: false,
+    });
+  });
+
+  it('restores protected history before a tiny live batch can replace it on any timeframe', () => {
+    expect(shouldRestoreProtectedHistoryForFullRender({
+      activeTimeframe: 'M1',
+      incomingCount: 3,
+      protectedCount: 120,
+      resetVisibleRange: false,
+      defaultVisibleBars: 30,
+    })).toBe(true);
+
+    expect(shouldRestoreProtectedHistoryForFullRender({
+      activeTimeframe: 'M1',
+      incomingCount: 3,
+      protectedCount: 120,
+      resetVisibleRange: true,
+      defaultVisibleBars: 30,
+    })).toBe(false);
+
+    expect(shouldRestoreProtectedHistoryForFullRender({
+      activeTimeframe: 'M5',
+      incomingCount: 3,
+      protectedCount: 120,
+      resetVisibleRange: false,
+      defaultVisibleBars: 30,
+    })).toBe(true);
+  });
+
+  it('anchors viewport preservation to the previous left visible candle time', () => {
+    const candles = [100, 160, 220, 280, 340, 400].map(time => ({ time }));
+
+    expect(getVisibleLogicalRangeAnchoredToTime(
+      candles,
+      280,
+      { from: 1, to: 4 },
+    )).toEqual({ from: 3, to: 6 });
+  });
+
+  it('derives the left visible time from the last rendered data before history prepends', () => {
+    const previouslyRenderedCandles = [100, 160, 220, 280].map(time => ({ time }));
+    const nextRenderedCandles = [20, 80, ...previouslyRenderedCandles.map(candle => candle.time)]
+      .map(time => ({ time }));
+    const previousRange = { from: 1, to: 3 };
+
+    const leftVisibleTime = getLeftVisibleTimeFromLogicalRange(
+      previouslyRenderedCandles,
+      previousRange,
+    );
+
+    expect(leftVisibleTime).toBe(160);
+    expect(getVisibleLogicalRangeAnchoredToTime(
+      nextRenderedCandles,
+      leftVisibleTime,
+      previousRange,
+    )).toEqual({ from: 3, to: 5 });
+  });
+
   it('compresses hidden market-gap candles without adding synthetic whitespace for short rendered gaps', () => {
     const previousTime = utcSeconds(2026, 6, 26, 22, 0);
     const nextTime = utcSeconds(2026, 6, 28, 23, 0);
@@ -302,5 +369,27 @@ describe('formatChartSeriesData market gap separators', () => {
       placeholderCandle(utcSeconds(2026, 6, 27), 4088),
       { symbol: 'XAUUSD', timeframe: 'H1', brokerOffsetSeconds: 0 },
     )).toBe(true);
+  });
+
+  it('counts only rendered prepended bars for viewport preservation after gap compression', () => {
+    const previousFirstRenderedTime = utcSeconds(2026, 6, 21, 23, 0);
+    const result = formatChartSeriesData(
+      [
+        realCandle(utcSeconds(2026, 6, 19, 22, 0), 1.3150),
+        ...closedSessionRun(utcSeconds(2026, 6, 19, 23, 0), 48, 60 * 60, 1.3150),
+        realCandle(previousFirstRenderedTime, 1.3190),
+        realCandle(utcSeconds(2026, 6, 22, 0, 0), 1.3195),
+      ],
+      'candlestick',
+      theme,
+      defaultChartProperties,
+      { symbol: 'GBPUSD', timeframe: 'H1', brokerOffsetSeconds: 0 },
+    );
+
+    expect(getRenderedPrependedBarCount(
+      result.sortedCandles,
+      previousFirstRenderedTime,
+      49,
+    )).toBe(1);
   });
 });

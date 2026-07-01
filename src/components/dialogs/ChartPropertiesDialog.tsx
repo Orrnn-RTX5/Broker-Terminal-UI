@@ -67,6 +67,11 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
     updateSymbolProperty(symbol, key, value);
   };
 
+  const updateChartShift = (enabled: boolean) => {
+    updateGlobalProperty('chartShift', enabled);
+    window.dispatchEvent(new CustomEvent('rtx:chartShift', { detail: { enabled } }));
+  };
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -271,7 +276,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
                          <span className="rtx-cp-checkbox-label text-[12px] text-[#ccc]">Chart on foreground</span>
                       </label>
                       <label className="rtx-cp-checkbox-row flex items-center gap-2 cursor-pointer">
-                         <input type="checkbox" className="rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]" checked={state.chartShift} onChange={(e) => updateGlobalProperty('chartShift', e.target.checked)} />
+                         <input type="checkbox" className="rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]" checked={state.chartShift} onChange={(e) => updateChartShift(e.target.checked)} />
                          <span className="rtx-cp-checkbox-label text-[12px] text-[#ccc]">Chart shift</span>
                       </label>
                       <label className="rtx-cp-checkbox-row flex items-center gap-2 cursor-pointer">

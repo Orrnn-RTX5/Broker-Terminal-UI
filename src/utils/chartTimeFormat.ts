@@ -6,20 +6,32 @@ const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 type TradingChartTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
 type TimeframeUnit = 'minute' | 'hour' | 'day' | 'week' | 'month';
 
+interface TradingChartInitialRangeProfile {
+  dataBars: number;
+  rightPadBars: number;
+  sparseLeftPadBars: number;
+}
+
 const TIMEFRAME_LAYOUT_CONFIG: Record<TradingChartTimeframe, {
   defaultVisibleBars: number;
   defaultRightPadBars: number;
   chartShiftRightOffset: number;
 }> = {
-  M1: { defaultVisibleBars: 30, defaultRightPadBars: 5, chartShiftRightOffset: 8 },
-  M5: { defaultVisibleBars: 30, defaultRightPadBars: 5, chartShiftRightOffset: 8 },
-  M15: { defaultVisibleBars: 30, defaultRightPadBars: 5, chartShiftRightOffset: 8 },
-  M30: { defaultVisibleBars: 30, defaultRightPadBars: 5, chartShiftRightOffset: 8 },
-  H1: { defaultVisibleBars: 30, defaultRightPadBars: 5, chartShiftRightOffset: 8 },
-  H4: { defaultVisibleBars: 30, defaultRightPadBars: 5, chartShiftRightOffset: 8 },
-  D1: { defaultVisibleBars: 30, defaultRightPadBars: 5, chartShiftRightOffset: 8 },
-  W1: { defaultVisibleBars: 30, defaultRightPadBars: 5, chartShiftRightOffset: 8 },
-  MN: { defaultVisibleBars: 30, defaultRightPadBars: 5, chartShiftRightOffset: 8 },
+  M1: { defaultVisibleBars: 30, defaultRightPadBars: 8, chartShiftRightOffset: 8 },
+  M5: { defaultVisibleBars: 30, defaultRightPadBars: 8, chartShiftRightOffset: 8 },
+  M15: { defaultVisibleBars: 30, defaultRightPadBars: 8, chartShiftRightOffset: 8 },
+  M30: { defaultVisibleBars: 30, defaultRightPadBars: 8, chartShiftRightOffset: 8 },
+  H1: { defaultVisibleBars: 30, defaultRightPadBars: 8, chartShiftRightOffset: 8 },
+  H4: { defaultVisibleBars: 30, defaultRightPadBars: 8, chartShiftRightOffset: 8 },
+  D1: { defaultVisibleBars: 30, defaultRightPadBars: 0, chartShiftRightOffset: 8 },
+  W1: { defaultVisibleBars: 30, defaultRightPadBars: 0, chartShiftRightOffset: 8 },
+  MN: { defaultVisibleBars: 30, defaultRightPadBars: 0, chartShiftRightOffset: 8 },
+};
+
+const HIGHER_TIMEFRAME_INITIAL_RANGE_CONFIG: Partial<Record<TradingChartTimeframe, TradingChartInitialRangeProfile>> = {
+  D1: { dataBars: 24, rightPadBars: 4, sparseLeftPadBars: 0 },
+  W1: { dataBars: 6, rightPadBars: 4, sparseLeftPadBars: 0.5 },
+  MN: { dataBars: 5, rightPadBars: 3, sparseLeftPadBars: 2 },
 };
 
 const pad2 = (value: number): string => String(value).padStart(2, '0');
@@ -234,6 +246,45 @@ export const getTradingChartDefaultVisibleBars = (timeframe: string): number =>
 
 export const getTradingChartDefaultRightPadBars = (timeframe: string): number =>
   getTimeframeLayoutConfig(timeframe).defaultRightPadBars;
+
+export const getTradingChartInitialLogicalRange = ({
+  timeframe,
+  totalBars,
+  adaptiveVisibleBars,
+}: {
+  timeframe: string;
+  totalBars: number;
+  adaptiveVisibleBars: number;
+}): { from: number; to: number } | null => {
+  if (!Number.isFinite(totalBars) || totalBars <= 0) return null;
+
+  const normalizedTimeframe = isTradingChartTimeframe(timeframe) ? timeframe : 'M5';
+  const higherTimeframeProfile = HIGHER_TIMEFRAME_INITIAL_RANGE_CONFIG[normalizedTimeframe];
+  if (!higherTimeframeProfile) {
+    const visibleBars = Math.max(1, adaptiveVisibleBars);
+    return {
+      from: totalBars - visibleBars,
+      to: totalBars + getTradingChartDefaultRightPadBars(normalizedTimeframe),
+    };
+  }
+
+  if (totalBars > higherTimeframeProfile.dataBars) {
+    return {
+      from: totalBars - higherTimeframeProfile.dataBars,
+      to: totalBars + higherTimeframeProfile.rightPadBars,
+    };
+  }
+
+  const sparseLeftPadBars = Math.min(
+    higherTimeframeProfile.sparseLeftPadBars,
+    Math.max(0, higherTimeframeProfile.dataBars - totalBars),
+  );
+
+  return {
+    from: -sparseLeftPadBars,
+    to: higherTimeframeProfile.dataBars + higherTimeframeProfile.rightPadBars - sparseLeftPadBars,
+  };
+};
 
 export const getTradingChartShiftRightOffset = (
   timeframe: string,

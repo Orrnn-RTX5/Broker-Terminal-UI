@@ -3,6 +3,7 @@ import { TickMarkType } from 'lightweight-charts';
 import {
   getTradingChartDefaultRightPadBars,
   getTradingChartDefaultVisibleBars,
+  getTradingChartInitialLogicalRange,
   getTradingChartShiftRightOffset,
   formatTradingChartCrosshairLabel,
   formatTradingChartTickLabel,
@@ -94,12 +95,50 @@ describe('chartTimeFormat', () => {
 
   it('uses the nav timeframe config for default visible range and chart shift', () => {
     expect(getTradingChartDefaultVisibleBars('M1')).toBe(30);
-    expect(getTradingChartDefaultRightPadBars('M1')).toBe(5);
+    expect(getTradingChartDefaultRightPadBars('M1')).toBe(8);
     expect(getTradingChartShiftRightOffset('M1', true)).toBe(8);
     expect(getTradingChartShiftRightOffset('M1', false)).toBe(0);
 
     expect(getTradingChartDefaultVisibleBars('M5')).toBe(30);
-    expect(getTradingChartDefaultRightPadBars('M5')).toBe(5);
+    expect(getTradingChartDefaultRightPadBars('M5')).toBe(8);
     expect(getTradingChartShiftRightOffset('H1', true)).toBe(8);
+  });
+
+  it('keeps intraday initial ranges anchored with right-side future space', () => {
+    expect(getTradingChartInitialLogicalRange({
+      timeframe: 'M1',
+      totalBars: 100,
+      adaptiveVisibleBars: 50,
+    })).toEqual({ from: 50, to: 108 });
+  });
+
+  it('uses the requested D1 startup viewport instead of leaving most candles at the far left', () => {
+    expect(getTradingChartInitialLogicalRange({
+      timeframe: 'D1',
+      totalBars: 100,
+      adaptiveVisibleBars: 60,
+    })).toEqual({ from: 76, to: 104 });
+  });
+
+  it('keeps sparse W1 and MN startup viewports zoomed like the reference screenshots', () => {
+    expect(getTradingChartInitialLogicalRange({
+      timeframe: 'W1',
+      totalBars: 5,
+      adaptiveVisibleBars: 60,
+    })).toEqual({ from: -0.5, to: 9.5 });
+
+    expect(getTradingChartInitialLogicalRange({
+      timeframe: 'MN',
+      totalBars: 3,
+      adaptiveVisibleBars: 60,
+    })).toEqual({ from: -2, to: 6 });
+  });
+
+  it('does not apply an initial logical range before candles exist', () => {
+    expect(getTradingChartInitialLogicalRange({
+      timeframe: 'D1',
+      totalBars: 0,
+      adaptiveVisibleBars: 60,
+    })).toBeNull();
   });
 });

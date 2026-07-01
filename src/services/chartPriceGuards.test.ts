@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  canDropPreloadedCandlesForLiveQuoteMismatch,
+  createRenderedPriceReference,
   getChartPriceFromQuote,
   getMedianCandlePrice,
   getRenderedCandleReferencePrice,
   getReferenceScaleFactor,
   getTradeEntryPriceFromQuote,
   isPriceCompatibleWithCandles,
+  isPriceCompatibleWithReference,
   normalizeCandlesToReference,
   normalizeCandlesToRenderedScale,
   resetLiveQuoteGuardState,
@@ -116,6 +119,34 @@ describe('chart price guards', () => {
     });
   });
 
+  it('matches median candle compatibility for normal data using a cached rendered reference', () => {
+    const reference = createRenderedPriceReference(candles);
+
+    expect(reference.price).toBe(getMedianCandlePrice(candles));
+    expect(isPriceCompatibleWithReference(4700, reference)).toBe(isPriceCompatibleWithCandles(4700, candles));
+    expect(isPriceCompatibleWithReference(64000, reference)).toBe(isPriceCompatibleWithCandles(64000, candles));
+  });
+
+  it('checks live quotes against a cached reference without sorting candles on every tick', () => {
+    const reference = createRenderedPriceReference(candles);
+    const sortSpy = vi.spyOn(Array.prototype, 'sort');
+    sortSpy.mockImplementation(() => {
+      throw new Error('live quote reference check must not sort candle arrays');
+    });
+
+    let compatible = false;
+    let incompatible = true;
+    try {
+      compatible = isPriceCompatibleWithReference(4688, reference);
+      incompatible = isPriceCompatibleWithReference(64000, reference);
+    } finally {
+      sortSpy.mockRestore();
+    }
+
+    expect(compatible).toBe(true);
+    expect(incompatible).toBe(false);
+  });
+
   it('does not drop candles after incompatible quotes once a quote was accepted', () => {
     const accepted = updateLiveQuoteGuardState(resetLiveQuoteGuardState(), true, 4685).state;
 
@@ -146,5 +177,53 @@ describe('chart price guards', () => {
 
     expect(thirdMismatch.state.incompatibleQuoteCount).toBe(3);
     expect(thirdMismatch.shouldDropCandles).toBe(true);
+  });
+
+  it('can suppress dropping candles while still tracking incompatible quotes', () => {
+    const reset = resetLiveQuoteGuardState();
+
+    const firstMismatch = updateLiveQuoteGuardState(reset, false, 64000, { allowDrop: false });
+    const secondMismatch = updateLiveQuoteGuardState(firstMismatch.state, false, 64010, { allowDrop: false });
+    const thirdMismatch = updateLiveQuoteGuardState(secondMismatch.state, false, 64020, { allowDrop: false });
+
+    expect(thirdMismatch.state).toEqual({
+      lastAcceptedQuote: null,
+      incompatibleQuoteCount: 3,
+    });
+    expect(thirdMismatch.shouldDropCandles).toBe(false);
+  });
+
+  it('allows live quote mismatch drops only before meaningful history exists', () => {
+    expect(canDropPreloadedCandlesForLiveQuoteMismatch({
+      hasDisplayedHistory: false,
+      protectedHistoryCount: 0,
+      currentHistoryCount: 0,
+    })).toBe(true);
+
+    expect(canDropPreloadedCandlesForLiveQuoteMismatch({
+      hasDisplayedHistory: false,
+      protectedHistoryCount: 1,
+      currentHistoryCount: 1,
+    })).toBe(true);
+  });
+
+  it('blocks live quote mismatch drops once displayed or current history is meaningful', () => {
+    expect(canDropPreloadedCandlesForLiveQuoteMismatch({
+      hasDisplayedHistory: true,
+      protectedHistoryCount: 0,
+      currentHistoryCount: 0,
+    })).toBe(false);
+
+    expect(canDropPreloadedCandlesForLiveQuoteMismatch({
+      hasDisplayedHistory: false,
+      protectedHistoryCount: 2,
+      currentHistoryCount: 0,
+    })).toBe(false);
+
+    expect(canDropPreloadedCandlesForLiveQuoteMismatch({
+      hasDisplayedHistory: false,
+      protectedHistoryCount: 0,
+      currentHistoryCount: 2,
+    })).toBe(false);
   });
 });

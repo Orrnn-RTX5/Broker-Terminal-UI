@@ -21,6 +21,22 @@ export interface LiveQuoteGuardResult {
   shouldDropCandles: boolean;
 }
 
+export interface LiveQuoteGuardOptions {
+  dropThreshold?: number;
+  allowDrop?: boolean;
+}
+
+export interface RenderedPriceReference {
+  price: number | null;
+  candleCount: number;
+}
+
+export interface LiveQuoteDropEligibility {
+  hasDisplayedHistory: boolean;
+  protectedHistoryCount: number;
+  currentHistoryCount: number;
+}
+
 interface ChartQuoteLike {
   bid?: unknown;
   ask?: unknown;
@@ -89,6 +105,11 @@ export const getLastCandleClose = (candles: PriceCandle[]): number | null => {
 export const getRenderedCandleReferencePrice = (candles: PriceCandle[]): number | null =>
   getMedianCandlePrice(candles) ?? getLastCandleClose(candles);
 
+export const createRenderedPriceReference = (candles: PriceCandle[]): RenderedPriceReference => ({
+  price: getRenderedCandleReferencePrice(candles),
+  candleCount: candles.length,
+});
+
 export const getReferenceScaleFactor = (
   candlePrice: number | null,
   referencePrice: number | null | undefined,
@@ -156,17 +177,42 @@ export const isPriceCompatibleWithCandles = (
   candles: PriceCandle[],
 ): boolean => getReferenceScaleFactor(getMedianCandlePrice(candles), price) !== null;
 
+export const isPriceCompatibleWithReference = (
+  price: number | null | undefined,
+  reference: RenderedPriceReference | number | null | undefined,
+): boolean => {
+  const referencePrice = typeof reference === 'number' ? reference : reference?.price;
+  return getReferenceScaleFactor(referencePrice ?? null, price) !== null;
+};
+
 export const resetLiveQuoteGuardState = (): LiveQuoteGuardState => ({
   lastAcceptedQuote: null,
   incompatibleQuoteCount: 0,
 });
 
+export const canDropPreloadedCandlesForLiveQuoteMismatch = ({
+  hasDisplayedHistory,
+  protectedHistoryCount,
+  currentHistoryCount,
+}: LiveQuoteDropEligibility): boolean => (
+  !hasDisplayedHistory &&
+  protectedHistoryCount <= 1 &&
+  currentHistoryCount <= 1
+);
+
 export const updateLiveQuoteGuardState = (
   state: LiveQuoteGuardState,
   compatible: boolean,
   price: number | null | undefined,
-  dropThreshold = DEFAULT_INCOMPATIBLE_QUOTE_DROP_THRESHOLD,
+  dropThresholdOrOptions: number | LiveQuoteGuardOptions = DEFAULT_INCOMPATIBLE_QUOTE_DROP_THRESHOLD,
 ): LiveQuoteGuardResult => {
+  const dropThreshold = typeof dropThresholdOrOptions === 'number'
+    ? dropThresholdOrOptions
+    : dropThresholdOrOptions.dropThreshold ?? DEFAULT_INCOMPATIBLE_QUOTE_DROP_THRESHOLD;
+  const allowDrop = typeof dropThresholdOrOptions === 'number'
+    ? true
+    : dropThresholdOrOptions.allowDrop ?? true;
+
   if (compatible) {
     return {
       state: {
@@ -183,6 +229,6 @@ export const updateLiveQuoteGuardState = (
       lastAcceptedQuote: state.lastAcceptedQuote,
       incompatibleQuoteCount,
     },
-    shouldDropCandles: state.lastAcceptedQuote === null && incompatibleQuoteCount >= dropThreshold,
+    shouldDropCandles: allowDrop && state.lastAcceptedQuote === null && incompatibleQuoteCount >= dropThreshold,
   };
 };

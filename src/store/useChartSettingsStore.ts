@@ -105,6 +105,7 @@ export const defaultChartProperties: ChartProperties = {
 
 const VOLUME_BARS_DEFAULT_MIGRATION_VERSION = 1;
 const PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION = 1;
+const CHART_SHIFT_DEFAULT_MIGRATION_VERSION = 1;
 
 export const clampChartOpacityPercent = (value: unknown, fallback: number): number => {
   const numeric = Number(value);
@@ -154,6 +155,11 @@ const hideVolumeBars = (properties: ChartProperties): ChartProperties => ({
   showRealVolumes: false,
 });
 
+const disableChartShift = (properties: ChartProperties): ChartProperties => ({
+  ...properties,
+  chartShift: false,
+});
+
 export const applyVolumeBarsDefaultMigration = (
   globalProperties: ChartProperties,
   symbolProperties: Record<string, ChartProperties>,
@@ -180,6 +186,35 @@ export const applyVolumeBarsDefaultMigration = (
       ]),
     ),
     volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
+  };
+};
+
+export const applyChartShiftDefaultMigration = (
+  globalProperties: ChartProperties,
+  symbolProperties: Record<string, ChartProperties>,
+  migrationVersion?: number,
+): {
+  globalProperties: ChartProperties;
+  symbolProperties: Record<string, ChartProperties>;
+  chartShiftDefaultMigrationVersion: number;
+} => {
+  if ((migrationVersion ?? 0) >= CHART_SHIFT_DEFAULT_MIGRATION_VERSION) {
+    return {
+      globalProperties,
+      symbolProperties,
+      chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
+    };
+  }
+
+  return {
+    globalProperties: disableChartShift(globalProperties),
+    symbolProperties: Object.fromEntries(
+      Object.entries(symbolProperties).map(([symbol, properties]) => [
+        symbol,
+        disableChartShift(properties),
+      ]),
+    ),
+    chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
   };
 };
 
@@ -222,6 +257,7 @@ interface ChartSettingsState {
   symbolProperties: Record<string, ChartProperties>; // Allow specific overrides per chart symbol
   volumeBarsDefaultMigrationVersion: number;
   periodSeparatorsDefaultMigrationVersion: number;
+  chartShiftDefaultMigrationVersion: number;
 
   updateGlobalProperty: <K extends keyof ChartProperties>(
     key: K,
@@ -247,6 +283,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
       symbolProperties: {},
       volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
       periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
+      chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
 
       updateGlobalProperty: (key, value) => {
         set((state) => ({
@@ -334,6 +371,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           globalProperties: { ...defaultChartProperties },
           volumeBarsDefaultMigrationVersion: VOLUME_BARS_DEFAULT_MIGRATION_VERSION,
           periodSeparatorsDefaultMigrationVersion: PERIOD_SEPARATORS_DEFAULT_MIGRATION_VERSION,
+          chartShiftDefaultMigrationVersion: CHART_SHIFT_DEFAULT_MIGRATION_VERSION,
         });
       },
     }),
@@ -347,9 +385,14 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           normalizeSymbolProperties(persistedState?.symbolProperties),
           persistedState?.volumeBarsDefaultMigrationVersion,
         );
-        const migrated = applyPeriodSeparatorsDefaultMigration(
+        const chartShiftMigrated = applyChartShiftDefaultMigration(
           volumeMigrated.globalProperties,
           volumeMigrated.symbolProperties,
+          persistedState?.chartShiftDefaultMigrationVersion,
+        );
+        const migrated = applyPeriodSeparatorsDefaultMigration(
+          chartShiftMigrated.globalProperties,
+          chartShiftMigrated.symbolProperties,
           persistedState?.periodSeparatorsDefaultMigrationVersion,
         );
 
@@ -357,6 +400,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
           ...current,
           ...persistedState,
           volumeBarsDefaultMigrationVersion: volumeMigrated.volumeBarsDefaultMigrationVersion,
+          chartShiftDefaultMigrationVersion: chartShiftMigrated.chartShiftDefaultMigrationVersion,
           ...migrated,
         };
       },

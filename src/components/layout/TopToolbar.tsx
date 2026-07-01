@@ -827,17 +827,12 @@ const MainToolbar = ({
 
             <MT5Divider />
 
-            {/* Group 6: Chart Shift */}
+            {/* Group 6: Latest candle */}
             <MT5Group>
                 <MT5Btn
-                    icon={<Icon name="chart-shift" state={toolbarState.chartShiftEnabled ? 'active' : 'default'} />}
-                    title="Chart Shift"
-                    active={toolbarState.chartShiftEnabled}
-                    onClick={() => {
-                        dispatchToolbar({ type: 'TOGGLE_CHART_SHIFT' });
-                        // Also fire a direct window event for TradingChart
-                        window.dispatchEvent(new CustomEvent('rtx:chartShift', { detail: { enabled: !toolbarState.chartShiftEnabled } }));
-                    }}
+                    icon={<Icon name="chart-shift" state="default" />}
+                    title="Reset Chart View"
+                    onClick={() => dispatchCommand({ type: 'RESET_CHART_VIEWPORT', payload: {} })}
                 />
             </MT5Group>
 

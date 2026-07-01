@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { chartPrinter } from '../../services/chartPrinter';
+import { defaultChartProperties, useChartSettingsStore } from '../../store/useChartSettingsStore';
+import { ChartPropertiesDialog } from './ChartPropertiesDialog';
 import { ExitConfirmDialog } from './ExitConfirmDialog';
 import { PrintPreviewDialog } from './PrintPreviewDialog';
 import { PrintSetupDialog } from './PrintSetupDialog';
@@ -97,5 +99,35 @@ describe('dialog components', () => {
 
     await user.click(screen.getByText('Save & Exit'));
     expect(onConfirm).toHaveBeenCalledWith(true);
+  });
+
+  it('dispatches chart shift runtime events from ChartPropertiesDialog', async () => {
+    const user = userEvent.setup();
+    const chartShiftHandler = vi.fn();
+
+    useChartSettingsStore.setState({
+      globalProperties: { ...defaultChartProperties, chartShift: false },
+      symbolProperties: {},
+    });
+    window.addEventListener('rtx:chartShift', chartShiftHandler as EventListener);
+
+    try {
+      render(
+        <ChartPropertiesDialog
+          isOpen
+          onClose={vi.fn()}
+          symbol="XAUUSD"
+          timeframe="M1"
+        />
+      );
+
+      await user.click(screen.getByLabelText('Chart shift'));
+
+      expect(useChartSettingsStore.getState().globalProperties.chartShift).toBe(true);
+      expect(chartShiftHandler).toHaveBeenCalledTimes(1);
+      expect((chartShiftHandler.mock.calls[0][0] as CustomEvent).detail).toEqual({ enabled: true });
+    } finally {
+      window.removeEventListener('rtx:chartShift', chartShiftHandler as EventListener);
+    }
   });
 });

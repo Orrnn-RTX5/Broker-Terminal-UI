@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyChartShiftDefaultMigration,
   applyPeriodSeparatorsDefaultMigration,
   applyVolumeBarsDefaultMigration,
   clampChartOpacityPercent,
@@ -116,6 +117,35 @@ describe('chart settings trade history overlay defaults', () => {
 
     expect(migrated.globalProperties.showTickVolumes).toBe(true);
     expect(migrated.globalProperties.showRealVolumes).toBe(false);
+  });
+
+  it('migrates old persisted chart shift to disabled once', () => {
+    const oldPersistedProperties = normalizeChartProperties({
+      chartShift: true,
+    });
+
+    const migrated = applyChartShiftDefaultMigration(
+      oldPersistedProperties,
+      { XAUUSD: oldPersistedProperties },
+      undefined,
+    );
+
+    expect(migrated.globalProperties.chartShift).toBe(false);
+    expect(migrated.symbolProperties.XAUUSD.chartShift).toBe(false);
+  });
+
+  it('preserves explicit chart shift preference after migration has run', () => {
+    const migratedProperties = normalizeChartProperties({
+      chartShift: true,
+    });
+
+    const migrated = applyChartShiftDefaultMigration(
+      migratedProperties,
+      {},
+      1,
+    );
+
+    expect(migrated.globalProperties.chartShift).toBe(true);
   });
 
   it('normalizes explicit visible volume settings before migration', () => {
