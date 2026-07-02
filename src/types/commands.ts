@@ -42,6 +42,10 @@ export type Command =
     payload: Record<string, never>;
   }
   | {
+    type: 'JUMP_TO_LATEST_CANDLE';
+    payload: Record<string, never>;
+  }
+  | {
     type: 'RESET_CHART_VIEWPORT';
     payload: Record<string, never>;
   }

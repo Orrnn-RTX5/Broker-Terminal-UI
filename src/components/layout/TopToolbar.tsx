@@ -831,8 +831,8 @@ const MainToolbar = ({
             <MT5Group>
                 <MT5Btn
                     icon={<Icon name="chart-shift" state="default" />}
-                    title="Reset Chart View"
-                    onClick={() => dispatchCommand({ type: 'RESET_CHART_VIEWPORT', payload: {} })}
+                    title="Jump to Latest Candle"
+                    onClick={() => dispatchCommand({ type: 'JUMP_TO_LATEST_CANDLE', payload: {} })}
                 />
             </MT5Group>
 

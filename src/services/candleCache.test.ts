@@ -1,0 +1,114 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { candleCache, type CandleCacheKeyParts } from './candleCache';
+import type { OHLCData } from './chartDataService';
+
+const baseKeyParts: CandleCacheKeyParts = {
+  scope: 'https://broker.example/api/v2',
+  symbol: 'EURUSD',
+  timeframe: 'M1',
+  limit: 500,
+};
+
+const candle = (time: number, close = time): OHLCData => ({
+  time,
+  open: close - 1,
+  high: close + 1,
+  low: close - 2,
+  close,
+  volume: time,
+});
+
+describe('candleCache', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-02T00:00:00Z'));
+    candleCache.clearAll();
+  });
+
+  afterEach(() => {
+    candleCache.clearAll();
+    vi.useRealTimers();
+  });
+
+  it('isolates entries by scope, symbol, timeframe, and limit', () => {
+    const m1Key = candleCache.createKey(baseKeyParts);
+    const m5Key = candleCache.createKey({ ...baseKeyParts, timeframe: 'M5' });
+    const otherScopeKey = candleCache.createKey({ ...baseKeyParts, scope: 'https://other.example/api/v2' });
+
+    candleCache.setLatest(m1Key, [candle(60)], baseKeyParts);
+    candleCache.setLatest(m5Key, [candle(300)], { ...baseKeyParts, timeframe: 'M5' });
+
+    expect(candleCache.getLatest(m1Key)?.candles.map(c => c.time)).toEqual([60]);
+    expect(candleCache.getLatest(m5Key)?.candles.map(c => c.time)).toEqual([300]);
+    expect(candleCache.getLatest(otherScopeKey)).toBeNull();
+  });
+
+  it('clones candles on set and get so callers cannot mutate cached data', () => {
+    const key = candleCache.createKey(baseKeyParts);
+    const source = [candle(60, 10)];
+
+    candleCache.setLatest(key, source, baseKeyParts);
+    source[0].close = 999;
+
+    const firstRead = candleCache.getLatest(key);
+    expect(firstRead?.candles[0].close).toBe(10);
+
+    if (firstRead) firstRead.candles[0].close = 888;
+    expect(candleCache.getLatest(key)?.candles[0].close).toBe(10);
+  });
+
+  it('exposes stale metadata without dropping session entries immediately', () => {
+    const key = candleCache.createKey(baseKeyParts);
+    const entry = candleCache.setLatest(key, [candle(60)], baseKeyParts);
+
+    expect(candleCache.isStale(entry)).toBe(false);
+
+    vi.setSystemTime(new Date('2026-07-02T00:03:00Z'));
+    const cached = candleCache.getLatest(key);
+
+    expect(cached).not.toBeNull();
+    expect(cached ? candleCache.isStale(cached) : false).toBe(true);
+  });
+
+  it('merges overlapping candles by time and returns sorted history', () => {
+    const key = candleCache.createKey(baseKeyParts);
+
+    candleCache.setLatest(key, [candle(120, 12), candle(60, 6)], baseKeyParts);
+    candleCache.mergeLatest(key, [candle(60, 7), candle(180, 18)], baseKeyParts);
+
+    expect(candleCache.getLatest(key)?.candles.map(c => [c.time, c.close])).toEqual([
+      [60, 7],
+      [120, 12],
+      [180, 18],
+    ]);
+  });
+
+  it('clears only matching scope entries', () => {
+    const brokerKey = candleCache.createKey(baseKeyParts);
+    const otherKey = candleCache.createKey({ ...baseKeyParts, scope: 'https://other.example/api/v2' });
+
+    candleCache.setLatest(brokerKey, [candle(60)], baseKeyParts);
+    candleCache.setLatest(otherKey, [candle(90)], { ...baseKeyParts, scope: 'https://other.example/api/v2' });
+    candleCache.clearScope(baseKeyParts.scope);
+
+    expect(candleCache.getLatest(brokerKey)).toBeNull();
+    expect(candleCache.getLatest(otherKey)?.candles.map(c => c.time)).toEqual([90]);
+  });
+
+  it('dedupes in-flight fetches for the same key', async () => {
+    const key = candleCache.createKey(baseKeyParts);
+    let calls = 0;
+
+    const first = candleCache.dedupe(key, async () => {
+      calls += 1;
+      return [candle(60)];
+    });
+    const second = candleCache.dedupe(key, async () => {
+      calls += 1;
+      return [candle(120)];
+    });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([[candle(60)], [candle(60)]]);
+    expect(calls).toBe(1);
+  });
+});

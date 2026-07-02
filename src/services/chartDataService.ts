@@ -309,6 +309,10 @@ export class ChartDataService {
     return normalizeApiTimeframeValue(timeframe) ?? 'M1';
   }
 
+  getCandleCacheScope(): string {
+    return runtimeApiV2BaseUrl() || 'default';
+  }
+
   normalizeCandle(input: any, timeframe?: string): OHLCData | null {
     if (!input) return null;
     const tf = timeframe ? this.normalizeTimeframe(timeframe) : undefined;
