@@ -135,6 +135,65 @@ export const prependCandleHistory = <T extends CandleHistoryCandle>(
   )
 );
 
+export interface OlderHistoryPageSelection<T extends CandleHistoryCandle> {
+  candles: T[];
+  usedRawFallback: boolean;
+}
+
+export interface OlderHistoryRangeWindow {
+  from: number;
+  to: number;
+}
+
+export const selectOlderHistoryCandlesForMerge = <T extends CandleHistoryCandle>(
+  rawCandles: readonly T[],
+  reconciledCandles: readonly T[],
+): OlderHistoryPageSelection<T> => {
+  const normalizedReconciled = normalizeCandlePageAscending(reconciledCandles);
+  if (normalizedReconciled.length > 0) {
+    return { candles: normalizedReconciled, usedRawFallback: false };
+  }
+
+  const normalizedRaw = normalizeCandlePageAscending(rawCandles);
+  return {
+    candles: normalizedRaw,
+    usedRawFallback: normalizedRaw.length > 0,
+  };
+};
+
+export const buildOlderHistoryRangeFallbackWindows = (
+  toInclusive: number,
+  timeframeSeconds: number,
+  pageSize: number,
+  maxWindows: number,
+): OlderHistoryRangeWindow[] => {
+  if (
+    !Number.isFinite(toInclusive)
+    || !Number.isFinite(timeframeSeconds)
+    || !Number.isFinite(pageSize)
+    || !Number.isFinite(maxWindows)
+    || timeframeSeconds <= 0
+    || pageSize <= 0
+    || maxWindows <= 0
+  ) {
+    return [];
+  }
+
+  const windows: OlderHistoryRangeWindow[] = [];
+  const windowSeconds = Math.max(timeframeSeconds, Math.floor(timeframeSeconds * pageSize));
+  let windowTo = Math.floor(toInclusive);
+
+  for (let index = 0; index < Math.floor(maxWindows); index += 1) {
+    if (windowTo < 0) break;
+    const from = Math.max(0, windowTo - windowSeconds + timeframeSeconds);
+    windows.push({ from, to: windowTo });
+    if (from === 0) break;
+    windowTo = from - 1;
+  }
+
+  return windows;
+};
+
 export const mergeBackendCandlePage = <T extends CandleHistoryCandle>(
   existingAscending: readonly T[],
   backendCandles: readonly T[],

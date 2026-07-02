@@ -14,6 +14,7 @@ import {
   buildBrokerApiV2,
   buildBrokerWsV2Uri,
 } from './brokerSession';
+import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
 
 export type OHLCData = {
   time: number;
@@ -80,7 +81,7 @@ const TIMEFRAME_ALIASES: Record<string, ApiTimeframe> = {
   '1MO': 'MN',
 };
 
-const API_TIMEFRAME_SECONDS: Record<Exclude<ApiTimeframe, 'MN'>, number> = {
+const API_TIMEFRAME_SECONDS: Record<ApiTimeframe, number> = {
   M1: 60,
   M5: 5 * 60,
   M15: 15 * 60,
@@ -89,22 +90,12 @@ const API_TIMEFRAME_SECONDS: Record<Exclude<ApiTimeframe, 'MN'>, number> = {
   H4: 4 * 60 * 60,
   D1: 24 * 60 * 60,
   W1: 7 * 24 * 60 * 60,
+  MN: 30 * 24 * 60 * 60,
 };
 
 const normalizeTimeForApiTimeframe = (time: number, timeframe?: ApiTimeframe): number => {
   if (!time || !timeframe) return time;
-  if (timeframe === 'MN') {
-    const date = new Date(time * 1000);
-    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1) / 1000;
-  }
-  if (timeframe === 'W1') {
-    const date = new Date(time * 1000);
-    const daysSinceMonday = (date.getUTCDay() + 6) % 7;
-    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - daysSinceMonday) / 1000;
-  }
-
-  const intervalSeconds = API_TIMEFRAME_SECONDS[timeframe];
-  return Math.floor(time / intervalSeconds) * intervalSeconds;
+  return alignTimeframeBoundarySeconds(time, timeframe, API_TIMEFRAME_SECONDS[timeframe]);
 };
 
 const runtimeApiV2BaseUrl = (): string => {
@@ -118,7 +109,7 @@ const runtimeApiV2BaseUrl = (): string => {
 
 const getAuthToken = (): string | null => {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
+  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
 };
 
 const buildQuery = (params: Record<string, string | number | undefined>): string => {

@@ -21,6 +21,24 @@ describe('timeframeBoundary', () => {
     expect(alignTimeframeBoundarySeconds(timestamp, 'D1', 24 * 60 * 60)).toBe(utcSeconds(2025, 10, 9));
   });
 
+  it('aligns MN timestamps to the first UTC day of the calendar month', () => {
+    const julyTimestamp = utcSeconds(2026, 7, 2, 12, 30);
+    const fixedThirtyDayBucket = utcSeconds(2026, 6, 6);
+
+    expect(alignTimeframeBoundarySeconds(julyTimestamp, 'MN', 30 * 24 * 60 * 60))
+      .toBe(utcSeconds(2026, 7, 1));
+    expect(alignTimeframeBoundarySeconds(julyTimestamp, 'MN', 30 * 24 * 60 * 60))
+      .not.toBe(fixedThirtyDayBucket);
+    expect(alignToTimeframe(julyTimestamp * 1000, 'MN')).toBe(utcSeconds(2026, 7, 1) * 1000);
+  });
+
+  it('keeps MN aligned across February and March calendar lengths', () => {
+    expect(alignTimeframeBoundarySeconds(utcSeconds(2024, 2, 29, 23, 59), 'MN', 30 * 24 * 60 * 60))
+      .toBe(utcSeconds(2024, 2, 1));
+    expect(alignTimeframeBoundarySeconds(utcSeconds(2026, 3, 31, 18, 45), 'MN', 30 * 24 * 60 * 60))
+      .toBe(utcSeconds(2026, 3, 1));
+  });
+
   it('uses UTC Monday buckets when aggregating completed M1 candles into W1', () => {
     const builder = new SymbolCandleBuilder('EURUSD');
     const firstMinute = utcSeconds(2025, 10, 9, 12, 0);
@@ -31,6 +49,81 @@ describe('timeframeBoundary', () => {
 
     expect(builder.getCandles('W1')).toMatchObject([
       { time: utcSeconds(2025, 10, 6), open: 1.15, close: 1.25 },
+    ]);
+  });
+
+  it('aggregates multiple July M1 candles into one MN candle at July 1', () => {
+    const builder = new SymbolCandleBuilder('BTCUSD');
+
+    builder.addCompletedCandle('M1', {
+      time: utcSeconds(2026, 7, 1, 0, 0),
+      open: 60000,
+      high: 60100,
+      low: 59900,
+      close: 60050,
+      volume: 10,
+    });
+    builder.addCompletedCandle('M1', {
+      time: utcSeconds(2026, 7, 2, 12, 30),
+      open: 60050,
+      high: 61200,
+      low: 59800,
+      close: 61000,
+      volume: 20,
+    });
+
+    expect(builder.getCandles('MN')).toEqual([
+      {
+        time: utcSeconds(2026, 7, 1),
+        open: 60000,
+        high: 61200,
+        low: 59800,
+        close: 61000,
+        volume: 30,
+        isComplete: false,
+      },
+    ]);
+  });
+
+  it('splits completed M1 candles across June and July MN candles', () => {
+    const builder = new SymbolCandleBuilder('BTCUSD');
+
+    builder.addCompletedCandle('M1', {
+      time: utcSeconds(2026, 6, 30, 23, 59),
+      open: 58000,
+      high: 58500,
+      low: 57900,
+      close: 58400,
+      volume: 7,
+    });
+    builder.addCompletedCandle('M1', {
+      time: utcSeconds(2026, 7, 1, 0, 0),
+      open: 58400,
+      high: 59000,
+      low: 58300,
+      close: 58900,
+      volume: 9,
+    });
+
+    expect(builder.getCandles('MN')).toEqual([
+      {
+        time: utcSeconds(2026, 6, 1),
+        open: 58000,
+        high: 58500,
+        low: 57900,
+        close: 58400,
+        volume: 7,
+        isComplete: true,
+      },
+      {
+        time: utcSeconds(2026, 7, 1),
+        open: 58400,
+        high: 59000,
+        low: 58300,
+        close: 58900,
+        volume: 9,
+        isComplete: false,
+      },
     ]);
   });
 

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyBrokerTimeOffsetToCandles,
+  buildOlderHistoryRangeFallbackWindows,
   formatHistoryForOhlcv,
   getVisibleLogicalRangeForDataRender,
   mergeBackendCandlePage,
   normalizeCandlePageAscending,
   offsetLogicalRangeForPrependedCandles,
   prependCandleHistory,
+  selectOlderHistoryCandlesForMerge,
   upsertCandleIntoHistory,
   type CandleHistoryCandle,
 } from './candleHistory';
@@ -102,6 +104,44 @@ describe('candle history helpers', () => {
       from: 12,
       to: 92,
     });
+  });
+
+  it('keeps valid raw older candles when price reconciliation rejects the whole page', () => {
+    const result = selectOlderHistoryCandlesForMerge([
+      candle(120, 120),
+      candle(60, 60),
+    ], []);
+
+    expect(result.usedRawFallback).toBe(true);
+    expect(result.candles.map(item => item.time)).toEqual([60, 120]);
+  });
+
+  it('prefers reconciled older candles when price reconciliation succeeds', () => {
+    const result = selectOlderHistoryCandlesForMerge([
+      candle(60, 60),
+      candle(120, 120),
+    ], [
+      candle(60, 600),
+      candle(120, 1200),
+    ]);
+
+    expect(result.usedRawFallback).toBe(false);
+    expect(result.candles.map(item => item.close)).toEqual([600, 1200]);
+  });
+
+  it('keeps empty older pages empty so callers can stop at the beginning of history', () => {
+    const result = selectOlderHistoryCandlesForMerge([], []);
+
+    expect(result.usedRawFallback).toBe(false);
+    expect(result.candles).toEqual([]);
+  });
+
+  it('builds bounded inclusive range windows behind an older-history cursor', () => {
+    expect(buildOlderHistoryRangeFallbackWindows(600, 60, 3, 3)).toEqual([
+      { from: 480, to: 600 },
+      { from: 359, to: 479 },
+      { from: 238, to: 358 },
+    ]);
   });
 
   it('preserves the visible logical range for non-reset renders without prepends', () => {
