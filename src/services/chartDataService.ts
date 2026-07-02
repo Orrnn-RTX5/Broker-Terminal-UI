@@ -15,6 +15,8 @@ import {
   buildBrokerWsV2Uri,
 } from './brokerSession';
 import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
+import { decodeJwtPayload } from '../utils/jwt';
+import { candleCache } from './candleCache';
 
 export type OHLCData = {
   time: number;
@@ -110,6 +112,43 @@ const runtimeApiV2BaseUrl = (): string => {
 const getAuthToken = (): string | null => {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+};
+
+export class CandleAuthBrokerMismatchError extends Error {
+  constructor(expectedBrokerId: string, tokenBrokerId: string) {
+    super(`Candle auth token broker mismatch: active broker is ${expectedBrokerId}, token broker is ${tokenBrokerId}`);
+    this.name = 'CandleAuthBrokerMismatchError';
+  }
+}
+
+const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim();
+
+const getActiveBrokerId = (): string => {
+  if (typeof window === 'undefined') return '';
+  return normalizeBrokerId(
+    localStorage.getItem('broker_id')
+    || localStorage.getItem('rtx_broker_id')
+    || import.meta.env.VITE_BROKER_ID
+    || ''
+  );
+};
+
+const getTokenBrokerId = (token: string): string => {
+  const payload = decodeJwtPayload(token);
+  return normalizeBrokerId(payload?.broker_id);
+};
+
+const assertCandleAuthMatchesActiveBroker = (token: string): void => {
+  const expectedBrokerId = getActiveBrokerId();
+  const tokenBrokerId = getTokenBrokerId(token);
+  if (!expectedBrokerId || !tokenBrokerId || expectedBrokerId === tokenBrokerId) return;
+
+  candleCache.clearAll();
+  console.warn(
+    `[ChartData] Refusing candle history request because auth token broker (${tokenBrokerId}) ` +
+    `does not match active broker (${expectedBrokerId}).`
+  );
+  throw new CandleAuthBrokerMismatchError(expectedBrokerId, tokenBrokerId);
 };
 
 const buildQuery = (params: Record<string, string | number | undefined>): string => {
@@ -429,6 +468,7 @@ export class ChartDataService {
     if (!token) {
       return [];
     }
+    assertCandleAuthMatchesActiveBroker(token);
 
     const coreUrl = `${apiV2BaseUrl}/candles/${encodeURIComponent(symbol)}${buildQuery({
       timeframe: apiTf,

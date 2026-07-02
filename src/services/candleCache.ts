@@ -182,7 +182,7 @@ onSessionChange((reason) => {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('auth:token-updated', () => {
-    if (!window.localStorage.getItem('auth_token')) {
+    if (!window.localStorage.getItem('auth_token') && !window.sessionStorage.getItem('auth_token')) {
       candleCache.clearAll();
     }
   });

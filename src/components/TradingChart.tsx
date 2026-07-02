@@ -44,6 +44,19 @@ import { indicatorManager } from '../services/indicatorManager';
 import { chartDataService } from '../services/chartDataService';
 import { candleCache, type CandleCacheKey, type CandleCacheMetadata } from '../services/candleCache';
 import {
+  createChartHistoryBackfillDiagnostics,
+  fetchOlderHistoryPage as fetchChartOlderHistoryPage,
+  getHistoryPageSize,
+  getInitialHistoryCount as getChartInitialHistoryCount,
+  getNextOlderHistoryCursor,
+  markHistoryBackfillError,
+  markHistoryBackfillPageLoaded,
+  markHistoryBackfillStarted,
+  markHistoryBackfillStopped,
+  selectOlderCandlesBeforeCursor,
+  type ChartHistoryBackfillDiagnostics,
+} from '../services/chartHistoryLoader';
+import {
   canDropPreloadedCandlesForLiveQuoteMismatch,
   getChartPriceFromQuote,
   createRenderedPriceReference,
@@ -109,7 +122,6 @@ import {
 } from '../services/tradeOverlayHistory';
 import {
   applyBrokerTimeOffsetToCandles,
-  buildOlderHistoryRangeFallbackWindows,
   formatHistoryForOhlcv,
   getVisibleLogicalRangeForDataRender,
   mergeBackendCandlePage,
@@ -147,9 +159,6 @@ const TARGET_BAR_PX = 25;
 const MIN_ADAPTIVE_BARS = 30;
 const MAX_ADAPTIVE_BARS = 200;
 const INITIAL_HISTORY_COUNT = 500;
-const INITIAL_M1_HISTORY_COUNT = 3000;
-const HISTORY_PAGE_SIZE = 3000;
-const M1_EMPTY_HISTORY_RANGE_FALLBACK_WINDOWS = 8;
 const HISTORY_RENDER_IDLE_TIMEOUT_MS = 700;
 const HISTORY_RENDER_INTERACTION_IDLE_MS = 180;
 const TIMEFRAME_PREFETCH_CONCURRENCY = 2;
@@ -246,7 +255,7 @@ const isAbortError = (error: unknown): boolean => (
 );
 
 const getInitialHistoryCount = (timeframe: Timeframe): number => (
-  timeframe === 'M1' ? INITIAL_M1_HISTORY_COUNT : INITIAL_HISTORY_COUNT
+  getChartInitialHistoryCount(timeframe, INITIAL_HISTORY_COUNT)
 );
 
 const shouldBuildVolumeData = (settings: VolumeDisplaySettings): boolean => (
@@ -775,6 +784,11 @@ export const TradingChart = React.memo(function TradingChart({
   const lastVisibleLogicalRangeRef = useRef<LogicalRangeLike | null>(null);
   const isLoadingMoreRef = useRef(false);
   const hasReachedBeginningRef = useRef(false);
+  const historyBackfillDiagnosticsRef = useRef<ChartHistoryBackfillDiagnostics>(
+    createChartHistoryBackfillDiagnostics()
+  );
+  const ctxChartShiftRef = useRef(false);
+  const latestCandleJumpPendingRef = useRef(false);
 
   // ── Live crosshair line DOM refs (no React state, direct DOM for 60fps) ──
   const crosshairLineRef = useRef<HTMLDivElement | null>(null);
@@ -1300,6 +1314,16 @@ export const TradingChart = React.memo(function TradingChart({
     return upsertCandleIntoHistory(candlesRef.current, current).candles;
   }, []);
 
+  const getLatestCandleScrollOffset = useCallback((): number => {
+    const activeTf = prevTimeframeRef.current || timeframe;
+    return ctxChartShiftRef.current ? getTradingChartShiftRightOffset(activeTf, true) : 0;
+  }, [timeframe]);
+
+  const scrollToLatestCandleNow = useCallback((chart: IChartApi | null = chartRef.current): void => {
+    if (!chart) return;
+    chart.timeScale().scrollToPosition(getLatestCandleScrollOffset(), false);
+  }, [getLatestCandleScrollOffset]);
+
   const flushQueuedChartRender = useCallback(() => {
     if (isDisposedRef.current || isChartInteractionActiveRef.current) return;
 
@@ -1384,7 +1408,11 @@ export const TradingChart = React.memo(function TradingChart({
 
       const totalBars = seriesData.length;
       const shouldResetVisibleRange = pending.resetVisibleRange || resetVisibleRangeOnNextDataRef.current;
-      if (totalBars > 0 && shouldResetVisibleRange) {
+      if (totalBars > 0 && latestCandleJumpPendingRef.current) {
+        latestCandleJumpPendingRef.current = false;
+        scrollToLatestCandleNow(chart);
+        rememberVisibleLogicalRange(timeScale.getVisibleLogicalRange() as LogicalRangeLike | null);
+      } else if (totalBars > 0 && shouldResetVisibleRange) {
         series.priceScale().applyOptions({ autoScale: true });
         resetVisibleRangeOnNextDataRef.current = !applyInitialVisibleLogicalRange(
           chart,
@@ -1441,7 +1469,7 @@ export const TradingChart = React.memo(function TradingChart({
     } catch (e) {
       console.warn(`[Chart] Error setting chart data for ${pending.reason}:`, e);
     }
-  }, [applyInitialVisibleLogicalRange, getCandlesForFullRender, rememberVisibleLogicalRange, schedulePeriodSeparatorRender, symbol, syncLeftVisibleTime, timeframe]);
+  }, [applyInitialVisibleLogicalRange, getCandlesForFullRender, rememberVisibleLogicalRange, schedulePeriodSeparatorRender, scrollToLatestCandleNow, symbol, syncLeftVisibleTime, timeframe]);
 
   const scheduleQueuedChartRenderFlush = useCallback((immediate = false) => {
     if (!pendingChartRenderRef.current) return;
@@ -1488,6 +1516,7 @@ export const TradingChart = React.memo(function TradingChart({
   const markChartInteractionActive = useCallback(() => {
     if (typeof window === 'undefined') return;
     isChartInteractionActiveRef.current = true;
+    latestCandleJumpPendingRef.current = false;
     if (chartInteractionIdleTimerRef.current !== null) {
       window.clearTimeout(chartInteractionIdleTimerRef.current);
       chartInteractionIdleTimerRef.current = null;
@@ -1911,53 +1940,20 @@ export const TradingChart = React.memo(function TradingChart({
     olderThanRaw: number,
     signal?: AbortSignal,
   ): Promise<Candle[]> => {
-    const to = Math.floor(olderThanRaw) - 1;
-    const directCandles = await chartDataService.fetchCandles({
+    const result = await fetchChartOlderHistoryPage({
       symbol,
       timeframe: activeTf,
-      count: HISTORY_PAGE_SIZE,
-      to,
+      olderThanRaw,
       signal,
+      pageSize: getHistoryPageSize(activeTf),
+      timeframeSeconds: getTimeframeSeconds(activeTf as AggTimeframe),
     });
 
-    const directHasOlderCandles = getValidSortedCandles(directCandles as Candle[])
-      .some(candle => candle.time < olderThanRaw);
-
-    if (activeTf !== 'M1' || directHasOlderCandles) {
-      return directCandles;
+    if (result.usedRangeFallback) {
+      console.log(`[Chart] Range fallback loaded ${result.candles.length} older candles for ${symbol} ${activeTf} before ${olderThanRaw}`);
     }
 
-    if (directCandles.length > 0) {
-      console.log(`[Chart] M1 older request for ${symbol} returned ${directCandles.length} candles but none before ${olderThanRaw}; trying range fallback.`);
-    }
-
-    const timeframeSeconds = getTimeframeSeconds(activeTf as AggTimeframe);
-    const fallbackWindows = buildOlderHistoryRangeFallbackWindows(
-      to,
-      timeframeSeconds,
-      HISTORY_PAGE_SIZE,
-      M1_EMPTY_HISTORY_RANGE_FALLBACK_WINDOWS,
-    );
-
-    for (const windowRange of fallbackWindows) {
-      if (signal?.aborted) return [];
-      const rangedCandles = await chartDataService.fetchCandles({
-        symbol,
-        timeframe: activeTf,
-        count: HISTORY_PAGE_SIZE,
-        from: windowRange.from,
-        to: windowRange.to,
-        signal,
-      });
-      const rangedHasOlderCandles = getValidSortedCandles(rangedCandles as Candle[])
-        .some(candle => candle.time < olderThanRaw);
-      if (rangedHasOlderCandles) {
-        console.log(`[Chart] Range fallback loaded ${rangedCandles.length} older candles for ${symbol} ${activeTf} from ${windowRange.from} to ${windowRange.to}`);
-        return rangedCandles;
-      }
-    }
-
-    return directCandles;
+    return result.candles as Candle[];
   }, [symbol]);
 
   const loadRemainingHistoryInBackground = useCallback(async (
@@ -1970,6 +1966,11 @@ export const TradingChart = React.memo(function TradingChart({
     if (!symbol || !Number.isFinite(initialOlderThanRaw)) return;
 
     let olderThanRaw = initialOlderThanRaw;
+    historyBackfillDiagnosticsRef.current = markHistoryBackfillStarted(
+      historyBackfillDiagnosticsRef.current,
+      initialOlderThanRaw,
+    );
+    console.log(`[Chart] Background history started for ${symbol} ${activeTf} with pageSize=${getHistoryPageSize(activeTf)} before ${initialOlderThanRaw}`);
 
     while (true) {
       if (
@@ -1978,6 +1979,11 @@ export const TradingChart = React.memo(function TradingChart({
         || hasReachedBeginningRef.current
         || signal.aborted
       ) {
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          signal.aborted ? 'aborted' : 'superseded',
+          hasReachedBeginningRef.current,
+        );
         return;
       }
 
@@ -1987,27 +1993,54 @@ export const TradingChart = React.memo(function TradingChart({
       try {
         olderCandles = await fetchOlderHistoryPage(activeTf, olderThanRaw, signal);
       } catch (err) {
-        if (isAbortError(err)) return;
+        if (isAbortError(err)) {
+          historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+            historyBackfillDiagnosticsRef.current,
+            'aborted',
+            hasReachedBeginningRef.current,
+          );
+          return;
+        }
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillError(
+          historyBackfillDiagnosticsRef.current,
+          err,
+        );
         console.warn('[Chart] Background history load failed:', err);
         return;
       } finally {
         isLoadingMoreRef.current = false;
       }
 
-      if (isDisposedRef.current || historyLoadSeqRef.current !== loadSeq || signal.aborted) return;
+      if (isDisposedRef.current || historyLoadSeqRef.current !== loadSeq || signal.aborted) {
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          signal.aborted ? 'aborted' : 'superseded',
+          hasReachedBeginningRef.current,
+        );
+        return;
+      }
 
-      const rawBatch = getValidSortedCandles(olderCandles);
-      const newRawCandles = rawBatch.filter(c => c.time < olderThanRaw);
+      const newRawCandles = selectOlderCandlesBeforeCursor(olderCandles, olderThanRaw) as Candle[];
 
       if (newRawCandles.length === 0) {
         hasReachedBeginningRef.current = true;
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          'empty-page',
+          true,
+        );
         console.log(`[Chart] Background history reached beginning for ${symbol} ${activeTf}`);
         return;
       }
 
-      const nextOlderThanRaw = newRawCandles[0]?.time;
-      if (!Number.isFinite(nextOlderThanRaw) || nextOlderThanRaw >= olderThanRaw) {
+      const nextOlderThanRaw = getNextOlderHistoryCursor(newRawCandles);
+      if (nextOlderThanRaw === null || !Number.isFinite(nextOlderThanRaw) || nextOlderThanRaw >= olderThanRaw) {
         hasReachedBeginningRef.current = true;
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          'cursor-stalled',
+          true,
+        );
         console.log(`[Chart] Background history stopped because cursor did not progress for ${symbol} ${activeTf}`);
         return;
       }
@@ -2017,6 +2050,11 @@ export const TradingChart = React.memo(function TradingChart({
       const selectedOlderHistory = selectOlderHistoryCandlesForMerge(adjustedCandles, reconciledNewCandles);
 
       if (selectedOlderHistory.candles.length === 0) {
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          'invalid-page',
+          hasReachedBeginningRef.current,
+        );
         console.warn(`[Chart] Stopping background history for ${symbol} ${activeTf}; older batch had no valid candles.`);
         return;
       }
@@ -2027,10 +2065,19 @@ export const TradingChart = React.memo(function TradingChart({
       const prependResult = prependCandleHistory(candlesRef.current, selectedOlderHistory.candles);
       candlesRef.current = prependResult.candles;
       const addedCount = prependResult.addedCount;
+      historyBackfillDiagnosticsRef.current = markHistoryBackfillPageLoaded(
+        historyBackfillDiagnosticsRef.current,
+        addedCount,
+        candlesRef.current[0]?.time ?? nextOlderThanRaw,
+      );
 
       if (addedCount > 0) {
         mergeHistoryCache(activeTf, selectedOlderHistory.candles, brokerOffsetSeconds);
-        console.log(`[Chart] Background history added ${addedCount} older candles for ${symbol} ${activeTf} (total ${candlesRef.current.length})`);
+        const diagnostics = historyBackfillDiagnosticsRef.current;
+        console.log(
+          `[Chart] Background history added ${addedCount} older candles for ${symbol} ${activeTf} ` +
+          `(total ${candlesRef.current.length}, pages=${diagnostics.pagesLoaded}, oldest=${diagnostics.oldestTime})`
+        );
         requestChartDataRender({
           prependedBars: addedCount,
           reason: 'background-history',
@@ -2098,6 +2145,7 @@ export const TradingChart = React.memo(function TradingChart({
       );
       hasReachedBeginningRef.current = false;
       isLoadingMoreRef.current = false;
+      historyBackfillDiagnosticsRef.current = createChartHistoryBackfillDiagnostics();
 
       const hydratedFromCache = hydrateHistoryFromCache(activeTf, 'cached-history');
       if (hydratedFromCache) {
@@ -2340,7 +2388,11 @@ export const TradingChart = React.memo(function TradingChart({
     isLoadingMoreRef.current = true;
     const activeTf = prevTimeframeRef.current || timeframe;
     const signal = historyAbortRef.current?.signal;
-    console.log(`[Chart] Infinite scroll: Fetching ${HISTORY_PAGE_SIZE} more candles before ${oldestCandle.time}`);
+    historyBackfillDiagnosticsRef.current = markHistoryBackfillStarted(
+      historyBackfillDiagnosticsRef.current,
+      oldestCandle.time + brokerTimeOffsetSec,
+    );
+    console.log(`[Chart] Infinite scroll: Fetching ${getHistoryPageSize(activeTf)} more candles before ${oldestCandle.time}`);
 
     try {
       const olderCandles: Candle[] = await fetchOlderHistoryPage(
@@ -2349,16 +2401,28 @@ export const TradingChart = React.memo(function TradingChart({
         signal,
       );
 
-      if (signal?.aborted) return;
+      if (signal?.aborted) {
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          'aborted',
+          hasReachedBeginningRef.current,
+        );
+        return;
+      }
 
       if (olderCandles.length === 0) {
         console.log(`[Chart] Reached absolute beginning of chart history for ${symbol}`);
         hasReachedBeginningRef.current = true;
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          'empty-page',
+          true,
+        );
         return;
       }
 
       const adjustedOlderCandles = applyBrokerTimeOffset(
-        getValidSortedCandles(olderCandles),
+        selectOlderCandlesBeforeCursor(olderCandles, oldestCandle.time + brokerTimeOffsetSec) as Candle[],
         brokerTimeOffsetSec,
       );
 
@@ -2366,6 +2430,11 @@ export const TradingChart = React.memo(function TradingChart({
       const newCandles = adjustedOlderCandles.filter(c => c.time < oldestCandle.time);
       if (newCandles.length === 0) {
         hasReachedBeginningRef.current = true;
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          'cursor-stalled',
+          true,
+        );
         return;
       }
 
@@ -2375,6 +2444,11 @@ export const TradingChart = React.memo(function TradingChart({
       const reconciledNewCandles = reconcileCandlesWithLiveQuote(newCandles, 'older history');
       const selectedOlderHistory = selectOlderHistoryCandlesForMerge(newCandles, reconciledNewCandles);
       if (selectedOlderHistory.candles.length === 0) {
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          'invalid-page',
+          hasReachedBeginningRef.current,
+        );
         console.warn(`[Chart] Ignoring ${symbol} older history batch because no valid candles were available.`);
         return;
       }
@@ -2384,6 +2458,11 @@ export const TradingChart = React.memo(function TradingChart({
 
       const prependResult = prependCandleHistory(candlesRef.current, selectedOlderHistory.candles);
       candlesRef.current = prependResult.candles;
+      historyBackfillDiagnosticsRef.current = markHistoryBackfillPageLoaded(
+        historyBackfillDiagnosticsRef.current,
+        prependResult.addedCount,
+        candlesRef.current[0]?.time ?? null,
+      );
       if (prependResult.addedCount > 0) {
         mergeHistoryCache(activeTf, selectedOlderHistory.candles, brokerTimeOffsetSec);
         requestChartDataRender({
@@ -2395,7 +2474,18 @@ export const TradingChart = React.memo(function TradingChart({
       // but it mostly cares about building forward, so we can ignore adding historical prior to 0 here.
 
     } catch (err) {
-      if (isAbortError(err)) return;
+      if (isAbortError(err)) {
+        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
+          historyBackfillDiagnosticsRef.current,
+          'aborted',
+          hasReachedBeginningRef.current,
+        );
+        return;
+      }
+      historyBackfillDiagnosticsRef.current = markHistoryBackfillError(
+        historyBackfillDiagnosticsRef.current,
+        err,
+      );
       console.error('[Chart] Failed to load older history:', err);
     } finally {
       isLoadingMoreRef.current = false;
@@ -2911,6 +3001,7 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     const handleShift = (e: Event) => {
       const enabled = (e as CustomEvent).detail?.enabled === true;
+      ctxChartShiftRef.current = enabled;
       setCtxChartShift(enabled);
     };
     window.addEventListener('rtx:chartShift', handleShift);
@@ -2920,6 +3011,7 @@ export const TradingChart = React.memo(function TradingChart({
   // Apply chart shift when ctxChartShift changes
   useEffect(() => {
     if (!chartRef.current || isDisposedRef.current) return;
+    ctxChartShiftRef.current = ctxChartShift;
     const rightOffset = getTradingChartShiftRightOffset(timeframe, ctxChartShift);
     console.log(`[Chart] Applying chart shift: ${ctxChartShift}, rightOffset: ${rightOffset}`);
     chartRef.current.timeScale().applyOptions({
@@ -3648,7 +3740,10 @@ export const TradingChart = React.memo(function TradingChart({
     const handleJumpToLatestCandle = () => {
       if (isDisposedRef.current || !chartRef.current) return;
       try {
-        chartRef.current.timeScale().scrollToRealTime();
+        latestCandleJumpPendingRef.current = true;
+        leftVisibleTimeRef.current = null;
+        lastVisibleLogicalRangeRef.current = null;
+        scrollToLatestCandleNow(chartRef.current);
         syncLeftVisibleTime();
       } catch (e) { /* disposed */ }
     };
@@ -3758,6 +3853,7 @@ export const TradingChart = React.memo(function TradingChart({
       try {
         const rightOffset = getTradingChartShiftRightOffset(prevTimeframeRef.current || timeframe, enabled);
         console.log(`[Chart] Chart shift ${enabled ? 'ENABLED' : 'DISABLED'}, setting rightOffset: ${rightOffset}`);
+        ctxChartShiftRef.current = enabled;
         setCtxChartShift(enabled);
         chartRef.current.timeScale().applyOptions({
           ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,

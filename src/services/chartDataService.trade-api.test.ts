@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChartDataService } from './chartDataService';
+import { CandleAuthBrokerMismatchError, ChartDataService } from './chartDataService';
 import {
   buildBrokerApiV2,
   buildBrokerWsV2Uri,
@@ -46,6 +46,14 @@ class FakeWebSocket {
 }
 
 const parseSent = (ws: FakeWebSocket) => ws.sent.map((payload) => JSON.parse(payload));
+
+const makeJwt = (payload: Record<string, unknown>): string => {
+  const encodedPayload = btoa(JSON.stringify(payload))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  return `header.${encodedPayload}.signature`;
+};
 
 type RuntimeWindow = Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> };
 
@@ -283,6 +291,35 @@ describe('trade candle normalization and websocket cleanup', () => {
         headers: { Authorization: 'Bearer session-jwt-token' },
       }),
     );
+  });
+
+  it('rejects candle requests when the auth token broker differs from the active broker', async () => {
+    localStorage.setItem('broker_id', 'myprop-trade');
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'gta_broker', account_login: 200009 }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new ChartDataService();
+    await expect(service.fetchCandles({ symbol: 'GBPUSD', timeframe: 'M1', count: 5000 }))
+      .rejects.toBeInstanceOf(CandleAuthBrokerMismatchError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('allows candle requests when the auth token broker matches the active broker', async () => {
+    localStorage.setItem('broker_id', 'myprop-trade');
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'myprop-trade', account_login: 200002 }));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candles: [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new ChartDataService();
+    await expect(service.fetchCandles({ symbol: 'GBPUSD', timeframe: 'M1', count: 5000 }))
+      .resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('builds M1 May-range candle requests with Unix-second from/to parameters', async () => {

@@ -50,6 +50,42 @@ describe('candle history helpers', () => {
     expect(secondOlder.candles).toHaveLength(7);
   });
 
+  it('merges multiple 5000-row older backend pages without duplicates', () => {
+    const latestPage = normalizeCandlePageAscending(
+      Array.from({ length: 5000 }, (_, index) => candle((5000 + index) * 60, 5000 + index))
+    );
+    const overlappingOlderPage = Array.from(
+      { length: 5001 },
+      (_, index) => candle(index * 60, index)
+    );
+
+    const result = prependCandleHistory(latestPage, overlappingOlderPage);
+
+    expect(result.candles).toHaveLength(10_000);
+    expect(result.addedCount).toBe(5000);
+    expect(result.candles[0].time).toBe(0);
+    expect(result.candles[result.candles.length - 1].time).toBe(9999 * 60);
+  });
+
+  it('keeps overlapping older pages mergeable without stopping cursor progress', () => {
+    const existing = normalizeCandlePageAscending([
+      candle(180, 180),
+      candle(240, 240),
+      candle(300, 300),
+    ]);
+    const olderPage = normalizeCandlePageAscending([
+      candle(60, 60),
+      candle(120, 120),
+      candle(180, 999),
+    ]);
+
+    const result = prependCandleHistory(existing, olderPage);
+
+    expect(result.addedCount).toBe(2);
+    expect(result.candles.map(item => item.time)).toEqual([60, 120, 180, 240, 300]);
+    expect(result.candles[2].close).toBe(180);
+  });
+
   it('merges duplicate timestamps with incoming backend values when requested', () => {
     const existing = normalizeCandlePageAscending([
       candle(60, 60, { tickVolume: 10 }),
