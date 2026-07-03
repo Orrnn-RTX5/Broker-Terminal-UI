@@ -83,6 +83,20 @@ describe('candleCache', () => {
     ]);
   });
 
+  it('tracks backend, derived, and mixed cache sources', () => {
+    const key = candleCache.createKey(baseKeyParts);
+
+    candleCache.setLatest(key, [candle(60, 6)], { ...baseKeyParts, source: 'derived-m1' });
+    expect(candleCache.getLatest(key)?.source).toBe('derived-m1');
+
+    candleCache.mergeLatest(key, [candle(120, 12)], { ...baseKeyParts, source: 'backend' });
+    expect(candleCache.getLatest(key)?.source).toBe('mixed');
+
+    candleCache.setLatest(key, [candle(180, 18)], { ...baseKeyParts, source: 'backend' });
+    expect(candleCache.getLatest(key)?.source).toBe('backend');
+    expect(candleCache.getLatest(key)?.candles.map(item => item.time)).toEqual([180]);
+  });
+
   it('clears only matching scope entries', () => {
     const brokerKey = candleCache.createKey(baseKeyParts);
     const otherKey = candleCache.createKey({ ...baseKeyParts, scope: 'https://other.example/api/v2' });

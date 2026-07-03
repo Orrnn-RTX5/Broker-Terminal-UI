@@ -7,6 +7,7 @@ import {
   getVisibleLogicalRangeAnchoredToTime,
   isPotentialMarketClosedPlaceholderCandle,
   shouldRecomputeMarketGapSeparatorsForCandle,
+  shouldApplyVisibleRangeResetForRender,
   shouldRestoreProtectedHistoryForFullRender,
   TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
 } from './TradingChart.helpers';
@@ -138,6 +139,26 @@ describe('formatChartSeriesData market gap separators', () => {
       leftVisibleTime,
       previousRange,
     )).toEqual({ from: 3, to: 5 });
+  });
+
+  it('suppresses global visible-range resets for background backfill renders', () => {
+    expect(shouldApplyVisibleRangeResetForRender({
+      resetVisibleRange: false,
+      resetVisibleRangeOnNextData: true,
+      suppressGlobalVisibleRangeReset: true,
+    })).toBe(false);
+
+    expect(shouldApplyVisibleRangeResetForRender({
+      resetVisibleRange: true,
+      resetVisibleRangeOnNextData: true,
+      suppressGlobalVisibleRangeReset: true,
+    })).toBe(true);
+
+    expect(shouldApplyVisibleRangeResetForRender({
+      resetVisibleRange: false,
+      resetVisibleRangeOnNextData: true,
+      suppressGlobalVisibleRangeReset: false,
+    })).toBe(true);
   });
 
   it('compresses hidden market-gap candles without adding synthetic whitespace for short rendered gaps', () => {

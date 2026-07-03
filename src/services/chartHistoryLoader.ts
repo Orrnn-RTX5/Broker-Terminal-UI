@@ -4,6 +4,10 @@ import {
   buildOlderHistoryRangeFallbackWindows,
   normalizeCandlePageAscending,
 } from '../utils/candleHistory';
+import {
+  fetchDerivedTimeframeCandlesFromM1,
+  isM1DerivedFallbackTimeframe,
+} from './derivedTimeframeHistoryService';
 
 export const DEFAULT_HISTORY_PAGE_SIZE = 3000;
 export const M1_HISTORY_PAGE_SIZE = 5000;
@@ -19,6 +23,7 @@ export interface OlderHistoryPageOptions {
   pageSize?: number;
   timeframeSeconds?: number;
   maxRangeFallbackWindows?: number;
+  yieldBetweenPages?: (signal: AbortSignal) => Promise<void> | void;
   fetchCandles?: FetchCandlesPage;
 }
 
@@ -28,6 +33,8 @@ export interface OlderHistoryPageResult {
   pageSize: number;
   attempts: number;
   usedRangeFallback: boolean;
+  usedDerivedFallback: boolean;
+  source: 'backend' | 'derived-m1';
 }
 
 export interface ChartHistoryBackfillDiagnostics {
@@ -128,6 +135,7 @@ export const fetchOlderHistoryPage = async ({
   pageSize = getHistoryPageSize(timeframe),
   timeframeSeconds = 60,
   maxRangeFallbackWindows = M1_OLDER_HISTORY_RANGE_FALLBACK_WINDOWS,
+  yieldBetweenPages,
   fetchCandles = chartDataService.fetchCandles.bind(chartDataService),
 }: OlderHistoryPageOptions): Promise<OlderHistoryPageResult> => {
   const requestedTo = Math.floor(olderThanRaw) - 1;
@@ -138,6 +146,8 @@ export const fetchOlderHistoryPage = async ({
       pageSize,
       attempts: 0,
       usedRangeFallback: false,
+      usedDerivedFallback: false,
+      source: 'backend',
     };
   }
 
@@ -149,13 +159,40 @@ export const fetchOlderHistoryPage = async ({
     signal,
   }));
 
-  if (normalizeTimeframe(timeframe) !== 'M1' || directCandles.some(candle => candle.time < olderThanRaw)) {
+  const normalizedTimeframe = normalizeTimeframe(timeframe);
+  const directHasOlderCandles = directCandles.some(candle => candle.time < olderThanRaw);
+  if (normalizedTimeframe !== 'M1' && !directHasOlderCandles && isM1DerivedFallbackTimeframe(timeframe)) {
+    const derivedCandles = await fetchDerivedTimeframeCandlesFromM1({
+      symbol,
+      targetTimeframe: timeframe,
+      olderThanRaw,
+      signal,
+      yieldBetweenPages,
+      fetchCandles,
+    });
+
+    if (derivedCandles.candles.length > 0) {
+      return {
+        candles: derivedCandles.candles,
+        requestedTo,
+        pageSize,
+        attempts: 1 + derivedCandles.pagesFetched,
+        usedRangeFallback: false,
+        usedDerivedFallback: true,
+        source: 'derived-m1',
+      };
+    }
+  }
+
+  if (normalizedTimeframe !== 'M1' || directHasOlderCandles) {
     return {
       candles: directCandles,
       requestedTo,
       pageSize,
       attempts: 1,
       usedRangeFallback: false,
+      usedDerivedFallback: false,
+      source: 'backend',
     };
   }
 
@@ -175,6 +212,8 @@ export const fetchOlderHistoryPage = async ({
         pageSize,
         attempts,
         usedRangeFallback: true,
+        usedDerivedFallback: false,
+        source: 'backend',
       };
     }
 
@@ -195,6 +234,8 @@ export const fetchOlderHistoryPage = async ({
         pageSize,
         attempts,
         usedRangeFallback: true,
+        usedDerivedFallback: false,
+        source: 'backend',
       };
     }
   }
@@ -205,5 +246,7 @@ export const fetchOlderHistoryPage = async ({
     pageSize,
     attempts,
     usedRangeFallback: false,
+    usedDerivedFallback: false,
+    source: 'backend',
   };
 };

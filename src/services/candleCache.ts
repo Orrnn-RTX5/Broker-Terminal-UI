@@ -7,6 +7,7 @@ import type { OHLCData } from './chartDataService';
 import { onSessionChange } from './brokerSession';
 
 export type CandleCacheKey = string & { readonly __brand: 'CandleCacheKey' };
+export type CandleCacheSource = 'backend' | 'derived-m1' | 'mixed';
 
 export interface CandleCacheKeyParts {
   scope: string;
@@ -17,6 +18,7 @@ export interface CandleCacheKeyParts {
 
 export interface CandleCacheMetadata extends CandleCacheKeyParts {
   brokerOffsetSeconds?: number;
+  source?: CandleCacheSource;
 }
 
 export interface CandleCacheEntry extends CandleCacheMetadata {
@@ -96,9 +98,11 @@ class CandleCache {
       : existing
         ? this.normalizeMetadata(existing)
         : this.metadataFromKey(key);
+    const source = this.mergeSources(existing?.source, nextMetadata.source);
     const entry: CandleCacheEntry = {
       key,
       ...nextMetadata,
+      source,
       candles: cloneCandles(merged),
       fetchedAt: Date.now(),
       oldestTime: merged[0]?.time ?? null,
@@ -150,6 +154,7 @@ class CandleCache {
       timeframe: normalizeTimeframe(metadata.timeframe),
       limit: Math.max(0, Math.floor(Number(metadata.limit) || 0)),
       brokerOffsetSeconds: metadata.brokerOffsetSeconds ?? 0,
+      source: metadata.source ?? 'backend',
     };
   }
 
@@ -161,7 +166,17 @@ class CandleCache {
       timeframe: normalizeTimeframe(timeframe),
       limit: Math.max(0, Math.floor(Number(limit) || 0)),
       brokerOffsetSeconds: 0,
+      source: 'backend',
     };
+  }
+
+  private mergeSources(
+    existingSource: CandleCacheSource | undefined,
+    incomingSource: CandleCacheSource | undefined,
+  ): CandleCacheSource {
+    const existing = existingSource ?? 'backend';
+    const incoming = incomingSource ?? 'backend';
+    return existing === incoming ? incoming : 'mixed';
   }
 
   private cloneEntry(entry: CandleCacheEntry): CandleCacheEntry {

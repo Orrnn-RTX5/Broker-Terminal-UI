@@ -51,6 +51,89 @@ describe('chart history loader', () => {
       to: 239,
     }));
     expect(result.candles.map(item => item.time)).toEqual([60, 120, 180]);
+    expect(result.source).toBe('backend');
+    expect(result.usedDerivedFallback).toBe(false);
+  });
+
+  it('keeps native higher-timeframe older candles when the backend returns them', async () => {
+    const fetchCandles = vi.fn(async () => [
+      candle(3600),
+    ]);
+
+    const result = await fetchOlderHistoryPage({
+      symbol: 'XAUUSD',
+      timeframe: 'H1',
+      olderThanRaw: 7200,
+      fetchCandles,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledTimes(1);
+    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
+      timeframe: 'H1',
+      to: 7199,
+    }));
+    expect(result.candles.map(item => item.time)).toEqual([3600]);
+    expect(result.source).toBe('backend');
+    expect(result.usedDerivedFallback).toBe(false);
+  });
+
+  it('derives higher-timeframe older candles from M1 when the native backend page is empty', async () => {
+    const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => {
+      if (options.timeframe === 'H1') return [];
+      return Array.from({ length: 60 }, (_, index) => candle(3600 + index * 60))
+        .sort((left, right) => right.time - left.time);
+    });
+
+    const result = await fetchOlderHistoryPage({
+      symbol: 'GBPUSD',
+      timeframe: 'H1',
+      olderThanRaw: 7200,
+      fetchCandles,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
+      symbol: 'GBPUSD',
+      timeframe: 'H1',
+      to: 7199,
+    }));
+    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
+      symbol: 'GBPUSD',
+      timeframe: 'M1',
+      count: 5000,
+      to: 7199,
+    }));
+    expect(result.source).toBe('derived-m1');
+    expect(result.usedDerivedFallback).toBe(true);
+    expect(result.candles.map(item => item.time)).toEqual([3600]);
+  });
+
+  it('passes the idle-yield callback to derived M1 fallback pages', async () => {
+    const mayStart = 1777593600;
+    const juneStart = 1780272000;
+    const candles = Array.from({ length: 44_640 }, (_, index) => candle(mayStart + index * 60));
+    const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => {
+      if (options.timeframe === 'MN') return [];
+
+      const to = options.to ?? Number.MAX_SAFE_INTEGER;
+      const count = options.count ?? 5000;
+      return candles
+        .filter(item => item.time <= to)
+        .sort((left, right) => right.time - left.time)
+        .slice(0, count);
+    });
+    const yieldBetweenPages = vi.fn(async () => undefined);
+
+    const result = await fetchOlderHistoryPage({
+      symbol: 'GBPUSD',
+      timeframe: 'MN',
+      olderThanRaw: juneStart,
+      fetchCandles,
+      yieldBetweenPages,
+    });
+
+    expect(result.source).toBe('derived-m1');
+    expect(result.candles.map(item => item.time)).toEqual([mayStart]);
+    expect(yieldBetweenPages).toHaveBeenCalled();
   });
 
   it('paginates a full MyProp-style May M1 month in 9 backend pages', async () => {

@@ -325,6 +325,18 @@ export const getLeftVisibleTimeFromLogicalRange = (
   return renderedCandles[boundedIndex]?.time ?? null;
 };
 
+export const shouldApplyVisibleRangeResetForRender = ({
+  resetVisibleRange,
+  resetVisibleRangeOnNextData,
+  suppressGlobalVisibleRangeReset,
+}: {
+  resetVisibleRange: boolean;
+  resetVisibleRangeOnNextData: boolean;
+  suppressGlobalVisibleRangeReset: boolean;
+}): boolean => (
+  resetVisibleRange || (!suppressGlobalVisibleRangeReset && resetVisibleRangeOnNextData)
+);
+
 export const TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS = {
   shiftVisibleRangeOnNewBar: false,
   allowShiftVisibleRangeOnWhitespaceReplacement: false,
