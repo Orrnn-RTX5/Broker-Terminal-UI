@@ -386,18 +386,20 @@ export const DockContainer: React.FC<DockContainerProps> = ({
       >
         {currentContainer.children.map((child, index) => {
           const isContainer = isDockContainerNode(child);
+          const childContainer = isContainer ? child : null;
+          const childPanel = isContainer ? null : child;
           const childItem = child;
           const ratio = childItem.ratio || (1 / currentContainer.children.length);
-          const childHasChartFocusPanel = isContainer
-            ? containerHasChartFocusPanel(child)
-            : isChartFocusPanel(child);
+          const childHasChartFocusPanel = childContainer !== null
+            ? containerHasChartFocusPanel(childContainer)
+            : childPanel !== null && isChartFocusPanel(childPanel);
 
           return (
             <React.Fragment key={childItem.id || index}>
               <div
                 data-dock-child={childItem.id || undefined}
                 data-dock-child-kind={isContainer ? 'container' : 'panel'}
-                data-dock-child-component={!isContainer ? getDockComponentName(child.component) : undefined}
+                data-dock-child-component={childPanel !== null ? getDockComponentName(childPanel.component) : undefined}
                 data-dock-child-has-focus-chart={childHasChartFocusPanel ? 'true' : 'false'}
                 className="flex flex-col overflow-hidden min-h-0 min-w-0"
                 style={{
@@ -406,22 +408,24 @@ export const DockContainer: React.FC<DockContainerProps> = ({
                   minHeight: !isHorizontal ? 24 : undefined,
                 }}
               >
-                {isContainer ? (
+                {childContainer !== null ? (
                   <DockContainer
-                    container={childItem}
+                    container={childContainer}
                     renderPanel={renderPanel}
                   />
-                ) : (
+                ) : childPanel !== null ? (
                   <PanelSlot
-                    panel={child as DockPanelConfig}
+                    panel={childPanel}
                     isDragging={isDragging}
                     dropTargetId={dropTargetId}
                     compassDir={compassDir}
-                    onDragStart={handlePanelDragStart(child as DockPanelConfig, false)}
-                    onClose={() => removePanel((child as DockPanelConfig).id)}
-                    onFloat={() => floatPanel((child as DockPanelConfig).id)}
+                    onDragStart={handlePanelDragStart(childPanel, false)}
+                    onClose={() => removePanel(childPanel.id)}
+                    onFloat={() => floatPanel(childPanel.id)}
                     renderPanel={renderPanel}
                   />
+                ) : (
+                  null
                 )}
               </div>
 
@@ -438,7 +442,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
 
                     const ratioDelta = delta / totalSize;
                     const currentRatio = childItem.ratio || (1 / currentContainer.children.length);
-                    const nextChild = currentContainer.children[index + 1] as DockContainerType;
+                    const nextChild = currentContainer.children[index + 1];
                     const nextRatio = nextChild?.ratio || (1 / currentContainer.children.length);
 
                     const newCur = Math.max(0.05, Math.min(0.95, currentRatio + ratioDelta));
