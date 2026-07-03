@@ -189,7 +189,7 @@ const defaultYieldToMainThread: YieldToMainThread = (signal) => (
     const globalWithIdle = globalThis as GlobalWithIdleCallback;
     let settled = false;
     let idleHandle: number | null = null;
-    let timeoutHandle: number | null = null;
+    let timeoutHandle: ReturnType<typeof globalThis.setTimeout> | null = null;
 
     const settle = () => {
       if (settled) return;

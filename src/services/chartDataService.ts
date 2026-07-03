@@ -23,6 +23,7 @@ import {
   normalizeBackendCandleTimeframeOrNull,
   normalizeCandleApiQueryParams,
   type BackendCandleTimeframe,
+  type CandleApiQueryParams,
 } from '../utils/candleApi';
 
 export type OHLCData = {
@@ -116,7 +117,7 @@ const assertCandleAuthMatchesActiveBroker = (token: string): void => {
   throw new CandleAuthBrokerMismatchError(expectedBrokerId, tokenBrokerId);
 };
 
-const buildQuery = (params: Record<string, string | number | undefined>): string => {
+const buildQuery = (params: CandleApiQueryParams): string => {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) search.set(key, String(value));
