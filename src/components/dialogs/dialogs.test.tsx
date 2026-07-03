@@ -130,4 +130,46 @@ describe('dialog components', () => {
       window.removeEventListener('rtx:chartShift', chartShiftHandler as EventListener);
     }
   });
+
+  it('applies color schemes to the active symbol override', async () => {
+    const user = userEvent.setup();
+
+    useChartSettingsStore.setState({
+      globalProperties: { ...defaultChartProperties },
+      symbolProperties: {
+        XAUUSD: {
+          ...defaultChartProperties,
+          colorScheme: 'Green on Black',
+          colors: {
+            ...defaultChartProperties.colors,
+            barUp: '#10B981',
+            barDown: '#EF4444',
+            bullCandle: '#10B981',
+            bearCandle: '#EF4444',
+          },
+        },
+      },
+    });
+
+    render(
+      <ChartPropertiesDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        timeframe="H1"
+      />
+    );
+
+    await user.click(screen.getByText('Colors'));
+    await user.selectOptions(screen.getByDisplayValue('Green on Black'), 'Yellow on Black');
+
+    const { globalProperties, symbolProperties } = useChartSettingsStore.getState();
+
+    expect(globalProperties.colorScheme).toBe('Yellow on Black');
+    expect(symbolProperties.XAUUSD.colorScheme).toBe('Yellow on Black');
+    expect(symbolProperties.XAUUSD.colors.barUp).toBe('#facc15');
+    expect(symbolProperties.XAUUSD.colors.barDown).toBe('#facc15');
+    expect(symbolProperties.XAUUSD.colors.bullCandle).toBe('#000000');
+    expect(symbolProperties.XAUUSD.colors.bearCandle).toBe('#f8fafc');
+  });
 });

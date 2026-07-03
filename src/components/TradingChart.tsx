@@ -78,6 +78,7 @@ import { type ChartTemplate } from '../store/useTemplateStore';
 import {
   clampChartOpacityPercent,
   defaultChartProperties,
+  getEffectiveChartColors,
   useChartSettingsStore,
   type ChartProperties,
 } from '../store/useChartSettingsStore';
@@ -504,6 +505,33 @@ const getColorLuminance = (color: string | undefined): number | null => {
   return null;
 };
 
+const colorHasAlpha = (color: string | undefined): boolean => (
+  typeof color === 'string' && /^rgba\(/i.test(color.trim())
+);
+
+const buildReadableGridColor = (
+  rawGrid: string,
+  backgroundLuminance: number,
+  backgroundIsDark: boolean,
+  gridLuminance: number | null,
+): string => {
+  if (!backgroundIsDark) {
+    return gridLuminance === null || gridLuminance > 0.86 ? '#d0d5dd' : rawGrid;
+  }
+
+  if (colorHasAlpha(rawGrid)) return rawGrid;
+
+  const hasEnoughDarkSurfaceContrast = (
+    gridLuminance !== null &&
+    gridLuminance < 0.45 &&
+    Math.abs(gridLuminance - backgroundLuminance) >= 0.12
+  );
+
+  return hasEnoughDarkSurfaceContrast
+    ? rawGrid
+    : colorWithAlpha(rawGrid, 0.14, 'rgba(148, 163, 184, 0.14)');
+};
+
 const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingViewChartTheme => {
   const candleUp = colors.bullCandle || colors.barUp || '#089981';
   const candleDown = colors.bearCandle || colors.barDown || '#f23645';
@@ -514,9 +542,8 @@ const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingV
   const backgroundLuminance = getColorLuminance(colors.background) ?? 0;
   const backgroundIsDark = backgroundLuminance < 0.45;
   const gridLuminance = getColorLuminance(rawGrid);
-  const lightGrid = gridLuminance === null || gridLuminance > 0.86 ? '#d0d5dd' : rawGrid;
   const grid = showGrid
-    ? (backgroundIsDark ? colorWithAlpha(rawGrid, 0.1, 'rgba(148, 163, 184, 0.1)') : lightGrid)
+    ? buildReadableGridColor(rawGrid, backgroundLuminance, backgroundIsDark, gridLuminance)
     : TRANSPARENT_CHART_LINE;
 
   return {
@@ -1049,17 +1076,10 @@ export const TradingChart = React.memo(function TradingChart({
     return () => observer.disconnect();
   }, []);
 
-  const chartColors = useMemo(() => {
-    if (isAdvancedUntitledLight && chartSettings.colorScheme === 'Green on Black') {
-      return {
-        ...chartSettings.colors,
-        background: '#ffffff',
-        foreground: '#475467',
-        grid: '#e5e7eb',
-      };
-    }
-    return chartSettings.colors;
-  }, [chartSettings.colors, chartSettings.colorScheme, isAdvancedUntitledLight]);
+  const chartColors = useMemo(
+    () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
+    [chartSettings, isAdvancedUntitledLight],
+  );
   const chartTheme = useMemo(
     () => buildChartTheme(chartColors, chartSettings.showGrid),
     [chartColors, chartSettings.showGrid],

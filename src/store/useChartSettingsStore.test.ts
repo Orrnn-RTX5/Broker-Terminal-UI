@@ -5,6 +5,8 @@ import {
   applyVolumeBarsDefaultMigration,
   clampChartOpacityPercent,
   defaultChartProperties,
+  getEffectiveChartColors,
+  getPresetSchemeColors,
   normalizeChartProperties,
 } from './useChartSettingsStore';
 
@@ -163,5 +165,50 @@ describe('chart settings trade history overlay defaults', () => {
     expect(clampChartOpacityPercent(135, 75)).toBe(100);
     expect(clampChartOpacityPercent('42', 75)).toBe(42);
     expect(clampChartOpacityPercent('bad-value', 75)).toBe(75);
+  });
+
+  it('keeps Yellow on Black black in dark mode but white in advanced light mode', () => {
+    const yellowOnBlack = normalizeChartProperties({
+      colorScheme: 'Yellow on Black',
+      colors: getPresetSchemeColors('Yellow on Black'),
+    });
+
+    expect(yellowOnBlack.colors.grid).toBe('#e0ded7');
+    expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: false }).background).toBe('#000000');
+    expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: true })).toMatchObject({
+      background: '#ffffff',
+      foreground: '#475467',
+      grid: '#e0ded7',
+      barUp: '#facc15',
+      barDown: '#facc15',
+    });
+  });
+
+  it('applies the dark-mode Black on White scheme while preserving white light mode', () => {
+    const blackOnWhite = normalizeChartProperties({
+      colorScheme: 'Black on White',
+      colors: getPresetSchemeColors('Black on White'),
+    });
+
+    expect(getEffectiveChartColors(blackOnWhite, { isAdvancedUntitledLight: false })).toMatchObject({
+      background: '#000000',
+      foreground: '#ffffff',
+      grid: '#c9c9c9',
+      barUp: '#adadad',
+      barDown: '#ffffff',
+      bullCandle: '#ffffff',
+      bearCandle: '#000000',
+      lineChart: '#000000',
+    });
+    expect(getEffectiveChartColors(blackOnWhite, { isAdvancedUntitledLight: true })).toMatchObject({
+      background: '#ffffff',
+      foreground: '#000000',
+      grid: '#d0d5dd',
+      barUp: '#000000',
+      barDown: '#000000',
+      bullCandle: '#ffffff',
+      bearCandle: '#000000',
+      lineChart: '#000000',
+    });
   });
 });

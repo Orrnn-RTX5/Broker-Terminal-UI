@@ -2053,17 +2053,17 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-box {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-inner {
-  background: #ffffff !important;
+  background: var(--rtx-cp-preview-bg, #ffffff) !important;
   border-color: #eaecf0 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-text {
-  color: #667085 !important;
-  background: rgba(255, 255, 255, 0.8) !important;
+  color: var(--rtx-cp-preview-text, #667085) !important;
+  background: var(--rtx-cp-preview-label-bg, rgba(255, 255, 255, 0.8)) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-grid {
-  border-color: #f2f4f7 !important;
+  border-color: var(--rtx-cp-preview-grid, #f2f4f7) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-tab {

@@ -252,6 +252,101 @@ export const applyPeriodSeparatorsDefaultMigration = (
   };
 };
 
+export const getPresetSchemeColors = (
+  scheme: ColorScheme,
+  fallbackColors: ChartProperties["colors"] = defaultChartProperties.colors,
+): ChartProperties["colors"] => {
+  if (scheme === "Green on Black") {
+    return { ...defaultChartProperties.colors };
+  }
+
+  if (scheme === "Black on White") {
+    return {
+      background: "#000000",
+      foreground: "#ffffff",
+      grid: "#c9c9c9",
+      barUp: "#adadad",
+      barDown: "#ffffff",
+      bullCandle: "#ffffff",
+      bearCandle: "#000000",
+      lineChart: "#000000",
+      volumes: "rgba(173, 173, 173, 0.4)",
+      bidPriceLine: "#64748b",
+      askPriceLine: "#dc2626",
+      lastPriceLine: "#16a34a",
+      stopLevels: "#dc2626",
+    };
+  }
+
+  if (scheme === "Yellow on Black") {
+    return {
+      background: "#000000",
+      foreground: "#f8fafc",
+      grid: "#e0ded7",
+      barUp: "#facc15",
+      barDown: "#facc15",
+      bullCandle: "#000000",
+      bearCandle: "#f8fafc",
+      lineChart: "#facc15",
+      volumes: "rgba(250, 204, 21, 0.4)",
+      bidPriceLine: "#94a3b8",
+      askPriceLine: "#ef4444",
+      lastPriceLine: "#22c55e",
+      stopLevels: "#ef4444",
+    };
+  }
+
+  return { ...fallbackColors };
+};
+
+export const getEffectiveChartColors = (
+  properties: Pick<ChartProperties, "colorScheme" | "colors">,
+  options: { isAdvancedUntitledLight?: boolean } = {},
+): ChartProperties["colors"] => {
+  if (!options.isAdvancedUntitledLight) return properties.colors;
+
+  if (properties.colorScheme === "Green on Black") {
+    return {
+      ...properties.colors,
+      background: "#ffffff",
+      foreground: "#475467",
+      grid: "#e5e7eb",
+    };
+  }
+
+  if (properties.colorScheme === "Black on White") {
+    return {
+      ...properties.colors,
+      background: "#ffffff",
+      foreground: "#000000",
+      grid: "#d0d5dd",
+      barUp: "#000000",
+      barDown: "#000000",
+      bullCandle: "#ffffff",
+      bearCandle: "#000000",
+      lineChart: "#000000",
+      volumes: "rgba(0, 0, 0, 0.4)",
+    };
+  }
+
+  if (properties.colorScheme === "Yellow on Black") {
+    return {
+      ...properties.colors,
+      background: "#ffffff",
+      foreground: "#475467",
+      grid: "#e0ded7",
+      barUp: "#facc15",
+      barDown: "#facc15",
+      bullCandle: "#000000",
+      bearCandle: "#f8fafc",
+      lineChart: "#facc15",
+      volumes: "rgba(250, 204, 21, 0.4)",
+    };
+  }
+
+  return properties.colors;
+};
+
 interface ChartSettingsState {
   globalProperties: ChartProperties;
   symbolProperties: Record<string, ChartProperties>; // Allow specific overrides per chart symbol
@@ -267,12 +362,19 @@ interface ChartSettingsState {
     key: keyof ChartProperties["colors"],
     value: string,
   ) => void;
+  updateSymbolColor: (
+    symbol: string,
+    key: keyof ChartProperties["colors"],
+    value: string,
+  ) => void;
   updateSymbolProperty: <K extends keyof ChartProperties>(
     symbol: string,
     key: K,
     value: ChartProperties[K],
   ) => void;
   applyPresetScheme: (scheme: ColorScheme) => void;
+  applySymbolPresetScheme: (symbol: string, scheme: ColorScheme) => void;
+  resetSymbolToDefaults: (symbol: string) => void;
   resetToDefaults: () => void;
 }
 
@@ -304,6 +406,26 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
         }));
       },
 
+      updateSymbolColor: (symbol, key, value) => {
+        set((state) => {
+          const currentProperties = state.symbolProperties[symbol] || state.globalProperties;
+
+          return {
+            symbolProperties: {
+              ...state.symbolProperties,
+              [symbol]: {
+                ...currentProperties,
+                colorScheme: "Custom",
+                colors: {
+                  ...currentProperties.colors,
+                  [key]: value,
+                },
+              },
+            },
+          };
+        });
+      },
+
       updateSymbolProperty: (symbol, key, value) => {
         set((state) => ({
           symbolProperties: {
@@ -318,43 +440,7 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
 
       applyPresetScheme: (scheme) => {
         set((state) => {
-          let newColors = { ...state.globalProperties.colors };
-
-          if (scheme === "Green on Black") {
-            newColors = { ...defaultChartProperties.colors };
-          } else if (scheme === "Black on White") {
-            newColors = {
-              background: "#ffffff",
-              foreground: "#000000",
-              grid: "#e2e8f0",
-              barUp: "#000000",
-              barDown: "#000000",
-              bullCandle: "#ffffff",
-              bearCandle: "#000000",
-              lineChart: "#000000",
-              volumes: "rgba(0, 0, 0, 0.4)",
-              bidPriceLine: "#64748b",
-              askPriceLine: "#dc2626",
-              lastPriceLine: "#16a34a",
-              stopLevels: "#dc2626",
-            };
-          } else if (scheme === "Yellow on Black") {
-            newColors = {
-              background: "#000000",
-              foreground: "#ffffff",
-              grid: "#333333",
-              barUp: "#eab308",
-              barDown: "#eab308",
-              bullCandle: "#000000",
-              bearCandle: "#ffffff",
-              lineChart: "#eab308",
-              volumes: "rgba(234, 179, 8, 0.4)",
-              bidPriceLine: "#94a3b8",
-              askPriceLine: "#ef4444",
-              lastPriceLine: "#22c55e",
-              stopLevels: "#ef4444",
-            };
-          }
+          const newColors = getPresetSchemeColors(scheme, state.globalProperties.colors);
 
           return {
             globalProperties: {
@@ -363,6 +449,31 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
               colors: newColors,
             },
           };
+        });
+      },
+
+      applySymbolPresetScheme: (symbol, scheme) => {
+        set((state) => {
+          const currentProperties = state.symbolProperties[symbol] || state.globalProperties;
+
+          return {
+            symbolProperties: {
+              ...state.symbolProperties,
+              [symbol]: {
+                ...currentProperties,
+                colorScheme: scheme,
+                colors: getPresetSchemeColors(scheme, currentProperties.colors),
+              },
+            },
+          };
+        });
+      },
+
+      resetSymbolToDefaults: (symbol) => {
+        set((state) => {
+          const remainingSymbolProperties = { ...state.symbolProperties };
+          delete remainingSymbolProperties[symbol];
+          return { symbolProperties: remainingSymbolProperties };
         });
       },
 
