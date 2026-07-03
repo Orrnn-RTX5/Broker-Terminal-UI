@@ -62,13 +62,93 @@ export interface TradingViewChartTheme {
   volumeDown: string;
 }
 
+export interface LivePriceOverlayColors {
+  lineColor: string;
+  badgeBackground: string;
+  badgeTextColor: '#000000' | '#ffffff';
+}
+
 const SESSION_GAP_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4']);
 const DENSE_MINUTE_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5']);
 const MIN_SESSION_GAP_SEPARATOR_SECONDS = 12 * 60 * 60;
+const LIVE_PRICE_MIN_LUMINANCE_DELTA = 0.2;
+const LIVE_PRICE_FALLBACK_DARK = '#000000';
+const LIVE_PRICE_FALLBACK_LIGHT = '#ffffff';
 
 const finiteVolumeOrNull = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+const normalizeColorCandidate = (color: string | undefined): string | null => {
+  const trimmed = color?.trim();
+  return trimmed ? trimmed : null;
+};
+
+const getColorLuminance = (color: string | undefined): number | null => {
+  if (!color) return null;
+  const trimmed = color.trim();
+  const shortHex = /^#([a-f\d])([a-f\d])([a-f\d])$/i.exec(trimmed);
+  if (shortHex) {
+    const [, r, g, b] = shortHex;
+    return ((parseInt(r + r, 16) * 0.2126) + (parseInt(g + g, 16) * 0.7152) + (parseInt(b + b, 16) * 0.0722)) / 255;
+  }
+
+  const longHex = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(trimmed);
+  if (longHex) {
+    const [, r, g, b] = longHex;
+    return ((parseInt(r, 16) * 0.2126) + (parseInt(g, 16) * 0.7152) + (parseInt(b, 16) * 0.0722)) / 255;
+  }
+
+  const rgb = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:,\s*[\d.]+\s*)?\)$/i.exec(trimmed);
+  if (rgb) {
+    const [, r, g, b] = rgb;
+    return ((Number(r) * 0.2126) + (Number(g) * 0.7152) + (Number(b) * 0.0722)) / 255;
+  }
+
+  return null;
+};
+
+const hasReadableColorSeparation = (color: string, background: string): boolean => {
+  const colorLuminance = getColorLuminance(color);
+  const backgroundLuminance = getColorLuminance(background);
+  if (colorLuminance === null || backgroundLuminance === null) return true;
+  return Math.abs(colorLuminance - backgroundLuminance) >= LIVE_PRICE_MIN_LUMINANCE_DELTA;
+};
+
+const getFallbackLineColor = (background: string): '#000000' | '#ffffff' => {
+  const backgroundLuminance = getColorLuminance(background);
+  if (backgroundLuminance === null) return LIVE_PRICE_FALLBACK_LIGHT;
+  return Math.abs(1 - backgroundLuminance) >= backgroundLuminance
+    ? LIVE_PRICE_FALLBACK_LIGHT
+    : LIVE_PRICE_FALLBACK_DARK;
+};
+
+const getReadableBadgeTextColor = (background: string): '#000000' | '#ffffff' => {
+  const backgroundLuminance = getColorLuminance(background);
+  if (backgroundLuminance === null) return LIVE_PRICE_FALLBACK_LIGHT;
+  const blackContrast = (backgroundLuminance + 0.05) / 0.05;
+  const whiteContrast = 1.05 / (backgroundLuminance + 0.05);
+  return blackContrast >= whiteContrast ? LIVE_PRICE_FALLBACK_DARK : LIVE_PRICE_FALLBACK_LIGHT;
+};
+
+export const getLivePriceOverlayColors = (
+  colors: Pick<ChartProperties['colors'], 'background' | 'foreground'>,
+  preferredLineColor?: string,
+): LivePriceOverlayColors => {
+  const background = normalizeColorCandidate(colors.background) ?? LIVE_PRICE_FALLBACK_DARK;
+  const lineColor = [
+    normalizeColorCandidate(preferredLineColor),
+    normalizeColorCandidate(colors.foreground),
+  ].find((candidate): candidate is string => (
+    Boolean(candidate) && hasReadableColorSeparation(candidate, background)
+  )) ?? getFallbackLineColor(background);
+
+  return {
+    lineColor,
+    badgeBackground: lineColor,
+    badgeTextColor: getReadableBadgeTextColor(lineColor),
+  };
 };
 
 export const getDisplayVolume = (candle: Candle, settings: VolumeDisplaySettings): number => {

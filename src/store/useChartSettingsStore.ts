@@ -87,7 +87,7 @@ export const defaultChartProperties: ChartProperties = {
 
   colorScheme: "Green on Black",
   colors: {
-    background: "#0e0e12",
+    background: "#000000",
     foreground: "#ffffff",
     grid: "rgba(255,255,255,0.15)",
     barUp: "#10B981",
@@ -117,24 +117,45 @@ type PersistedChartProperties = Partial<Omit<ChartProperties, "colors">> & {
   colors?: Partial<ChartProperties["colors"]>;
 };
 
-export const normalizeChartProperties = (properties?: PersistedChartProperties | null): ChartProperties => ({
-  ...defaultChartProperties,
-  ...(properties ?? {}),
-  showTradeHistoryBoxes: properties?.showTradeHistoryBoxes ?? defaultChartProperties.showTradeHistoryBoxes,
-  showTradeHistoryArrows: properties?.showTradeHistoryArrows ?? defaultChartProperties.showTradeHistoryArrows,
-  tradeHistoryLineOpacity: clampChartOpacityPercent(
-    properties?.tradeHistoryLineOpacity,
-    defaultChartProperties.tradeHistoryLineOpacity,
-  ),
-  tradeHistoryBoxOpacity: clampChartOpacityPercent(
-    properties?.tradeHistoryBoxOpacity,
-    defaultChartProperties.tradeHistoryBoxOpacity,
-  ),
-  colors: {
-    ...defaultChartProperties.colors,
-    ...(properties?.colors ?? {}),
-  },
-});
+const normalizeSchemeColors = (
+  colorScheme: ColorScheme,
+  colors: ChartProperties["colors"],
+): ChartProperties["colors"] => {
+  if (colorScheme === "Green on Black") {
+    return {
+      ...colors,
+      background: "#000000",
+    };
+  }
+
+  return colors;
+};
+
+export const normalizeChartProperties = (properties?: PersistedChartProperties | null): ChartProperties => {
+  const normalized: ChartProperties = {
+    ...defaultChartProperties,
+    ...(properties ?? {}),
+    showTradeHistoryBoxes: properties?.showTradeHistoryBoxes ?? defaultChartProperties.showTradeHistoryBoxes,
+    showTradeHistoryArrows: properties?.showTradeHistoryArrows ?? defaultChartProperties.showTradeHistoryArrows,
+    tradeHistoryLineOpacity: clampChartOpacityPercent(
+      properties?.tradeHistoryLineOpacity,
+      defaultChartProperties.tradeHistoryLineOpacity,
+    ),
+    tradeHistoryBoxOpacity: clampChartOpacityPercent(
+      properties?.tradeHistoryBoxOpacity,
+      defaultChartProperties.tradeHistoryBoxOpacity,
+    ),
+    colors: {
+      ...defaultChartProperties.colors,
+      ...(properties?.colors ?? {}),
+    },
+  };
+
+  return {
+    ...normalized,
+    colors: normalizeSchemeColors(normalized.colorScheme, normalized.colors),
+  };
+};
 
 const normalizeSymbolProperties = (
   symbolProperties?: Record<string, PersistedChartProperties> | null,
@@ -273,7 +294,7 @@ export const getPresetSchemeColors = (
       volumes: "rgba(173, 173, 173, 0.4)",
       bidPriceLine: "#64748b",
       askPriceLine: "#dc2626",
-      lastPriceLine: "#16a34a",
+      lastPriceLine: "#adadad",
       stopLevels: "#dc2626",
     };
   }
@@ -291,7 +312,7 @@ export const getPresetSchemeColors = (
       volumes: "rgba(250, 204, 21, 0.4)",
       bidPriceLine: "#94a3b8",
       askPriceLine: "#ef4444",
-      lastPriceLine: "#22c55e",
+      lastPriceLine: "#facc15",
       stopLevels: "#ef4444",
     };
   }
@@ -326,6 +347,7 @@ export const getEffectiveChartColors = (
       bearCandle: "#000000",
       lineChart: "#000000",
       volumes: "rgba(0, 0, 0, 0.4)",
+      lastPriceLine: "#000000",
     };
   }
 
@@ -341,6 +363,7 @@ export const getEffectiveChartColors = (
       bearCandle: "#f8fafc",
       lineChart: "#facc15",
       volumes: "rgba(250, 204, 21, 0.4)",
+      lastPriceLine: "#facc15",
     };
   }
 

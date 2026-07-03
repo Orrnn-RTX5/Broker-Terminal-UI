@@ -1300,6 +1300,23 @@ ${rows}
         window.dispatchEvent(new CustomEvent(visible ? 'rtx:refresh-trade-overlay' : 'rtx:flush-trade-overlay', { detail: { symbol } }));
     };
 
+    const ensureTradeLevelsVisibleForLivePositions = useCallback((positions: ToolboxTradePosition[]) => {
+        const symbols = Array.from(new Set(
+            positions
+                .map(position => String(position.symbol ?? '').trim())
+                .filter(Boolean),
+        ));
+        if (symbols.length === 0) return;
+
+        const store = useChartSettingsStore.getState();
+        symbols.forEach(symbol => {
+            const visible = store.symbolProperties[symbol]?.showTradeLevels ?? store.globalProperties.showTradeLevels;
+            if (visible === false) {
+                store.updateSymbolProperty(symbol, 'showTradeLevels', true);
+            }
+        });
+    }, []);
+
     const handleTradeContextMenu = (event: React.MouseEvent<HTMLTableRowElement>, position: ToolboxTradePosition) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1463,9 +1480,10 @@ ${rows}
 
     useEffect(() => {
         if (showOnChartsAutoUpdate && livePositions.length > 0) {
+            ensureTradeLevelsVisibleForLivePositions(livePositions);
             window.dispatchEvent(new CustomEvent('rtx:refresh-trade-overlay'));
         }
-    }, [showOnChartsAutoUpdate, livePositions]);
+    }, [ensureTradeLevelsVisibleForLivePositions, showOnChartsAutoUpdate, livePositions]);
 
     const renderColumnResizeHandle = (key: TradeColumnWidthKey) => (
         <button

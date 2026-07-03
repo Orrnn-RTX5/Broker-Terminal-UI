@@ -46,7 +46,7 @@ describe('chart settings trade history overlay defaults', () => {
     expect(normalized.showTradeHistoryArrows).toBe(true);
     expect(normalized.tradeHistoryLineOpacity).toBe(25);
     expect(normalized.tradeHistoryBoxOpacity).toBe(40);
-    expect(normalized.colors.background).toBe('#101010');
+    expect(normalized.colors.background).toBe('#000000');
     expect(normalized.colors.foreground).toBe(defaultChartProperties.colors.foreground);
   });
 
@@ -167,6 +167,20 @@ describe('chart settings trade history overlay defaults', () => {
     expect(clampChartOpacityPercent('bad-value', 75)).toBe(75);
   });
 
+  it('keeps Green on Black pure black in dark mode, including older persisted backgrounds', () => {
+    const greenOnBlack = normalizeChartProperties({
+      colorScheme: 'Green on Black',
+      colors: {
+        ...getPresetSchemeColors('Green on Black'),
+        background: '#0e0e12',
+      },
+    });
+
+    expect(greenOnBlack.colors.background).toBe('#000000');
+    expect(getEffectiveChartColors(greenOnBlack, { isAdvancedUntitledLight: false }).background).toBe('#000000');
+    expect(getEffectiveChartColors(greenOnBlack, { isAdvancedUntitledLight: true }).background).toBe('#ffffff');
+  });
+
   it('keeps Yellow on Black black in dark mode but white in advanced light mode', () => {
     const yellowOnBlack = normalizeChartProperties({
       colorScheme: 'Yellow on Black',
@@ -174,6 +188,7 @@ describe('chart settings trade history overlay defaults', () => {
     });
 
     expect(yellowOnBlack.colors.grid).toBe('#e0ded7');
+    expect(yellowOnBlack.colors.lastPriceLine).toBe('#facc15');
     expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: false }).background).toBe('#000000');
     expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: true })).toMatchObject({
       background: '#ffffff',
@@ -181,6 +196,7 @@ describe('chart settings trade history overlay defaults', () => {
       grid: '#e0ded7',
       barUp: '#facc15',
       barDown: '#facc15',
+      lastPriceLine: '#facc15',
     });
   });
 
@@ -199,6 +215,7 @@ describe('chart settings trade history overlay defaults', () => {
       bullCandle: '#ffffff',
       bearCandle: '#000000',
       lineChart: '#000000',
+      lastPriceLine: '#adadad',
     });
     expect(getEffectiveChartColors(blackOnWhite, { isAdvancedUntitledLight: true })).toMatchObject({
       background: '#ffffff',
@@ -209,6 +226,7 @@ describe('chart settings trade history overlay defaults', () => {
       bullCandle: '#ffffff',
       bearCandle: '#000000',
       lineChart: '#000000',
+      lastPriceLine: '#000000',
     });
   });
 });

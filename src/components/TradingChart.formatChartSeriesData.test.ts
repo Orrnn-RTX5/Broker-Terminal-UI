@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { defaultChartProperties } from '../store/useChartSettingsStore';
+import {
+  defaultChartProperties,
+  getEffectiveChartColors,
+  getPresetSchemeColors,
+} from '../store/useChartSettingsStore';
 import {
   formatChartSeriesData,
   getLeftVisibleTimeFromLogicalRange,
+  getLivePriceOverlayColors,
   getRenderedPrependedBarCount,
   getVisibleLogicalRangeAnchoredToTime,
   isPotentialMarketClosedPlaceholderCandle,
@@ -429,5 +434,65 @@ describe('formatChartSeriesData market gap separators', () => {
       previousFirstRenderedTime,
       49,
     )).toBe(1);
+  });
+});
+
+describe('live price overlay colors', () => {
+  it('uses default bullish and bearish bar colors for the live price line', () => {
+    const colors = defaultChartProperties.colors;
+
+    expect(getLivePriceOverlayColors(colors, colors.barUp).lineColor).toBe('#10B981');
+    expect(getLivePriceOverlayColors(colors, colors.barDown).lineColor).toBe('#EF4444');
+  });
+
+  it('uses Yellow on Black directional bar colors instead of the black bull candle', () => {
+    const colors = getPresetSchemeColors('Yellow on Black');
+
+    expect(getLivePriceOverlayColors(colors, colors.barUp)).toMatchObject({
+      lineColor: '#facc15',
+      badgeBackground: '#facc15',
+      badgeTextColor: '#000000',
+    });
+    expect(getLivePriceOverlayColors(colors, colors.barDown).lineColor).toBe('#facc15');
+    expect(getLivePriceOverlayColors(colors, colors.barUp).lineColor).not.toBe(colors.bullCandle);
+  });
+
+  it('keeps Black on White dark-mode directional live price visible on a black background', () => {
+    const colors = getPresetSchemeColors('Black on White');
+
+    expect(getLivePriceOverlayColors(colors, colors.barUp)).toMatchObject({
+      lineColor: '#adadad',
+      badgeBackground: '#adadad',
+      badgeTextColor: '#000000',
+    });
+    expect(getLivePriceOverlayColors(colors, colors.barDown).lineColor).toBe('#ffffff');
+    expect(getLivePriceOverlayColors(colors, colors.barUp).lineColor).not.toBe(colors.background);
+  });
+
+  it('uses readable badge text on an advanced light chart directional color', () => {
+    const colors = getEffectiveChartColors({
+      colorScheme: 'Yellow on Black',
+      colors: getPresetSchemeColors('Yellow on Black'),
+    }, { isAdvancedUntitledLight: true });
+
+    expect(getLivePriceOverlayColors(colors, colors.barUp)).toMatchObject({
+      lineColor: '#facc15',
+      badgeTextColor: '#000000',
+    });
+  });
+
+  it('falls back from low-contrast custom directional live line colors', () => {
+    expect(getLivePriceOverlayColors({
+      background: '#000000',
+      foreground: '#f8fafc',
+    }, '#010101').lineColor).toBe('#f8fafc');
+
+    expect(getLivePriceOverlayColors({
+      background: '#ffffff',
+      foreground: '#f8fafc',
+    }, '#ffffff')).toMatchObject({
+      lineColor: '#000000',
+      badgeTextColor: '#ffffff',
+    });
   });
 });

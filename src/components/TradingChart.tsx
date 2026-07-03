@@ -140,6 +140,7 @@ import {
   formatChartSeriesData,
   getDisplayVolume,
   getLeftVisibleTimeFromLogicalRange,
+  getLivePriceOverlayColors,
   getRenderedPrependedBarCount,
   getSeparatorPriority,
   getValidSortedCandles,
@@ -152,6 +153,7 @@ import {
   TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
   type Candle,
   type ChartType,
+  type LivePriceOverlayColors,
   type Timeframe,
   type TradingViewChartTheme,
   type VolumeDisplaySettings,
@@ -353,8 +355,6 @@ const getTradeOverlayCardPalette = (
     };
 };
 const TRADING_VIEW_GRID_OVERLAY_SIZE = '92px 50px';
-const LIVE_PRICE_UP_COLOR = '#089981';
-const LIVE_PRICE_DOWN_COLOR = '#f23645';
 
 const TRADING_VIEW_HANDLE_SCROLL = {
   vertTouchDrag: false,
@@ -428,18 +428,6 @@ const detectBrokerHistoryOffsetSeconds = (candles: Candle[]): number => {
 
   const rawOffset = Number(lastCandleTime) - trueUtcSecs;
   return Math.round(rawOffset / 1800) * 1800;
-};
-
-const getLivePriceOverlayColor = (
-  currentCandle: Candle | null,
-  activeCandleTime?: number,
-  nextClose?: number,
-): string => {
-  if (!currentCandle || !Number.isFinite(currentCandle.open)) return LIVE_PRICE_UP_COLOR;
-  if (activeCandleTime !== undefined && currentCandle.time !== activeCandleTime) return LIVE_PRICE_UP_COLOR;
-  const close = nextClose ?? currentCandle.close;
-  if (!Number.isFinite(close)) return LIVE_PRICE_UP_COLOR;
-  return close >= currentCandle.open ? LIVE_PRICE_UP_COLOR : LIVE_PRICE_DOWN_COLOR;
 };
 
 type ChartColorPalette = ChartProperties['colors'];
@@ -636,6 +624,7 @@ interface PriceLevelOptions {
   title?: string;
   labelVariant?: 'badge' | 'lineText';
   lineColor?: string;
+  lineWidthPx?: number;
 }
 
 interface TradingChartProps {
@@ -844,6 +833,10 @@ export const TradingChart = React.memo(function TradingChart({
   const livePriceBadgeRef = useRef<HTMLDivElement | null>(null);
   const livePriceRef = useRef<number | null>(null);
   const livePriceRepaintFrameRef = useRef<number | null>(null);
+  const livePriceOverlayColorsRef = useRef<LivePriceOverlayColors>(
+    getLivePriceOverlayColors(defaultChartProperties.colors, defaultChartProperties.colors.barUp)
+  );
+  const livePriceColorPaletteRef = useRef<ChartColorPalette>(defaultChartProperties.colors);
   const leftVisibleTimeRef = useRef<number | null>(null);
   const lastAcceptedQuoteRef = useRef<number | null>(null);
   const incompatibleQuoteCountRef = useRef(0);
@@ -949,6 +942,19 @@ export const TradingChart = React.memo(function TradingChart({
     }
   }, []);
 
+  const getLivePriceDirectionalColor = useCallback((
+    activeCandleTime?: number,
+    nextClose?: number,
+  ): string => {
+    const colors = livePriceColorPaletteRef.current;
+    const currentCandle = currentCandleRef.current;
+    if (!currentCandle || !Number.isFinite(currentCandle.open)) return colors.barUp;
+    if (activeCandleTime !== undefined && currentCandle.time !== activeCandleTime) return colors.barUp;
+    const close = nextClose ?? currentCandle.close;
+    if (!Number.isFinite(close)) return colors.barUp;
+    return close >= currentCandle.open ? colors.barUp : colors.barDown;
+  }, []);
+
   const paintLivePriceOverlay = useCallback((
     livePrice: number,
     y: number,
@@ -961,19 +967,24 @@ export const TradingChart = React.memo(function TradingChart({
     if (!line || !badge) return;
 
     const digits = getSymbolDigits(symbol);
-    const badgeColor = getLivePriceOverlayColor(currentCandleRef.current, activeCandleTime, directionClose);
+    const overlayColors = getLivePriceOverlayColors(
+      livePriceColorPaletteRef.current,
+      getLivePriceDirectionalColor(activeCandleTime, directionClose),
+    );
+    livePriceOverlayColorsRef.current = overlayColors;
 
     line.style.top = `${y}px`;
     line.style.right = `${scaleW}px`;
-    line.style.borderTopColor = badgeColor;
+    line.style.borderTopColor = overlayColors.lineColor;
     line.style.display = 'block';
 
     badge.style.top = `${y}px`;
     badge.style.width = `${scaleW}px`;
-    badge.style.background = badgeColor;
+    badge.style.background = overlayColors.badgeBackground;
+    badge.style.color = overlayColors.badgeTextColor;
     badge.textContent = livePrice.toFixed(digits);
     badge.style.display = 'block';
-  }, [symbol]);
+  }, [getLivePriceDirectionalColor, symbol]);
 
   const repaintLivePriceOverlayFromCurrentPrice = useCallback((activeCandle: Candle) => {
     const livePrice = Number(activeCandle.close);
@@ -1080,11 +1091,28 @@ export const TradingChart = React.memo(function TradingChart({
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
     [chartSettings, isAdvancedUntitledLight],
   );
+  const initialLivePriceOverlayColors = useMemo(
+    () => getLivePriceOverlayColors(chartColors, chartColors.barUp),
+    [chartColors],
+  );
   const chartTheme = useMemo(
     () => buildChartTheme(chartColors, chartSettings.showGrid),
     [chartColors, chartSettings.showGrid],
   );
   const chartThemeRef = useRef(chartTheme);
+
+  useEffect(() => {
+    livePriceColorPaletteRef.current = chartColors;
+    const overlayColors = getLivePriceOverlayColors(chartColors, getLivePriceDirectionalColor());
+    livePriceOverlayColorsRef.current = overlayColors;
+    if (livePriceLineRef.current) {
+      livePriceLineRef.current.style.borderTopColor = overlayColors.lineColor;
+    }
+    if (livePriceBadgeRef.current) {
+      livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;
+      livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;
+    }
+  }, [chartColors, getLivePriceDirectionalColor]);
 
   useEffect(() => {
     chartThemeRef.current = chartTheme;
@@ -4414,7 +4442,7 @@ export const TradingChart = React.memo(function TradingChart({
   // ─── Trade Annotations on Chart (MT5-style entry/exit markers + live trails) ───
   const TRADE_BUY_COLOR = '#22c55e';
   const TRADE_SELL_COLOR = '#ef4444';
-  const TRADE_ENTRY_LINE_COLOR = '#a8adb7';
+  const TRADE_ENTRY_LEVEL_COLOR = '#a8adb7';
   const activeOverlayNodesRef = useRef<HTMLElement[]>([]);
   const activeOverlayNodeDataRef = useRef<OverlayNodeData[]>([]);
   const historyOverlayNodesRef = useRef<HTMLElement[]>([]);
@@ -4642,7 +4670,11 @@ export const TradingChart = React.memo(function TradingChart({
         if (!el || !node) continue;
 
         try {
-          if (node.kind === 'horizontal-line' || node.kind === 'price-badge' || node.kind === 'price-hit-area') {
+          if (
+            node.kind === 'horizontal-line'
+            || node.kind === 'price-badge'
+            || node.kind === 'price-hit-area'
+          ) {
             if (node.price == null) {
               el.style.display = 'none';
               continue;
@@ -4752,15 +4784,16 @@ export const TradingChart = React.memo(function TradingChart({
     if (livePriceRef.current !== null && livePriceLineRef.current && livePriceBadgeRef.current) {
       const y = series.priceToCoordinate(livePriceRef.current);
       if (y !== null && y !== undefined && y > 0) {
-        const badgeColor = getLivePriceOverlayColor(currentCandleRef.current);
+        const overlayColors = livePriceOverlayColorsRef.current;
         livePriceLineRef.current.style.display = 'block';
         livePriceLineRef.current.style.top = `${y}px`;
         livePriceLineRef.current.style.right = `${priceScaleWidth}px`;
-        livePriceLineRef.current.style.borderTopColor = badgeColor;
+        livePriceLineRef.current.style.borderTopColor = overlayColors.lineColor;
         livePriceBadgeRef.current.style.display = 'block';
         livePriceBadgeRef.current.style.top = `${y}px`;
         livePriceBadgeRef.current.style.width = `${priceScaleWidth}px`;
-        livePriceBadgeRef.current.style.background = badgeColor;
+        livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;
+        livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;
       }
     }
   }, []);
@@ -5214,8 +5247,11 @@ export const TradingChart = React.memo(function TradingChart({
       if (!(price > 0)) return;
 
       const line = document.createElement('div');
-      line.className = 'rtx-trade-level-line';
-      line.style.cssText = `position:absolute;height:0;border-top:1px dashed ${(options.lineColor ?? color)}cc;z-index:12;pointer-events:none;`;
+      line.className = options.role ? `rtx-trade-level-line rtx-trade-level-line--${options.role.toLowerCase()}` : 'rtx-trade-level-line';
+      const lineColor = options.lineColor ?? color;
+      const lineWidth = options.lineWidthPx ?? 1;
+      const lineOpacity = options.role === 'SL' || options.role === 'TP' ? 0.68 : 0.92;
+      line.style.cssText = `position:absolute;height:0;border-top:${lineWidth}px dashed ${lineColor};z-index:12;pointer-events:none;opacity:${lineOpacity};`;
       appendOverlayNode(line, { kind: 'horizontal-line', price }, 'active');
 
       if (options.tradeKey && options.role) {
@@ -5690,7 +5726,7 @@ export const TradingChart = React.memo(function TradingChart({
                 badgeOffsetIndex: nextLevelOffset('ENTRY', trade.entryPrice),
                 title: isLiveActiveTrade ? `${markerTitle}. Drag above/below to create TP or SL.` : markerTitle,
                 labelVariant: 'lineText',
-                lineColor: TRADE_ENTRY_LINE_COLOR,
+                lineColor: TRADE_ENTRY_LEVEL_COLOR,
               },
             );
 
@@ -7306,7 +7342,7 @@ export const TradingChart = React.memo(function TradingChart({
           left: 0,
           right: 52,
           height: 0,
-          borderTop: `1px dashed ${LIVE_PRICE_UP_COLOR}`,
+          borderTop: `1px dashed ${initialLivePriceOverlayColors.lineColor}`,
           pointerEvents: 'none',
           zIndex: 7,
           transform: 'translateY(-0.5px)',
@@ -7319,8 +7355,8 @@ export const TradingChart = React.memo(function TradingChart({
           top: -9999,
           right: 0,
           padding: '1px 4px',
-          background: LIVE_PRICE_UP_COLOR,
-          color: '#ffffff',
+          background: initialLivePriceOverlayColors.badgeBackground,
+          color: initialLivePriceOverlayColors.badgeTextColor,
           fontSize: 11,
           fontFamily: "Consolas, 'Courier New', monospace",
           fontWeight: 700,
