@@ -3,7 +3,7 @@
  * Full-featured, themed to match project dark theme
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import type { ChartType, Timeframe } from './TradingChart';
 import { indicatorManager } from '../services/indicatorManager';
@@ -71,6 +71,48 @@ const C_TEXT = 'var(--ctx-text, #e4e4e7)';
 const C_MUTED = 'var(--ctx-muted, #71717a)';
 const C_HEADER = 'var(--ctx-header, #a1a1aa)';
 const C_DISABLED = 'var(--ctx-disabled, rgba(161, 161, 170, 0.3))';
+const MENU_VIEWPORT_MARGIN = 8;
+const MENU_MIN_WIDTH = 230;
+const MENU_ESTIMATED_HEIGHT = 460;
+const MENU_MIN_MAX_HEIGHT = 180;
+
+interface MenuLayout {
+    left: number;
+    top: number;
+    maxHeight: number;
+    scrollable: boolean;
+    anchorX: number;
+    anchorY: number;
+}
+
+const clampChartContextMenuLayout = (
+    anchorX: number,
+    anchorY: number,
+    menuWidth: number,
+    menuHeight: number,
+): MenuLayout => {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const maxHeight = Math.max(MENU_MIN_MAX_HEIGHT, viewportHeight - MENU_VIEWPORT_MARGIN * 2);
+    const visibleHeight = Math.min(Math.max(menuHeight, 0), maxHeight);
+    const left = Math.max(
+        MENU_VIEWPORT_MARGIN,
+        Math.min(anchorX, viewportWidth - Math.max(menuWidth, MENU_MIN_WIDTH) - MENU_VIEWPORT_MARGIN),
+    );
+    const top = Math.max(
+        MENU_VIEWPORT_MARGIN,
+        Math.min(anchorY, viewportHeight - visibleHeight - MENU_VIEWPORT_MARGIN),
+    );
+
+    return {
+        left,
+        top,
+        maxHeight,
+        scrollable: menuHeight > maxHeight,
+        anchorX,
+        anchorY,
+    };
+};
 
 // ─── Keyboard shortcut label ──────────────────────────────────────────────────
 const Shortcut = ({ keys }: { keys: string }) => (
@@ -279,13 +321,36 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
 }) => {
     const templates = useTemplates();
     const menuRef = useRef<HTMLDivElement>(null);
+    const [menuLayout, setMenuLayout] = useState<MenuLayout | null>(null);
+    const fallbackLayout = clampChartContextMenuLayout(x, y, MENU_MIN_WIDTH, MENU_ESTIMATED_HEIGHT);
+    const activeLayout = menuLayout?.anchorX === x && menuLayout?.anchorY === y
+        ? menuLayout
+        : fallbackLayout;
 
-    // ── Synchronous position clamping (no RAF, no jump) ──
-    // Use known approximate menu dimensions so we can clamp in one render pass
-    const MENU_W = 228;
-    const MENU_H = 460;
-    const clampedX = Math.min(x, window.innerWidth - MENU_W - 4);
-    const clampedY = Math.min(y, window.innerHeight - MENU_H - 4);
+    // Measure the rendered menu so bottom-edge opens clamp against the real height.
+    useLayoutEffect(() => {
+        if (!visible || !menuRef.current) return;
+
+        const rect = menuRef.current.getBoundingClientRect();
+        const nextLayout = clampChartContextMenuLayout(
+            x,
+            y,
+            rect.width || MENU_MIN_WIDTH,
+            menuRef.current.scrollHeight || rect.height || MENU_ESTIMATED_HEIGHT,
+        );
+
+        setMenuLayout(prev => (
+            prev
+                && prev.left === nextLayout.left
+                && prev.top === nextLayout.top
+                && prev.maxHeight === nextLayout.maxHeight
+                && prev.scrollable === nextLayout.scrollable
+                && prev.anchorX === nextLayout.anchorX
+                && prev.anchorY === nextLayout.anchorY
+                ? prev
+                : nextLayout
+        ));
+    });
 
     // ── Close on Escape ──
     useEffect(() => {
@@ -384,9 +449,10 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             style={{
                 position: 'fixed',
                 zIndex: 10000,
-                top: clampedY,
-                left: clampedX,
-                minWidth: 230,
+                top: activeLayout.top,
+                left: activeLayout.left,
+                minWidth: MENU_MIN_WIDTH,
+                maxHeight: activeLayout.maxHeight,
                 padding: '4px 0',
                 background: C_BG,
                 backdropFilter: 'blur(16px) saturate(180%)',
@@ -394,7 +460,10 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 borderRadius: 10,
                 boxShadow: 'var(--ctx-shadow, 0 16px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08))',
                 fontFamily: MENU_FONT,
-                overflow: 'visible',
+                boxSizing: 'border-box',
+                overflowX: 'visible',
+                overflowY: activeLayout.scrollable ? 'auto' : 'visible',
+                overscrollBehavior: 'contain',
             }}
             onContextMenu={(e) => e.preventDefault()}
         >
