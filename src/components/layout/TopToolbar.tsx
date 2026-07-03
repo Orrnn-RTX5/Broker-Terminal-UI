@@ -6,7 +6,7 @@ import {
     FileText, TrendingUp, BarChart2, CandlestickChart, LineChart,
     ZoomIn, ZoomOut, LayoutGrid,
     MousePointer2, Crosshair, ArrowUpDown, MoveHorizontal, MoveVertical,
-    Pencil, Type, Shapes, Camera, Search, User, Shield,
+    Pencil, Type, Shapes, Camera, Search, User,
     LogOut, GitCommitHorizontal, AlignCenter, BookMarked, RefreshCw,
     PanelBottomOpen, LayoutPanelTop, SlidersHorizontal,
     Minus, Square, Copy, X
@@ -598,8 +598,12 @@ const MainToolbar = ({
                 `rtx-advanced-accent-${advancedOptions.accent}`,
                 `rtx-advanced-surface-${advancedOptions.chartSurface}`,
             );
-            root.classList.toggle('rtx-advanced-focus-chart', advancedOptions.focusChart);
         }
+        root.classList.toggle('rtx-advanced-focus-chart', advancedOptions.focusChart);
+
+        const resizeFrame = window.requestAnimationFrame(() => {
+            window.dispatchEvent(new Event('resize'));
+        });
 
         try {
             localStorage.setItem('rtx5-advanced-view-enabled', String(advancedViewEnabled));
@@ -609,6 +613,7 @@ const MainToolbar = ({
         }
 
         return () => {
+            window.cancelAnimationFrame(resizeFrame);
             root.classList.remove(
                 'rtx-advanced-view',
                 'rtx-skin-untitled-light',
@@ -1293,12 +1298,6 @@ const MainToolbar = ({
                         </div>,
                         document.body
                     )}
-                </div>
-
-                <Shield size={15} strokeWidth={1.5} className="text-emerald-500 mx-1" />
-                {/* Ping bar block */}
-                <div className="w-[40px] h-3.5 border border-zinc-600 ml-1 mt-0.5 relative bg-[#0d0d11]">
-                    <div className="absolute top-0 left-0 h-full w-[15%] bg-emerald-500"></div>
                 </div>
             </MT5Group>
 

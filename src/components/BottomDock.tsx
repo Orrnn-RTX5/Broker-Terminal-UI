@@ -751,6 +751,7 @@ function TradeTab({
     const [resizingColumn, setResizingColumn] = useState<TradeColumnWidthKey | null>(null);
     const tableScrollRef = useRef<HTMLDivElement | null>(null);
     const footerScrollRef = useRef<HTMLDivElement | null>(null);
+    const footerMetricButtonRef = useRef<HTMLButtonElement | null>(null);
     const syncingScrollRef = useRef<'table' | 'footer' | null>(null);
     const columnResizeRef = useRef<{ key: TradeColumnWidthKey; startX: number; startWidth: number } | null>(null);
 
@@ -999,6 +1000,13 @@ function TradeTab({
 
     const resetFooterMetrics = useCallback(() => {
         setFooterMetricVisibility({ ...DEFAULT_TRADE_FOOTER_METRICS });
+    }, []);
+
+    const toggleFooterMetricMenu = useCallback((trigger: HTMLButtonElement) => {
+        const rect = trigger.getBoundingClientRect();
+        setFooterMetricMenu(prev => (
+            prev ? null : { x: rect.left, y: rect.bottom + 2 }
+        ));
     }, []);
 
     const footerMetricMenuItems = useMemo<ContextMenuItemConfig[]>(() => [
@@ -1506,7 +1514,7 @@ ${rows}
     );
 
     const renderHeader = (column: TradeColumnDef) => {
-        const isLeftAligned = ['side', 'accountLogin', 'timeUpdate', 'comment'].includes(column.key);
+        const isLeftAligned = column.key === 'side';
         return (
             <th
                 key={column.key}
@@ -1698,21 +1706,21 @@ ${rows}
 
                                 {/* account_login */}
                                 {isColumnVisible('accountLogin') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums" title={`Account login: ${accountLoginLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums" title={`Account login: ${accountLoginLabel}`}>
                                         {accountLoginLabel}
                                     </td>
                                 )}
 
                                 {/* time_update */}
                                 {isColumnVisible('timeUpdate') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
                                         {timeUpdateLabel}
                                     </td>
                                 )}
 
                                 {/* comment */}
                                 {isColumnVisible('comment') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] text-[11px] truncate" title={`Comment: ${commentLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] text-[11px] truncate" title={`Comment: ${commentLabel}`}>
                                         {commentLabel}
                                     </td>
                                 )}
@@ -1754,6 +1762,7 @@ ${rows}
             >
                 <div className="rtx-trade-footer-inner flex w-max min-w-full items-center gap-1 px-1.5 py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
                     <button
+                        ref={footerMetricButtonRef}
                         type="button"
                         className="rtx-trade-footer-status inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-0 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
                         title="Select footer metrics"
@@ -1761,8 +1770,8 @@ ${rows}
                         aria-haspopup="menu"
                         aria-expanded={footerMetricMenu !== null}
                         onClick={(event) => {
-                            const rect = event.currentTarget.getBoundingClientRect();
-                            setFooterMetricMenu({ x: rect.left, y: rect.bottom + 2 });
+                            event.stopPropagation();
+                            toggleFooterMetricMenu(event.currentTarget);
                         }}
                     >
                         <Icon name="plus-circle" size="xs" className="text-current shrink-0" />
@@ -1815,6 +1824,7 @@ ${rows}
                     items={footerMetricMenuItems}
                     position={footerMetricMenu}
                     onClose={() => setFooterMetricMenu(null)}
+                    ignoredElements={[footerMetricButtonRef.current]}
                 />
             )}
             {tradeContextMenu && (

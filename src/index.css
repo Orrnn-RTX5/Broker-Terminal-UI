@@ -257,6 +257,12 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-footer-action--danger:hover:not(:d
   border-color: rgba(248, 113, 113, 0.75) !important;
 }
 
+/* Remove the obsolete toolbar security/ping indicators if a stale runtime keeps them mounted. */
+.flex.items-center.gap-\[2px\] > svg.text-emerald-500.mx-1,
+.flex.items-center.gap-\[2px\] > svg.text-emerald-500.mx-1 + div.w-\[40px\] {
+  display: none !important;
+}
+
 html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs {
   background: linear-gradient(180deg, rgba(11, 15, 24, 0.98), rgba(6, 9, 15, 0.98)) !important;
   border-top-color: rgba(100, 116, 139, 0.42) !important;

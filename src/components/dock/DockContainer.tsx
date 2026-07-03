@@ -34,6 +34,65 @@ const dockIntent = {
   direction: null as string | null,
 };
 
+const CHART_FOCUS_COMPONENTS = new Set(['Chart', 'EmptyChartArea']);
+
+const isDockContainerNode = (
+  node: DockContainerType | DockPanelConfig
+): node is DockContainerType => 'children' in node;
+
+const getDockComponentName = (component: string): string => component.trim().toLowerCase();
+
+const isChartFocusPanel = (panel: DockPanelConfig): boolean => (
+  CHART_FOCUS_COMPONENTS.has(panel.component)
+);
+
+const containerHasChartFocusPanel = (container: DockContainerType): boolean => (
+  container.children.some((child) => (
+    isDockContainerNode(child)
+      ? containerHasChartFocusPanel(child)
+      : isChartFocusPanel(child)
+  ))
+);
+
+const getFocusChartTabId = (
+  children: DockContainerType['children'],
+  activeTabId: string | undefined
+): string | null => {
+  let fallbackPanelId: string | null = null;
+
+  for (const child of children) {
+    if (isDockContainerNode(child) || !isChartFocusPanel(child)) continue;
+    if (fallbackPanelId === null) fallbackPanelId = child.id;
+    if (child.id === activeTabId) return child.id;
+  }
+
+  return fallbackPanelId;
+};
+
+const getAdvancedFocusChartEnabled = (): boolean => (
+  typeof document !== 'undefined' &&
+  document.documentElement.classList.contains('rtx-advanced-focus-chart')
+);
+
+const useAdvancedFocusChartEnabled = (): boolean => {
+  const [isEnabled, setIsEnabled] = useState(getAdvancedFocusChartEnabled);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const root = document.documentElement;
+    const syncFocusState = () => setIsEnabled(root.classList.contains('rtx-advanced-focus-chart'));
+    const observer = new MutationObserver(syncFocusState);
+
+    syncFocusState();
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return isEnabled;
+};
+
 const CompassRose: React.FC<{
   targetPanelId: string;
   hoveredDir: string | null;
@@ -140,6 +199,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
   renderPanel,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const focusChartEnabled = useAdvancedFocusChartEnabled();
 
 
   const {
@@ -308,10 +368,15 @@ export const DockContainer: React.FC<DockContainerProps> = ({
   // ─── Render split container ─────────────────────────────────────
   if (currentContainer.type === 'split') {
     const isHorizontal = currentContainer.direction === 'horizontal';
+    const hasChartFocusPanel = containerHasChartFocusPanel(currentContainer);
 
     return (
       <div
         ref={containerRef}
+        data-dock-container={currentContainer.id || undefined}
+        data-dock-container-kind="split"
+        data-dock-container-direction={currentContainer.direction}
+        data-dock-container-has-focus-chart={hasChartFocusPanel ? 'true' : 'false'}
         className={cn(
           'flex h-full overflow-hidden',
           isHorizontal ? 'flex-row' : 'flex-col',
@@ -320,13 +385,20 @@ export const DockContainer: React.FC<DockContainerProps> = ({
         style={style}
       >
         {currentContainer.children.map((child, index) => {
-          const isContainer = 'children' in child;
-          const childItem = child as DockContainerType;
+          const isContainer = isDockContainerNode(child);
+          const childItem = child;
           const ratio = childItem.ratio || (1 / currentContainer.children.length);
+          const childHasChartFocusPanel = isContainer
+            ? containerHasChartFocusPanel(child)
+            : isChartFocusPanel(child);
 
           return (
             <React.Fragment key={childItem.id || index}>
               <div
+                data-dock-child={childItem.id || undefined}
+                data-dock-child-kind={isContainer ? 'container' : 'panel'}
+                data-dock-child-component={!isContainer ? getDockComponentName(child.component) : undefined}
+                data-dock-child-has-focus-chart={childHasChartFocusPanel ? 'true' : 'false'}
                 className="flex flex-col overflow-hidden min-h-0 min-w-0"
                 style={{
                   flex: ratio,
@@ -388,15 +460,23 @@ export const DockContainer: React.FC<DockContainerProps> = ({
   // ─── Render tabs container ──────────────────────────────────────
   if (currentContainer.type === 'tabs') {
     const activeTabId = currentContainer.activeTab || (currentContainer.children[0] as DockPanelConfig)?.id;
+    const hasChartFocusPanel = containerHasChartFocusPanel(currentContainer);
+    const focusChartTabId = getFocusChartTabId(currentContainer.children, activeTabId);
 
     return (
       <div
         ref={containerRef}
+        data-dock-container={currentContainer.id || undefined}
+        data-dock-container-kind="tabs"
+        data-dock-container-has-focus-chart={hasChartFocusPanel ? 'true' : 'false'}
         className={cn('flex flex-col h-full bg-[#131316] border border-zinc-700/30 overflow-hidden', className)}
         style={style}
       >
         {/* Tab Bar */}
-        <div className="flex-none flex items-center gap-0 bg-[#2a2a2a] border-b border-zinc-700/40 overflow-x-auto h-[24px]">
+        <div
+          data-dock-tab-bar="true"
+          className="flex-none flex items-center gap-0 bg-[#2a2a2a] border-b border-zinc-700/40 overflow-x-auto h-[24px]"
+        >
           {currentContainer.children.map((child) => {
             const panel = child as DockPanelConfig;
             const isActive = panel.id === activeTabId;
@@ -455,24 +535,34 @@ export const DockContainer: React.FC<DockContainerProps> = ({
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-hidden relative">
+        <div data-dock-tab-content-layer="true" className="flex-1 overflow-hidden relative">
           {currentContainer.children.map((child) => {
             const panel = child as DockPanelConfig;
             const isActive = panel.id === activeTabId;
+            const isFocusChartPanel = isChartFocusPanel(panel);
+            const isFocusChartTarget = isFocusChartPanel && panel.id === focusChartTabId;
+            const isContentVisible = focusChartEnabled && hasChartFocusPanel
+              ? isFocusChartTarget
+              : isActive;
 
             return (
               <div
                 key={panel.id}
+                data-dock-tab-content={panel.id}
+                data-dock-tab-content-component={getDockComponentName(panel.component)}
+                data-dock-tab-content-is-focus-chart={isFocusChartPanel ? 'true' : 'false'}
+                data-dock-tab-content-focus-target={isFocusChartTarget ? 'true' : 'false'}
+                data-dock-tab-content-active={isActive ? 'true' : 'false'}
                 className="absolute inset-0"
                 style={{
-                  opacity: isActive ? 1 : 0,
-                  pointerEvents: isActive ? 'auto' : 'none',
-                  zIndex: isActive ? 1 : 0,
+                  opacity: isContentVisible ? 1 : 0,
+                  pointerEvents: isContentVisible ? 'auto' : 'none',
+                  zIndex: isContentVisible ? 1 : 0,
                 }}
               >
                 <PanelSlot
                   panel={panel}
-                  isActive={isActive}
+                  isActive={isContentVisible}
                   showHeader={panel.component !== 'EmptyChartArea' && panel.component !== 'Chart'}
                   isDragging={false}
                   dropTargetId={dropTargetId}
@@ -494,6 +584,9 @@ export const DockContainer: React.FC<DockContainerProps> = ({
   return (
     <div
       ref={containerRef}
+      data-dock-container={currentContainer.id || undefined}
+      data-dock-container-kind={currentContainer.type}
+      data-dock-container-has-focus-chart={containerHasChartFocusPanel(currentContainer) ? 'true' : 'false'}
       className={cn('flex flex-col h-full', className)}
       style={style}
     >
@@ -501,7 +594,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
         <div className="flex items-center justify-center h-full text-zinc-500">
           <p className="text-sm">Empty — drag panels here</p>
         </div>
-      ) : currentContainer.children.length === 1 && !('children' in currentContainer.children[0]) ? (
+      ) : currentContainer.children.length === 1 && !isDockContainerNode(currentContainer.children[0]) ? (
         <PanelSlot
           panel={currentContainer.children[0] as DockPanelConfig}
           isDragging={isDragging}
@@ -514,7 +607,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
         />
       ) : (
         currentContainer.children.map((child, index) => {
-          const isContainer = 'children' in child;
+          const isContainer = isDockContainerNode(child);
           if (isContainer) {
             return (
               <DockContainer
@@ -578,9 +671,15 @@ const PanelSlot: React.FC<PanelSlotProps> = ({
   const isDropTarget = isDragging && dropTargetId === panel.id;
   const showCompass = isDropTarget;
   const showPreview = isDropTarget && compassDir !== null;
+  const isFocusChartPanel = isChartFocusPanel(panel);
 
   return (
-    <div data-dock-panel={panel.id} className={cn('h-full relative', className)}>
+    <div
+      data-dock-panel={panel.id}
+      data-dock-panel-component={getDockComponentName(panel.component)}
+      data-dock-focus-chart-panel={isFocusChartPanel ? 'true' : 'false'}
+      className={cn('h-full relative', className)}
+    >
       <DockPanel
         panel={panel}
         isActive={isActive}
@@ -697,11 +796,15 @@ export const FloatingPanelsLayer: React.FC<{
       {layout.floatingPanels.map((floating) => {
         const panel = floating.children[0] as DockPanelConfig;
         if (!panel) return null;
+        const isFocusChartPanel = isChartFocusPanel(panel);
 
         return (
           <div
             key={floating.id}
             data-dock-panel={panel.id}
+            data-dock-floating-panel="true"
+            data-dock-panel-component={getDockComponentName(panel.component)}
+            data-dock-focus-chart-panel={isFocusChartPanel ? 'true' : 'false'}
             className="fixed z-50"
             style={{
               left: floating.position?.x || 100,
@@ -722,14 +825,14 @@ export const FloatingPanelsLayer: React.FC<{
             </DockPanel>
 
             {/* 8 resize handles */}
-            <div className="absolute top-0 left-6 right-6 h-2 cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 'n')} />
-            <div className="absolute bottom-0 left-6 right-6 h-2 cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 's')} />
-            <div className="absolute top-6 bottom-6 left-0 w-2 cursor-ew-resize z-20" onMouseDown={(e) => startResize(e, floating, 'w')} />
-            <div className="absolute top-6 bottom-6 right-0 w-2 cursor-ew-resize z-20" onMouseDown={(e) => startResize(e, floating, 'e')} />
-            <div className="absolute top-0 left-0 w-5 h-5 cursor-nwse-resize z-30" onMouseDown={(e) => startResize(e, floating, 'nw')} />
-            <div className="absolute top-0 right-0 w-5 h-5 cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'ne')} />
-            <div className="absolute bottom-0 left-0 w-5 h-5 cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'sw')} />
-            <div className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-30" onMouseDown={(e) => startResize(e, floating, 'se')} />
+            <div data-dock-floating-resize-handle="true" className="absolute top-0 left-6 right-6 h-2 cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 'n')} />
+            <div data-dock-floating-resize-handle="true" className="absolute bottom-0 left-6 right-6 h-2 cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 's')} />
+            <div data-dock-floating-resize-handle="true" className="absolute top-6 bottom-6 left-0 w-2 cursor-ew-resize z-20" onMouseDown={(e) => startResize(e, floating, 'w')} />
+            <div data-dock-floating-resize-handle="true" className="absolute top-6 bottom-6 right-0 w-2 cursor-ew-resize z-20" onMouseDown={(e) => startResize(e, floating, 'e')} />
+            <div data-dock-floating-resize-handle="true" className="absolute top-0 left-0 w-5 h-5 cursor-nwse-resize z-30" onMouseDown={(e) => startResize(e, floating, 'nw')} />
+            <div data-dock-floating-resize-handle="true" className="absolute top-0 right-0 w-5 h-5 cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'ne')} />
+            <div data-dock-floating-resize-handle="true" className="absolute bottom-0 left-0 w-5 h-5 cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'sw')} />
+            <div data-dock-floating-resize-handle="true" className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-30" onMouseDown={(e) => startResize(e, floating, 'se')} />
           </div>
         );
       })}

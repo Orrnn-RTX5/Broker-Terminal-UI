@@ -64,6 +64,11 @@ export const DockResizeHandle: React.FC<DockResizeHandleProps> = ({
   return (
     <div
       className={cn(
+        'dock-resize-handle',
+        direction === 'vertical'
+          ? 'dock-resize-handle--vertical'
+          : 'dock-resize-handle--horizontal',
+        isDragging && 'dock-resize-handle--dragging',
         'relative flex items-center justify-center flex-shrink-0 z-30',
         // Invisible by default — only cursor changes
         direction === 'vertical'

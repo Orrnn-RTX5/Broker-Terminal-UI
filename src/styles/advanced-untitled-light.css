@@ -682,13 +682,51 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-paper .rtx-c
   background: #fffdf7 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart [data-dock-panel="market-watch"],
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart [data-dock-panel="navigator"],
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart [data-dock-panel="toolbox"] {
+html.rtx-advanced-focus-chart .rtx-dock-workspace {
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+html.rtx-advanced-focus-chart [data-dock-child-has-focus-chart="true"],
+html.rtx-advanced-focus-chart [data-dock-container-has-focus-chart="true"],
+html.rtx-advanced-focus-chart [data-dock-container] [data-dock-focus-chart-panel="true"]:not([data-dock-floating-panel="true"]) {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+
+html.rtx-advanced-focus-chart [data-dock-child-has-focus-chart="false"],
+html.rtx-advanced-focus-chart [data-dock-focus-chart-panel="false"],
+html.rtx-advanced-focus-chart [data-dock-container-has-focus-chart="false"],
+html.rtx-advanced-focus-chart [data-dock-child="left-sidebar"],
+html.rtx-advanced-focus-chart [data-dock-child="market-watch"],
+html.rtx-advanced-focus-chart [data-dock-child="navigator"],
+html.rtx-advanced-focus-chart [data-dock-child="toolbox"],
+html.rtx-advanced-focus-chart [data-dock-panel="market-watch"],
+html.rtx-advanced-focus-chart [data-dock-panel="navigator"],
+html.rtx-advanced-focus-chart [data-dock-panel="toolbox"] {
   display: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-focus-chart .dock-resize-handle {
+html.rtx-advanced-focus-chart [data-dock-container-kind="tabs"][data-dock-container-has-focus-chart="true"] [data-dock-tab-bar="true"],
+html.rtx-advanced-focus-chart [data-dock-container-kind="tabs"][data-dock-container-has-focus-chart="true"] [data-dock-tab-content-focus-target="false"] {
+  display: none !important;
+}
+
+html.rtx-advanced-focus-chart [data-dock-container-kind="tabs"][data-dock-container-has-focus-chart="true"] [data-dock-tab-content-focus-target="true"] {
+  display: block !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 1 !important;
+}
+
+html.rtx-advanced-focus-chart .dock-resize-handle,
+html.rtx-advanced-focus-chart [data-dock-floating-resize-handle="true"] {
+  display: none !important;
   opacity: 0 !important;
   pointer-events: none !important;
 }

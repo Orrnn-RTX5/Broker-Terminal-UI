@@ -17,6 +17,7 @@ interface ContextMenuProps {
   position?: { x: number; y: number };
   triggerSymbol?: string;
   variant?: ContextMenuVariant;
+  ignoredElements?: readonly (HTMLElement | null)[];
   children?: React.ReactNode;
 }
 
@@ -705,6 +706,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   position: externalPosition,
   triggerSymbol,
   variant = 'dark',
+  ignoredElements = [],
   children
 }) => {
   const [internalVisible, setInternalVisible] = useState(false);
@@ -718,16 +720,23 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
   // Keep track of the latest onClose to avoid re-running the effect on every render
   const onCloseRef = useRef(onClose);
+  const ignoredElementsRef = useRef(ignoredElements);
   useLayoutEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+  useLayoutEffect(() => {
+    ignoredElementsRef.current = ignoredElements;
+  }, [ignoredElements]);
 
   // Close on click outside
   useEffect(() => {
     if (!visible) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const isIgnoredTarget = ignoredElementsRef.current.some(element => element?.contains(target));
+
+      if (!isIgnoredTarget && menuRef.current && !menuRef.current.contains(target)) {
         onCloseRef.current();
       }
     };

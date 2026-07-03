@@ -4596,6 +4596,7 @@ export const TradingChart = React.memo(function TradingChart({
     const chartWidth = containerRef.current?.offsetWidth || 0;
     const chartHeight = containerRef.current?.offsetHeight || 0;
     const priceScaleWidth = series.priceScale().width();
+    const snapCssPixel = (value: number): number => Math.round(value);
     const resolveTimeCoordinate = (time: unknown): number | null => {
       const numericTime = Number(time);
       if (!Number.isFinite(numericTime) || numericTime <= 0) return null;
@@ -4633,8 +4634,11 @@ export const TradingChart = React.memo(function TradingChart({
               continue;
             }
 
+            const snappedY = snapCssPixel(y);
             el.style.display = 'block';
-            el.style.top = `${y}px`;
+            el.style.top = node.kind === 'price-badge' && el.classList.contains('rtx-trade-level-badge--line-text')
+              ? `${snappedY - 14}px`
+              : `${snappedY}px`;
 
             if (node.kind === 'horizontal-line' || node.kind === 'price-hit-area') {
               el.style.left = '0px';
@@ -4716,8 +4720,8 @@ export const TradingChart = React.memo(function TradingChart({
           }
 
           if (node.kind === 'label') {
-            el.style.left = `${x + (node.labelOffsetX ?? 8)}px`;
-            el.style.top = `${y + (node.labelOffsetY ?? -18)}px`;
+            el.style.left = `${snapCssPixel(x + (node.labelOffsetX ?? 8))}px`;
+            el.style.top = `${snapCssPixel(y + (node.labelOffsetY ?? -18))}px`;
           }
         } catch {
           el.style.display = 'none';
@@ -5226,10 +5230,11 @@ export const TradingChart = React.memo(function TradingChart({
       const leftInset = TRADE_LEVEL_BADGE_LEFT_INSET_PX + offsetX;
       const canDrag = Boolean(options.tradeKey && options.role);
       const isLineTextLabel = options.labelVariant === 'lineText';
+      if (isLineTextLabel) badge.classList.add('rtx-trade-level-badge--line-text');
       badge.dataset.leftInset = String(leftInset);
       badge.style.cssText = isLineTextLabel
-        ? `position:absolute;left:${leftInset}px;display:block;padding:0 2px;background:transparent;border:0;color:${color};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:600;line-height:13px;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:0;transform:translateY(calc(-100% - 1px));width:max-content;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:left;touch-action:none;letter-spacing:0;text-shadow:0 1px 2px rgba(0,0,0,0.28);`
-        : `position:absolute;left:${leftInset}px;display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;${palette.shadow}`;
+        ? `position:absolute;left:${leftInset}px;display:block;padding:0 2px;background:transparent;border:0;color:${color};font-size:11px;font-family:Consolas,'Courier New',monospace;font-weight:700;line-height:14px;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:0;transform:none;width:max-content;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:left;touch-action:none;letter-spacing:0;text-shadow:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;`
+        : `position:absolute;left:${leftInset}px;display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;${palette.shadow}`;
       appendOverlayNode(badge, { kind: 'price-badge', price }, 'active');
     };
 
