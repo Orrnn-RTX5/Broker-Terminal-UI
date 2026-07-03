@@ -34,6 +34,9 @@ describe('trade gateway normalization', () => {
     expect(tradeGatewayApi.getHistoryUrl('EUR/USD', 'M5', 100)).toBe(
       `${RTX5_API_URL}/api/v2/candles/EUR%2FUSD?timeframe=M5&limit=100`
     );
+    expect(tradeGatewayApi.getHistoryUrl('EUR/USD', '5m', 10_000)).toBe(
+      `${RTX5_API_URL}/api/v2/candles/EUR%2FUSD?timeframe=M5&limit=5000`
+    );
   });
 
   it('normalizes account margin aliases into the app account shape', () => {

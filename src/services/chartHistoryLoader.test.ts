@@ -23,9 +23,11 @@ const candle = (time: number): OHLCData => ({
 });
 
 describe('chart history loader', () => {
-  it('uses 5000-row pages for M1 and the default page size for other timeframes', () => {
+  it('uses 5000-row older pages for M1 and M5 while preserving default initial counts', () => {
     expect(getHistoryPageSize('M1')).toBe(5000);
+    expect(getHistoryPageSize('M5')).toBe(5000);
     expect(getInitialHistoryCount('M1', 500)).toBe(5000);
+    expect(getInitialHistoryCount('M5', 500)).toBe(500);
     expect(getHistoryPageSize('H1')).toBe(3000);
     expect(getInitialHistoryCount('H1', 500)).toBe(500);
   });
@@ -105,6 +107,32 @@ describe('chart history loader', () => {
     expect(result.source).toBe('derived-m1');
     expect(result.usedDerivedFallback).toBe(true);
     expect(result.candles.map(item => item.time)).toEqual([3600]);
+  });
+
+  it('returns empty history only after native and M1 fallback pages are empty', async () => {
+    const fetchCandles = vi.fn(async () => []);
+
+    const result = await fetchOlderHistoryPage({
+      symbol: 'US30',
+      timeframe: 'H1',
+      olderThanRaw: 7200,
+      fetchCandles,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
+      symbol: 'US30',
+      timeframe: 'H1',
+      to: 7199,
+    }));
+    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
+      symbol: 'US30',
+      timeframe: 'M1',
+      count: 5000,
+      to: 7199,
+    }));
+    expect(result.candles).toEqual([]);
+    expect(result.source).toBe('backend');
+    expect(result.usedDerivedFallback).toBe(false);
   });
 
   it('passes the idle-yield callback to derived M1 fallback pages', async () => {

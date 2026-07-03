@@ -320,6 +320,7 @@ export const getLeftVisibleTimeFromLogicalRange = (
   if (!visibleRange || renderedCandles.length === 0) return null;
   const fromIndex = Math.floor(visibleRange.from);
   if (!Number.isFinite(fromIndex)) return null;
+  if (fromIndex < 0) return null;
 
   const boundedIndex = Math.max(0, Math.min(renderedCandles.length - 1, fromIndex));
   return renderedCandles[boundedIndex]?.time ?? null;

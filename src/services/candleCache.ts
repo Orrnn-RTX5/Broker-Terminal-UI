@@ -8,12 +8,14 @@ import { onSessionChange } from './brokerSession';
 
 export type CandleCacheKey = string & { readonly __brand: 'CandleCacheKey' };
 export type CandleCacheSource = 'backend' | 'derived-m1' | 'mixed';
+export const CANDLE_HISTORY_CACHE_VERSION = 'backend-first-m1-fallback-v2';
 
 export interface CandleCacheKeyParts {
   scope: string;
   symbol: string;
   timeframe: string;
   limit: number;
+  version?: string;
 }
 
 export interface CandleCacheMetadata extends CandleCacheKeyParts {
@@ -36,6 +38,9 @@ const MAX_CACHE_AGE_MS = 30 * 60 * 1000;
 const normalizeScope = (scope: string): string => String(scope || 'default').trim().replace(/\/+$/, '') || 'default';
 const normalizeSymbol = (symbol: string): string => String(symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 const normalizeTimeframe = (timeframe: string): string => String(timeframe || 'M1').trim().toUpperCase();
+const normalizeVersion = (version: string | undefined): string => (
+  String(version || CANDLE_HISTORY_CACHE_VERSION).trim() || CANDLE_HISTORY_CACHE_VERSION
+);
 
 const cloneCandle = (candle: OHLCData): OHLCData => ({ ...candle });
 const cloneCandles = (candles: OHLCData[]): OHLCData[] => candles.map(cloneCandle);
@@ -60,7 +65,8 @@ class CandleCache {
     const symbol = normalizeSymbol(parts.symbol);
     const timeframe = normalizeTimeframe(parts.timeframe);
     const limit = Math.max(0, Math.floor(Number(parts.limit) || 0));
-    return [scope, symbol, timeframe, limit].join(KEY_SEPARATOR) as CandleCacheKey;
+    const version = normalizeVersion(parts.version);
+    return [scope, symbol, timeframe, limit, version].join(KEY_SEPARATOR) as CandleCacheKey;
   }
 
   getLatest(key: CandleCacheKey): CandleCacheEntry | null {
@@ -153,18 +159,26 @@ class CandleCache {
       symbol: normalizeSymbol(metadata.symbol),
       timeframe: normalizeTimeframe(metadata.timeframe),
       limit: Math.max(0, Math.floor(Number(metadata.limit) || 0)),
+      version: normalizeVersion(metadata.version),
       brokerOffsetSeconds: metadata.brokerOffsetSeconds ?? 0,
       source: metadata.source ?? 'backend',
     };
   }
 
   private metadataFromKey(key: CandleCacheKey): CandleCacheMetadata {
-    const [scope = 'default', symbol = '', timeframe = 'M1', limit = '0'] = String(key).split(KEY_SEPARATOR);
+    const [
+      scope = 'default',
+      symbol = '',
+      timeframe = 'M1',
+      limit = '0',
+      version = CANDLE_HISTORY_CACHE_VERSION,
+    ] = String(key).split(KEY_SEPARATOR);
     return {
       scope: normalizeScope(scope),
       symbol: normalizeSymbol(symbol),
       timeframe: normalizeTimeframe(timeframe),
       limit: Math.max(0, Math.floor(Number(limit) || 0)),
+      version: normalizeVersion(version),
       brokerOffsetSeconds: 0,
       source: 'backend',
     };

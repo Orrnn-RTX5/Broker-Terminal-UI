@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 import { API_V2_BASE_URL, isLocalViteDevServer, normalizeBrokerServerUrl } from '../config/api';
 import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
+import { normalizeCandleApiQueryParams } from '../utils/candleApi';
 
 const resolveV2BaseUrl = (baseUrl?: string): string => {
   if (!baseUrl) return API_V2_BASE_URL;
@@ -590,12 +591,12 @@ export const marketApi = {
   getCandles: (symbol: string, params?: { timeframe?: string; count?: number; from?: number; to?: number }) =>
     apiClient.get<{ candles: Candle[] } | Candle[]>(`/candles/${encodeURIComponent(symbol)}`, {
       baseUrl: API_V2_BASE_URL,
-      params: {
+      params: normalizeCandleApiQueryParams({
         timeframe: params?.timeframe,
-        limit: params?.count,
+        count: params?.count,
         from: params?.from,
         to: params?.to,
-      },
+      }),
     }),
 
   getOHLC: async (symbol: string, timeframe: string = 'M1', count: number = 100) => {
@@ -603,7 +604,7 @@ export const marketApi = {
       `/candles/${encodeURIComponent(symbol)}`,
       {
         baseUrl: API_V2_BASE_URL,
-        params: { timeframe, limit: count },
+        params: normalizeCandleApiQueryParams({ timeframe, count }),
       }
     );
     return Array.isArray(response) ? response : (response.candles || []);

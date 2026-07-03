@@ -347,6 +347,32 @@ describe('trade candle normalization and websocket cleanup', () => {
     expect(requestedUrl.searchParams.get('to')).toBe('1778713500');
   });
 
+  it('normalizes outgoing candle aliases, millisecond cursors, and max limits', async () => {
+    localStorage.setItem('auth_token', 'jwt-token');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ symbol: 'GBPUSD', timeframe: 'M5', candles: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new ChartDataService();
+    await expect(service.fetchCandles({
+      symbol: 'GBPUSD',
+      timeframe: '5m',
+      count: 10_000,
+      from: 1777593600000,
+      to: 1780271999000,
+    })).resolves.toEqual([]);
+
+    const requestedUrl = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(requestedUrl.pathname).toBe('/api/v2/candles/GBPUSD');
+    expect(requestedUrl.searchParams.get('timeframe')).toBe('M5');
+    expect(requestedUrl.searchParams.get('limit')).toBe('5000');
+    expect(requestedUrl.searchParams.get('from')).toBe('1777593600');
+    expect(requestedUrl.searchParams.get('to')).toBe('1780271999');
+    expect(requestedUrl.search).not.toContain('5m');
+  });
+
   it('parses wrapped candle responses and sorts newest-first M1 rows ascending', async () => {
     localStorage.setItem('auth_token', 'jwt-token');
     const newest = utcSeconds(2026, 5, 1, 0, 2);

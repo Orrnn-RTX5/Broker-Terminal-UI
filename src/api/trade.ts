@@ -1,5 +1,6 @@
 import { API_V2_BASE_URL, isLocalViteDevServer } from '../config/api';
 import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
+import { normalizeCandleApiQueryParams } from '../utils/candleApi';
 import type {
   Account,
   AccountMetrics,
@@ -278,7 +279,10 @@ export const marketV2Api = {
     apiClient.get<Tick>(`/quotes/${encodeURIComponent(symbol)}`, v2Options(options)),
 
   getCandles: (symbol: string, params?: CandleParams, options?: ApiRequestOptions) =>
-    apiClient.get<Candle[]>(`/candles/${encodeURIComponent(symbol)}`, v2Options({ ...options, params })),
+    apiClient.get<Candle[]>(`/candles/${encodeURIComponent(symbol)}`, v2Options({
+      ...options,
+      params: normalizeCandleApiQueryParams(params),
+    })),
 
   getTicks: (symbol: string, params?: { limit?: number }, options?: ApiRequestOptions) =>
     apiClient.get<Tick[]>(`/ticks/${encodeURIComponent(symbol)}`, v2Options({ ...options, params })),
@@ -295,7 +299,10 @@ export const marketV2Api = {
 
 export const historyV2Api = {
   getCandles: (symbol: string, params?: HistoryCandleParams, options?: ApiRequestOptions) =>
-    apiClient.get<HistoryCandle[]>(`/candles/${encodeURIComponent(symbol)}`, historyOptions({ ...options, params })),
+    apiClient.get<HistoryCandle[]>(`/candles/${encodeURIComponent(symbol)}`, historyOptions({
+      ...options,
+      params: normalizeCandleApiQueryParams(params),
+    })),
 
   getLatestCandle: async (symbol: string, timeframe?: HistoryCandleParams['timeframe'], options?: ApiRequestOptions) => {
     const candles = await historyV2Api.getCandles(symbol, { timeframe, limit: 5 }, options);

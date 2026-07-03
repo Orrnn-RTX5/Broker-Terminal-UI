@@ -5,6 +5,7 @@ import { debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 import { decodeJwtPayload } from '../utils/jwt';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import { enrichTradesWithCachedLevels } from '../utils/tradeHistoryLevelCache';
+import { normalizeCandleApiQueryParams } from '../utils/candleApi';
 
 export type GatewayAccount = {
   login?: number;
@@ -416,7 +417,10 @@ export const tradeGatewayApi = {
   },
 
   getHistoryUrl(symbol: string, timeframe = 'H1', count = 500): string {
-    const params = new URLSearchParams({ timeframe, limit: String(count) });
+    const params = new URLSearchParams();
+    Object.entries(normalizeCandleApiQueryParams({ timeframe, count })).forEach(([key, value]) => {
+      params.set(key, String(value));
+    });
     return `${API_V2_BASE_URL}/candles/${encodeURIComponent(symbol)}?${params}`;
   },
 

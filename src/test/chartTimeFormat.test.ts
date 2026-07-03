@@ -120,18 +120,24 @@ describe('chartTimeFormat', () => {
     })).toEqual({ from: 76, to: 104 });
   });
 
-  it('keeps sparse W1 and MN startup viewports zoomed like the reference screenshots', () => {
+  it('right-anchors sparse higher-timeframe startup viewports like lower timeframes', () => {
+    expect(getTradingChartInitialLogicalRange({
+      timeframe: 'D1',
+      totalBars: 10,
+      adaptiveVisibleBars: 60,
+    })).toEqual({ from: -14, to: 14 });
+
     expect(getTradingChartInitialLogicalRange({
       timeframe: 'W1',
       totalBars: 5,
       adaptiveVisibleBars: 60,
-    })).toEqual({ from: -0.5, to: 9.5 });
+    })).toEqual({ from: -1, to: 5.5 });
 
     expect(getTradingChartInitialLogicalRange({
       timeframe: 'MN',
       totalBars: 3,
       adaptiveVisibleBars: 60,
-    })).toEqual({ from: -2, to: 6 });
+    })).toEqual({ from: -2, to: 3.5 });
   });
 
   it('does not apply an initial logical range before candles exist', () => {

@@ -9,7 +9,7 @@ type TimeframeUnit = 'minute' | 'hour' | 'day' | 'week' | 'month';
 interface TradingChartInitialRangeProfile {
   dataBars: number;
   rightPadBars: number;
-  sparseLeftPadBars: number;
+  sparseRightPadBars: number;
 }
 
 const TIMEFRAME_LAYOUT_CONFIG: Record<TradingChartTimeframe, {
@@ -29,9 +29,9 @@ const TIMEFRAME_LAYOUT_CONFIG: Record<TradingChartTimeframe, {
 };
 
 const HIGHER_TIMEFRAME_INITIAL_RANGE_CONFIG: Partial<Record<TradingChartTimeframe, TradingChartInitialRangeProfile>> = {
-  D1: { dataBars: 24, rightPadBars: 4, sparseLeftPadBars: 0 },
-  W1: { dataBars: 6, rightPadBars: 4, sparseLeftPadBars: 0.5 },
-  MN: { dataBars: 5, rightPadBars: 3, sparseLeftPadBars: 2 },
+  D1: { dataBars: 24, rightPadBars: 4, sparseRightPadBars: 4 },
+  W1: { dataBars: 6, rightPadBars: 4, sparseRightPadBars: 0.5 },
+  MN: { dataBars: 5, rightPadBars: 3, sparseRightPadBars: 0.5 },
 };
 
 const pad2 = (value: number): string => String(value).padStart(2, '0');
@@ -275,14 +275,9 @@ export const getTradingChartInitialLogicalRange = ({
     };
   }
 
-  const sparseLeftPadBars = Math.min(
-    higherTimeframeProfile.sparseLeftPadBars,
-    Math.max(0, higherTimeframeProfile.dataBars - totalBars),
-  );
-
   return {
-    from: -sparseLeftPadBars,
-    to: higherTimeframeProfile.dataBars + higherTimeframeProfile.rightPadBars - sparseLeftPadBars,
+    from: totalBars - higherTimeframeProfile.dataBars,
+    to: totalBars + higherTimeframeProfile.sparseRightPadBars,
   };
 };
 

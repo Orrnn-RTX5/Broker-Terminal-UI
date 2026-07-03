@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { candleCache, type CandleCacheKeyParts } from './candleCache';
+import { CANDLE_HISTORY_CACHE_VERSION, candleCache, type CandleCacheKeyParts } from './candleCache';
 import type { OHLCData } from './chartDataService';
 
 const baseKeyParts: CandleCacheKeyParts = {
@@ -41,6 +41,20 @@ describe('candleCache', () => {
     expect(candleCache.getLatest(m1Key)?.candles.map(c => c.time)).toEqual([60]);
     expect(candleCache.getLatest(m5Key)?.candles.map(c => c.time)).toEqual([300]);
     expect(candleCache.getLatest(otherScopeKey)).toBeNull();
+  });
+
+  it('isolates entries by history cache version', () => {
+    const currentKey = candleCache.createKey(baseKeyParts);
+    const legacyKey = candleCache.createKey({ ...baseKeyParts, version: 'legacy-empty-history' });
+
+    candleCache.setLatest(legacyKey, [candle(30)], { ...baseKeyParts, version: 'legacy-empty-history' });
+
+    expect(candleCache.getLatest(currentKey)).toBeNull();
+    expect(candleCache.getLatest(legacyKey)?.version).toBe('legacy-empty-history');
+
+    candleCache.setLatest(currentKey, [candle(60)], baseKeyParts);
+    expect(candleCache.getLatest(currentKey)?.version).toBe(CANDLE_HISTORY_CACHE_VERSION);
+    expect(candleCache.getLatest(currentKey)?.candles.map(c => c.time)).toEqual([60]);
   });
 
   it('clones candles on set and get so callers cannot mutate cached data', () => {

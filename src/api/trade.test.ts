@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { API_ENDPOINTS, RTX5_API_URL } from '../config/api';
 import { ApiError, removeToken, setToken } from './client';
 import { marketApi } from './endpoints';
+import type { CandleParams, HistoryCandleParams } from '../types/api';
 import {
   accountV2Api,
   authV2Api,
@@ -192,6 +193,38 @@ describe('trade v2 API contract calls', () => {
       `${RTX5_API_URL}/api/v2/candles/EUR%2FUSD?timeframe=M15&from=1760000000&to=1760000900&limit=50`
     );
     expect(candleRequest.headers.Authorization).toBe('Bearer jwt-token');
+  });
+
+  it('normalizes v2 candle aliases, millisecond ranges, and max limits', async () => {
+    setToken('jwt-token');
+
+    await marketV2Api.getCandles('EUR/USD', {
+      timeframe: '15m',
+      from: 1777593600000,
+      to: 1780271999000,
+      limit: 10_000,
+    } as unknown as CandleParams);
+
+    expect(lastFetchCall().url).toBe(
+      `${RTX5_API_URL}/api/v2/candles/EUR%2FUSD?timeframe=M15&from=1777593600&to=1780271999&limit=5000`
+    );
+
+    await historyV2Api.getCandles('GBPUSD', {
+      timeframe: '1h',
+      from: 1777593600000,
+      to: 1780271999000,
+      limit: 6000,
+    } as unknown as HistoryCandleParams);
+
+    expect(lastFetchCall().url).toBe(
+      `${RTX5_API_URL}/api/v2/candles/GBPUSD?timeframe=H1&from=1777593600&to=1780271999&limit=5000`
+    );
+
+    await marketApi.getOHLC('EUR/USD', '5m', 10_000);
+
+    expect(lastFetchCall().url).toBe(
+      `${RTX5_API_URL}/api/v2/candles/EUR%2FUSD?timeframe=M5&limit=5000`
+    );
   });
 
   it('normalizes fallback instrument identity and trading flags', async () => {

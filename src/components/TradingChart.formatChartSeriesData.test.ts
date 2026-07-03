@@ -141,6 +141,23 @@ describe('formatChartSeriesData market gap separators', () => {
     )).toEqual({ from: 3, to: 5 });
   });
 
+  it('does not time-anchor sparse startup ranges that begin before the first candle', () => {
+    const mnCandles = [utcSeconds(2026, 5, 1)].map(time => ({ time }));
+    const sparseStartupRange = { from: -4, to: 1.5 };
+
+    const leftVisibleTime = getLeftVisibleTimeFromLogicalRange(
+      mnCandles,
+      sparseStartupRange,
+    );
+
+    expect(leftVisibleTime).toBeNull();
+    expect(getVisibleLogicalRangeAnchoredToTime(
+      mnCandles,
+      leftVisibleTime,
+      sparseStartupRange,
+    )).toBeNull();
+  });
+
   it('suppresses global visible-range resets for background backfill renders', () => {
     expect(shouldApplyVisibleRangeResetForRender({
       resetVisibleRange: false,

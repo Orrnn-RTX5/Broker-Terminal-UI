@@ -17,6 +17,13 @@ import {
 import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
 import { decodeJwtPayload } from '../utils/jwt';
 import { candleCache } from './candleCache';
+import {
+  CANDLE_TIMEFRAME_SECONDS,
+  normalizeBackendCandleTimeframe,
+  normalizeBackendCandleTimeframeOrNull,
+  normalizeCandleApiQueryParams,
+  type BackendCandleTimeframe,
+} from '../utils/candleApi';
 
 export type OHLCData = {
   time: number;
@@ -30,7 +37,7 @@ export type OHLCData = {
 };
 
 export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
-export type ApiTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
+export type ApiTimeframe = BackendCandleTimeframe;
 
 export interface FetchCandlesOptions {
   symbol: string;
@@ -53,51 +60,9 @@ export interface CandleStreamSubscription {
   close: () => void;
 }
 
-const TIMEFRAME_ALIASES: Record<string, ApiTimeframe> = {
-  '1M': 'M1',
-  '1MIN': 'M1',
-  'M1': 'M1',
-  '1': 'M1',
-  '5M': 'M5',
-  '5MIN': 'M5',
-  'M5': 'M5',
-  '5': 'M5',
-  '15M': 'M15',
-  '15MIN': 'M15',
-  'M15': 'M15',
-  '15': 'M15',
-  '30M': 'M30',
-  '30MIN': 'M30',
-  'M30': 'M30',
-  '30': 'M30',
-  '1H': 'H1',
-  'H1': 'H1',
-  '60': 'H1',
-  '4H': 'H4',
-  'H4': 'H4',
-  '1D': 'D1',
-  'D1': 'D1',
-  '1W': 'W1',
-  'W1': 'W1',
-  'MN': 'MN',
-  '1MO': 'MN',
-};
-
-const API_TIMEFRAME_SECONDS: Record<ApiTimeframe, number> = {
-  M1: 60,
-  M5: 5 * 60,
-  M15: 15 * 60,
-  M30: 30 * 60,
-  H1: 60 * 60,
-  H4: 4 * 60 * 60,
-  D1: 24 * 60 * 60,
-  W1: 7 * 24 * 60 * 60,
-  MN: 30 * 24 * 60 * 60,
-};
-
 const normalizeTimeForApiTimeframe = (time: number, timeframe?: ApiTimeframe): number => {
   if (!time || !timeframe) return time;
-  return alignTimeframeBoundarySeconds(time, timeframe, API_TIMEFRAME_SECONDS[timeframe]);
+  return alignTimeframeBoundarySeconds(time, timeframe, CANDLE_TIMEFRAME_SECONDS[timeframe]);
 };
 
 const runtimeApiV2BaseUrl = (): string => {
@@ -164,9 +129,7 @@ const normalizeSymbol = (symbol: string): string =>
   symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
 const normalizeApiTimeframeValue = (timeframe: unknown): ApiTimeframe | null => {
-  if (timeframe === undefined || timeframe === null || timeframe === '') return null;
-  const normalized = String(timeframe).trim().toUpperCase();
-  return TIMEFRAME_ALIASES[normalized] ?? null;
+  return normalizeBackendCandleTimeframeOrNull(timeframe);
 };
 
 const toSeconds = (value: unknown): number => {
@@ -336,7 +299,7 @@ const messageMatchesCandleSubscription = (
 
 export class ChartDataService {
   normalizeTimeframe(timeframe: string): ApiTimeframe {
-    return normalizeApiTimeframeValue(timeframe) ?? 'M1';
+    return normalizeBackendCandleTimeframe(timeframe);
   }
 
   getCandleCacheScope(): string {
@@ -470,12 +433,14 @@ export class ChartDataService {
     }
     assertCandleAuthMatchesActiveBroker(token);
 
-    const coreUrl = `${apiV2BaseUrl}/candles/${encodeURIComponent(symbol)}${buildQuery({
+    const queryParams = normalizeCandleApiQueryParams({
       timeframe: apiTf,
-      limit: count,
+      count,
       from,
       to,
-    })}`;
+    });
+
+    const coreUrl = `${apiV2BaseUrl}/candles/${encodeURIComponent(symbol)}${buildQuery(queryParams)}`;
 
     const attempts = [
       { url: coreUrl, headers: authHeaders, isAuthenticatedCore: true },

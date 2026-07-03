@@ -11,6 +11,7 @@ import {
 
 export const DEFAULT_HISTORY_PAGE_SIZE = 3000;
 export const M1_HISTORY_PAGE_SIZE = 5000;
+export const M5_HISTORY_PAGE_SIZE = 5000;
 export const M1_OLDER_HISTORY_RANGE_FALLBACK_WINDOWS = 8;
 
 export type FetchCandlesPage = (options: FetchCandlesOptions) => Promise<OHLCData[]>;
@@ -49,9 +50,12 @@ export interface ChartHistoryBackfillDiagnostics {
 
 const normalizeTimeframe = (timeframe: string): string => String(timeframe || '').trim().toUpperCase();
 
-export const getHistoryPageSize = (timeframe: string): number => (
-  normalizeTimeframe(timeframe) === 'M1' ? M1_HISTORY_PAGE_SIZE : DEFAULT_HISTORY_PAGE_SIZE
-);
+export const getHistoryPageSize = (timeframe: string): number => {
+  const normalizedTimeframe = normalizeTimeframe(timeframe);
+  if (normalizedTimeframe === 'M1') return M1_HISTORY_PAGE_SIZE;
+  if (normalizedTimeframe === 'M5') return M5_HISTORY_PAGE_SIZE;
+  return DEFAULT_HISTORY_PAGE_SIZE;
+};
 
 export const getInitialHistoryCount = (timeframe: string, defaultCount: number): number => (
   normalizeTimeframe(timeframe) === 'M1' ? M1_HISTORY_PAGE_SIZE : defaultCount
