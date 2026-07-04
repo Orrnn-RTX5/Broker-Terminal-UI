@@ -848,6 +848,8 @@ export const TradingChart = React.memo(function TradingChart({
   const pendingChartRenderRef = useRef<PendingChartDataRender | null>(null);
   const chartRenderFrameRef = useRef<number | null>(null);
   const chartRenderIdleRef = useRef<number | null>(null);
+  const drawingRenderFrameRef = useRef<number | null>(null);
+  const drawingRenderSettledFrameRef = useRef<number | null>(null);
   const backgroundHistoryRenderTimerRef = useRef<number | null>(null);
   const pendingBackgroundHistoryPrependedBarsRef = useRef(0);
   const visibleRangeHistoryLoadSuppressedUntilRef = useRef(0);
@@ -1401,6 +1403,39 @@ export const TradingChart = React.memo(function TradingChart({
     }
   }, [clearBackgroundHistoryRenderQueue]);
 
+  const cancelScheduledDrawingRender = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    if (drawingRenderFrameRef.current !== null) {
+      window.cancelAnimationFrame(drawingRenderFrameRef.current);
+      drawingRenderFrameRef.current = null;
+    }
+
+    if (drawingRenderSettledFrameRef.current !== null) {
+      window.cancelAnimationFrame(drawingRenderSettledFrameRef.current);
+      drawingRenderSettledFrameRef.current = null;
+    }
+  }, []);
+
+  const scheduleDrawingRenderAfterChartData = useCallback((activeSymbol: string, activeTf: Timeframe) => {
+    if (typeof window === 'undefined') {
+      drawingManager.renderAll();
+      return;
+    }
+
+    cancelScheduledDrawingRender();
+    drawingRenderFrameRef.current = window.requestAnimationFrame(() => {
+      drawingRenderFrameRef.current = null;
+      drawingRenderSettledFrameRef.current = window.requestAnimationFrame(() => {
+        drawingRenderSettledFrameRef.current = null;
+        if (isDisposedRef.current || !chartRef.current || !seriesRef.current || !overlayRef.current) return;
+
+        drawingManager.setChart(chartRef.current, seriesRef.current, activeSymbol, 1, overlayRef.current, activeTf);
+        drawingManager.renderAll();
+      });
+    });
+  }, [cancelScheduledDrawingRender]);
+
   const getCandlesForFullRender = useCallback((): Candle[] => {
     const current = currentCandleRef.current;
     if (!current) return candlesRef.current;
@@ -1571,10 +1606,11 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }
       setCandlesLoadedRev(r => r + 1);
+      scheduleDrawingRenderAfterChartData(activeSymbol, activeTimeframe);
     } catch (e) {
       console.warn(`[Chart] Error setting chart data for ${pending.reason}:`, e);
     }
-  }, [applyInitialVisibleLogicalRange, getCandlesForFullRender, rememberVisibleLogicalRange, schedulePeriodSeparatorRender, scrollToLatestCandleNow, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
+  }, [applyInitialVisibleLogicalRange, getCandlesForFullRender, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
 
   const scheduleQueuedChartRenderFlush = useCallback((immediate = false) => {
     if (!pendingChartRenderRef.current) return;
@@ -1688,12 +1724,13 @@ export const TradingChart = React.memo(function TradingChart({
     return () => {
       historyAbortRef.current?.abort();
       cancelQueuedChartRender();
+      cancelScheduledDrawingRender();
       if (typeof window !== 'undefined' && chartInteractionIdleTimerRef.current !== null) {
         window.clearTimeout(chartInteractionIdleTimerRef.current);
         chartInteractionIdleTimerRef.current = null;
       }
     };
-  }, [cancelQueuedChartRender]);
+  }, [cancelQueuedChartRender, cancelScheduledDrawingRender]);
 
   // Initialize chart
   useEffect(() => {
@@ -2753,6 +2790,8 @@ export const TradingChart = React.memo(function TradingChart({
         // doesn't compare against a stale old-TF boundary.
         lastStoreCandleSecRef.current = 0;
 
+        drawingManager.setChart(chartRef.current, seriesRef.current, symbol, 1, overlayRef.current, timeframe);
+
         const hydratedFromCache = hydrateHistoryFromCache(timeframe, 'cached-timeframe-change');
         if (!hydratedFromCache) {
           // Clear existing visual data only when there is no cached replacement.
@@ -2801,7 +2840,7 @@ export const TradingChart = React.memo(function TradingChart({
         if (volumeRef.current) volumeRef.current.setData([]);
 
         // Update drawing manager with new symbol context — pass overlay div directly
-        drawingManager.setChart(chartRef.current, seriesRef.current, symbol, 1, overlayRef.current);
+        drawingManager.setChart(chartRef.current, seriesRef.current, symbol, 1, overlayRef.current, timeframe);
 
         // Trigger history load for new symbol
         loadHistory();
@@ -2934,6 +2973,10 @@ export const TradingChart = React.memo(function TradingChart({
 
     // (price line removed — live DOM badge replaces it)
 
+    // Update drawing manager before data render so saved drawings are loaded, then
+    // re-rendered after setData/visible-range application settles.
+    drawingManager.setChart(chart, series, symbol, 1, overlayRef.current, timeframe);
+
     // Set data if available
     if (candlesRef.current.length > 0) {
       console.log(`[TradingChart] Setting existing ${candlesRef.current.length} candles`);
@@ -2959,9 +3002,6 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }, 500);
     }
-
-    // Update drawing manager — pass overlay div directly
-    drawingManager.setChart(chart, series, symbol, 1, overlayRef.current);
 
     // Register scroll lock callbacks so drag on a drawing doesn't pan the chart
     drawingManager.setScrollLockCallbacks(
