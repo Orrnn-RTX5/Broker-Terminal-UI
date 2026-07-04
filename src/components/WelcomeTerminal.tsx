@@ -82,9 +82,10 @@ const ACHIEVER_LOGIN_FIELD_BORDER = '#1d3f68';
 const ACHIEVER_LOGIN_FIELD_FOCUS = '#2f8cff';
 const ACHIEVER_LOGIN_FIELD_FOCUS_SHADOW = '0 0 0 3px rgba(47, 140, 255, 0.16)';
 const LOGIN_TITLE_TEXT = 'Sign in to';
+const LOGIN_TITLE_ACCESSIBLE_LABEL = 'Sign in to RTX5';
 const LOGIN_TITLE_REVEAL_DELAY_MS = 90;
 const LOGIN_TITLE_LOGO_INITIAL_DELAY_MS = LOGIN_TITLE_TEXT.replace(/\s/g, '').length * LOGIN_TITLE_REVEAL_DELAY_MS;
-const RTX5_TITLE_LOGO_SRC = toPublicAssetPath('brand/rtx5-logo.png');
+const RTX5_TITLE_LOGO_SRC = toPublicAssetPath('brand/rtx5-login-wordmark.png');
 type LoginHeroFit = NonNullable<LoginHeroAsset['fit']>;
 type LoginHeroImageStyle = React.CSSProperties & {
     '--rtx-login-hero-fit': LoginHeroFit;
@@ -570,7 +571,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     <section data-welcome-card className="rtx-login-panel" aria-label="RTX Terminal login">
                         <div className="rtx-login-body">
                             <header className="rtx-form-header">
-                                <h1 className="rtx-login-title">
+                                <h1 className="rtx-login-title" aria-label={LOGIN_TITLE_ACCESSIBLE_LABEL}>
                                     <SplitText
                                         tag="span"
                                         text={LOGIN_TITLE_TEXT}
@@ -605,7 +606,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                                             alt=""
                                             aria-hidden="true"
                                             className="rtx-login-title-logo"
-                                            width={720}
+                                            width={502}
                                             height={197}
                                             loading="eager"
                                             decoding="async"
@@ -1709,7 +1710,8 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     display: flex;
                     align-items: center;
                     flex-wrap: wrap;
-                    gap: 12px;
+                    column-gap: 10px;
+                    row-gap: 6px;
                     color: #f5f6f8;
                     font-size: 29px;
                     line-height: 1.08;
@@ -1739,11 +1741,12 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 }
 
                 .rtx-login-title-logo {
-                    width: 136px;
+                    width: 116px;
                     height: auto;
                     display: inline-block;
                     object-fit: contain;
                     filter: drop-shadow(0 10px 18px rgba(128, 195, 63, 0.12));
+                    transform: translateY(-0.11em);
                 }
 
                 .rtx-login-title-logo-reveal .split-char {
@@ -2460,7 +2463,7 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     }
 
                     .rtx-login-title-logo {
-                        width: 124px;
+                        width: 112px;
                     }
 
                     .rtx-broker-strip {
@@ -2546,11 +2549,12 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
 
                     .rtx-form-header h1 {
                         font-size: 25px;
-                        gap: 10px;
+                        column-gap: 9px;
+                        row-gap: 6px;
                     }
 
                     .rtx-login-title-logo {
-                        width: 112px;
+                        width: 104px;
                     }
 
                     .rtx-broker-strip {
@@ -2678,13 +2682,14 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     }
 
                     .rtx-form-header h1 {
-                        gap: 10px;
+                        column-gap: 9px;
+                        row-gap: 6px;
                         font-size: 27px;
                         line-height: 1.14;
                     }
 
                     .rtx-login-title-logo {
-                        width: 118px;
+                        width: 112px;
                     }
 
                     .rtx-broker-strip {
@@ -2743,12 +2748,13 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     }
 
                     .rtx-form-header h1 {
-                        gap: 8px;
+                        column-gap: 8px;
+                        row-gap: 6px;
                         font-size: 24px;
                     }
 
                     .rtx-login-title-logo {
-                        width: 104px;
+                        width: 100px;
                     }
 
                     .rtx-broker-strip {
@@ -2803,12 +2809,13 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                     }
 
                     .rtx-form-header h1 {
-                        gap: 8px;
+                        column-gap: 8px;
+                        row-gap: 6px;
                         font-size: 25px;
                     }
 
                     .rtx-login-title-logo {
-                        width: 108px;
+                        width: 102px;
                     }
 
                     .rtx-broker-strip {
