@@ -729,7 +729,6 @@ export const TradingChart = React.memo(function TradingChart({
 
     const activate = () => activateActiveChartSource(activeChartSourceId);
     const container = containerRef.current;
-    activate();
 
     if (container) {
       container.addEventListener('pointerenter', activate);
@@ -746,6 +745,11 @@ export const TradingChart = React.memo(function TradingChart({
       unregister();
     };
   }, [activeChartSourceId]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    activateActiveChartSource(activeChartSourceId);
+  }, [activeChartSourceId, isActive]);
 
   const ohlcOpenRef = useRef<HTMLSpanElement>(null);
   const ohlcHighRef = useRef<HTMLSpanElement>(null);
@@ -6543,8 +6547,8 @@ export const TradingChart = React.memo(function TradingChart({
   }, []);
 
   const handleCtxOpenProperties = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('openChartProperties', { detail: { symbol } }));
-  }, [symbol]);
+    window.dispatchEvent(new CustomEvent('openChartProperties', { detail: { symbol, timeframe: activeTimeframe } }));
+  }, [activeTimeframe, symbol]);
 
   // ── Drag to Spawn MT5 Trade Levels ──
   useEffect(() => {

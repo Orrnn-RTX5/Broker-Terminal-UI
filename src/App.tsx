@@ -58,6 +58,10 @@ import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { ChartPropertiesDialog } from './components/dialogs/ChartPropertiesDialog';
 import { useConfirmStore } from './store/useConfirmStore';
 import { useChartSettingsStore } from './store/useChartSettingsStore';
+import {
+  resolveChartPropertiesTarget,
+  type ChartPropertiesEventDetail,
+} from './services/chartPropertiesTarget';
 
 // Services
 import { windowManager, type LayoutMode } from './services/windowManager';
@@ -2892,16 +2896,15 @@ function App() {
       placeOrder(side, allowedSymbol || undefined);
     };
 
-    const handleOpenChartProperties = (e: CustomEvent) => {
+    const handleOpenChartProperties = (e: CustomEvent<ChartPropertiesEventDetail>) => {
       setShowChartProperties(prev => {
         if (prev) return false;
-        const { symbol } = e.detail || {};
-        if (symbol) {
-           setChartPropsSymbol(symbol);
-        } else {
-           setChartPropsSymbol(selectedSymbol);
-        }
-        setChartPropsTimeframe(timeframe);
+        const target = resolveChartPropertiesTarget(e.detail, {
+          symbol: selectedSymbol,
+          timeframe,
+        });
+        setChartPropsSymbol(target.symbol);
+        setChartPropsTimeframe(target.timeframe);
         return true;
       });
     };
