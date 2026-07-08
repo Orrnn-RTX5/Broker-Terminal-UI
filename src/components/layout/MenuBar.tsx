@@ -554,7 +554,7 @@ const MenuItem = ({ item, onClose }: { item: MenuItem; onClose?: () => void }) =
                     ${item.disabled ? 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] group-hover:bg-[#2a2e39] [.rtx-advanced-view_&]:group-hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-[#111827] cursor-default group'}`}
             >
                 {/* Icon Area */}
-                <div className="w-4 flex items-center justify-center text-zinc-400 [.rtx-advanced-view_&]:text-gray-500 group-hover:text-zinc-200 [.rtx-advanced-view_&]:group-hover:text-gray-700">
+                <div className="flex h-4 w-4 shrink-0 items-center justify-center leading-none text-zinc-400 [.rtx-advanced-view_&]:text-gray-500 group-hover:text-zinc-200 [.rtx-advanced-view_&]:group-hover:text-gray-700 [&_svg]:block [&_svg]:shrink-0">
                     {item.icon}
                 </div>
 

@@ -24,7 +24,7 @@ import {
   hasFeedBrokerToken,
   onSessionChange,
 } from './brokerSession';
-import { enqueueLiveTick, type LiveTick } from './liveTickDispatcher';
+import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -417,6 +417,8 @@ class QuoteSocketManager {
     });
 
     ticks.forEach((tick) => {
+      if (isLiveMarketDataFrozen(tick.symbol)) return;
+
       // Step 14: Batched store path — enqueue for rAF-batched Zustand update
       enqueueLiveTick(tick.symbol, tick as LiveTick);
 

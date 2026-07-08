@@ -23,6 +23,8 @@ import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { useToolbarState } from '../hooks/useToolbarState';
 import { useCrosshair } from '../hooks/useCrosshair';
 import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
+import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
+import { setLiveMarketDataFrozen } from '../services/liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { drawingManager } from '../services/drawingManager';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
@@ -158,6 +160,10 @@ import {
   type TradingViewChartTheme,
   type VolumeDisplaySettings,
 } from './TradingChart.helpers';
+import {
+  getCurrentClosedMarketRenderCandles,
+  getCurrentClosedMarketSessionCloseSeconds,
+} from '../utils/currentClosedMarketTail';
 
 export type { ChartType, Timeframe } from './TradingChart.helpers';
 
@@ -175,6 +181,7 @@ const HISTORY_RENDER_INTERACTION_IDLE_MS = 180;
 const HISTORY_BACKGROUND_RENDER_COALESCE_MS = 250;
 const HISTORY_BACKGROUND_RENDER_MAX_PENDING_BARS = 15_000;
 const HISTORY_VISIBLE_RANGE_SUPPRESSION_MS = 120;
+const CHART_INTERACTION_IDLE_EVENT = 'rtx:chart-interaction-idle';
 const TIMEFRAME_PREFETCH_CONCURRENCY = 2;
 const PREFETCH_TIMEFRAMES: Timeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
 const TRADE_LEVEL_OVERRIDES_STORAGE_KEY = 'rtx-trade-level-overrides-v1';
@@ -656,7 +663,11 @@ export const TradingChart = React.memo(function TradingChart({
     return `chart:${panelId || chartInstanceId}:${normalizedSymbol}`;
   }, [chartInstanceId, panelId, symbol]);
 
-  useQuoteSubscription(symbol ? [symbol] : [], chartQuoteSourceId);
+  const marketStatus = useSymbolMarketStatus(symbol, {
+    enabled: Boolean(symbol),
+  });
+  const liveMarketDataFrozen = marketStatus.isTradeBlocked;
+  useQuoteSubscription(liveMarketDataFrozen || !symbol ? [] : [symbol], chartQuoteSourceId);
 
   // Debug: Log ACTUAL mount (not every re-render)
   useEffect(() => {
@@ -681,6 +692,18 @@ export const TradingChart = React.memo(function TradingChart({
   const periodSeparatorNodesRef = useRef<HTMLDivElement[]>([]);
   const periodSeparatorRenderPendingRef = useRef(false);
   const chartExportMetadataRef = useRef({ symbol, timeframe: activeTimeframe });
+  const liveMarketDataFrozenRef = useRef(liveMarketDataFrozen);
+
+  useEffect(() => {
+    liveMarketDataFrozenRef.current = liveMarketDataFrozen;
+  }, [liveMarketDataFrozen]);
+
+  useEffect(() => {
+    setLiveMarketDataFrozen(activeChartSourceId, symbol, liveMarketDataFrozen);
+    return () => {
+      setLiveMarketDataFrozen(activeChartSourceId, symbol, false);
+    };
+  }, [activeChartSourceId, liveMarketDataFrozen, symbol]);
 
   const clearPeriodSeparators = useCallback(() => {
     for (const marker of periodSeparatorNodesRef.current) {
@@ -855,6 +878,8 @@ export const TradingChart = React.memo(function TradingChart({
   const visibleRangeHistoryLoadSuppressedUntilRef = useRef(0);
   const isChartInteractionActiveRef = useRef(false);
   const chartInteractionIdleTimerRef = useRef<number | null>(null);
+  const pendingInteractionHistoryLoadRef = useRef(false);
+  const pendingInteractionPeriodSeparatorRenderRef = useRef(false);
   const prefetchedSymbolScopeRef = useRef<string | null>(null);
 
   const resetLiveQuotePriceGuard = useCallback(() => {
@@ -1234,6 +1259,11 @@ export const TradingChart = React.memo(function TradingChart({
       return;
     }
 
+    if (isChartInteractionActiveRef.current) {
+      pendingInteractionPeriodSeparatorRenderRef.current = true;
+      return;
+    }
+
     if (periodSeparatorRenderPendingRef.current) return;
     periodSeparatorRenderPendingRef.current = true;
 
@@ -1252,6 +1282,18 @@ export const TradingChart = React.memo(function TradingChart({
       brokerOffsetSeconds: brokerTimeOffsetSecRef.current,
     });
   }, [symbol, timeframe]);
+
+  const getClosedMarketRenderCandles = useCallback((candles: Candle[]): Candle[] => {
+    return getCurrentClosedMarketRenderCandles(candles, {
+      isMarketClosed: liveMarketDataFrozenRef.current,
+      sessionCloseTimeMs: marketStatus.sessionCloseTimeMs,
+    });
+  }, [marketStatus.sessionCloseTimeMs]);
+
+  const getLatestRenderableCandle = useCallback((candles: Candle[]): Candle | null => {
+    const renderCandles = getClosedMarketRenderCandles(candles);
+    return renderCandles[renderCandles.length - 1] ?? null;
+  }, [getClosedMarketRenderCandles]);
 
   const normalizeChartTimeToUnixSeconds = useCallback((time: Time): number | null => {
     if (typeof time === 'number') {
@@ -1508,6 +1550,7 @@ export const TradingChart = React.memo(function TradingChart({
       renderedPriceReferenceRef.current = createRenderedPriceReference(candlesForRender);
       reloadAggregationCandles(candlesForRender, activeTimeframe);
     }
+    candlesForRender = getClosedMarketRenderCandles(candlesForRender);
 
     const { sortedCandles, seriesData, volumeData, periodSeparators } = formatChartSeriesData(
       candlesForRender,
@@ -1610,7 +1653,7 @@ export const TradingChart = React.memo(function TradingChart({
     } catch (e) {
       console.warn(`[Chart] Error setting chart data for ${pending.reason}:`, e);
     }
-  }, [applyInitialVisibleLogicalRange, getCandlesForFullRender, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
+  }, [applyInitialVisibleLogicalRange, getCandlesForFullRender, getClosedMarketRenderCandles, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
 
   const scheduleQueuedChartRenderFlush = useCallback((immediate = false) => {
     if (!pendingChartRenderRef.current) return;
@@ -1692,6 +1735,33 @@ export const TradingChart = React.memo(function TradingChart({
     }, HISTORY_BACKGROUND_RENDER_COALESCE_MS);
   }, [flushBackgroundHistoryRender]);
 
+  const flushDeferredChartInteractionWork = useCallback(() => {
+    const shouldRenderPeriodSeparators = pendingInteractionPeriodSeparatorRenderRef.current;
+    pendingInteractionPeriodSeparatorRenderRef.current = false;
+    if (shouldRenderPeriodSeparators) {
+      schedulePeriodSeparatorRender();
+    }
+
+    const shouldLoadHistory = pendingInteractionHistoryLoadRef.current;
+    pendingInteractionHistoryLoadRef.current = false;
+    if (shouldLoadHistory && !isDisposedRef.current && !isVisibleRangeHistoryLoadSuppressed()) {
+      const visibleRange = chartRef.current?.timeScale().getVisibleLogicalRange() as LogicalRangeLike | null;
+      if (
+        visibleRange
+        && Number.isFinite(visibleRange.from)
+        && visibleRange.from < 50
+      ) {
+        loadMoreHistoryRef.current?.();
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(CHART_INTERACTION_IDLE_EVENT, {
+        detail: { chartSourceId: activeChartSourceId },
+      }));
+    }
+  }, [activeChartSourceId, isVisibleRangeHistoryLoadSuppressed, schedulePeriodSeparatorRender]);
+
   const markChartInteractionActive = useCallback(() => {
     if (typeof window === 'undefined') return;
     isChartInteractionActiveRef.current = true;
@@ -1705,6 +1775,7 @@ export const TradingChart = React.memo(function TradingChart({
   const markChartInteractionIdleSoon = useCallback(() => {
     if (typeof window === 'undefined') {
       isChartInteractionActiveRef.current = false;
+      flushDeferredChartInteractionWork();
       scheduleQueuedChartRenderFlush();
       return;
     }
@@ -1716,15 +1787,18 @@ export const TradingChart = React.memo(function TradingChart({
     chartInteractionIdleTimerRef.current = window.setTimeout(() => {
       isChartInteractionActiveRef.current = false;
       chartInteractionIdleTimerRef.current = null;
+      flushDeferredChartInteractionWork();
       scheduleQueuedChartRenderFlush();
     }, HISTORY_RENDER_INTERACTION_IDLE_MS);
-  }, [scheduleQueuedChartRenderFlush]);
+  }, [flushDeferredChartInteractionWork, scheduleQueuedChartRenderFlush]);
 
   useEffect(() => {
     return () => {
       historyAbortRef.current?.abort();
       cancelQueuedChartRender();
       cancelScheduledDrawingRender();
+      pendingInteractionHistoryLoadRef.current = false;
+      pendingInteractionPeriodSeparatorRenderRef.current = false;
       if (typeof window !== 'undefined' && chartInteractionIdleTimerRef.current !== null) {
         window.clearTimeout(chartInteractionIdleTimerRef.current);
         chartInteractionIdleTimerRef.current = null;
@@ -1883,6 +1957,10 @@ export const TradingChart = React.memo(function TradingChart({
     const logicalRangeHandler = (logicalRange: any) => {
       if (logicalRange && logicalRange.from < 50) {
         if (isVisibleRangeHistoryLoadSuppressed()) return;
+        if (isChartInteractionActiveRef.current) {
+          pendingInteractionHistoryLoadRef.current = true;
+          return;
+        }
         if (loadMoreHistoryRef.current) {
           loadMoreHistoryRef.current();
         }
@@ -1963,6 +2041,61 @@ export const TradingChart = React.memo(function TradingChart({
     candleAggregationService.loadHistoricalCandles(symbol, activeTf as AggTimeframe, ohlcvCandles);
   }, [symbol]);
 
+  useEffect(() => {
+    if (!liveMarketDataFrozen) return;
+
+    const activeTf = prevTimeframeRef.current || timeframe;
+    let nextCandles = candlesRef.current;
+    let finalizedCurrentCandle = false;
+    const currentCandle = currentCandleRef.current;
+    const sessionCloseSeconds = getCurrentClosedMarketSessionCloseSeconds(marketStatus.sessionCloseTimeMs);
+    const currentStartsBeforeClose = currentCandle && (
+      sessionCloseSeconds === null ||
+      !Number.isFinite(currentCandle.time) ||
+      currentCandle.time < sessionCloseSeconds
+    );
+
+    if (currentCandle && currentStartsBeforeClose) {
+      nextCandles = upsertCandleIntoHistory(candlesRef.current, currentCandle).candles;
+      candlesRef.current = nextCandles;
+      renderedPriceReferenceRef.current = createRenderedPriceReference(nextCandles);
+      reloadAggregationCandles(nextCandles, activeTf);
+      finalizedCurrentCandle = true;
+
+      if (nextCandles.length >= protectedDisplayedHistoryRef.current.length) {
+        protectedDisplayedHistoryRef.current = nextCandles;
+      }
+    }
+
+    const latestRenderableCandle = getLatestRenderableCandle(nextCandles);
+    if (latestRenderableCandle) {
+      currentCandleRef.current = latestRenderableCandle;
+      prevPriceRef.current = latestRenderableCandle.close;
+      updateLegendDOM(
+        latestRenderableCandle.open,
+        latestRenderableCandle.high,
+        latestRenderableCandle.low,
+        latestRenderableCandle.close,
+        getDisplayVolume(latestRenderableCandle, chartSettingsRef.current),
+      );
+    }
+
+    requestChartDataRender({
+      immediate: true,
+      resetVisibleRange: false,
+      suppressGlobalVisibleRangeReset: true,
+      reason: finalizedCurrentCandle ? 'market-closed-freeze-finalize' : 'market-closed-freeze',
+    });
+  }, [
+    getLatestRenderableCandle,
+    liveMarketDataFrozen,
+    marketStatus.sessionCloseTimeMs,
+    reloadAggregationCandles,
+    requestChartDataRender,
+    timeframe,
+    updateLegendDOM,
+  ]);
+
   const buildHistoryCacheTarget = useCallback((activeTf: Timeframe): { key: CandleCacheKey; metadata: CandleCacheMetadata } => {
     const apiTimeframe = chartDataService.normalizeTimeframe(activeTf);
     const metadata: CandleCacheMetadata = {
@@ -2035,7 +2168,7 @@ export const TradingChart = React.memo(function TradingChart({
       reason,
     });
 
-    const last = candles[candles.length - 1];
+    const last = getLatestRenderableCandle(candles);
     if (last) {
       const tfSec = getTimeframeSeconds(activeTf as AggTimeframe);
       const normalizedTime = alignTimeframeBoundarySeconds(last.time, activeTf as AggTimeframe, tfSec);
@@ -2051,7 +2184,7 @@ export const TradingChart = React.memo(function TradingChart({
     setApiError(null);
     setLoadingPhase('hidden');
     return true;
-  }, [buildHistoryCacheTarget, cancelQueuedChartRender, clearPeriodSeparators, reloadAggregationCandles, symbol, updateChartData, updateLegendDOM]);
+  }, [buildHistoryCacheTarget, cancelQueuedChartRender, clearPeriodSeparators, getLatestRenderableCandle, reloadAggregationCandles, symbol, updateChartData, updateLegendDOM]);
 
   const prefetchTimeframesForSymbol = useCallback((activeTf: Timeframe) => {
     if (!isActive || !symbol) return;
@@ -2535,36 +2668,38 @@ export const TradingChart = React.memo(function TradingChart({
 
       // Set current forming candle
       if (candles.length > 0) {
-        const last = candles[candles.length - 1];
+        const last = getLatestRenderableCandle(candles);
 
         // CRITICAL: normalize the forming candle's time to the TF boundary start.
         // The API may return a mid-minute timestamp (e.g. 10:30:45 instead of 10:30:00).
         // If we keep 10:30:45 as currentCandleRef.time, then expectedCandleTime (10:30:00)
         // is LESS than it, making the clockInterval condition (current < expected) FALSE:
         // the clock never fires and the forming candle never rolls over to a new bar.
-        const tfSec = getTimeframeSeconds(activeTf as AggTimeframe);
-        const normalizedTime = alignTimeframeBoundarySeconds(last.time, activeTf as AggTimeframe, tfSec);
+        if (last) {
+          const tfSec = getTimeframeSeconds(activeTf as AggTimeframe);
+          const normalizedTime = alignTimeframeBoundarySeconds(last.time, activeTf as AggTimeframe, tfSec);
 
-        currentCandleRef.current = { ...last, time: normalizedTime };
-        updateLegendDOM(last.open, last.high, last.low, last.close, getDisplayVolume(last, chartSettingsRef.current));
+          currentCandleRef.current = { ...last, time: normalizedTime };
+          updateLegendDOM(last.open, last.high, last.low, last.close, getDisplayVolume(last, chartSettingsRef.current));
         console.log(`[Chart] Last candle time: ${last.time} → normalized to TF boundary: ${normalizedTime} (${activeTf})`);
 
-        // Advance the store candle cursor so the 100ms poll doesn't re-process
-        // candles that were already loaded from the REST API.
-        if (activeTf === 'M1' && normalizedTime > lastStoreCandleSecRef.current) {
-          lastStoreCandleSecRef.current = normalizedTime;
-          console.log(`[Chart] Store candle cursor advanced to ${normalizedTime} after history load`);
-        }
+          // Advance the store candle cursor so the 100ms poll doesn't re-process
+          // candles that were already loaded from the REST API.
+          if (activeTf === 'M1' && normalizedTime > lastStoreCandleSecRef.current) {
+            lastStoreCandleSecRef.current = normalizedTime;
+            console.log(`[Chart] Store candle cursor advanced to ${normalizedTime} after history load`);
+          }
 
-        prevPriceRef.current = last.close;
+          prevPriceRef.current = last.close;
 
         // Kick the boundary timer now that currentCandleRef is populated.
         // Without this, if the timer fired while history was still loading
         // (currentCandleRef was null), rollover() silently bailed and the chart
         // would stay frozen until the NEXT minute boundary — i.e. it only worked
         // after a page refresh because history was served instantly from cache.
-        if (scheduleBoundaryTimerRef.current) {
-          scheduleBoundaryTimerRef.current();
+          if (scheduleBoundaryTimerRef.current) {
+            scheduleBoundaryTimerRef.current();
+          }
         }
       }
 
@@ -2588,7 +2723,7 @@ export const TradingChart = React.memo(function TradingChart({
       // we're still waiting on the WS snapshot rather than stuck connecting.
       setLoadingPhase(prev => (prev === 'connecting' ? 'receiving' : prev));
     }
-  }, [authToken, clearBackgroundHistoryRenderQueue, symbol, timeframe, hydrateHistoryFromCache, loadRemainingHistoryInBackground, prefetchTimeframesForSymbol, reconcileCandlesWithLiveQuote, resetEmptyHistoryState, resetLiveQuotePriceGuard, restoreProtectedDisplayedHistory, setHistoryCache, updateChartData]);
+  }, [authToken, clearBackgroundHistoryRenderQueue, symbol, timeframe, getLatestRenderableCandle, hydrateHistoryFromCache, loadRemainingHistoryInBackground, prefetchTimeframesForSymbol, reconcileCandlesWithLiveQuote, resetEmptyHistoryState, resetLiveQuotePriceGuard, restoreProtectedDisplayedHistory, setHistoryCache, updateChartData]);
 
   // Keep loadHistoryRef in sync so the boundary poller can trigger a silent refresh
   useEffect(() => {
@@ -3300,6 +3435,10 @@ export const TradingChart = React.memo(function TradingChart({
 
     const handleVisibleRangeChange = () => {
       syncLeftVisibleTime();
+      if (isChartInteractionActiveRef.current) {
+        pendingInteractionPeriodSeparatorRenderRef.current = true;
+        return;
+      }
       schedulePeriodSeparatorRender();
     };
 
@@ -3454,6 +3593,7 @@ export const TradingChart = React.memo(function TradingChart({
     // isNewCandle=false → update the last bar in-place.
     const push = (c: Candle, isNewCandle: boolean) => {
       if (isDisposedRef.current || !seriesRef.current) return;
+      if (liveMarketDataFrozenRef.current) return;
       if (isNewCandle) {
         console.log(`[Push] 🆕 NEW candle → time=${new Date((c.time as number) * 1000).toISOString()}, O=${c.open} H=${c.high} L=${c.low} C=${c.close}`);
       }
@@ -3504,6 +3644,7 @@ export const TradingChart = React.memo(function TradingChart({
     // at or past newTime (idempotent — safe to call from multiple paths).
     const rollover = (newTime: number, openPrice?: number) => {
       console.log(`[Rollover] called → newTime=${new Date(newTime * 1000).toISOString()}, current=${currentCandleRef.current ? new Date((currentCandleRef.current.time as number) * 1000).toISOString() : 'null'}`);
+      if (liveMarketDataFrozenRef.current) { console.warn('[Rollover] BAIL: market data frozen'); return; }
       if (!currentCandleRef.current) { console.warn('[Rollover] BAIL: currentCandleRef is null'); return; }
       if ((currentCandleRef.current.time as number) >= newTime) { console.warn(`[Rollover] BAIL: current=${currentCandleRef.current.time} >= newTime=${newTime} (already rolled)`); return; }
       if (isDisposedRef.current || !seriesRef.current) { console.warn('[Rollover] BAIL: disposed or no series'); return; }
@@ -3525,6 +3666,7 @@ export const TradingChart = React.memo(function TradingChart({
     // ── Main tick polling loop ─────────────────────────────────────────
     const interval = setInterval(() => {
       if (isDisposedRef.current || isRebuildingRef.current || !seriesRef.current) return;
+      if (liveMarketDataFrozenRef.current) return;
       const activeTf = prevTimeframeRef.current || timeframe;
 
       // Get the latest tick from window.rtxTickCache map first for high performance, fallback to Zustand store
@@ -3722,6 +3864,7 @@ export const TradingChart = React.memo(function TradingChart({
     // ── FIX WebSocket: server-confirmed completed candles ──────────────────────
     const applyServerCandle = (c: Candle) => {
       if (isDisposedRef.current || isRebuildingRef.current) return;
+      if (liveMarketDataFrozenRef.current) return;
       const [reconciled] = reconcileCandlesWithLiveQuote([c], 'stream update');
       if (!reconciled) return;
       c = reconciled;
@@ -3794,6 +3937,7 @@ export const TradingChart = React.memo(function TradingChart({
       timeframe: streamTimeframe,
       onSnapshot: (snapshot) => {
         if (isDisposedRef.current || isRebuildingRef.current || snapshot.length === 0) return;
+        if (liveMarketDataFrozenRef.current) return;
         const rawSnapshot = getValidSortedCandles(snapshot as Candle[]);
         let reconciledSnapshot = reconcileCandlesWithLiveQuote(rawSnapshot, 'stream snapshot');
         if (
@@ -4502,6 +4646,7 @@ export const TradingChart = React.memo(function TradingChart({
   const tradeHistoryRefreshTimerRef = useRef<number | null>(null);
   const tradeMissingGraceTimerRef = useRef<number | null>(null);
   const tradeOverlayRafRef = useRef<number | null>(null);
+  const tradeOverlayInteractionRelayoutPendingRef = useRef(false);
   const tradeLevelCrossRefreshPendingRef = useRef<Set<string>>(new Set());
   const tradeLevelCrossCloseCandidatesRef = useRef<Map<string, number>>(new Map());
   const tradeLevelOverridesRef = useRef<Map<string, TradeLevelOverride>>(new Map());
@@ -4851,6 +4996,11 @@ export const TradingChart = React.memo(function TradingChart({
     const digits = getSymbolDigits(symbol);
 
     const queueTradeOverlayRelayout = () => {
+      if (isChartInteractionActiveRef.current) {
+        tradeOverlayInteractionRelayoutPendingRef.current = true;
+        return;
+      }
+
       if (tradeOverlayRafRef.current !== null) return;
       tradeOverlayRafRef.current = requestAnimationFrame(() => {
         tradeOverlayRafRef.current = null;
@@ -5842,6 +5992,13 @@ export const TradingChart = React.memo(function TradingChart({
     const timeScaleHandler = () => queueTradeOverlayRelayout();
     chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(timeScaleHandler);
 
+    const handleChartInteractionIdle = () => {
+      if (!tradeOverlayInteractionRelayoutPendingRef.current) return;
+      tradeOverlayInteractionRelayoutPendingRef.current = false;
+      queueTradeOverlayRelayout();
+    };
+    window.addEventListener(CHART_INTERACTION_IDLE_EVENT, handleChartInteractionIdle);
+
     const unsubscribeAppStore = useAppStore.subscribe((state, previousState) => {
       const currentTick = resolveSymbolTick(state.ticks);
       const previousTick = resolveSymbolTick(previousState.ticks);
@@ -5959,6 +6116,8 @@ export const TradingChart = React.memo(function TradingChart({
       window.removeEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
       window.removeEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
       window.removeEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
+      window.removeEventListener(CHART_INTERACTION_IDLE_EVENT, handleChartInteractionIdle);
+      tradeOverlayInteractionRelayoutPendingRef.current = false;
 
       if (tradeHistoryRefreshTimerRef.current !== null) {
         window.clearTimeout(tradeHistoryRefreshTimerRef.current);
@@ -6414,9 +6573,32 @@ export const TradingChart = React.memo(function TradingChart({
     // Render immediately
     renderPositionLines();
 
+    let positionLabelRaf: number | null = null;
+    let positionLabelRelayoutPendingAfterInteraction = false;
+    const queuePositionLabelUpdate = () => {
+      if (positionLabelRaf !== null) return;
+      positionLabelRaf = requestAnimationFrame(() => {
+        positionLabelRaf = null;
+        updateLabelPositions();
+      });
+    };
+    const schedulePositionLabelUpdate = () => {
+      if (isChartInteractionActiveRef.current) {
+        positionLabelRelayoutPendingAfterInteraction = true;
+        return;
+      }
+
+      queuePositionLabelUpdate();
+    };
+    const handleChartInteractionIdle = () => {
+      if (!positionLabelRelayoutPendingAfterInteraction) return;
+      positionLabelRelayoutPendingAfterInteraction = false;
+      queuePositionLabelUpdate();
+    };
+
     // Update label positions on every crosshair move
     const crosshairLabelUpdater = (_param: any) => {
-      updateLabelPositions();
+      queuePositionLabelUpdate();
     };
     if (chartRef.current) {
       chartRef.current.subscribeCrosshairMove(crosshairLabelUpdater);
@@ -6424,11 +6606,12 @@ export const TradingChart = React.memo(function TradingChart({
 
     // Also update on time scale changes (scroll, zoom)
     const timeScaleHandler = () => {
-      updateLabelPositions();
+      schedulePositionLabelUpdate();
     };
     if (chartRef.current) {
       chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(timeScaleHandler);
     }
+    window.addEventListener(CHART_INTERACTION_IDLE_EVENT, handleChartInteractionIdle);
 
     // Re-render when useAppStore positions change
     const unsubscribePositions = useAppStore.subscribe((state, prevState) => {
@@ -6451,6 +6634,11 @@ export const TradingChart = React.memo(function TradingChart({
     return () => {
       unsubscribePositions();
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
+      window.removeEventListener(CHART_INTERACTION_IDLE_EVENT, handleChartInteractionIdle);
+      if (positionLabelRaf !== null) {
+        cancelAnimationFrame(positionLabelRaf);
+        positionLabelRaf = null;
+      }
       if (chartRef.current) {
         try { chartRef.current.unsubscribeCrosshairMove(crosshairLabelUpdater); } catch { }
         try { chartRef.current.timeScale().unsubscribeVisibleLogicalRangeChange(timeScaleHandler); } catch { }
@@ -7419,7 +7607,13 @@ export const TradingChart = React.memo(function TradingChart({
       <DrawingContextMenu onClose={() => { }} />
 
       {/* One-Click Trading Panel (Alt+T to toggle) */}
-      <OneClickTrading symbol={symbol} timeframe={timeframe} visible={showOneClick} tradeAllowed={tradeAllowed} />
+      <OneClickTrading
+        symbol={symbol}
+        timeframe={timeframe}
+        visible={showOneClick}
+        tradeAllowed={tradeAllowed}
+        marketStatus={marketStatus}
+      />
 
 
 

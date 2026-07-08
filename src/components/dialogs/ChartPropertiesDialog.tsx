@@ -52,6 +52,18 @@ const showOptions = [
   label: string;
 }>;
 
+const colorSchemeOptions = [
+  'Green on Black',
+  'Black on White',
+  'Yellow on Black',
+  'Custom',
+] as const satisfies ReadonlyArray<ColorScheme>;
+
+const darkColorSchemeOptionStyle: React.CSSProperties = {
+  backgroundColor: '#2b2b2b',
+  color: '#cccccc',
+};
+
 const getIsAdvancedUntitledLight = (): boolean => {
   if (typeof document === 'undefined') return false;
   const root = document.documentElement;
@@ -88,6 +100,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
     '--rtx-cp-preview-text': effectiveColors.foreground,
     '--rtx-cp-preview-label-bg': previewLabelBackground,
   } as React.CSSProperties;
+  const colorSchemeOptionStyle = isAdvancedUntitledLight ? undefined : darkColorSchemeOptionStyle;
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -263,10 +276,11 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
                     onChange={(e) => applyActivePresetScheme(e.target.value as ColorScheme)}
                     className="rtx-cp-select bg-[#2b2b2b] border border-[#444] text-[12px] px-2 py-0.5 rounded w-full text-[#ccc] outline-none focus:border-blue-500 transition-colors col-span-1"
                   >
-                    <option value="Green on Black">Green on Black</option>
-                    <option value="Black on White">Black on White</option>
-                    <option value="Yellow on Black">Yellow on Black</option>
-                    <option value="Custom">Custom</option>
+                    {colorSchemeOptions.map((scheme) => (
+                      <option key={scheme} value={scheme} style={colorSchemeOptionStyle}>
+                        {scheme}
+                      </option>
+                    ))}
                   </select>
 
                   <div className="rtx-cp-divider col-span-2 h-[1px] bg-[#333] my-1"></div>

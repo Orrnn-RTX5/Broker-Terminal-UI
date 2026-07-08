@@ -18,6 +18,7 @@ import { resolveOptionalPositionTime, resolvePositionOpenTime } from './services
 import { API_BASE_URL, WS_ENDPOINTS, updateDynamicUrls } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useActiveMarketSymbols } from './hooks/useLiveMarketData';
+import { fetchSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useSymbolMarketStatus';
 import {
   buildChartEligibleSymbolNames,
   getInstrumentSymbolName,
@@ -37,6 +38,7 @@ import {
 } from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
 import { formatOrderError } from './utils/orderError';
+import { createUnavailableMarketStatus, getMarketStatusTradeBlockMessage } from './utils/marketStatus';
 import { OneClickTrading } from './components/OneClickTrading';
 import { getStoredBrokerServer } from './services/brokerServers';
 import { BootstrapLoader } from './components/BootstrapLoader';
@@ -712,6 +714,9 @@ function App() {
     symbols: activeMarketSymbols,
     settled: activeMarketSymbolsSettled,
   } = useActiveMarketSymbols();
+  const selectedMarketStatus = useSymbolMarketStatus(selectedSymbol, {
+    enabled: isAuthenticated && Boolean(selectedSymbol),
+  });
 
   const [enableHistoricalData] = useState(true);
 
@@ -2275,6 +2280,17 @@ function App() {
     };
   }, [isAuthenticated, subscribe, getAcceptedChannelLogin, getLiveTradingLogin, markServerClosedTickets, markTradeWsMessage, reconcileOptimisticClosedPositions, refreshOrdersAndHistory]);
 
+  const ensureMarketOpenForOrder = useCallback(async (symbol: string): Promise<boolean> => {
+    const marketStatus = await fetchSymbolMarketStatus(symbol, { force: true })
+      .catch(() => createUnavailableMarketStatus(symbol));
+
+    if (marketStatus.isTradeBlocked) {
+      alert(getMarketStatusTradeBlockMessage(marketStatus, symbol));
+      return false;
+    }
+    return true;
+  }, []);
+
   const placeOrder = useCallback(async (side: 'BUY' | 'SELL', requestedSymbol?: string) => {
     setOrderLoading(true);
     try {
@@ -2282,6 +2298,8 @@ function App() {
       if (!loginId) return;
       const submitSymbol = getAllowedSymbol(requestedSymbol || selectedSymbol);
       if (!submitSymbol) return;
+      const marketOpen = await ensureMarketOpenForOrder(submitSymbol);
+      if (!marketOpen) return;
 
       const chartEntryPrice = getChartEntryPriceForSymbol(submitSymbol, side);
       const chartEntryTime = new Date().toISOString();
@@ -2303,7 +2321,7 @@ function App() {
     } finally {
       setOrderLoading(false);
     }
-  }, [getAllowedSymbol, getLiveTradingLogin, selectedSymbol, volume, refreshPositions, refreshOrdersAndHistory]);
+  }, [ensureMarketOpenForOrder, getAllowedSymbol, getLiveTradingLogin, selectedSymbol, volume, refreshPositions, refreshOrdersAndHistory]);
 
   const handleOrderPanelSubmit = useCallback(async (order: {
     type: 'buy' | 'sell';
@@ -2317,6 +2335,8 @@ function App() {
       if (!submitSymbol) return;
       const loginId = getLiveTradingLogin();
       if (!loginId) return;
+      const marketOpen = await ensureMarketOpenForOrder(submitSymbol);
+      if (!marketOpen) return;
 
       const chartEntryPrice = getChartEntryPriceForSymbol(submitSymbol, side);
       const chartEntryTime = new Date().toISOString();
@@ -2339,7 +2359,7 @@ function App() {
     } finally {
       setOrderLoading(false);
     }
-  }, [getAllowedSymbol, getLiveTradingLogin, orderPanelSymbol, selectedSymbol, refreshPositions, refreshOrdersAndHistory]);
+  }, [ensureMarketOpenForOrder, getAllowedSymbol, getLiveTradingLogin, orderPanelSymbol, selectedSymbol, refreshPositions, refreshOrdersAndHistory]);
 
   const closePosition = useCallback(async (tradeId: number, volume?: number) => {
     if (volume !== undefined) {
@@ -2993,6 +3013,7 @@ function App() {
             onChartTypeChange={setChartType}
             onTimeframeChange={setTimeframe}
             symbol={selectedSymbol}
+            marketStatus={selectedMarketStatus}
             onLoadTemplate={(template) => {
               // Apply chart settings from template
               if (template.chartType) setChartType(template.chartType);
@@ -3171,6 +3192,7 @@ function App() {
             symbol={orderPanelSymbol || selectedSymbol}
             currentPrice={orderPanelPrice}
             onSubmitOrder={handleOrderPanelSubmit}
+            marketStatus={selectedMarketStatus}
           />
 
           {/* Save Workspace Dialog (Ctrl+S) */}

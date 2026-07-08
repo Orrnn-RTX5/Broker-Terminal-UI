@@ -18,6 +18,11 @@ import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
+import { fetchSymbolMarketStatus, useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
+import {
+    createUnavailableMarketStatus,
+    getMarketStatusTradeBlockMessage,
+} from '../utils/marketStatus';
 
 export function LastSymbolPanel() {
     const {
@@ -60,6 +65,9 @@ export function LastSymbolPanel() {
     });
     const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
     const panelRef = useRef<HTMLDivElement>(null);
+    const marketStatus = useSymbolMarketStatus(lastSymbol, {
+        enabled: Boolean(lastSymbol),
+    });
 
     // Get live tick for last symbol (with robust normalized matching to match chart)
     const tick = (() => {
@@ -134,6 +142,8 @@ export function LastSymbolPanel() {
     }, [useRiskSizing, account, volume, riskPercent, slPips, pipSize, isJPY]);
 
     const effectiveLot = useRiskSizing ? calculateRiskLot() : volume;
+    const tradeBlockedMessage = getMarketStatusTradeBlockMessage(marketStatus, lastSymbol);
+    const canPlaceTrade = Boolean(lastSymbol) && !marketStatus.isTradeBlocked;
 
     // Flash status message
     const flash = useCallback((msg: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -149,9 +159,15 @@ export function LastSymbolPanel() {
                 if (!lastSymbol) flash('No last symbol — place a trade first', 'error');
                 return;
             }
-
             setIsPlacing(true);
             try {
+                const latestMarketStatus = await fetchSymbolMarketStatus(lastSymbol, { force: true })
+                    .catch(() => createUnavailableMarketStatus(lastSymbol));
+                if (latestMarketStatus.isTradeBlocked) {
+                    flash(getMarketStatusTradeBlockMessage(latestMarketStatus, lastSymbol), 'error');
+                    return;
+                }
+
                 const orderData: any = {
                     symbol: lastSymbol,
                     side: side.toLowerCase(),
@@ -441,12 +457,17 @@ export function LastSymbolPanel() {
                         <span className="text-teal-400/70">TP: {tpPips} pips</span>
                     </div>
                 )}
+                {canPlaceTrade === false && lastSymbol && !statusMessage && (
+                    <div className="px-3 py-1 border-b border-amber-500/20 bg-amber-500/10 text-[10px] text-amber-300">
+                        {tradeBlockedMessage || marketStatus.label}
+                    </div>
+                )}
 
                 {/* Buy / Sell Buttons */}
                 <div className="grid grid-cols-2 gap-2 p-3">
                     <button
                         onClick={() => placeOrder('SELL')}
-                        disabled={isPlacing || !lastSymbol || bid === 0}
+                        disabled={isPlacing || !canPlaceTrade || bid === 0}
                         className="flex flex-col items-center justify-center py-2 rounded-md bg-red-600/20 hover:bg-red-600/35 border border-red-500/30 hover:border-red-500/60 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-all group active:scale-95"
                     >
                         <Icon name="trending-down" size="lg" className="mb-0.5 group-hover:scale-110 transition-transform" />
@@ -457,7 +478,7 @@ export function LastSymbolPanel() {
 
                     <button
                         onClick={() => placeOrder('BUY')}
-                        disabled={isPlacing || !lastSymbol || bid === 0}
+                        disabled={isPlacing || !canPlaceTrade || ask === 0}
                         className="flex flex-col items-center justify-center py-2 rounded-md bg-teal-600/20 hover:bg-teal-600/35 border border-teal-500/30 hover:border-teal-500/60 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-all group active:scale-95"
                     >
                         <Icon name="trending-up" size="lg" className="mb-0.5 group-hover:scale-110 transition-transform" />

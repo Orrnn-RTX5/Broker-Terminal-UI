@@ -10,6 +10,11 @@ import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import api from '../services/api';
 import { getTradeEntryPriceFromQuote } from '../services/chartPriceGuards';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
+import { fetchSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
+import {
+    createUnavailableMarketStatus,
+    type NormalizedMarketStatus,
+} from '../utils/marketStatus';
 import { getSymbolDigits } from '../utils/symbolUtils';
 import { formatPriceParts } from './ui/PriceDisplay';
 
@@ -18,6 +23,7 @@ interface OneClickTradingProps {
     visible: boolean;
     timeframe: string;
     tradeAllowed?: boolean;
+    marketStatus?: NormalizedMarketStatus;
 }
 
 type LooseRecord = Record<string, unknown>;
@@ -73,7 +79,7 @@ const upsertImmediatePosition = (position: Position) => {
     store.setPositions(nextPositions);
 };
 
-export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visible, timeframe, tradeAllowed = false }) => {
+export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visible, timeframe, tradeAllowed = false, marketStatus }) => {
     const [volume, setVolume] = useState(0.01);
     const [isPlacing, setIsPlacing] = useState(false);
     const [flashSide, setFlashSide] = useState<'buy' | 'sell' | null>(null);
@@ -142,12 +148,20 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
 
     const isVolumeValid = Number.isFinite(volume) && volume > 0;
     const hasExecutablePrice = bid > 0 && ask > 0;
-    const canSubmitOrder = tradeAllowed && isVolumeValid && hasExecutablePrice;
+    const effectiveMarketStatus = marketStatus ?? createUnavailableMarketStatus(symbol);
+    const marketBlockedMessage = 'Market Closed';
+    const canSubmitOrder = tradeAllowed && effectiveMarketStatus.isOpen && isVolumeValid && hasExecutablePrice;
 
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
         if (isPlacing) return;
         if (!tradeAllowed) {
             setError('Trading is not enabled for this symbol');
+            return;
+        }
+        const latestMarketStatus = await fetchSymbolMarketStatus(symbol, { force: true })
+            .catch(() => createUnavailableMarketStatus(symbol));
+        if (latestMarketStatus.isTradeBlocked) {
+            setError('Market Closed');
             return;
         }
         if (!symbol.trim()) {
@@ -240,9 +254,9 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
         minHeight: btnHeight,
         maxHeight: btnHeight,
         border: '1px solid rgba(255,255,255,0.1)',
-        cursor: isPlacing || !isVolumeValid || !hasExecutablePrice ? 'not-allowed' : 'pointer',
+        cursor: isPlacing || !canSubmitOrder ? 'not-allowed' : 'pointer',
         position: 'relative',
-        opacity: !isVolumeValid ? 0.5 : 1,
+        opacity: canSubmitOrder ? 1 : 0.5,
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         boxSizing: 'border-box',
     };
@@ -429,6 +443,20 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     borderTop: 'none',
                 }}>
                     ⚠ Invalid volume (min 0.01)
+                </div>
+            )}
+            {tradeAllowed && effectiveMarketStatus.isTradeBlocked && !error && (
+                <div style={{
+                    fontSize: 10,
+                    color: '#fbbf24',
+                    textAlign: 'center',
+                    padding: '3px 8px',
+                    background: 'rgba(120, 53, 15, 0.62)',
+                    borderRadius: 0,
+                    border: '1px solid rgba(245, 158, 11, 0.45)',
+                    borderTop: 'none',
+                }}>
+                    {marketBlockedMessage || effectiveMarketStatus.label}
                 </div>
             )}
             {error && (

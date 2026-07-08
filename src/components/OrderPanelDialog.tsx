@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
+import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
+import {
+  getMarketStatusTradeBlockMessage,
+  type NormalizedMarketStatus,
+} from '../utils/marketStatus';
 import { formatPriceParts } from './ui/PriceDisplay';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
 
@@ -30,6 +35,7 @@ interface OrderPanelProps {
   symbol: string;
   currentPrice: { bid: number; ask: number };
   onSubmitOrder: (order: any) => Promise<void> | void;
+  marketStatus?: NormalizedMarketStatus;
 }
 
 // Instrument config helper.
@@ -309,7 +315,8 @@ export function OrderPanelDialog({
   onClose,
   symbol: initialSymbol,
   currentPrice,
-  onSubmitOrder
+  onSubmitOrder,
+  marketStatus,
 }: OrderPanelProps) {
   const [symbol, setSymbol] = useState(initialSymbol);
   const [orderType, setOrderType] = useState<OrderType>('Market Execution');
@@ -318,6 +325,9 @@ export function OrderPanelDialog({
   const [comment, setComment] = useState('');
   const [isPlacing, setIsPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const liveMarketStatus = useSymbolMarketStatus(symbol, {
+    enabled: isOpen && Boolean(symbol),
+  });
 
   const tick = useAppStore((s) => s.ticks[symbol]);
   const account = useAppStore((s) => s.account);
@@ -360,6 +370,14 @@ export function OrderPanelDialog({
 
   const spread = ask - bid;
   const spreadDisplay = formatSpreadDisplayWithUnit(symbol, spread, bid, ask);
+  const propMarketStatus = marketStatus?.symbol === symbol.toUpperCase()
+    ? marketStatus
+    : null;
+  const effectiveMarketStatus = liveMarketStatus.loading && propMarketStatus
+    ? propMarketStatus
+    : liveMarketStatus;
+  const marketBlockedMessage = getMarketStatusTradeBlockMessage(effectiveMarketStatus, symbol);
+  const isMarketExecutionBlocked = orderType === 'Market Execution' && effectiveMarketStatus.isTradeBlocked;
 
   const formatPrice = (price: number) => {
     return formatPriceParts(price, symbol, digits);
@@ -378,6 +396,10 @@ export function OrderPanelDialog({
 
   const handleSubmit = useCallback(async (side: 'buy' | 'sell') => {
     if (isPlacing) return;
+    if (isMarketExecutionBlocked) {
+      setError(marketBlockedMessage || `Market is closed for ${symbol}.`);
+      return;
+    }
     setIsPlacing(true);
     setError(null);
 
@@ -400,7 +422,7 @@ export function OrderPanelDialog({
     } finally {
       setIsPlacing(false);
     }
-  }, [isPlacing, volumeStr, comment, symbol, onSubmitOrder, onClose]);
+  }, [isPlacing, isMarketExecutionBlocked, marketBlockedMessage, volumeStr, comment, symbol, onSubmitOrder, onClose]);
 
   if (!isOpen) return null;
 
@@ -528,6 +550,11 @@ export function OrderPanelDialog({
             {error && (
               <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 mb-2">{error}</div>
             )}
+            {isMarketExecutionBlocked && !error && (
+              <div className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded px-2 py-1 mb-2">
+                {marketBlockedMessage || `Market is closed for ${symbol}.`}
+              </div>
+            )}
 
             {/* Spacer */}
             <div className="flex-1 min-h-[8px]" />
@@ -555,7 +582,7 @@ export function OrderPanelDialog({
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => handleSubmit('sell')}
-                  disabled={isPlacing || bid <= 0}
+                  disabled={isPlacing || bid <= 0 || isMarketExecutionBlocked}
                   className="py-3 rounded text-white font-bold text-[13px] transition-all disabled:opacity-40 disabled:cursor-not-allowed
                     bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 active:from-red-600 active:to-red-800
                     border border-red-400/30 shadow-lg flex items-center justify-center gap-2"
@@ -565,7 +592,7 @@ export function OrderPanelDialog({
                 </button>
                 <button
                   onClick={() => handleSubmit('buy')}
-                  disabled={isPlacing || ask <= 0}
+                  disabled={isPlacing || ask <= 0 || isMarketExecutionBlocked}
                   className="py-3 rounded text-white font-bold text-[13px] transition-all disabled:opacity-40 disabled:cursor-not-allowed
                     bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 active:from-blue-600 active:to-blue-800
                     border border-blue-400/30 shadow-lg flex items-center justify-center gap-2"

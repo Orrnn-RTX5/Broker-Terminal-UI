@@ -27,6 +27,7 @@ import {
     useChartSettingsStore,
     type ChartProperties,
 } from '../../store/useChartSettingsStore';
+import type { NormalizedMarketStatus } from '../../utils/marketStatus';
 import { brokerV2Api } from '../../api/trade';
 import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
 import { configApi } from '../../services/api';
@@ -38,6 +39,7 @@ interface TopToolbarProps {
     onTimeframeChange: (tf: Timeframe) => void;
     onToggleDOM?: () => void;
     symbol?: string;
+    marketStatus?: NormalizedMarketStatus & { loading?: boolean };
     onLoadTemplate?: (template: any) => void;
 }
 
@@ -68,6 +70,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     onTimeframeChange,
     onToggleDOM,
     symbol = 'BTCUSD',
+    marketStatus,
     onLoadTemplate
 }) => {
     const { state: toolbarState, dispatch: dispatchToolbar } = useToolbarState();
@@ -196,6 +199,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             <HeaderBar
                 symbol={symbol}
                 timeframe={timeframe}
+                marketStatus={marketStatus}
             />
 
             {/* 2. Menu Bar (File, View, etc.) */}
@@ -296,7 +300,15 @@ const resolveBrokerDisplayName = (
         || serverName;
 };
 
-const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string }) => {
+const HeaderBar = ({
+    symbol,
+    timeframe,
+    marketStatus,
+}: {
+    symbol: string;
+    timeframe: string;
+    marketStatus?: NormalizedMarketStatus & { loading?: boolean };
+}) => {
     const accountId = useAppStore((s) => s.accountId) || '---';
     const savedAccounts = useAppStore((s) => s.savedAccounts) || [];
     const activeAccount = savedAccounts.find(a => String(a.login) === String(accountId));
@@ -387,7 +399,10 @@ const HeaderBar = ({ symbol, timeframe }: { symbol: string, timeframe: string })
     }, [accountId, serverName]);
 
     const displayLogo = logoUrl && !logoError ? getLogoUrl(logoUrl, logoBaseCandidates) : './titlebar-icon.png';
-    const terminalTitle = `${WEB_TERMINAL_TITLE} - ${accountId} - ${brokerName} - ${marginMode} - ${symbol},${timeframe.toUpperCase()}`;
+    const marketStatusSuffix = marketStatus?.isTradeBlocked && !marketStatus.loading && marketStatus.status !== 'unknown'
+        ? ` - ${marketStatus.label}`
+        : '';
+    const terminalTitle = `${WEB_TERMINAL_TITLE} - ${accountId} - ${brokerName} - ${marginMode} - ${symbol},${timeframe.toUpperCase()}${marketStatusSuffix}`;
 
     return (
         <div
@@ -1127,15 +1142,15 @@ const MainToolbar = ({
                     </button>
 
                     {/* Drawing Tools — Direct inline icon buttons, Advanced Mode only */}
-                    <div className={`ml-2 flex items-center gap-[2px] border rounded shadow-sm px-1 ${getToolsContainerClass()}`}>
+                    <div className={`ml-2 flex h-[28px] items-center gap-[2px] border rounded shadow-sm px-1 leading-none ${getToolsContainerClass()}`}>
                         {/* Cursor */}
                         <button
                             onClick={() => handleToolSelect('cursor')}
                             title="Cursor (Esc)"
-                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === null || toolbarState.activeTool === 'cursor')
+                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === null || toolbarState.activeTool === 'cursor')
                                 }`}
                         >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M3 2L3 13L6.5 10L8.5 14.5L10 13.8L8 9.3L12 9.3Z" fill="currentColor" stroke="currentColor" />
                             </svg>
                         </button>
@@ -1146,10 +1161,10 @@ const MainToolbar = ({
                         <button
                             onClick={() => handleToolSelect('trendline')}
                             title="Trend Line"
-                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'trendline')
+                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'trendline')
                                 }`}
                         >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
                                 <line x1="3" y1="13" x2="13" y2="3" />
                                 <circle cx="3" cy="13" r="1.5" fill="currentColor" />
                                 <circle cx="13" cy="3" r="1.5" fill="currentColor" />
@@ -1160,10 +1175,10 @@ const MainToolbar = ({
                         <button
                             onClick={() => handleToolSelect('hline')}
                             title="Horizontal Line"
-                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'hline')
+                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'hline')
                                 }`}
                         >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
                                 <line x1="2" y1="8" x2="14" y2="8" />
                                 <circle cx="4" cy="8" r="1.5" fill="currentColor" />
                                 <circle cx="12" cy="8" r="1.5" fill="currentColor" />
@@ -1174,10 +1189,10 @@ const MainToolbar = ({
                         <button
                             onClick={() => handleToolSelect('vline')}
                             title="Vertical Line"
-                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'vline')
+                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'vline')
                                 }`}
                         >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
                                 <line x1="8" y1="2" x2="8" y2="14" />
                                 <circle cx="8" cy="4" r="1.5" fill="currentColor" />
                                 <circle cx="8" cy="12" r="1.5" fill="currentColor" />
@@ -1188,10 +1203,10 @@ const MainToolbar = ({
                         <button
                             onClick={() => handleToolSelect('channel')}
                             title="Equidistant Channel"
-                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'channel')
+                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'channel')
                                 }`}
                         >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
                                 <line x1="2" y1="11" x2="11" y2="3" />
                                 <line x1="5" y1="14" x2="14" y2="6" />
                                 <circle cx="2" cy="11" r="1.3" fill="currentColor" />
@@ -1203,10 +1218,10 @@ const MainToolbar = ({
                         <button
                             onClick={() => handleToolSelect('fibonacci')}
                             title="Fibonacci Retracement"
-                            className={`flex items-center justify-center w-[28px] h-[26px] rounded transition-colors ${getToolBtnClass(toolbarState.activeTool === 'fibonacci')
+                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'fibonacci')
                                 }`}
                         >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
                                 <line x1="1" y1="3" x2="15" y2="3" />
                                 <line x1="1" y1="6.5" x2="15" y2="6.5" />
                                 <line x1="1" y1="10" x2="15" y2="10" />
@@ -1219,7 +1234,7 @@ const MainToolbar = ({
                     </div>
 
                     {/* Stamps dropdown — beside drawing tools */}
-                    <div className={`ml-1 flex items-center border rounded shadow-sm overflow-visible ${getToolsContainerClass()}`}>
+                    <div className={`ml-1 flex h-[28px] shrink-0 items-center border rounded shadow-sm overflow-visible leading-none ${getToolsContainerClass()}`}>
                         <StampsPopover
                             dispatchCommand={dispatchCommand}
                             dispatchToolbar={dispatchToolbar}
@@ -1235,12 +1250,12 @@ const MainToolbar = ({
                             handleToolSelect('cursor');
                         }}
                         title="Clear All Drawings"
-                        className={`ml-1 flex items-center justify-center w-[28px] h-[26px] rounded border transition-colors shadow-sm ${advancedViewEnabled
+                        className={`ml-1 flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded border leading-none transition-colors shadow-sm ${advancedViewEnabled
                             ? 'border-[#fda29b] bg-white text-[#d92d20] hover:bg-[#fef3f2] hover:border-[#f97066]'
                             : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/50'
                             }`}
                     >
-                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg className="block shrink-0" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="2 4 4 4 14 4" />
                             <path d="M5 4V2h6v2" />
                             <path d="M6 7v5M10 7v5" />
@@ -1365,50 +1380,62 @@ const STAMP_OPTIONS = [
 
 const StampIcon = ({ subtype, size = 18 }: { subtype: string; size?: number }) => {
     const stroke = '#2563eb';
+    const sharedSvgProps = {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        strokeWidth: 1.8,
+        strokeLinecap: 'round' as const,
+        strokeLinejoin: 'round' as const,
+        className: 'block shrink-0',
+        style: { display: 'block', width: size, height: size } as React.CSSProperties,
+    };
+
     switch (subtype) {
         case 'thumbsUp':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke={stroke}>
                     <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
                 </svg>
             );
         case 'thumbsDown':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke={stroke}>
                     <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
                 </svg>
             );
         case 'arrowUp':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke={stroke}>
                     <line x1="12" y1="19" x2="12" y2="5" />
                     <polyline points="5 12 12 5 19 12" />
                 </svg>
             );
         case 'arrowDown':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke={stroke}>
                     <line x1="12" y1="5" x2="12" y2="19" />
                     <polyline points="19 12 12 19 5 12" />
                 </svg>
             );
         case 'stopSign':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke={stroke}>
                     <circle cx="12" cy="12" r="10" />
                     <line x1="8" y1="12" x2="16" y2="12" />
                 </svg>
             );
         case 'checkSign':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke={stroke}>
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="9 12 11 14 15 10" />
                 </svg>
             );
         case 'leftPriceLabel':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke={stroke}>
                     <path d="M8 6h12v12H8l-6-6 6-6z" />
                     <path d="M12 10v4" />
                     <path d="M12 10h3c1 0 1 4 0 4h-3" />
@@ -1416,7 +1443,7 @@ const StampIcon = ({ subtype, size = 18 }: { subtype: string; size?: number }) =
             );
         case 'rightPriceLabel':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke={stroke}>
                     <path d="M16 6H4v12h12l6-6-6-6z" />
                     <path d="M8 10v4" />
                     <path d="M8 10h3c1 0 1 4 0 4H8" />
@@ -1424,28 +1451,28 @@ const StampIcon = ({ subtype, size = 18 }: { subtype: string; size?: number }) =
             );
         case 'buy':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke="#22c55e">
                     <line x1="12" y1="19" x2="12" y2="5" />
                     <polyline points="5 12 12 5 19 12" />
                 </svg>
             );
         case 'sell':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke="#ef4444">
                     <line x1="12" y1="5" x2="12" y2="19" />
                     <polyline points="19 12 12 19 5 12" />
                 </svg>
             );
         case 'arrow':
             return (
-                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <svg {...sharedSvgProps} stroke={stroke}>
                     <polygon points="12 4 6 12 18 12" />
                     <rect x="5" y="15" width="6" height="6" />
                     <circle cx="17" cy="18" r="3" />
                 </svg>
             );
         default:
-            return <span style={{ fontSize: size - 2 }}>?</span>;
+            return <span className="block leading-none" style={{ fontSize: size - 2 }}>?</span>;
     }
 };
 
@@ -1483,12 +1510,24 @@ const StampsPopover: React.FC<{
 
     const isActive = activeTool === 'stamp';
     const opt = STAMP_OPTIONS.find(o => o.subtype === lastSubtype) || STAMP_OPTIONS[0];
+    const pickerCellSize = 24;
+    const pickerGap = 2;
+    const pickerPadding = 6;
+    const pickerWidth = (pickerCellSize * 5) + (pickerGap * 4) + (pickerPadding * 2) + 2;
+    const triggerRect = ref.current?.getBoundingClientRect();
+    const pickerLeft = Math.max(
+        8,
+        Math.min(
+            triggerRect?.left ?? 0,
+            (typeof window !== 'undefined' ? window.innerWidth : pickerWidth) - pickerWidth - 8
+        )
+    );
 
     return (
-        <div ref={ref} className="relative flex items-center h-[26px]">
+        <div ref={ref} className="relative flex h-[26px] shrink-0 items-center leading-none">
             {/* Main button — icon only, re-uses last subtype */}
             <button
-                className={`flex items-center justify-center w-[28px] h-full rounded-l transition-colors ${isActive
+                className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded-l leading-none transition-colors ${isActive
                     ? (advancedViewEnabled ? 'bg-[#7E57C2] text-white' : 'bg-blue-500/15 text-blue-400')
                     : (advancedViewEnabled ? 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]' : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300')
                     }`}
@@ -1500,7 +1539,7 @@ const StampsPopover: React.FC<{
 
             {/* Chevron — opens picker */}
             <button
-                className={`flex items-center justify-center px-1 h-full rounded-r border-l transition-colors ${advancedViewEnabled ? 'border-[#e5e7eb]' : 'border-zinc-700/50'
+                className={`flex h-[26px] w-[14px] shrink-0 items-center justify-center rounded-r border-l leading-none transition-colors ${advancedViewEnabled ? 'border-[#e5e7eb]' : 'border-zinc-700/50'
                     } ${isActive || open
                         ? (advancedViewEnabled ? 'bg-[#7E57C2] text-white border-[#7E57C2]' : 'bg-blue-500/15 text-blue-400 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)]')
                         : (advancedViewEnabled ? 'text-[#667085] hover:bg-[#F3E5F5] hover:text-[#7E57C2]' : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300')
@@ -1508,7 +1547,7 @@ const StampsPopover: React.FC<{
                 title="Choose stamp"
                 onClick={() => setOpen(o => !o)}
             >
-                <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <svg className="block shrink-0" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                     <path d="M2 3.5l3 3 3-3" />
                 </svg>
             </button>
@@ -1516,26 +1555,33 @@ const StampsPopover: React.FC<{
             {open && ReactDOM.createPortal(
                 <div
                     ref={portalRef}
-                    className={`fixed border rounded shadow-xl z-[9999] p-1.5 ${advancedViewEnabled ? 'bg-white border-[#d0d5dd]' : 'bg-[#1a1c23] border-zinc-700'
-                        }`}
+                    className={`fixed border rounded shadow-xl z-[9999] p-1.5 leading-none ${advancedViewEnabled ? 'bg-white border-[#d0d5dd]' : 'bg-[#1a1c23] border-zinc-700'
+                    }`}
                     style={{
-                        top: (ref.current?.getBoundingClientRect().bottom ?? 0) + 4,
-                        left: ref.current?.getBoundingClientRect().left ?? 0,
+                        top: (triggerRect?.bottom ?? 0) + 4,
+                        left: pickerLeft,
                     }}
                 >
                     {/* 5-column icon grid */}
-                    <div className="grid grid-cols-5 gap-0.5">
+                    <div
+                        className="grid"
+                        style={{
+                            gridTemplateColumns: `repeat(5, ${pickerCellSize}px)`,
+                            gridAutoRows: `${pickerCellSize}px`,
+                            gap: pickerGap,
+                        }}
+                    >
                         {STAMP_OPTIONS.map(o => (
                             <button
                                 key={o.subtype}
                                 title={o.label}
-                                className={`flex items-center justify-center w-8 h-8 rounded transition-colors ${o.subtype === lastSubtype
+                                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded leading-none transition-colors ${o.subtype === lastSubtype
                                     ? (advancedViewEnabled ? 'bg-[#F3E5F5] ring-1 ring-[#7E57C2]' : 'bg-blue-500/15 ring-1 ring-blue-500/50')
                                     : (advancedViewEnabled ? 'hover:bg-[#f3f4f6]' : 'hover:bg-white/5')
                                     }`}
                                 onClick={() => selectStamp(o.subtype)}
                             >
-                                <StampIcon subtype={o.subtype} size={18} />
+                                <StampIcon subtype={o.subtype} size={16} />
                             </button>
                         ))}
                     </div>

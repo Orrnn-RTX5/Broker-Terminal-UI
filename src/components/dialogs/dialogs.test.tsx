@@ -172,4 +172,67 @@ describe('dialog components', () => {
     expect(symbolProperties.XAUUSD.colors.bullCandle).toBe('#000000');
     expect(symbolProperties.XAUUSD.colors.bearCandle).toBe('#f8fafc');
   });
+
+  it('keeps chart color scheme options styled for the dark modal', async () => {
+    const user = userEvent.setup();
+    document.documentElement.classList.remove('rtx-advanced-view', 'rtx-skin-untitled-light');
+
+    useChartSettingsStore.setState({
+      globalProperties: { ...defaultChartProperties },
+      symbolProperties: {},
+    });
+
+    render(
+      <ChartPropertiesDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        timeframe="H1"
+      />
+    );
+
+    await user.click(screen.getByText('Colors'));
+
+    expect(screen.getByRole('option', { name: 'Green on Black' })).toHaveStyle({
+      backgroundColor: '#2b2b2b',
+      color: '#cccccc',
+    });
+  });
+
+  it('lets the advanced light skin own chart color scheme option styling', async () => {
+    const user = userEvent.setup();
+    const root = document.documentElement;
+    let unmount: (() => void) | undefined;
+
+    useChartSettingsStore.setState({
+      globalProperties: { ...defaultChartProperties },
+      symbolProperties: {},
+    });
+
+    root.classList.add('rtx-advanced-view', 'rtx-skin-untitled-light');
+
+    try {
+      ({ unmount } = render(
+        <ChartPropertiesDialog
+          isOpen
+          onClose={vi.fn()}
+          symbol="XAUUSD"
+          timeframe="H1"
+        />
+      ));
+
+      await user.click(screen.getByText('Colors'));
+
+      const option = screen.getByRole('option', { name: 'Green on Black' });
+      expect(option).not.toHaveStyle({
+        backgroundColor: '#2b2b2b',
+        color: '#cccccc',
+      });
+      expect(option.style.backgroundColor).toBe('');
+      expect(option.style.color).toBe('');
+    } finally {
+      unmount?.();
+      root.classList.remove('rtx-advanced-view', 'rtx-skin-untitled-light');
+    }
+  });
 });
