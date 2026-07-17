@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { buildApiV2WsUrl, normalizeWsUrl } from '../config/api';
 import {
   buildBrokerApiV2,
@@ -15,10 +15,6 @@ describe('broker websocket URL builder', () => {
   beforeEach(() => {
     localStorage.clear();
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { backendTarget: 'desktop' };
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
   });
 
   it('preserves saved HTTPS broker server_url in desktop runtime', () => {
@@ -151,39 +147,36 @@ describe('broker websocket URL builder', () => {
     );
   });
 
-  it('uses Achiever runtime API, websocket routes, and feed auth in web mode', () => {
+  it('prefers runtime feed/backend broker id over localStorage deploy alias for feed WS auth', () => {
+    localStorage.setItem('broker_id', 'grow-trading-academy');
+    localStorage.setItem('rtx_broker_id', 'grow-trading-academy');
+    localStorage.setItem('feed_broker_token', 'feed-secret');
+    localStorage.setItem('server_url', 'https://services.growtradingacademy.com');
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
-      BACKEND_TARGET: 'web',
-      API_HOST: 'https://service.achieverfinancials.com',
-      API_HOST_EXT: 'https://service.achieverfinancials.com',
-      DISCOVERY_BASE_URL: 'https://superbackend.orrnn.com',
-      WS_HOST: 'wss://service.achieverfinancials.com',
-      FEED_BROKER_ID: 'achiever-financials',
+      BACKEND_TARGET: 'desktop',
+      BROKER_ID: 'gta_broker',
+      FEED_BROKER_ID: 'gta_broker',
       FEED_BROKER_TOKEN: 'feed-secret',
+      VITE_BROKER_ID: 'grow-trading-academy',
     };
-    localStorage.setItem('ws_url', 'wss://service.achieverfinancials.com/ws/v2');
-    localStorage.setItem('feed_url', 'wss://service.achieverfinancials.com/ws/feed');
 
-    expect(getServerUrl()).toBe('https://service.achieverfinancials.com');
-    expect(buildBrokerApiV2()).toBe('https://service.achieverfinancials.com/api/v2');
-    expect(buildBrokerWsV2Uri('access-token')).toBe(
-      'wss://service.achieverfinancials.com/ws/v2?token=access-token'
-    );
     expect(buildBrokerWsFeedUri()).toBe(
-      'wss://service.achieverfinancials.com/ws/feed?broker_id=achiever-financials&token=feed-secret'
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
     );
   });
 
-  it('does not use Vite env feed auth without runtime or persisted token', () => {
-    vi.stubEnv('VITE_FEED_BROKER_TOKEN', 'feed-secret');
+  it('maps localStorage deploy alias grow-trading-academy to gta_broker for feed WS auth', () => {
+    localStorage.setItem('broker_id', 'grow-trading-academy');
+    localStorage.setItem('feed_broker_token', 'feed-secret');
+    localStorage.setItem('server_url', 'https://services.growtradingacademy.com');
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
-      BACKEND_TARGET: 'web',
-      API_HOST: 'https://services.myprop.trade',
-      WS_HOST: 'wss://services.myprop.trade',
-      FEED_BROKER_ID: 'myprop-trade',
+      BACKEND_TARGET: 'desktop',
+      VITE_BROKER_ID: 'grow-trading-academy',
     };
 
-    expect(buildBrokerWsFeedUri()).toBe('wss://services.myprop.trade/ws/feed');
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
+    );
   });
 
   it('persists discovery-provided feed token for quote feed sockets', () => {

@@ -319,7 +319,6 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const isAllowedPublicBrokerHostname = (hostname: string): boolean => {
   const normalized = hostname.toLowerCase();
   return (normalized.startsWith('services.')
-    || normalized === 'service.achieverfinancials.com'
     || normalized === 'backend.orrnn.com'
     || normalized === 'testbrokerbackend.orrnn.com')
     && !LOCAL_HOSTS.has(normalized)
@@ -417,14 +416,67 @@ const isSameOrUnknownBroker = (nextBrokerId: string): boolean => {
   return !currentBrokerId || !nextBrokerId || currentBrokerId === nextBrokerId;
 };
 
-const getStoredBrokerId = (): string => {
+/**
+ * Deploy-time webterminal ids (brokers.json / container names) that must NOT be
+ * sent as feed WS `broker_id` query auth. Map them to the feed/backend broker id.
+ */
+const FEED_BROKER_ID_ALIASES: Record<string, string> = {
+  'grow-trading-academy': 'gta_broker',
+};
+
+const DEPLOY_ONLY_BROKER_ALIASES = new Set(Object.keys(FEED_BROKER_ID_ALIASES));
+
+const mapFeedBrokerAlias = (brokerId: string): string => {
+  const trimmed = String(brokerId || '').trim();
+  if (!trimmed) return '';
+  return FEED_BROKER_ID_ALIASES[trimmed] || FEED_BROKER_ID_ALIASES[trimmed.toLowerCase()] || trimmed;
+};
+
+const isDeployOnlyBrokerAlias = (brokerId: string): boolean => {
+  const trimmed = String(brokerId || '').trim();
+  if (!trimmed) return false;
+  return DEPLOY_ONLY_BROKER_ALIASES.has(trimmed) || DEPLOY_ONLY_BROKER_ALIASES.has(trimmed.toLowerCase());
+};
+
+/**
+ * Broker id used ONLY for feed WS query auth (`broker_id` + feed token).
+ * Prefer runtime feed/backend ids over localStorage deploy aliases that are
+ * written after login/discovery (e.g. grow-trading-academy → 401 on /ws/feed).
+ */
+const getFeedBrokerId = (): string => {
   if (typeof window === 'undefined') return '';
-  return String(
+
+  // a) Explicit feed broker id storage
+  const storedFeedBrokerId = String(getLocalStorageItem('feed_broker_id') || '').trim();
+  if (storedFeedBrokerId) return mapFeedBrokerAlias(storedFeedBrokerId);
+
+  // b) Runtime FEED_BROKER_ID / VITE_FEED_BROKER_ID (docker-entrypoint injects these)
+  const runtimeFeedBrokerId = getRuntimeConfigValue(['FEED_BROKER_ID', 'VITE_FEED_BROKER_ID']);
+  if (runtimeFeedBrokerId) return mapFeedBrokerAlias(runtimeFeedBrokerId);
+
+  // c) Runtime BROKER_ID when it is a real feed/backend id (not a deploy-only alias)
+  const runtimeBrokerId = getRuntimeConfigValue(['BROKER_ID']);
+  if (runtimeBrokerId && !isDeployOnlyBrokerAlias(runtimeBrokerId)) {
+    return runtimeBrokerId;
+  }
+
+  // e) localStorage broker_id / rtx_broker_id after alias map
+  //    (d = alias map applied here and below)
+  const storedBrokerId = String(
     getLocalStorageItem('broker_id')
     || getLocalStorageItem('rtx_broker_id')
-    || getRuntimeConfigValue(['BROKER_ID', 'VITE_BROKER_ID', 'FEED_BROKER_ID', 'VITE_FEED_BROKER_ID'])
     || ''
   ).trim();
+  if (storedBrokerId) return mapFeedBrokerAlias(storedBrokerId);
+
+  // Map deploy-only runtime BROKER_ID if localStorage had nothing usable
+  if (runtimeBrokerId) return mapFeedBrokerAlias(runtimeBrokerId);
+
+  // f) runtime VITE_BROKER_ID after alias map
+  const viteBrokerId = getRuntimeConfigValue(['VITE_BROKER_ID']);
+  if (viteBrokerId) return mapFeedBrokerAlias(viteBrokerId);
+
+  return '';
 };
 
 const getFeedBrokerToken = (): string => {
@@ -785,7 +837,7 @@ const appendFeedAuthToWsUrl = (url: string): string => {
   const token = getFeedBrokerToken();
   if (!token) return url;
 
-  const brokerId = getStoredBrokerId();
+  const brokerId = getFeedBrokerId();
   try {
     const parsed = new URL(url);
     if (brokerId && !parsed.searchParams.has('broker_id')) {
