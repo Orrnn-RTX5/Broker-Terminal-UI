@@ -44,6 +44,24 @@ describe('broker server URL normalization', () => {
   });
 });
 
+describe('position close adapter', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ok: true })));
+    clearStoredRouting();
+  });
+
+  it('preserves a positive decimal ticket and sends the full-close contract', async () => {
+    const ticket = '900719925474099312345';
+
+    await api.positions.closePosition(ticket);
+
+    expect(lastFetchCall()).toMatchObject({
+      url: `${API_V2_BASE_URL}/positions/${ticket}/close`,
+      body: { mode: 'full' },
+    });
+  });
+});
+
 // fe-webterminal-ui-07: opt-in (VITE_FORCE_HTTP_ONLY) https→http downgrade must
 // never strip TLS from a public broker. Only loopback / RFC1918 / link-local
 // targets may be downgraded to cleartext.

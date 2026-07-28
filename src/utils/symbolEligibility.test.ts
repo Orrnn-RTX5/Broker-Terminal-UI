@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildChartEligibleSymbolNames,
+  buildTradeEligibleSymbolNames,
   getInstrumentSymbolName,
   getUniqueSymbolNames,
   normalizeSymbolName,
+  resolveAuthorizedChartSymbol,
 } from './symbolEligibility';
 
 describe('symbol eligibility helpers', () => {
@@ -22,7 +24,7 @@ describe('symbol eligibility helpers', () => {
     ]);
   });
 
-  it('keeps active feed symbols chart-eligible even when they are absent from instruments', () => {
+  it('uses the authorized catalog for chart navigation and freshness for trading', () => {
     const instrumentSymbols = ['BTCUSD', 'GBPUSD', 'XAUUSD'];
     const activeFeedSymbols = ['USDJPY', 'NZDJPY', 'BTCUSD'];
 
@@ -30,9 +32,19 @@ describe('symbol eligibility helpers', () => {
       'BTCUSD',
       'GBPUSD',
       'XAUUSD',
-      'USDJPY',
-      'NZDJPY',
     ]);
-    expect(getUniqueSymbolNames(instrumentSymbols)).not.toContain('NZDJPY');
+    expect(buildTradeEligibleSymbolNames(instrumentSymbols, activeFeedSymbols)).toEqual(['BTCUSD']);
+  });
+
+  it('migrates a persisted EUROUSD chart selection to authorized EURUSD without requiring an active feed', () => {
+    const authorizedSymbols = ['BTCUSD', 'EURUSD', 'ETHUSD'];
+
+    expect(resolveAuthorizedChartSymbol('ETHUSD', authorizedSymbols)).toBe('ETHUSD');
+    expect(resolveAuthorizedChartSymbol('EUROUSD', authorizedSymbols)).toBe('EURUSD');
+    expect(resolveAuthorizedChartSymbol('USDJPY', authorizedSymbols)).toBe('');
+  });
+
+  it('gives a real authorized EUROUSD symbol precedence over the EURUSD display alias', () => {
+    expect(resolveAuthorizedChartSymbol('EUROUSD', ['EURUSD', 'EUROUSD'])).toBe('EUROUSD');
   });
 });

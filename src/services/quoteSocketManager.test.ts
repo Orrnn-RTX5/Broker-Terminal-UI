@@ -27,6 +27,7 @@ vi.mock('../store/useWebSocketStore', () => ({
 
 vi.mock('./liveTickDispatcher', () => ({
   enqueueLiveTick,
+  isLiveMarketDataFrozen: () => false,
 }));
 
 class FakeWebSocket {
@@ -248,6 +249,29 @@ describe('QuoteSocketManager feed protocol', () => {
 
     expect(enqueueLiveTick).toHaveBeenCalledTimes(2);
     expect(enqueueLiveTick.mock.calls.map(([symbol]) => symbol)).toEqual(['EURUSD', 'GBPUSD']);
+
+    manager.destroy();
+  });
+
+  it('preserves source timestamp provenance separately from receipt-time fallback', () => {
+    const manager = new QuoteSocketManager();
+    const receivedAt = Date.now();
+
+    internals(manager).handleMessage([
+      { symbol: 'eurusd', bid: 1.1, ask: 1.2, timestamp: 1_750_000_000 },
+      { symbol: 'xauusd', bid: 2400, ask: 2401 },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({
+      symbol: 'EURUSD',
+      timestamp: 1_750_000_000_000,
+      sourceTimestamp: 1_750_000_000_000,
+    });
+    expect(enqueueLiveTick.mock.calls[1][1]).toMatchObject({
+      symbol: 'XAUUSD',
+      sourceTimestamp: undefined,
+    });
+    expect(enqueueLiveTick.mock.calls[1][1].timestamp).toBeGreaterThanOrEqual(receivedAt);
 
     manager.destroy();
   });

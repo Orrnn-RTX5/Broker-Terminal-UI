@@ -36,6 +36,7 @@ const buildTimeEnvValues = () => ({
   VITE_MARKET_WS_URL: import.meta.env.VITE_MARKET_WS_URL || '',
   VITE_DISCOVERY_BASE_URL: import.meta.env.VITE_DISCOVERY_BASE_URL || '',
   VITE_BROKER_DISCOVERY_URL: import.meta.env.VITE_BROKER_DISCOVERY_URL || '',
+  VITE_BROKER_ID: import.meta.env.VITE_BROKER_ID || '',
   VITE_DESKTOP_BACKEND_URL: import.meta.env.VITE_DESKTOP_BACKEND_URL || '',
   VITE_DIRECT_BACKEND_URL: import.meta.env.VITE_DIRECT_BACKEND_URL || '',
 });
@@ -226,6 +227,16 @@ export const getRuntimeDiscoveryBaseUrl = (fallback = SHARED_DISCOVERY_FALLBACK)
 
   return SHARED_DISCOVERY_FALLBACK;
 };
+
+// The broker id that identifies THIS deployment. Each terminal is the same
+// shared bundle differentiated at runtime by `runtime-config.js`
+// (window.__RTX_RUNTIME_CONFIG__.BROKER_ID), so the runtime value must win over
+// the build-time env baked into the shared bundle.
+export const getRuntimeConfiguredBrokerId = () =>
+  String(first(
+    runtimeFirst('BROKER_ID', 'VITE_BROKER_ID', 'brokerId', 'broker_id'),
+    envValue('VITE_BROKER_ID'),
+  )).trim();
 
 const directUrlFromHostPort = (brokerInfo = {}) => {
   const host = first(

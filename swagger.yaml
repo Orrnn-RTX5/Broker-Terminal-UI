@@ -1986,13 +1986,9 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [symbols]
-              properties:
-                symbols:
-                  type: array
-                  items:
-                    type: string
+              type: array
+              items:
+                $ref: "#/components/schemas/WatchlistReplaceItem"
       responses:
         "200":
           description: Watchlist replaced
@@ -5060,6 +5056,18 @@ components:
           format: int64
         sort_order:
           type: integer
+          example: 0
+
+    WatchlistReplaceItem:
+      type: object
+      required: [symbol, sort_order]
+      properties:
+        symbol:
+          type: string
+          example: EURUSD
+        sort_order:
+          type: integer
+          minimum: 0
           example: 0
 
     # --- Notifications ---

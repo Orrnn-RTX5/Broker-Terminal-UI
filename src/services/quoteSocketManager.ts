@@ -35,6 +35,8 @@ export interface NormalizedQuoteTick {
   ask: number;
   spread: number;
   timestamp: number;
+  /** Feed-provided event time. Missing when `timestamp` is receipt-time fallback. */
+  sourceTimestamp?: number;
   lp?: string;
   volume?: number;
   dailyChange?: number;
@@ -57,6 +59,13 @@ const toNumber = (v: unknown, fallback = 0): number => {
 
 const normalizeSymbol = (v: unknown): string =>
   typeof v === 'string' ? v.trim().toUpperCase() : '';
+
+const sourceTimestampToMs = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === '') return undefined;
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return undefined;
+  return raw > 1_000_000_000_000 ? raw : raw * 1000;
+};
 
 // ─── Step 9-10: processIncomingPayload ───────────────────────────────────────
 
@@ -131,16 +140,19 @@ function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unkno
   const sessionHigh = Math.max(toNumber(session?.high_bid), toNumber(session?.high_ask), toNumber(payload?.high));
   const sessionLowValues = [toNumber(session?.low_bid), toNumber(session?.low_ask), toNumber(payload?.low)].filter(v => v > 0);
   const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
+  const sourceTimestamp = sourceTimestampToMs(
+    payload.timestamp
+      ?? payload.time
+      ?? (isRecord(envelope) ? envelope.timestamp ?? envelope.time : undefined),
+  );
 
   return {
     symbol,
     bid,
     ask,
     spread: toNumber(payload?.spread, ask - bid),
-    timestamp: (() => {
-      const raw = toNumber(payload?.timestamp ?? payload?.time, Date.now());
-      return raw > 1_000_000_000_000 ? raw : raw * 1000;
-    })(),
+    timestamp: sourceTimestamp ?? Date.now(),
+    sourceTimestamp,
     lp: typeof payload?.lp === 'string' ? payload.lp : undefined,
     volume: toNumber(payload?.volume, 1),
     dailyChange: payload?.dailyChange !== undefined

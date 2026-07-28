@@ -6,6 +6,7 @@ import {
   SHARED_DISCOVERY_FALLBACK,
   WEB_BACKEND_FALLBACK,
   getBackendTarget,
+  getRuntimeConfiguredBrokerId,
   getRuntimeDiscoveryBaseUrl,
   isDesktopBackendTarget,
   normalizeBrokerInfoForTarget,
@@ -138,6 +139,27 @@ describe('backend target resolver', () => {
     expect(source).not.toMatch(/import\.meta\.env(?:\?\.)?\s*\[/);
     expect(source).not.toContain('VITE_FEED_BROKER_TOKEN');
     expect(source).not.toContain('FEED_BROKER_TOKEN');
+  });
+
+  it('resolves the configured broker id from runtime config, overriding build-time env', () => {
+    vi.stubEnv('VITE_BROKER_ID', 'myprop-trade');
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      BROKER_ID: 'achiever-financials',
+      VITE_BROKER_ID: 'achiever-financials',
+    };
+
+    expect(getRuntimeConfiguredBrokerId()).toBe('achiever-financials');
+  });
+
+  it('falls back to build-time broker id env when no runtime config is injected', () => {
+    vi.stubEnv('VITE_BROKER_ID', 'myprop-trade');
+
+    expect(getRuntimeConfiguredBrokerId()).toBe('myprop-trade');
+  });
+
+  it('returns an empty broker id when neither runtime config nor env provides one', () => {
+    expect(getRuntimeConfiguredBrokerId()).toBe('');
   });
 
   it('rejects unsafe runtime API and WS hosts in web mode', () => {

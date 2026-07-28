@@ -6990,6 +6990,7 @@ export const TradingChart = React.memo(function TradingChart({
     const handlePointerDown = (e: PointerEvent) => {
       // Trade levels get first priority when the pointer is actually on/near one.
       if (e.button !== 0 || !seriesRef.current) return;
+      if (!tradeAllowed) return;
       if (chartSettingsRef.current.showTradeLevels === false) return;
 
       const y = getChartY(e);
@@ -7302,7 +7303,7 @@ export const TradingChart = React.memo(function TradingChart({
       endDragCursor();
       setTradeHoverCursor(false);
     };
-  }, [persistTradeLevelOverrides]);
+  }, [persistTradeLevelOverrides, tradeAllowed]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (

@@ -24,6 +24,8 @@ export interface Tick {
   ask: number;
   spread: number;
   timestamp: number;
+  /** Upstream event time, distinct from a local receipt-time fallback. */
+  sourceTimestamp?: number;
   lp?: string;
   volume?: number;
 }

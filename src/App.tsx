@@ -21,9 +21,11 @@ import { useActiveMarketSymbols } from './hooks/useLiveMarketData';
 import { fetchSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useSymbolMarketStatus';
 import {
   buildChartEligibleSymbolNames,
+  buildTradeEligibleSymbolNames,
   getInstrumentSymbolName,
   getUniqueSymbolNames as getAllowedSymbolNames,
   normalizeSymbolName,
+  resolveAuthorizedChartSymbol,
 } from './utils/symbolEligibility';
 
 import { LastSymbolPanel } from './components/LastSymbolPanel';
@@ -713,6 +715,7 @@ function App() {
   const {
     symbols: activeMarketSymbols,
     settled: activeMarketSymbolsSettled,
+    current: activeMarketSymbolsCurrent,
   } = useActiveMarketSymbols();
   const selectedMarketStatus = useSymbolMarketStatus(selectedSymbol, {
     enabled: isAuthenticated && Boolean(selectedSymbol),
@@ -918,9 +921,8 @@ function App() {
   // Listen for unauthorized/expired session events from API client
   useEffect(() => {
     const handleUnauthorizedEvent = (event: Event) => {
-      const requestToken = (event as CustomEvent<{ requestToken?: string | null }>).detail?.requestToken;
-      const currentToken = localStorage.getItem('auth_token');
-      if (requestToken && currentToken && requestToken !== currentToken) {
+      const staleRequest = (event as CustomEvent<{ staleRequest?: boolean }>).detail?.staleRequest;
+      if (staleRequest) {
         console.warn('[App] Ignoring stale unauthorized response for an older session token.');
         return;
       }
@@ -1286,26 +1288,34 @@ function App() {
   }, []);
 
   const allowedSymbolNames = useMemo(() => getAllowedSymbolNames(allSymbols), [allSymbols]);
-  const allowedSymbolSet = useMemo(() => new Set(allowedSymbolNames), [allowedSymbolNames]);
   const chartEligibleSymbolNames = useMemo(
     () => buildChartEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols),
     [activeMarketSymbols, allowedSymbolNames],
   );
+  const tradeEligibleSymbolNames = useMemo(
+    () => activeMarketSymbolsCurrent
+      ? buildTradeEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols)
+      : [],
+    [activeMarketSymbols, activeMarketSymbolsCurrent, allowedSymbolNames],
+  );
   const chartEligibleSymbolsKey = chartEligibleSymbolNames.join(',');
   const chartEligibleSymbolSet = useMemo(() => new Set(chartEligibleSymbolNames), [chartEligibleSymbolNames]);
-  const hasLoadedChartSymbols = hasLoadedSymbols && activeMarketSymbolsSettled;
+  const tradeEligibleSymbolSet = useMemo(() => new Set(tradeEligibleSymbolNames), [tradeEligibleSymbolNames]);
+  const hasLoadedChartSymbols = hasLoadedSymbols;
+  const hasLoadedTradeSymbols = hasLoadedSymbols
+    && activeMarketSymbolsSettled
+    && activeMarketSymbolsCurrent;
 
   const getAllowedSymbol = useCallback((symbol: unknown): string => {
     const normalized = normalizeSymbolName(symbol);
-    if (!normalized || !hasLoadedSymbols || allowedSymbolNames.length === 0) return '';
-    return allowedSymbolSet.has(normalized) ? normalized : '';
-  }, [allowedSymbolNames.length, allowedSymbolSet, hasLoadedSymbols]);
+    if (!normalized || !hasLoadedTradeSymbols || tradeEligibleSymbolNames.length === 0) return '';
+    return tradeEligibleSymbolSet.has(normalized) ? normalized : '';
+  }, [hasLoadedTradeSymbols, tradeEligibleSymbolNames.length, tradeEligibleSymbolSet]);
 
   const getChartEligibleSymbol = useCallback((symbol: unknown): string => {
-    const normalized = normalizeSymbolName(symbol);
-    if (!normalized || !hasLoadedChartSymbols || chartEligibleSymbolNames.length === 0) return '';
-    return chartEligibleSymbolSet.has(normalized) ? normalized : '';
-  }, [chartEligibleSymbolNames.length, chartEligibleSymbolSet, hasLoadedChartSymbols]);
+    if (!hasLoadedChartSymbols || chartEligibleSymbolNames.length === 0) return '';
+    return resolveAuthorizedChartSymbol(symbol, chartEligibleSymbolNames);
+  }, [chartEligibleSymbolNames, hasLoadedChartSymbols]);
 
   // Symbol select handler: dispatch openChart event for consistent MT5 behavior
   const handleSymbolSelect = useCallback((symbol: string) => {
@@ -1701,6 +1711,11 @@ function App() {
   };
 
   const handleModifyPosition = async (id: number, sl: number, tp: number) => {
+    const position = (useAppStore.getState().positions as Position[])
+      .find((candidate) => candidate.id === id)
+      ?? positions.find((candidate) => candidate.id === id);
+    if (!position || !getAllowedSymbol(position.symbol)) return;
+
     try {
       await tradingV2Api.modifyPosition(id, {
         price_sl: sl,
@@ -2432,15 +2447,13 @@ function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (!hasLoadedChartSymbols || chartEligibleSymbolNames.length === 0) return;
+    if (!hasLoadedChartSymbols) return;
 
-    const fallbackSymbol = chartEligibleSymbolSet.has(normalizeSymbolName(selectedSymbol))
-      ? normalizeSymbolName(selectedSymbol)
-      : chartEligibleSymbolNames[0];
-    if (!fallbackSymbol) return;
+    const fallbackSymbol = getChartEligibleSymbol(selectedSymbol) || chartEligibleSymbolNames[0] || '';
     if (fallbackSymbol !== normalizeSymbolName(selectedSymbol)) {
       setSelectedSymbol(fallbackSymbol);
     }
+    if (!fallbackSymbol) return;
 
     const store = useDockLayoutStore.getState();
     const layout = store.layout;
@@ -2455,14 +2468,16 @@ function App() {
         }
 
         if (child?.component !== 'Chart') continue;
-        const chartSymbol = normalizeSymbolName(child.props?.symbol ?? child.title?.split(',')[0]);
-        if (chartSymbol && chartEligibleSymbolSet.has(chartSymbol)) continue;
+        const requestedChartSymbol = child.props?.symbol ?? child.title?.split(',')[0];
+        const chartSymbol = getChartEligibleSymbol(requestedChartSymbol);
+        if (chartSymbol && chartSymbol === normalizeSymbolName(requestedChartSymbol)) continue;
 
         const nextTimeframe = child.props?.timeframe || timeframe;
+        const nextSymbol = chartSymbol || fallbackSymbol;
         updates.push({
           id: child.id,
-          props: { ...child.props, symbol: fallbackSymbol, timeframe: nextTimeframe },
-          title: `${fallbackSymbol},${nextTimeframe}`,
+          props: { ...child.props, symbol: nextSymbol, timeframe: nextTimeframe },
+          title: `${nextSymbol},${nextTimeframe}`,
         });
       }
     };
@@ -2476,7 +2491,7 @@ function App() {
         title: update.title,
       });
     });
-  }, [chartEligibleSymbolNames, chartEligibleSymbolSet, hasLoadedChartSymbols, selectedSymbol, timeframe]);
+  }, [chartEligibleSymbolNames, getChartEligibleSymbol, hasLoadedChartSymbols, selectedSymbol, timeframe]);
 
 
   useEffect(() => {
@@ -3039,6 +3054,7 @@ function App() {
                       globalTimeframe={timeframe}
                       allSymbols={allSymbols}
                       chartSymbols={chartEligibleSymbolNames}
+                      tradeSymbols={tradeEligibleSymbolNames}
                       selectedSymbol={selectedSymbol}
                       onSymbolSelect={handleSymbolSelect}
                       onClosePosition={handleClosePosition}

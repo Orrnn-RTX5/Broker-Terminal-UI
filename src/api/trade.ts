@@ -1,6 +1,7 @@
 import { API_V2_BASE_URL, isLocalViteDevServer } from '../config/api';
 import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
+import { requirePositionCloseTicket } from './positionClose';
 import type {
   Account,
   AccountMetrics,
@@ -43,6 +44,7 @@ import type {
   SetInvestorPasswordRequest,
   Tick,
   WatchlistItem,
+  WatchlistReplaceItem,
 } from '../types/api';
 
 export type CloseAllPositionsResponse = {
@@ -361,7 +363,11 @@ export const tradingV2Api = {
     apiClient.post<Position>('/orders', order, v2Options(options)),
 
   closePosition: (id: number | string, options?: ApiRequestOptions) =>
-    apiClient.post<Deal>(`/positions/${id}/close`, {}, v2Options(options)),
+    apiClient.post<Deal>(
+      `/positions/${requirePositionCloseTicket(id, '/api/v2/positions/{id}/close')}/close`,
+      { mode: 'full' },
+      v2Options(options)
+    ),
 
   modifyPosition: (id: number | string, changes: ModifyPositionRequest, options?: ApiRequestOptions) =>
     apiClient.put<Position>(`/positions/${id}`, changes, v2Options(options)),
@@ -395,8 +401,14 @@ export const watchlistV2Api = {
   list: (options?: ApiRequestOptions) =>
     apiClient.get<WatchlistItem[]>('/watchlist', v2Options(options)),
 
-  update: (symbols: string[], options?: ApiRequestOptions) =>
-    apiClient.put<WatchlistItem[]>('/watchlist', { symbols }, v2Options(options)),
+  update: (symbols: readonly string[], options?: ApiRequestOptions) => {
+    const items: WatchlistReplaceItem[] = symbols.map((symbol, sort_order) => ({
+      symbol,
+      sort_order,
+    }));
+
+    return apiClient.put<WatchlistItem[]>('/watchlist', items, v2Options(options));
+  },
 
   add: (symbol: string, options?: ApiRequestOptions) =>
     apiClient.post<WatchlistItem>(`/watchlist/${encodeURIComponent(symbol)}`, {}, v2Options(options)),
@@ -450,4 +462,5 @@ export type {
   SetInvestorPasswordRequest,
   Tick,
   WatchlistItem,
+  WatchlistReplaceItem,
 } from '../types/api';

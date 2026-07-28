@@ -7,6 +7,14 @@ import { PriceDisplay } from './ui/PriceDisplay';
 import { formatPrice as formatPriceUtil } from '../utils/symbolUtils';
 import { formatSpreadDisplay } from '../utils/spread';
 import { useActiveMarketSymbols, useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../hooks/useLiveMarketData';
+import {
+    getDefaultMarketWatchSymbols,
+    getMarketWatchDisplayErrors,
+    getMarketWatchSymbolLabel,
+    resolveMarketWatchSymbolInput,
+    searchMarketWatchSymbols,
+    shouldUseWatchlistAsMarketWatchSource,
+} from '../utils/marketWatchSource';
 
 interface MarketWatchProps {
     onSelectSymbol: (symbol: string) => void;
@@ -34,10 +42,17 @@ const normalizeSymbol = (value: unknown): string =>
 const uniqueSymbols = (symbols: unknown[]): string[] =>
     Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean)));
 
+const getSearchOptionId = (symbol: string): string =>
+    `market-watch-search-option-${encodeURIComponent(symbol)}`;
+
+interface ScopedManualSymbols {
+    watchlistId: string;
+    symbols: string[];
+}
+
 export const MarketWatch: React.FC<MarketWatchProps> = ({
     onSelectSymbol,
     selectedSymbol,
-    watchlist,
     onOpenOrderEntry
 }) => {
     // Subscribe to ticks from global store (populated by WebSocket)
@@ -49,13 +64,13 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         const active = s.watchlists.find((w) => w.id === s.activeWatchlistId);
         return active;
     });
-    const watchlistSymbols = activeWatchlist?.symbols || [];
     const {
         loading: watchlistLoading,
         error: watchlistError,
     } = useRemoteWatchlistSync(activeWatchlist?.id);
 
     const {
+        symbols: marketInstruments,
         disabledSymbols,
         loading: symbolsLoading,
         error: symbolsError,
@@ -63,6 +78,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     const {
         symbols: activeMarketSymbols,
         loading: activeSymbolsLoading,
+        current: activeSymbolsCurrent,
         error: activeSymbolsError,
     } = useActiveMarketSymbols();
 
@@ -76,27 +92,73 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     const [symbolInfoDialog, setSymbolInfoDialog] = useState<{ isOpen: boolean; symbol: string }>({ isOpen: false, symbol: '' });
     const [addingSymbol, setAddingSymbol] = useState(false);
     const [addSymbolInput, setAddSymbolInput] = useState('');
-    const [hiddenSymbols, setHiddenSymbols] = useState<Set<string>>(() => new Set());
-    const [manualSymbols, setManualSymbols] = useState<string[] | null>(null);
+    const [highlightedSearchResultIndex, setHighlightedSearchResultIndex] = useState(-1);
+    const [manualSymbols, setManualSymbols] = useState<ScopedManualSymbols>({
+        watchlistId: activeWatchlist?.id ?? '',
+        symbols: [],
+    });
 
     const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols(disabledSymbols)), [disabledSymbols]);
-    const availableSymbols = useMemo(() => {
-        return uniqueSymbols(activeMarketSymbols)
+    const authorizedSymbols = useMemo(() => {
+        return uniqueSymbols(marketInstruments.map((instrument) => instrument.symbol))
             .filter((symbol) => !disabledSymbolSet.has(symbol))
             .sort((a, b) => a.localeCompare(b));
-    }, [activeMarketSymbols, disabledSymbolSet]);
-    const availableSymbolSet = useMemo(() => new Set(availableSymbols), [availableSymbols]);
-    const defaultSymbols = useMemo(() => {
-        return availableSymbols;
-    }, [availableSymbols]);
-    const symbols = useMemo(() => {
-        const sourceSymbols = manualSymbols ?? defaultSymbols;
-        return uniqueSymbols(sourceSymbols)
-            .filter((symbol) => availableSymbolSet.has(symbol) && !hiddenSymbols.has(symbol) && !disabledSymbolSet.has(symbol));
-    }, [availableSymbolSet, defaultSymbols, disabledSymbolSet, hiddenSymbols, manualSymbols]);
-    const { loading: quotesLoading, error: quotesError } = useLiveQuotes(symbols);
-    const isSymbolListLoading = symbolsLoading || watchlistLoading || (availableSymbols.length === 0 && activeSymbolsLoading);
-    const marketWatchError = quotesError || symbolsError || watchlistError || (availableSymbols.length === 0 ? activeSymbolsError : null);
+    }, [disabledSymbolSet, marketInstruments]);
+    const authorizedSymbolSet = useMemo(() => new Set(authorizedSymbols), [authorizedSymbols]);
+    const activeSymbolSet = useMemo(() => new Set(uniqueSymbols(activeMarketSymbols)), [activeMarketSymbols]);
+    const actionableSymbolSet = useMemo(() => new Set(
+        activeSymbolsCurrent
+            ? authorizedSymbols.filter((symbol) => activeSymbolSet.has(symbol))
+            : [],
+    ), [activeSymbolSet, activeSymbolsCurrent, authorizedSymbols]);
+    const searchUniverse = authorizedSymbols;
+    const defaultSymbols = useMemo(
+        () => getDefaultMarketWatchSymbols(authorizedSymbols),
+        [authorizedSymbols],
+    );
+    const shouldMergePersistedSymbols = shouldUseWatchlistAsMarketWatchSource({
+        activeWatchlistId: activeWatchlist?.id,
+        activeWatchlistIsDefault: activeWatchlist?.isDefault,
+    });
+    const persistedSymbols = useMemo(() => shouldMergePersistedSymbols
+        ? uniqueSymbols(activeWatchlist?.symbols ?? [])
+            .map((symbol) => resolveMarketWatchSymbolInput(authorizedSymbols, symbol) ?? symbol)
+        : [], [
+        activeWatchlist?.symbols,
+        authorizedSymbols,
+        shouldMergePersistedSymbols,
+    ]);
+    const activeManualSymbols = manualSymbols.watchlistId === (activeWatchlist?.id ?? '')
+        ? manualSymbols.symbols
+        : [];
+    const symbols = useMemo(
+        () => uniqueSymbols([
+            ...(shouldMergePersistedSymbols ? persistedSymbols : defaultSymbols),
+            ...activeManualSymbols,
+        ]),
+        [activeManualSymbols, defaultSymbols, persistedSymbols, shouldMergePersistedSymbols],
+    );
+    const subscriptionSymbols = useMemo(() => symbols.filter(
+        (symbol) => authorizedSymbolSet.has(symbol),
+    ), [authorizedSymbolSet, symbols]);
+    const searchResults = useMemo(() => {
+        return searchMarketWatchSymbols(searchUniverse, addSymbolInput);
+    }, [addSymbolInput, searchUniverse]);
+    const activeSearchResultIndex = highlightedSearchResultIndex >= 0
+        && highlightedSearchResultIndex < searchResults.length
+        ? highlightedSearchResultIndex
+        : -1;
+    const activeSearchResult = activeSearchResultIndex >= 0
+        ? searchResults[activeSearchResultIndex]
+        : undefined;
+    const { loading: quotesLoading, error: quotesError } = useLiveQuotes(subscriptionSymbols);
+    const isSymbolListLoading = symbolsLoading || watchlistLoading || (searchUniverse.length === 0 && activeSymbolsLoading);
+    const marketWatchErrors = getMarketWatchDisplayErrors(
+        quotesError,
+        symbolsError,
+        watchlistError,
+        searchUniverse.length === 0 ? activeSymbolsError : null,
+    );
 
     // Build display data from live ticks only (no fallback)
     const displayData = useMemo(() => {
@@ -132,10 +194,11 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         });
 
         return data;
-    }, [liveTicks, symbols, tickLookup]);
+    }, [actionableSymbolSet, liveTicks, symbols, tickLookup]);
 
     const handleContextMenu = (e: React.MouseEvent, symbol: string) => {
         e.preventDefault();
+        if (!actionableSymbolSet.has(normalizeSymbol(symbol))) return;
         setContextMenu({
             visible: true,
             x: e.clientX,
@@ -145,6 +208,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     };
 
     const handleNewOrder = (symbol: string) => {
+        if (!actionableSymbolSet.has(normalizeSymbol(symbol))) return;
         if (onOpenOrderEntry) {
             onOpenOrderEntry(symbol);
         } else {
@@ -153,42 +217,24 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     };
 
     const handleChartWindow = (symbol: string) => {
+        if (!actionableSymbolSet.has(normalizeSymbol(symbol))) return;
         onSelectSymbol(symbol);
     };
 
     const handleTickChart = (symbol: string) => {
+        if (!actionableSymbolSet.has(normalizeSymbol(symbol))) return;
         alert(`Tick chart for ${symbol} - not yet implemented`);
     };
 
     const handleDepthOfMarket = (symbol: string) => {
+        if (!actionableSymbolSet.has(normalizeSymbol(symbol))) return;
         const event = new CustomEvent('openDepthOfMarket', { detail: { symbol } });
         window.dispatchEvent(event);
     };
 
     const handleSymbolSpecification = (symbol: string) => {
+        if (!actionableSymbolSet.has(normalizeSymbol(symbol))) return;
         setSymbolInfoDialog({ isOpen: true, symbol });
-    };
-
-    const handleHideSymbol = (symbol: string) => {
-        const normalized = normalizeSymbol(symbol);
-        if (!normalized) return;
-
-        if (manualSymbols !== null) {
-            setManualSymbols(prev => prev?.filter((s) => normalizeSymbol(s) !== normalized) ?? prev);
-        } else {
-            setHiddenSymbols(prev => {
-                if (prev.has(normalized)) return prev;
-                const updated = new Set(prev);
-                updated.add(normalized);
-                return updated;
-            });
-        }
-
-    };
-
-    const handleShowAllSymbols = () => {
-        setManualSymbols(null);
-        setHiddenSymbols(new Set());
     };
 
     const handleToggleColumn = (column: string) => {
@@ -214,35 +260,41 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         return `${percent}%`;
     };
 
-    // Add symbol to active watchlist
+    // The product defaults remain first. User-selected symbols are appended;
+    // custom watchlists persist them, while built-in watchlists reset to the
+    // canonical defaults on the next app session.
     const handleAddSymbol = () => {
         setAddingSymbol(true);
         setAddSymbolInput('');
+        setHighlightedSearchResultIndex(-1);
     };
 
-    const handleAddSymbolConfirm = () => {
-        const sym = addSymbolInput.trim();
-        if (sym) {
-            const normalized = normalizeSymbol(sym);
-            if (normalized && availableSymbolSet.has(normalized) && activeWatchlist && !watchlistSymbols.includes(normalized)) {
-                useWatchlistStore.getState().addSymbolToWatchlist(activeWatchlist.id, normalized);
-            }
-            if (normalized && availableSymbolSet.has(normalized)) {
-                setHiddenSymbols(prev => {
-                    if (!prev.has(normalized)) return prev;
-                    const updated = new Set(prev);
-                    updated.delete(normalized);
-                    return updated;
-                });
-                setManualSymbols(prev => {
-                    if (prev) return uniqueSymbols([...prev, normalized]);
-                    return defaultSymbols.includes(normalized) ? prev : uniqueSymbols([...symbols, normalized]);
-                });
+    const handleSearchResultSelect = (value: string) => {
+        const resolvedSymbol = resolveMarketWatchSymbolInput(searchUniverse, value);
+        if (!resolvedSymbol || !authorizedSymbolSet.has(resolvedSymbol)) return;
+
+        if (!symbols.includes(resolvedSymbol)) {
+            setManualSymbols((current) => {
+                const watchlistId = activeWatchlist?.id ?? '';
+                const currentSymbols = current.watchlistId === watchlistId ? current.symbols : [];
+                return {
+                    watchlistId,
+                    symbols: currentSymbols.includes(resolvedSymbol)
+                        ? currentSymbols
+                        : [...currentSymbols, resolvedSymbol],
+                };
+            });
+            if (shouldMergePersistedSymbols && activeWatchlist) {
+                useWatchlistStore.getState().addSymbolToWatchlist(activeWatchlist.id, resolvedSymbol);
             }
         }
+        onSelectSymbol(resolvedSymbol);
         setAddingSymbol(false);
         setAddSymbolInput('');
+        setHighlightedSearchResultIndex(-1);
     };
+
+    const handleAddSymbolConfirm = () => handleSearchResultSelect(addSymbolInput);
 
     return (
         <>
@@ -256,9 +308,11 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                 </div>
 
                 <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white min-w-0">
-                    {marketWatchError && (
-                        <div className="px-2 py-1 text-[11px] text-red-700 bg-red-50 border-b border-red-200">
-                            {marketWatchError}
+                    {marketWatchErrors.length > 0 && (
+                        <div role="alert" aria-label="Market Watch errors" className="px-2 py-1 text-[11px] text-red-700 bg-red-50 border-b border-red-200">
+                            <ul className="m-0 pl-4">
+                                {marketWatchErrors.map((message) => <li key={message}>{message}</li>)}
+                            </ul>
                         </div>
                     )}
                     {quotesLoading && symbols.length > 0 && Object.keys(liveTicks).length === 0 && (
@@ -266,12 +320,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                             Loading quotes...
                         </div>
                     )}
-                    {symbols.length === 0 ? (
-                        <div className="flex items-center justify-center h-32 text-gray-500 text-xs px-4 text-center">
-                            <span>{isSymbolListLoading ? 'Loading symbols...' : 'No live symbols'}</span>
-                        </div>
-                    ) : (
-                        <table className="w-full text-[12px] border-collapse bg-white table-fixed" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
+                    <table className="w-full text-[12px] border-collapse bg-white table-fixed" style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}>
                             <colgroup>
                                 <col style={{ width: '22%' }} />
                                 <col style={{ width: '20%' }} />
@@ -285,14 +334,28 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                                     <th className="text-left font-normal py-[4px] px-1 border-r border-[#a0a0a0] truncate">Symbol</th>
                                     <th className="text-right font-normal py-[4px] px-1 border-r border-[#a0a0a0] truncate">Bid</th>
                                     <th className="text-right font-normal py-[4px] px-1 border-r border-[#a0a0a0] truncate">Ask</th>
-                                    {columnVisibility.spread && <th className="text-right font-normal py-[4px] px-1 border-r border-[#a0a0a0] truncate">Spr</th>}
+                                    {columnVisibility.spread && <th className="text-right font-normal py-[4px] px-1 border-r border-[#a0a0a0] truncate">SPREAD</th>}
                                     {columnVisibility.dailyChange && <th className="text-right font-normal py-[4px] px-1 border-r border-[#a0a0a0] truncate">Chg%</th>}
                                     {columnVisibility.highLow && <th className="text-right font-normal py-[4px] px-1 truncate">H/L</th>}
                                 </tr>
                             </thead>
                             <tbody className="bg-white">
+                                {symbols.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6}>
+                                            <div
+                                                role="status"
+                                                className="flex items-center justify-center h-32 text-gray-500 text-xs px-4 text-center"
+                                            >
+                                                {isSymbolListLoading ? 'Loading symbols...' : 'No live symbols'}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
                                 {symbols.map((symbol) => {
                                     const tick = displayData[symbol];
+                                    const displaySymbol = getMarketWatchSymbolLabel(symbol, authorizedSymbols);
+                                    const isActionable = actionableSymbolSet.has(symbol);
 
                                     // Default values
                                     const bid = tick?.bid ?? 0;
@@ -335,16 +398,23 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                                     return (
                                         <tr
                                             key={symbol}
-                                            onClick={() => onSelectSymbol(symbol)}
-                                            onDoubleClick={() => handleNewOrder(symbol)}
+                                            data-market-watch-symbol={symbol}
+                                            onClick={() => {
+                                                if (isActionable) onSelectSymbol(symbol);
+                                            }}
+                                            onDoubleClick={() => {
+                                                if (isActionable) handleNewOrder(symbol);
+                                            }}
                                             onContextMenu={(e) => handleContextMenu(e, symbol)}
-                                            className={`cursor-pointer border-b border-[#e8e8e8] transition-colors hover:bg-[#e8f0ff] ${selectedSymbol === symbol ? 'bg-[#cce4ff]' : 'bg-white'}`}
+                                            aria-disabled={!isActionable}
+                                            title={!isActionable ? `${displaySymbol} is currently unavailable` : undefined}
+                                            className={`${isActionable ? 'cursor-pointer hover:bg-[#e8f0ff]' : 'cursor-not-allowed opacity-60'} border-b border-[#e8e8e8] transition-colors ${selectedSymbol === symbol ? 'bg-[#cce4ff]' : 'bg-white'}`}
                                         >
                                             {/* Symbol with arrow */}
                                             <td className="py-[3px] px-1 border-r border-[#e8e8e8] truncate">
                                                 <div className="flex items-center gap-1 min-w-0">
                                                     <span className="text-[10px] shrink-0"><ArrowIcon /></span>
-                                                    <span className="text-black font-medium truncate">{symbol}</span>
+                                                    <span aria-label={displaySymbol} className="text-black font-medium truncate">{displaySymbol}</span>
                                                 </div>
                                             </td>
 
@@ -394,36 +464,105 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                                                     autoFocus
                                                     type="text"
                                                     value={addSymbolInput}
-                                                    onChange={e => setAddSymbolInput(e.target.value)}
-                                                    onKeyDown={e => {
-                                                        if (e.key === 'Enter') handleAddSymbolConfirm();
-                                                        if (e.key === 'Escape') { setAddingSymbol(false); setAddSymbolInput(''); }
+                                                    onChange={e => {
+                                                        setAddSymbolInput(e.target.value);
+                                                        setHighlightedSearchResultIndex(0);
                                                     }}
-                                                    list="market-watch-symbols"
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                                                            e.preventDefault();
+                                                            if (searchResults.length === 0) {
+                                                                setHighlightedSearchResultIndex(-1);
+                                                                return;
+                                                            }
+
+                                                            setHighlightedSearchResultIndex((current) => {
+                                                                if (e.key === 'ArrowDown') {
+                                                                    return current < 0 || current >= searchResults.length - 1
+                                                                        ? 0
+                                                                        : current + 1;
+                                                                }
+                                                                return current <= 0 || current >= searchResults.length
+                                                                    ? searchResults.length - 1
+                                                                    : current - 1;
+                                                            });
+                                                        }
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            if (activeSearchResult) {
+                                                                handleSearchResultSelect(activeSearchResult);
+                                                            } else {
+                                                                handleAddSymbolConfirm();
+                                                            }
+                                                        }
+                                                        if (e.key === 'Escape') {
+                                                            setAddingSymbol(false);
+                                                            setAddSymbolInput('');
+                                                            setHighlightedSearchResultIndex(-1);
+                                                        }
+                                                    }}
                                                     placeholder="e.g. BTCUSD"
+                                                    aria-label="Search symbols"
+                                                    role="combobox"
+                                                    aria-autocomplete="list"
+                                                    aria-expanded={Boolean(addSymbolInput.trim())}
+                                                    aria-controls="market-watch-search-results"
+                                                    aria-activedescendant={activeSearchResult
+                                                        ? getSearchOptionId(activeSearchResult)
+                                                        : undefined}
                                                     className="flex-1 border border-[#a0a0a0] px-2 py-0.5 text-[12px] text-black rounded outline-none focus:border-blue-500"
                                                     style={{ fontFamily: 'Tahoma, Arial, sans-serif' }}
                                                 />
-                                                <datalist id="market-watch-symbols">
-                                                    {availableSymbols.map((symbol) => (
-                                                        <option key={symbol} value={symbol} />
-                                                    ))}
-                                                </datalist>
-                                                <button onClick={handleAddSymbolConfirm} className="text-[12px] text-white bg-[#008000] px-2 py-0.5 rounded hover:bg-green-700">Add</button>
-                                                <button onClick={() => { setAddingSymbol(false); setAddSymbolInput(''); }} className="text-[12px] text-gray-500 px-1">✕</button>
+                                                <button type="button" onClick={handleAddSymbolConfirm} className="text-[12px] text-white bg-[#008000] px-2 py-0.5 rounded hover:bg-green-700">Open</button>
+                                                <button
+                                                    type="button"
+                                                    aria-label="Close symbol search"
+                                                    onClick={() => {
+                                                        setAddingSymbol(false);
+                                                        setAddSymbolInput('');
+                                                        setHighlightedSearchResultIndex(-1);
+                                                    }}
+                                                    className="text-[12px] text-gray-500 px-1"
+                                                >
+                                                    ✕
+                                                </button>
                                             </div>
+                                            {addSymbolInput.trim() && (
+                                                <div id="market-watch-search-results" role="listbox" aria-label="Symbol search results" className="mt-1 max-h-32 overflow-y-auto border border-[#d0d0d0] bg-white">
+                                                    {searchResults.length === 0 ? (
+                                                        <div className="px-2 py-1 text-[11px] text-gray-500">No matches found</div>
+                                                    ) : searchResults.map((symbol, index) => (
+                                                        <button
+                                                            key={symbol}
+                                                            id={getSearchOptionId(symbol)}
+                                                            type="button"
+                                                            role="option"
+                                                            aria-selected={activeSearchResultIndex === index}
+                                                            aria-disabled={false}
+                                                            aria-label={getMarketWatchSymbolLabel(symbol, searchUniverse)}
+                                                            onClick={() => handleSearchResultSelect(symbol)}
+                                                            onMouseEnter={() => setHighlightedSearchResultIndex(index)}
+                                                            className={`block w-full px-2 py-1 text-left text-[11px] text-black hover:bg-[#e8f0ff] ${activeSearchResultIndex === index ? 'bg-[#e8f0ff]' : ''}`}
+                                                        >
+                                                            {getMarketWatchSymbolLabel(symbol, searchUniverse)}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </td>
                                     </tr>
                                 ) : (
-                                <tr
-                                    className="border-b border-[#e0e0e0] bg-white cursor-pointer hover:bg-[#e8f0ff]"
-                                    onClick={handleAddSymbol}
-                                >
+                                <tr className="border-b border-[#e0e0e0] bg-white hover:bg-[#e8f0ff]">
                                     <td colSpan={6} className="py-2 px-2">
                                         <div className="flex justify-between items-center">
-                                            <span className="text-gray-500 flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                aria-label="Search market symbols"
+                                                onClick={handleAddSymbol}
+                                                className="text-gray-500 flex items-center gap-2 cursor-pointer"
+                                            >
                                                 <span className="text-[#008000] text-[14px]">+</span> click to add...
-                                            </span>
+                                            </button>
                                             <span className="text-gray-500 text-[11px]">
                                                 {symbols.length} symbols
                                             </span>
@@ -433,7 +572,6 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                                 )}
                             </tbody>
                         </table>
-                    )}
                 </div>
             </div>
 
@@ -449,8 +587,6 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                     onTickChart={handleTickChart}
                     onDepthOfMarket={handleDepthOfMarket}
                     onSymbolSpecification={handleSymbolSpecification}
-                    onHideSymbol={handleHideSymbol}
-                    onShowAllSymbols={handleShowAllSymbols}
                     onToggleColumn={handleToggleColumn}
                     onClose={() => setContextMenu(null)}
                     columnVisibility={columnVisibility}

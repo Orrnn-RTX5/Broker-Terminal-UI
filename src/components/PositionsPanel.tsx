@@ -27,7 +27,7 @@ import { Icon } from './ui/Icon';
 import { PriceDisplay } from './ui/PriceDisplay';
 import { useConfirmStore } from '../store/useConfirmStore';
 import { ModifyPositionDialog } from './ModifyPositionDialog';
-import { apiClient } from '../api/client';
+import { tradingV2Api } from '../api/trade';
 import { API_V2_BASE_URL } from '../config/api';
 import { buildBrokerWsV2Uri } from '../services/brokerSession';
 import type { Position as AppPosition } from '../store/useAppStore';
@@ -792,17 +792,7 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('auth_token') || '';
-      const baseUrl = API_V2_BASE_URL.replace(/\/$/, '');
-      const res = await fetch(`${baseUrl}/positions/${ticket}/close`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await tradingV2Api.closePosition(ticket);
       // metrics WS will fire automatically with updated balance/equity
       window.dispatchEvent(new Event('rtx:force-refresh-positions'));
     } catch (err) {

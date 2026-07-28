@@ -160,14 +160,18 @@ export const removeToken = (): void => {
 };
 
 // Build request headers
-const buildHeaders = (customHeaders?: Record<string, string>, skipAuth?: boolean): Record<string, string> => {
+const buildHeaders = (
+  customHeaders?: Record<string, string>,
+  skipAuth?: boolean,
+  authToken?: string | null,
+): Record<string, string> => {
   const headers: Record<string, string> = {
     ...customHeaders,
     'Content-Type': 'application/json',
   };
 
   if (!skipAuth) {
-    const token = getToken();
+    const token = authToken === undefined ? getToken() : authToken;
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -193,13 +197,33 @@ const buildQueryString = (params?: QueryParams): string => {
   return qs ? `?${qs}` : '';
 };
 
-// Token Refresh State
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (value: Response | PromiseLike<Response>) => void;
-  reject: (reason?: unknown) => void;
-  config: RequestInit & { url: string };
-}> = [];
+export interface ApiRequestContext {
+  /** Opaque identity for one backend + broker + authenticated session. */
+  readonly key: string;
+  readonly backendOrigin: string;
+  readonly refreshEndpoint: string;
+  readonly refreshToken: string | null;
+}
+
+interface RefreshState {
+  promise: Promise<string>;
+  controller: AbortController;
+}
+
+const refreshStates = new Map<string, RefreshState>();
+const requestContextFingerprintSeed = Math.floor(Math.random() * 0xffffffff) >>> 0;
+
+const getOpaqueRequestContextFingerprint = (...parts: Array<string | null>): string => {
+  let hash = (0x811c9dc5 ^ requestContextFingerprintSeed) >>> 0;
+  parts.forEach((part) => {
+    const value = part ?? '';
+    for (let index = 0; index < value.length; index += 1) {
+      hash = Math.imul(hash ^ value.charCodeAt(index), 0x01000193) >>> 0;
+    }
+    hash = Math.imul(hash ^ 0xff, 0x01000193) >>> 0;
+  });
+  return hash.toString(36);
+};
 
 const getHeaderValue = (headers: HeadersInit | undefined, key: string): string | null => {
   if (!headers) return null;
@@ -227,148 +251,256 @@ const dispatchUnauthorized = (request?: RequestInit): void => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent('auth:unauthorized', {
     detail: {
-      requestToken: getRequestBearerToken(request),
+      staleRequest: isStaleUnauthorized(request),
     },
   }));
 };
 
-const processQueue = (error: Error | null, token: string | null = null) => {
-  failedQueue.forEach(prom => {
-    if (error) {
-      prom.reject(error);
-    } else if (token) {
-      if (!prom.config.headers) prom.config.headers = {};
-      (prom.config.headers as Record<string, string>)['Authorization'] = 'Bearer ' + token;
-      // Retry the original request
-      fetch(prom.config.url, prom.config)
-        .then(res => prom.resolve(res))
-        .catch(err => prom.reject(err));
-    }
-  });
-  failedQueue = [];
+const getAbortReason = (signal: AbortSignal): Error => {
+  if (signal.reason instanceof Error) return signal.reason;
+  return new DOMException('The operation was aborted', 'AbortError');
 };
 
-// Handle HTTP response
-const handleResponse = async <T>(response: Response, originalRequest?: RequestInit & { url: string }): Promise<T> => {
+const throwIfAborted = (signal?: AbortSignal): void => {
+  if (signal?.aborted) throw getAbortReason(signal);
+};
+
+const awaitWithAbort = <T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> => {
+  if (!signal) return promise;
+  throwIfAborted(signal);
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      cleanup();
+      reject(getAbortReason(signal));
+    };
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+};
+
+const readResponseJson = <T>(response: Response, signal?: AbortSignal): Promise<T> =>
+  awaitWithAbort(response.json() as Promise<T>, signal);
+
+interface CapturedRequest {
+  readonly url: string;
+  readonly init: RequestInit;
+  readonly context: ApiRequestContext | null;
+  readonly authRecoveryEnabled: boolean;
+}
+
+const withBearerToken = (
+  request: CapturedRequest,
+  token: string,
+): CapturedRequest => {
+  const headers = new Headers(request.init.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+  return { ...request, init: { ...request.init, headers } };
+};
+
+const isRequestContextCurrent = (request: CapturedRequest): boolean => {
+  const requestAccessToken = getRequestBearerToken(request.init);
+  return Boolean(
+    requestAccessToken
+    && requestAccessToken === getToken()
+    && request.context?.refreshToken
+    && request.context.refreshToken === getRefreshToken()
+  );
+};
+
+// Handle HTTP response while retaining the caller's abort lifecycle through
+// response parsing, refresh, and any authenticated retry.
+const handleResponse = async <T>(
+  response: Response,
+  originalRequest?: CapturedRequest,
+): Promise<T> => {
+  const signal = originalRequest?.init.signal ?? undefined;
+  throwIfAborted(signal);
+
   if (!response.ok) {
-    // Handle 401 Unauthorized
     if (response.status === 401) {
-      // Skip the token-clearing / refresh flow for login & refresh endpoints.
-      // These endpoints authenticate via credentials, not Bearer tokens, so a 401
-      // here means the credentials are wrong — NOT that the session expired.
-      const isAuthEndpoint = AUTH_ENDPOINTS.some(ep => response.url.includes(ep));
+      const responseUrl = response.url || originalRequest?.url || '';
+      const isAuthEndpoint = AUTH_ENDPOINTS.some((endpoint) => responseUrl.includes(endpoint));
       if (isAuthEndpoint) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData: Record<string, unknown> =
+          await readResponseJson<Record<string, unknown>>(response, signal)
+          .catch((error: unknown): Record<string, unknown> => {
+            throwIfAborted(signal);
+            if (error instanceof DOMException && error.name === 'AbortError') throw error;
+            return {};
+          });
+        const errorMessage = typeof errorData.message === 'string'
+          ? errorData.message
+          : typeof errorData.error === 'string'
+            ? errorData.error
+            : 'Authentication failed';
+        throwIfAborted(signal);
         throw new ApiError(
           response.status,
-          errorData.message || errorData.error || 'Authentication failed',
-          errorData
+          errorMessage,
+          errorData,
         );
       }
 
-      const refreshToken = getRefreshToken();
+      throwIfAborted(signal);
+      const refreshToken = originalRequest?.context?.refreshToken ?? null;
 
-      if (isStaleUnauthorized(originalRequest)) {
+      if (isStaleUnauthorized(originalRequest?.init)) {
         throw new ApiError(response.status, 'Stale unauthorized response ignored');
       }
 
-      // If we don't have a refresh token or we failed on a refresh call itself
-      if (!refreshToken || response.url.includes('/api/refresh')) {
-        removeToken();
-        dispatchUnauthorized(originalRequest);
+      if (originalRequest && !originalRequest.authRecoveryEnabled) {
+        throw new ApiError(response.status, 'Unauthorized');
+      }
+
+      if (!originalRequest?.context || !refreshToken || responseUrl.includes('/api/refresh')) {
+        throwIfAborted(signal);
+        if (!originalRequest || isRequestContextCurrent(originalRequest)) removeToken();
+        dispatchUnauthorized(originalRequest?.init);
         throw new ApiError(response.status, 'Unauthorized / Session Expired');
       }
 
-      if (isRefreshing) {
-        // Queue the request
-        return new Promise<Response>((resolve, reject) => {
-          if (originalRequest) {
-            failedQueue.push({ resolve, reject, config: originalRequest });
-          } else {
-            reject(new ApiError(401, 'Unauthorized request dropped'));
+      const context = originalRequest.context;
+      let refreshState = refreshStates.get(context.key);
+      if (!refreshState) {
+        const refreshController = new AbortController();
+        const refreshTimeoutId = setTimeout(() => refreshController.abort(), 30000);
+        const refreshPromise = (async (): Promise<string> => {
+          const refreshResponse = await fetch(context.refreshEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+            signal: refreshController.signal,
+          });
+
+          if (!refreshResponse.ok) {
+            throw new Error('Refresh failed');
           }
-        }).then(retryResp => handleResponse<T>(retryResp));
-      }
 
-      isRefreshing = true;
+          const data = await readResponseJson<Record<string, unknown>>(
+            refreshResponse,
+            refreshController.signal,
+          );
 
-      try {
-        const refreshEndpoint = getDynamicUrl(response.url.includes('/api/v2/')
-          ? `${API_V2_BASE_URL}/auth/refresh`
-          : `${getBaseUrl()}/api/refresh`);
-        const refreshResponse = await fetch(refreshEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: refreshToken }) // Note: Use the expected field name for your backend
-        });
-
-        if (!refreshResponse.ok) {
-          throw new Error('Refresh failed');
-        }
-
-        const data = await refreshResponse.json();
-
-        // Ensure new tokens are set
-        const accessToken = data.access_token || data.token;
-        if (accessToken) {
-          setToken(accessToken);
-          if (data.refresh_token) {
-            setRefreshToken(data.refresh_token);
+          const nextAccessToken = typeof data.access_token === 'string'
+            ? data.access_token
+            : typeof data.token === 'string'
+              ? data.token
+              : null;
+          if (!nextAccessToken) {
+            throw new Error('No access token in refresh response');
           }
-          if (data.expires_at) {
-            const expiresAt = parseTokenExpiresAt(data.expires_at);
-            localStorage.setItem('token_expires_at', String(expiresAt || data.expires_at));
-          } else if (data.expires_in) {
-            const expiresIn = Number(data.expires_in);
-            if (Number.isFinite(expiresIn)) {
-              localStorage.setItem('token_expires_at', String(Date.now() + expiresIn * 1000));
+
+          if (isRequestContextCurrent(originalRequest)) {
+            setToken(nextAccessToken);
+            if (typeof data.refresh_token === 'string') {
+              setRefreshToken(data.refresh_token);
             }
+            if (data.expires_at) {
+              const expiresAt = parseTokenExpiresAt(data.expires_at);
+              localStorage.setItem('token_expires_at', String(expiresAt || data.expires_at));
+            } else if (data.expires_in) {
+              const expiresIn = Number(data.expires_in);
+              if (Number.isFinite(expiresIn)) {
+                localStorage.setItem('token_expires_at', String(Date.now() + expiresIn * 1000));
+              }
+            }
+            dispatchTokenUpdated();
           }
-          dispatchTokenUpdated();
-
-          processQueue(null, accessToken);
-
-          // Retry the current failed request
-          if (originalRequest) {
-            if (!originalRequest.headers) originalRequest.headers = {};
-            (originalRequest.headers as Record<string, string>)['Authorization'] = `Bearer ${accessToken}`;
-            const retryResp = await fetch(originalRequest.url, originalRequest);
-            isRefreshing = false;
-            return handleResponse<T>(retryResp);
+          return nextAccessToken;
+        })();
+        refreshState = { promise: refreshPromise, controller: refreshController };
+        refreshStates.set(context.key, refreshState);
+        void refreshPromise.finally(() => {
+          clearTimeout(refreshTimeoutId);
+          if (refreshStates.get(context.key)?.promise === refreshPromise) {
+            refreshStates.delete(context.key);
           }
-        } else {
-          throw new Error('No access token in refresh response');
-        }
-      } catch (err) {
-        processQueue(err as Error, null);
-        removeToken();
-        dispatchUnauthorized(originalRequest);
-        throw new ApiError(401, 'Session Expired');
-      } finally {
-        isRefreshing = false;
+        }).catch(() => undefined);
       }
+
+      let accessToken: string;
+      try {
+        accessToken = await awaitWithAbort(refreshState.promise, signal);
+      } catch (error) {
+        const refreshError = error instanceof Error ? error : new Error('Session refresh failed');
+        if (signal?.aborted) throw getAbortReason(signal);
+        if (error instanceof ApiError && error.message === 'Stale unauthorized response ignored') {
+          throw error;
+        }
+        if (isRequestContextCurrent(originalRequest)) removeToken();
+        dispatchUnauthorized(originalRequest.init);
+        throw new ApiError(401, 'Session Expired');
+      }
+
+      throwIfAborted(signal);
+      const retryRequest = withBearerToken(originalRequest, accessToken);
+      const retryResponse = await fetch(retryRequest.url, retryRequest.init);
+      throwIfAborted(signal);
+      return handleResponse<T>(retryResponse, retryRequest);
     }
 
-    const errorData = await response.json().catch(() => ({}));
+    const errorData: Record<string, unknown> =
+      await readResponseJson<Record<string, unknown>>(response, signal)
+      .catch((error: unknown): Record<string, unknown> => {
+        throwIfAborted(signal);
+        if (error instanceof DOMException && error.name === 'AbortError') throw error;
+        return {};
+      });
+    const errorMessage = typeof errorData.message === 'string'
+      ? errorData.message
+      : typeof errorData.error === 'string'
+        ? errorData.error
+        : `HTTP Error: ${response.status}`;
+    throwIfAborted(signal);
     throw new ApiError(
       response.status,
-      errorData.message || errorData.error || `HTTP Error: ${response.status}`,
-      errorData
+      errorMessage,
+      errorData,
     );
   }
 
-  // Handle empty responses
   if (response.status === 204) {
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  return readResponseJson<T>(response, signal);
 };
 
 // Main API client
 // Delay utility for retries
-const delay = (ms: number): Promise<void> =>
-  new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms: number, signal?: AbortSignal): Promise<void> => {
+  if (!signal) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+  throwIfAborted(signal);
+
+  return new Promise<void>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      cleanup();
+      reject(getAbortReason(signal));
+    };
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      signal.removeEventListener('abort', onAbort);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+};
 
 const RETRY_ATTEMPTS = 3;
 
@@ -382,6 +514,13 @@ export interface ApiRequestOptions extends RequestInit {
   skipAuth?: boolean;
   /** If true, use the provided baseUrl exactly without proxying or replacing its host from localStorage.server_url */
   skipDynamicUrl?: boolean;
+  /**
+   * Immutable token captured for a scoped request. `undefined` keeps the
+   * default dynamic token lookup; `null` explicitly sends no Bearer token.
+   */
+  authToken?: string | null;
+  /** Immutable refresh/session inputs captured with the request. */
+  requestContext?: ApiRequestContext;
 }
 
 // Use the backend URL directly only in Electron; in the browser, use
@@ -418,6 +557,8 @@ const toRequestInit = (options?: ApiRequestOptions): RequestInit => {
   delete requestInit.apiKey;
   delete requestInit.skipAuth;
   delete requestInit.skipDynamicUrl;
+  delete requestInit.authToken;
+  delete requestInit.requestContext;
   return requestInit;
 };
 
@@ -437,7 +578,7 @@ const buildRequestConfig = (
   signal: AbortSignal,
   body?: unknown
 ): RequestInit => {
-  if (!shouldSkipAuth && getToken() && isStoredTokenExpired()) {
+  if (!shouldSkipAuth && options?.authToken === undefined && getToken() && isStoredTokenExpired()) {
     removeToken();
     dispatchUnauthorized();
     throw new ApiError(401, 'Session Expired');
@@ -447,7 +588,11 @@ const buildRequestConfig = (
   const config: RequestInit = {
     ...requestInit,
     method,
-    headers: buildHeaders(withApiKey(options?.headers, options?.apiKey), shouldSkipAuth),
+    headers: buildHeaders(
+      withApiKey(options?.headers, options?.apiKey),
+      shouldSkipAuth,
+      options?.authToken,
+    ),
     signal,
   };
 
@@ -458,115 +603,121 @@ const buildRequestConfig = (
   return config;
 };
 
+const getUrlOrigin = (url: string): string => {
+  try {
+    return new URL(url, typeof window === 'undefined' ? 'http://localhost' : window.location.origin).origin;
+  } catch {
+    return '';
+  }
+};
+
+const createLegacyRequestContext = (
+  url: string,
+  normalizedEndpoint: string,
+  accessToken: string | null,
+): ApiRequestContext | null => {
+  const refreshToken = getRefreshToken();
+  if (!accessToken || !refreshToken) return null;
+  const refreshEndpoint = getDynamicUrl(
+    normalizedEndpoint.startsWith('/api/v2/') || url.includes('/api/v2/')
+    ? `${API_V2_BASE_URL}/auth/refresh`
+    : `${getBaseUrl()}/api/refresh`,
+  );
+  const backendOrigin = getUrlOrigin(url);
+  const brokerId = typeof window === 'undefined'
+    ? ''
+    : localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '';
+  return Object.freeze({
+    key: `legacy:${getOpaqueRequestContextFingerprint(backendOrigin, brokerId, accessToken, refreshToken)}`,
+    backendOrigin,
+    refreshEndpoint,
+    refreshToken,
+  });
+};
+
+const createRequestController = (externalSignal?: AbortSignal): {
+  controller: AbortController;
+  cleanup: () => void;
+} => {
+  const controller = new AbortController();
+  const relayAbort = () => controller.abort(externalSignal?.reason);
+
+  if (externalSignal?.aborted) {
+    relayAbort();
+  } else {
+    externalSignal?.addEventListener('abort', relayAbort, { once: true });
+  }
+
+  return {
+    controller,
+    cleanup: () => externalSignal?.removeEventListener('abort', relayAbort),
+  };
+};
+
+const executeRequest = async <T>(
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  endpoint: string,
+  options?: ApiRequestOptions,
+  body?: unknown,
+): Promise<T> => {
+  const baseUrl = options?.baseUrl || getBaseUrl();
+  const normalizedEndpoint = normalizeEndpoint(endpoint);
+  const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
+  if (method === 'GET' || method === 'POST') {
+    debugLog(`[API Client] ${method} URL:`, redactUrlForDebugLog(url));
+  }
+  const shouldSkipAuth = Boolean(
+    options?.skipAuth || AUTH_ENDPOINTS.some((authEndpoint) => normalizedEndpoint === authEndpoint),
+  );
+  const { controller, cleanup } = createRequestController(options?.signal);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const requestConfig = buildRequestConfig(method, options, shouldSkipAuth, controller.signal, body);
+    const requestContext = options?.authToken === null
+      ? null
+      : options?.requestContext
+        ?? createLegacyRequestContext(
+          url,
+          normalizedEndpoint,
+          getRequestBearerToken(requestConfig) ?? (options?.authToken === undefined ? getToken() : null),
+        );
+    const response = await fetch(url, requestConfig);
+    return await handleResponse<T>(response, {
+      url,
+      init: requestConfig,
+      context: requestContext,
+      authRecoveryEnabled: !shouldSkipAuth && options?.authToken !== null,
+    });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(0, error instanceof Error ? error.message : 'Network error');
+  } finally {
+    clearTimeout(timeoutId);
+    cleanup();
+  }
+};
+
 export const apiClient = {
   // GET request
-  get: async <T>(endpoint: string, options?: ApiRequestOptions): Promise<T> => {
-    const baseUrl = options?.baseUrl || getBaseUrl();
-    // Ensure endpoint starts with / for proper URL construction
-    const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
-    debugLog('[API Client] GET URL:', redactUrlForDebugLog(url));
-    const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    try {
-      const reqConfig = buildRequestConfig('GET', options, shouldSkipAuth, controller.signal);
-      const response = await fetch(url, reqConfig);
-      clearTimeout(timeoutId);
-      return handleResponse<T>(response, { url, ...reqConfig });
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof ApiError) throw error;
-      throw new ApiError(0, error instanceof Error ? error.message : 'Network error');
-    }
-  },
+  get: <T>(endpoint: string, options?: ApiRequestOptions): Promise<T> =>
+    executeRequest<T>('GET', endpoint, options),
 
   // POST request
-  post: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
-    const baseUrl = options?.baseUrl || getBaseUrl();
-    // Ensure endpoint starts with / for proper URL construction
-    const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
-    debugLog('[API Client] POST URL:', redactUrlForDebugLog(url));
-    const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    try {
-      const reqConfig = buildRequestConfig('POST', options, shouldSkipAuth, controller.signal, body);
-      const response = await fetch(url, reqConfig);
-      clearTimeout(timeoutId);
-      return handleResponse<T>(response, { url, ...reqConfig });
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof ApiError) throw error;
-      throw new ApiError(0, error instanceof Error ? error.message : 'Network error');
-    }
-  },
+  post: <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> =>
+    executeRequest<T>('POST', endpoint, options, body),
 
   // PUT request
-  put: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
-    const baseUrl = options?.baseUrl || getBaseUrl();
-    const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
-    const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    try {
-      const reqConfig = buildRequestConfig('PUT', options, shouldSkipAuth, controller.signal, body);
-      const response = await fetch(url, reqConfig);
-      clearTimeout(timeoutId);
-      return handleResponse<T>(response, { url, ...reqConfig });
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof ApiError) throw error;
-      throw new ApiError(0, error instanceof Error ? error.message : 'Network error');
-    }
-  },
+  put: <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> =>
+    executeRequest<T>('PUT', endpoint, options, body),
 
   // PATCH request
-  patch: async <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> => {
-    const baseUrl = options?.baseUrl || getBaseUrl();
-    const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
-    const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    try {
-      const reqConfig = buildRequestConfig('PATCH', options, shouldSkipAuth, controller.signal, body);
-      const response = await fetch(url, reqConfig);
-      clearTimeout(timeoutId);
-      return handleResponse<T>(response, { url, ...reqConfig });
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof ApiError) throw error;
-      throw new ApiError(0, error instanceof Error ? error.message : 'Network error');
-    }
-  },
+  patch: <T>(endpoint: string, body: unknown, options?: ApiRequestOptions): Promise<T> =>
+    executeRequest<T>('PATCH', endpoint, options, body),
 
   // DELETE request
-  delete: async <T>(endpoint: string, options?: ApiRequestOptions): Promise<T> => {
-    const baseUrl = options?.baseUrl || getBaseUrl();
-    const normalizedEndpoint = normalizeEndpoint(endpoint);
-    const url = buildRequestUrl(baseUrl, normalizedEndpoint, options);
-    const shouldSkipAuth = options?.skipAuth || AUTH_ENDPOINTS.some(ep => normalizedEndpoint === ep);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    try {
-      const reqConfig = buildRequestConfig('DELETE', options, shouldSkipAuth, controller.signal);
-      const response = await fetch(url, reqConfig);
-      clearTimeout(timeoutId);
-      return handleResponse<T>(response, { url, ...reqConfig });
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof ApiError) throw error;
-      throw new ApiError(0, error instanceof Error ? error.message : 'Network error');
-    }
-  },
+  delete: <T>(endpoint: string, options?: ApiRequestOptions): Promise<T> =>
+    executeRequest<T>('DELETE', endpoint, options),
 
   // Request with retry logic
   requestWithRetry: async <T>(
@@ -578,6 +729,7 @@ export const apiClient = {
     let lastError: ApiError | Error | undefined;
 
     for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+      throwIfAborted(options?.signal);
       try {
         switch (method) {
           case 'get':
@@ -593,6 +745,7 @@ export const apiClient = {
         }
       } catch (error) {
         lastError = error as Error;
+        throwIfAborted(options?.signal);
 
         // Don't retry on 401 or 403
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
@@ -601,7 +754,7 @@ export const apiClient = {
 
         // Don't retry on the last attempt
         if (attempt < RETRY_ATTEMPTS - 1) {
-          await delay(1000 * Math.pow(2, attempt)); // Exponential backoff
+          await delay(1000 * Math.pow(2, attempt), options?.signal); // Exponential backoff
         }
       }
     }

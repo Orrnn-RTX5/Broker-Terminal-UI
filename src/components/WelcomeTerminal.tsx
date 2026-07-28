@@ -12,6 +12,7 @@ import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL, toLo
 import SplitText from './SplitText';
 import {
     getBackendTarget,
+    getRuntimeConfiguredBrokerId,
     isDesktopBackendTarget,
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
@@ -319,7 +320,11 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 const savedBrokerId = localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id');
                 const runtimeBroker = isDesktopBrokerSelection ? undefined : findBrokerForWebRuntime(data);
                 const savedBroker = isDesktopBrokerSelection ? data.find(b => brokerMatchesLookup(b, savedBrokerId)) : undefined;
-                const configuredBrokerId = DEFAULT_BROKER_ID;
+                // Prefer the broker id injected by this deployment's runtime-config.js
+                // (e.g. MyProp injects BROKER_ID: 'myprop-trade'). Falling back to the
+                // build-time env or list order would default to whichever broker is first
+                // in the shared discovery list (currently Achiever Financials LTD).
+                const configuredBrokerId = getRuntimeConfiguredBrokerId() || DEFAULT_BROKER_ID;
                 const configuredBroker = data.find(b => brokerMatchesLookup(b, configuredBrokerId));
                 const selectedDiscoveryBroker = isDesktopBrokerSelection
                     ? savedBroker || configuredBroker || data[0]

@@ -2,6 +2,7 @@ import { apiClient } from './client';
 import { API_V2_BASE_URL, isLocalViteDevServer, normalizeBrokerServerUrl } from '../config/api';
 import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
+import { requirePositionCloseTicket } from './positionClose';
 
 const resolveV2BaseUrl = (baseUrl?: string): string => {
   if (!baseUrl) return API_V2_BASE_URL;
@@ -532,7 +533,11 @@ export const tradingApi = {
     ),
 
   closePosition: (positionId: string | number): Promise<void> =>
-    apiClient.post<void>(`/positions/${requireTicket(positionId, '/api/v2/positions/{id}/close')}/close`, {}, { baseUrl: API_V2_BASE_URL }),
+    apiClient.post<void>(
+      `/positions/${requirePositionCloseTicket(positionId, '/api/v2/positions/{id}/close')}/close`,
+      { mode: 'full' },
+      { baseUrl: API_V2_BASE_URL }
+    ),
 
   modifyPosition: (positionId: string | number, data: ModifyPositionRequest): Promise<Position> =>
     apiClient.put<Position>(`/positions/${requireTicket(positionId, '/api/v2/positions/{id}')}`, data, { baseUrl: API_V2_BASE_URL }),

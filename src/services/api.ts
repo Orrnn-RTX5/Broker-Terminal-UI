@@ -368,9 +368,7 @@ export const positionsApi = {
   },
 
   async closePosition(positionId: string): Promise<void> {
-    const ticket = Number.parseInt(String(positionId), 10);
-    if (!Number.isFinite(ticket) || ticket <= 0) throw new Error('Invalid position ticket');
-    await endpoints.tradingApi.closePosition(ticket);
+    await endpoints.tradingApi.closePosition(positionId);
   },
 
   async modifyPosition(positionId: string | number, data: endpoints.ModifyPositionRequest): Promise<endpoints.Position> {

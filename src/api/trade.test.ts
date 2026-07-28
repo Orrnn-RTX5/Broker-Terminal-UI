@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { API_ENDPOINTS, RTX5_API_URL } from '../config/api';
-import { ApiError, removeToken, setToken } from './client';
+import { apiClient, ApiError, removeToken, setToken } from './client';
 import { marketApi } from './endpoints';
 import type { CandleParams, HistoryCandleParams } from '../types/api';
 import {
@@ -33,6 +33,59 @@ const lastFetchCall = () => {
 };
 
 type TestWindow = Window & { electronAPI?: unknown };
+
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
+const abortLifecycleCalls = [
+  {
+    method: 'GET',
+    invoke: (signal: AbortSignal) => apiClient.get('/abort-lifecycle', {
+      baseUrl: 'https://broker.example',
+      skipDynamicUrl: true,
+      signal,
+    }),
+  },
+  {
+    method: 'POST',
+    invoke: (signal: AbortSignal) => apiClient.post('/abort-lifecycle', { value: 1 }, {
+      baseUrl: 'https://broker.example',
+      skipDynamicUrl: true,
+      signal,
+    }),
+  },
+  {
+    method: 'PUT',
+    invoke: (signal: AbortSignal) => apiClient.put('/abort-lifecycle', { value: 1 }, {
+      baseUrl: 'https://broker.example',
+      skipDynamicUrl: true,
+      signal,
+    }),
+  },
+  {
+    method: 'PATCH',
+    invoke: (signal: AbortSignal) => apiClient.patch('/abort-lifecycle', { value: 1 }, {
+      baseUrl: 'https://broker.example',
+      skipDynamicUrl: true,
+      signal,
+    }),
+  },
+  {
+    method: 'DELETE',
+    invoke: (signal: AbortSignal) => apiClient.delete('/abort-lifecycle', {
+      baseUrl: 'https://broker.example',
+      skipDynamicUrl: true,
+      signal,
+    }),
+  },
+] as const;
 
 describe('trade v2 API contract calls', () => {
   beforeEach(() => {
@@ -110,6 +163,234 @@ describe('trade v2 API contract calls', () => {
 
     expect(localStorage.getItem('auth_token')).toBe('new-token');
     expect(unauthorizedEvents).toBe(0);
+  });
+
+  it.each(abortLifecycleCalls)(
+    'keeps $method abort active after headers arrive and while the body is parsing',
+    async ({ invoke }) => {
+      const body = createDeferred<unknown>();
+      const json = vi.fn(() => body.promise);
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        url: 'https://broker.example/abort-lifecycle',
+        json,
+      } as unknown as Response);
+      const controller = new AbortController();
+      const request = invoke(controller.signal);
+
+      await vi.waitFor(() => expect(json).toHaveBeenCalledOnce());
+      const rejection = expect(request).rejects.toMatchObject({ status: 0 });
+      controller.abort();
+      await rejection;
+      body.resolve({ ok: true });
+
+      expect(vi.mocked(fetch)).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(abortLifecycleCalls)(
+    'aborts the $method 401 refresh body and does not retry with refreshed credentials',
+    async ({ invoke }) => {
+      setToken('original-access-token');
+      localStorage.setItem('refresh_token', 'original-refresh-token');
+      const refreshBody = createDeferred<unknown>();
+      const refreshJson = vi.fn(() => refreshBody.promise);
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          url: 'https://broker.example/api/v2/abort-lifecycle',
+          json: vi.fn(),
+        } as unknown as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          url: 'https://broker.example/api/v2/auth/refresh',
+          json: refreshJson,
+        } as unknown as Response);
+      const controller = new AbortController();
+      const request = invoke(controller.signal);
+
+      await vi.waitFor(() => expect(refreshJson).toHaveBeenCalledOnce());
+      const rejection = expect(request).rejects.toMatchObject({ status: 0 });
+      controller.abort();
+      await rejection;
+      refreshBody.resolve({ access_token: 'must-not-be-used' });
+
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+      expect(localStorage.getItem('auth_token')).toBe('original-access-token');
+    },
+  );
+
+  it('removes an aborted request from the 401 refresh queue before authenticated retries run', async () => {
+    setToken('original-access-token');
+    localStorage.setItem('refresh_token', 'original-refresh-token');
+    const refreshBody = createDeferred<Record<string, string>>();
+    const refreshJson = vi.fn(() => refreshBody.promise);
+    let protectedCalls = 0;
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.includes('/auth/refresh')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          url,
+          json: refreshJson,
+        } as unknown as Response);
+      }
+      protectedCalls += 1;
+      const authorization = new Headers(init?.headers).get('Authorization');
+      if (authorization === 'Bearer refreshed-access-token') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          url,
+          json: () => Promise.resolve({ ok: true }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 401,
+        url,
+        json: () => Promise.resolve({ message: 'expired' }),
+      } as unknown as Response);
+    });
+
+    const firstController = new AbortController();
+    const firstRequest = apiClient.get<{ ok: boolean }>('/protected-a', {
+      baseUrl: 'https://broker.example/api/v2',
+      skipDynamicUrl: true,
+      signal: firstController.signal,
+    });
+    await vi.waitFor(() => expect(refreshJson).toHaveBeenCalledOnce());
+
+    const queuedController = new AbortController();
+    const queuedRequest = apiClient.get('/protected-b', {
+      baseUrl: 'https://broker.example/api/v2',
+      skipDynamicUrl: true,
+      signal: queuedController.signal,
+    });
+    await vi.waitFor(() => expect(protectedCalls).toBe(2));
+    const queuedRejection = expect(queuedRequest).rejects.toMatchObject({ status: 0 });
+    queuedController.abort();
+    await queuedRejection;
+
+    refreshBody.resolve({ access_token: 'refreshed-access-token' });
+    await expect(firstRequest).resolves.toEqual({ ok: true });
+    expect(protectedCalls).toBe(3);
+  });
+
+  it('allows a queued 401 waiter to succeed when the request that started the shared refresh aborts', async () => {
+    setToken('original-access-token');
+    localStorage.setItem('refresh_token', 'original-refresh-token');
+    const refreshBody = createDeferred<Record<string, string>>();
+    const refreshJson = vi.fn(() => refreshBody.promise);
+    let protectedCalls = 0;
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.includes('/auth/refresh')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          url,
+          json: refreshJson,
+        } as unknown as Response);
+      }
+      protectedCalls += 1;
+      const authorization = new Headers(init?.headers).get('Authorization');
+      if (authorization === 'Bearer refreshed-access-token') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          url,
+          json: () => Promise.resolve({ ok: true }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 401,
+        url,
+        json: () => Promise.resolve({ message: 'expired' }),
+      } as unknown as Response);
+    });
+
+    const leaderController = new AbortController();
+    const leaderRequest = apiClient.get('/protected-leader', {
+      baseUrl: 'https://broker.example/api/v2',
+      skipDynamicUrl: true,
+      signal: leaderController.signal,
+    });
+    await vi.waitFor(() => expect(refreshJson).toHaveBeenCalledOnce());
+
+    const waiterRequest = apiClient.get<{ ok: boolean }>('/protected-waiter', {
+      baseUrl: 'https://broker.example/api/v2',
+      skipDynamicUrl: true,
+    });
+    await vi.waitFor(() => expect(protectedCalls).toBe(2));
+
+    const leaderRejection = expect(leaderRequest).rejects.toMatchObject({ status: 0 });
+    leaderController.abort();
+    await leaderRejection;
+    refreshBody.resolve({ access_token: 'refreshed-access-token' });
+
+    await expect(waiterRequest).resolves.toEqual({ ok: true });
+    expect(protectedCalls).toBe(3);
+  });
+
+  it('stops requestWithRetry immediately when aborted during backoff', async () => {
+    vi.mocked(fetch).mockRejectedValue(new TypeError('offline'));
+    const controller = new AbortController();
+    const request = apiClient.requestWithRetry(
+      'get',
+      '/retry-abort',
+      undefined,
+      {
+        baseUrl: 'https://broker.example',
+        skipDynamicUrl: true,
+        skipAuth: true,
+        signal: controller.signal,
+      },
+    );
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const rejection = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+    controller.abort();
+
+    await rejection;
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('treats authToken null as explicitly unauthenticated on a 401 response', async () => {
+    setToken('stored-access-token');
+    localStorage.setItem('refresh_token', 'stored-refresh-token');
+    let unauthorizedEvents = 0;
+    const onUnauthorized = () => {
+      unauthorizedEvents += 1;
+    };
+    window.addEventListener('auth:unauthorized', onUnauthorized);
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      url: 'https://broker.example/api/v2/public-probe',
+      json: () => Promise.resolve({ message: 'unauthorized' }),
+    } as unknown as Response);
+
+    try {
+      await expect(apiClient.get('/public-probe', {
+        baseUrl: 'https://broker.example/api/v2',
+        skipDynamicUrl: true,
+        authToken: null,
+      })).rejects.toMatchObject({ status: 401 });
+
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(new Headers(lastFetchCall().init.headers).get('Authorization')).toBeNull();
+      expect(localStorage.getItem('auth_token')).toBe('stored-access-token');
+      expect(localStorage.getItem('refresh_token')).toBe('stored-refresh-token');
+      expect(unauthorizedEvents).toBe(0);
+    } finally {
+      window.removeEventListener('auth:unauthorized', onUnauthorized);
+    }
   });
 
   it('also persists access_token-only login responses', async () => {
@@ -369,8 +650,12 @@ describe('trade v2 API contract calls', () => {
     await watchlistV2Api.update(['EURUSD', 'XAUUSD']);
     expect(lastFetchCall()).toMatchObject({
       url: `${RTX5_API_URL}/api/v2/watchlist`,
-      body: { symbols: ['EURUSD', 'XAUUSD'] },
+      body: [
+        { symbol: 'EURUSD', sort_order: 0 },
+        { symbol: 'XAUUSD', sort_order: 1 },
+      ],
     });
+    expect(Array.isArray(lastFetchCall().body)).toBe(true);
 
     await watchlistV2Api.add('EUR/USD');
     expect(lastFetchCall().url).toBe(`${RTX5_API_URL}/api/v2/watchlist/EUR%2FUSD`);
@@ -455,6 +740,20 @@ describe('trade v2 API contract calls', () => {
       url: `${RTX5_API_URL}/api/v2/orders/pending/112233`,
     });
     expect(lastFetchCall().init.method).toBe('DELETE');
+  });
+
+  it('posts the exact full-position close contract to the configured broker', async () => {
+    setToken('close-access-token');
+
+    await tradingV2Api.closePosition(998877);
+
+    const request = lastFetchCall();
+    expect(request).toMatchObject({
+      url: `${RTX5_API_URL}/api/v2/positions/998877/close`,
+      body: { mode: 'full' },
+    });
+    expect(request.init.method).toBe('POST');
+    expect(new Headers(request.init.headers).get('Authorization')).toBe('Bearer close-access-token');
   });
 
   it('normalizes pending order create payloads to backend-readable field names', async () => {

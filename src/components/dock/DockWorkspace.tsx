@@ -13,13 +13,14 @@ import { NavigatorPanel } from '../layout/NavigatorPanel';
 import { BottomDock } from '../BottomDock';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { DockContainer as IDockContainer } from '../../services/dockManager';
-import { getUniqueSymbolNames, normalizeSymbolName } from '../../utils/symbolEligibility';
+import { getUniqueSymbolNames, resolveAuthorizedChartSymbol } from '../../utils/symbolEligibility';
 
 interface DockWorkspaceProps {
     globalChartType: ChartType;
     globalTimeframe: Timeframe;
     allSymbols: unknown[];
     chartSymbols?: unknown[];
+    tradeSymbols?: unknown[];
     selectedSymbol: string;
     onSymbolSelect: (symbol: string) => void;
     onClosePosition: (id: string | number) => void;
@@ -33,6 +34,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     globalTimeframe,
     allSymbols,
     chartSymbols,
+    tradeSymbols,
     selectedSymbol,
     onSymbolSelect,
     onClosePosition,
@@ -42,17 +44,15 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
 }) => {
     const [isInitialized, setIsInitialized] = useState(false);
     const tradeSymbolSet = useMemo(() => {
-        return new Set(getUniqueSymbolNames(allSymbols));
-    }, [allSymbols]);
-    const chartSymbolSet = useMemo(() => {
-        return new Set(getUniqueSymbolNames(chartSymbols ?? allSymbols));
+        return new Set(getUniqueSymbolNames(tradeSymbols ?? allSymbols));
+    }, [allSymbols, tradeSymbols]);
+    const authorizedChartSymbols = useMemo(() => {
+        return getUniqueSymbolNames(chartSymbols ?? allSymbols);
     }, [allSymbols, chartSymbols]);
 
     const resolveChartSymbol = useCallback((value: unknown): string => {
-        const symbol = normalizeSymbolName(value);
-        if (!symbol || chartSymbolSet.size === 0) return '';
-        return chartSymbolSet.has(symbol) ? symbol : '';
-    }, [chartSymbolSet]);
+        return resolveAuthorizedChartSymbol(value, authorizedChartSymbols);
+    }, [authorizedChartSymbols]);
 
     useEffect(() => {
         setIsInitialized(true);

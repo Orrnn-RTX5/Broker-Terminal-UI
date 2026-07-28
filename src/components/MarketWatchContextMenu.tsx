@@ -10,8 +10,6 @@ interface MarketWatchContextMenuProps {
     onTickChart: (symbol: string) => void;
     onDepthOfMarket: (symbol: string) => void;
     onSymbolSpecification: (symbol: string) => void;
-    onHideSymbol: (symbol: string) => void;
-    onShowAllSymbols: () => void;
     onToggleColumn: (column: string) => void;
     onClose: () => void;
     columnVisibility?: {
@@ -31,8 +29,6 @@ export const MarketWatchContextMenu: React.FC<MarketWatchContextMenuProps> = ({
     onTickChart,
     onDepthOfMarket,
     onSymbolSpecification,
-    onHideSymbol,
-    onShowAllSymbols,
     onToggleColumn,
     onClose,
     columnVisibility = { spread: true, highLow: true, time: true }
@@ -100,26 +96,6 @@ export const MarketWatchContextMenu: React.FC<MarketWatchContextMenuProps> = ({
                 label="Symbol Specification"
                 onClick={() => {
                     onSymbolSpecification(symbol);
-                    onClose();
-                }}
-            />
-
-            {/* Hide Symbol */}
-            <ContextMenuItem
-                icon={<Icon name="eye-off" size="sm" />}
-                label={`Hide ${symbol}`}
-                onClick={() => {
-                    onHideSymbol(symbol);
-                    onClose();
-                }}
-            />
-
-            {/* Show All Symbols */}
-            <ContextMenuItem
-                icon={<Icon name="eye" size="sm" />}
-                label="Show All Symbols"
-                onClick={() => {
-                    onShowAllSymbols();
                     onClose();
                 }}
             />

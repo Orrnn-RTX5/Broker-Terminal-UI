@@ -461,6 +461,11 @@ export interface WatchlistItem {
   sort_order?: number;
 }
 
+export interface WatchlistReplaceItem {
+  symbol: string;
+  sort_order: number;
+}
+
 export interface ListParams {
   limit?: number;
   offset?: number;
