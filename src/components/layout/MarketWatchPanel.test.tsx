@@ -108,6 +108,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     marketHooks.useLiveQuotes.mockClear();
     marketHooks.useLiveQuotes.mockReturnValue({ loading: false, error: null });
     act(() => {
+      useAppStore.setState({ isAuthenticated: false });
       useAppStore.getState().setTicks({
         BTCUSD: { symbol: 'BTCUSD', bid: 65000, ask: 65001, spread: 1, timestamp: Date.now() },
         XAUUSD: { symbol: 'XAUUSD', bid: 2400, ask: 2400.2, spread: 0.2, timestamp: Date.now() },
@@ -123,7 +124,10 @@ describe('MarketWatchPanel symbol visibility', () => {
   });
 
   afterEach(() => {
-    act(() => useAppStore.getState().setTicks({}));
+    act(() => {
+      useAppStore.setState({ isAuthenticated: false });
+      useAppStore.getState().setTicks({});
+    });
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -675,8 +679,8 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(DEFAULT_SYMBOLS);
   });
 
-  it('renders five unavailable placeholders and makes no quote calls while the catalog is empty and loading', () => {
-    marketHooks.activeSymbols = [...DEFAULT_SYMBOLS, '0001.HK'];
+  it('subscribes public active defaults but keeps them non-actionable while the account catalog is empty', () => {
+    marketHooks.activeSymbols = ['xauusd', 'BTCUSD', 'eurusd', 'GBPUSD', 'USDJPY', 'XAUUSD', '0001.HK'];
     marketHooks.instrumentSymbols = [];
     marketHooks.instrumentsLoading = true;
 
@@ -690,10 +694,46 @@ describe('MarketWatchPanel symbol visibility', () => {
 
     expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_DISPLAY_SYMBOLS);
     expect(screen.getByText('5 symbols')).toBeInTheDocument();
-    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith([]);
+    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(DEFAULT_SYMBOLS);
     expect(container.querySelectorAll('tbody tr[aria-disabled="true"]')).toHaveLength(5);
 
     fireEvent.change(screen.getByLabelText('Add symbol'), { target: { value: '0001' } });
     expect(screen.getByText('Loading…')).toBeInTheDocument();
+  });
+
+  it('does not subscribe unknown defaults when the unauthenticated public feed universe is empty', () => {
+    marketHooks.activeSymbols = [];
+    marketHooks.instrumentSymbols = [];
+    marketHooks.instrumentsLoading = false;
+
+    const { container } = render(
+      <MarketWatchPanel
+        allSymbols={[]}
+        selectedSymbol="BTCUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_DISPLAY_SYMBOLS);
+    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith([]);
+    expect(container.querySelectorAll('tbody tr[aria-disabled="true"]')).toHaveLength(5);
+  });
+
+  it('does not use the public feed as an authenticated catalog fallback', () => {
+    act(() => useAppStore.setState({ isAuthenticated: true }));
+    marketHooks.activeSymbols = [...DEFAULT_SYMBOLS];
+    marketHooks.instrumentSymbols = [];
+    marketHooks.instrumentsLoading = true;
+
+    const { container } = render(
+      <MarketWatchPanel
+        allSymbols={[]}
+        selectedSymbol="BTCUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith([]);
+    expect(container.querySelectorAll('tbody tr[aria-disabled="true"]')).toHaveLength(5);
   });
 });

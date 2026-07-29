@@ -313,6 +313,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   className,
 }) => {
   const liveTicks = useAppStore((state) => state.ticks);
+  const isAuthenticated = useAppStore((state) => state.isAuthenticated);
   const liveTickCount = Object.keys(liveTicks).length;
   const {
     symbols: marketInstruments,
@@ -387,9 +388,23 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   }, [allSymbols, disabledSymbolSet, marketInstruments]);
 
   const authorizedSymbolSet = useMemo(() => new Set(authorizedSymbols), [authorizedSymbols]);
+  const publicQuoteSymbols = useMemo(
+    () => !isAuthenticated && activeSymbolsCurrent
+      ? uniqueSymbols(activeMarketSymbols)
+      : [],
+    [activeMarketSymbols, activeSymbolsCurrent, isAuthenticated],
+  );
+  const quoteEligibleSymbols = useMemo(
+    () => authorizedSymbols.length > 0 ? authorizedSymbols : publicQuoteSymbols,
+    [authorizedSymbols, publicQuoteSymbols],
+  );
+  const quoteEligibleSymbolSet = useMemo(
+    () => new Set(quoteEligibleSymbols),
+    [quoteEligibleSymbols],
+  );
   const defaultSymbols = useMemo(
-    () => getDefaultMarketWatchSymbols(authorizedSymbols),
-    [authorizedSymbols],
+    () => getDefaultMarketWatchSymbols(quoteEligibleSymbols),
+    [quoteEligibleSymbols],
   );
   const shouldMergePersistedSymbols = shouldUseWatchlistAsMarketWatchSource({
     activeWatchlistId: activeWatchlist?.id,
@@ -397,10 +412,10 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   });
   const persistedSymbols = useMemo(() => shouldMergePersistedSymbols
     ? uniqueSymbols(activeWatchlist?.symbols ?? [])
-      .map((symbol) => resolveMarketWatchSymbolInput(authorizedSymbols, symbol) ?? symbol)
+      .map((symbol) => resolveMarketWatchSymbolInput(quoteEligibleSymbols, symbol) ?? symbol)
     : [], [
       activeWatchlist?.symbols,
-      authorizedSymbols,
+      quoteEligibleSymbols,
       shouldMergePersistedSymbols,
     ]);
   const activeManualSymbols = manualSymbols.watchlistId === (activeWatchlist?.id ?? '')
@@ -421,10 +436,15 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
       ? authorizedSymbols.filter((symbol) => activeSymbolSet.has(symbol))
       : [],
   ), [activeSymbolSet, activeSymbolsCurrent, authorizedSymbols]);
+  const liveQuoteSymbolSet = useMemo(() => new Set(
+    activeSymbolsCurrent
+      ? quoteEligibleSymbols.filter((symbol) => activeSymbolSet.has(symbol))
+      : [],
+  ), [activeSymbolSet, activeSymbolsCurrent, quoteEligibleSymbols]);
   const searchUniverse = authorizedSymbols;
   const subscriptionSymbols = useMemo(() => rows.filter(
-    (symbol) => authorizedSymbolSet.has(symbol),
-  ), [authorizedSymbolSet, rows]);
+    (symbol) => quoteEligibleSymbolSet.has(symbol),
+  ), [quoteEligibleSymbolSet, rows]);
 
   const filteredSymbols = useMemo(() => {
     return searchMarketWatchSymbols(searchUniverse, search);
@@ -1021,8 +1041,8 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                       key={symbol}
                       symbol={symbol}
                       isSelected={symbol === normalizeSymbol(selectedSymbol)}
-                      isLive={actionableSymbolSet.has(symbol)}
-                      isAvailable={authorizedSymbolSet.has(symbol)}
+                      isLive={liveQuoteSymbolSet.has(symbol)}
+                      isAvailable={quoteEligibleSymbolSet.has(symbol)}
                       isStatusLoading={activeSymbolsLoading}
                       isStatusSettled={activeSymbolsSettled}
                       isStatusCurrent={activeSymbolsCurrent}
@@ -1034,7 +1054,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                       showAsk={showAsk}
                       showSpread={showSpread}
                       showDaily={showDaily}
-                      symbolUniverse={authorizedSymbols}
+                      symbolUniverse={quoteEligibleSymbols}
                       rowRef={(node) => {
                         if (node) {
                           rowRefs.current.set(symbol, node);

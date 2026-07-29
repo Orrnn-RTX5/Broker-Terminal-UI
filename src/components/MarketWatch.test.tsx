@@ -81,11 +81,17 @@ describe('legacy MarketWatch symbol visibility', () => {
             return { loading: false, error: marketHooks.quoteError };
         });
         watchlistMutations.addSymbolToWatchlist.mockClear();
-        act(() => useAppStore.getState().setTicks({}));
+        act(() => {
+            useAppStore.setState({ isAuthenticated: false });
+            useAppStore.getState().setTicks({});
+        });
     });
 
     afterEach(() => {
-        act(() => useAppStore.getState().setTicks({}));
+        act(() => {
+            useAppStore.setState({ isAuthenticated: false });
+            useAppStore.getState().setTicks({});
+        });
     });
 
     it('uses the full SPREAD column heading', () => {
@@ -281,7 +287,46 @@ describe('legacy MarketWatch symbol visibility', () => {
         expect(onSelectSymbol).toHaveBeenCalledWith('GBPUSD');
     });
 
-    it('renders five unavailable placeholders and makes no quote calls while the catalog is loading', () => {
+    it('subscribes public active defaults but keeps them non-actionable while the account catalog is empty', () => {
+        marketHooks.activeSymbols = ['xauusd', 'BTCUSD', 'eurusd', 'GBPUSD', 'USDJPY', 'XAUUSD', '0001.HK'];
+        marketHooks.instrumentSymbols = [];
+        marketHooks.instrumentsLoading = true;
+        const onOpenOrderEntry = vi.fn();
+
+        const { container } = render(
+            <MarketWatch
+                selectedSymbol="BTCUSD"
+                onSelectSymbol={vi.fn()}
+                onOpenOrderEntry={onOpenOrderEntry}
+            />,
+        );
+
+        expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_SYMBOLS);
+        expect(screen.getByText('EURUSD')).toBeInTheDocument();
+        expect(screen.queryByText('EUROUSD')).not.toBeInTheDocument();
+        expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(DEFAULT_SYMBOLS);
+        expect(container.querySelectorAll('tbody tr[data-market-watch-symbol][aria-disabled="true"]')).toHaveLength(5);
+        fireEvent.doubleClick(screen.getByText('XAUUSD').closest('tr')!);
+        expect(onOpenOrderEntry).not.toHaveBeenCalled();
+    });
+
+    it('does not subscribe unknown defaults when the unauthenticated public feed universe is empty', () => {
+        marketHooks.activeSymbols = [];
+        marketHooks.instrumentSymbols = [];
+        marketHooks.instrumentsLoading = false;
+
+        const { container } = render(
+            <MarketWatch selectedSymbol="BTCUSD" onSelectSymbol={vi.fn()} />,
+        );
+
+        expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_SYMBOLS);
+        expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith([]);
+        expect(container.querySelectorAll('tbody tr[data-market-watch-symbol][aria-disabled="true"]')).toHaveLength(5);
+    });
+
+    it('does not use the public feed as an authenticated catalog fallback', () => {
+        act(() => useAppStore.setState({ isAuthenticated: true }));
+        marketHooks.activeSymbols = [...DEFAULT_SYMBOLS];
         marketHooks.instrumentSymbols = [];
         marketHooks.instrumentsLoading = true;
 
@@ -289,9 +334,6 @@ describe('legacy MarketWatch symbol visibility', () => {
             <MarketWatch selectedSymbol="BTCUSD" onSelectSymbol={vi.fn()} />,
         );
 
-        expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_SYMBOLS);
-        expect(screen.getByText('EURUSD')).toBeInTheDocument();
-        expect(screen.queryByText('EUROUSD')).not.toBeInTheDocument();
         expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith([]);
         expect(container.querySelectorAll('tbody tr[data-market-watch-symbol][aria-disabled="true"]')).toHaveLength(5);
     });

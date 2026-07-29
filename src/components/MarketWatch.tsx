@@ -58,6 +58,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     // Subscribe to ticks from global store (populated by WebSocket)
     const liveTicks = useAppStore((state) => state.ticks);
     const tickLookup = useAppStore((state) => state.tickLookup);
+    const isAuthenticated = useAppStore((state) => state.isAuthenticated);
 
     // Get symbols from WatchlistStore
     const activeWatchlist = useWatchlistStore((s) => {
@@ -105,6 +106,20 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
             .sort((a, b) => a.localeCompare(b));
     }, [disabledSymbolSet, marketInstruments]);
     const authorizedSymbolSet = useMemo(() => new Set(authorizedSymbols), [authorizedSymbols]);
+    const publicQuoteSymbols = useMemo(
+        () => !isAuthenticated && activeSymbolsCurrent
+            ? uniqueSymbols(activeMarketSymbols)
+            : [],
+        [activeMarketSymbols, activeSymbolsCurrent, isAuthenticated],
+    );
+    const quoteEligibleSymbols = useMemo(
+        () => authorizedSymbols.length > 0 ? authorizedSymbols : publicQuoteSymbols,
+        [authorizedSymbols, publicQuoteSymbols],
+    );
+    const quoteEligibleSymbolSet = useMemo(
+        () => new Set(quoteEligibleSymbols),
+        [quoteEligibleSymbols],
+    );
     const activeSymbolSet = useMemo(() => new Set(uniqueSymbols(activeMarketSymbols)), [activeMarketSymbols]);
     const actionableSymbolSet = useMemo(() => new Set(
         activeSymbolsCurrent
@@ -113,8 +128,8 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     ), [activeSymbolSet, activeSymbolsCurrent, authorizedSymbols]);
     const searchUniverse = authorizedSymbols;
     const defaultSymbols = useMemo(
-        () => getDefaultMarketWatchSymbols(authorizedSymbols),
-        [authorizedSymbols],
+        () => getDefaultMarketWatchSymbols(quoteEligibleSymbols),
+        [quoteEligibleSymbols],
     );
     const shouldMergePersistedSymbols = shouldUseWatchlistAsMarketWatchSource({
         activeWatchlistId: activeWatchlist?.id,
@@ -122,10 +137,10 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     });
     const persistedSymbols = useMemo(() => shouldMergePersistedSymbols
         ? uniqueSymbols(activeWatchlist?.symbols ?? [])
-            .map((symbol) => resolveMarketWatchSymbolInput(authorizedSymbols, symbol) ?? symbol)
+            .map((symbol) => resolveMarketWatchSymbolInput(quoteEligibleSymbols, symbol) ?? symbol)
         : [], [
         activeWatchlist?.symbols,
-        authorizedSymbols,
+        quoteEligibleSymbols,
         shouldMergePersistedSymbols,
     ]);
     const activeManualSymbols = manualSymbols.watchlistId === (activeWatchlist?.id ?? '')
@@ -139,8 +154,8 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         [activeManualSymbols, defaultSymbols, persistedSymbols, shouldMergePersistedSymbols],
     );
     const subscriptionSymbols = useMemo(() => symbols.filter(
-        (symbol) => authorizedSymbolSet.has(symbol),
-    ), [authorizedSymbolSet, symbols]);
+        (symbol) => quoteEligibleSymbolSet.has(symbol),
+    ), [quoteEligibleSymbolSet, symbols]);
     const searchResults = useMemo(() => {
         return searchMarketWatchSymbols(searchUniverse, addSymbolInput);
     }, [addSymbolInput, searchUniverse]);
@@ -354,7 +369,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                                 )}
                                 {symbols.map((symbol) => {
                                     const tick = displayData[symbol];
-                                    const displaySymbol = getMarketWatchSymbolLabel(symbol, authorizedSymbols);
+                                    const displaySymbol = getMarketWatchSymbolLabel(symbol, quoteEligibleSymbols);
                                     const isActionable = actionableSymbolSet.has(symbol);
 
                                     // Default values
