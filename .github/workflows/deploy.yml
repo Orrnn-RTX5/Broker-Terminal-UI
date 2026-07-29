@@ -61,7 +61,7 @@ jobs:
         env:
           INFRA_REPO: ${{ github.repository_owner }}/ORRNN-RTX5-Broker-Infra
           INFRA_TOKEN: ${{ secrets.INFRA_REPO_DISPATCH_TOKEN }}
-          BROKER_IDS: "grow-trading-academy myprop-trade achiever-financials"
+          BROKER_IDS: "grow-trading-academy"
           COMPONENT: webterminal
           IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           SHARED_DISCOVERY_BASE_URL: "https://superbackend.orrnn.com"
