@@ -65,7 +65,8 @@ jobs:
           COMPONENT: webterminal
           IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ github.sha }}
           SHARED_DISCOVERY_BASE_URL: "https://superbackend.orrnn.com"
-          BROKER_SSH_PRIVATE_KEY: ${{ secrets.BROKER_SSH_PRIVATE_KEY }}
+          # Achiever-only: prefer Achiever identity secret (same as backend Deploy Brokers).
+          BROKER_SSH_PRIVATE_KEY: ${{ secrets.BROKER_SSH_KNOWN_HOSTS_ACHIEVER || secrets.BROKER_SSH_PRIVATE_KEY }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
           GHCR_TOKEN: ${{ github.token }}
           LETSENCRYPT_EMAIL: ${{ secrets.LETSENCRYPT_EMAIL }}
@@ -76,9 +77,10 @@ jobs:
             exit 1
           fi
           if [[ -z "$BROKER_SSH_PRIVATE_KEY" ]]; then
-            echo "BROKER_SSH_PRIVATE_KEY is required for broker SSH deploy" >&2
+            echo "BROKER_SSH_KNOWN_HOSTS_ACHIEVER (or BROKER_SSH_PRIVATE_KEY) is required for Achiever SSH deploy" >&2
             exit 1
           fi
+          echo "SSH identity: Achiever deploy key (BROKER_SSH_KNOWN_HOSTS_ACHIEVER preferred)"
 
           api_get() {
             curl --fail-with-body -sSL \

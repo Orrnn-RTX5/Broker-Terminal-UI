@@ -59,13 +59,29 @@ const DEBUG_LIMIT = 18;
 const RECONNECT_MS = 3000;
 
 const toNumber = (value: unknown, fallback = 0): number => {
-  const next = Number(value);
+  if (value === null || value === undefined) return fallback;
+  // calc-v2 Money: { amount, currency, scale } — Number(object) is NaN → false zero balance.
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (record.amount !== undefined && record.amount !== null) {
+      return toNumber(record.amount, fallback);
+    }
+  }
+  const cleanStr = String(value).replace(/,/g, '');
+  const next = Number(cleanStr);
   return Number.isFinite(next) ? next : fallback;
 };
 
 const hasFiniteValue = (value: unknown): boolean => {
   if (value === undefined || value === null || value === '') return false;
-  return Number.isFinite(Number(value));
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (record.amount !== undefined && record.amount !== null) {
+      return hasFiniteValue(record.amount);
+    }
+  }
+  const cleanStr = String(value).replace(/,/g, '');
+  return Number.isFinite(Number(cleanStr));
 };
 
 const unwrapData = (value: any): any => {
@@ -81,24 +97,38 @@ const unwrapData = (value: any): any => {
 
 export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Account => {
   const data = unwrapData(raw) ?? {};
-  const freeMarginRaw = data.free_margin ?? data.margin_free ?? data.freeMargin ?? data.margin_available;
+  const freeMarginRaw =
+    data.free_margin_amount ?? data.free_margin ?? data.margin_free ?? data.freeMargin ?? data.margin_available;
   const marginLevelRaw = data.margin_level ?? data.marginLevel;
   const creditRaw = data.credit ?? data.credit_bonus ?? data.bonus;
-  const hasBackendEquity = hasFiniteValue(data.equity);
+  const balanceRaw = data.balance_amount ?? data.balance ?? data.Balance;
+  const equityRaw = data.equity_amount ?? data.equity ?? data.Equity;
+  const hasBackendEquity = hasFiniteValue(equityRaw);
   const hasBackendFreeMargin = hasFiniteValue(freeMarginRaw);
   const hasBackendMarginLevel = hasFiniteValue(marginLevelRaw);
 
+  // Prefer scalars; unwrap Money.amount. Never replace a known funded balance with packet 0.
+  const incomingBalance = balanceRaw !== undefined && balanceRaw !== null ? toNumber(balanceRaw, 0) : undefined;
+  const rejectZeroBalance = Boolean(previous && previous.balance > 0 && incomingBalance === 0);
+  const balance = rejectZeroBalance
+    ? previous!.balance
+    : (incomingBalance !== undefined ? incomingBalance : (previous?.balance ?? 0));
+  const floatingPnL = toNumber(
+    data.floating_pnl ?? data.floating ?? data.profit ?? data.unrealized_pl ?? data.unrealizedPL,
+    previous?.unrealizedPL ?? 0,
+  );
+  const equity = rejectZeroBalance
+    ? balance + floatingPnL
+    : hasBackendEquity
+      ? toNumber(equityRaw, previous?.equity ?? previous?.balance ?? balance)
+      : toNumber(previous?.equity ?? balance, balance);
+
   return {
-    balance: toNumber(data.balance, previous?.balance ?? 0),
-    equity: hasBackendEquity
-      ? toNumber(data.equity, previous?.equity ?? previous?.balance ?? 0)
-      : toNumber(previous?.equity ?? data.balance, previous?.balance ?? 0),
+    balance,
+    equity,
     margin: toNumber(data.used_margin ?? data.margin_used ?? data.margin ?? data.marginUsed, previous?.margin ?? 0),
     freeMargin: hasBackendFreeMargin ? toNumber(freeMarginRaw, previous?.freeMargin ?? 0) : toNumber(previous?.freeMargin, 0),
-    unrealizedPL: toNumber(
-      data.floating_pnl ?? data.floating ?? data.profit ?? data.unrealized_pl ?? data.unrealizedPL,
-      previous?.unrealizedPL ?? 0,
-    ),
+    unrealizedPL: floatingPnL,
     marginLevel: hasBackendMarginLevel ? toNumber(marginLevelRaw, previous?.marginLevel ?? 0) : toNumber(previous?.marginLevel, 0),
     credit: toNumber(creditRaw, previous?.credit ?? 0),
     hasBackendEquity,
