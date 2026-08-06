@@ -213,6 +213,14 @@ const WS_DEBUG = false; // Enable to see WebSocket tick data in console
 
 const toNumber = (value: unknown, fallback = 0): number => {
   if (value === null || value === undefined) return fallback;
+  // calc-v2 Money objects: { amount: "99997.09", currency: "USD", scale: 2 }
+  // String(object) => "[object Object]" => Number NaN => was incorrectly showing balance 0.
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (record.amount !== undefined && record.amount !== null) {
+      return toNumber(record.amount, fallback);
+    }
+  }
   const cleanStr = String(value).replace(/,/g, '');
   const n = Number(cleanStr);
   return Number.isFinite(n) ? n : fallback;
@@ -548,27 +556,36 @@ const normalizeAccountSummary = (payload: unknown, prev?: Account | null): Accou
 
   // Extract with explicit undefined checks so that literal 0s from the server are respected
   // but missing keys properly fall back to previous state.
-  const balanceRaw = raw.balance ?? raw.Balance;
-  const equityRaw = raw.equity ?? raw.Equity;
+  // Prefer explicit scalar aliases when present, then nested Money / raw fields.
+  const balanceRaw = raw.balance_amount ?? raw.balance ?? raw.Balance;
+  const equityRaw = raw.equity_amount ?? raw.equity ?? raw.Equity;
 
-  // Heuristic Guard: Prevent dummy all-zero WebSocket payloads from clearing valid REST data.
-  if (Number(balanceRaw) === 0 && Number(equityRaw) === 0 && prev && prev.balance > 0) {
-    // If the backend broadcasts a 0 balance/equity but we genuinely have a balance, 
-    // it's likely a blank initialization schema. Ignore it.
-    return prev;
-  }
+  // Guard: never wipe a known funded account with a live packet that reports
+  // balance=0 (bad/partial metrics). Old guard required BOTH balance and equity
+  // to be 0; packets with balance=0 but floating equity (~-2) still zeroed cash.
+  const incomingBalance = balanceRaw !== undefined ? toNumber(balanceRaw, 0) : undefined;
+  const incomingEquity = equityRaw !== undefined ? toNumber(equityRaw, 0) : undefined;
+  const rejectZeroBalance = Boolean(prev && prev.balance > 0 && incomingBalance === 0);
 
-  const balance = balanceRaw !== undefined ? toNumber(balanceRaw, 0) : (prev?.balance ?? 0);
-  const equity = equityRaw !== undefined ? toNumber(equityRaw, balance) : (prev?.equity ?? balance);
+  const balance = rejectZeroBalance
+    ? prev!.balance
+    : (incomingBalance !== undefined ? incomingBalance : (prev?.balance ?? 0));
+  const floatingFromPacket = toNumber(
+    raw.profit ?? raw.unrealizedPL ?? raw.unrealized_pl ?? raw.unrealizedPnL,
+    prev?.unrealizedPL ?? 0,
+  );
+  const equity = rejectZeroBalance
+    ? balance + floatingFromPacket
+    : (incomingEquity !== undefined ? incomingEquity : (prev?.equity ?? balance));
 
   const marginRaw = raw.margin ?? raw.margin_used;
   const margin = marginRaw !== undefined ? toNumber(marginRaw, 0) : (prev?.margin ?? 0);
 
-  const freeMarginRaw = raw.freeMargin ?? raw.free_margin ?? raw.margin_available;
+  const freeMarginRaw = raw.free_margin_amount ?? raw.freeMargin ?? raw.free_margin ?? raw.margin_available;
   const freeMarginFallback = prev?.freeMargin ?? Math.max(0, equity - margin);
   const freeMargin = freeMarginRaw !== undefined ? toNumber(freeMarginRaw, freeMarginFallback) : freeMarginFallback;
 
-  const profitRaw = raw.profit ?? raw.unrealizedPL ?? raw.unrealized_pl ?? raw.unrealizedPnL;
+  const profitRaw = raw.floating_pnl ?? raw.profit ?? raw.unrealizedPL ?? raw.unrealized_pl ?? raw.unrealizedPnL;
   const unrealizedPL = profitRaw !== undefined ? toNumber(profitRaw, 0) : (prev?.unrealizedPL ?? 0);
 
   const levelRaw = raw.marginLevel ?? raw.margin_level;
