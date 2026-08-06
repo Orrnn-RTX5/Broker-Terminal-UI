@@ -117,5 +117,5 @@ jobs:
             ssh "${ssh_opts[@]}" "$user@$host" "mkdir -p /opt/rtx5-infra/scripts"
             scp "${scp_opts[@]}" /tmp/deploy-broker.sh "$user@$host:/opt/rtx5-infra/scripts/deploy-broker.sh"
             ssh "${ssh_opts[@]}" "$user@$host" \
-              "chmod +x /opt/rtx5-infra/scripts/deploy-broker.sh && BROKER_JSON_B64='$broker_b64' COMPONENT='$COMPONENT' IMAGE_REF='$IMAGE_REF' DRY_RUN='true' GHCR_USERNAME='$GHCR_USERNAME' GHCR_TOKEN='$GHCR_TOKEN' LETSENCRYPT_EMAIL='$LETSENCRYPT_EMAIL' /opt/rtx5-infra/scripts/deploy-broker.sh"
+              "chmod +x /opt/rtx5-infra/scripts/deploy-broker.sh && BROKER_JSON_B64='$broker_b64' COMPONENT='$COMPONENT' IMAGE_REF='$IMAGE_REF' DRY_RUN='false' GHCR_USERNAME='$GHCR_USERNAME' GHCR_TOKEN='$GHCR_TOKEN' LETSENCRYPT_EMAIL='$LETSENCRYPT_EMAIL' /opt/rtx5-infra/scripts/deploy-broker.sh"
           done
