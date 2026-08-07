@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  canUseProfitForAccountReconciliation,
   calculateLivePositionProfit,
   resolveTradeAccountMetrics,
   resolveTradeProfit,
@@ -101,28 +100,19 @@ describe('BottomDock trade helpers', () => {
     });
   });
 
-  it('allows account reconciliation only from backend or explicit-contract calculated profit', () => {
-    expect(canUseProfitForAccountReconciliation('backend')).toBe(true);
-    expect(canUseProfitForAccountReconciliation('calculated')).toBe(true);
-    expect(canUseProfitForAccountReconciliation('estimated')).toBe(false);
-    expect(canUseProfitForAccountReconciliation('missing')).toBe(false);
-    expect(canUseProfitForAccountReconciliation(undefined)).toBe(false);
-  });
-
-  it('keeps coherent backend account metrics authoritative', () => {
+  it('displays backend account metrics verbatim', () => {
     const resolved = resolveTradeAccountMetrics({
       balance: 1000,
       equity: 1010,
       margin: 100,
       freeMargin: 910,
       marginLevel: 1010,
-    }, {
-      floatingProfit: 10,
-      canReconcileEquity: true,
     });
 
     expect(resolved).toMatchObject({
+      balance: 1000,
       equity: 1010,
+      margin: 100,
       freeMargin: 910,
       marginLevel: 1010,
       equitySource: 'backend',
@@ -132,53 +122,52 @@ describe('BottomDock trade helpers', () => {
     });
   });
 
-  it('falls back to calculated equity when backend equity does not reconcile with visible positions', () => {
+  it('keeps the backend value even when a local calculation would produce a very different one', () => {
+    // A client-side reconstruction of MT-style equity would give
+    // balance + credit + floating = 999998.56 + 0 + 5543.22 = 1005541.78,
+    // which is ~18k below what the server reports. The server still wins.
     const resolved = resolveTradeAccountMetrics({
       balance: 999998.56,
       equity: 1023501.78,
       margin: 30,
       freeMargin: 1023471.78,
       marginLevel: 3411672.6,
-    }, {
-      floatingProfit: 5543.22,
-      canReconcileEquity: true,
     });
 
-    expect(resolved.equity).toBeCloseTo(1005541.78, 5);
-    expect(resolved.freeMargin).toBeCloseTo(1005511.78, 5);
-    expect(resolved.marginLevel).toBeCloseTo(3351805.933333, 5);
+    expect(resolved.equity).toBe(1023501.78);
+    expect(resolved.freeMargin).toBe(1023471.78);
+    expect(resolved.marginLevel).toBe(3411672.6);
     expect(resolved).toMatchObject({
-      equitySource: 'calculated',
-      freeMarginSource: 'calculated',
-      marginLevelSource: 'calculated',
-      warnings: expect.arrayContaining([
-        'backend_equity_mismatch',
-        'backend_free_margin_mismatch',
-        'backend_margin_level_mismatch',
-      ]),
-    });
-  });
-
-  it('does not override backend equity when position profit is not reliable enough to reconcile', () => {
-    const resolved = resolveTradeAccountMetrics({
-      balance: 1000,
-      equity: 1200,
-      margin: 100,
-      freeMargin: 1100,
-      marginLevel: 1200,
-    }, {
-      floatingProfit: 0,
-      canReconcileEquity: false,
-    });
-
-    expect(resolved).toMatchObject({
-      equity: 1200,
       equitySource: 'backend',
+      freeMarginSource: 'backend',
+      marginLevelSource: 'backend',
       warnings: [],
     });
   });
 
-  it('treats normalized equity as missing when backend did not actually send equity', () => {
+  it('never substitutes a locally derived free margin or margin level for the backend ones', () => {
+    // equity - margin would be 910 and (equity / margin) * 100 would be 1010, but the
+    // backend says otherwise and the backend is authoritative.
+    const resolved = resolveTradeAccountMetrics({
+      balance: 1000,
+      equity: 1010,
+      margin: 100,
+      freeMargin: 100,
+      marginLevel: 100,
+    });
+
+    expect(resolved).toMatchObject({
+      equity: 1010,
+      freeMargin: 100,
+      marginLevel: 100,
+      equitySource: 'backend',
+      freeMarginSource: 'backend',
+      marginLevelSource: 'backend',
+      warnings: [],
+    });
+  });
+
+  it('reports equity as unavailable when the backend did not send it', () => {
     const resolved = resolveTradeAccountMetrics({
       balance: 1000,
       equity: 1000,
@@ -186,82 +175,119 @@ describe('BottomDock trade helpers', () => {
       freeMargin: 900,
       marginLevel: 1000,
       hasBackendEquity: false,
-    }, {
-      floatingProfit: 10,
-      canReconcileEquity: false,
     });
 
     expect(resolved).toMatchObject({
-      equity: 1010,
-      calculatedEquity: 1010,
-      equitySource: 'calculated',
-      warnings: expect.arrayContaining(['missing_backend_equity']),
+      equity: null,
+      equitySource: 'unavailable',
+      freeMargin: 900,
+      freeMarginSource: 'backend',
+      warnings: ['missing_backend_equity'],
     });
   });
 
-  it('uses cent-level tolerance for large account metric mismatches', () => {
+  it('reports every metric as unavailable when the backend sent none of them', () => {
     const resolved = resolveTradeAccountMetrics({
-      balance: 1_000_000,
-      equity: 1_000_050,
+      balance: 1000,
       margin: 100,
-      freeMargin: 999_950,
-      marginLevel: 1_000_050,
-    }, {
-      floatingProfit: 0,
-      canReconcileEquity: true,
     });
 
     expect(resolved).toMatchObject({
-      equity: 1_000_000,
-      equitySource: 'calculated',
-      warnings: expect.arrayContaining(['backend_equity_mismatch']),
+      balance: 1000,
+      margin: 100,
+      equity: null,
+      freeMargin: null,
+      marginLevel: null,
+      equitySource: 'unavailable',
+      freeMarginSource: 'unavailable',
+      marginLevelSource: 'unavailable',
+      warnings: [
+        'missing_backend_equity',
+        'missing_backend_free_margin',
+        'missing_backend_margin_level',
+      ],
     });
   });
 
-  it('recalculates derived free margin and margin level when backend derived fields are wrong', () => {
+  it('reports every metric as unavailable for a missing account', () => {
+    expect(resolveTradeAccountMetrics(null)).toMatchObject({
+      balance: 0,
+      credit: 0,
+      margin: 0,
+      equity: null,
+      freeMargin: null,
+      marginLevel: null,
+      equitySource: 'unavailable',
+      freeMarginSource: 'unavailable',
+      marginLevelSource: 'unavailable',
+    });
+  });
+
+  it('honours backend zero and negative metrics instead of treating them as missing', () => {
+    const resolved = resolveTradeAccountMetrics({
+      balance: 500,
+      equity: -25,
+      margin: 0,
+      freeMargin: 0,
+      marginLevel: 0,
+    });
+
+    expect(resolved).toMatchObject({
+      equity: -25,
+      freeMargin: 0,
+      marginLevel: 0,
+      equitySource: 'backend',
+      freeMarginSource: 'backend',
+      marginLevelSource: 'backend',
+      warnings: [],
+    });
+  });
+
+  it('accepts the backend free margin and margin level under their snake_case aliases', () => {
     const resolved = resolveTradeAccountMetrics({
       balance: 1000,
       equity: 1010,
       margin: 100,
-      freeMargin: 100,
-      marginLevel: 100,
-    }, {
-      floatingProfit: 10,
-      canReconcileEquity: true,
+      margin_free: 910,
+      margin_level: 1010,
     });
 
     expect(resolved).toMatchObject({
-      equity: 1010,
-      equitySource: 'backend',
       freeMargin: 910,
-      freeMarginSource: 'calculated',
       marginLevel: 1010,
-      marginLevelSource: 'calculated',
-      warnings: expect.arrayContaining([
-        'backend_free_margin_mismatch',
-        'backend_margin_level_mismatch',
-      ]),
+      freeMarginSource: 'backend',
+      marginLevelSource: 'backend',
+      warnings: [],
     });
   });
 
-  it('includes backend credit or bonus when reconstructing MT-style equity', () => {
+  it('passes balance, credit and margin straight through', () => {
     const resolved = resolveTradeAccountMetrics({
       balance: 1000,
       credit: 50,
       equity: 1060,
-      margin: 10,
+      margin: -5,
       freeMargin: 1050,
       marginLevel: 10600,
-    }, {
-      floatingProfit: 10,
-      canReconcileEquity: true,
     });
 
     expect(resolved).toMatchObject({
+      balance: 1000,
       credit: 50,
-      calculatedEquity: 1060,
+      // margin is clamped at zero, everything else is untouched
+      margin: 0,
       equity: 1060,
       equitySource: 'backend',
     });
+  });
+
+  it('reads credit from the bonus alias', () => {
+    expect(resolveTradeAccountMetrics({
+      balance: 1000,
+      bonus: 75,
+      equity: 1075,
+      freeMargin: 1075,
+      marginLevel: 0,
+    })).toMatchObject({ credit: 75 });
   });
 });

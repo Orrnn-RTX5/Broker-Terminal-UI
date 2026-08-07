@@ -20,7 +20,11 @@ import {
     type ExposurePieSegment,
     type ExposurePositionInput,
 } from './BottomDock.exposure';
-import { canUseProfitForAccountReconciliation, resolveTradeAccountMetrics, resolveTradeProfit } from './BottomDock.trade';
+import { resolveTradeAccountMetrics, resolveTradeProfit } from './BottomDock.trade';
+
+// Rendered wherever the backend did not report an account metric. Never show "0.00" for a
+// value the backend never sent — a false zero reads as a real (and alarming) account state.
+const METRIC_UNAVAILABLE = '—';
 
 // BottomDock reads trading data from the store directly to avoid re-rendering
 // the chart panel every time positions update (root cause of post-trade crashes).
@@ -304,8 +308,6 @@ export function BottomDock({
     // Value-level caches — prevent setState when broker sends new objects with same field values
     const cachedAccountSig = useRef<string>('');
     const cachedPositionsSig = useRef<string>('');
-    const pendingAccountSyncRef = useRef(0);
-    const [accountReconciliationSuspended, setAccountReconciliationSuspended] = useState(false);
 
     const accountSig = (a: any) => !a ? '' : `${a.balance}|${a.equity}|${a.margin}|${a.freeMargin}|${a.marginLevel}|${a.unrealizedPL}|${a.currency}|${a.credit ?? a.bonus ?? ''}`;
     const positionsSig = (ps: any[]) => ps.map(p => `${p.id}-${p.volume}-${p.sl}-${p.tp}-${p.currentPrice}-${p.unrealizedPnL}`).join('|');
@@ -356,56 +358,40 @@ export function BottomDock({
     
     const [isResizing, setIsResizing] = useState(false);
 
-    const suspendAccountReconciliation = () => {
-        pendingAccountSyncRef.current += 1;
-        setAccountReconciliationSuspended(true);
-
-        return () => {
-            pendingAccountSyncRef.current = Math.max(0, pendingAccountSyncRef.current - 1);
-            if (pendingAccountSyncRef.current === 0) {
-                setAccountReconciliationSuspended(false);
-            }
-        };
-    };
-
-    const refreshTradeSoon = (afterRefresh?: () => void) => {
+    const refreshTradeSoon = () => {
         window.setTimeout(() => {
-            void toolboxTrade.refresh().finally(() => {
-                afterRefresh?.();
-            });
+            void toolboxTrade.refresh();
         }, 1500);
     };
 
     const handleTradeClosePosition = (id: number, volume?: number) => {
-        const releaseAccountReconciliation = suspendAccountReconciliation();
         toolboxTrade.removePosition(Number(id));
         try {
             const result = onClosePosition(id, volume) as unknown;
             if (result && typeof (result as any).finally === 'function') {
-                (result as any).finally(() => refreshTradeSoon(releaseAccountReconciliation));
+                (result as any).finally(() => refreshTradeSoon());
             } else {
-                refreshTradeSoon(releaseAccountReconciliation);
+                refreshTradeSoon();
             }
         } catch (error) {
-            refreshTradeSoon(releaseAccountReconciliation);
+            refreshTradeSoon();
             throw error;
         }
     };
 
     const handleTradeCloseBulk = (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => {
-        const releaseAccountReconciliation = suspendAccountReconciliation();
         if (!symbol) {
             toolboxTrade.removePositionsByMode(type);
         }
         try {
             const result = onCloseBulk?.(type, symbol) as unknown;
             if (result && typeof (result as any).finally === 'function') {
-                (result as any).finally(() => refreshTradeSoon(releaseAccountReconciliation));
+                (result as any).finally(() => refreshTradeSoon());
             } else {
-                refreshTradeSoon(releaseAccountReconciliation);
+                refreshTradeSoon();
             }
         } catch (error) {
-            refreshTradeSoon(releaseAccountReconciliation);
+            refreshTradeSoon();
             throw error;
         }
     };
@@ -515,7 +501,6 @@ export function BottomDock({
                         formatMoney={formatMoney}
                         formatDate={formatDate}
                         loading={toolboxTrade.loading}
-                        accountReconciliationSuspended={accountReconciliationSuspended}
                         error={toolboxTrade.error}
                         wsState={toolboxTrade.wsState}
                         restBaseUrl={toolboxTrade.restBaseUrl}
@@ -720,6 +705,16 @@ function BlinkingText({ value, formatFn, prefix = '', suffix = '', defaultColor 
     );
 }
 
+// Placeholder for an account metric the backend did not report. Rendering a dash keeps the
+// footer honest: the terminal has no authoritative value and refuses to invent one.
+function UnavailableMetric({ title = 'Not reported by the trading server' }: { title?: string }) {
+    return (
+        <span className="px-0.5 rounded-sm inline-block text-zinc-500" title={title}>
+            {METRIC_UNAVAILABLE}
+        </span>
+    );
+}
+
 function TradeTab({
     positions,
     account,
@@ -729,10 +724,8 @@ function TradeTab({
     formatMoney,
     formatDate,
     loading,
-    accountReconciliationSuspended,
     error,
 }: any) {
-    const isLoadingPositions = useAppStore(s => s.isLoadingPositions);
     const accountId = useAppStore(s => s.accountId);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editSL, setEditSL] = useState("");
@@ -884,17 +877,13 @@ function TradeTab({
         rememberTradeHistoryPositionLevels(livePositions, accountId);
     }, [accountId, livePositionLevelSignature]);
 
-    // Position totals come from rows. Account metrics use REST/WS account/metrics unless the
-    // backend derived fields stop reconciling with the visible MT-style position state.
+    // Row-level totals. These drive the per-tile Floating P/L, Swap and Commission displays
+    // only \u2014 they must never feed the account metrics, which are backend-authoritative.
     const totalLivePnL = useMemo(() => livePositions.reduce((acc, pos) => acc + (pos.livePnL || 0), 0), [livePositions]);
     const totalSwap = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.swap) || 0), 0), [livePositions]);
     const totalCommission = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.commission) || 0), 0), [livePositions]);
-    const canReconcileAccountMetrics = useMemo(() => (
-        !loading
-        && !accountReconciliationSuspended
-        && !isLoadingPositions
-        && livePositions.every(pos => canUseProfitForAccountReconciliation(pos.profitSource))
-    ), [accountReconciliationSuspended, isLoadingPositions, livePositions, loading]);
+    // Equity / free margin / margin level are shown exactly as the backend reports them. When
+    // the backend omits one it resolves to null and the footer renders a dash, not a zero.
     const accountMetricResolution = useMemo(() => resolveTradeAccountMetrics({
         balance: account?.balance,
         equity: account?.equity,
@@ -906,19 +895,15 @@ function TradeTab({
         hasBackendMarginLevel: account?.hasBackendMarginLevel,
         credit: account?.credit,
         bonus: account?.bonus,
-    }, {
-        floatingProfit: totalLivePnL,
-        swap: totalSwap,
-        commission: totalCommission,
-        canReconcileEquity: canReconcileAccountMetrics,
-    }), [account, totalLivePnL, totalSwap, totalCommission, canReconcileAccountMetrics]);
+    }), [account]);
     const accountBalance = accountMetricResolution.balance;
     const liveEquity = accountMetricResolution.equity;
     const margin = accountMetricResolution.margin;
     const liveFreeMargin = accountMetricResolution.freeMargin;
     const liveMarginLevel = accountMetricResolution.marginLevel;
 
-    const formatMarginLevel = (value: number) => {
+    const formatMarginLevel = (value: number | null) => {
+        if (value === null) return METRIC_UNAVAILABLE;
         if (value <= 0 && livePositions.length === 0) return '\u221e';
         return `${formatMoney(value)} %`;
     };
@@ -1032,13 +1017,19 @@ function TradeTab({
             case 'balance':
                 return <BlinkingText value={accountBalance} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} />;
             case 'equity':
-                return <BlinkingText value={liveEquity} formatFn={formatMoney} />;
+                return liveEquity === null
+                    ? <UnavailableMetric />
+                    : <BlinkingText value={liveEquity} formatFn={formatMoney} />;
             case 'margin':
                 return <BlinkingText value={margin} formatFn={formatMoney} />;
             case 'freeMargin':
-                return <BlinkingText value={liveFreeMargin} formatFn={formatMoney} />;
+                return liveFreeMargin === null
+                    ? <UnavailableMetric />
+                    : <BlinkingText value={liveFreeMargin} formatFn={formatMoney} />;
             case 'marginLevel':
-                return <BlinkingText value={liveMarginLevel} formatFn={formatMarginLevel} />;
+                return liveMarginLevel === null
+                    ? <UnavailableMetric />
+                    : <BlinkingText value={liveMarginLevel} formatFn={formatMarginLevel} />;
             case 'swap':
                 return <BlinkingText value={totalSwap} formatFn={formatMoney} defaultColor={totalSwap < 0 ? 'text-[#f87171]' : 'text-zinc-300'} />;
             case 'commission':
@@ -1058,13 +1049,13 @@ function TradeTab({
                 value = `${formatMoney(accountBalance)} ${account?.currency || 'USD'}`;
                 break;
             case 'equity':
-                value = formatMoney(liveEquity);
+                value = liveEquity === null ? METRIC_UNAVAILABLE : formatMoney(liveEquity);
                 break;
             case 'margin':
                 value = formatMoney(margin);
                 break;
             case 'freeMargin':
-                value = formatMoney(liveFreeMargin);
+                value = liveFreeMargin === null ? METRIC_UNAVAILABLE : formatMoney(liveFreeMargin);
                 break;
             case 'marginLevel':
                 value = formatMarginLevel(liveMarginLevel);

@@ -50,24 +50,23 @@ export interface TradeAccountMetricInput {
   bonus?: unknown;
 }
 
-export interface TradeAccountMetricTotalsInput {
-  floatingProfit?: unknown;
-  swap?: unknown;
-  commission?: unknown;
-  canReconcileEquity?: boolean;
-}
-
-export type TradeAccountMetricSource = 'backend' | 'calculated';
+/**
+ * `backend` — the value came straight from the trading backend and is displayed verbatim.
+ * `unavailable` — the backend did not send the value. The terminal does NOT substitute a
+ * locally computed number; callers must render an explicit "no value" placeholder.
+ */
+export type TradeAccountMetricSource = 'backend' | 'unavailable';
 
 export interface TradeAccountMetricResolution {
   balance: number;
   credit: number;
-  equity: number;
+  /** Backend equity, or null when the backend did not supply it. */
+  equity: number | null;
   margin: number;
-  freeMargin: number;
-  marginLevel: number;
-  calculatedEquity: number;
-  backendEquity: number | null;
+  /** Backend free margin, or null when the backend did not supply it. */
+  freeMargin: number | null;
+  /** Backend margin level, or null when the backend did not supply it. */
+  marginLevel: number | null;
   equitySource: TradeAccountMetricSource;
   freeMarginSource: TradeAccountMetricSource;
   marginLevelSource: TradeAccountMetricSource;
@@ -100,72 +99,48 @@ const getProfitCurrency = (position: TradeProfitInput, symbolQuote?: string): st
   return value || null;
 };
 
-const getAccountMetricTolerance = (): number => 0.01;
-
-const isOutsideTolerance = (actual: number, expected: number): boolean => (
-  Math.abs(actual - expected) > getAccountMetricTolerance()
-);
-
+/**
+ * Account metrics are BACKEND-AUTHORITATIVE.
+ *
+ * Equity, free margin and margin level are displayed exactly as the trading backend reports
+ * them. The terminal never recomputes them, never compares them against a locally derived
+ * figure, and never substitutes its own number when the two disagree — the backend owns the
+ * swap/commission/conversion rules that a browser cannot reproduce faithfully.
+ *
+ * When the backend omits a metric it is reported as `null` / `'unavailable'` so the UI can
+ * render an explicit placeholder instead of a misleading zero.
+ *
+ * `balance`, `credit` and `margin` keep their plain passthrough behaviour.
+ */
 export const resolveTradeAccountMetrics = (
   account: TradeAccountMetricInput | null | undefined,
-  totals: TradeAccountMetricTotalsInput = {},
 ): TradeAccountMetricResolution => {
   const balance = toFiniteNumber(account?.balance, 0);
   const credit = toFiniteNumber(account?.credit ?? account?.bonus, 0);
   const margin = Math.max(0, toFiniteNumber(account?.margin, 0));
-  const floatingProfit = toFiniteNumber(totals.floatingProfit, 0);
-  const swap = toFiniteNumber(totals.swap, 0);
-  const commission = toFiniteNumber(totals.commission, 0);
-  const calculatedEquity = balance + credit + floatingProfit + swap + commission;
-  const backendEquity = account?.hasBackendEquity === false
-    ? null
-    : toOptionalFiniteNumber(account?.equity);
   const warnings: string[] = [];
 
-  let equity = calculatedEquity;
-  let equitySource: TradeAccountMetricSource = 'calculated';
-
-  if (backendEquity === null) {
+  const equity = account?.hasBackendEquity === false
+    ? null
+    : toOptionalFiniteNumber(account?.equity);
+  if (equity === null) {
     warnings.push('missing_backend_equity');
-  } else if (totals.canReconcileEquity && isOutsideTolerance(backendEquity, calculatedEquity)) {
-    warnings.push('backend_equity_mismatch');
-  } else {
-    equity = backendEquity;
-    equitySource = 'backend';
   }
 
-  const calculatedFreeMargin = equity - margin;
-  const backendFreeMargin = account?.hasBackendFreeMargin === false
+  const freeMargin = account?.hasBackendFreeMargin === false
     ? null
     : toOptionalFiniteNumber(
       account?.freeMargin ?? account?.free_margin ?? account?.margin_free ?? account?.margin_available,
     );
-  let freeMargin = calculatedFreeMargin;
-  let freeMarginSource: TradeAccountMetricSource = 'calculated';
-
-  if (backendFreeMargin === null) {
+  if (freeMargin === null) {
     warnings.push('missing_backend_free_margin');
-  } else if (isOutsideTolerance(backendFreeMargin, calculatedFreeMargin)) {
-    warnings.push('backend_free_margin_mismatch');
-  } else {
-    freeMargin = backendFreeMargin;
-    freeMarginSource = 'backend';
   }
 
-  const calculatedMarginLevel = margin > 0 ? (equity / margin) * 100 : 0;
-  const backendMarginLevel = account?.hasBackendMarginLevel === false
+  const marginLevel = account?.hasBackendMarginLevel === false
     ? null
     : toOptionalFiniteNumber(account?.marginLevel ?? account?.margin_level);
-  let marginLevel = calculatedMarginLevel;
-  let marginLevelSource: TradeAccountMetricSource = 'calculated';
-
-  if (backendMarginLevel === null) {
+  if (marginLevel === null) {
     warnings.push('missing_backend_margin_level');
-  } else if (margin > 0 && isOutsideTolerance(backendMarginLevel, calculatedMarginLevel)) {
-    warnings.push('backend_margin_level_mismatch');
-  } else {
-    marginLevel = backendMarginLevel;
-    marginLevelSource = 'backend';
   }
 
   return {
@@ -175,18 +150,12 @@ export const resolveTradeAccountMetrics = (
     margin,
     freeMargin,
     marginLevel,
-    calculatedEquity,
-    backendEquity,
-    equitySource,
-    freeMarginSource,
-    marginLevelSource,
+    equitySource: equity === null ? 'unavailable' : 'backend',
+    freeMarginSource: freeMargin === null ? 'unavailable' : 'backend',
+    marginLevelSource: marginLevel === null ? 'unavailable' : 'backend',
     warnings,
   };
 };
-
-export const canUseProfitForAccountReconciliation = (source: unknown): boolean => (
-  source === 'backend' || source === 'calculated'
-);
 
 export const calculateLivePositionProfit = (
   position: TradeProfitInput,

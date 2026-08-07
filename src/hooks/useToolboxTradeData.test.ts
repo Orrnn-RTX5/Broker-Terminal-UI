@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { resolveTradeAccountMetrics } from '../components/BottomDock.trade';
 import {
   normalizeToolboxAccount,
   patchPositionsFromTick,
@@ -47,6 +48,65 @@ describe('useToolboxTradeData helpers', () => {
       hasBackendEquity: false,
       hasBackendFreeMargin: false,
       hasBackendMarginLevel: false,
+    });
+  });
+
+  it('protects a funded balance from a zero-balance packet without fabricating equity', () => {
+    const previous = normalizeToolboxAccount({
+      balance: 10000,
+      equity: 10005.5,
+      used_margin: 10,
+      free_margin: 9995.5,
+      margin_level: 100055,
+      floating_pnl: 5.5,
+    });
+
+    const account = normalizeToolboxAccount(
+      { balance: 0, equity: 9800.25, free_margin: 0, margin_level: 0, floating_pnl: -2 },
+      previous,
+    );
+
+    // Known-funded balance is preserved: the packet's 0 is rejected.
+    expect(account.balance).toBe(10000);
+    // Everything else from that same packet is untrustworthy -> reported as unavailable.
+    expect(account.hasBackendEquity).toBe(false);
+    expect(account.hasBackendFreeMargin).toBe(false);
+    expect(account.hasBackendMarginLevel).toBe(false);
+    // No locally reconstructed equity (balance + floating P/L would have been 9998).
+    expect(account.equity).not.toBe(10000 + -2);
+    expect(resolveTradeAccountMetrics(account)).toMatchObject({
+      balance: 10000,
+      equity: null,
+      freeMargin: null,
+      marginLevel: null,
+      equitySource: 'unavailable',
+      freeMarginSource: 'unavailable',
+      marginLevelSource: 'unavailable',
+    });
+  });
+
+  it('rejects a zero-balance packet even when it carries no equity at all', () => {
+    const previous = normalizeToolboxAccount({ balance: 5000, equity: 5000, free_margin: 5000, margin_level: 0 });
+    const account = normalizeToolboxAccount({ balance: 0 }, previous);
+
+    expect(account.balance).toBe(5000);
+    expect(account.hasBackendEquity).toBe(false);
+    expect(resolveTradeAccountMetrics(account).equitySource).toBe('unavailable');
+  });
+
+  it('keeps trusting a genuine zero balance when no funded balance was known', () => {
+    const account = normalizeToolboxAccount(
+      { balance: 0, equity: 0, free_margin: 0, margin_level: 0 },
+      { balance: 0, equity: 0, margin: 0, freeMargin: 0, marginLevel: 0, unrealizedPL: 0, currency: 'USD', leverage: 100 },
+    );
+
+    expect(account.balance).toBe(0);
+    expect(account.hasBackendEquity).toBe(true);
+    expect(resolveTradeAccountMetrics(account)).toMatchObject({
+      equity: 0,
+      equitySource: 'backend',
+      freeMarginSource: 'backend',
+      marginLevelSource: 'backend',
     });
   });
 

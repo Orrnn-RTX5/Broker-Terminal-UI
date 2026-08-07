@@ -103,13 +103,21 @@ export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Ac
   const creditRaw = data.credit ?? data.credit_bonus ?? data.bonus;
   const balanceRaw = data.balance_amount ?? data.balance ?? data.Balance;
   const equityRaw = data.equity_amount ?? data.equity ?? data.Equity;
-  const hasBackendEquity = hasFiniteValue(equityRaw);
-  const hasBackendFreeMargin = hasFiniteValue(freeMarginRaw);
-  const hasBackendMarginLevel = hasFiniteValue(marginLevelRaw);
-
   // Prefer scalars; unwrap Money.amount. Never replace a known funded balance with packet 0.
   const incomingBalance = balanceRaw !== undefined && balanceRaw !== null ? toNumber(balanceRaw, 0) : undefined;
   const rejectZeroBalance = Boolean(previous && previous.balance > 0 && incomingBalance === 0);
+
+  // A packet claiming balance 0 for a known-funded account is bogus (partial/mid-flight metrics).
+  // We keep the last known-good balance, but every other figure carried by that SAME packet —
+  // equity, free margin, margin level — is equally untrustworthy. They are therefore marked as
+  // NOT backend-supplied so the resolver reports them as `unavailable` and the UI renders a dash.
+  // We never reconstruct equity locally (balance + floating P/L): a fabricated number presented
+  // as backend truth is exactly the misleading value this account panel must not show.
+  // Unknown must look unknown.
+  const hasBackendEquity = !rejectZeroBalance && hasFiniteValue(equityRaw);
+  const hasBackendFreeMargin = !rejectZeroBalance && hasFiniteValue(freeMarginRaw);
+  const hasBackendMarginLevel = !rejectZeroBalance && hasFiniteValue(marginLevelRaw);
+
   const balance = rejectZeroBalance
     ? previous!.balance
     : (incomingBalance !== undefined ? incomingBalance : (previous?.balance ?? 0));
@@ -117,11 +125,9 @@ export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Ac
     data.floating_pnl ?? data.floating ?? data.profit ?? data.unrealized_pl ?? data.unrealizedPL,
     previous?.unrealizedPL ?? 0,
   );
-  const equity = rejectZeroBalance
-    ? balance + floatingPnL
-    : hasBackendEquity
-      ? toNumber(equityRaw, previous?.equity ?? previous?.balance ?? balance)
-      : toNumber(previous?.equity ?? balance, balance);
+  const equity = hasBackendEquity
+    ? toNumber(equityRaw, previous?.equity ?? previous?.balance ?? balance)
+    : toNumber(previous?.equity ?? balance, balance);
 
   return {
     balance,
