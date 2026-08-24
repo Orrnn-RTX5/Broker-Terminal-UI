@@ -325,6 +325,8 @@ const createBrokerProxyAccess = (env: Record<string, string>): BrokerProxyAccess
     'https://superbackend.orrnn.com',
     'https://testsuperbackend.orrnn.com',
     'https://testbrokerbackend.orrnn.com',
+    'https://fxtrustsuperbackned.orrnn.com',
+    'https://fxtrustbrokerbackend.orrnn.com',
     env.VITE_API_URL,
     env.VITE_BACKEND_URL,
     env.VITE_BROKER_DISCOVERY_URL,

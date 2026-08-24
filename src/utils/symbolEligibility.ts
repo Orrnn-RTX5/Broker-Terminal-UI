@@ -1,4 +1,4 @@
-import { resolveMarketWatchSymbolInput } from './marketWatchSource';
+import { DEFAULT_MARKET_WATCH_SYMBOLS, resolveMarketWatchSymbolInput } from './marketWatchSource';
 
 export const normalizeSymbolName = (value: unknown): string => String(value ?? '').trim().toUpperCase();
 
@@ -49,4 +49,34 @@ export const resolveAuthorizedChartSymbol = (
     getUniqueSymbolNames(authorizedSymbols),
     normalizedRequest,
   ) ?? '';
+};
+
+/**
+ * Pick the chart symbol that can actually render right now.
+ * A saved/requested symbol wins only when it is currently live. Otherwise
+ * prefer the product default watchlist order among live feed symbols so a
+ * weekend session opens BTCUSD instead of a blank EURUSD/XAUUSD chart.
+ */
+export const pickPreferredChartSymbol = (
+  authorizedSymbols: unknown[],
+  liveFeedSymbols: unknown[] = [],
+  requestedSymbol?: unknown,
+): string => {
+  const authorized = getUniqueSymbolNames(authorizedSymbols);
+  const live = getUniqueSymbolNames(liveFeedSymbols).filter((symbol) => (
+    authorized.length === 0 || authorized.includes(symbol)
+  ));
+  const requested = resolveAuthorizedChartSymbol(requestedSymbol, authorized.length > 0 ? authorized : live);
+
+  if (requested && (live.length === 0 || live.includes(requested))) {
+    return requested;
+  }
+
+  for (const symbol of DEFAULT_MARKET_WATCH_SYMBOLS) {
+    if (live.includes(symbol)) return symbol;
+  }
+
+  if (live[0]) return live[0];
+  if (requested) return requested;
+  return authorized[0] || '';
 };

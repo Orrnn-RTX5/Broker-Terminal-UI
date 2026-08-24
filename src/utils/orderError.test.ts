@@ -51,4 +51,13 @@ describe('formatOrderError', () => {
     expect(formatOrderError(null)).toBe('Order failed: cannot reach the trading server. Check your connection and try again.');
     expect(formatOrderError('Order rejected')).toBe('Order failed: Order rejected');
   });
+
+  it('maps trading error codes from API payloads to trader-safe copy', () => {
+    expect(formatOrderError(new ApiError(400, 'MARKET_CLOSED', { error: 'MARKET_CLOSED', message: 'MARKET_CLOSED' })))
+      .toBe('Order failed: the market is currently closed for this symbol.');
+    expect(formatOrderError(new ApiError(400, 'Required: 120.00, Available: 10.00', { error: 'INSUFFICIENT_MARGIN' })))
+      .toBe('Order failed: not enough free margin to open this order.');
+    expect(formatOrderError(new Error('Missing account login for /api/v2/orders')))
+      .toBe('Order failed: no trading account is selected. Please sign in again.');
+  });
 });

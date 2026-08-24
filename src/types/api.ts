@@ -216,9 +216,13 @@ export interface OrderBook {
 
 export interface MarketStatus {
   symbol?: string;
-  status: 'open' | 'closed' | 'pre_market' | 'after_hours';
+  status?: 'open' | 'closed' | 'pre_market' | 'after_hours';
   session_open?: number;
   session_close?: number;
+  message?: string;
+  quote_open?: boolean | number;
+  trade_open?: boolean | number;
+  server_time?: number;
 }
 
 export interface MarginCalcRequest {

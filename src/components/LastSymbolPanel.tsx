@@ -18,10 +18,12 @@ import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
+import { formatOrderError } from '../utils/orderError';
 import { fetchSymbolMarketStatus, useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import {
     createUnavailableMarketStatus,
     getMarketStatusTradeBlockMessage,
+    shouldBlockSymbolTrading,
 } from '../utils/marketStatus';
 
 export function LastSymbolPanel() {
@@ -143,7 +145,7 @@ export function LastSymbolPanel() {
 
     const effectiveLot = useRiskSizing ? calculateRiskLot() : volume;
     const tradeBlockedMessage = getMarketStatusTradeBlockMessage(marketStatus, lastSymbol);
-    const canPlaceTrade = Boolean(lastSymbol) && !marketStatus.isTradeBlocked;
+    const canPlaceTrade = Boolean(lastSymbol) && !shouldBlockSymbolTrading(marketStatus, lastSymbol);
 
     // Flash status message
     const flash = useCallback((msg: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -161,9 +163,14 @@ export function LastSymbolPanel() {
             }
             setIsPlacing(true);
             try {
+                const login = Number(accountId) || 0;
+                if (!login) {
+                    flash('No trading account is selected. Please sign in again.', 'error');
+                    return;
+                }
                 const latestMarketStatus = await fetchSymbolMarketStatus(lastSymbol, { force: true })
                     .catch(() => createUnavailableMarketStatus(lastSymbol));
-                if (latestMarketStatus.isTradeBlocked) {
+                if (shouldBlockSymbolTrading(latestMarketStatus, lastSymbol)) {
                     flash(getMarketStatusTradeBlockMessage(latestMarketStatus, lastSymbol), 'error');
                     return;
                 }
@@ -172,7 +179,7 @@ export function LastSymbolPanel() {
                     symbol: lastSymbol,
                     side: side.toLowerCase(),
                     volume: effectiveLot,
-                    login: Number(accountId) || 0,
+                    login,
                     comment: 'RTX sync trade',
                 };
 
@@ -197,9 +204,9 @@ export function LastSymbolPanel() {
                 setLastSymbol(lastSymbol, side);
                 window.dispatchEvent(new Event('rtx:force-refresh-positions'));
                 flash(`${side} ${effectiveLot} ${lastSymbol} ✓`, 'success');
-            } catch (err: any) {
+            } catch (err: unknown) {
                 console.error('LastSymbolPanel order failed:', err);
-                flash(err.message || 'Order failed', 'error');
+                flash(formatOrderError(err), 'error');
             } finally {
                 setIsPlacing(false);
             }

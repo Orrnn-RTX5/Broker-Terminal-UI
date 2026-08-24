@@ -5,6 +5,7 @@ import {
   getMarketStatusTradeBlockMessage,
   isLikelyAlwaysOpenCryptoSymbol,
   normalizeMarketStatus,
+  shouldBlockSymbolTrading,
 } from './marketStatus';
 
 describe('marketStatus helpers', () => {
@@ -51,6 +52,7 @@ describe('marketStatus helpers', () => {
 
     expect(normalized.status).toBe('closed');
     expect(normalized.isTradeBlocked).toBe(true);
+    expect(shouldBlockSymbolTrading(normalized, 'BTCUSD')).toBe(false);
   });
 
   it('blocks trading when the backend reports an unknown status for crypto symbols', () => {
@@ -60,6 +62,71 @@ describe('marketStatus helpers', () => {
     });
 
     expect(normalized.status).toBe('unknown');
+    expect(normalized.isTradeBlocked).toBe(true);
+  });
+
+  it('derives status from backend trade flags when status field is absent', () => {
+    const open = normalizeMarketStatus({ symbol: 'EURUSD', message: 'open', trade_open: true });
+    const closed = normalizeMarketStatus({
+      symbol: 'EURUSD',
+      message: 'closed (weekend)',
+      trade_open: false,
+    });
+
+    expect(open.status).toBe('open');
+    expect(open.isOpen).toBe(true);
+    expect(open.isTradeBlocked).toBe(false);
+    expect(closed.status).toBe('closed');
+    expect(closed.label).toBe('Market Closed');
+    expect(closed.isTradeBlocked).toBe(true);
+    expect(getMarketStatusTradeBlockMessage(closed)).toBe('Market is closed for EURUSD.');
+  });
+
+  it('falls back to quote_open when trade_open is missing', () => {
+    const normalized = normalizeMarketStatus({ symbol: 'XAUUSD', quote_open: false });
+
+    expect(normalized.status).toBe('closed');
+    expect(normalized.isTradeBlocked).toBe(true);
+  });
+
+  it('accepts numeric 0/1 trade flags from the backend payload', () => {
+    const open = normalizeMarketStatus({ symbol: 'GBPJPY', message: 'open', trade_open: 1 });
+    const closed = normalizeMarketStatus({ symbol: 'GBPJPY', message: 'closed (weekend)', trade_open: 0 });
+
+    expect(open.status).toBe('open');
+    expect(open.isTradeBlocked).toBe(false);
+    expect(closed.status).toBe('closed');
+    expect(closed.isTradeBlocked).toBe(true);
+  });
+
+  it.each([
+    [{ symbol: 'EURUSD', trade_open: '0' as never }, 'unknown', true],
+    [{ symbol: 'EURUSD', trade_open: '1' as never }, 'unknown', true],
+    [{ symbol: 'EURUSD', trade_open: 2 }, 'unknown', true],
+    [{ symbol: 'EURUSD', trade_open: -1 }, 'unknown', true],
+    [{ symbol: 'EURUSD', trade_open: Number.NaN }, 'unknown', true],
+    [{ status: 'open', trade_open: false }, 'open', false],
+    [{ status: 'pre_market', trade_open: true }, 'pre_market', true],
+    [{ symbol: 'BTCUSD', trade_open: false }, 'closed', true],
+  ] as const)('resolves %j to %s', (payload, expectedStatus, expectedBlocked) => {
+    const normalized = normalizeMarketStatus(payload);
+
+    expect(normalized.status).toBe(expectedStatus);
+    expect(normalized.isTradeBlocked).toBe(expectedBlocked);
+  });
+
+  it('keeps an explicit backend status field authoritative over trade flags', () => {
+    const normalized = normalizeMarketStatus({ status: 'closed', trade_open: true });
+
+    expect(normalized.status).toBe('closed');
+    expect(normalized.isTradeBlocked).toBe(true);
+  });
+
+  it('reports unknown when the payload has neither status nor trade flags', () => {
+    const normalized = normalizeMarketStatus({}, { symbol: 'USDCNH' });
+
+    expect(normalized.status).toBe('unknown');
+    expect(normalized.label).toBe('Status unavailable');
     expect(normalized.isTradeBlocked).toBe(true);
   });
 

@@ -64,6 +64,9 @@ const setDesktopRuntime = () => {
 const expectedCandleUrl = () =>
   `${(buildBrokerApiV2() || API_V2_BASE_URL).replace(/\/$/, '')}/candles/EUR%2FUSD?timeframe=M15&limit=50`;
 
+const expectedPublicCandleUrl = (symbol = 'EURUSD', tf = '15m', limit = 50) =>
+  `${(buildBrokerApiV2() || API_V2_BASE_URL).replace(/\/api\/v2\/?$/, '')}/api/v1/candles?symbol=${symbol}&tf=${tf}&limit=${limit}`;
+
 const utcSeconds = (year: number, month: number, day: number, hour = 0, minute = 0) =>
   Date.UTC(year, month - 1, day, hour, minute) / 1000;
 
@@ -252,7 +255,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expectedCandleUrl(),
+      expectedPublicCandleUrl(),
       expect.any(Object),
     );
   });
@@ -269,7 +272,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15' })).resolves.toHaveLength(1);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `${(buildBrokerApiV2() || API_V2_BASE_URL).replace(/\/$/, '')}/candles/EUR%2FUSD?timeframe=M15`,
+      expectedPublicCandleUrl('EURUSD', '15m').replace(/&limit=50$/, ''),
       expect.any(Object),
     );
   });
@@ -286,23 +289,38 @@ describe('trade candle normalization and websocket cleanup', () => {
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expectedCandleUrl(),
-      expect.objectContaining({
-        headers: { Authorization: 'Bearer session-jwt-token' },
-      }),
+      expectedPublicCandleUrl(),
+      expect.any(Object),
     );
   });
 
   it('rejects candle requests when the auth token broker differs from the active broker', async () => {
     localStorage.setItem('broker_id', 'myprop-trade');
     localStorage.setItem('auth_token', makeJwt({ broker_id: 'gta_broker', account_login: 200009 }));
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ candles: [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }] }),
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     const service = new ChartDataService();
-    await expect(service.fetchCandles({ symbol: 'GBPUSD', timeframe: 'M1', count: 5000 }))
-      .rejects.toBeInstanceOf(CandleAuthBrokerMismatchError);
-    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(service.fetchCandles({ symbol: 'GBPUSD', timeframe: 'M1', count: 5000 })).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/candles?symbol=GBPUSD&tf=1m');
+  });
+
+  it('treats TEST and fxtrust as the same broker for candle auth', async () => {
+    localStorage.setItem('broker_id', 'TEST');
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new ChartDataService();
+    await expect(service.fetchCandles({ symbol: 'BTCUSD', timeframe: 'M5', count: 50 })).resolves.toHaveLength(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/candles?symbol=BTCUSD&tf=5m');
   });
 
   it('allows candle requests when the auth token broker matches the active broker', async () => {
@@ -415,7 +433,7 @@ describe('trade candle normalization and websocket cleanup', () => {
       await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://broker.example.com/api/v2/candles/EUR%2FUSD?timeframe=M15&limit=50',
+        'https://broker.example.com/api/v1/candles?symbol=EURUSD&tf=15m&limit=50',
         expect.any(Object),
       );
     });
@@ -435,7 +453,7 @@ describe('trade candle normalization and websocket cleanup', () => {
       await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://broker.example.com/api/v2/candles/EUR%2FUSD?timeframe=M15&limit=50',
+        'https://broker.example.com/api/v1/candles?symbol=EURUSD&tf=15m&limit=50',
         expect.any(Object),
       );
     });
@@ -476,72 +494,87 @@ describe('trade candle normalization and websocket cleanup', () => {
     });
   });
 
-  it('does not call protected history candles without an auth token', async () => {
+  it('loads public feed candles without an auth token', async () => {
     localStorage.setItem('server_url', 'https://broker.example.com');
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
+      json: async () => ({
+        candles: [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
+      }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
     const service = new ChartDataService();
-    await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toEqual([]);
+    await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(expectedPublicCandleUrl());
   });
 
   it('skips the protected core candle endpoint when no auth token is available', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
+      json: async () => ({
+        candles: [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
+      }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
     const service = new ChartDataService();
-    await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toEqual([]);
+    await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(expectedPublicCandleUrl());
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/api/v2/candles');
   });
 
   it('returns empty when the authenticated v2 candle response normalizes to empty', async () => {
     localStorage.setItem('auth_token', 'jwt-token');
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { candles: [] } }),
-    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { candles: [] } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ candles: [] }),
+      });
     vi.stubGlobal('fetch', fetchMock);
 
     const service = new ChartDataService();
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toEqual([]);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      expectedPublicCandleUrl(),
       expectedCandleUrl(),
-    ]);
-    expect(fetchMock.mock.calls.map(([, init]) => init?.headers)).toEqual([
-      { Authorization: 'Bearer jwt-token' },
     ]);
   });
 
-  it('rejects v2 candle failures without falling back to protected history backend', async () => {
+  it('falls back to public feed candles when authenticated v2 candles fail', async () => {
     localStorage.setItem('auth_token', 'jwt-token');
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 401,
-    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candles: [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
+        }),
+      });
     vi.stubGlobal('fetch', fetchMock);
 
     const service = new ChartDataService();
-    await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 }))
-      .rejects.toThrow('HTTP 401');
+    await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      expectedPublicCandleUrl(),
       expectedCandleUrl(),
     ]);
-    expect(fetchMock.mock.calls.map(([, init]) => init?.headers)).toEqual([
-      { Authorization: 'Bearer jwt-token' },
-    ]);
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/history/candles');
   });
 
   it('rejects malformed 200 candle responses when no valid fallback is available', async () => {
@@ -558,11 +591,11 @@ describe('trade candle normalization and websocket cleanup', () => {
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 }))
       .rejects.toThrow('Malformed candle response');
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      expectedPublicCandleUrl(),
       expectedCandleUrl(),
-      expect.any(Object),
-    );
+    ]);
   });
 
   it('rejects parsed v2 candle responses with unknown object shapes', async () => {
@@ -577,7 +610,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 }))
       .rejects.toThrow('Malformed candle response');
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('rejects non-empty v2 candle arrays when every row is invalid', async () => {
@@ -599,25 +632,31 @@ describe('trade candle normalization and websocket cleanup', () => {
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 }))
       .rejects.toThrow('Malformed candle response');
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('rejects token-present malformed core candles when public fallback is empty', async () => {
     localStorage.setItem('auth_token', 'jwt-token');
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: async () => {
-        throw new Error('Malformed core candle response');
-      },
-    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ candles: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => {
+          throw new Error('Malformed core candle response');
+        },
+      });
     vi.stubGlobal('fetch', fetchMock);
 
     const service = new ChartDataService();
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 }))
       .rejects.toThrow('Malformed core candle response');
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      expectedPublicCandleUrl(),
       expectedCandleUrl(),
     ]);
   });
@@ -648,31 +687,39 @@ describe('trade candle normalization and websocket cleanup', () => {
 
   it('returns empty after an empty v2 candle alias response', async () => {
     localStorage.setItem('auth_token', 'jwt-token');
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ data: { bars: [] } }),
-    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { bars: [] } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ candles: [] }),
+      });
     vi.stubGlobal('fetch', fetchMock);
 
     const service = new ChartDataService();
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 }))
       .resolves.toEqual([]);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('returns empty without hitting public history when no auth token is available', async () => {
+  it('loads public feed candles when no auth token is available', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ data: { candles: [] } }),
+      json: async () => ({
+        candles: [{ time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 }],
+      }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
     const service = new ChartDataService();
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 }))
-      .resolves.toEqual([]);
+      .resolves.toHaveLength(1);
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(expectedPublicCandleUrl());
   });
 
   it('unsubscribes and closes candle streams without leaking the channel', () => {

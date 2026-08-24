@@ -10,6 +10,7 @@ import { api } from '../services/api';
 import { useTradeSettings } from '../store/useSettingsStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
+import { formatOrderError } from '../utils/orderError';
 
 interface OneClickPanelProps {
   symbol: string;
@@ -123,11 +124,10 @@ export function OneClickPanel({
         // Notify parent
         onOrderPlaced?.();
         window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('One-click order failed:', err);
-        setError(err.message || 'Order failed');
-        // Clear error after 3 seconds
-        setTimeout(() => setError(null), 3000);
+        setError(formatOrderError(err));
+        setTimeout(() => setError(null), 6000);
       } finally {
         setIsPlacing(false);
       }

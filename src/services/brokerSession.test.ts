@@ -147,6 +147,22 @@ describe('broker websocket URL builder', () => {
     );
   });
 
+  it('uses FX Trust public broker hosts in web mode', () => {
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
+      BROKER_ID: 'TEST',
+    };
+
+    expect(getServerUrl()).toBe('https://fxtrustbrokerbackend.orrnn.com');
+    expect(buildBrokerApiV2()).toBe('https://fxtrustbrokerbackend.orrnn.com/api/v2');
+    expect(buildBrokerWsV2Uri('access-token')).toBe(
+      'wss://fxtrustbrokerbackend.orrnn.com/ws/v2?token=access-token'
+    );
+    expect(buildBrokerWsFeedUri()).toBe('wss://fxtrustbrokerbackend.orrnn.com/ws/feed');
+  });
+
   it('prefers runtime feed/backend broker id over localStorage deploy alias for feed WS auth', () => {
     localStorage.setItem('broker_id', 'grow-trading-academy');
     localStorage.setItem('rtx_broker_id', 'grow-trading-academy');

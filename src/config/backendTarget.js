@@ -112,7 +112,8 @@ const isAllowedPublicBrokerHostname = (hostname = '') => {
   return normalized.startsWith('services.')
     || normalized === 'service.achieverfinancials.com'
     || normalized === 'backend.orrnn.com'
-    || normalized === 'testbrokerbackend.orrnn.com';
+    || normalized === 'testbrokerbackend.orrnn.com'
+    || normalized === 'fxtrustbrokerbackend.orrnn.com';
 };
 
 const isPublicBrokerUrl = (value, normalize) => {

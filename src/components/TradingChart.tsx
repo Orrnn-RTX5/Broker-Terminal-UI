@@ -24,6 +24,7 @@ import { useToolbarState } from '../hooks/useToolbarState';
 import { useCrosshair } from '../hooks/useCrosshair';
 import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
+import { isLikelyAlwaysOpenCryptoSymbol } from '../utils/marketStatus';
 import { setLiveMarketDataFrozen } from '../services/liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { drawingManager } from '../services/drawingManager';
@@ -666,8 +667,10 @@ export const TradingChart = React.memo(function TradingChart({
   const marketStatus = useSymbolMarketStatus(symbol, {
     enabled: Boolean(symbol),
   });
-  const liveMarketDataFrozen = marketStatus.isTradeBlocked;
-  useQuoteSubscription(liveMarketDataFrozen || !symbol ? [] : [symbol], chartQuoteSourceId);
+  const liveMarketDataFrozen = marketStatus.isTradeBlocked && !isLikelyAlwaysOpenCryptoSymbol(symbol);
+  // Keep quote demand even when trading is blocked. Weekend/forex-closed status
+  // must not hide a live crypto chart (BTCUSD) that the feed is still streaming.
+  useQuoteSubscription(symbol ? [symbol] : [], chartQuoteSourceId);
 
   // Debug: Log ACTUAL mount (not every re-render)
   useEffect(() => {
@@ -699,11 +702,11 @@ export const TradingChart = React.memo(function TradingChart({
   }, [liveMarketDataFrozen]);
 
   useEffect(() => {
-    setLiveMarketDataFrozen(activeChartSourceId, symbol, liveMarketDataFrozen);
+    setLiveMarketDataFrozen(activeChartSourceId, symbol, false);
     return () => {
       setLiveMarketDataFrozen(activeChartSourceId, symbol, false);
     };
-  }, [activeChartSourceId, liveMarketDataFrozen, symbol]);
+  }, [activeChartSourceId, symbol]);
 
   const clearPeriodSeparators = useCallback(() => {
     for (const marker of periodSeparatorNodesRef.current) {

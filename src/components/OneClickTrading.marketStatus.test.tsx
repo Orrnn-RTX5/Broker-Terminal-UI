@@ -73,6 +73,33 @@ describe('OneClickTrading market status', () => {
     expect(screen.getByText('SELL')).not.toBeNull();
   });
 
+  it('keeps BTCUSD BUY and SELL clickable even if backend status says closed', () => {
+    useAppStore.getState().setTicks({
+      BTCUSD: {
+        symbol: 'BTCUSD',
+        bid: 77350,
+        ask: 77365,
+        spread: 15,
+        timestamp: Date.now(),
+        digits: 2,
+      },
+    });
+
+    render(
+      <OneClickTrading
+        symbol="BTCUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={normalizeMarketStatus({ symbol: 'BTCUSD', status: 'closed' })}
+      />,
+    );
+
+    expect(getTradeButton('BUY').disabled).toBe(false);
+    expect(getTradeButton('SELL').disabled).toBe(false);
+    expect(screen.queryByText('Market Closed')).toBeNull();
+  });
+
   it('uses compact Market Closed copy when status is unavailable', () => {
     render(
       <OneClickTrading

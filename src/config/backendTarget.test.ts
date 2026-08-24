@@ -110,6 +110,20 @@ describe('backend target resolver', () => {
     expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://testbrokerbackend.orrnn.com/ws/feed');
   });
 
+  it('accepts FX Trust broker public runtime hosts and FX Trust super-admin discovery', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
+      DISCOVERY_BASE_URL: 'https://fxtrustsuperbackned.orrnn.com',
+    };
+
+    expect(getBackendTarget()).toBe('https://fxtrustbrokerbackend.orrnn.com');
+    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://fxtrustbrokerbackend.orrnn.com/ws/v2');
+    expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://fxtrustbrokerbackend.orrnn.com/ws/feed');
+    expect(getRuntimeDiscoveryBaseUrl()).toBe('https://fxtrustsuperbackned.orrnn.com');
+  });
+
   it('accepts Achiever service runtime API and websocket hosts while keeping shared discovery', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',

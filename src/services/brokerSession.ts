@@ -320,7 +320,8 @@ const isAllowedPublicBrokerHostname = (hostname: string): boolean => {
   const normalized = hostname.toLowerCase();
   return (normalized.startsWith('services.')
     || normalized === 'backend.orrnn.com'
-    || normalized === 'testbrokerbackend.orrnn.com')
+    || normalized === 'testbrokerbackend.orrnn.com'
+    || normalized === 'fxtrustbrokerbackend.orrnn.com')
     && !LOCAL_HOSTS.has(normalized)
     && !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized)
     && !normalized.includes(':');

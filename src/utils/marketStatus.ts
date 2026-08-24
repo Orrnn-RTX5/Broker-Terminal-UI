@@ -123,6 +123,12 @@ export const formatMarketSessionTimestamp = (
   return `${month} ${day}, ${hour}:${minute}`;
 };
 
+const parseMarketTradeFlag = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (value === 0 || value === 1) return value === 1;
+  return undefined;
+};
+
 export const normalizeMarketStatus = (
   status: MarketStatus | null | undefined,
   options: NormalizeMarketStatusOptions = {},
@@ -130,8 +136,13 @@ export const normalizeMarketStatus = (
   const symbol = normalizeSymbol(status?.symbol) ?? normalizeSymbol(options.symbol);
   const reportedStatus = status?.status;
   const hasReportedStatus = typeof reportedStatus === 'string' && reportedStatus.trim().length > 0;
+  const tradeOpen = parseMarketTradeFlag(status?.trade_open);
+  const quoteOpen = parseMarketTradeFlag(status?.quote_open);
+  const tradeFlagOpen = tradeOpen ?? quoteOpen;
   const normalizedStatus: NormalizedMarketStatusValue = isKnownMarketStatus(reportedStatus)
     ? reportedStatus
+    : !hasReportedStatus && tradeFlagOpen !== undefined
+      ? (tradeFlagOpen ? 'open' : 'closed')
     : !hasReportedStatus && isLikelyAlwaysOpenCryptoSymbol(symbol)
       ? 'open'
     : 'unknown';
@@ -164,11 +175,20 @@ export const createUnavailableMarketStatus = (symbol?: string): NormalizedMarket
   normalizeMarketStatus(null, { symbol })
 );
 
+export const shouldBlockSymbolTrading = (
+  marketStatus: Pick<NormalizedMarketStatus, 'isTradeBlocked' | 'symbol'>,
+  fallbackSymbol?: string,
+): boolean => {
+  const resolvedSymbol = normalizeSymbol(marketStatus.symbol) ?? normalizeSymbol(fallbackSymbol);
+  if (isLikelyAlwaysOpenCryptoSymbol(resolvedSymbol)) return false;
+  return marketStatus.isTradeBlocked;
+};
+
 export const getMarketStatusTradeBlockMessage = (
   marketStatus: Pick<NormalizedMarketStatus, 'status' | 'label' | 'symbol' | 'isTradeBlocked'>,
   fallbackSymbol?: string,
 ): string => {
-  if (!marketStatus.isTradeBlocked) return '';
+  if (!shouldBlockSymbolTrading(marketStatus, fallbackSymbol)) return '';
 
   const symbol = normalizeSymbol(marketStatus.symbol) ?? normalizeSymbol(fallbackSymbol);
   const suffix = symbol ? ` for ${symbol}` : '';

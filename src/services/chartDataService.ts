@@ -75,6 +75,41 @@ const runtimeApiV2BaseUrl = (): string => {
   return configBase ? `${configBase}/api/v2` : '';
 };
 
+const runtimeApiRootUrl = (): string => runtimeApiV2BaseUrl().replace(/\/api\/v2\/?$/, '');
+
+const BRIDGE_CANDLE_TIMEFRAMES: Record<ApiTimeframe, string | null> = {
+  M1: '1m',
+  M5: '5m',
+  M15: '15m',
+  M30: '30m',
+  H1: '1h',
+  H4: '4h',
+  D1: '1d',
+  W1: null,
+  MN: null,
+};
+
+const MAX_BRIDGE_CANDLE_LIMIT = 500;
+
+const buildPublicBridgeCandleUrl = (
+  symbol: string,
+  timeframe: ApiTimeframe,
+  limit?: number,
+): string => {
+  const root = runtimeApiRootUrl();
+  const tf = BRIDGE_CANDLE_TIMEFRAMES[timeframe];
+  if (!root || !tf || !symbol) return '';
+
+  const params = new URLSearchParams({
+    symbol: normalizeSymbol(symbol),
+    tf,
+  });
+  if (limit !== undefined) {
+    params.set('limit', String(Math.min(MAX_BRIDGE_CANDLE_LIMIT, Math.max(1, limit))));
+  }
+  return `${root}/api/v1/candles?${params.toString()}`;
+};
+
 const getAuthToken = (): string | null => {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
@@ -88,6 +123,12 @@ export class CandleAuthBrokerMismatchError extends Error {
 }
 
 const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim();
+
+const canonicalizeBrokerId = (value: unknown): string => {
+  const normalized = normalizeBrokerId(value).toLowerCase();
+  if (normalized === 'test' || normalized === 'fxtrust') return 'fxtrust';
+  return normalizeBrokerId(value);
+};
 
 const getActiveBrokerId = (): string => {
   if (typeof window === 'undefined') return '';
@@ -107,7 +148,9 @@ const getTokenBrokerId = (token: string): string => {
 const assertCandleAuthMatchesActiveBroker = (token: string): void => {
   const expectedBrokerId = getActiveBrokerId();
   const tokenBrokerId = getTokenBrokerId(token);
-  if (!expectedBrokerId || !tokenBrokerId || expectedBrokerId === tokenBrokerId) return;
+  if (!expectedBrokerId || !tokenBrokerId) return;
+  if (expectedBrokerId === tokenBrokerId) return;
+  if (canonicalizeBrokerId(expectedBrokerId) === canonicalizeBrokerId(tokenBrokerId)) return;
 
   candleCache.clearAll();
   console.warn(
@@ -428,12 +471,6 @@ export class ChartDataService {
     const apiV2BaseUrl = runtimeApiV2BaseUrl();
     const token = getAuthToken();
     const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined;
-
-    if (!token) {
-      return [];
-    }
-    assertCandleAuthMatchesActiveBroker(token);
-
     const queryParams = normalizeCandleApiQueryParams({
       timeframe: apiTf,
       count,
@@ -441,11 +478,36 @@ export class ChartDataService {
       to,
     });
 
-    const coreUrl = `${apiV2BaseUrl}/candles/${encodeURIComponent(symbol)}${buildQuery(queryParams)}`;
+    const attempts: Array<{
+      url: string;
+      headers?: Record<string, string>;
+      isAuthenticatedCore?: boolean;
+    }> = [];
 
-    const attempts = [
-      { url: coreUrl, headers: authHeaders, isAuthenticatedCore: true },
-    ];
+    // TEST/FX Trust stores live OHLC on the public bridge `/api/v1/candles`.
+    // Hit that first so the chart is not blocked by a hanging/401 `/api/v2/candles`.
+    if (from === undefined && to === undefined) {
+      const publicUrl = buildPublicBridgeCandleUrl(symbol, apiTf, queryParams.limit);
+      if (publicUrl) attempts.push({ url: publicUrl });
+    }
+
+    if (token && apiV2BaseUrl) {
+      try {
+        assertCandleAuthMatchesActiveBroker(token);
+        attempts.push({
+          url: `${apiV2BaseUrl}/candles/${encodeURIComponent(symbol)}${buildQuery(queryParams)}`,
+          headers: authHeaders,
+          isAuthenticatedCore: true,
+        });
+      } catch (error) {
+        if (!(error instanceof CandleAuthBrokerMismatchError)) throw error;
+        console.warn('[ChartData] Skipping authenticated v2 candles after broker mismatch; trying public feed candles.');
+      }
+    }
+
+    if (attempts.length === 0) {
+      return [];
+    }
 
     let lastError: Error | null = null;
     let authenticatedCoreContractError: Error | null = null;
@@ -455,6 +517,7 @@ export class ChartDataService {
         const response = await fetch(attempt.url, {
           signal,
           headers: attempt.headers,
+          cache: 'no-store',
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 

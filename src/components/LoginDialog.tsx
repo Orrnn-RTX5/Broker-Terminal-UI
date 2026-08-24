@@ -10,12 +10,14 @@ import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
 import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL, toLocalDevProxyUrl } from '../config/api';
 import {
+    isDesktopBackendTarget,
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
     resolveBrokerExtApiUrl,
 } from '../config/backendTarget.js';
 import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
+import { pickDiscoveryBroker } from './WelcomeTerminal';
 import { User, X, HelpCircle, ChevronDown } from 'lucide-react';
 
 interface BrokerServerItem {
@@ -134,23 +136,18 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 const data = extractBrokerDiscoveryList(payload) as BrokerServerItem[];
                 setBrokerList(data);
 
-                // Try to restore previously used broker or initialServer, or fallback to 'testorrnn'
-                const savedBrokerId = initialServer || localStorage.getItem('broker_id') || DEFAULT_BROKER_ID;
-                const savedBroker = data.find(b => b.broker_id === savedBrokerId || b.server === savedBrokerId || b.server_url === savedBrokerId);
-                if (savedBroker) {
+                const savedBrokerId = initialServer || localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || DEFAULT_BROKER_ID;
+                const selectedDiscoveryBroker = pickDiscoveryBroker(data, {
+                    isDesktopBrokerSelection: isDesktopBackendTarget(),
+                    savedBrokerId,
+                });
+                if (selectedDiscoveryBroker) {
                     setSelectedBroker({
-                        ...(normalizeBrokerInfoForTarget(savedBroker) as BrokerServerItem),
-                        server_url: resolveBrokerBackendUrl(savedBroker),
+                        ...(normalizeBrokerInfoForTarget(selectedDiscoveryBroker) as BrokerServerItem),
+                        server_url: resolveBrokerBackendUrl(selectedDiscoveryBroker),
                     });
-                    setSearchQuery(savedBroker.broker_name);
-                    runHealthCheck(resolveBrokerExtApiUrl(savedBroker));
-                } else if (data.length > 0) {
-                    setSelectedBroker({
-                        ...(normalizeBrokerInfoForTarget(data[0]) as BrokerServerItem),
-                        server_url: resolveBrokerBackendUrl(data[0]),
-                    });
-                    setSearchQuery(data[0].broker_name);
-                    runHealthCheck(resolveBrokerExtApiUrl(data[0]));
+                    setSearchQuery(selectedDiscoveryBroker.broker_name);
+                    runHealthCheck(resolveBrokerExtApiUrl(selectedDiscoveryBroker));
                 }
             })
             .catch((err) => console.warn('[LoginDialog] Could not load broker servers:', err));

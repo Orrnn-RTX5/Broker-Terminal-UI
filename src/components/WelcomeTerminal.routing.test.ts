@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   findBrokerForRuntimeDomain,
   findBrokerForWebRuntime,
+  pickDiscoveryBroker,
   type BrokerServerItem,
 } from './WelcomeTerminal';
 
@@ -65,5 +66,61 @@ describe('WelcomeTerminal broker runtime selection', () => {
 
     expect(findBrokerForWebRuntime(brokers, 'webterminal.achieverfinancials.com')?.broker_id)
       .toBe('achiever-financials');
+  });
+
+  it('pins TEST from runtime config when discovery only has unrelated local demo brokers', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      API_HOST_EXT: 'https://fxtrustbrokerbackend.orrnn.com',
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
+      BROKER_ID: 'TEST',
+      VITE_BROKER_ID: 'TEST',
+    };
+
+    const brokers = [
+      broker({
+        broker_id: 'local_demo_01',
+        broker_name: 'Local Demo Broker 01',
+        server: 'demo01.local.test:443',
+        server_url: 'https://demo01.local.test',
+      }),
+      broker({
+        broker_id: 'local_demo_02',
+        broker_name: 'Local Demo Broker 02',
+        server: 'demo02.local.test:443',
+        server_url: 'https://demo02.local.test',
+      }),
+    ];
+
+    const selected = pickDiscoveryBroker(brokers);
+    expect(selected?.broker_id).toBe('TEST');
+    expect(selected?.server_url).toBe('https://fxtrustbrokerbackend.orrnn.com');
+    expect(selected?.broker_id).not.toBe('local_demo_01');
+  });
+
+  it('still uses the discovery row when TEST is present in the super-admin list', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      BROKER_ID: 'TEST',
+    };
+
+    const brokers = [
+      broker({
+        broker_id: 'local_demo_01',
+        broker_name: 'Local Demo Broker 01',
+        server_url: 'https://demo01.local.test',
+      }),
+      broker({
+        broker_id: 'TEST',
+        broker_name: 'FX Trust TEST',
+        server_url: 'https://fxtrustbrokerbackend.orrnn.com',
+        API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      }),
+    ];
+
+    expect(pickDiscoveryBroker(brokers)?.broker_id).toBe('TEST');
+    expect(pickDiscoveryBroker(brokers)?.broker_name).toBe('FX Trust TEST');
   });
 });

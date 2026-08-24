@@ -4,6 +4,7 @@ import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import {
   getMarketStatusTradeBlockMessage,
+  shouldBlockSymbolTrading,
   type NormalizedMarketStatus,
 } from '../utils/marketStatus';
 import { formatPriceParts } from './ui/PriceDisplay';
@@ -377,7 +378,8 @@ export function OrderPanelDialog({
     ? propMarketStatus
     : liveMarketStatus;
   const marketBlockedMessage = getMarketStatusTradeBlockMessage(effectiveMarketStatus, symbol);
-  const isMarketExecutionBlocked = orderType === 'Market Execution' && effectiveMarketStatus.isTradeBlocked;
+  const isMarketExecutionBlocked = orderType === 'Market Execution'
+    && shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
 
   const formatPrice = (price: number) => {
     return formatPriceParts(price, symbol, digits);

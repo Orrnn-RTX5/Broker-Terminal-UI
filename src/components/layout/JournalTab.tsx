@@ -13,6 +13,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Icon } from '../ui/Icon';
+import { journalApi, type JournalLogEntry } from '../../services/api';
 import { useSystemJournalStore } from '../../store/useSystemJournalStore';
 
 // ─── Filter Options ──────────────────────────────────────────────────────────
@@ -93,15 +94,39 @@ const formatDateTime = (unixSec: number): string => {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function JournalTab() {
-    const { logs } = useSystemJournalStore();
-    const loading = false;
-    const error = null;
+    const { logs: localLogs } = useSystemJournalStore();
+    const [serverLogs, setServerLogs] = useState<JournalLogEntry[] | null>(null);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
     // Filters
     const [logType, setLogType] = useState(0);   // 0 = All
     const [logMode, setLogMode] = useState(2);   // 2 = Full
     const [timeRange, setTimeRange] = useState(24);  // hours; 24h default
     const [search, setSearch] = useState('');
+
+    const loadJournal = useCallback(async () => {
+        try {
+            const from = Math.floor(Date.now() / 1000) - timeRange * 3600;
+            const data = await journalApi.getLogs({
+                mode: logMode,
+                type: logType,
+                from,
+                filter: search,
+            });
+            setServerLogs(data.logs || []);
+            setFetchError(null);
+        } catch (err) {
+            setFetchError(err instanceof Error ? err.message : 'Journal API error');
+        }
+    }, [logMode, logType, timeRange, search]);
+
+    useEffect(() => {
+        void loadJournal();
+        const timer = window.setInterval(() => { void loadJournal(); }, 15000);
+        return () => window.clearInterval(timer);
+    }, [loadJournal]);
+
+    const logs = serverLogs ?? localLogs;
 
     // Auto-scroll
     const [autoScroll, setAutoScroll] = useState(true);
@@ -215,8 +240,9 @@ export function JournalTab() {
                 <div className="flex-1" />
 
                 {/* Log count */}
-                {/* Log count */}
-                <span className="text-[10px] text-zinc-500">{filteredLogs.length} entries</span>
+                <span className="text-[10px] text-zinc-500">
+                    {filteredLogs.length} entries{fetchError ? ' (local)' : ''}
+                </span>
 
                 {/* Auto-scroll toggle */}
                 <button
@@ -249,6 +275,7 @@ export function JournalTab() {
                         <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-bold text-[10px] uppercase tracking-wider border-b border-zinc-600">
                             <tr>
                                 <th className="p-1 pl-3 border-r border-zinc-700 w-36 whitespace-nowrap">Time</th>
+                                <th className="p-1 border-r border-zinc-700 w-16">Code</th>
                                 <th className="p-1 border-r border-zinc-700 w-20">Type</th>
                                 <th className="p-1 border-r border-zinc-700 w-28">Source</th>
                                 <th className="p-1 pl-2">Message</th>
@@ -262,6 +289,9 @@ export function JournalTab() {
                                 >
                                     <td className="p-1 pl-3 border-r border-zinc-800/50 text-zinc-500 whitespace-nowrap text-[10px]">
                                         {formatDateTime(log.datetime)}
+                                    </td>
+                                    <td className={`p-1 border-r border-zinc-800/50 text-[10px] font-bold ${Number(log.code) ? 'text-red-400' : 'text-zinc-500'}`}>
+                                        {log.code_text || (log.code === 0 ? 'OK' : String(log.code ?? ''))}
                                     </td>
                                     <td className="p-1 border-r border-zinc-800/50">
                                         <span className={`text-[10px] font-bold uppercase ${getTypeColor(log.type_text)}`}>

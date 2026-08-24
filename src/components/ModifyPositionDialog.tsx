@@ -18,6 +18,7 @@ import {
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useAppStore } from '../store/useAppStore';
 import api from '../services/api';
+import { formatOrderError } from '../utils/orderError';
 
 interface ModifyPositionDialogProps {
     isOpen: boolean;
@@ -135,10 +136,7 @@ const getContractUnit = (symbol: string) => {
     return symbol;
 };
 
-const getErrorMessage = (err: unknown) => {
-    if (err instanceof Error) return err.message;
-    return 'Network error';
-};
+const getErrorMessage = (err: unknown) => formatOrderError(err);
 
 const clamp = (value: number, min: number, max: number) => {
     return Math.min(Math.max(value, min), max);

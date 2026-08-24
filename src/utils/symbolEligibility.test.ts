@@ -6,6 +6,7 @@ import {
   getInstrumentSymbolName,
   getUniqueSymbolNames,
   normalizeSymbolName,
+  pickPreferredChartSymbol,
   resolveAuthorizedChartSymbol,
 } from './symbolEligibility';
 
@@ -46,5 +47,25 @@ describe('symbol eligibility helpers', () => {
 
   it('gives a real authorized EUROUSD symbol precedence over the EURUSD display alias', () => {
     expect(resolveAuthorizedChartSymbol('EUROUSD', ['EURUSD', 'EUROUSD'])).toBe('EUROUSD');
+  });
+
+  it('keeps a requested chart symbol when the live feed has not settled', () => {
+    expect(pickPreferredChartSymbol(['EURUSD', 'BTCUSD', 'XAUUSD'], [], 'EURUSD')).toBe('EURUSD');
+  });
+
+  it('opens BTCUSD instead of a stale saved EURUSD chart when only crypto is live', () => {
+    expect(pickPreferredChartSymbol(
+      ['EURUSD', 'XAUUSD', 'BTCUSD', 'ETHUSD'],
+      ['BTCUSD', 'ETHUSD', 'SOLUSD'],
+      'EURUSD',
+    )).toBe('BTCUSD');
+  });
+
+  it('keeps the requested symbol when that symbol is currently live', () => {
+    expect(pickPreferredChartSymbol(
+      ['EURUSD', 'BTCUSD', 'ETHUSD'],
+      ['BTCUSD', 'ETHUSD'],
+      'ETHUSD',
+    )).toBe('ETHUSD');
   });
 });

@@ -25,6 +25,7 @@ import {
   getInstrumentSymbolName,
   getUniqueSymbolNames as getAllowedSymbolNames,
   normalizeSymbolName,
+  pickPreferredChartSymbol,
   resolveAuthorizedChartSymbol,
 } from './utils/symbolEligibility';
 
@@ -40,7 +41,7 @@ import {
 } from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
 import { formatOrderError } from './utils/orderError';
-import { createUnavailableMarketStatus, getMarketStatusTradeBlockMessage } from './utils/marketStatus';
+import { createUnavailableMarketStatus, getMarketStatusTradeBlockMessage, shouldBlockSymbolTrading } from './utils/marketStatus';
 import { OneClickTrading } from './components/OneClickTrading';
 import { getStoredBrokerServer } from './services/brokerServers';
 import { BootstrapLoader } from './components/BootstrapLoader';
@@ -734,6 +735,7 @@ function App() {
     settled: activeMarketSymbolsSettled,
     current: activeMarketSymbolsCurrent,
   } = useActiveMarketSymbols();
+  const didApplyLiveChartPreferenceRef = useRef(false);
   const selectedMarketStatus = useSymbolMarketStatus(selectedSymbol, {
     enabled: isAuthenticated && Boolean(selectedSymbol),
   });
@@ -1305,23 +1307,25 @@ function App() {
   }, []);
 
   const allowedSymbolNames = useMemo(() => getAllowedSymbolNames(allSymbols), [allSymbols]);
-  const chartEligibleSymbolNames = useMemo(
-    () => buildChartEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols),
-    [activeMarketSymbols, allowedSymbolNames],
-  );
-  const tradeEligibleSymbolNames = useMemo(
-    () => activeMarketSymbolsCurrent
-      ? buildTradeEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols)
-      : [],
-    [activeMarketSymbols, activeMarketSymbolsCurrent, allowedSymbolNames],
-  );
+  const chartEligibleSymbolNames = useMemo(() => {
+    const authorized = buildChartEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols);
+    if (authorized.length > 0) return authorized;
+    return getAllowedSymbolNames(activeMarketSymbols);
+  }, [activeMarketSymbols, allowedSymbolNames]);
+  const tradeEligibleSymbolNames = useMemo(() => {
+    if (!activeMarketSymbolsCurrent) return [];
+    const fromCatalog = buildTradeEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols);
+    if (fromCatalog.length > 0) return fromCatalog;
+    return getAllowedSymbolNames(activeMarketSymbols);
+  }, [activeMarketSymbols, activeMarketSymbolsCurrent, allowedSymbolNames]);
   const chartEligibleSymbolsKey = chartEligibleSymbolNames.join(',');
   const chartEligibleSymbolSet = useMemo(() => new Set(chartEligibleSymbolNames), [chartEligibleSymbolNames]);
   const tradeEligibleSymbolSet = useMemo(() => new Set(tradeEligibleSymbolNames), [tradeEligibleSymbolNames]);
-  const hasLoadedChartSymbols = hasLoadedSymbols;
-  const hasLoadedTradeSymbols = hasLoadedSymbols
-    && activeMarketSymbolsSettled
-    && activeMarketSymbolsCurrent;
+  const hasLoadedChartSymbols = hasLoadedSymbols
+    || (activeMarketSymbolsCurrent && activeMarketSymbols.length > 0);
+  const hasLoadedTradeSymbols = activeMarketSymbolsSettled
+    && activeMarketSymbolsCurrent
+    && (hasLoadedSymbols || activeMarketSymbols.length > 0);
 
   const getAllowedSymbol = useCallback((symbol: unknown): string => {
     const normalized = normalizeSymbolName(symbol);
@@ -2316,7 +2320,7 @@ function App() {
     const marketStatus = await fetchSymbolMarketStatus(symbol, { force: true })
       .catch(() => createUnavailableMarketStatus(symbol));
 
-    if (marketStatus.isTradeBlocked) {
+    if (shouldBlockSymbolTrading(marketStatus, symbol)) {
       alert(getMarketStatusTradeBlockMessage(marketStatus, symbol));
       return false;
     }
@@ -2426,6 +2430,7 @@ function App() {
   // Fetch symbols from backend
   useEffect(() => {
     if (!isAuthenticated) {
+      didApplyLiveChartPreferenceRef.current = false;
       setAllSymbols([]);
       setIsLoadingSymbols(false);
       setHasLoadedSymbols(false);
@@ -2442,12 +2447,8 @@ function App() {
           setAllSymbols(symbols);
           setSelectedSymbol(prev => {
             const current = normalizeSymbolName(prev);
-            if (current) return current;
-
             const saved = normalizeSymbolName(localStorage.getItem(SELECTED_SYMBOL_STORAGE_KEY));
-            if (saved) return saved;
-
-            return nextAllowedSymbols[0] || '';
+            return current || saved || nextAllowedSymbols[0] || '';
           });
         } else {
           setAllSymbols([]);
@@ -2466,8 +2467,19 @@ function App() {
   useEffect(() => {
     if (!hasLoadedChartSymbols) return;
 
-    const fallbackSymbol = getChartEligibleSymbol(selectedSymbol) || chartEligibleSymbolNames[0] || '';
-    if (fallbackSymbol !== normalizeSymbolName(selectedSymbol)) {
+    const liveSymbols = activeMarketSymbolsCurrent ? activeMarketSymbols : [];
+    const applyLivePreference = activeMarketSymbolsCurrent && !didApplyLiveChartPreferenceRef.current;
+    const fallbackSymbol = pickPreferredChartSymbol(
+      chartEligibleSymbolNames,
+      liveSymbols,
+      selectedSymbol,
+    ) || getChartEligibleSymbol(selectedSymbol) || chartEligibleSymbolNames[0] || '';
+
+    if (applyLivePreference) {
+      didApplyLiveChartPreferenceRef.current = true;
+    }
+
+    if (fallbackSymbol && fallbackSymbol !== normalizeSymbolName(selectedSymbol)) {
       setSelectedSymbol(fallbackSymbol);
     }
     if (!fallbackSymbol) return;
@@ -2475,6 +2487,7 @@ function App() {
     const store = useDockLayoutStore.getState();
     const layout = store.layout;
     const updates: Array<{ id: string; props: Record<string, unknown>; title: string }> = [];
+    const liveSet = new Set(liveSymbols);
 
     const collectInvalidChartPanels = (container: any) => {
       if (!container?.children) return;
@@ -2487,10 +2500,20 @@ function App() {
         if (child?.component !== 'Chart') continue;
         const requestedChartSymbol = child.props?.symbol ?? child.title?.split(',')[0];
         const chartSymbol = getChartEligibleSymbol(requestedChartSymbol);
-        if (chartSymbol && chartSymbol === normalizeSymbolName(requestedChartSymbol)) continue;
+        const requestedIsPlaceholder = !chartSymbol
+          || normalizeSymbolName(requestedChartSymbol) === 'CHART';
+        const requestedIsStale = applyLivePreference
+          && liveSet.size > 0
+          && Boolean(chartSymbol)
+          && !liveSet.has(chartSymbol);
+        if (chartSymbol && chartSymbol === normalizeSymbolName(requestedChartSymbol) && !requestedIsStale) {
+          continue;
+        }
 
         const nextTimeframe = child.props?.timeframe || timeframe;
-        const nextSymbol = chartSymbol || fallbackSymbol;
+        const nextSymbol = requestedIsStale || requestedIsPlaceholder
+          ? fallbackSymbol
+          : (chartSymbol || fallbackSymbol);
         updates.push({
           id: child.id,
           props: { ...child.props, symbol: nextSymbol, timeframe: nextTimeframe },
@@ -2508,7 +2531,15 @@ function App() {
         title: update.title,
       });
     });
-  }, [chartEligibleSymbolNames, getChartEligibleSymbol, hasLoadedChartSymbols, selectedSymbol, timeframe]);
+  }, [
+    activeMarketSymbols,
+    activeMarketSymbolsCurrent,
+    chartEligibleSymbolNames,
+    getChartEligibleSymbol,
+    hasLoadedChartSymbols,
+    selectedSymbol,
+    timeframe,
+  ]);
 
 
   useEffect(() => {

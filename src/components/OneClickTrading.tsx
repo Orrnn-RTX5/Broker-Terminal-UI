@@ -13,9 +13,11 @@ import { resolvePositionOpenTime } from '../services/tradePositionTime';
 import { fetchSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import {
     createUnavailableMarketStatus,
+    shouldBlockSymbolTrading,
     type NormalizedMarketStatus,
 } from '../utils/marketStatus';
 import { getSymbolDigits } from '../utils/symbolUtils';
+import { formatOrderError } from '../utils/orderError';
 import { formatPriceParts } from './ui/PriceDisplay';
 
 interface OneClickTradingProps {
@@ -99,6 +101,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
     });
     const bid = tick?.bid || 0;
     const ask = tick?.ask || 0;
+    const accountId = useAppStore((s) => s.accountId);
+    const isAuthenticated = useAppStore((s) => s.isAuthenticated);
 
     // Track price direction for color flash
     const [bidFlash, setBidFlash] = useState<'up' | 'down' | ''>('');
@@ -142,15 +146,19 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
     }, [symbol]);
 
     const getAccountLogin = useCallback((): number => {
+        const storeLogin = Number.parseInt(String(accountId || ''), 10);
+        if (Number.isFinite(storeLogin) && storeLogin > 0) return storeLogin;
         const saved = localStorage.getItem('rtx_saved_username') || localStorage.getItem('rtx_last_login');
-        return saved ? parseInt(saved, 10) || 0 : 0;
-    }, []);
+        const savedLogin = Number.parseInt(String(saved || ''), 10);
+        return Number.isFinite(savedLogin) && savedLogin > 0 ? savedLogin : 0;
+    }, [accountId]);
 
     const isVolumeValid = Number.isFinite(volume) && volume > 0;
     const hasExecutablePrice = bid > 0 && ask > 0;
     const effectiveMarketStatus = marketStatus ?? createUnavailableMarketStatus(symbol);
     const marketBlockedMessage = 'Market Closed';
-    const canSubmitOrder = tradeAllowed && effectiveMarketStatus.isOpen && isVolumeValid && hasExecutablePrice;
+    const marketOpenForTrading = !shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
+    const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice;
 
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
         if (isPlacing) return;
@@ -160,7 +168,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
         }
         const latestMarketStatus = await fetchSymbolMarketStatus(symbol, { force: true })
             .catch(() => createUnavailableMarketStatus(symbol));
-        if (latestMarketStatus.isTradeBlocked) {
+        if (shouldBlockSymbolTrading(latestMarketStatus, symbol)) {
             setError('Market Closed');
             return;
         }
@@ -176,12 +184,20 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
             setError('Waiting for a valid bid/ask price');
             return;
         }
+        if (!isAuthenticated) {
+            setError('Please sign in to place an order.');
+            return;
+        }
+        const login = getAccountLogin();
+        if (!login) {
+            setError('No trading account is selected. Please sign in again.');
+            return;
+        }
         setError(null);
         setIsPlacing(true);
         setFlashSide(side);
 
         try {
-            const login = getAccountLogin();
             const chartEntryPrice = getTradeEntryPriceFromQuote(tick, side.toUpperCase() as 'BUY' | 'SELL');
             const chartEntryTime = new Date().toISOString();
             const result = await api.orders.placeMarketOrder({
@@ -202,15 +218,15 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
             }
             useLastSymbolStore.getState().setLastSymbol(symbol, side.toUpperCase() as 'BUY' | 'SELL');
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('[OneClick] Trade failed:', err);
-            setError(err?.message || 'Order failed');
-            setTimeout(() => setError(null), 3000);
+            setError(formatOrderError(err));
+            setTimeout(() => setError(null), 6000);
         } finally {
             setIsPlacing(false);
             setTimeout(() => setFlashSide(null), 500);
         }
-    }, [isPlacing, tradeAllowed, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin]);
+    }, [isAuthenticated, isPlacing, tradeAllowed, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick]);
 
     if (!visible || !symbol) return null;
 
@@ -445,7 +461,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     ⚠ Invalid volume (min 0.01)
                 </div>
             )}
-            {tradeAllowed && effectiveMarketStatus.isTradeBlocked && !error && (
+            {tradeAllowed && !marketOpenForTrading && !error && (
                 <div style={{
                     fontSize: 10,
                     color: '#fbbf24',

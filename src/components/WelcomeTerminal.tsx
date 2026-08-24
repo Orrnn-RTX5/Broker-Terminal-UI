@@ -221,6 +221,42 @@ const brokerMatchesLookup = (broker: BrokerServerItem, value: string | number | 
         .includes(lookup);
 };
 
+export const buildConfiguredRuntimeBroker = (): BrokerServerItem | undefined => {
+    const brokerId = String(getRuntimeConfiguredBrokerId() || import.meta.env.VITE_BROKER_ID || '').trim();
+    const backendUrl = String(getBackendTarget() || '').trim();
+    if (!brokerId) return undefined;
+
+    return {
+        broker_id: brokerId,
+        broker_name: brokerId,
+        server: brokerId,
+        server_url: backendUrl,
+        backend_url: backendUrl,
+        logo_url: '',
+    };
+};
+
+export const pickDiscoveryBroker = (
+    brokers: BrokerServerItem[],
+    options: {
+        isDesktopBrokerSelection?: boolean;
+        savedBrokerId?: string | null;
+    } = {}
+): BrokerServerItem | undefined => {
+    const isDesktop = Boolean(options.isDesktopBrokerSelection);
+    const runtimeBroker = isDesktop ? undefined : findBrokerForWebRuntime(brokers);
+    const savedBroker = isDesktop
+        ? brokers.find(broker => brokerMatchesLookup(broker, options.savedBrokerId))
+        : undefined;
+    const configuredBrokerId = getRuntimeConfiguredBrokerId() || DEFAULT_BROKER_ID;
+    const configuredBroker = brokers.find(broker => brokerMatchesLookup(broker, configuredBrokerId));
+    const configuredRuntimeBroker = buildConfiguredRuntimeBroker();
+
+    return isDesktop
+        ? savedBroker || configuredBroker || configuredRuntimeBroker || brokers[0]
+        : runtimeBroker || configuredBroker || configuredRuntimeBroker || brokers[0];
+};
+
 const isAbortError = (err: unknown): boolean =>
     err instanceof DOMException
         ? err.name === 'AbortError'
@@ -318,17 +354,10 @@ export function WelcomeTerminal({ onLogin }: WelcomeTerminalProps) {
                 setBrokerListStatus('ready');
 
                 const savedBrokerId = localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id');
-                const runtimeBroker = isDesktopBrokerSelection ? undefined : findBrokerForWebRuntime(data);
-                const savedBroker = isDesktopBrokerSelection ? data.find(b => brokerMatchesLookup(b, savedBrokerId)) : undefined;
-                // Prefer the broker id injected by this deployment's runtime-config.js
-                // (e.g. MyProp injects BROKER_ID: 'myprop-trade'). Falling back to the
-                // build-time env or list order would default to whichever broker is first
-                // in the shared discovery list (currently Achiever Financials LTD).
-                const configuredBrokerId = getRuntimeConfiguredBrokerId() || DEFAULT_BROKER_ID;
-                const configuredBroker = data.find(b => brokerMatchesLookup(b, configuredBrokerId));
-                const selectedDiscoveryBroker = isDesktopBrokerSelection
-                    ? savedBroker || configuredBroker || data[0]
-                    : runtimeBroker || configuredBroker || data[0];
+                const selectedDiscoveryBroker = pickDiscoveryBroker(data, {
+                    isDesktopBrokerSelection,
+                    savedBrokerId,
+                });
 
                 if (selectedDiscoveryBroker) {
                     applySelectedBroker(selectedDiscoveryBroker);

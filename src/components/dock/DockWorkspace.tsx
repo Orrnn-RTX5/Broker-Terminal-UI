@@ -5,9 +5,6 @@ import { TradingChart } from '../TradingChart';
 import { ErrorBoundary } from '../ErrorBoundary';
 import type { Timeframe, ChartType } from '../TradingChart';
 import type { DockPanelConfig } from '../../services/dockManager';
-import { useAppStore } from '../../store/useAppStore';
-import { ChartLoginPlaceholder } from '../ChartLoginPlaceholder';
-
 import { MarketWatchPanel } from '../layout/MarketWatchPanel';
 import { NavigatorPanel } from '../layout/NavigatorPanel';
 import { BottomDock } from '../BottomDock';
@@ -58,20 +55,13 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         setIsInitialized(true);
     }, []);
 
-    const isAuthenticated = useAppStore(s => s.isAuthenticated);
-
     const renderPanel = useCallback((panel: DockPanelConfig, isActive: boolean) => {
         if (panel.component === 'Chart') {
-            const chartSymbol = resolveChartSymbol(panel.props?.symbol) || resolveChartSymbol(selectedSymbol);
+            const chartSymbol = resolveChartSymbol(panel.props?.symbol)
+                || resolveChartSymbol(selectedSymbol)
+                || authorizedChartSymbols[0]
+                || '';
             const tradeAllowed = chartSymbol ? tradeSymbolSet.has(chartSymbol) : false;
-            // Show placeholder when not authenticated
-            if (!isAuthenticated) {
-                return (
-                    <div className="flex-1 w-full h-full min-h-0 min-w-0 relative flex flex-col">
-                        <ChartLoginPlaceholder symbol={chartSymbol} />
-                    </div>
-                );
-            }
             return (
                 <div className="rtx-chart-panel flex-1 w-full h-full min-h-0 min-w-0 relative flex flex-col group/chartpanel"
                     style={{ background: '#0e0e12', border: '1px solid #28282e', borderRadius: 6, overflow: 'hidden', transition: 'border-color 0.15s, background 0.15s' }}
@@ -172,7 +162,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         return <div className="p-4 text-muted-foreground whitespace-nowrap overflow-hidden">Unknown Panel type: {panel.component}</div>;
 
     }, [
-        isAuthenticated,
+        authorizedChartSymbols,
         globalChartType, globalTimeframe,
         allSymbols, selectedSymbol, onSymbolSelect, resolveChartSymbol, tradeSymbolSet,
         onClosePosition, onModifyPosition, onCancelOrder, onCloseBulk
