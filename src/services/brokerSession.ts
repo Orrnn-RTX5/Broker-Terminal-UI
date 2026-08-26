@@ -52,6 +52,93 @@ const removeLocalStorageItem = (key: string): void => getBrowserStorage('localSt
 const getSessionStorageItem = (key: string): string | null => getBrowserStorage('sessionStorage')?.getItem(key) ?? null;
 const removeSessionStorageItem = (key: string): void => getBrowserStorage('sessionStorage')?.removeItem(key);
 
+export interface CommittedBrokerAccountSessionScope {
+  authenticated: boolean;
+  accountId: string | null;
+  brokerId: string;
+  serverUrl: string;
+}
+
+interface CommitBrokerAccountSessionScopeInput {
+  authenticated: boolean;
+  accountId?: string | number | null;
+  brokerId?: string | null;
+  serverUrl?: string | null;
+}
+
+type CommittedSessionScopeCallback = (scope: CommittedBrokerAccountSessionScope) => void;
+
+const COMMITTED_SESSION_SCOPE_STORAGE_KEY = 'rtx_committed_broker_account_scope_v1';
+const committedSessionScopeListeners = new Set<CommittedSessionScopeCallback>();
+let committedBrokerAccountSessionScope: CommittedBrokerAccountSessionScope = {
+  authenticated: false,
+  accountId: null,
+  brokerId: '',
+  serverUrl: '',
+};
+
+const normalizeCommittedScopeText = (value: unknown): string =>
+  String(value ?? '').trim().replace(/\/+$/, '').toLowerCase();
+
+const readCurrentBrokerId = (): string => normalizeCommittedScopeText(
+  getLocalStorageItem('broker_id') || getLocalStorageItem('rtx_broker_id') || '',
+);
+
+export const createCommittedBrokerAccountSessionScope = (
+  input: CommitBrokerAccountSessionScopeInput,
+): CommittedBrokerAccountSessionScope => {
+  const authenticated = Boolean(input.authenticated);
+  const accountId = authenticated ? String(input.accountId ?? '').trim() || null : null;
+  return {
+    authenticated,
+    accountId,
+    brokerId: normalizeCommittedScopeText(input.brokerId ?? readCurrentBrokerId()),
+    serverUrl: normalizeCommittedScopeText(input.serverUrl ?? getServerUrl()),
+  };
+};
+
+export const getCommittedBrokerAccountSessionScope = (): CommittedBrokerAccountSessionScope => {
+  if (typeof window !== 'undefined' && getLocalStorageItem(COMMITTED_SESSION_SCOPE_STORAGE_KEY) !== null) {
+    // Legacy F17c snapshots may claim an authenticated account before the
+    // restored token/session is validated. Broker discovery metadata has its
+    // own storage, so this ownership snapshot is intentionally runtime-only.
+    removeLocalStorageItem(COMMITTED_SESSION_SCOPE_STORAGE_KEY);
+  }
+  return committedBrokerAccountSessionScope;
+};
+
+export const getCommittedBrokerAccountSessionScopeKey = (
+  scope: CommittedBrokerAccountSessionScope,
+): string => [
+  scope.authenticated ? 'authenticated' : 'anonymous',
+  scope.accountId || '',
+  scope.brokerId,
+  scope.serverUrl,
+].join('|');
+
+export const commitBrokerAccountSessionScope = (
+  input: CommitBrokerAccountSessionScopeInput,
+): CommittedBrokerAccountSessionScope => {
+  const next = createCommittedBrokerAccountSessionScope(input);
+  const previous = getCommittedBrokerAccountSessionScope();
+  if (previous && getCommittedBrokerAccountSessionScopeKey(previous) === getCommittedBrokerAccountSessionScopeKey(next)) {
+    return previous;
+  }
+
+  committedBrokerAccountSessionScope = next;
+  committedSessionScopeListeners.forEach(listener => {
+    try { listener(next); } catch (error) { console.error('[BrokerSession] committed scope listener error:', error); }
+  });
+  return next;
+};
+
+export const onCommittedBrokerAccountSessionScopeChange = (
+  callback: CommittedSessionScopeCallback,
+): (() => void) => {
+  committedSessionScopeListeners.add(callback);
+  return () => { committedSessionScopeListeners.delete(callback); };
+};
+
 const FORCE_HTTP_ONLY = import.meta.env.VITE_FORCE_HTTP_ONLY === 'true';
 const hasUrlScheme = (value: string): boolean => /^[a-z][a-z\d+.-]*:\/\//i.test(value);
 const DEV_BROKER_FEED_WS_PROXY_PREFIX = '/__broker_feed_ws';

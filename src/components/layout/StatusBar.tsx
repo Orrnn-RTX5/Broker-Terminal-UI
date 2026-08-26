@@ -99,27 +99,27 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
     const desktopDownloadVersionLabel = desktopReleaseVersionLabel || (desktopReleaseState.status === 'loading' ? 'Latest' : '');
 
     return (
-        <div className="h-6 flex items-center justify-between border-t border-[#2a3342] bg-[#10151d] px-2 text-[11px] font-sans text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] select-none z-50 [.rtx-advanced-view_&]:border-zinc-400 [.rtx-advanced-view_&]:bg-[#e1e1e1] [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:shadow-none">
-            <div className="text-zinc-400 font-medium [.rtx-advanced-view_&]:text-zinc-600">
+        <div className="rtx-status-bar h-6 flex items-center justify-between border-t border-[#2a3342] bg-[#10151d] px-2 text-[13px] leading-[19.5px] font-normal font-sans text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] select-none z-50 [.rtx-advanced-view_&]:border-zinc-400 [.rtx-advanced-view_&]:bg-[#e1e1e1] [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:shadow-none">
+            <div className="rtx-status-bar__metric text-zinc-400 font-normal [.rtx-advanced-view_&]:text-zinc-600">
                 For Help, press F1
             </div>
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 border-r border-zinc-700 pr-4 [.rtx-advanced-view_&]:border-zinc-400">
                     <Icon name="server" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-zinc-500" />
-                    <span className="font-medium text-zinc-100 [.rtx-advanced-view_&]:text-black">RTX 5 Web Terminal</span>
+                    <span className="rtx-status-bar__metric font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black">RTX 5 Web Terminal</span>
                     {showDesktopDownload && (
                         <>
                             <span className="h-3 w-px bg-zinc-700/80 [.rtx-advanced-view_&]:bg-zinc-400/70" aria-hidden="true" />
                             <button
                                 type="button"
                                 onClick={() => openDesktopReleaseDownload(desktopReleaseState.release)}
-                                className="group h-[18px] inline-flex items-center gap-1.5 rounded-[3px] border border-transparent bg-transparent px-0.5 text-[10px] font-semibold leading-none text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500/70 [.rtx-advanced-view_&]:text-zinc-700 [.rtx-advanced-view_&]:hover:text-black"
+                                className="group h-[18px] inline-flex items-center gap-1.5 rounded-[3px] border border-transparent bg-transparent px-0.5 text-[12px] font-normal leading-none text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500/70 [.rtx-advanced-view_&]:text-zinc-700 [.rtx-advanced-view_&]:hover:text-black"
                                 title={getDesktopReleaseButtonTitle(desktopReleaseState.release)}
                             >
                                 <Icon name="download" size="xs" className="text-zinc-400 [.rtx-advanced-view_&]:text-zinc-500" />
                                 <span>Desktop App</span>
                                 {desktopDownloadVersionLabel && (
-                                    <span className="font-mono text-[9px] font-semibold leading-none text-zinc-500 [.rtx-advanced-view_&]:text-zinc-600">
+                                    <span className="font-mono text-[12px] font-normal leading-none text-zinc-500 [.rtx-advanced-view_&]:text-zinc-600">
                                         {desktopDownloadVersionLabel}
                                     </span>
                                 )}
@@ -138,13 +138,13 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
                             type="button"
                             onClick={handleUpdateClick}
                             disabled={updateButtonDisabled}
-                            className={`h-[18px] rounded border px-1.5 text-[10px] font-semibold leading-none transition-colors disabled:cursor-default disabled:opacity-70 ${updateButtonTone}`}
+                            className={`h-[18px] rounded border px-1.5 text-[12px] font-normal leading-none transition-colors disabled:cursor-default disabled:opacity-70 ${updateButtonTone}`}
                             title="Check for desktop app updates"
                         >
                             {updateLabel}
                         </button>
                     )}
-                    <span className="text-zinc-500 font-mono text-[10px] [.rtx-advanced-view_&]:text-zinc-500">
+                    <span className="rtx-status-bar__metric text-zinc-500 font-mono text-[13px] font-normal [.rtx-advanced-view_&]:text-zinc-500">
                         v{appVersion}
                     </span>
                 </div>

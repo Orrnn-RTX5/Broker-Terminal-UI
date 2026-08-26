@@ -63,18 +63,33 @@
   --status-idle: #808088;
 
   /* === Typography === */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-login-sans: 'Plus Jakarta Sans Variable', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'Roboto Mono', 'Courier New', monospace;
+  --font-sans: 'Plus Jakarta Sans Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-login-sans: var(--font-sans);
+  --font-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
 
-  /* Font Sizes */
-  --text-2xs: 0.625rem;
+  /* Enterprise type scale */
+  --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
+  --text-base: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.125rem;
+  --text-2xl: 1.375rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm--line-height: 1.3125rem;
+  --text-base--line-height: 1.375rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl--line-height: 1.625rem;
+  --text-2xl--line-height: 1.75rem;
+
+  /* Variable-font weight hierarchy */
+  --font-weight-normal: 400;
+  --font-weight-medium: 400;
+  --font-weight-semibold: 500;
+  --font-weight-bold: 600;
+  --font-weight-extrabold: 650;
+  --font-weight-black: 700;
 
   /* Line Heights */
   --leading-tight: 1.25;
@@ -182,14 +197,66 @@ body {
   margin: 0;
   padding: 0;
   font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--leading-normal);
+  letter-spacing: -0.006em;
+  font-optical-sizing: auto;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
 }
 
+.rtx-app-shell {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--leading-normal);
+}
 
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
 
+button,
+select,
+label,
+legend {
+  font-weight: var(--font-weight-normal);
+}
 
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-sans);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.015em;
+}
+
+strong,
+b {
+  font-weight: var(--font-weight-bold);
+}
+
+/* Tailwind 4 is used without @config, so define the missing project utilities here. */
+.font-sans,
+.font-segoe {
+  font-family: var(--font-sans);
+}
+
+.text-2xs {
+  font-size: var(--text-2xs);
+  line-height: var(--text-2xs--line-height);
+}
 
 /* ---- Input and form elements ---- */
 input,
@@ -232,6 +299,8 @@ textarea {
 /* === Utility Classes === */
 .font-mono {
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-synthesis: weight;
 }
 
 .text-profit {
@@ -395,10 +464,12 @@ textarea {
 }
 
 .panel-header {
-  padding: var(--space-3) var(--space-4);
+  min-height: 30px;
+  padding: 4px var(--space-3);
   border-bottom: 1px solid var(--border-primary);
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--font-weight-normal);
+  line-height: var(--text-sm--line-height);
   color: var(--text-secondary);
 }
 
@@ -474,13 +545,13 @@ textarea {
 }
 
 .data-grid th {
-  padding: var(--space-2) var(--space-3);
+  padding: 4px var(--space-3);
   text-align: left;
-  font-size: var(--text-2xs);
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-normal);
   color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: normal;
   border-bottom: 1px solid var(--border-primary);
   background: var(--bg-secondary);
   position: sticky;
@@ -489,9 +560,15 @@ textarea {
 }
 
 .data-grid td {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-xs);
+  padding: 4px var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-normal);
+  line-height: 1.21875rem;
   border-bottom: 1px solid var(--border-primary);
+}
+
+.data-grid tr {
+  height: 30px;
 }
 
 .data-grid tbody tr:hover {

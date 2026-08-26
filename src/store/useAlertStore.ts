@@ -33,6 +33,24 @@ export interface Alert {
   enabled: boolean;
 }
 
+export const ALERT_TERMINAL_RETENTION_LIMIT = 200;
+export const ALERT_TERMINAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Preserve user-owned live/disabled alerts; bound only terminal history. */
+export const retainAlerts = (alerts: readonly Alert[], now = Date.now()): Alert[] => {
+  const live = alerts.filter(alert => alert.status === 'active' || alert.status === 'disabled');
+  const terminal = alerts
+    .filter(alert => alert.status === 'triggered' || alert.status === 'expired')
+    .filter(alert => (alert.triggeredAt ?? alert.expiration ?? alert.createdAt) >= now - ALERT_TERMINAL_RETENTION_MS)
+    .sort((left, right) => (
+      (right.triggeredAt ?? right.expiration ?? right.createdAt)
+      - (left.triggeredAt ?? left.expiration ?? left.createdAt)
+    ))
+    .slice(0, ALERT_TERMINAL_RETENTION_LIMIT);
+
+  return [...live, ...terminal].sort((left, right) => right.createdAt - left.createdAt);
+};
+
 interface AlertState {
   alerts: Alert[];
 
@@ -62,7 +80,7 @@ export const useAlertStore = create<AlertState>()(
           };
 
           set((state) => ({
-            alerts: [newAlert, ...state.alerts],
+            alerts: retainAlerts([newAlert, ...state.alerts]),
           }));
 
           return newAlert.id;
@@ -150,7 +168,7 @@ export const useAlertStore = create<AlertState>()(
               return alert;
             });
 
-            return { alerts: updatedAlerts };
+            return { alerts: retainAlerts(updatedAlerts, now) };
           });
 
           return triggeredAlerts;
@@ -168,9 +186,18 @@ export const useAlertStore = create<AlertState>()(
       }),
       {
         name: 'rtx5-alerts',
+        version: 2,
+        migrate: (persistedState) => persistedState,
         partialize: (state) => ({
           alerts: state.alerts,
         }),
+        merge: (persistedState, currentState) => {
+          const persisted = persistedState as Partial<AlertState> | undefined;
+          return {
+            ...currentState,
+            alerts: retainAlerts(Array.isArray(persisted?.alerts) ? persisted.alerts : []),
+          };
+        },
       }
     )
   )

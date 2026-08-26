@@ -402,18 +402,6 @@ export function GlobalShortcuts({
       }
     },
     {
-      id: 'charts.toggle-grid-ctrl',
-      key: 'g',
-      ctrl: true,
-      description: 'Toggle Grid (Ctrl+G)',
-      category: SHORTCUT_CATEGORIES.CHARTS,
-      priority: 90,
-      handler: () => {
-        showFeedback('Toggle Grid (Ctrl+G)');
-        window.dispatchEvent(new CustomEvent('chart-toggle-grid'));
-      }
-    },
-    {
       id: 'charts.toggle-volume',
       key: 'l',
       ctrl: true,
@@ -422,20 +410,6 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Toggle Volume (Ctrl+L)');
-        const store = useChartSettingsStore.getState();
-        const current = selectedSymbol ? (store.symbolProperties[selectedSymbol] || store.globalProperties) : store.globalProperties;
-        setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), selectedSymbol);
-      }
-    },
-    {
-      id: 'charts.toggle-volume-k',
-      key: 'k',
-      ctrl: true,
-      description: 'Toggle Volume (Ctrl+K)',
-      category: SHORTCUT_CATEGORIES.CHARTS,
-      priority: 90,
-      handler: () => {
-        showFeedback('Toggle Volume (Ctrl+K)');
         const store = useChartSettingsStore.getState();
         const current = selectedSymbol ? (store.symbolProperties[selectedSymbol] || store.globalProperties) : store.globalProperties;
         setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), selectedSymbol);

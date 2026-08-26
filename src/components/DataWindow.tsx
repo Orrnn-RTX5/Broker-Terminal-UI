@@ -38,20 +38,23 @@ const DataRow = ({ label, value }: { label: string; value: string }) => (
       display: 'grid',
       gridTemplateColumns: '1fr auto',
       alignItems: 'center',
-      padding: '2px 8px',
+      minHeight: 24,
+      padding: '1px 8px',
       borderBottom: '1px solid rgba(255,255,255,0.04)',
     }}
   >
-    <span style={{ color: '#999', fontSize: 11, fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+    <span style={{ color: '#999', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
       {label}
     </span>
     <span
       style={{
         color: '#e0e0e0',
-        fontSize: 11,
-        fontFamily: 'Consolas, monospace',
+        fontSize: 14,
+        fontWeight: 400,
+        lineHeight: '21px',
+        fontFamily: 'var(--font-mono)',
         textAlign: 'right',
-        minWidth: 90,
+        minWidth: 78,
       }}
     >
       {value}
@@ -95,7 +98,7 @@ export const DataWindow: React.FC<DataWindowProps> = ({
         borderRadius: 4,
         width: '100%',
         height: '100%',
-        minWidth: 180,
+        minWidth: 200,
         userSelect: 'none',
         overflow: 'hidden',
         display: 'flex',
@@ -109,13 +112,14 @@ export const DataWindow: React.FC<DataWindowProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '4px 8px',
+          minHeight: 30,
+          padding: '0 8px',
           background: '#1a1d26',
           cursor: 'move',
           borderBottom: '1px solid #2a2e39',
         }}
       >
-        <span style={{ color: '#c0c0c0', fontSize: 11, fontWeight: 600, fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+        <span style={{ color: '#c0c0c0', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
           Data Window
         </span>
         <button
@@ -143,7 +147,8 @@ export const DataWindow: React.FC<DataWindowProps> = ({
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          padding: '4px 8px 3px',
+          minHeight: 30,
+          padding: '4px 8px',
           borderBottom: '1px solid #2a2e39',
           background: '#131316',
         }}
@@ -152,7 +157,7 @@ export const DataWindow: React.FC<DataWindowProps> = ({
         <svg width="12" height="10" viewBox="0 0 12 10" fill="none" stroke="#5a9f7a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="1,9 4,5 7,7 11,1" />
         </svg>
-        <span style={{ color: '#c8c8c8', fontSize: 11, fontFamily: 'Consolas, monospace', fontWeight: 600 }}>
+        <span style={{ color: '#c8c8c8', fontSize: 14, lineHeight: '21px', fontFamily: 'var(--font-mono)', fontWeight: 400 }}>
           {header}
         </span>
       </div>

@@ -54,7 +54,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
       className={cn(
         'flex flex-col overflow-hidden relative',
         panel.component === 'EmptyChartArea' ? 'bg-[#0d0d11]' : 'bg-[#131316]',
-        minimized ? 'h-[22px]' : 'h-full',
+        minimized ? 'h-[30px]' : 'h-full',
         isFloating && 'shadow-2xl border border-zinc-600/40',
         !isFloating && panel.component !== 'EmptyChartArea' && 'border border-[#28282e]/60',
         isDropTarget && 'ring-2 ring-[#8a8a8f]/40 ring-inset',
@@ -67,7 +67,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
       {showHeader && (
         <div
           className={cn(
-            'flex items-center h-[22px] px-1.5 select-none flex-shrink-0',
+            'flex items-center h-[30px] px-1.5 select-none flex-shrink-0',
             // Make cursor a pointer when minimized (click to restore)
             minimized ? 'cursor-pointer' : 'cursor-default',
             isActive
@@ -87,10 +87,10 @@ export const DockPanel: React.FC<DockPanelProps> = ({
           title={minimized ? `Click to restore ${panel.title}` : undefined}
         >
           {/* Title */}
-          <span className="flex-1 text-[11px] font-normal text-zinc-300 truncate leading-[22px]">
+          <span className="flex-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]">
             {panel.title}
             {minimized && (
-              <span className="ml-1 text-[9px] text-zinc-600 italic">(minimized)</span>
+              <span className="ml-1 text-[12px] font-normal text-zinc-600 italic">(minimized)</span>
             )}
           </span>
 

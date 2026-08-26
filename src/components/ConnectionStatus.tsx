@@ -108,13 +108,13 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
         title="Click for connection details"
       >
         <div className={`w-2 h-2 rounded-full ${status.color} shadow-sm`} />
-        <span className="font-medium text-[11px]">
+        <span className="rtx-status-bar__metric font-normal text-[13px] leading-[19.5px]">
           {state === 'connected' 
             ? (metrics.lastLatency > 0 ? `Connected ${metrics.lastLatency}ms` : 'Connected')
             : status.text}
         </span>
         {isStale && (
-          <span className="text-orange-400 text-[10px] font-medium ml-1 [.rtx-advanced-view_&]:text-orange-600">(Stale)</span>
+          <span className="text-orange-400 text-[12px] font-normal ml-1 [.rtx-advanced-view_&]:text-orange-600">(Stale)</span>
         )}
         <StatusIcon size={12} className={status.iconColor} />
       </button>

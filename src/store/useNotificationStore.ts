@@ -17,8 +17,40 @@ export interface Notification {
   message: string;
   timestamp: number;
   read: boolean;
-  data?: any; // Optional additional data
+  data?: unknown;
 }
+
+export const NOTIFICATION_RETENTION_LIMIT = 200;
+export const NOTIFICATION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const NOTIFICATION_DATA_MAX_CHARS = 8_192;
+
+const safeNotificationData = (data: unknown): unknown => {
+  if (data === undefined) return undefined;
+  try {
+    return JSON.stringify(data).length <= NOTIFICATION_DATA_MAX_CHARS ? data : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const retainNotifications = (
+  notifications: readonly Notification[],
+  now = Date.now(),
+): Notification[] => notifications
+  .filter((notification) => (
+    Boolean(notification?.id)
+    && Number.isFinite(notification?.timestamp)
+    && notification.timestamp >= now - NOTIFICATION_RETENTION_MS
+  ))
+  .sort((left, right) => right.timestamp - left.timestamp)
+  .slice(0, NOTIFICATION_RETENTION_LIMIT)
+  .map((notification) => ({
+    ...notification,
+    data: safeNotificationData(notification.data),
+  }));
+
+export const countUnreadNotifications = (notifications: readonly Notification[]): number =>
+  notifications.reduce((count, notification) => count + (notification.read ? 0 : 1), 0);
 
 interface NotificationState {
   notifications: Notification[];
@@ -51,10 +83,13 @@ export const useNotificationStore = create<NotificationState>()(
             read: false,
           };
 
-          set((state) => ({
-            notifications: [newNotification, ...state.notifications],
-            unreadCount: state.unreadCount + 1,
-          }));
+          set((state) => {
+            const notifications = retainNotifications([newNotification, ...state.notifications]);
+            return {
+              notifications,
+              unreadCount: countUnreadNotifications(notifications),
+            };
+          });
         },
 
         markAsRead: (id) => {
@@ -104,10 +139,23 @@ export const useNotificationStore = create<NotificationState>()(
       }),
       {
         name: 'rtx5-notifications',
+        version: 2,
+        migrate: (persistedState) => persistedState,
         partialize: (state) => ({
           notifications: state.notifications,
-          unreadCount: state.unreadCount,
         }),
+        merge: (persistedState, currentState) => {
+          const persisted = persistedState as Partial<NotificationState> | undefined;
+          const notifications = retainNotifications(
+            Array.isArray(persisted?.notifications) ? persisted.notifications : [],
+          );
+          return {
+            ...currentState,
+            notifications,
+            unreadCount: countUnreadNotifications(notifications),
+            isOpen: false,
+          };
+        },
       }
     )
   )

@@ -12,6 +12,7 @@ import { useWebSocketStore } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
 import { buildBrokerWsV2Uri } from './brokerSession';
 import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
+import { resolveDailyChangePercent } from '../utils/dailyChange';
 
 const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
@@ -30,6 +31,50 @@ export interface WebSocketMessage {
   timestamp?: number;
   [key: string]: unknown;
 }
+
+const asMessageRecord = (value: unknown): Record<string, unknown> | null => (
+  value !== null && typeof value === 'object' ? value as Record<string, unknown> : null
+);
+
+const hasPositiveBidAsk = (value: unknown): boolean => {
+  const record = asMessageRecord(value);
+  if (!record) return false;
+  const bid = Number(record.bid);
+  const ask = Number(record.ask);
+  return Number.isFinite(bid) && bid > 0 && Number.isFinite(ask) && ask > 0;
+};
+
+/**
+ * Shared ownership rule for /ws/v2 tick frames. App's wildcard listener uses
+ * this same predicate to avoid writing a valid tick twice while retaining its
+ * legacy normalizer for malformed, price-only, quotes.*, and prices frames.
+ */
+export const isEnhancedStoreHandledTickFrame = (message: WebSocketMessage): boolean => {
+  if (message.type === 'tick') {
+    return Boolean(String(message.symbol ?? '').trim()) && hasPositiveBidAsk(message);
+  }
+  return message.type === 'channel_message'
+    && Boolean(String(message.channel ?? '').toLowerCase().startsWith('ticks.'))
+    && hasPositiveBidAsk(message.data);
+};
+
+const normalizePositiveTimestampMs = (value: unknown): number | undefined => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+  return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+};
+
+const resolveTickSourceTimestampMs = (...values: unknown[]): number | undefined => {
+  for (const value of values) {
+    const record = asMessageRecord(value);
+    if (!record) continue;
+    for (const key of ['sourceTimestamp', 'source_timestamp', 'timestamp', 'time']) {
+      const normalized = normalizePositiveTimestampMs(record[key]);
+      if (normalized !== undefined) return normalized;
+    }
+  }
+  return undefined;
+};
 
 export interface ConnectionMetrics {
   messagesSent: number;
@@ -476,7 +521,7 @@ export class EnhancedWebSocketService {
 
     // Process tick updates immediately for lowest-latency UI updates.
     // Supports fixapibackend format: {type: 'tick', symbol, bid, ask, ...}
-    if (type === 'tick' && data.symbol) {
+    if (type === 'tick' && isEnhancedStoreHandledTickFrame(data)) {
       this.handleFixTick(data);
       this.broadcastToSubscribers(data);
       return;
@@ -568,10 +613,17 @@ export class EnhancedWebSocketService {
             const mt5Data = { ...data, type: 'mt5_account', account: accRecord };
             this.handleMT5Update(mt5Data);
           }
-        } else if (data.channel?.startsWith('ticks.') && payload) {
+        } else if (isEnhancedStoreHandledTickFrame(data) && data.channel?.startsWith('ticks.') && payload) {
+          const channelSymbol = data.channel.slice('ticks.'.length).trim().toUpperCase();
+          const sourceTimestamp = resolveTickSourceTimestampMs(payload, data);
           this.handleFixTick({
             ...payload,
-            symbol: payload.symbol || data.channel.split('.')[1]
+            // The subscribed channel is the exact broker instrument identity;
+            // payload.symbol may be an unsuffixed alias (for example EURUSD
+            // inside ticks.EURUSD.pro). Preserve the channel identity now that
+            // App intentionally no longer writes this same tick a second time.
+            symbol: channelSymbol || payload.symbol,
+            sourceTimestamp,
           });
         }
       } catch (err) {
@@ -586,14 +638,12 @@ export class EnhancedWebSocketService {
    * Format: {type: 'tick', symbol, bid, ask, spread, timestamp, high24h, low24h, dailyChange, lp}
    */
   private handleFixTick(data: WebSocketMessage): void {
-    const timestamp = typeof data.timestamp === 'number' ? data.timestamp : Date.now();
-    const ts = timestamp > 1000000000000 ? timestamp : timestamp * 1000;
+    const sourceTimestamp = resolveTickSourceTimestampMs(data);
+    const ts = sourceTimestamp ?? Date.now();
     const bid = Number(data.bid) || 0;
     const ask = Number(data.ask) || bid;
-    const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask;
     const previousClose = Number((data as any).previous_close ?? (data as any).previousClose) || 0;
     const dailyOpen = Number((data as any).daily_open ?? (data as any).dailyOpen ?? (data as any).open) || 0;
-    const dailyReference = previousClose > 0 ? previousClose : dailyOpen;
     const session = ((data as any).session ?? {}) as Record<string, unknown>;
     const sessionHigh = Math.max(
       Number(session.high_bid) || 0,
@@ -606,11 +656,11 @@ export class EnhancedWebSocketService {
       Number((data as any).low) || 0,
     ].filter((value) => value > 0);
     const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
-    const dailyChange = data.dailyChange !== undefined
-      ? Number(data.dailyChange)
-      : dailyReference > 0
-        ? ((mid - dailyReference) / dailyReference) * 100
-        : undefined;
+    const dailyChange = resolveDailyChangePercent(
+      data.dailyChange ?? data.daily_change,
+      bid,
+      previousClose,
+    );
     if (WS_DEBUG) {
       console.log(`[WS TICK] ${data.symbol} bid=${data.bid} ask=${data.ask} spread=${data.spread} ts=${ts} daily=${data.dailyChange}`);
     }
@@ -624,6 +674,10 @@ export class EnhancedWebSocketService {
       ask,
       spread: Number(data.spread) || (ask - bid),
       timestamp: ts,
+      // Do not label Date.now() fallback as broker time. Consumers can order
+      // genuine broker events by sourceTimestamp without treating receipt time
+      // as proof that the execution quote cache is fresh.
+      sourceTimestamp,
       lp: data.lp as string | undefined,
       volume: 1,
       dailyChange,

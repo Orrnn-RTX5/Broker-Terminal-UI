@@ -604,16 +604,83 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-accent-amber :where(
   color: #b54708 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-small :where(.rtx-dock-workspace, .rtx-bottom-dock, .rtx-market-watch, .navigator-panel) {
-  font-size: 11px !important;
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-small {
+  --rtx-advanced-primary-font-size: 13px;
+  --rtx-advanced-dense-font-size: 12px;
+  --rtx-advanced-header-font-size: 11px;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-normal :where(.rtx-dock-workspace, .rtx-bottom-dock, .rtx-market-watch, .navigator-panel) {
-  font-size: 12px !important;
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-normal {
+  --rtx-advanced-primary-font-size: 14px;
+  --rtx-advanced-dense-font-size: 13px;
+  --rtx-advanced-header-font-size: 12px;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-large :where(.rtx-dock-workspace, .rtx-bottom-dock, .rtx-market-watch, .navigator-panel) {
-  font-size: 13px !important;
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-large {
+  --rtx-advanced-primary-font-size: 15px;
+  --rtx-advanced-dense-font-size: 14px;
+  --rtx-advanced-header-font-size: 13px;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.rtx-dock-workspace, .rtx-bottom-dock, .rtx-market-watch, .navigator-panel) {
+  font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :where(
+  .rtx-market-watch__column-heading,
+  .rtx-market-watch__title,
+  .navigator-panel__header,
+  .rtx-dock-tab,
+  .rtx-trade-table__head th,
+  .rtx-journal-table thead th,
+  .rtx-journal-time-btn
+) {
+  font-size: var(--rtx-advanced-header-font-size, 12px) !important;
+  font-weight: 400 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :where(
+  .rtx-history-row td,
+  .rtx-journal-table tbody td
+) {
+  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
+  font-weight: 400 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :where(
+  .rtx-exposure-tab,
+  .rtx-calendar-tab,
+  .rtx-research-tab,
+  .rtx-history-downloader
+) {
+  font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :where(
+  .rtx-exposure-tab,
+  .rtx-calendar-tab,
+  .rtx-research-tab,
+  .rtx-history-downloader
+) .text-\[14px\] {
+  font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :where(
+  .rtx-exposure-tab,
+  .rtx-calendar-tab,
+  .rtx-research-tab,
+  .rtx-history-downloader
+) .text-\[13px\] {
+  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :where(
+  .rtx-exposure-tab,
+  .rtx-calendar-tab,
+  .rtx-research-tab,
+  .rtx-history-downloader
+) .text-\[12px\] {
+  font-size: var(--rtx-advanced-header-font-size, 12px) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .rtx-header-bar {
@@ -622,14 +689,14 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .rtx
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact [data-dock-panel]>div>div[class*="h-[22px]"],
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .h-\\[24px\\] {
-  height: 18px !important;
-  min-height: 18px !important;
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .h-\[24px\] {
+  height: 26px !important;
+  min-height: 26px !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact [data-dock-panel]>div>div[class*="h-[22px]"] span,
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .h-\\[24px\\] span {
-  font-size: 10px !important;
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .h-\[24px\] span {
+  font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :where(.rtx-bottom-dock__tabs button, .rtx-market-watch__header, .navigator-panel__header) {
@@ -640,12 +707,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :whe
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :where(td, th) {
   padding-top: 1px !important;
   padding-bottom: 1px !important;
-  height: 20px !important;
-  font-size: 10.5px !important;
+  height: 26px !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact tr {
-  height: 20px !important;
+  height: 26px !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-surface-soft {
@@ -777,7 +843,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct input {
   border: 1px solid #e2e8f0 !important;
   border-radius: 2px !important;
   color: #101828 !important;
-  font-family: 'Inter', system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
   width: 46px !important;
   height: 24px !important;
   font-size: 13px !important;
@@ -816,9 +882,9 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct>div:first-child>button>s
   font-weight: 800 !important;
 }
 
-/* Advanced Mode Fonts (Inter) */
+/* Advanced Mode Fonts */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-small {
-  font-family: 'Inter', system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
   color: #ffffff !important;
   text-shadow: none !important;
   font-weight: 600 !important;
@@ -826,7 +892,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-small {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-big {
-  font-family: 'Inter', system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
   color: #ffffff !important;
   text-shadow: none !important;
   font-weight: 800 !important;
@@ -835,7 +901,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-big {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct-digit-pip {
-  font-family: 'Inter', system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
   color: #ffffff !important;
   text-shadow: none !important;
   font-weight: 600 !important;
@@ -932,26 +998,27 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-time-btn.bg-zinc-600
 /* Market Watch: keep the dark terminal's compact mono rhythm in the light skin */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__symbol {
   color: #101828 !important;
-  font-weight: 500 !important;
-  letter-spacing: 0.015em !important;
+  font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price {
   color: #101828 !important;
   font-family: var(--font-mono) !important;
-  font-size: 12px !important;
-  font-weight: 500 !important;
-  letter-spacing: 0.01em !important;
+  font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price--bid {
   color: #101828 !important;
-  font-weight: 600 !important;
+  font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price--ask {
   color: #344054 !important;
-  font-weight: 500 !important;
+  font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__price--empty {
@@ -1028,7 +1095,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
 /* === Navigator Overrides === */
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel {
   --navigator-tree-line: #e2e8f0 !important;
-  font-family: 'Inter', system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
   background: #ffffff !important;
   border-color: #e2e8f0 !important;
 }
@@ -1040,10 +1107,14 @@ html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel__body::-webkit-s
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel__header {
   background: #ffffff !important;
   border-bottom: 1px solid #e2e8f0 !important;
-  font-size: 13px !important;
-  font-weight: 700 !important;
-  padding: 8px 12px !important;
-  letter-spacing: 0.05em !important;
+  display: flex !important;
+  align-items: center !important;
+  box-sizing: border-box !important;
+  height: 30px !important;
+  font-size: var(--rtx-advanced-header-font-size, 12px) !important;
+  font-weight: 400 !important;
+  padding: 0 12px !important;
+  letter-spacing: normal !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel__body {
@@ -1091,13 +1162,13 @@ html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row:hover .navigator-tree-item__label {
   color: #101828 !important;
-  font-weight: 600 !important;
+  font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__label {
   color: #334155 !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
+  font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
+  font-weight: 400 !important;
 }
 
 /* === Login Dialog Overrides === */
@@ -1105,7 +1176,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
   color: #101828 !important;
-  font-family: 'Inter', system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog>div:first-child {
@@ -1115,7 +1186,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog>div:first-child
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog>div:first-child span {
   color: #101828 !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog>div:first-child svg {
@@ -1132,7 +1203,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog .bg-zinc-700\/3
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog label {
   color: #475569 !important;
-  font-weight: 500 !important;
+  font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog input {
@@ -1165,7 +1236,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog button[type="bu
   background-color: #ffffff !important;
   border-color: #cbd5e1 !important;
   color: #475569 !important;
-  font-weight: 500 !important;
+  font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-login-dialog button[type="button"]:hover {
@@ -1190,7 +1261,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog {
   background: #ffffff !important;
   border-color: #e2e8f0 !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.02) !important;
-  font-family: 'Inter', system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog>div:nth-child(1) {
@@ -1200,7 +1271,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog>div:nth-child(1
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog>div:nth-child(1) span {
   color: #101828 !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog>div:nth-child(1) button {
@@ -1227,7 +1298,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog>div:nth-child(2
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog label {
   color: #475569 !important;
-  font-weight: 500 !important;
+  font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog select,
@@ -1269,11 +1340,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .text-zinc-300.
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog {
   background: #ffffff !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.02) !important;
-  font-family: 'Inter', system-ui, sans-serif !important;
+  font-family: var(--font-sans) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog * {
-  font-family: 'Inter', system-ui, sans-serif !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dom-dialog :where(.font-mono, input[type="number"], input[inputmode="decimal"]) {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Main wrapper */
@@ -1804,9 +1876,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-r
   background-color: #F3E5F5 !important;
 }
 
-/* Force semibold font weight on Trade Tab rows */
+/* Match the reference terminal's normal-weight trade data. */
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td {
-  font-weight: 600 !important;
+  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
+  font-weight: 400 !important;
+  line-height: 19.5px !important;
 }
 
 /* Deepen faint gray texts to near-black (#101828) */
@@ -1822,11 +1896,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .price-display {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .price-small {
-  font-weight: 600 !important;
+  font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .price-big {
-  font-weight: 800 !important;
+  font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .rtx-trade-sl-value,
@@ -1835,7 +1909,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-\[\#ff
   color: #b42318 !important;
   background-color: #fef3f2 !important;
   border: 1px solid #fecdca !important;
-  font-weight: 700 !important;
+  font-weight: 400 !important;
   text-shadow: none !important;
 }
 
@@ -1845,19 +1919,19 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-\[\#34
   color: #027a48 !important;
   background-color: #ecfdf3 !important;
   border: 1px solid #abefc6 !important;
-  font-weight: 700 !important;
+  font-weight: 400 !important;
   text-shadow: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-profit-value--positive {
   color: #027a48 !important;
-  font-weight: 700 !important;
+  font-weight: 400 !important;
   text-shadow: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-profit-value--negative {
   color: #b42318 !important;
-  font-weight: 700 !important;
+  font-weight: 400 !important;
   text-shadow: none !important;
 }
 
@@ -1865,14 +1939,14 @@ html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-r
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--buy svg,
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--buy span {
   color: #2563eb !important;
-  font-weight: 700 !important;
+  font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--sell,
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--sell svg,
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--sell span {
   color: #dc2626 !important;
-  font-weight: 700 !important;
+  font-weight: 400 !important;
 }
 
 /* Deepen Profit & Loss text colors explicitly for readability in light mode */
@@ -1881,7 +1955,6 @@ html.rtx-advanced-view.rtx-skin-untitled-light .text-emerald-300,
 html.rtx-advanced-view.rtx-skin-untitled-light .text-emerald-400 {
   color: #027a48 !important;
   /* Deep Green */
-  font-weight: 600 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .text-\[\#f87171\],
@@ -1890,29 +1963,28 @@ html.rtx-advanced-view.rtx-skin-untitled-light .text-red-400,
 html.rtx-advanced-view.rtx-skin-untitled-light .text-red-500 {
   color: #b42318 !important;
   /* Deep Red */
-  font-weight: 600 !important;
 }
 
 /* Explicitly override the default text color for BUY/SELL columns in Trade tab */
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-blue-400 {
   color: #2563eb !important;
   /* Blue for BUY */
-  font-weight: 700 !important;
-  font-size: 11px !important;
+  font-weight: 400 !important;
+  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-emerald-500 {
   color: #027a48 !important;
-  font-weight: 700 !important;
-  font-size: 11px !important;
+  font-weight: 400 !important;
+  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-red-500,
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td.text-red-400 {
   color: #b42318 !important;
   /* Deep Red for SELL */
-  font-weight: 700 !important;
-  font-size: 11px !important;
+  font-weight: 400 !important;
+  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
 }
 
 /* === Open Account Dialog Light Mode (Advanced Untitled) === */

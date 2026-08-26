@@ -1,0 +1,36 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
+
+describe('same-document logout transition source contract', () => {
+  it('never reloads the browser from the account logout action', () => {
+    const toolbar = readSource('src/components/layout/TopToolbar.tsx');
+    const logoutStart = toolbar.indexOf('const handleLogout');
+    const logoutEnd = toolbar.indexOf('const getToolBtnClass', logoutStart);
+    const logoutHandler = toolbar.slice(logoutStart, logoutEnd);
+
+    expect(logoutHandler).toContain("window.dispatchEvent(new CustomEvent('rtx:logout'))");
+    expect(logoutHandler).not.toContain('window.location.reload');
+    expect(logoutHandler).not.toContain('Logging out...');
+  });
+
+  it('lets AppShell fully unmount the authenticated graph', () => {
+    const appShell = readSource('src/AppShell.tsx');
+    const app = readSource('src/App.tsx');
+
+    expect(appShell).toContain('const handleSessionEnded');
+    expect(appShell).toContain('setShouldMountTerminal(false)');
+    expect(appShell).toContain('onSessionEnded={handleSessionEnded}');
+    expect(app).toContain('onSessionEnded?.();');
+  });
+
+  it('closes session-owned sockets without relying on a document reload', () => {
+    const store = readSource('src/store/useAppStore.ts');
+
+    expect(store).toContain("emitSessionChange('logout')");
+    expect(store).toContain("localStorage.removeItem('feed_broker_token')");
+    expect(store).toContain("localStorage.removeItem('ws_feed_token')");
+  });
+});

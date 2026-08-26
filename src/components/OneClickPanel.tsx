@@ -7,6 +7,7 @@
 import { Icon } from './ui/Icon';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { useTradeSettings } from '../store/useSettingsStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
@@ -33,9 +34,12 @@ export function OneClickPanel({
 }: OneClickPanelProps) {
   const tradeSettings = useTradeSettings();
   const [volume, setVolume] = useState(tradeSettings.defaultVolume);
-  const [isPlacing, setIsPlacing] = useState(false);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Read/parse preferences during render, never from the latency-critical click
+  // callback. A render already occurs whenever this panel's controls change.
+  const defaultSlPips = Number.parseFloat(localStorage.getItem('defaultStopLoss') || '0');
+  const defaultTpPips = Number.parseFloat(localStorage.getItem('defaultTakeProfit') || '0');
 
   // Check if user has accepted disclaimer
   useEffect(() => {
@@ -70,7 +74,8 @@ export function OneClickPanel({
 
   const placeOrder = useCallback(
     async (side: 'BUY' | 'SELL') => {
-      if (isPlacing || volume <= 0) return;
+      if (volume <= 0) return;
+      const intentAtMs = captureTradeOrderIntent();
       if (!symbol.trim()) {
         setError('Missing symbol');
         return;
@@ -80,14 +85,7 @@ export function OneClickPanel({
         return;
       }
 
-      setError(null);
-      setIsPlacing(true);
-
       try {
-        // Get default SL/TP from user settings if configured
-        const defaultSL = localStorage.getItem('defaultStopLoss');
-        const defaultTP = localStorage.getItem('defaultTakeProfit');
-
         const orderData: any = {
           login: accountId,
           symbol,
@@ -96,27 +94,30 @@ export function OneClickPanel({
         };
 
         // Apply default SL/TP if configured
-        if (defaultSL) {
-          const slPips = parseFloat(defaultSL);
-          if (!isNaN(slPips) && slPips > 0) {
+        if (Number.isFinite(defaultSlPips) && defaultSlPips > 0) {
             const pipSize = symbol.includes('JPY') ? 0.01 : 0.0001;
             orderData.sl = side === 'BUY'
-              ? currentBid - (slPips * pipSize)
-              : currentAsk + (slPips * pipSize);
-          }
+              ? currentBid - (defaultSlPips * pipSize)
+              : currentAsk + (defaultSlPips * pipSize);
         }
 
-        if (defaultTP) {
-          const tpPips = parseFloat(defaultTP);
-          if (!isNaN(tpPips) && tpPips > 0) {
+        if (Number.isFinite(defaultTpPips) && defaultTpPips > 0) {
             const pipSize = symbol.includes('JPY') ? 0.01 : 0.0001;
             orderData.tp = side === 'BUY'
-              ? currentAsk + (tpPips * pipSize)
-              : currentBid - (tpPips * pipSize);
-          }
+              ? currentAsk + (defaultTpPips * pipSize)
+              : currentBid - (defaultTpPips * pipSize);
         }
 
-        await api.orders.placeMarketOrder(orderData);
+        const orderPromise = api.orders.placeMarketOrder(orderData, { intentAtMs });
+        // Start the synchronous WS enqueue before cosmetic React state updates.
+        // Do not serialize a deliberate click behind a previous terminal fill:
+        // every call owns a separate durable UUID and pending-map entry.
+        setError(null);
+        await orderPromise;
+        // A newer successful fill supersedes an older rejection banner from a
+        // concurrently settling click; the rejected order still remains in the
+        // Journal with its exact backend error.
+        setError(null);
 
         // Track last traded symbol
         useLastSymbolStore.getState().setLastSymbol(symbol, side);
@@ -128,11 +129,9 @@ export function OneClickPanel({
         console.error('One-click order failed:', err);
         setError(formatOrderError(err));
         setTimeout(() => setError(null), 6000);
-      } finally {
-        setIsPlacing(false);
       }
     },
-    [accountId, symbol, volume, currentBid, currentAsk, onOrderPlaced, isPlacing]
+    [accountId, symbol, volume, currentBid, currentAsk, defaultSlPips, defaultTpPips, onOrderPlaced]
   );
 
   const spread = currentAsk - currentBid;
@@ -214,7 +213,7 @@ export function OneClickPanel({
         <div className="flex items-center gap-2">
           <button
             onClick={decrementVolume}
-            disabled={volume <= 0.01 || isPlacing}
+            disabled={volume <= 0.01}
             className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800/50 disabled:cursor-not-allowed text-zinc-300 rounded transition-colors"
           >
             <Icon name="minus" size="sm" />
@@ -230,12 +229,10 @@ export function OneClickPanel({
                 setVolume(Math.round(val * 100) / 100);
               }
             }}
-            disabled={isPlacing}
             className="flex-1 px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-center text-xs font-mono text-zinc-200 focus:outline-none focus:border-emerald-500/50 disabled:opacity-50"
           />
           <button
             onClick={incrementVolume}
-            disabled={isPlacing}
             className="w-7 h-7 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800/50 disabled:cursor-not-allowed text-zinc-300 rounded transition-colors"
           >
             <Icon name="plus" size="sm" />
@@ -249,7 +246,7 @@ export function OneClickPanel({
         {/* SELL Button */}
         <button
           onClick={() => placeOrder('SELL')}
-          disabled={isPlacing || volume <= 0}
+          disabled={volume <= 0}
           className="flex flex-col items-center justify-center px-2 py-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 hover:border-red-500/50 disabled:bg-red-600/10 disabled:border-red-500/20 disabled:cursor-not-allowed text-white rounded transition-all group"
         >
           <Icon name="trending-down" size="sm" className="mb-0.5 group-hover:scale-110 transition-transform" />
@@ -260,7 +257,7 @@ export function OneClickPanel({
         {/* BUY Button */}
         <button
           onClick={() => placeOrder('BUY')}
-          disabled={isPlacing || volume <= 0}
+          disabled={volume <= 0}
           className="flex flex-col items-center justify-center px-2 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-zinc-600/30 hover:border-zinc-600/50 disabled:bg-blue-600/10 disabled:border-zinc-600/20 disabled:cursor-not-allowed text-white rounded transition-all group"
         >
           <Icon name="trending-up" size="sm" className="mb-0.5 group-hover:scale-110 transition-transform" />
@@ -269,14 +266,6 @@ export function OneClickPanel({
         </button>
       </div>
 
-      {/* Status Indicator */}
-      {isPlacing && (
-        <div className="px-3 pb-2 text-center">
-          <div className="text-xs text-emerald-400 font-medium animate-pulse">
-            Placing order...
-          </div>
-        </div>
-      )}
     </div>
   );
 }

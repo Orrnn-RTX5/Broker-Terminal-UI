@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { formatTradingChartCrosshairLabel } from '../utils/chartTimeFormat';
@@ -7,6 +7,12 @@ interface CursorState {
   x: number;
   y: number;
   visible: boolean;
+}
+
+interface LabelMeasurement {
+  element: HTMLDivElement | null;
+  key: string;
+  width: number;
 }
 
 export interface UseCrosshairOptions {
@@ -36,142 +42,264 @@ export function useCrosshair({
   timeframe = 'M1',
   brokerOffsetSeconds = 0,
 }: UseCrosshairOptions): CrosshairRefs {
-  const vertLineRef   = useRef<HTMLDivElement>(null);
-  const horizLineRef  = useRef<HTMLDivElement>(null);
-  const centerRef     = useRef<HTMLDivElement>(null);
-  const timeLabelRef  = useRef<HTMLDivElement>(null);
+  const vertLineRef = useRef<HTMLDivElement>(null);
+  const horizLineRef = useRef<HTMLDivElement>(null);
+  const centerRef = useRef<HTMLDivElement>(null);
+  const timeLabelRef = useRef<HTMLDivElement>(null);
   const priceLabelRef = useRef<HTMLDivElement>(null);
 
-  // No React state for position — raw ref only
+  // Position and render ownership stay outside React state so pointer events can
+  // be coalesced without making TradingChart render.
   const cursorRef = useRef<CursorState>({ x: 0, y: 0, visible: false });
-  const rafIdRef  = useRef<number>(0);
+  const rafIdRef = useRef<number | null>(null);
+  const dirtyRef = useRef(false);
+  const scheduleRenderRef = useRef<() => void>(() => undefined);
+  const optionsRef = useRef({ digits, timeframe, brokerOffsetSeconds });
+  optionsRef.current = { digits, timeframe, brokerOffsetSeconds };
 
   useEffect(() => {
     const container = containerRef.current;
     const allRefs = [vertLineRef, horizLineRef, centerRef, timeLabelRef, priceLabelRef];
-    const hideAll = () => allRefs.forEach(r => { if (r.current) r.current.style.opacity = '0'; });
+    const hideAll = () => allRefs.forEach((ref) => {
+      if (ref.current) ref.current.style.opacity = '0';
+    });
 
     if (!enabled) {
+      dirtyRef.current = false;
+      scheduleRenderRef.current = () => undefined;
       hideAll();
       chartRef.current?.applyOptions({
         crosshair: {
-          mode: 0, // CrosshairMode.Normal
+          mode: 0,
           vertLine: { visible: true, labelVisible: true },
           horzLine: { visible: true, labelVisible: true },
         },
       });
-      if (container) container.style.cursor = '';
       return;
     }
 
     if (!container) return;
 
-    // Suppress built-in LWC crosshair and OS cursor
-    chartRef.current?.applyOptions({
+    const enabledCrosshairOptions = {
       crosshair: {
-        mode: 2, 
+        mode: 2,
         vertLine: { visible: false, labelVisible: false },
         horzLine: { visible: false, labelVisible: false },
       },
-    });
+    } as const;
+    chartRef.current?.applyOptions(enabledCrosshairOptions);
+    const previousInlineCursor = container.style.cursor;
+    let ownsCursor = true;
     container.style.cursor = 'none';
-    let rect = container.getBoundingClientRect();
-    const updateRect = () => { rect = container.getBoundingClientRect(); };
-    window.addEventListener('resize', updateRect);
-    window.addEventListener('scroll', updateRect, true);
 
-    const onPointerMove = (e: PointerEvent) => {
+    let disposed = false;
+    let rect = container.getBoundingClientRect();
+    let containerWidth = container.clientWidth;
+    let containerHeight = container.clientHeight;
+    let subscribedChart: IChartApi | null = null;
+    let subscribedTimeScale: ReturnType<IChartApi['timeScale']> | null = null;
+    const timeLabelMeasurement: LabelMeasurement = { element: null, key: '', width: 0 };
+
+    const updateRect = () => {
+      rect = container.getBoundingClientRect();
+      containerWidth = container.clientWidth;
+      containerHeight = container.clientHeight;
+    };
+
+    const measureTimeLabel = (label: HTMLDivElement): number => {
+      const key = [
+        label.textContent ?? '',
+        label.style.font,
+        label.style.fontFamily,
+        label.style.fontSize,
+        label.style.fontWeight,
+        label.style.letterSpacing,
+        label.style.padding,
+        label.style.borderWidth,
+      ].join('|');
+      if (timeLabelMeasurement.element !== label || timeLabelMeasurement.key !== key) {
+        timeLabelMeasurement.element = label;
+        timeLabelMeasurement.key = key;
+        timeLabelMeasurement.width = label.offsetWidth;
+      }
+      return timeLabelMeasurement.width;
+    };
+
+    const unsubscribeFromChart = () => {
+      if (subscribedChart) {
+        try { subscribedChart.unsubscribeCrosshairMove(onChartInvalidated); } catch { /* disposed chart */ }
+      }
+      if (subscribedTimeScale) {
+        try { subscribedTimeScale.unsubscribeVisibleLogicalRangeChange(onChartInvalidated); } catch { /* disposed chart */ }
+        try { subscribedTimeScale.unsubscribeSizeChange(onChartSizeChanged); } catch { /* disposed chart */ }
+      }
+      subscribedChart = null;
+      subscribedTimeScale = null;
+    };
+
+    const subscribeToLatestChart = () => {
+      const nextChart = chartRef.current;
+      let nextTimeScale: ReturnType<IChartApi['timeScale']> | null = null;
+      if (nextChart) {
+        try { nextTimeScale = nextChart.timeScale(); } catch { /* disposed chart */ }
+      }
+      if (nextChart === subscribedChart && nextTimeScale === subscribedTimeScale) return;
+      unsubscribeFromChart();
+      if (!nextChart || !nextTimeScale) return;
+
+      subscribedChart = nextChart;
+      subscribedTimeScale = nextTimeScale;
+      try { nextChart.applyOptions(enabledCrosshairOptions); } catch { /* disposed chart */ }
+      try { nextChart.subscribeCrosshairMove(onChartInvalidated); } catch { /* disposed chart */ }
+      try { nextTimeScale.subscribeVisibleLogicalRangeChange(onChartInvalidated); } catch { /* disposed chart */ }
+      try { nextTimeScale.subscribeSizeChange(onChartSizeChanged); } catch { /* disposed chart */ }
+    };
+
+    const renderCrosshair = () => {
+      if (disposed || !dirtyRef.current) return;
+      dirtyRef.current = false;
+      subscribeToLatestChart();
+
+      const { x: rawX, y, visible } = cursorRef.current;
+      const chart = chartRef.current;
+      const series = seriesRef.current;
+      if (!visible || !chart || !series) {
+        hideAll();
+        return;
+      }
+
+      const timeScale = chart.timeScale();
+      if (timeScale.coordinateToLogical(rawX) === null) {
+        hideAll();
+        return;
+      }
+
+      const vertLine = vertLineRef.current;
+      if (vertLine) {
+        vertLine.style.opacity = '1';
+        vertLine.style.transform = `translate3d(${rawX}px,0,0)`;
+      }
+
+      const horizLine = horizLineRef.current;
+      if (horizLine) {
+        horizLine.style.opacity = '1';
+        horizLine.style.transform = `translate3d(0,${y}px,0)`;
+      }
+
+      const center = centerRef.current;
+      if (center) {
+        center.style.opacity = '1';
+        center.style.transform = `translate(-50%,-50%) translate3d(${rawX}px,${y}px,0)`;
+      }
+
+      const {
+        digits: latestDigits,
+        timeframe: latestTimeframe,
+        brokerOffsetSeconds: latestOffset,
+      } = optionsRef.current;
+      const timeLabel = timeLabelRef.current;
+      if (timeLabel) {
+        const time = timeScale.coordinateToTime(rawX);
+        if (time === null) {
+          timeLabel.style.opacity = '0';
+        } else {
+          const text = formatTradingChartCrosshairLabel(time as Time, latestTimeframe, latestOffset);
+          if (timeLabel.textContent !== text) timeLabel.textContent = text;
+          const labelWidth = measureTimeLabel(timeLabel);
+          timeLabel.style.opacity = '1';
+          timeLabel.style.transform = `translate3d(${rawX - labelWidth / 2}px,${containerHeight - 22}px,0)`;
+        }
+      }
+
+      const priceLabel = priceLabelRef.current;
+      if (priceLabel) {
+        const price = series.coordinateToPrice(y);
+        if (price === null) {
+          priceLabel.style.opacity = '0';
+        } else {
+          const text = price.toFixed(latestDigits);
+          if (priceLabel.textContent !== text) priceLabel.textContent = text;
+          priceLabel.style.opacity = '1';
+          priceLabel.style.transform = `translate3d(${containerWidth - 54}px,${y - 10}px,0)`;
+        }
+      }
+    };
+
+    const scheduleRender = () => {
+      if (disposed) return;
+      dirtyRef.current = true;
+      if (rafIdRef.current !== null) return;
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        renderCrosshair();
+      });
+    };
+    scheduleRenderRef.current = scheduleRender;
+
+    function onChartInvalidated() {
+      scheduleRender();
+    }
+
+    function onChartSizeChanged() {
+      updateRect();
+      scheduleRender();
+    }
+
+    const onViewportChanged = () => {
+      updateRect();
+      scheduleRender();
+    };
+
+    window.addEventListener('resize', onViewportChanged);
+    window.addEventListener('scroll', onViewportChanged, true);
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(onChartSizeChanged);
+    resizeObserver?.observe(container);
+
+    const onPointerMove = (event: PointerEvent) => {
       cursorRef.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
         visible: true,
       };
+      scheduleRender();
     };
     const onPointerLeave = () => {
       cursorRef.current = { ...cursorRef.current, visible: false };
+      scheduleRender();
     };
 
     container.addEventListener('pointermove', onPointerMove, { passive: true });
     container.addEventListener('pointerleave', onPointerLeave);
-
-    const tick = () => {
-      rafIdRef.current = requestAnimationFrame(tick);
-
-      const { x: rawX, y, visible } = cursorRef.current;
-      const chart  = chartRef.current;
-      const series = seriesRef.current;
-
-      if (!visible || !chart || !series) { hideAll(); return; }
-
-      const ts      = chart.timeScale();
-      const logical = ts.coordinateToLogical(rawX);
-      if (logical === null) { hideAll(); return; }
-
-      const snappedX = rawX;
-
-      const W = container.clientWidth;
-      const H = container.clientHeight;
-
-      // Vertical line — snapped X, full height
-      const vl = vertLineRef.current;
-      if (vl) {
-        vl.style.opacity = '1';
-        vl.style.transform = `translate3d(${snappedX}px,0,0)`;
-      }
-
-      // Horizontal line — exact cursor Y, full width
-      const hl = horizLineRef.current;
-      if (hl) {
-        hl.style.opacity = '1';
-        hl.style.transform = `translate3d(0,${y}px,0)`;
-      }
-
-
-      const cm = centerRef.current;
-      if (cm) {
-        cm.style.opacity = '1';
-        cm.style.transform = `translate(-50%,-50%) translate3d(${snappedX}px,${y}px,0)`;
-      }
-
-     
-      const tl = timeLabelRef.current;
-      if (tl) {
-        const timeVal = ts.coordinateToTime(snappedX);
-        if (timeVal !== null) {
-          tl.textContent = formatTradingChartCrosshairLabel(
-            timeVal as Time,
-            timeframe,
-            brokerOffsetSeconds,
-          );
-        }
-        const lw = tl.offsetWidth;
-        tl.style.opacity = '1';
-        tl.style.transform = `translate3d(${snappedX - lw / 2}px,${H - 22}px,0)`;
-      }
-
-      // Price label — right edge at cursor Y
-      const pl = priceLabelRef.current;
-      if (pl) {
-        const price = series.coordinateToPrice(y);
-        if (price !== null) pl.textContent = price.toFixed(digits);
-        pl.style.opacity = '1';
-        pl.style.transform = `translate3d(${W - 54}px,${y - 10}px,0)`;
-      }
-    };
-
-    rafIdRef.current = requestAnimationFrame(tick);
+    scheduleRender();
 
     return () => {
-      cancelAnimationFrame(rafIdRef.current);
+      disposed = true;
+      dirtyRef.current = false;
+      scheduleRenderRef.current = () => undefined;
+      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+      unsubscribeFromChart();
+      resizeObserver?.disconnect();
       container.removeEventListener('pointermove', onPointerMove);
       container.removeEventListener('pointerleave', onPointerLeave);
-      window.removeEventListener('resize', updateRect);
-      window.removeEventListener('scroll', updateRect, true);
-      container.style.cursor = '';
+      window.removeEventListener('resize', onViewportChanged);
+      window.removeEventListener('scroll', onViewportChanged, true);
+      if (ownsCursor) {
+        container.style.cursor = previousInlineCursor;
+        ownsCursor = false;
+      }
+      cursorRef.current = { ...cursorRef.current, visible: false };
       hideAll();
     };
+  }, [chartRef, containerRef, enabled, seriesRef]);
 
-  }, [enabled, digits, timeframe, brokerOffsetSeconds]);
+  // Chart and series refs are populated/replaced by later TradingChart effects.
+  // One dirty frame after a React commit rebinds them without polling while idle.
+  useEffect(() => {
+    if (enabled) scheduleRenderRef.current();
+  });
 
   return { vertLineRef, horizLineRef, centerRef, timeLabelRef, priceLabelRef };
 }

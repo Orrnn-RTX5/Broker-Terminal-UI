@@ -4,10 +4,9 @@
  * Includes authentication with JWT token management and 401 handling
  */
 
-import { useAppStore } from '../store/useAppStore';
+import { resolveTickFromLookup, useAppStore } from '../store/useAppStore';
 import { API_V2_BASE_URL, normalizeBrokerServerUrl } from '../config/api';
 import {
-  getBackendTarget,
   normalizeBrokerInfoForTarget,
   resolveBrokerBackendUrl,
   resolveBrokerExtApiUrl,
@@ -113,12 +112,36 @@ export interface AdminAccount {
 // API Configuration
 // ============================================
 
-import { ApiError, apiClient, getAuthToken } from '../api/client';
+import { ApiError, apiClient, getAuthToken, type ApiRequestContext } from '../api/client';
 import * as endpoints from '../api/endpoints';
+import {
+  createTradeOrderUuid,
+  getTradeWebSocketClient,
+  initializeTradeWebSocketClient,
+  isTradeOrderUuidV4,
+  TradeSocketOrderRejectedError,
+  TradeSocketTransportError,
+  type TradeSocketOrderFilled,
+} from '../api/tradeSocket';
+import {
+  recordTradeOrderLatency,
+  toTradeOrderTraceId,
+  tradeOrderNow,
+} from './orderLatencyTelemetry';
+import {
+  MARKET_ORDER_PLACEMENT_STATE_EVENT,
+  type MarketOrderPlacementState,
+} from './marketOrderPlacementEvents';
 import { getStoredBrokerServer, resolveLoginBrokerTarget } from './brokerServers';
-import { persistBrokerSessionDiscovery } from './brokerSession';
+import {
+  getCommittedBrokerAccountSessionScope,
+  getCommittedBrokerAccountSessionScopeKey,
+  persistBrokerSessionDiscovery,
+} from './brokerSession';
 
 const DEFAULT_BROKER_ID = 'broker_3';
+
+initializeTradeWebSocketClient();
 
 interface LoginOptions {
   baseUrl?: string;
@@ -157,10 +180,73 @@ const requireVolume = (volume: unknown): number => {
   return parsed;
 };
 
+const normalizeMarketProtection = (value: unknown, label: 'SL' | 'TP'): number => {
+  if (value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be zero (disabled) or a positive finite number`);
+  }
+  return value;
+};
+
 const normalizeSideForApi = (side: unknown): 'buy' | 'sell' => {
   const normalized = String(side || '').trim().toLowerCase();
   if (normalized !== 'buy' && normalized !== 'sell') throw new Error('Side must be buy or sell');
   return normalized;
+};
+
+const isRetryableTradeSocketFailure = (error: unknown): boolean => {
+  if (error instanceof TradeSocketOrderRejectedError) return false;
+  if (error instanceof TradeSocketTransportError) return true;
+  if (!error || typeof error !== 'object') return false;
+
+  const candidate = error as { name?: unknown; retryable?: unknown };
+  return candidate.name !== 'TradeSocketOrderRejectedError' && candidate.retryable === true;
+};
+
+const mapFilledOrderToPosition = (
+  response: TradeSocketOrderFilled,
+  fallback: {
+    accountLogin: number;
+    symbol: string;
+    side: 'buy' | 'sell';
+    volume: number;
+    sl: number;
+    tp: number;
+  },
+): endpoints.Position => {
+  const fill = response.data as Record<string, unknown>;
+  const ticket = toFiniteNumber(
+    fill.position_ticket ?? fill.ticket ?? fill.order_ticket,
+    0,
+  );
+  const volume = toFiniteNumber(fill.volume ?? fill.quantity, fallback.volume);
+  const openPrice = toFiniteNumber(
+    fill.price_open ?? fill.open_price ?? fill.price,
+    0,
+  );
+  const currentPrice = toFiniteNumber(
+    fill.price_current ?? fill.current_price,
+    openPrice,
+  );
+
+  return {
+    ...fill,
+    ...(ticket > 0 ? { id: String(ticket), ticket } : {}),
+    account_login: toFiniteNumber(fill.account_login, fallback.accountLogin),
+    symbol: requireSymbol(fill.symbol ?? fallback.symbol),
+    side: normalizeSideForApi(fill.side ?? fallback.side),
+    quantity: volume,
+    volume,
+    open_price: openPrice,
+    price_open: openPrice,
+    current_price: currentPrice,
+    price_current: currentPrice,
+    price_sl: toFiniteNumber(fill.price_sl ?? fill.sl, fallback.sl),
+    price_tp: toFiniteNumber(fill.price_tp ?? fill.tp, fallback.tp),
+    sl: toFiniteNumber(fill.sl ?? fill.price_sl, fallback.sl),
+    tp: toFiniteNumber(fill.tp ?? fill.price_tp, fallback.tp),
+    commission: toFiniteNumber(fill.commission, 0),
+  } as endpoints.Position;
 };
 
 const timestampToIso = (value: unknown): string => {
@@ -422,22 +508,231 @@ export const positionsApi = {
 // Orders API
 // ============================================
 
+export interface MarketOrderPlacementOptions {
+  /** Monotonic timestamp captured at the first instruction of the user action. */
+  intentAtMs?: number;
+}
+
+let provisionalMarketOrderSequence = 0;
+
+const createProvisionalMarketOrderTicket = (): number => {
+  provisionalMarketOrderSequence = (provisionalMarketOrderSequence + 1) % 1000;
+  return -((Date.now() * 1000) + provisionalMarketOrderSequence);
+};
+
 export const ordersApi = {
-  async placeMarketOrder(data: endpoints.CreateOrderRequest): Promise<endpoints.Position> {
-    const result = await endpoints.tradingApi.placeOrder({
-      login: resolveTradingLogin(data.login ?? data.account_login),
-      symbol: requireSymbol(data.symbol),
-      side: normalizeSideForApi(data.side),
-      volume: requireVolume(data.volume ?? data.quantity),
-      price_sl: data.price_sl ?? data.sl,
-      price_tp: data.price_tp ?? data.tp,
-      comment: data.comment,
-      trailing_stop: data.trailing_stop,
-      trailing_step: data.trailing_step,
-      magic: data.magic,
-    });
+  async placeMarketOrder(
+    data: endpoints.CreateOrderRequest,
+    options: MarketOrderPlacementOptions = {},
+  ): Promise<endpoints.Position> {
+    const apiStartedAtMs = tradeOrderNow();
+    const sessionScope = getCommittedBrokerAccountSessionScopeKey(
+      getCommittedBrokerAccountSessionScope(),
+    );
+    const requestedIntentAtMs = Number(options.intentAtMs);
+    const intentAtMs = Number.isFinite(requestedIntentAtMs)
+      && requestedIntentAtMs >= 0
+      && requestedIntentAtMs <= apiStartedAtMs
+      ? requestedIntentAtMs
+      : apiStartedAtMs;
+    const accountLogin = resolveTradingLogin(data.login ?? data.account_login);
+    const symbol = requireSymbol(data.symbol);
+    const side = normalizeSideForApi(data.side);
+    const volume = requireVolume(data.volume ?? data.quantity);
+    const rawSl = data.price_sl !== undefined ? data.price_sl : data.sl;
+    const rawTp = data.price_tp !== undefined ? data.price_tp : data.tp;
+    // Keep 0 as the app-level "disabled" value for Position mapping. The
+    // WebSocket serializer omits that sentinel on the wire because the current
+    // /ws/v2 validator rejects an explicitly present zero.
+    const sl = normalizeMarketProtection(rawSl, 'SL');
+    const tp = normalizeMarketProtection(rawTp, 'TP');
+    // Generate exactly once per user action, or preserve a valid key supplied
+    // by an upstream retry. WS recovery and REST fallback must use this same
+    // durable key so an uncertain transport outcome cannot duplicate an order.
+    const suppliedClientOrderId = typeof data.client_order_id === 'string'
+      ? data.client_order_id.trim()
+      : '';
+    if (suppliedClientOrderId && !isTradeOrderUuidV4(suppliedClientOrderId)) {
+      throw new Error('client_order_id must be a UUID v4');
+    }
+    const clientOrderId = suppliedClientOrderId || createTradeOrderUuid();
+    const provisionalTicket = createProvisionalMarketOrderTicket();
+    let pendingPlacementDispatched = false;
+
+    const dispatchPlacementState = (
+      status: MarketOrderPlacementState,
+      position?: unknown,
+    ) => {
+      if (typeof window === 'undefined') return;
+      window.dispatchEvent(new CustomEvent(MARKET_ORDER_PLACEMENT_STATE_EVENT, {
+        detail: {
+          status,
+          clientOrderId,
+          login: accountLogin,
+          sessionScope,
+          provisionalTicket,
+          ...(position !== undefined ? { position } : {}),
+        },
+      }));
+    };
+
+    const dispatchPendingPlacement = () => {
+      if (pendingPlacementDispatched) return;
+      pendingPlacementDispatched = true;
+      const appState = useAppStore.getState();
+      const tick = resolveTickFromLookup(appState.ticks, appState.tickLookup, symbol);
+      const quotedPrice = side === 'buy' ? Number(tick?.ask) : Number(tick?.bid);
+      const optimisticPrice = Number.isFinite(quotedPrice) && quotedPrice > 0 ? quotedPrice : 0;
+      dispatchPlacementState('pending', {
+        id: provisionalTicket,
+        ticket: provisionalTicket,
+        account_login: accountLogin,
+        client_order_id: clientOrderId,
+        placement_state: 'pending',
+        symbol,
+        side,
+        volume,
+        price_open: optimisticPrice,
+        price_current: optimisticPrice,
+        price_sl: sl,
+        price_tp: tp,
+        profit: 0,
+        commission: 0,
+        swap: 0,
+        time_create: new Date().toISOString(),
+        time_update: new Date().toISOString(),
+      });
+    };
+
+    const placeViaRest = async (reason: string): Promise<endpoints.Position> => {
+      // Keep fallback-only allocations off the successful WebSocket path. The
+      // durable UUID was created once above and is reused here verbatim, so a
+      // transport-uncertain WS attempt still cannot become a duplicate order.
+      const traceId = toTradeOrderTraceId(clientOrderId);
+      const restOrder: endpoints.CreateOrderRequest = {
+        login: accountLogin,
+        client_order_id: clientOrderId,
+        symbol,
+        side,
+        type: 'market',
+        volume,
+        price_sl: rawSl,
+        price_tp: rawTp,
+        comment: data.comment,
+        trailing_stop: data.trailing_stop,
+        trailing_step: data.trailing_step,
+        magic: data.magic,
+      };
+      const restStartedAtMs = tradeOrderNow();
+      recordTradeOrderLatency({
+        phase: 'rest_started',
+        transport: 'rest',
+        traceId,
+        sessionScope,
+        symbol,
+        reason,
+        totalMs: restStartedAtMs - apiStartedAtMs,
+      });
+      try {
+        const response = await endpoints.tradingApi.placeOrder(restOrder);
+        const restCompletedAtMs = tradeOrderNow();
+        recordTradeOrderLatency({
+          phase: 'rest_completed',
+          transport: 'rest',
+          traceId,
+          sessionScope,
+          symbol,
+          reason,
+          restRttMs: restCompletedAtMs - restStartedAtMs,
+          totalMs: restCompletedAtMs - apiStartedAtMs,
+        });
+        return response;
+      } catch (error) {
+        const restFailedAtMs = tradeOrderNow();
+        recordTradeOrderLatency({
+          phase: 'rest_failed',
+          transport: 'rest',
+          traceId,
+          sessionScope,
+          symbol,
+          reason,
+          restRttMs: restFailedAtMs - restStartedAtMs,
+          totalMs: restFailedAtMs - apiStartedAtMs,
+        });
+        throw error;
+      }
+    };
+
+    const tradeSocket = getTradeWebSocketClient();
+    const socketIsReady = typeof tradeSocket.isReadyForOrders === 'function'
+      ? tradeSocket.isReadyForOrders()
+      : typeof tradeSocket.isConnected === 'function' && tradeSocket.isConnected();
+    // These fields are deliberately not added to the fixed WS contract. Route
+    // enriched orders through REST instead of silently dropping trade intent.
+    const hasRestOnlyFields = data.comment !== undefined
+      || data.trailing_stop !== undefined
+      || data.trailing_step !== undefined
+      || data.magic !== undefined;
+
+    let executionPromise: Promise<endpoints.Position>;
+    if (socketIsReady && !hasRestOnlyFields) {
+      executionPromise = tradeSocket.placeOrder({
+          account_login: accountLogin,
+          symbol,
+          side,
+          type: 'market',
+          volume,
+          sl,
+          tp,
+        }, clientOrderId, { intentAtMs, apiStartedAtMs, sessionScope })
+        .then((filled) => mapFilledOrderToPosition(filled, {
+          accountLogin,
+          symbol,
+          side,
+          volume,
+          sl,
+          tp,
+        }))
+        .catch((error) => {
+          if (!isRetryableTradeSocketFailure(error)) throw error;
+          const fallbackCode = error && typeof error === 'object' && 'code' in error
+            ? String((error as { code?: unknown }).code || '').trim().toLowerCase()
+            : '';
+          return placeViaRest(fallbackCode || 'ws_transport_failure');
+        });
+    } else {
+      executionPromise = placeViaRest(hasRestOnlyFields ? 'unsupported_ws_fields' : 'socket_not_ready');
+    }
+
+    // Both transports synchronously enqueue their request before returning a
+    // Promise. Publish the provisional row only after that enqueue, so instant
+    // Toolbox feedback cannot add latency ahead of the actual order frame.
+    dispatchPendingPlacement();
+
+    let result: endpoints.Position;
+    try {
+      result = await executionPromise;
+    } catch (error) {
+      if (pendingPlacementDispatched) dispatchPlacementState('failed');
+      throw error;
+    }
+
+    dispatchPlacementState('confirmed', result);
+
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('rtx:new-trade-placed'));
+      // Publish the confirmed fill itself so Toolbox can render the new row in
+      // the same task instead of waiting for its next WS packet or REST read.
+      // Account + broker scope prevent a late fill from leaking into a newly
+      // selected session.
+      window.dispatchEvent(new CustomEvent('rtx:new-trade-placed', {
+        detail: {
+          login: accountLogin,
+          clientOrderId,
+          position: result,
+          provisionalTicket,
+          sessionScope,
+        },
+      }));
     }
     return result;
   },
@@ -883,6 +1178,12 @@ export const economicCalendarApi = {
 // ============================================
 
 export interface JournalLogEntry {
+  id?: number | string;
+  latency_ms?: number;
+  client_order_id?: number | string;
+  request_id?: number | string;
+  order_ticket?: number | string;
+  position_ticket?: number | string;
   code: number;
   code_text: string;
   type: number;
@@ -895,9 +1196,6 @@ export interface JournalLogEntry {
 export interface JournalQuery {
   mode?: number;   // 0=Standard, 1=Errors only, 2=Full
   type?: number;   // 0=All, 1=Config, 2=System, 3=Network, 4=History, 5=User, 6=Trade, 7=API, 8=Notify
-  from?: number;   // Unix timestamp
-  to?: number;     // Unix timestamp
-  filter?: string; // text search
 }
 
 export interface JournalResponse {
@@ -905,47 +1203,174 @@ export interface JournalResponse {
   logs: JournalLogEntry[];
 }
 
+export interface JournalRequestOptions {
+  signal?: AbortSignal;
+}
+
+const isJournalRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value && typeof value === 'object' && !Array.isArray(value));
+
+const normalizeJournalNumber = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeJournalText = (value: unknown): string =>
+  value === undefined || value === null ? '' : String(value);
+
+const normalizeOptionalJournalLatency = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' && typeof value !== 'string') return undefined;
+  if (typeof value === 'string' && value.trim() === '') return undefined;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+};
+
+const normalizeOptionalJournalIdentifier = (value: unknown): number | string | undefined => {
+  if (typeof value === 'string') return value;
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+};
+
+type NormalizedTradeJournalTiming = {
+  latencyMs: number;
+  message: string;
+};
+
+const normalizeTradeJournalTiming = (
+  typeText: string,
+  source: string,
+  message: string,
+): NormalizedTradeJournalTiming | null => {
+  if (typeText.trim().toLowerCase() !== 'trade' || source.trim().toLowerCase() !== 'gateway') {
+    return null;
+  }
+
+  // Compatibility for the deployed Gateway journal. Match only the known
+  // terminal trade formats so unrelated durations (for example quote age in a
+  // QUOTE_STALE rejection) can never be mislabeled as order latency.
+  const timedTerminal = message.match(
+    /^(Order\s+(?:buy|sell)\s+\S+\s+\S+\s+filled|Close\s+(?:buy|sell)\s+\S+\s+ticket\s+\S+\s+profit\s+\S+)\s+in\s+(\d+(?:\.\d+)?)ms$/i,
+  );
+  if (timedTerminal) {
+    return { message: timedTerminal[1], latencyMs: Number(timedTerminal[2]) };
+  }
+
+  const timingDetail = message.match(
+    /^(Timing\s+(?:buy|sell)\s+\S+\s+\S+):\s+.*\btotal\s+(\d+(?:\.\d+)?)ms$/i,
+  );
+  if (timingDetail) {
+    return { message: timingDetail[1], latencyMs: Number(timingDetail[2]) };
+  }
+
+  return null;
+};
+
+export const normalizeJournalResponse = (payload: unknown): JournalResponse => {
+  if (!isJournalRecord(payload) || !Array.isArray(payload.logs)) {
+    throw new Error('Invalid Journal API response');
+  }
+
+  const logs = payload.logs
+    .filter(isJournalRecord)
+    .map((log): JournalLogEntry => {
+      const id = normalizeOptionalJournalIdentifier(log.id);
+      const typeText = normalizeJournalText(log.type_text);
+      const source = normalizeJournalText(log.source);
+      const message = normalizeJournalText(log.message);
+      const compatibleTiming = normalizeTradeJournalTiming(typeText, source, message);
+      const latencyMs = normalizeOptionalJournalLatency(log.latency_ms)
+        ?? compatibleTiming?.latencyMs;
+      const clientOrderId = normalizeOptionalJournalIdentifier(log.client_order_id);
+      const requestId = normalizeOptionalJournalIdentifier(log.request_id);
+      const orderTicket = normalizeOptionalJournalIdentifier(log.order_ticket);
+      const positionTicket = normalizeOptionalJournalIdentifier(log.position_ticket);
+
+      return {
+        ...(id !== undefined ? { id } : {}),
+        ...(latencyMs !== undefined ? { latency_ms: latencyMs } : {}),
+        ...(clientOrderId !== undefined ? { client_order_id: clientOrderId } : {}),
+        ...(requestId !== undefined ? { request_id: requestId } : {}),
+        ...(orderTicket !== undefined ? { order_ticket: orderTicket } : {}),
+        ...(positionTicket !== undefined ? { position_ticket: positionTicket } : {}),
+        code: normalizeJournalNumber(log.code),
+        code_text: normalizeJournalText(log.code_text),
+        type: normalizeJournalNumber(log.type),
+        type_text: typeText,
+        datetime: normalizeJournalNumber(log.datetime),
+        source,
+        message: compatibleTiming?.message ?? message,
+      };
+    });
+  const count = Number(payload.count);
+
+  return {
+    count: Number.isFinite(count) ? count : logs.length,
+    logs,
+  };
+};
+
+let journalSessionGeneration = 0;
+let lastJournalAccessToken: string | null = null;
+let lastJournalRefreshToken: string | null = null;
+let lastJournalScopeKey = '';
+
+const getStoredJournalRefreshToken = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
+};
+
+const getJournalRequestContext = (
+  apiRootBaseUrl: string,
+  accessToken: string | null,
+): ApiRequestContext | undefined => {
+  if (!accessToken) return undefined;
+
+  const refreshToken = getStoredJournalRefreshToken();
+  if (!refreshToken) return undefined;
+
+  const scopeKey = getCommittedBrokerAccountSessionScopeKey(
+    getCommittedBrokerAccountSessionScope(),
+  );
+  if (
+    accessToken !== lastJournalAccessToken
+    || refreshToken !== lastJournalRefreshToken
+    || scopeKey !== lastJournalScopeKey
+  ) {
+    journalSessionGeneration += 1;
+    lastJournalAccessToken = accessToken;
+    lastJournalRefreshToken = refreshToken;
+    lastJournalScopeKey = scopeKey;
+  }
+
+  return Object.freeze({
+    key: `journal:${journalSessionGeneration}:${scopeKey}`,
+    backendOrigin: apiRootBaseUrl,
+    refreshEndpoint: `${API_V2_BASE_URL.replace(/\/$/, '')}/auth/refresh`,
+    refreshToken,
+  });
+};
+
 export const journalApi = {
-  async getLogs(params: JournalQuery = {}): Promise<JournalResponse> {
-    // In Electron the page origin is file:// so we call the backend directly
-    // (no CORS). In the browser (dev/web) we go through the Vite proxy (/api →
-    // configured backend) to avoid CORS 503s. The desktop origin is resolved
-    // from runtime broker config via getBackendTarget() — never hardcoded to a
-    // single cross-broker host.
-    const isElectron = typeof window !== 'undefined' &&
-      (window.location.protocol === 'file:' || navigator.userAgent.includes('Electron'));
-    const BACKEND = isElectron ? getBackendTarget().replace(/\/+$/, '') : '';
-
-    // Build query string — match working curl: mode, type, filter only
-    // ⚠️ BACKEND BUG: /api/v1/journal returns 503 if 'filter' param is absent or empty.
-    //    Always send a non-empty filter. Space ' ' acts as a wildcard match-all.
-    const qs = new URLSearchParams();
-    if (params.mode !== undefined) qs.set('mode', String(params.mode));
-    if (params.type !== undefined) qs.set('type', String(params.type));
-    qs.set('filter', params.filter?.trim() || ' ');  // always non-empty!
-
-    const url = `${BACKEND}/api/v1/journal?${qs.toString()}`;
-
-    // Authenticate like every other protected call: attach the stored JWT.
-    // The journal endpoint must not be reachable unauthenticated.
-    const token = getAuthToken();
-    const res = await fetch(url, {
+  async getLogs(
+    params: JournalQuery = {},
+    options: JournalRequestOptions = {},
+  ): Promise<JournalResponse> {
+    const apiRootBaseUrl = API_V2_BASE_URL.replace(/\/api\/v2\/?$/, '');
+    const accessToken = getAuthToken();
+    const payload = await apiClient.get<unknown>('/api/v1/journal', {
+      ...(apiRootBaseUrl ? { baseUrl: apiRootBaseUrl, skipDynamicUrl: true } : {}),
+      authToken: accessToken,
+      requestContext: getJournalRequestContext(apiRootBaseUrl, accessToken),
+      signal: options.signal,
+      params: {
+        mode: params.mode ?? 2,
+        type: params.type ?? 0,
+      },
       headers: {
-        'accept': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        accept: 'application/json',
       },
     });
-
-    if (!res.ok) {
-      throw new Error(`Journal API error: ${res.status} ${res.statusText}`);
-    }
-
-    const data = await res.json();
-    // Backend returns { count, logs } — normalise to our interface
-    return {
-      count: data.count ?? (data.logs?.length ?? 0),
-      logs: data.logs ?? [],
-    } as JournalResponse;
+    return normalizeJournalResponse(payload);
   },
 };
 

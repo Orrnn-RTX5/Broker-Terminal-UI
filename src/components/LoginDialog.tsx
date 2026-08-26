@@ -17,25 +17,8 @@ import {
 } from '../config/backendTarget.js';
 import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
-import { pickDiscoveryBroker } from './WelcomeTerminal';
+import { pickDiscoveryBroker, type BrokerServerItem } from './WelcomeTerminal';
 import { User, X, HelpCircle, ChevronDown } from 'lucide-react';
-
-interface BrokerServerItem {
-    broker_id: string;
-    broker_name: string;
-    server?: string;
-    server_ip?: string;
-    server_port?: number;
-    server_url?: string;
-    backend_url?: string;
-    market_api_url?: string;
-    ws_url?: string;
-    feed_url?: string;
-    feed_ws_url?: string;
-    feed_status_url?: string;
-    logo_url: string;
-    region?: string;
-}
 
 interface LoginDialogProps {
     isOpen: boolean;
@@ -298,13 +281,6 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             onClose();
             if (onLoginSuccess) {
                 onLoginSuccess(String(accountId));
-            } else {
-                if (!isNaN(loginNum)) {
-                    const { bootstrapApp } = await import('../services/bootstrapApp');
-                    bootstrapApp(loginNum).catch(() => window.location.reload());
-                } else {
-                    window.location.reload();
-                }
             }
         } catch (err: unknown) {
             console.error('[LoginDialog] Auth error:', err);
@@ -330,7 +306,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 <div className="flex items-center justify-between bg-[#353847] px-3 py-2 border-b border-[#555]">
                     <div className="flex items-center gap-2">
                         <User size={16} className="text-blue-400" />
-                        <span className="text-[13px] text-zinc-200 font-medium">Login</span>
+                        <span className="text-[14px] font-semibold text-zinc-200">Login</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <button className="p-1 hover:bg-white/10 rounded transition-colors" title="Help">
@@ -349,20 +325,20 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                         <div className="w-10 h-10 rounded-full bg-zinc-700/30 flex items-center justify-center flex-shrink-0">
                             <User size={22} className="text-blue-400" />
                         </div>
-                        <p className="text-[11px] text-zinc-400 leading-relaxed">
+                        <p className="text-[12px] font-normal leading-relaxed text-zinc-400">
                             Authorization allows to get access to the trade account
                         </p>
                     </div>
 
                     {/* Login Field */}
                     <div className="flex items-center gap-3 mb-3">
-                        <label className="text-[12px] text-zinc-400 w-20 text-right flex-shrink-0">Login:</label>
+                        <label className="w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Login:</label>
                         <input
                             ref={loginInputRef}
                             type="text"
                             value={login}
                             onChange={(e) => setLogin(e.target.value)}
-                            className="flex-1 h-[28px] px-2 bg-[#1a1c26] border border-zinc-600/60 rounded text-[12px] text-zinc-100 font-mono outline-none focus:border-zinc-600 transition-colors"
+                            className="h-[28px] flex-1 rounded border border-zinc-600/60 bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
                             placeholder="Account ID"
                             autoFocus
                         />
@@ -370,12 +346,12 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
                     {/* Password Field */}
                     <div className="flex items-center gap-3 mb-3">
-                        <label className="text-[12px] text-zinc-400 w-20 text-right flex-shrink-0">Password:</label>
+                        <label className="w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Password:</label>
                         <input
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="flex-1 h-[28px] px-2 bg-[#1a1c26] border border-[#555] rounded text-[12px] text-zinc-100 font-mono outline-none focus:border-zinc-600 transition-colors"
+                            className="h-[28px] flex-1 rounded border border-[#555] bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
                             placeholder="Password"
                             onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
                         />
@@ -383,9 +359,9 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
                     {/* Server / Broker Dropdown */}
                     <div className="flex items-start gap-3 mb-4">
-                        <label className="text-[12px] text-zinc-400 w-20 text-right flex-shrink-0 mt-1.5">Server:</label>
+                        <label className="mt-1.5 w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Server:</label>
                         <div className="flex-1 relative" ref={dropdownRef}>
-                            <div className="flex items-center w-full h-[28px] bg-[#1a1c26] border border-[#555] rounded text-[12px] text-zinc-100 focus-within:border-zinc-600 transition-colors relative">
+                            <div className="relative flex h-[28px] w-full items-center rounded border border-[#555] bg-[#1a1c26] text-[14px] font-normal text-zinc-100 transition-colors focus-within:border-zinc-600">
                                 {selectedBroker?.logo_url && (
                                     <img
                                         src={selectedBroker.logo_url}
@@ -401,7 +377,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                         setDropdownOpen(true);
                                     }}
                                     onFocus={() => setDropdownOpen(true)}
-                                    className="flex-1 h-full bg-transparent text-[12px] text-zinc-100 outline-none border-none"
+                                    className="h-full flex-1 border-none bg-transparent text-[14px] font-normal text-zinc-100 outline-none"
                                     style={{
                                         paddingLeft: selectedBroker?.logo_url ? '28px' : '8px',
                                         paddingRight: '32px',
@@ -426,14 +402,14 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             {dropdownOpen && (
                                 <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#1e2030] border border-zinc-600/60 rounded shadow-xl max-h-[180px] overflow-y-auto flex flex-col font-sans">
                                     {filteredBrokers.length === 0 ? (
-                                        <div className="py-3 px-3 text-zinc-500 text-[11px]">No brokers found</div>
+                                        <div className="px-3 py-3 text-[12px] font-normal text-zinc-500">No brokers found</div>
                                     ) : (
                                         filteredBrokers.map(item => (
                                             <button
                                                 key={item.broker_id}
                                                 type="button"
                                                 onMouseDown={() => handleSelectBroker(item)}
-                                                className={`w-full text-left px-3 py-2 text-[11px] hover:bg-zinc-700/60 transition-colors flex items-center justify-between gap-2 ${selectedBroker?.broker_id === item.broker_id ? 'bg-zinc-700/40 text-white font-semibold' : 'text-zinc-300'}`}
+                                                className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[14px] transition-colors hover:bg-zinc-700/60 ${selectedBroker?.broker_id === item.broker_id ? 'bg-zinc-700/40 font-semibold text-white' : 'font-normal text-zinc-300'}`}
                                             >
                                                 <div className="flex items-center gap-2 truncate">
                                                     {item.logo_url ? (
@@ -461,7 +437,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             )}
 
                             {healthStatus === 'offline' && (
-                                <div className="mt-1.5 text-red-400 text-[11px] flex items-center gap-1">
+                                <div className="mt-1.5 flex items-center gap-1 text-[12px] font-normal text-red-400">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                                         <line x1="12" y1="9" x2="12" y2="13" />
@@ -475,7 +451,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
                     {/* Error */}
                     {error && (
-                        <div className="mb-3 px-2 py-1.5 bg-red-500/15 border border-red-500/30 rounded text-[11px] text-red-400">
+                        <div className="mb-3 rounded border border-red-500/30 bg-red-500/15 px-2 py-1.5 text-[12px] font-normal text-red-400">
                             {error}
                         </div>
                     )}
@@ -485,7 +461,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                         <button
                             type="submit"
                             disabled={loading}
-                            className="px-6 h-[30px] bg-[#3a3e4f] hover:bg-[#4a4e5f] border border-[#555] rounded text-[12px] text-zinc-200 transition-colors disabled:opacity-50"
+                            className="h-[30px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] font-semibold text-zinc-200 transition-colors hover:bg-[#4a4e5f] disabled:opacity-50"
                         >
                             {loading ? 'Connecting...' : 'OK'}
                         </button>
@@ -493,7 +469,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             type="button"
                             onClick={onClose}
                             disabled={loading}
-                            className="px-6 h-[30px] bg-[#3a3e4f] hover:bg-[#4a4e5f] border border-[#555] rounded text-[12px] text-zinc-200 transition-colors"
+                            className="h-[30px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] font-normal text-zinc-200 transition-colors hover:bg-[#4a4e5f]"
                         >
                             Cancel
                         </button>

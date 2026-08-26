@@ -212,7 +212,7 @@
     font-size: 16px;
     font-weight: 700;
     color: #fff;
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono);
 }
 
 .strict-notice {

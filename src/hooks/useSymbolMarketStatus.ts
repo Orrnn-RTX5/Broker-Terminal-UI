@@ -137,8 +137,25 @@ export const useSymbolMarketStatus = (
   }, [enabled, normalizedSymbol]);
 
   useEffect(() => {
-    void refresh(false);
-    if (!enabled || !normalizedSymbol || pollMs <= 0) return undefined;
+    if (!enabled || !normalizedSymbol) {
+      // Preserve the last authoritative state while a mounted chart tab is
+      // hidden, but invalidate any in-flight result owned by that tab.
+      requestSeqRef.current += 1;
+      return undefined;
+    }
+
+    let disposed = false;
+    // Refresh on activation without synchronously cascading a state update from
+    // the effect body. Cleanup invalidates both the queued and in-flight work.
+    void Promise.resolve().then(() => {
+      if (!disposed) void refresh(false);
+    });
+    if (pollMs <= 0) {
+      return () => {
+        disposed = true;
+        requestSeqRef.current += 1;
+      };
+    }
 
     const intervalId = window.setInterval(() => {
       void refresh(true);
@@ -149,6 +166,8 @@ export const useSymbolMarketStatus = (
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      disposed = true;
+      requestSeqRef.current += 1;
       window.clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
     };

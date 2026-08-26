@@ -9,8 +9,8 @@ import { useAppStore, type Position } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import api from '../services/api';
 import { getTradeEntryPriceFromQuote } from '../services/chartPriceGuards';
+import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { resolvePositionOpenTime } from '../services/tradePositionTime';
-import { fetchSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import {
     createUnavailableMarketStatus,
     shouldBlockSymbolTrading,
@@ -83,7 +83,6 @@ const upsertImmediatePosition = (position: Position) => {
 
 export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visible, timeframe, tradeAllowed = false, marketStatus }) => {
     const [volume, setVolume] = useState(0.01);
-    const [isPlacing, setIsPlacing] = useState(false);
     const [flashSide, setFlashSide] = useState<'buy' | 'sell' | null>(null);
     const [error, setError] = useState<string | null>(null);
     const prevBidRef = useRef<number>(0);
@@ -159,16 +158,26 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
     const marketBlockedMessage = 'Market Closed';
     const marketOpenForTrading = !shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
     const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice;
+    const orderBlockedReason = !tradeAllowed
+        ? 'Live tradable quote unavailable - order not sent'
+        : !marketOpenForTrading
+            ? marketBlockedMessage
+            : !isVolumeValid
+                ? 'Invalid volume'
+                : !hasExecutablePrice
+                    ? 'Waiting for a valid bid/ask price'
+                    : undefined;
 
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
-        if (isPlacing) return;
+        const intentAtMs = captureTradeOrderIntent();
         if (!tradeAllowed) {
             setError('Trading is not enabled for this symbol');
             return;
         }
-        const latestMarketStatus = await fetchSymbolMarketStatus(symbol, { force: true })
-            .catch(() => createUnavailableMarketStatus(symbol));
-        if (shouldBlockSymbolTrading(latestMarketStatus, symbol)) {
+        // The rendered status is already refreshed in the background. Never
+        // put an HTTP market-status request in front of a one-click order;
+        // the backend still performs the authoritative execution validation.
+        if (!marketOpenForTrading) {
             setError('Market Closed');
             return;
         }
@@ -193,19 +202,29 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
             setError('No trading account is selected. Please sign in again.');
             return;
         }
-        setError(null);
-        setIsPlacing(true);
-        setFlashSide(side);
-
         try {
-            const chartEntryPrice = getTradeEntryPriceFromQuote(tick, side.toUpperCase() as 'BUY' | 'SELL');
-            const chartEntryTime = new Date().toISOString();
-            const result = await api.orders.placeMarketOrder({
+            const orderPromise = api.orders.placeMarketOrder({
                 side,
                 symbol,
                 volume,
                 login,
-            });
+            }, { intentAtMs });
+            // placeMarketOrder reaches the warm WebSocket's synchronous send()
+            // before returning this Promise. Queue cosmetic React feedback only
+            // afterwards so it cannot add work ahead of the order frame.
+            // Do not lock BUY/SELL until this Promise reaches a terminal fill:
+            // every deliberate click has its own UUID and pending-map entry, so
+            // burst orders remain independently idempotent and correlated.
+            setError(null);
+            setFlashSide(side);
+            const chartEntryPrice = getTradeEntryPriceFromQuote(tick, side.toUpperCase() as 'BUY' | 'SELL');
+            const chartEntryTime = new Date().toISOString();
+            const result = await orderPromise;
+            // Concurrent clicks settle independently. If an earlier order was
+            // rejected while this newer one was still executing, the newer
+            // success must clear that stale banner immediately; it must never
+            // leave BUY/SELL looking blocked after a confirmed fill.
+            setError(null);
             const immediatePosition = normalizeImmediatePosition(result, {
                 symbol,
                 side: side.toUpperCase() as 'BUY' | 'SELL',
@@ -223,10 +242,9 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
             setError(formatOrderError(err));
             setTimeout(() => setError(null), 6000);
         } finally {
-            setIsPlacing(false);
             setTimeout(() => setFlashSide(null), 500);
         }
-    }, [isAuthenticated, isPlacing, tradeAllowed, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick]);
+    }, [isAuthenticated, tradeAllowed, marketOpenForTrading, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick]);
 
     if (!visible || !symbol) return null;
 
@@ -270,7 +288,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
         minHeight: btnHeight,
         maxHeight: btnHeight,
         border: '1px solid rgba(255,255,255,0.1)',
-        cursor: isPlacing || !canSubmitOrder ? 'not-allowed' : 'pointer',
+        cursor: !canSubmitOrder ? 'not-allowed' : 'pointer',
         position: 'relative',
         opacity: canSubmitOrder ? 1 : 0.5,
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -280,7 +298,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
     return (
         <div
             className="rtx-oct absolute top-[28px] left-[10px] z-30 select-none drop-shadow-2xl"
-            style={{ pointerEvents: 'auto', fontFamily: "'Inter', 'Segoe UI', Tahoma, sans-serif", display: 'inline-block', width: 'fit-content' }}
+            style={{ pointerEvents: 'auto', fontFamily: 'var(--font-sans)', display: 'inline-block', width: 'fit-content' }}
         >
             <div
                 style={{
@@ -297,7 +315,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                 {/* ── BUY Button ── */}
                 <button
                     onClick={() => placeOrder('buy')}
-                    disabled={isPlacing || !canSubmitOrder}
+                    disabled={!canSubmitOrder}
+                    title={orderBlockedReason}
                     style={{
                         ...sharedButtonStyle,
                         background: flashSide === 'buy'
@@ -405,7 +424,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                 {/* ── SELL Button ── */}
                 <button
                     onClick={() => placeOrder('sell')}
-                    disabled={isPlacing || !canSubmitOrder}
+                    disabled={!canSubmitOrder}
+                    title={orderBlockedReason}
                     style={{
                         ...sharedButtonStyle,
                         background: flashSide === 'sell'
@@ -459,6 +479,34 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     borderTop: 'none',
                 }}>
                     ⚠ Invalid volume (min 0.01)
+                </div>
+            )}
+            {!tradeAllowed && !error && (
+                <div style={{
+                    fontSize: 10,
+                    color: '#fbbf24',
+                    textAlign: 'center',
+                    padding: '3px 8px',
+                    background: 'rgba(120, 53, 15, 0.62)',
+                    borderRadius: 0,
+                    border: '1px solid rgba(245, 158, 11, 0.45)',
+                    borderTop: 'none',
+                }}>
+                    Live tradable quote unavailable - order not sent
+                </div>
+            )}
+            {tradeAllowed && marketOpenForTrading && !hasExecutablePrice && !error && (
+                <div style={{
+                    fontSize: 10,
+                    color: '#fbbf24',
+                    textAlign: 'center',
+                    padding: '3px 8px',
+                    background: 'rgba(120, 53, 15, 0.62)',
+                    borderRadius: 0,
+                    border: '1px solid rgba(245, 158, 11, 0.45)',
+                    borderTop: 'none',
+                }}>
+                    Waiting for a valid bid/ask price
                 </div>
             )}
             {tradeAllowed && !marketOpenForTrading && !error && (

@@ -1,16 +1,27 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { DockContainer, FloatingPanelsLayer, GlobalEdgeIndicators } from './DockContainer';
-import { TradingChart } from '../TradingChart';
 import { ErrorBoundary } from '../ErrorBoundary';
-import type { Timeframe, ChartType } from '../TradingChart';
+import { TradingChart, type Timeframe, type ChartType } from '../TradingChart';
 import type { DockPanelConfig } from '../../services/dockManager';
-import { MarketWatchPanel } from '../layout/MarketWatchPanel';
-import { NavigatorPanel } from '../layout/NavigatorPanel';
-import { BottomDock } from '../BottomDock';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { DockContainer as IDockContainer } from '../../services/dockManager';
+import { MarketWatchPanel, type ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';
+import { NavigatorPanel } from '../layout/NavigatorPanel';
+import { BottomDock } from '../BottomDock';
 import { getUniqueSymbolNames, resolveAuthorizedChartSymbol } from '../../utils/symbolEligibility';
+import {
+    getAuthorizedChartDiagnosticSymbol,
+    getChartPanelDiagnosticId,
+    resolveRenderedChartSymbol,
+} from '../../utils/chartSelectionReadiness';
+
+/**
+ * Importing this module now evaluates every first-viewport component. AppShell
+ * calls this through its authenticated dynamic boundary during the broker
+ * request, so React's first authenticated commit has no nested lazy fallback.
+ */
+export const preloadDockWorkspaceViewport = async (): Promise<void> => undefined;
 
 interface DockWorkspaceProps {
     globalChartType: ChartType;
@@ -18,7 +29,9 @@ interface DockWorkspaceProps {
     allSymbols: unknown[];
     chartSymbols?: unknown[];
     tradeSymbols?: unknown[];
+    activeMarketSnapshot: ActiveMarketSymbolsSnapshot;
     selectedSymbol: string;
+    chartRuntimeEnabled?: boolean;
     onSymbolSelect: (symbol: string) => void;
     onClosePosition: (id: string | number) => void;
     onModifyPosition: (id: number, sl: number, tp: number) => void;
@@ -32,14 +45,15 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     allSymbols,
     chartSymbols,
     tradeSymbols,
+    activeMarketSnapshot,
     selectedSymbol,
+    chartRuntimeEnabled = true,
     onSymbolSelect,
     onClosePosition,
     onModifyPosition,
     onCancelOrder,
     onCloseBulk
 }) => {
-    const [isInitialized, setIsInitialized] = useState(false);
     const tradeSymbolSet = useMemo(() => {
         return new Set(getUniqueSymbolNames(tradeSymbols ?? allSymbols));
     }, [allSymbols, tradeSymbols]);
@@ -51,19 +65,26 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         return resolveAuthorizedChartSymbol(value, authorizedChartSymbols);
     }, [authorizedChartSymbols]);
 
-    useEffect(() => {
-        setIsInitialized(true);
-    }, []);
-
     const renderPanel = useCallback((panel: DockPanelConfig, isActive: boolean) => {
         if (panel.component === 'Chart') {
-            const chartSymbol = resolveChartSymbol(panel.props?.symbol)
-                || resolveChartSymbol(selectedSymbol)
-                || authorizedChartSymbols[0]
-                || '';
+            const panelSymbol = panel.props?.symbol ?? panel.title?.split(',')[0];
+            const chartSymbol = resolveRenderedChartSymbol(
+                panelSymbol,
+                selectedSymbol,
+                authorizedChartSymbols,
+            );
+            const diagnosticPanelSymbol = getAuthorizedChartDiagnosticSymbol(
+                panelSymbol,
+                authorizedChartSymbols,
+            );
+            const diagnosticPanelId = getChartPanelDiagnosticId(panel.id);
             const tradeAllowed = chartSymbol ? tradeSymbolSet.has(chartSymbol) : false;
             return (
                 <div className="rtx-chart-panel flex-1 w-full h-full min-h-0 min-w-0 relative flex flex-col group/chartpanel"
+                    data-chart-panel-id={diagnosticPanelId}
+                    data-chart-panel-active={isActive ? 'true' : 'false'}
+                    data-chart-panel-symbol={diagnosticPanelSymbol}
+                    data-chart-rendered-symbol={chartSymbol}
                     style={{ background: '#0e0e12', border: '1px solid #28282e', borderRadius: 6, overflow: 'hidden', transition: 'border-color 0.15s, background 0.15s' }}
                     onMouseEnter={e => (e.currentTarget.style.borderColor = '#5a5a65')}
                     onMouseLeave={e => (e.currentTarget.style.borderColor = '#28282e')}
@@ -86,11 +107,11 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                         }
                     }}
                 >
-                    {chartSymbol ? (
+                    {chartSymbol && chartRuntimeEnabled ? (
                         <div className="rtx-chart-panel__canvas flex-1 w-full h-full relative" style={{ pointerEvents: 'auto' }}>
                             <ErrorBoundary>
                                 <TradingChart
-                                    key={`chart-${panel.id}-${chartSymbol}`}
+                                    key={`chart-${panel.id}`}
                                     symbol={chartSymbol}
                                     timeframe={panel.props?.timeframe || globalTimeframe}
                                     chartType={globalChartType}
@@ -113,6 +134,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                         <MarketWatchPanel
                             className="flex-1 min-h-0 min-w-0 w-full h-full"
                             allSymbols={allSymbols}
+                            activeMarketSnapshot={activeMarketSnapshot}
                             selectedSymbol={selectedSymbol}
                             onSymbolSelect={onSymbolSelect}
                         />
@@ -164,11 +186,9 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     }, [
         authorizedChartSymbols,
         globalChartType, globalTimeframe,
-        allSymbols, selectedSymbol, onSymbolSelect, resolveChartSymbol, tradeSymbolSet,
+        activeMarketSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, resolveChartSymbol, tradeSymbolSet,
         onClosePosition, onModifyPosition, onCancelOrder, onCloseBulk
     ]);
-
-    if (!isInitialized) return null;
 
     return (
         <DockWorkspaceClean renderPanel={renderPanel} />
@@ -217,7 +237,11 @@ const DockWorkspaceClean: React.FC<{
     layout.floatingPanels.forEach(collectCharts);
 
     return (
-        <div className="rtx-dock-workspace flex-1 w-full h-full relative overflow-hidden flex flex-col" style={{ background: '#0d0d11', padding: '6px', gap: '6px' }}>
+        <div
+            className="rtx-dock-workspace flex-1 w-full h-full relative overflow-hidden flex flex-col"
+            data-rtx-authenticated-viewport="true"
+            style={{ background: '#0d0d11', padding: '6px', gap: '6px' }}
+        >
             {/* Reset Layout Button */}
             {isLayoutEmpty && (
                 <button

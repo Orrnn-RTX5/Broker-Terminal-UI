@@ -1,0 +1,2010 @@
+@keyframes rtx-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes rtx-login-page-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes rtx-login-enter {
+    from { opacity: 0; transform: translateY(14px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes rtx-visual-settle {
+    from { transform: scale(1.035); }
+    to { transform: scale(1); }
+}
+
+.rtx-login-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: block;
+    overflow: hidden;
+    min-height: 100dvh;
+    background: #050608;
+    font-family: var(--font-login-sans, var(--font-sans));
+    animation: none;
+}
+
+.rtx-login-overlay button,
+.rtx-login-overlay input,
+.rtx-login-overlay label,
+.rtx-login-overlay select,
+.rtx-login-overlay textarea {
+    font-family: inherit;
+}
+
+.rtx-login-window-controls {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top));
+    left: max(14px, env(safe-area-inset-left));
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px;
+    border: 1px solid rgba(53, 216, 178, 0.18);
+    border-radius: 999px;
+    background: rgba(3, 9, 12, 0.62);
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px);
+    -webkit-app-region: no-drag;
+}
+
+.rtx-login-window-control {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.055);
+    color: #d6f7ef;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.rtx-login-window-control:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+}
+
+.rtx-login-window-control:focus-visible {
+    outline: 2px solid rgba(53, 216, 178, 0.74);
+    outline-offset: 2px;
+}
+
+.rtx-login-window-control.is-close:hover {
+    background: rgba(239, 68, 68, 0.88);
+    border-color: rgba(248, 113, 113, 0.78);
+}
+
+.rtx-login-window-control.is-minimize:hover {
+    background: rgba(245, 158, 11, 0.82);
+    border-color: rgba(251, 191, 36, 0.72);
+    color: #08100e;
+}
+
+.rtx-login-window-control.is-maximize:hover {
+    background: rgba(53, 216, 178, 0.82);
+    border-color: rgba(91, 245, 207, 0.68);
+    color: #04110f;
+}
+
+.rtx-login-stage {
+    position: relative;
+    min-height: 100%;
+    display: flex;
+    justify-content: flex-end;
+    background: #050608;
+}
+
+.rtx-login-visual {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #07080b;
+}
+
+.rtx-login-visual picture,
+.rtx-login-visual img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.rtx-login-visual img {
+    object-fit: var(--rtx-login-hero-fit, cover);
+    object-position: var(--rtx-login-hero-position, center center);
+    filter: saturate(0.86) contrast(1.02) brightness(0.78);
+    animation: rtx-visual-settle 900ms ease-out both;
+}
+
+.rtx-login-visual-shade {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(90deg, rgba(5, 6, 8, 0.08) 0%, rgba(5, 6, 8, 0.36) 46%, rgba(5, 6, 8, 0.76) 100%),
+        linear-gradient(180deg, rgba(5, 6, 8, 0.16) 0%, rgba(5, 6, 8, 0.08) 42%, rgba(5, 6, 8, 0.48) 100%);
+    pointer-events: none;
+}
+
+.rtx-login-panel-wrap {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    width: min(620px, 43vw);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(24px, 3vw, 72px);
+    background: rgba(5, 6, 8, 0.18);
+}
+
+.rtx-login-shell {
+    width: min(520px, 100%);
+    min-height: 0;
+    display: grid;
+    grid-template-rows: 36px minmax(0, 1fr);
+    overflow: hidden;
+    border: 1px solid #2b3039;
+    border-radius: 8px;
+    background: #111318;
+    box-shadow: 0 24px 58px rgba(0, 0, 0, 0.42);
+    animation: rtx-login-enter 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.rtx-shell-bar {
+    min-width: 0;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    border-bottom: 1px solid #25272e;
+    background: #101216;
+    color: #8b8f9b;
+    font-size: 11px;
+    letter-spacing: 0;
+}
+
+.rtx-window-control-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
+}
+
+.rtx-window-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    opacity: 0.9;
+}
+
+.rtx-dot-red { background: #ef4444; }
+.rtx-dot-yellow { background: #f59e0b; }
+.rtx-dot-green { background: #80c33f; }
+
+.rtx-window-title {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rtx-shell-health {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.rtx-shell-health span {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+}
+
+.rtx-login-body {
+    min-width: 0;
+    min-height: 0;
+    padding: 26px;
+    background: #111318;
+}
+
+.rtx-brand-lockup {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.rtx-brand-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 6px;
+    object-fit: contain;
+    background: #14171d;
+    border: 1px solid #292c34;
+}
+
+.rtx-brand-name {
+    margin: 0;
+    color: #f4f4f5;
+    font-size: 21px;
+    line-height: 1.15;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.rtx-brand-subtitle {
+    margin: 0 0 4px;
+    color: #7d828e;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+
+.rtx-broker-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 12px;
+    border: 1px solid #252932;
+    border-radius: 7px;
+    background: #0c0e12;
+    transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.rtx-summary-label {
+    display: block;
+    margin-bottom: 0;
+    color: #737987;
+    font-size: 12px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    line-height: 1.2;
+}
+
+.rtx-route-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rtx-route-logo {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: #171a20;
+    border: 1px solid #2b2f38;
+    flex: 0 0 auto;
+    color: #a7abb5;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.rtx-route-logo img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+}
+
+.rtx-route-copy {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rtx-route-row strong {
+    display: block;
+    color: #f3f4f6;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.18;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rtx-route-row small {
+    display: block;
+    margin-top: 3px;
+    color: #838895;
+    font-size: 12px;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rtx-broker-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    align-self: center;
+    min-height: 28px;
+    padding: 0 9px;
+    border: 1px solid #252932;
+    border-radius: 6px;
+    background: #13161c;
+    font-size: 11.5px;
+    font-weight: 500;
+}
+
+.rtx-broker-state span {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+}
+
+.rtx-form-header {
+    margin-bottom: 18px;
+}
+
+.rtx-form-header p {
+    margin: 0 0 3px;
+    color: #7d828e;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+}
+
+.rtx-form-header h1 {
+    margin: 0;
+    color: #f4f4f5;
+    font-size: 21px;
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+
+.rtx-login-error {
+    margin-bottom: 14px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.10);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #f87171;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.35;
+}
+
+.rtx-login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.rtx-broker-field {
+    position: relative;
+}
+
+.rtx-broker-input-wrap {
+    position: relative;
+    cursor: default;
+}
+
+.rtx-broker-input-wrap input {
+    cursor: default;
+}
+
+.rtx-broker-input-wrap.is-selectable,
+.rtx-broker-input-wrap.is-selectable input {
+    cursor: text;
+}
+
+.rtx-broker-input-wrap.is-locked input {
+    color: #ffffff !important;
+    background: #101318;
+}
+
+.rtx-broker-input-wrap input::placeholder {
+    color: rgba(255, 255, 255, 0.65) !important;
+}
+
+.rtx-broker-logo {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    object-fit: contain;
+    transform: translateY(-50%);
+    z-index: 2;
+}
+
+.rtx-broker-input-state {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.rtx-broker-input-state svg {
+    color: #9aa6ad;
+    transition: transform 0.16s ease, color 0.16s ease;
+}
+
+.rtx-broker-input-state svg.is-open {
+    color: #d9fff5;
+    transform: rotate(180deg);
+}
+
+.rtx-broker-input-state span {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+}
+
+.rtx-broker-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 5px;
+    max-height: 192px;
+    overflow-y: auto;
+    z-index: 10;
+    padding: 4px;
+    border: 1px solid #30343d;
+    border-radius: 7px;
+    background: #171a20;
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.46);
+}
+
+.rtx-broker-empty {
+    padding: 10px 11px;
+    color: #8b8b95;
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.rtx-broker-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 36px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #e6e6ea;
+    cursor: pointer;
+    text-align: left;
+}
+
+.rtx-broker-option:hover,
+.rtx-broker-option.is-selected {
+    background: #21252d;
+}
+
+.rtx-broker-option span {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+
+.rtx-broker-option img,
+.rtx-broker-option i {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    flex: 0 0 auto;
+}
+
+.rtx-broker-option i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.06);
+    color: #8b8b95;
+    font-style: normal;
+    font-size: 10px;
+}
+
+.rtx-broker-option strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 400;
+}
+
+.rtx-broker-option em {
+    color: #80c33f;
+    font-style: normal;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.rtx-inline-status {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.rtx-inline-status.is-offline {
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.10);
+    border: 1px solid rgba(239, 68, 68, 0.22);
+}
+
+.rtx-remember-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+.rtx-remember-row input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: #80c33f;
+}
+
+.rtx-remember-row label {
+    color: #868690;
+    font-size: 14px;
+    font-weight: 400;
+    cursor: pointer;
+}
+
+.rtx-login-button {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 4px;
+    border: 0;
+    border-radius: 6px;
+    background: #80c33f;
+    color: #04110f;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform 60ms ease, background-color 80ms ease, opacity 60ms ease, box-shadow 80ms ease;
+}
+
+.rtx-login-button:hover:not(:disabled) {
+    background: #8bd24a;
+    transform: translateY(-1px);
+}
+
+.rtx-login-button:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.rtx-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(4, 17, 15, 0.25);
+    border-top-color: #04110f;
+    border-radius: 50%;
+    animation: rtx-spin 0.7s linear infinite;
+}
+
+.rtx-login-footer {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #252932;
+    color: #767680;
+    font-size: 12px;
+    font-weight: 400;
+}
+
+@media (max-width: 900px) {
+    .rtx-login-stage {
+        justify-content: center;
+    }
+
+    .rtx-login-overlay {
+        overflow-y: auto;
+    }
+
+    .rtx-login-visual {
+        min-height: 100%;
+    }
+
+    .rtx-login-visual img {
+        object-fit: var(--rtx-login-hero-mobile-fit, var(--rtx-login-hero-fit, cover));
+        object-position: var(--rtx-login-hero-mobile-position, var(--rtx-login-hero-position, center center));
+    }
+
+    .rtx-login-visual-shade {
+        background:
+            linear-gradient(180deg, rgba(5, 6, 8, 0.42) 0%, rgba(5, 6, 8, 0.58) 48%, rgba(5, 6, 8, 0.82) 100%),
+            linear-gradient(90deg, rgba(5, 6, 8, 0.2) 0%, rgba(5, 6, 8, 0.4) 100%);
+    }
+
+    .rtx-login-panel-wrap {
+        width: 100%;
+        min-height: 100vh;
+        padding: 18px;
+        align-items: center;
+        background: transparent;
+    }
+
+    .rtx-login-shell {
+        width: 100%;
+        min-height: 0;
+    }
+}
+
+@media (max-width: 520px) {
+    .rtx-login-panel-wrap {
+        padding: 12px;
+    }
+
+    .rtx-shell-bar {
+        padding: 0 12px;
+    }
+
+    .rtx-shell-health {
+        display: none;
+    }
+
+    .rtx-login-body {
+        padding: 18px;
+    }
+
+    .rtx-brand-logo {
+        width: 40px;
+        height: 40px;
+    }
+
+    .rtx-brand-name {
+        font-size: 20px;
+    }
+
+    .rtx-form-header {
+        margin-bottom: 16px;
+    }
+
+    .rtx-broker-strip {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .rtx-login-form {
+        gap: 11px;
+    }
+
+    .rtx-login-footer {
+        margin-top: 14px;
+        padding-top: 14px;
+    }
+}
+
+.rtx-login-stage {
+    min-height: 100dvh;
+    height: 100dvh;
+    display: grid;
+    grid-template-columns: minmax(0, 63.2%) minmax(520px, 36.8%);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+    background: #06080c;
+}
+
+.rtx-login-visual {
+    position: relative;
+    inset: auto;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #020407;
+}
+
+.rtx-login-visual picture,
+.rtx-login-visual img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.rtx-login-visual img {
+    object-fit: var(--rtx-login-hero-fit, cover);
+    object-position: var(--rtx-login-hero-position, left center);
+    filter: saturate(0.94) contrast(1.05) brightness(0.82);
+    animation: none;
+}
+
+.rtx-login-visual-shade {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.08) 48%, rgba(0, 0, 0, 0.86) 100%),
+        linear-gradient(180deg, rgba(2, 5, 9, 0.18) 0%, rgba(2, 5, 9, 0.02) 44%, rgba(0, 0, 0, 0.38) 100%);
+    pointer-events: none;
+}
+
+.rtx-login-panel-wrap {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    width: auto;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: hidden;
+    padding: clamp(42px, 7.5vh, 86px) clamp(54px, 5.25vw, 88px);
+    background:
+        linear-gradient(180deg, #10181c 0%, #0d1418 46%, #090f13 100%);
+    box-shadow:
+        inset 1px 0 0 rgba(53, 216, 178, 0.18),
+        inset 10px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+.rtx-login-panel {
+    width: min(clamp(442px, 26.45vw, 508px), 100%);
+    min-width: 0;
+    margin-top: clamp(42px, 5vh, 48px);
+    padding: clamp(24px, 2.6vw, 32px);
+    border: 1px solid rgba(48, 106, 97, 0.36);
+    border-radius: 8px;
+    background:
+        linear-gradient(180deg, rgba(12, 24, 28, 0.86) 0%, rgba(8, 14, 19, 0.78) 100%);
+    box-shadow:
+        0 16px 34px rgba(0, 0, 0, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.055),
+        inset 0 0 0 1px rgba(53, 216, 178, 0.035);
+    color: #f4f6f8;
+    contain: layout paint;
+    animation: none;
+}
+
+.rtx-wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 0 0 8px;
+    color: #f5f7fb;
+    font-size: clamp(38px, 3.2vw, 48px);
+    font-weight: 800;
+    line-height: 0.9;
+    letter-spacing: 0;
+}
+
+.rtx-wordmark strong {
+    color: #80c33f;
+    font: inherit;
+}
+
+.rtx-login-body {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+}
+
+.rtx-form-header {
+    position: relative;
+    margin-bottom: 16px;
+    padding-bottom: 18px;
+    border-bottom: 0;
+}
+
+.rtx-form-header::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(53, 216, 178, 0.58), rgba(128, 195, 63, 0.28) 44%, transparent 100%);
+}
+
+.rtx-form-header h1 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    column-gap: 10px;
+    row-gap: 6px;
+    color: #f5f6f8;
+    font-size: 29px;
+    line-height: 1.08;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-shadow: 0 10px 26px rgba(0, 0, 0, 0.36);
+}
+
+.rtx-login-title-text {
+    color: inherit;
+    font: inherit;
+    line-height: 1.18;
+    letter-spacing: inherit;
+    flex: 0 0 auto;
+    max-width: 100%;
+    overflow: visible !important;
+    padding-bottom: 0.12em;
+    margin-bottom: -0.12em;
+}
+
+.rtx-login-title-text .split-word,
+.rtx-login-title-text .split-char {
+    display: inline-block;
+    line-height: 1.18;
+    vertical-align: top;
+    overflow: visible;
+}
+
+.rtx-login-title-logo {
+    width: 116px;
+    height: auto;
+    display: inline-block;
+    object-fit: contain;
+    filter: drop-shadow(0 10px 18px rgba(128, 195, 63, 0.12));
+    transform: translateY(-0.11em);
+}
+
+.rtx-login-title-logo-reveal .split-char {
+    display: inline-block;
+    line-height: 0;
+    vertical-align: middle;
+}
+
+.rtx-broker-strip {
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
+    height: auto;
+    min-height: 74px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 26px;
+    padding: 14px 17px;
+    border: 1px solid rgba(61, 119, 107, 0.48);
+    border-radius: 8px;
+    background:
+        linear-gradient(135deg, rgba(19, 35, 38, 0.94) 0%, rgba(10, 20, 24, 0.88) 54%, rgba(7, 12, 17, 0.97) 100%);
+    box-shadow:
+        0 12px 26px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+    transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.rtx-broker-strip::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+        linear-gradient(90deg, rgba(53, 216, 178, 0.16), transparent 46%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 48%);
+    pointer-events: none;
+}
+
+.rtx-broker-strip > * {
+    position: relative;
+    z-index: 1;
+}
+
+.rtx-route-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rtx-route-copy {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rtx-route-logo {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background:
+        linear-gradient(145deg, rgba(30, 58, 58, 0.98), rgba(11, 22, 27, 0.98));
+    border: 1px solid rgba(69, 135, 121, 0.58);
+    flex: 0 0 auto;
+    color: #a7abb5;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow:
+        0 12px 22px rgba(0, 0, 0, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.rtx-route-logo img {
+    width: 27px;
+    height: 27px;
+    object-fit: contain;
+}
+
+.rtx-summary-label {
+    display: block;
+    margin-bottom: 0;
+    color: #aab1bd;
+    font-size: 12px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    line-height: 1.15;
+}
+
+.rtx-route-row strong {
+    display: block;
+    color: #f7f8fa;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.16;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rtx-route-row small {
+    display: block;
+    margin-top: 8px;
+    color: #a8afba;
+    font-size: 12px;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rtx-broker-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    flex: 0 0 auto;
+    align-self: center;
+    min-height: 32px;
+    padding: 0 14px;
+    border: 1px solid color-mix(in srgb, currentColor 30%, #2c333e);
+    border-radius: 8px;
+    background: color-mix(in srgb, currentColor 11%, rgba(8, 18, 21, 0.86));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 10px 24px rgba(0, 0, 0, 0.22);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.rtx-broker-state span,
+.rtx-broker-input-state span {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.rtx-login-error {
+    margin-bottom: 18px;
+    padding: 10px 12px;
+    border-radius: 4px;
+    background: rgba(239, 68, 68, 0.10);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    color: #f87171;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.35;
+}
+
+.rtx-login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.rtx-input-shell {
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    border: 1px solid #24424a;
+    border-radius: 6px;
+    background:
+        linear-gradient(180deg, rgba(8, 20, 23, 0.78), rgba(7, 13, 18, 0.78));
+    color: #86a7a4;
+    box-shadow: none;
+    transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.rtx-input-shell:focus-within {
+    border-color: #35d8b2;
+    background:
+        linear-gradient(180deg, rgba(10, 27, 29, 0.9), rgba(8, 17, 21, 0.9));
+    box-shadow:
+        0 0 0 2px rgba(53, 216, 178, 0.12);
+}
+
+.rtx-input-shell input {
+    min-width: 0;
+    flex: 1;
+    height: 48px;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    color: #f4f5f7 !important;
+    caret-color: #35d8b2;
+    appearance: none;
+    -webkit-appearance: none;
+    color-scheme: dark;
+}
+
+.rtx-input-shell input::placeholder,
+.rtx-input-shell input::-webkit-input-placeholder,
+.rtx-input-shell input::-moz-placeholder,
+.rtx-input-shell input:-ms-input-placeholder,
+.rtx-broker-input-wrap input::placeholder,
+.rtx-broker-input-wrap input::-webkit-input-placeholder,
+.rtx-broker-input-wrap input::-moz-placeholder,
+.rtx-broker-input-wrap input:-ms-input-placeholder {
+    color: rgba(255, 255, 255, 0.48) !important;
+}
+
+.rtx-input-shell input:-webkit-autofill,
+.rtx-input-shell input:-webkit-autofill:hover,
+.rtx-input-shell input:-webkit-autofill:focus,
+.rtx-broker-input-wrap input:-webkit-autofill,
+.rtx-broker-input-wrap input:-webkit-autofill:hover,
+.rtx-broker-input-wrap input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #f4f5f7 !important;
+    box-shadow: 0 0 0 1000px #0b1518 inset !important;
+    border-color: transparent !important;
+    transition: background-color 99999s ease-out 0s !important;
+}
+
+.rtx-password-toggle {
+    margin-left: auto;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #86a7a4;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: color 0.16s ease, background 0.16s ease;
+}
+
+.rtx-password-toggle:hover,
+.rtx-password-toggle:focus-visible {
+    color: #c8fff1;
+    background: rgba(53, 216, 178, 0.08);
+    outline: none;
+}
+
+.rtx-field-end-icon {
+    display: block;
+    color: currentColor;
+}
+
+.rtx-broker-field {
+    position: relative;
+}
+
+.rtx-broker-input-wrap {
+    position: relative;
+    cursor: default;
+}
+
+.rtx-broker-input-wrap input {
+    cursor: default;
+}
+
+.rtx-broker-input-wrap.is-selectable,
+.rtx-broker-input-wrap.is-selectable input {
+    cursor: text;
+}
+
+.rtx-broker-input-wrap.is-locked input {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    border-color: #24424a !important;
+    background: rgba(8, 18, 20, 0.76) !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.rtx-broker-input-wrap.is-locked input::placeholder {
+    color: rgba(255, 255, 255, 0.75) !important;
+}
+
+.rtx-broker-logo {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    object-fit: contain;
+    transform: translateY(-50%);
+    z-index: 2;
+}
+
+.rtx-broker-input-state {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: #8d94a0;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.rtx-broker-input-state svg {
+    color: #9aa6ad;
+    transition: transform 0.16s ease, color 0.16s ease;
+}
+
+.rtx-broker-input-state svg.is-open {
+    color: #d9fff5;
+    transform: rotate(180deg);
+}
+
+.rtx-broker-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 6px;
+    max-height: 210px;
+    overflow-y: auto;
+    z-index: 10;
+    padding: 5px;
+    border: 1px solid #343b47;
+    border-radius: 5px;
+    background: #171c24;
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.46);
+}
+
+.rtx-broker-empty {
+    padding: 11px 12px;
+    color: #9aa0aa;
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.rtx-broker-option {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 40px;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #e8eaed;
+    cursor: pointer;
+    text-align: left;
+}
+
+.rtx-broker-option:hover,
+.rtx-broker-option.is-selected {
+    background: #222832;
+}
+
+.rtx-broker-option span {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+
+.rtx-broker-option img,
+.rtx-broker-option i {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    flex: 0 0 auto;
+}
+
+.rtx-broker-option i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.06);
+    color: #8b8b95;
+    font-style: normal;
+    font-size: 10px;
+}
+
+.rtx-broker-option strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 400;
+}
+
+.rtx-broker-option em {
+    color: #80c33f;
+    font-style: normal;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.rtx-inline-status {
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.rtx-inline-status.is-offline {
+    background:
+        linear-gradient(180deg, rgba(95, 23, 33, 0.36), rgba(61, 18, 26, 0.28));
+    border: 1px solid rgba(248, 113, 113, 0.34);
+    color: #ff8585;
+}
+
+.rtx-remember-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin-top: -2px;
+}
+
+.rtx-remember-row input {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: #35d8b2;
+}
+
+.rtx-remember-row label {
+    color: #a4aab4;
+    font-size: 14px;
+    font-weight: 400;
+    cursor: pointer;
+}
+
+.rtx-login-button {
+    min-height: 51px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    margin-top: 2px;
+    border: 0;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #54e39d 0%, #2fc58c 100%);
+    color: #02130e;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.26);
+    transition: transform 60ms ease, background-color 80ms ease, opacity 60ms ease, box-shadow 80ms ease;
+}
+
+.rtx-login-button:hover:not(:disabled) {
+    background: linear-gradient(180deg, #64efaa 0%, #25b97f 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.30);
+    transform: translateY(-1px);
+}
+
+.rtx-login-button:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.rtx-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(3, 18, 15, 0.25);
+    border-top-color: rgba(3, 18, 15, 0.88);
+    border-radius: 999px;
+    animation: rtx-spin 720ms linear infinite;
+}
+
+.rtx-login-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 17px;
+    padding-top: 25px;
+    border-top: 1px solid rgba(95, 103, 118, 0.24);
+    color: #a6adb7;
+    font-size: 12px;
+    font-weight: 400;
+}
+
+@media (min-width: 901px) {
+    .rtx-login-overlay--achiever .rtx-login-panel-wrap {
+        background:
+            linear-gradient(180deg, #0b1220 0%, #08101c 48%, #050a14 100%);
+        box-shadow:
+            inset 1px 0 0 rgba(47, 140, 255, 0.24),
+            inset 10px 0 24px rgba(0, 0, 0, 0.18);
+    }
+}
+
+.rtx-login-overlay--achiever .rtx-login-panel {
+    border-color: rgba(47, 140, 255, 0.34);
+    background:
+        linear-gradient(180deg, rgba(8, 18, 34, 0.92) 0%, rgba(5, 11, 22, 0.86) 100%);
+    box-shadow:
+        0 16px 34px rgba(0, 0, 0, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.055),
+        inset 0 0 0 1px rgba(47, 140, 255, 0.055);
+}
+
+.rtx-login-overlay--achiever .rtx-form-header::after {
+    background:
+        linear-gradient(90deg, rgba(47, 140, 255, 0.72), rgba(20, 92, 210, 0.34) 44%, transparent 100%);
+}
+
+.rtx-login-overlay--achiever .rtx-login-title-logo {
+    filter: drop-shadow(0 10px 18px rgba(47, 140, 255, 0.14));
+}
+
+.rtx-login-overlay--achiever .rtx-broker-strip {
+    border-color: rgba(47, 140, 255, 0.38);
+    background:
+        linear-gradient(135deg, rgba(11, 26, 48, 0.96) 0%, rgba(7, 17, 32, 0.9) 54%, rgba(5, 10, 20, 0.98) 100%);
+}
+
+.rtx-login-overlay--achiever .rtx-broker-strip::before {
+    background:
+        linear-gradient(90deg, rgba(47, 140, 255, 0.16), transparent 46%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 48%);
+}
+
+.rtx-login-overlay--achiever .rtx-route-logo {
+    border-color: rgba(47, 140, 255, 0.54);
+    background:
+        linear-gradient(145deg, rgba(13, 43, 88, 0.98), rgba(7, 18, 35, 0.98));
+}
+
+.rtx-login-overlay--achiever .rtx-input-shell {
+    border-color: #1d3f68;
+    background:
+        linear-gradient(180deg, rgba(8, 20, 36, 0.82), rgba(5, 12, 24, 0.82));
+    color: #88a9d8;
+}
+
+.rtx-login-overlay--achiever .rtx-input-shell:focus-within {
+    border-color: #2f8cff;
+    background:
+        linear-gradient(180deg, rgba(9, 27, 50, 0.92), rgba(6, 17, 32, 0.92));
+    box-shadow:
+        0 0 0 2px rgba(47, 140, 255, 0.16);
+}
+
+.rtx-login-overlay--achiever .rtx-input-shell input {
+    caret-color: #2f8cff;
+}
+
+.rtx-login-overlay--achiever .rtx-input-shell input:-webkit-autofill,
+.rtx-login-overlay--achiever .rtx-input-shell input:-webkit-autofill:hover,
+.rtx-login-overlay--achiever .rtx-input-shell input:-webkit-autofill:focus,
+.rtx-login-overlay--achiever .rtx-broker-input-wrap input:-webkit-autofill,
+.rtx-login-overlay--achiever .rtx-broker-input-wrap input:-webkit-autofill:hover,
+.rtx-login-overlay--achiever .rtx-broker-input-wrap input:-webkit-autofill:focus {
+    box-shadow: 0 0 0 1000px #071326 inset !important;
+}
+
+.rtx-login-overlay--achiever .rtx-password-toggle {
+    color: #88a9d8;
+}
+
+.rtx-login-overlay--achiever .rtx-password-toggle:hover,
+.rtx-login-overlay--achiever .rtx-password-toggle:focus-visible {
+    color: #d7e8ff;
+    background: rgba(47, 140, 255, 0.1);
+}
+
+.rtx-login-overlay--achiever .rtx-broker-input-wrap.is-locked input {
+    border-color: #1d3f68 !important;
+    background: rgba(6, 16, 31, 0.8) !important;
+}
+
+.rtx-login-overlay--achiever .rtx-broker-menu {
+    border-color: #263f66;
+    background: #0b1524;
+}
+
+.rtx-login-overlay--achiever .rtx-broker-option:hover,
+.rtx-login-overlay--achiever .rtx-broker-option.is-selected {
+    background: #12233a;
+}
+
+.rtx-login-overlay--achiever .rtx-broker-option em {
+    color: #2f8cff;
+}
+
+.rtx-login-overlay--achiever .rtx-remember-row input {
+    accent-color: #2f8cff;
+}
+
+.rtx-login-overlay--achiever .rtx-login-button {
+    background: linear-gradient(180deg, #3f9bff 0%, #176fe8 100%);
+    color: #f8fbff;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.24),
+        0 12px 24px rgba(23, 111, 232, 0.16);
+}
+
+.rtx-login-overlay--achiever .rtx-login-button:hover:not(:disabled) {
+    background: linear-gradient(180deg, #55a8ff 0%, #1265d7 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        0 14px 28px rgba(23, 111, 232, 0.2);
+}
+
+.rtx-login-overlay--achiever .rtx-spinner {
+    border-color: rgba(248, 251, 255, 0.32);
+    border-top-color: rgba(248, 251, 255, 0.92);
+}
+
+@media (max-width: 1180px) {
+    .rtx-login-stage {
+        grid-template-columns: minmax(0, 55%) minmax(490px, 45%);
+    }
+
+    .rtx-login-panel-wrap {
+        padding-left: 44px;
+        padding-right: 44px;
+    }
+}
+
+@media (max-width: 1040px) {
+    .rtx-login-overlay {
+        overflow-y: auto;
+    }
+
+    .rtx-login-stage {
+        min-height: 100dvh;
+        height: auto;
+        display: block;
+        overflow: visible;
+        background: #06080c;
+    }
+
+    .rtx-login-visual {
+        position: fixed;
+        inset: 0;
+        min-height: 100dvh;
+        height: 100dvh;
+    }
+
+    .rtx-login-visual img {
+        object-fit: var(--rtx-login-hero-mobile-fit, var(--rtx-login-hero-fit, cover));
+        object-position: var(--rtx-login-hero-mobile-position, var(--rtx-login-hero-position, left center));
+    }
+
+    .rtx-login-visual-shade {
+        background:
+            linear-gradient(180deg, rgba(5, 8, 12, 0.44) 0%, rgba(5, 8, 12, 0.7) 42%, rgba(5, 8, 12, 0.88) 100%),
+            linear-gradient(90deg, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.5) 100%);
+    }
+
+    .rtx-login-panel-wrap {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        min-height: 100dvh;
+        height: auto;
+        align-items: center;
+        align-items: safe center;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding:
+            max(24px, env(safe-area-inset-top))
+            max(16px, env(safe-area-inset-right))
+            max(24px, env(safe-area-inset-bottom))
+            max(16px, env(safe-area-inset-left));
+        border-left: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .rtx-login-panel {
+        width: min(468px, 100%);
+        margin-top: 0;
+    }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+    .rtx-login-panel-wrap {
+        align-items: center;
+        padding-top: clamp(20px, 3.25vh, 30px);
+        padding-bottom: clamp(20px, 3.25vh, 30px);
+    }
+
+    .rtx-login-panel {
+        margin-top: 0;
+        padding: 22px 24px;
+    }
+
+    .rtx-form-header {
+        margin-bottom: 13px;
+        padding-bottom: 14px;
+    }
+
+    .rtx-form-header h1 {
+        font-size: 27px;
+    }
+
+    .rtx-login-title-logo {
+        width: 112px;
+    }
+
+    .rtx-broker-strip {
+        min-height: 64px;
+        gap: 14px;
+        margin-bottom: 16px;
+        padding: 11px 14px;
+    }
+
+    .rtx-route-logo {
+        width: 38px;
+        height: 38px;
+    }
+
+    .rtx-route-logo img {
+        width: 24px;
+        height: 24px;
+    }
+
+    .rtx-route-copy {
+        gap: 4px;
+    }
+
+    .rtx-route-row strong {
+        font-size: 14px;
+    }
+
+    .rtx-broker-state {
+        min-height: 29px;
+        padding: 0 12px;
+        font-size: 12.5px;
+    }
+
+    .rtx-login-form {
+        gap: 12px;
+    }
+
+    .rtx-input-shell {
+        min-height: 44px;
+        padding: 0 13px;
+    }
+
+    .rtx-input-shell input {
+        height: 42px;
+    }
+
+    .rtx-login-button {
+        min-height: 45px;
+    }
+
+    .rtx-login-footer {
+        margin-top: 12px;
+        padding-top: 14px;
+    }
+}
+
+@media (min-width: 901px) and (max-height: 700px) {
+    .rtx-login-overlay {
+        overflow-y: auto;
+    }
+
+    .rtx-login-stage {
+        min-height: 100dvh;
+        height: auto;
+    }
+
+    .rtx-login-panel-wrap {
+        min-height: 100dvh;
+        height: auto;
+        overflow-y: auto;
+        padding-top: 16px;
+        padding-bottom: 16px;
+    }
+
+    .rtx-login-panel {
+        padding: 18px 22px;
+    }
+
+    .rtx-form-header {
+        margin-bottom: 11px;
+        padding-bottom: 12px;
+    }
+
+    .rtx-form-header h1 {
+        font-size: 25px;
+        column-gap: 9px;
+        row-gap: 6px;
+    }
+
+    .rtx-login-title-logo {
+        width: 104px;
+    }
+
+    .rtx-broker-strip {
+        min-height: 58px;
+        margin-bottom: 13px;
+        padding: 9px 12px;
+    }
+
+    .rtx-route-logo {
+        width: 34px;
+        height: 34px;
+    }
+
+    .rtx-route-logo img {
+        width: 22px;
+        height: 22px;
+    }
+
+    .rtx-summary-label {
+        font-size: 12px;
+        font-weight: 400;
+    }
+
+    .rtx-route-row strong {
+        font-size: 14px;
+    }
+
+    .rtx-login-form {
+        gap: 10px;
+    }
+
+    .rtx-input-shell {
+        min-height: 41px;
+    }
+
+    .rtx-input-shell input {
+        height: 39px;
+    }
+
+    .rtx-login-button {
+        min-height: 42px;
+    }
+}
+
+@media (max-width: 900px) {
+    .rtx-login-overlay {
+        overflow: hidden;
+    }
+
+    .rtx-login-stage {
+        min-height: 100dvh;
+        height: 100dvh;
+        display: block;
+        overflow: hidden;
+        background: #06080c;
+    }
+
+    .rtx-login-visual {
+        position: fixed;
+        inset: 0;
+        min-height: 100dvh;
+        height: 100dvh;
+    }
+
+    .rtx-login-visual img {
+        object-fit: var(--rtx-login-hero-mobile-fit, var(--rtx-login-hero-fit, cover));
+        object-position: var(--rtx-login-hero-mobile-position, var(--rtx-login-hero-position, left center));
+    }
+
+    .rtx-login-visual-shade {
+        background:
+            linear-gradient(180deg, rgba(5, 8, 12, 0.5) 0%, rgba(5, 8, 12, 0.74) 44%, rgba(5, 8, 12, 0.9) 100%),
+            linear-gradient(90deg, rgba(0, 0, 0, 0.18) 0%, rgba(0, 0, 0, 0.54) 100%);
+    }
+
+    .rtx-login-panel-wrap {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        min-height: 100dvh;
+        height: 100dvh;
+        align-items: center;
+        align-items: safe center;
+        overflow: hidden;
+        padding:
+            max(28px, env(safe-area-inset-top))
+            max(18px, env(safe-area-inset-right))
+            max(28px, env(safe-area-inset-bottom))
+            max(18px, env(safe-area-inset-left));
+        border-left: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .rtx-login-panel {
+        width: min(442px, 100%);
+        margin-top: 0;
+        padding: 24px 18px;
+        border: 1px solid rgba(48, 106, 97, 0.44);
+        border-radius: 8px;
+        background:
+            linear-gradient(180deg, rgba(12, 24, 28, 0.9) 0%, rgba(8, 14, 19, 0.84) 100%);
+        box-shadow:
+            0 16px 34px rgba(0, 0, 0, 0.34),
+            inset 0 1px 0 rgba(255, 255, 255, 0.055);
+    }
+
+}
+
+@media (max-width: 520px) {
+    .rtx-login-panel-wrap {
+        padding: 18px 12px;
+    }
+
+    .rtx-login-panel {
+        padding: 18px;
+    }
+
+    .rtx-wordmark {
+        font-size: 34px;
+    }
+
+    .rtx-form-header {
+        margin-bottom: 18px;
+        padding-bottom: 18px;
+    }
+
+    .rtx-form-header h1 {
+        column-gap: 9px;
+        row-gap: 6px;
+        font-size: 27px;
+        line-height: 1.14;
+    }
+
+    .rtx-login-title-logo {
+        width: 112px;
+    }
+
+    .rtx-broker-strip {
+        height: auto;
+        min-height: 0;
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 13px;
+        margin-bottom: 20px;
+        padding: 15px;
+    }
+
+    .rtx-route-row {
+        width: 100%;
+    }
+
+    .rtx-broker-state {
+        align-self: flex-start;
+    }
+
+    .rtx-broker-menu {
+        max-height: min(44vh, 210px);
+    }
+
+    .rtx-login-form {
+        gap: 18px;
+    }
+
+    .rtx-remember-row input {
+        width: 16px;
+        height: 16px;
+    }
+
+    .rtx-login-footer {
+        margin-top: 15px;
+        padding-top: 18px;
+    }
+}
+
+@media (max-width: 900px) and (max-height: 720px) {
+    .rtx-login-panel-wrap {
+        padding:
+            max(16px, env(safe-area-inset-top))
+            max(12px, env(safe-area-inset-right))
+            max(16px, env(safe-area-inset-bottom))
+            max(12px, env(safe-area-inset-left));
+    }
+
+    .rtx-login-panel {
+        padding: 16px;
+    }
+
+    .rtx-form-header {
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+    }
+
+    .rtx-form-header h1 {
+        column-gap: 8px;
+        row-gap: 6px;
+        font-size: 24px;
+    }
+
+    .rtx-login-title-logo {
+        width: 100px;
+    }
+
+    .rtx-broker-strip {
+        gap: 10px;
+        margin-bottom: 13px;
+        padding: 12px;
+    }
+
+    .rtx-route-logo {
+        width: 34px;
+        height: 34px;
+    }
+
+    .rtx-route-logo img {
+        width: 22px;
+        height: 22px;
+    }
+
+    .rtx-login-form {
+        gap: 10px;
+    }
+
+    .rtx-input-shell {
+        min-height: 42px;
+    }
+
+    .rtx-input-shell input {
+        height: 40px;
+    }
+
+    .rtx-login-button {
+        min-height: 42px;
+    }
+
+    .rtx-login-footer {
+        margin-top: 12px;
+        padding-top: 12px;
+    }
+}
+
+@media (max-width: 380px) {
+    .rtx-login-panel-wrap {
+        padding:
+            max(16px, env(safe-area-inset-top))
+            max(10px, env(safe-area-inset-right))
+            max(16px, env(safe-area-inset-bottom))
+            max(10px, env(safe-area-inset-left));
+    }
+
+    .rtx-login-panel {
+        padding: 16px;
+    }
+
+    .rtx-form-header h1 {
+        column-gap: 8px;
+        row-gap: 6px;
+        font-size: 25px;
+    }
+
+    .rtx-login-title-logo {
+        width: 102px;
+    }
+
+    .rtx-broker-strip {
+        padding: 13px;
+    }
+
+    .rtx-route-logo {
+        width: 38px;
+        height: 38px;
+    }
+
+    .rtx-route-row strong {
+        font-size: 14px;
+    }
+
+    .rtx-route-row small {
+        font-size: 12px;
+        font-weight: 400;
+    }
+
+    .rtx-broker-state {
+        min-height: 32px;
+        padding: 0 12px;
+        font-size: 12.5px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rtx-login-overlay,
+    .rtx-login-shell,
+    .rtx-login-panel,
+    .rtx-login-visual img,
+    .rtx-spinner {
+        animation: none !important;
+    }
+
+    .rtx-login-button,
+    .rtx-broker-strip {
+        transition: none !important;
+    }
+}

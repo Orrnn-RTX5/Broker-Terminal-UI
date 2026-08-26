@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { authApi as endpointAuthApi } from '../api/endpoints';
 import { API_V2_BASE_URL, RTX5_API_URL, isCleartextDowngradeAllowedHost, normalizeBrokerServerUrl, updateDynamicUrls } from '../config/api';
-import { api, journalApi } from './api';
+import { api, journalApi, normalizeJournalResponse } from './api';
 
 const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
   new Response(JSON.stringify(body), {
@@ -28,6 +28,7 @@ const originalWindowLocation = window.location;
 
 const clearStoredRouting = () => {
   delete (window as Window & { electronAPI?: unknown }).electronAPI;
+  delete (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__;
   Object.defineProperty(window, 'location', {
     value: originalWindowLocation,
     configurable: true,
@@ -387,5 +388,233 @@ describe('journalApi.getLogs authentication', () => {
     const request = lastFetchCall();
     expect(request.headers.Authorization).toBeUndefined();
     expect(request.url).not.toContain('rtxbackend.tradecopier.org');
+  });
+
+  it('routes to the active broker and sends only the documented mode/type query', async () => {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+    };
+    localStorage.setItem('auth_token', 'journal-jwt');
+    updateDynamicUrls();
+
+    await journalApi.getLogs();
+
+    const request = lastFetchCall();
+    expect(request.url).toBe('https://fxtrustbrokerbackend.orrnn.com/api/v1/journal?mode=2&type=0');
+    expect(request.url).not.toContain('filter=');
+    expect(request.url).not.toContain('from=');
+    expect(request.headers.Authorization).toBe('Bearer journal-jwt');
+    expect(request.headers.accept).toBe('application/json');
+  });
+
+  it('refreshes a 401 through the active broker v2 auth route and retries once', async () => {
+    (window as Window & { __RTX_RUNTIME_CONFIG__?: Record<string, unknown> }).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+    };
+    localStorage.setItem('auth_token', 'expired-journal-jwt');
+    localStorage.setItem('refresh_token', 'journal-refresh-token');
+    updateDynamicUrls();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ error: 'expired' }, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse({
+        access_token: 'renewed-journal-jwt',
+        refresh_token: 'renewed-journal-refresh-token',
+      }))
+      .mockResolvedValueOnce(jsonResponse({ count: 0, logs: [] }));
+
+    await journalApi.getLogs();
+
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(String(calls[0][0])).toBe('https://fxtrustbrokerbackend.orrnn.com/api/v1/journal?mode=2&type=0');
+    expect(String(calls[1][0])).toBe('https://fxtrustbrokerbackend.orrnn.com/api/v2/auth/refresh');
+    expect(JSON.parse(String(calls[1][1]?.body))).toEqual({ refresh_token: 'journal-refresh-token' });
+    expect(new Headers(calls[2][1]?.headers).get('Authorization')).toBe('Bearer renewed-journal-jwt');
+    expect(localStorage.getItem('auth_token')).toBe('renewed-journal-jwt');
+  });
+});
+
+describe('normalizeJournalResponse', () => {
+  it('normalizes the live count/logs shape without dropping the backend id', () => {
+    expect(normalizeJournalResponse({
+      count: '1',
+      logs: [{
+        id: 42,
+        code: '0',
+        code_text: 'OK',
+        type: '6',
+        type_text: 'Trade',
+        datetime: '1787639000',
+        source: 'gateway',
+        message: 'Position opened',
+      }],
+    })).toEqual({
+      count: 1,
+      logs: [{
+        id: 42,
+        code: 0,
+        code_text: 'OK',
+        type: 6,
+        type_text: 'Trade',
+        datetime: 1787639000,
+        source: 'gateway',
+        message: 'Position opened',
+      }],
+    });
+  });
+
+  it('rejects a payload that is not the journal contract', () => {
+    expect(() => normalizeJournalResponse({ data: [] })).toThrow('Invalid Journal API response');
+  });
+
+  it('retains canonical backend latency and correlation for identical burst rows', () => {
+    const commonLog = {
+      code: 0,
+      code_text: 'OK',
+      type: 6,
+      type_text: 'Trade',
+      datetime: 1787754656,
+      source: 'Gateway',
+      message: 'Order sell XAUUSD 0.01 filled',
+    };
+
+    const response = normalizeJournalResponse({
+      count: 2,
+      logs: [
+        {
+          ...commonLog,
+          id: 'fill-a',
+          latency_ms: '8.125',
+          client_order_id: 'client-a',
+          request_id: 'request-a',
+          order_ticket: '81001',
+          position_ticket: 91001,
+        },
+        {
+          ...commonLog,
+          id: 'fill-b',
+          latency_ms: 17.4,
+          client_order_id: 'client-b',
+          request_id: 'request-b',
+          order_ticket: '81002',
+          position_ticket: 91002,
+        },
+      ],
+    });
+
+    expect(response.logs).toEqual([
+      expect.objectContaining({
+        id: 'fill-a',
+        latency_ms: 8.125,
+        client_order_id: 'client-a',
+        request_id: 'request-a',
+        order_ticket: '81001',
+        position_ticket: 91001,
+      }),
+      expect.objectContaining({
+        id: 'fill-b',
+        latency_ms: 17.4,
+        client_order_id: 'client-b',
+        request_id: 'request-b',
+        order_ticket: '81002',
+        position_ticket: 91002,
+      }),
+    ]);
+  });
+
+  it('omits missing or invalid latency instead of manufacturing zero', () => {
+    const commonLog = {
+      code: 0,
+      code_text: 'OK',
+      type: 6,
+      type_text: 'Trade',
+      datetime: 1787754656,
+      source: 'Gateway',
+      message: 'Order filled',
+    };
+    const response = normalizeJournalResponse({
+      count: 6,
+      logs: [
+        { ...commonLog, id: 'missing' },
+        { ...commonLog, id: 'empty', latency_ms: '' },
+        { ...commonLog, id: 'null', latency_ms: null },
+        { ...commonLog, id: 'negative', latency_ms: -1 },
+        { ...commonLog, id: 'not-finite', latency_ms: 'Infinity' },
+        { ...commonLog, id: 'zero', latency_ms: '0' },
+      ],
+    });
+
+    for (const log of response.logs.slice(0, 5)) {
+      expect(log).not.toHaveProperty('latency_ms');
+    }
+    expect(response.logs[5]).toHaveProperty('latency_ms', 0);
+  });
+
+  it('moves known Gateway trade durations from Message into Latency', () => {
+    const commonLog = {
+      code: 0,
+      code_text: 'OK',
+      type: 6,
+      type_text: 'Trade',
+      datetime: 1787754656,
+      source: 'Gateway',
+    };
+    const response = normalizeJournalResponse({
+      count: 3,
+      logs: [
+        { ...commonLog, id: 'fill', message: 'Order buy XAUUSD 0.01 filled in 286ms' },
+        { ...commonLog, id: 'timing', message: 'Timing buy XAUUSD 0.01: prep 0ns · exec 286ms · total 286ms' },
+        { ...commonLog, id: 'close', message: 'Close sell BTCUSD ticket 4318 profit -0.96 in 423ms' },
+      ],
+    });
+
+    expect(response.logs).toEqual([
+      expect.objectContaining({ id: 'fill', latency_ms: 286, message: 'Order buy XAUUSD 0.01 filled' }),
+      expect.objectContaining({ id: 'timing', latency_ms: 286, message: 'Timing buy XAUUSD 0.01' }),
+      expect.objectContaining({ id: 'close', latency_ms: 423, message: 'Close sell BTCUSD ticket 4318 profit -0.96' }),
+    ]);
+  });
+
+  it('never treats a quote-age rejection as order latency', () => {
+    const message = 'Order rejected buy BTCUSD 0.01: Quote is stale for BTCUSD in 2556ms';
+    const response = normalizeJournalResponse({
+      count: 1,
+      logs: [{
+        id: 'stale-quote',
+        code: 1,
+        code_text: 'ERROR',
+        type: 6,
+        type_text: 'Trade',
+        datetime: 1787754656,
+        source: 'Gateway',
+        message,
+      }],
+    });
+
+    expect(response.logs[0]).not.toHaveProperty('latency_ms');
+    expect(response.logs[0]?.message).toBe(message);
+  });
+
+  it('prefers canonical backend latency while still cleaning the known message suffix', () => {
+    const response = normalizeJournalResponse({
+      count: 1,
+      logs: [{
+        id: 'canonical',
+        latency_ms: 12.5,
+        code: 0,
+        code_text: 'OK',
+        type: 6,
+        type_text: 'Trade',
+        datetime: 1787754656,
+        source: 'Gateway',
+        message: 'Order sell XAUUSD 0.01 filled in 286ms',
+      }],
+    });
+
+    expect(response.logs[0]).toEqual(expect.objectContaining({
+      latency_ms: 12.5,
+      message: 'Order sell XAUUSD 0.01 filled',
+    }));
   });
 });

@@ -288,7 +288,7 @@ const TreeItem: React.FC<TreeItemProps> = ({ name, node, depth = 0, selectedSymb
         {expanded
           ? <FolderOpen size={13} className="text-yellow-400 flex-shrink-0" />
           : <Folder size={13} className="text-yellow-600 flex-shrink-0" />}
-        <span className="text-[12px] text-zinc-300 ml-1">{name}</span>
+        <span className="ml-1 text-[14px] font-normal text-zinc-300">{name}</span>
       </div>
 
       {/* Children */}
@@ -321,7 +321,7 @@ const TreeItem: React.FC<TreeItemProps> = ({ name, node, depth = 0, selectedSymb
               onClick={() => onSelectSymbol(sym)}
             >
               <DollarIcon className="flex-shrink-0" shown={watchlistSymbols.includes(sym.symbol || sym.name)} />
-              <span className="text-[12px] ml-1">{sym.name}</span>
+              <span className="ml-1 text-[14px] font-normal">{sym.name}</span>
             </div>
           ))}
         </>
@@ -685,7 +685,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
         >
           <div className="flex items-center gap-2">
             <DollarIcon />
-            <span className="text-[13px] text-zinc-200 font-medium">Symbols</span>
+            <span className="text-[14px] font-semibold text-zinc-200">Symbols</span>
           </div>
           <div className="flex items-center gap-0 h-full" onMouseDown={e => e.stopPropagation()}>
             <button className="h-full px-3 hover:bg-white/10 flex items-center justify-center" title="Minimize">
@@ -710,10 +710,10 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-1.5 text-[12px] border-b-2 transition-colors ${
+              className={`px-4 py-1.5 text-[14px] border-b-2 transition-colors ${
                 activeTab === tab
-                  ? 'border-[#4a7aff] text-white bg-[#222640]'
-                  : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                  ? 'border-[#4a7aff] text-white bg-[#222640] font-semibold'
+                  : 'border-transparent text-zinc-400 font-normal hover:text-zinc-200 hover:bg-white/5'
               }`}
             >
               {tab}
@@ -728,14 +728,14 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               {/* Bars Top Controls */}
               <div className="flex flex-wrap items-center gap-2 px-2 py-2 border-b border-[#3a3e52] bg-[#1a1d27]">
                 <select 
-                  className="bg-[#161922] border border-[#3a3e52] text-zinc-200 text-[11px] px-2 py-1 outline-none w-[120px]"
+                  className="w-[120px] border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none"
                   value={barsSymbolInput}
                   onChange={e => setBarsSymbolInput(e.target.value)}
                 >
                   {allSymbols.map(s => <option key={s.symbol || s.name} value={s.symbol || s.name}>{s.name || s.symbol}</option>)}
                 </select>
                 <select 
-                  className="bg-[#161922] border border-[#3a3e52] text-zinc-200 text-[11px] px-2 py-1 outline-none w-[70px]"
+                  className="w-[70px] border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none"
                   value={barsTimeframe}
                   onChange={e => setBarsTimeframe(e.target.value)}
                 >
@@ -743,18 +743,18 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                 </select>
                 <input 
                   type="datetime-local" 
-                  className="bg-[#161922] border border-[#3a3e52] text-zinc-200 text-[11px] px-2 py-1 outline-none [color-scheme:dark]"
+                  className="border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none [color-scheme:dark]"
                   value={barsStartTime}
                   onChange={e => setBarsStartTime(e.target.value)}
                 />
                 <input 
                   type="datetime-local" 
-                  className="bg-[#161922] border border-[#3a3e52] text-zinc-200 text-[11px] px-2 py-1 outline-none [color-scheme:dark]"
+                  className="border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none [color-scheme:dark]"
                   value={barsEndTime}
                   onChange={e => setBarsEndTime(e.target.value)}
                 />
                 <button 
-                  className="px-6 py-1 ml-auto text-[11px] text-zinc-200 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                  className="ml-auto rounded-sm border border-[#3a3e52] bg-[#1e2235] px-6 py-1 text-[14px] font-normal text-zinc-200 transition-colors hover:bg-[#2a2e45]"
                   onClick={() => setBarsFetchTrigger(v => v + 1)}
                 >
                   Request
@@ -765,23 +765,23 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               {barsLoading ? (
                 <div className="h-[20px] bg-[#e0e0e0] relative border-b border-[#3a3e52] flex-shrink-0 text-black font-sans">
                   <div className="absolute top-0 left-0 h-full bg-[#008000]" style={{ width: `${barsProgress}%` }} />
-                  <div className="absolute inset-0 flex items-center px-2 text-[11px] whitespace-nowrap z-10 w-full overflow-hidden text-ellipsis">
+                  <div className="absolute inset-0 z-10 flex w-full items-center overflow-hidden text-ellipsis whitespace-nowrap px-2 text-[12px] font-normal">
                     {barsSymbolInput}: '{new Date(barsStartTime).toLocaleString('default', { month: 'short', year: 'numeric' })}' downloaded ({barsProgress.toFixed(1)}%)
                   </div>
                 </div>
               ) : (
-                <div className="px-3 py-1 bg-[#1a1d27] border-b border-[#3a3e52] text-[11px] text-zinc-300 flex-shrink-0">
+                <div className="flex-shrink-0 border-b border-[#3a3e52] bg-[#1a1d27] px-3 py-1 text-[12px] font-normal text-zinc-300">
                   {barsSymbolInput},{barsTimeframe}: {bars.length} bars
                 </div>
               )}
               
               {/* Bars Table */}
               <div className="flex-1 overflow-y-auto custom-scrollbar" onScroll={handleBarsScroll}>
-                <table className="w-full text-[11px] border-collapse">
+                <table className="w-full border-collapse text-[14px] font-normal">
                     <thead>
                       <tr className="bg-[#1a1d27] sticky top-0 z-10">
                         {['Date', 'Open', 'High', 'Low', 'Close', 'Tick Volume', 'Volume', 'Spread'].map((h, i) => (
-                          <th key={h} className={`px-3 py-1.5 text-zinc-400 font-medium border-b border-[#3a3e52] ${i === 0 ? 'text-left' : 'text-right'}`}>
+                          <th key={h} className={`border-b border-[#3a3e52] px-3 py-1.5 text-[12px] font-normal text-zinc-400 ${i === 0 ? 'text-left' : 'text-right'}`}>
                             {h}
                           </th>
                         ))}
@@ -816,7 +816,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                           <td colSpan={8} className="text-center py-6 text-zinc-600">
                             <div>{barsError || 'No bar data available'}</div>
                             <button
-                              className="mt-2 px-3 py-1 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                              className="mt-2 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-3 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]"
                               onClick={() => setBarsFetchTrigger(v => v + 1)}
                             >
                               Retry
@@ -833,14 +833,14 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               {/* Ticks Top Controls */}
               <div className="flex flex-wrap items-center gap-2 px-2 py-2 border-b border-[#3a3e52] bg-[#1a1d27]">
                 <select 
-                  className="bg-[#161922] border border-[#3a3e52] text-zinc-200 text-[11px] px-2 py-1 outline-none w-[120px]"
+                  className="w-[120px] border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none"
                   value={ticksSymbolInput}
                   onChange={e => setTicksSymbolInput(e.target.value)}
                 >
                   {allSymbols.map(s => <option key={s.symbol || s.name} value={s.symbol || s.name}>{s.name || s.symbol}</option>)}
                 </select>
                 <select 
-                  className="bg-[#161922] border border-[#3a3e52] text-zinc-200 text-[11px] px-2 py-1 outline-none w-[110px]"
+                  className="w-[110px] border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none"
                   value={ticksType}
                   onChange={e => setTicksType(e.target.value)}
                 >
@@ -848,18 +848,18 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                 </select>
                 <input 
                   type="datetime-local" 
-                  className="bg-[#161922] border border-[#3a3e52] text-zinc-200 text-[11px] px-2 py-1 outline-none [color-scheme:dark]"
+                  className="border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none [color-scheme:dark]"
                   value={ticksStartTime}
                   onChange={e => setTicksStartTime(e.target.value)}
                 />
                 <input 
                   type="datetime-local" 
-                  className="bg-[#161922] border border-[#3a3e52] text-zinc-200 text-[11px] px-2 py-1 outline-none [color-scheme:dark]"
+                  className="border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none [color-scheme:dark]"
                   value={ticksEndTime}
                   onChange={e => setTicksEndTime(e.target.value)}
                 />
                 <button 
-                  className="px-6 py-1 ml-auto text-[11px] text-zinc-200 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                  className="ml-auto rounded-sm border border-[#3a3e52] bg-[#1e2235] px-6 py-1 text-[14px] font-normal text-zinc-200 transition-colors hover:bg-[#2a2e45]"
                   onClick={() => setTicksFetchTrigger(v => v + 1)}
                 >
                   Request
@@ -870,23 +870,23 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               {ticksLoading ? (
                 <div className="h-[20px] bg-[#e0e0e0] relative border-b border-[#3a3e52] flex-shrink-0 text-black font-sans">
                   <div className="absolute top-0 left-0 h-full bg-[#008000]" style={{ width: `${ticksProgress}%` }} />
-                  <div className="absolute inset-0 flex items-center px-2 text-[11px] whitespace-nowrap z-10 w-full overflow-hidden text-ellipsis">
+                  <div className="absolute inset-0 z-10 flex w-full items-center overflow-hidden text-ellipsis whitespace-nowrap px-2 text-[12px] font-normal">
                     {ticksSymbolInput}: '{new Date(ticksStartTime).toLocaleString('default', { month: 'short', year: 'numeric' })}' downloaded ({ticksProgress.toFixed(1)}%)
                   </div>
                 </div>
               ) : (
-                <div className="px-3 py-1 bg-[#1a1d27] border-b border-[#3a3e52] text-[11px] text-zinc-300 flex-shrink-0">
+                <div className="flex-shrink-0 border-b border-[#3a3e52] bg-[#1a1d27] px-3 py-1 text-[12px] font-normal text-zinc-300">
                   {ticksSymbolInput}: {ticks.length} ticks
                 </div>
               )}
               
               {/* Ticks Table */}
               <div className="flex-1 overflow-y-auto custom-scrollbar" onScroll={handleTicksScroll}>
-                <table className="w-full text-[11px] border-collapse">
+                <table className="w-full border-collapse text-[14px] font-normal">
                     <thead>
                       <tr className="bg-[#1a1d27] sticky top-0 z-10">
                         {['Date', 'Bid', 'Ask', 'Last', 'Volume', 'Flags'].map((h, i) => (
-                          <th key={h} className={`px-3 py-1.5 text-zinc-400 font-medium border-b border-[#3a3e52] ${i === 0 ? 'text-left' : 'text-right'}`}>
+                          <th key={h} className={`border-b border-[#3a3e52] px-3 py-1.5 text-[12px] font-normal text-zinc-400 ${i === 0 ? 'text-left' : 'text-right'}`}>
                             {h}
                           </th>
                         ))}
@@ -910,7 +910,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                           <td colSpan={6} className="text-center py-6 text-zinc-600">
                             <div>{ticksError || 'No tick data available'}</div>
                             <button
-                              className="mt-2 px-3 py-1 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                              className="mt-2 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-3 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]"
                               onClick={() => setTicksFetchTrigger(v => v + 1)}
                             >
                               Retry
@@ -929,16 +929,16 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
             {/* Tree header */}
             <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[#3a3e52]">
               <FolderOpen size={14} className="text-yellow-400" />
-              <span className="text-[11px] text-zinc-400 font-medium">RTX 5 Web Terminal</span>
+              <span className="text-[12px] font-normal text-zinc-400">RTX 5 Web Terminal</span>
             </div>
             <div className="flex-1 overflow-y-auto no-scrollbar py-1">
               {loading ? (
-                <div className="text-[11px] text-zinc-500 px-3 py-2">Loading...</div>
+                <div className="px-3 py-2 text-[12px] font-normal text-zinc-500">Loading...</div>
               ) : symbolsError ? (
-                <div className="px-3 py-2 text-[11px] text-zinc-500">
+                <div className="px-3 py-2 text-[12px] font-normal text-zinc-500">
                   <div>{symbolsError}</div>
                   <button
-                    className="mt-2 px-3 py-1 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                    className="mt-2 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-3 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]"
                     onClick={() => setSymbolsFetchTrigger(v => v + 1)}
                   >
                     Retry
@@ -973,7 +973,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search symbols..."
-                  className="flex-1 bg-transparent text-[11px] text-zinc-300 outline-none placeholder-zinc-600"
+                  className="flex-1 bg-transparent text-[14px] font-normal text-zinc-300 outline-none placeholder-zinc-600"
                 />
                 {searchQuery && (
                   <button onClick={() => setSearchQuery('')}>
@@ -988,28 +988,28 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                   onChange={e => setShowExpired(e.target.checked)}
                   className="w-3 h-3 accent-blue-500"
                 />
-                <span className="text-[11px] text-zinc-400">Show expired contracts</span>
+                <span className="text-[14px] font-normal text-zinc-400">Show expired contracts</span>
               </label>
             </div>
 
             {/* Symbol list table */}
             <div className="h-[120px] flex-shrink-0 overflow-y-auto border-b border-[#3a3e52]">
-              <table className="w-full text-[11px] border-collapse">
+              <table className="w-full border-collapse text-[14px] font-normal">
                 <thead>
                   <tr className="bg-[#1a1d27] sticky top-0">
-                    <th className="text-left px-3 py-1.5 text-zinc-400 font-medium border-b border-[#3a3e52] w-[140px]">Symbol</th>
-                    <th className="text-left px-3 py-1.5 text-zinc-400 font-medium border-b border-[#3a3e52]">Description</th>
-                    <th className="text-right px-3 py-1.5 text-zinc-400 font-medium border-b border-[#3a3e52] w-[100px]">Expiration</th>
+                    <th className="w-[140px] border-b border-[#3a3e52] px-3 py-1.5 text-left text-[12px] font-normal text-zinc-400">Symbol</th>
+                    <th className="border-b border-[#3a3e52] px-3 py-1.5 text-left text-[12px] font-normal text-zinc-400">Description</th>
+                    <th className="w-[100px] border-b border-[#3a3e52] px-3 py-1.5 text-right text-[12px] font-normal text-zinc-400">Expiration</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredSymbols.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={3} className="text-center py-4 text-zinc-600 text-[11px]">
+                      <td colSpan={3} className="py-4 text-center text-[12px] font-normal text-zinc-600">
                         <div>{symbolsError || 'No symbols found'}</div>
                         {symbolsError && (
                           <button
-                            className="mt-2 px-3 py-1 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm"
+                            className="mt-2 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-3 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]"
                             onClick={() => setSymbolsFetchTrigger(v => v + 1)}
                           >
                             Retry
@@ -1064,13 +1064,13 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                 <div>
                   {/* Symbol title */}
                   <div className="px-3 py-2 bg-[#161922] border-b border-[#3a3e52]">
-                    <span className="text-[12px] text-[#4a7aff] font-medium">
+                    <span className="text-[14px] font-semibold text-[#4a7aff]">
                       {selectedSymbol.name}, {selectedSymbol.description}
                     </span>
                   </div>
 
                   {/* Spec rows */}
-                  <table className="w-full text-[11px] border-collapse">
+                  <table className="w-full border-collapse text-[14px] font-normal">
                     <tbody>
                       {specFields.map((field, i) => (
                         <tr key={i} className={`border-b border-[#2a2e45] ${i % 2 === 0 ? 'bg-[#161922]' : 'bg-[#1a1d27]'}`}>
@@ -1097,7 +1097,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               )}
 
               {activeTab === 'Specification' && !selectedSymbol && (
-                <div className="flex items-center justify-center h-full text-zinc-600 text-[12px]">
+                <div className="flex h-full items-center justify-center text-[12px] font-normal text-zinc-600">
                   Select a symbol to view specification
                 </div>
               )}
@@ -1113,20 +1113,20 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
           <div className="flex items-center gap-2">
             {activeTab === 'Bars' || activeTab === 'Ticks' ? (
               <>
-                <button className="px-4 py-1 flex items-center gap-1.5 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm">
+                <button className="flex items-center gap-1.5 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-4 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]">
                   Export {activeTab}
                 </button>
-                <button className="px-4 py-1 flex items-center gap-1.5 text-[11px] text-zinc-300 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm">
+                <button className="flex items-center gap-1.5 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-4 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]">
                   Import {activeTab}
                 </button>
-                <button className="px-4 py-1 text-[11px] text-zinc-400 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm cursor-not-allowed">
+                <button className="cursor-not-allowed rounded-sm border border-[#3a3e52] bg-[#1e2235] px-4 py-1 text-[14px] font-normal text-zinc-400 transition-colors hover:bg-[#2a2e45]">
                   Create Custom Symbol
                 </button>
               </>
             ) : (
               <>
                 <button
-                  className={`px-3 py-0.5 text-[11px] border transition-colors rounded-sm ${
+                  className={`rounded-sm border px-3 py-0.5 text-[14px] font-normal transition-colors ${
                     !selectedSymbol || isSelectedSymbolShown
                       ? 'bg-[#1a1d27] text-zinc-600 border-[#3a3e52] cursor-not-allowed'
                       : 'text-zinc-200 bg-[#1e2235] border-[#3a3e52] hover:bg-[#2a2e45] hover:border-[#4a7aff]'
@@ -1148,7 +1148,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                   Show Symbol
                 </button>
                 <button
-                  className={`px-4 py-1 text-[11px] border transition-colors rounded-sm ${
+                  className={`rounded-sm border px-4 py-1 text-[14px] font-normal transition-colors ${
                     !selectedSymbol || !isSelectedSymbolShown
                       ? 'bg-[#1a1d27] text-zinc-600 border-[#3a3e52] cursor-not-allowed'
                       : 'text-zinc-400 bg-[#1e2235] border-[#3a3e52] hover:bg-[#2a2e45]'
@@ -1164,7 +1164,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                   Hide Symbol
                 </button>
                 <button
-                  className="px-4 py-1 text-[11px] text-zinc-400 bg-[#1e2235] border border-[#3a3e52] hover:bg-[#2a2e45] transition-colors rounded-sm cursor-not-allowed"
+                  className="cursor-not-allowed rounded-sm border border-[#3a3e52] bg-[#1e2235] px-4 py-1 text-[14px] font-normal text-zinc-400 transition-colors hover:bg-[#2a2e45]"
                 >
                   Create Custom Symbol
                 </button>
@@ -1172,7 +1172,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
             )}
           </div>
           <button
-            className="px-5 py-0.5 text-[11px] text-white bg-[#2a4aad] hover:bg-[#3a5abf] border border-[#4a6aff] transition-colors rounded-sm font-medium"
+            className="rounded-sm border border-[#4a6aff] bg-[#2a4aad] px-5 py-0.5 text-[14px] font-semibold text-white transition-colors hover:bg-[#3a5abf]"
             onClick={onClose}
           >
             OK

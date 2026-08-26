@@ -24,6 +24,12 @@ import { useToolbarState } from '../hooks/useToolbarState';
 import { useCrosshair } from '../hooks/useCrosshair';
 import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
+import { useSelectedHistoryRequestOwner } from '../hooks/useSelectedHistoryRequestOwner';
+import { useActiveChartRuntimeEffect } from '../hooks/useActiveChartRuntimeEffect';
+import { useBrokerAccountSessionScope } from '../hooks/useBrokerAccountSessionScope';
+import { useTradingChartVisibleRuntime } from '../hooks/useTradingChartVisibleRuntime';
+import { createChartInteractionOwnership } from '../utils/chartInteractionOwnership';
+import { createChartPostInteractionCoordinator } from '../utils/chartPostInteractionCoordinator';
 import { isLikelyAlwaysOpenCryptoSymbol } from '../utils/marketStatus';
 import { setLiveMarketDataFrozen } from '../services/liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
@@ -53,14 +59,16 @@ import {
 } from '../services/derivedTimeframeHistoryService';
 import {
   createChartHistoryBackfillDiagnostics,
+  createSelectedTimeframeHistoryCoordinator,
   fetchOlderHistoryPage as fetchChartOlderHistoryPage,
   getHistoryPageSize,
   getInitialHistoryCount as getChartInitialHistoryCount,
-  getNextOlderHistoryCursor,
   markHistoryBackfillError,
   markHistoryBackfillPageLoaded,
   markHistoryBackfillStarted,
   markHistoryBackfillStopped,
+  resolveDeferredVisibleRangeHistoryAction,
+  resolveVisibleRangeHistoryAction,
   selectOlderCandlesBeforeCursor,
   type ChartHistoryBackfillDiagnostics,
 } from '../services/chartHistoryLoader';
@@ -179,12 +187,7 @@ const HISTORY_RENDER_IDLE_TIMEOUT_MS = 700;
 const HISTORY_BACKFILL_IDLE_YIELD_TIMEOUT_MS = 120;
 const HISTORY_IDLE_FALLBACK_DELAY_MS = 32;
 const HISTORY_RENDER_INTERACTION_IDLE_MS = 180;
-const HISTORY_BACKGROUND_RENDER_COALESCE_MS = 250;
-const HISTORY_BACKGROUND_RENDER_MAX_PENDING_BARS = 15_000;
 const HISTORY_VISIBLE_RANGE_SUPPRESSION_MS = 120;
-const CHART_INTERACTION_IDLE_EVENT = 'rtx:chart-interaction-idle';
-const TIMEFRAME_PREFETCH_CONCURRENCY = 2;
-const PREFETCH_TIMEFRAMES: Timeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
 const TRADE_LEVEL_OVERRIDES_STORAGE_KEY = 'rtx-trade-level-overrides-v1';
 const TRADE_LEVEL_OVERRIDE_TTL_MS = 5 * 60 * 1000;
 const TRADE_LEVEL_OPTIMISTIC_GRACE_MS = 15_000;
@@ -193,6 +196,7 @@ const TRADE_LEVEL_MIN_DRAG_PX = 2;
 const TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS = 15_000;
 const TRADE_LEVEL_BADGE_LEFT_INSET_PX = 10;
 const TRADE_LEVEL_BADGE_STACK_OFFSET_PX = 76;
+const LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX = 52;
 const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
 const REALTIME_SCROLL_THRESHOLD_BARS = 2;
 const LIVE_CHART_UPDATE_INTERVAL_MS = 50;
@@ -597,6 +601,7 @@ interface ChartDataRenderRequest {
   prependedBars?: number;
   resetVisibleRange?: boolean;
   suppressGlobalVisibleRangeReset?: boolean;
+  finishLoadingAfterRender?: boolean;
   immediate?: boolean;
   reason?: string;
 }
@@ -606,6 +611,7 @@ interface PendingChartDataRender {
   prependedBars: number;
   resetVisibleRange: boolean;
   suppressGlobalVisibleRangeReset: boolean;
+  finishLoadingAfterRender: boolean;
   reason: string;
 }
 
@@ -653,6 +659,11 @@ export const TradingChart = React.memo(function TradingChart({
   isActive = true,
 }: TradingChartProps) {
   const authToken = useAppStore((state) => state.authToken);
+  const brokerAccountSessionScope = useBrokerAccountSessionScope();
+  const visibleRuntime = useTradingChartVisibleRuntime({
+    active: isActive,
+    hasSymbol: Boolean(symbol),
+  });
   const chartInstanceId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [activeTimeframe, setActiveTimeframe] = useState<Timeframe>(timeframe);
   const activeChartSourceId = useMemo(
@@ -665,12 +676,12 @@ export const TradingChart = React.memo(function TradingChart({
   }, [chartInstanceId, panelId, symbol]);
 
   const marketStatus = useSymbolMarketStatus(symbol, {
-    enabled: Boolean(symbol),
+    enabled: visibleRuntime.status,
   });
   const liveMarketDataFrozen = marketStatus.isTradeBlocked && !isLikelyAlwaysOpenCryptoSymbol(symbol);
   // Keep quote demand even when trading is blocked. Weekend/forex-closed status
   // must not hide a live crypto chart (BTCUSD) that the feed is still streaming.
-  useQuoteSubscription(symbol ? [symbol] : [], chartQuoteSourceId);
+  useQuoteSubscription(symbol ? [symbol] : [], chartQuoteSourceId, { enabled: visibleRuntime.quote });
 
   // Debug: Log ACTUAL mount (not every re-render)
   useEffect(() => {
@@ -683,7 +694,8 @@ export const TradingChart = React.memo(function TradingChart({
   const seriesRef = useRef<ISeriesApi<any> | null>(null);
   const volumeRef = useRef<ISeriesApi<any> | null>(null);
   const priceLineRef = useRef<any>(null); // Kept as 'any' as IPriceLine is not imported
-  const autoScrollEnabledRef = useRef(useToolbarState().state.autoScrollEnabled);
+  const { state: toolbarState } = useToolbarState();
+  const autoScrollEnabledRef = useRef(toolbarState.autoScrollEnabled);
   // Tracks current active drawing tool — used inside event-handler closures
   const activeToolRef = useRef<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -696,6 +708,8 @@ export const TradingChart = React.memo(function TradingChart({
   const periodSeparatorRenderPendingRef = useRef(false);
   const chartExportMetadataRef = useRef({ symbol, timeframe: activeTimeframe });
   const liveMarketDataFrozenRef = useRef(liveMarketDataFrozen);
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
 
   useEffect(() => {
     liveMarketDataFrozenRef.current = liveMarketDataFrozen;
@@ -720,8 +734,8 @@ export const TradingChart = React.memo(function TradingChart({
   }, []);
 
   // Custom crosshair
-  const [crosshairEnabled, setCrosshairEnabled] = useState(false);
-  const crosshairEnabledRef = useRef(false);
+  const crosshairEnabled = toolbarState.crosshairEnabled;
+  const crosshairEnabledRef = useRef(crosshairEnabled);
   crosshairEnabledRef.current = crosshairEnabled;
   const [brokerTimeOffsetSec, setBrokerTimeOffsetSec] = useState(0);
   const brokerTimeOffsetSecRef = useRef(0);
@@ -734,7 +748,7 @@ export const TradingChart = React.memo(function TradingChart({
     chartRef,
     seriesRef,
     containerRef,
-    enabled: crosshairEnabled,
+    enabled: isActive && crosshairEnabled,
     digits: getSymbolDigits(symbol),
     timeframe,
     brokerOffsetSeconds: brokerTimeOffsetSec,
@@ -783,14 +797,70 @@ export const TradingChart = React.memo(function TradingChart({
   const ohlcCloseRef = useRef<HTMLSpanElement>(null);
   const ohlcVolumeRef = useRef<HTMLSpanElement>(null);
   const countdownTextRef = useRef<HTMLSpanElement>(null);
+  const legendRenderFrameRef = useRef<number | null>(null);
+  const pendingLegendRenderRef = useRef<{
+    signature: string;
+    open: string;
+    high: string;
+    low: string;
+    close: string;
+    volume: string;
+  } | null>(null);
+  const renderedLegendSignatureRef = useRef<string | null>(null);
 
   const updateLegendDOM = useCallback((o: number, h: number, l: number, c: number, v: number) => {
     const digits = getSymbolDigits(symbol);
-    if (ohlcOpenRef.current) ohlcOpenRef.current.textContent = o.toFixed(digits);
-    if (ohlcHighRef.current) ohlcHighRef.current.textContent = h.toFixed(digits);
-    if (ohlcLowRef.current) ohlcLowRef.current.textContent = l.toFixed(digits);
-    if (ohlcCloseRef.current) ohlcCloseRef.current.textContent = c.toFixed(digits);
-    if (ohlcVolumeRef.current) ohlcVolumeRef.current.textContent = Math.round(v).toLocaleString();
+    const pending = {
+      open: o.toFixed(digits),
+      high: h.toFixed(digits),
+      low: l.toFixed(digits),
+      close: c.toFixed(digits),
+      volume: Math.round(v).toLocaleString(),
+      signature: '',
+    };
+    pending.signature = `${pending.open}|${pending.high}|${pending.low}|${pending.close}|${pending.volume}`;
+    pendingLegendRenderRef.current = pending;
+
+    // Crosshair and live-tick callbacks can both request the same legend during
+    // a single browser frame. Paint only the latest values, and do no DOM work
+    // when those formatted strings are already visible.
+    if (legendRenderFrameRef.current !== null) return;
+    if (renderedLegendSignatureRef.current === pending.signature) {
+      pendingLegendRenderRef.current = null;
+      return;
+    }
+
+    const flushLegendDOM = () => {
+      legendRenderFrameRef.current = null;
+      const next = pendingLegendRenderRef.current;
+      pendingLegendRenderRef.current = null;
+      if (!next || renderedLegendSignatureRef.current === next.signature) return;
+
+      if (ohlcOpenRef.current) ohlcOpenRef.current.textContent = next.open;
+      if (ohlcHighRef.current) ohlcHighRef.current.textContent = next.high;
+      if (ohlcLowRef.current) ohlcLowRef.current.textContent = next.low;
+      if (ohlcCloseRef.current) ohlcCloseRef.current.textContent = next.close;
+      if (ohlcVolumeRef.current) ohlcVolumeRef.current.textContent = next.volume;
+      renderedLegendSignatureRef.current = next.signature;
+    };
+
+    if (typeof window === 'undefined') {
+      flushLegendDOM();
+      return;
+    }
+    legendRenderFrameRef.current = window.requestAnimationFrame(flushLegendDOM);
+  }, [symbol]);
+
+  useEffect(() => {
+    renderedLegendSignatureRef.current = null;
+    return () => {
+      if (typeof window !== 'undefined' && legendRenderFrameRef.current !== null) {
+        window.cancelAnimationFrame(legendRenderFrameRef.current);
+      }
+      legendRenderFrameRef.current = null;
+      pendingLegendRenderRef.current = null;
+      renderedLegendSignatureRef.current = null;
+    };
   }, [symbol]);
 
   type LoadingPhase = 'connecting' | 'receiving' | 'ready' | 'hidden';
@@ -862,6 +932,7 @@ export const TradingChart = React.memo(function TradingChart({
   const livePriceLineRef = useRef<HTMLDivElement | null>(null);
   const livePriceBadgeRef = useRef<HTMLDivElement | null>(null);
   const livePriceRef = useRef<number | null>(null);
+  const livePriceScaleWidthRef = useRef<number | null>(null);
   const livePriceRepaintFrameRef = useRef<number | null>(null);
   const livePriceOverlayColorsRef = useRef<LivePriceOverlayColors>(
     getLivePriceOverlayColors(defaultChartProperties.colors, defaultChartProperties.colors.barUp)
@@ -876,14 +947,40 @@ export const TradingChart = React.memo(function TradingChart({
   const chartRenderIdleRef = useRef<number | null>(null);
   const drawingRenderFrameRef = useRef<number | null>(null);
   const drawingRenderSettledFrameRef = useRef<number | null>(null);
-  const backgroundHistoryRenderTimerRef = useRef<number | null>(null);
-  const pendingBackgroundHistoryPrependedBarsRef = useRef(0);
   const visibleRangeHistoryLoadSuppressedUntilRef = useRef(0);
+  const visibleRangeHistoryUserInitiatedRef = useRef(false);
   const isChartInteractionActiveRef = useRef(false);
-  const chartInteractionIdleTimerRef = useRef<number | null>(null);
-  const pendingInteractionHistoryLoadRef = useRef(false);
-  const pendingInteractionPeriodSeparatorRenderRef = useRef(false);
-  const prefetchedSymbolScopeRef = useRef<string | null>(null);
+  const isChartUserInteractingRef = useRef(false);
+  const chartInteractionOwnershipRef = useRef<ReturnType<typeof createChartInteractionOwnership> | null>(null);
+  const settleAutoScrollPolicyRef = useRef<() => void>(() => undefined);
+  const postInteractionCallbacksRef = useRef({
+    consumeHistory: () => undefined,
+    prepareLiveModel: () => undefined,
+    paintModel: (): boolean => false,
+    paintLive: (_fullModelPainted: boolean) => undefined,
+    paintSeparators: () => undefined,
+    layoutOverlay: () => undefined,
+  });
+  const postInteractionCoordinatorRef = useRef<ReturnType<typeof createChartPostInteractionCoordinator> | null>(null);
+  if (postInteractionCoordinatorRef.current === null) {
+    postInteractionCoordinatorRef.current = createChartPostInteractionCoordinator({
+      consumeHistory: () => postInteractionCallbacksRef.current.consumeHistory(),
+      prepareLiveModel: () => postInteractionCallbacksRef.current.prepareLiveModel(),
+      paintModel: () => postInteractionCallbacksRef.current.paintModel(),
+      paintLive: fullModelPainted => postInteractionCallbacksRef.current.paintLive(fullModelPainted),
+      paintSeparators: () => postInteractionCallbacksRef.current.paintSeparators(),
+      layoutOverlay: () => postInteractionCallbacksRef.current.layoutOverlay(),
+    });
+  }
+
+  const forceSettleInteraction = useCallback(() => {
+    isChartUserInteractingRef.current = false;
+    chartInteractionOwnershipRef.current?.forceSettle();
+    isChartInteractionActiveRef.current = false;
+    // The installed chart policy always cancels an old timer and only rearms
+    // when this chart is still active, visible, and eligible for auto-scroll.
+    settleAutoScrollPolicyRef.current();
+  }, []);
 
   const resetLiveQuotePriceGuard = useCallback(() => {
     const reset = resetLiveQuoteGuardState();
@@ -960,7 +1057,10 @@ export const TradingChart = React.memo(function TradingChart({
   }, [flushTradeOverlay]);
 
   const hideLivePriceOverlay = useCallback((clearPrice = true) => {
-    if (clearPrice) livePriceRef.current = null;
+    if (clearPrice) {
+      livePriceRef.current = null;
+      livePriceScaleWidthRef.current = null;
+    }
     if (livePriceRepaintFrameRef.current !== null && typeof window !== 'undefined') {
       window.cancelAnimationFrame(livePriceRepaintFrameRef.current);
       livePriceRepaintFrameRef.current = null;
@@ -989,10 +1089,24 @@ export const TradingChart = React.memo(function TradingChart({
     return close >= currentCandle.open ? colors.barUp : colors.barDown;
   }, []);
 
+  const applyStableLivePriceHorizontalGeometry = useCallback((measuredScaleWidth: number) => {
+    const measuredWidth = Number.isFinite(measuredScaleWidth) && measuredScaleWidth > 0
+      ? measuredScaleWidth
+      : LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX;
+    const stableWidth = livePriceScaleWidthRef.current ?? measuredWidth;
+    livePriceScaleWidthRef.current = stableWidth;
+
+    const right = `${stableWidth}px`;
+    const line = livePriceLineRef.current;
+    const badge = livePriceBadgeRef.current;
+    if (line && line.style.right !== right) line.style.right = right;
+    if (badge && badge.style.width !== right) badge.style.width = right;
+  }, []);
+
   const paintLivePriceOverlay = useCallback((
     livePrice: number,
     y: number,
-    scaleW: number,
+    priceScaleWidth: number,
     activeCandleTime?: number,
     directionClose?: number,
   ) => {
@@ -1008,17 +1122,16 @@ export const TradingChart = React.memo(function TradingChart({
     livePriceOverlayColorsRef.current = overlayColors;
 
     line.style.top = `${y}px`;
-    line.style.right = `${scaleW}px`;
+    applyStableLivePriceHorizontalGeometry(priceScaleWidth);
     line.style.borderTopColor = overlayColors.lineColor;
     line.style.display = 'block';
 
     badge.style.top = `${y}px`;
-    badge.style.width = `${scaleW}px`;
     badge.style.background = overlayColors.badgeBackground;
     badge.style.color = overlayColors.badgeTextColor;
     badge.textContent = livePrice.toFixed(digits);
     badge.style.display = 'block';
-  }, [getLivePriceDirectionalColor, symbol]);
+  }, [applyStableLivePriceHorizontalGeometry, getLivePriceDirectionalColor, symbol]);
 
   const repaintLivePriceOverlayFromCurrentPrice = useCallback((activeCandle: Candle) => {
     const livePrice = Number(activeCandle.close);
@@ -1082,15 +1195,11 @@ export const TradingChart = React.memo(function TradingChart({
 
   // Infinite scroll tracking
   const loadMoreHistoryRef = useRef<(() => Promise<void>) | null>(null);
-  const historyLoadSeqRef = useRef(0);
-  const historyAbortRef = useRef<AbortController | null>(null);
+  const historyRequestCoordinatorRef = useRef(createSelectedTimeframeHistoryCoordinator());
+  const loadedHistorySessionScopeRef = useRef(brokerAccountSessionScope);
   // Exposes scheduleBoundaryTimer from inside the live-tick effect so loadHistory
   // can kick it as soon as currentCandleRef is populated (they run in parallel).
   const scheduleBoundaryTimerRef = useRef<(() => void) | null>(null);
-  // Exposes loadHistory so the boundary poller can trigger a silent chart re-fetch
-  // at every minute rollover — guaranteed fallback when rollover() alone is not enough.
-  const loadHistoryRef = useRef<(() => void) | null>(null);
-
   const chartSettings = useChartSettingsStore(state =>
     state.symbolProperties[symbol] || state.globalProperties
   );
@@ -1256,6 +1365,8 @@ export const TradingChart = React.memo(function TradingChart({
     });
   }, [clearPeriodSeparators, isChartSurfaceLight]);
 
+  postInteractionCallbacksRef.current.paintSeparators = renderPeriodSeparators;
+
   const schedulePeriodSeparatorRender = useCallback(() => {
     if (typeof window === 'undefined') {
       renderPeriodSeparators();
@@ -1263,7 +1374,7 @@ export const TradingChart = React.memo(function TradingChart({
     }
 
     if (isChartInteractionActiveRef.current) {
-      pendingInteractionPeriodSeparatorRenderRef.current = true;
+      postInteractionCoordinatorRef.current?.request({ separators: true });
       return;
     }
 
@@ -1412,14 +1523,6 @@ export const TradingChart = React.memo(function TradingChart({
     [brokerTimeOffsetSec, normalizeChartTimeToUnixSeconds, timeframe],
   );
 
-  const clearBackgroundHistoryRenderQueue = useCallback(() => {
-    pendingBackgroundHistoryPrependedBarsRef.current = 0;
-    if (typeof window !== 'undefined' && backgroundHistoryRenderTimerRef.current !== null) {
-      window.clearTimeout(backgroundHistoryRenderTimerRef.current);
-    }
-    backgroundHistoryRenderTimerRef.current = null;
-  }, []);
-
   const suppressVisibleRangeHistoryLoad = useCallback((durationMs = HISTORY_VISIBLE_RANGE_SUPPRESSION_MS) => {
     visibleRangeHistoryLoadSuppressedUntilRef.current = Math.max(
       visibleRangeHistoryLoadSuppressedUntilRef.current,
@@ -1433,7 +1536,6 @@ export const TradingChart = React.memo(function TradingChart({
 
   const cancelQueuedChartRender = useCallback(() => {
     pendingChartRenderRef.current = null;
-    clearBackgroundHistoryRenderQueue();
 
     if (typeof window === 'undefined') return;
 
@@ -1446,7 +1548,7 @@ export const TradingChart = React.memo(function TradingChart({
       cancelBrowserIdleCallback(chartRenderIdleRef.current);
       chartRenderIdleRef.current = null;
     }
-  }, [clearBackgroundHistoryRenderQueue]);
+  }, []);
 
   const cancelScheduledDrawingRender = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -1497,15 +1599,19 @@ export const TradingChart = React.memo(function TradingChart({
     chart.timeScale().scrollToPosition(getLatestCandleScrollOffset(), false);
   }, [getLatestCandleScrollOffset]);
 
-  const flushQueuedChartRender = useCallback(() => {
-    if (isDisposedRef.current || isChartInteractionActiveRef.current) return;
+  const flushQueuedChartRender = useCallback((allowDuringInteraction = false): boolean => {
+    if (
+      isDisposedRef.current
+      || !isActiveRef.current
+      || (isChartInteractionActiveRef.current && !allowDuringInteraction)
+    ) return false;
 
     const pending = pendingChartRenderRef.current;
-    if (!pending) return;
+    if (!pending) return false;
 
     const chart = chartRef.current;
     const series = seriesRef.current;
-    if (!chart || !series) return;
+    if (!chart || !series) return false;
 
     pendingChartRenderRef.current = null;
 
@@ -1582,6 +1688,9 @@ export const TradingChart = React.memo(function TradingChart({
           volumeRef.current.setData([]);
         }
       }
+      if (pending.finishLoadingAfterRender && seriesData.length > 0) {
+        markCandlesReady();
+      }
       schedulePeriodSeparatorRender();
 
       const totalBars = seriesData.length;
@@ -1651,17 +1760,33 @@ export const TradingChart = React.memo(function TradingChart({
           protectedDisplayedHistoryRef.current = candlesForRender;
         }
       }
-      setCandlesLoadedRev(r => r + 1);
-      scheduleDrawingRenderAfterChartData(activeSymbol, activeTimeframe);
+      if (allowDuringInteraction) {
+        postInteractionCoordinatorRef.current?.request({ overlay: true });
+      } else {
+        setCandlesLoadedRev(r => r + 1);
+        scheduleDrawingRenderAfterChartData(activeSymbol, activeTimeframe);
+      }
+      return true;
     } catch (e) {
       console.warn(`[Chart] Error setting chart data for ${pending.reason}:`, e);
+      return false;
     }
-  }, [applyInitialVisibleLogicalRange, getCandlesForFullRender, getClosedMarketRenderCandles, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
+  }, [applyInitialVisibleLogicalRange, getCandlesForFullRender, getClosedMarketRenderCandles, markCandlesReady, rememberVisibleLogicalRange, scheduleDrawingRenderAfterChartData, schedulePeriodSeparatorRender, scrollToLatestCandleNow, suppressVisibleRangeHistoryLoad, symbol, syncLeftVisibleTime, timeframe]);
+
+  postInteractionCallbacksRef.current.paintModel = () => flushQueuedChartRender(true);
 
   const scheduleQueuedChartRenderFlush = useCallback((immediate = false) => {
     if (!pendingChartRenderRef.current) return;
     if (!immediate && isChartInteractionActiveRef.current) return;
-    if (chartRenderFrameRef.current !== null || chartRenderIdleRef.current !== null) return;
+    if (chartRenderFrameRef.current !== null) return;
+
+    // A background/settings render can own the idle handle before history
+    // arrives. Promote an urgent first paint instead of waiting for its timeout.
+    if (immediate && chartRenderIdleRef.current !== null) {
+      cancelBrowserIdleCallback(chartRenderIdleRef.current);
+      chartRenderIdleRef.current = null;
+    }
+    if (chartRenderIdleRef.current !== null) return;
 
     const scheduleFrame = () => {
       chartRenderIdleRef.current = null;
@@ -1695,117 +1820,66 @@ export const TradingChart = React.memo(function TradingChart({
       prependedBars: (existing?.prependedBars ?? 0) + Math.max(0, request.prependedBars ?? 0),
       resetVisibleRange: request.resetVisibleRange === true || existing?.resetVisibleRange === true,
       suppressGlobalVisibleRangeReset: request.suppressGlobalVisibleRangeReset ?? existing?.suppressGlobalVisibleRangeReset ?? false,
+      finishLoadingAfterRender: request.finishLoadingAfterRender === true || existing?.finishLoadingAfterRender === true,
       reason: request.reason ?? existing?.reason ?? 'chart-data',
     };
+
+    if (isChartInteractionActiveRef.current) {
+      postInteractionCoordinatorRef.current?.request({ model: true });
+      return;
+    }
 
     scheduleQueuedChartRenderFlush(request.immediate === true);
   }, [scheduleQueuedChartRenderFlush]);
 
-  const flushBackgroundHistoryRender = useCallback((reason = 'background-history') => {
-    const prependedBars = pendingBackgroundHistoryPrependedBarsRef.current;
-    if (prependedBars <= 0) return;
-
-    if (typeof window !== 'undefined' && backgroundHistoryRenderTimerRef.current !== null) {
-      window.clearTimeout(backgroundHistoryRenderTimerRef.current);
-    }
-    backgroundHistoryRenderTimerRef.current = null;
-    pendingBackgroundHistoryPrependedBarsRef.current = 0;
-
-    requestChartDataRender({
-      prependedBars,
-      resetVisibleRange: false,
-      suppressGlobalVisibleRangeReset: true,
-      reason,
+  const consumeDeferredVisibleRangeHistory = useCallback(() => {
+    const visibleRange = chartRef.current?.timeScale().getVisibleLogicalRange() as LogicalRangeLike | null;
+    const historyAction = resolveDeferredVisibleRangeHistoryAction({
+      pending: !isDisposedRef.current,
+      logicalFrom: visibleRange?.from,
+      suppressed: isVisibleRangeHistoryLoadSuppressed(),
+      userInitiated: visibleRangeHistoryUserInitiatedRef.current,
     });
-  }, [requestChartDataRender]);
-
-  const queueBackgroundHistoryRender = useCallback((addedCount: number) => {
-    if (addedCount <= 0) return;
-
-    pendingBackgroundHistoryPrependedBarsRef.current += addedCount;
-    if (
-      pendingBackgroundHistoryPrependedBarsRef.current >= HISTORY_BACKGROUND_RENDER_MAX_PENDING_BARS
-      || typeof window === 'undefined'
-    ) {
-      flushBackgroundHistoryRender();
-      return;
+    if (historyAction === 'load') {
+      loadMoreHistoryRef.current?.();
     }
+  }, [isVisibleRangeHistoryLoadSuppressed]);
 
-    if (backgroundHistoryRenderTimerRef.current !== null) return;
+  postInteractionCallbacksRef.current.consumeHistory = consumeDeferredVisibleRangeHistory;
 
-    backgroundHistoryRenderTimerRef.current = window.setTimeout(() => {
-      flushBackgroundHistoryRender();
-    }, HISTORY_BACKGROUND_RENDER_COALESCE_MS);
-  }, [flushBackgroundHistoryRender]);
-
-  const flushDeferredChartInteractionWork = useCallback(() => {
-    const shouldRenderPeriodSeparators = pendingInteractionPeriodSeparatorRenderRef.current;
-    pendingInteractionPeriodSeparatorRenderRef.current = false;
-    if (shouldRenderPeriodSeparators) {
-      schedulePeriodSeparatorRender();
+  const flushPostInteractionWork = useCallback((): boolean => {
+    if (isDisposedRef.current || !isActiveRef.current) return false;
+    const wasMarkedActive = isChartInteractionActiveRef.current;
+    if (!wasMarkedActive) {
+      isChartInteractionActiveRef.current = true;
     }
-
-    const shouldLoadHistory = pendingInteractionHistoryLoadRef.current;
-    pendingInteractionHistoryLoadRef.current = false;
-    if (shouldLoadHistory && !isDisposedRef.current && !isVisibleRangeHistoryLoadSuppressed()) {
-      const visibleRange = chartRef.current?.timeScale().getVisibleLogicalRange() as LogicalRangeLike | null;
-      if (
-        visibleRange
-        && Number.isFinite(visibleRange.from)
-        && visibleRange.from < 50
-      ) {
-        loadMoreHistoryRef.current?.();
+    try {
+      return postInteractionCoordinatorRef.current?.flush() ?? false;
+    } finally {
+      if (!wasMarkedActive) {
+        isChartInteractionActiveRef.current = false;
       }
-    }
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(CHART_INTERACTION_IDLE_EVENT, {
-        detail: { chartSourceId: activeChartSourceId },
-      }));
-    }
-  }, [activeChartSourceId, isVisibleRangeHistoryLoadSuppressed, schedulePeriodSeparatorRender]);
-
-  const markChartInteractionActive = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    isChartInteractionActiveRef.current = true;
-    latestCandleJumpPendingRef.current = false;
-    if (chartInteractionIdleTimerRef.current !== null) {
-      window.clearTimeout(chartInteractionIdleTimerRef.current);
-      chartInteractionIdleTimerRef.current = null;
     }
   }, []);
 
-  const markChartInteractionIdleSoon = useCallback(() => {
-    if (typeof window === 'undefined') {
-      isChartInteractionActiveRef.current = false;
-      flushDeferredChartInteractionWork();
-      scheduleQueuedChartRenderFlush();
+  useEffect(() => {
+    if (!isActive) {
+      forceSettleInteraction();
       return;
     }
-
-    if (chartInteractionIdleTimerRef.current !== null) {
-      window.clearTimeout(chartInteractionIdleTimerRef.current);
-    }
-
-    chartInteractionIdleTimerRef.current = window.setTimeout(() => {
-      isChartInteractionActiveRef.current = false;
-      chartInteractionIdleTimerRef.current = null;
-      flushDeferredChartInteractionWork();
-      scheduleQueuedChartRenderFlush();
-    }, HISTORY_RENDER_INTERACTION_IDLE_MS);
-  }, [flushDeferredChartInteractionWork, scheduleQueuedChartRenderFlush]);
+    // Work queued while a split-chart tab was inactive must paint the latest
+    // model as soon as that tab becomes visible again.
+    flushPostInteractionWork();
+    scheduleQueuedChartRenderFlush(true);
+  }, [flushPostInteractionWork, forceSettleInteraction, isActive, scheduleQueuedChartRenderFlush]);
 
   useEffect(() => {
     return () => {
-      historyAbortRef.current?.abort();
+      historyRequestCoordinatorRef.current.abort();
       cancelQueuedChartRender();
       cancelScheduledDrawingRender();
-      pendingInteractionHistoryLoadRef.current = false;
-      pendingInteractionPeriodSeparatorRenderRef.current = false;
-      if (typeof window !== 'undefined' && chartInteractionIdleTimerRef.current !== null) {
-        window.clearTimeout(chartInteractionIdleTimerRef.current);
-        chartInteractionIdleTimerRef.current = null;
-      }
+      isChartInteractionActiveRef.current = false;
+      postInteractionCoordinatorRef.current?.clear();
     };
   }, [cancelQueuedChartRender, cancelScheduledDrawingRender]);
 
@@ -1822,6 +1896,7 @@ export const TradingChart = React.memo(function TradingChart({
       return;
     }
     isDisposedRef.current = false;
+    visibleRangeHistoryUserInitiatedRef.current = false;
 
     console.log(`[TradingChart] Container size: ${containerRef.current.offsetWidth}x${containerRef.current.offsetHeight}`);
 
@@ -1876,61 +1951,258 @@ export const TradingChart = React.memo(function TradingChart({
 
     // ─── MT5-style Auto-Scroll (Snap back to live after 3s of inactivity) ───
     let autoScrollTimer: ReturnType<typeof setTimeout> | null = null;
-    let isUserInteracting = false;
+    const interactionOwnership = createChartInteractionOwnership({
+      idleMs: HISTORY_RENDER_INTERACTION_IDLE_MS,
+      onActive: () => {
+        isChartInteractionActiveRef.current = true;
+        latestCandleJumpPendingRef.current = false;
+      },
+      onIdle: () => {
+        if (!isDisposedRef.current && isActiveRef.current) {
+          // Keep interaction ownership marked active while settling so any
+          // synchronous range callbacks join this same ordered pass.
+          flushPostInteractionWork();
+        }
+        isChartInteractionActiveRef.current = false;
+        if (isActiveRef.current) {
+          scheduleQueuedChartRenderFlush();
+        }
+      },
+    });
+    chartInteractionOwnershipRef.current = interactionOwnership;
     // autoScrollEnabled is now managed by autoScrollEnabledRef
 
     const resetAutoScrollTimer = () => {
-      if (autoScrollTimer) clearTimeout(autoScrollTimer);
-      if (isDisposedRef.current || !chartRef.current || !autoScrollEnabledRef.current || !chartSettingsRef.current.chartAutoScroll) return;
+      if (autoScrollTimer) {
+        clearTimeout(autoScrollTimer);
+        autoScrollTimer = null;
+      }
+      if (
+        isDisposedRef.current
+        || !isActiveRef.current
+        || document.visibilityState === 'hidden'
+        || !chartRef.current
+        || !autoScrollEnabledRef.current
+        || !chartSettingsRef.current.chartAutoScroll
+      ) return;
 
       autoScrollTimer = setTimeout(() => {
         if (
           !isDisposedRef.current &&
           chartRef.current &&
-          !isUserInteracting &&
+          !isChartUserInteractingRef.current &&
           shouldScrollToRealtime(chartRef.current, autoScrollEnabledRef.current, chartSettingsRef.current.chartAutoScroll)
         ) {
-          const totalBars = getCandlesForFullRender().length;
-          const activeTf = prevTimeframeRef.current || timeframe;
-          if (totalBars > 0 && totalBars <= getTradingChartDefaultVisibleBars(activeTf)) {
-            resetVisibleRangeOnNextDataRef.current = true;
-            loadHistoryRef.current?.();
-          } else {
-            chartRef.current.timeScale().scrollToRealTime();
-          }
+          chartRef.current.timeScale().scrollToRealTime();
         }
         autoScrollTimer = null;
       }, 3000); // 3 seconds after last interaction
     };
+    settleAutoScrollPolicyRef.current = resetAutoScrollTimer;
 
-    const handleInteractionStart = () => {
-      isUserInteracting = true;
-      markChartInteractionActive();
+    let rightPriceScalePointerId: number | null = null;
+    let livePriceGeometryRepaintFrame: number | null = null;
+    let wheelTimeScaleBarSpacingBefore: number | null = null;
+
+    const isRightPriceScalePointer = (event: PointerEvent): boolean => {
+      const surface = containerRef.current;
+      if (!surface) return false;
+
+      const rect = surface.getBoundingClientRect();
+      const scaleWidth = chart.priceScale('right').width();
+      const timeScaleHeight = chart.timeScale().height();
+      if (scaleWidth <= 0 || rect.width <= 0 || rect.height <= 0) return false;
+
+      const axisLeft = rect.right - scaleWidth;
+      const paneBottom = rect.bottom - Math.max(0, timeScaleHeight);
+      return event.clientX >= axisLeft
+        && event.clientX <= rect.right
+        && event.clientY >= rect.top
+        && event.clientY < paneBottom;
+    };
+
+    const isChartPaneWheel = (event: WheelEvent): boolean => {
+      const surface = containerRef.current;
+      if (!surface) return false;
+
+      const rect = surface.getBoundingClientRect();
+      const scaleWidth = Math.max(0, chart.priceScale('right').width());
+      const timeScaleHeight = Math.max(0, chart.timeScale().height());
+      if (rect.width <= 0 || rect.height <= 0) return false;
+
+      return event.clientX >= rect.left
+        && event.clientX < rect.right - scaleWidth
+        && event.clientY >= rect.top
+        && event.clientY < rect.bottom - timeScaleHeight;
+    };
+
+    const captureChartWheelTimeScaleState = (event: WheelEvent) => {
+      visibleRangeHistoryUserInitiatedRef.current = true;
+      interactionOwnership.noteWheelActivity();
+      wheelTimeScaleBarSpacingBefore = null;
+      if (event.deltaY === 0 || !isChartPaneWheel(event)) return;
+
+      const barSpacing = chart.timeScale().options().barSpacing;
+      if (Number.isFinite(barSpacing) && barSpacing > 0) {
+        wheelTimeScaleBarSpacingBefore = barSpacing;
+      }
+    };
+
+    const repaintLivePriceOverlayGeometry = () => {
+      if (isDisposedRef.current || !isActiveRef.current) return;
+
+      const livePrice = livePriceRef.current;
+      const series = seriesRef.current;
+      const line = livePriceLineRef.current;
+      const badge = livePriceBadgeRef.current;
+      if (livePrice === null || !Number.isFinite(livePrice) || !series || !line || !badge) return;
+
+      try {
+        const y = series.priceToCoordinate(livePrice);
+        if (y === null || !Number.isFinite(y)) return;
+
+        const scaleWidth = chart.priceScale('right').width();
+        applyStableLivePriceHorizontalGeometry(scaleWidth);
+        line.style.top = `${y}px`;
+        badge.style.top = `${y}px`;
+      } catch {
+        // The chart can be disposed between the pointer event and this frame.
+      }
+    };
+
+    const queueLivePriceOverlayGeometryRepaint = () => {
+      if (livePriceGeometryRepaintFrame !== null) return;
+      livePriceGeometryRepaintFrame = window.requestAnimationFrame(() => {
+        livePriceGeometryRepaintFrame = null;
+        repaintLivePriceOverlayGeometry();
+      });
+    };
+
+    const handlePointerInteractionStart = (event: PointerEvent) => {
+      if (!interactionOwnership.beginPointer({
+        pointerId: event.pointerId,
+        button: event.button,
+        isPrimary: event.isPrimary,
+      })) return;
+      rightPriceScalePointerId = isRightPriceScalePointer(event) ? event.pointerId : null;
+      visibleRangeHistoryUserInitiatedRef.current = true;
+      isChartUserInteractingRef.current = true;
       if (autoScrollTimer) clearTimeout(autoScrollTimer);
     };
 
-    const handleInteractionEnd = () => {
-      isUserInteracting = false;
-      markChartInteractionIdleSoon();
+    const handleRightPriceScalePointerMove = (event: PointerEvent) => {
+      if (rightPriceScalePointerId !== event.pointerId || (event.buttons & 1) === 0) return;
+      queueLivePriceOverlayGeometryRepaint();
+    };
+
+    const handlePointerInteractionEnd = (event: PointerEvent) => {
+      if (rightPriceScalePointerId === event.pointerId) {
+        rightPriceScalePointerId = null;
+        queueLivePriceOverlayGeometryRepaint();
+      }
+      if (!interactionOwnership.releasePointer(event.pointerId)) return;
+      isChartUserInteractingRef.current = false;
       resetAutoScrollTimer();
     };
 
-    const handleWheelInteraction = () => {
-      markChartInteractionActive();
-      markChartInteractionIdleSoon();
+    const handleLostPointerCapture = (event: PointerEvent) => {
+      // LWC normally releases capture with pointerup. Only treat an early lost
+      // capture as release when the primary button is no longer physically held.
+      if ((event.buttons & 1) !== 0) return;
+      handlePointerInteractionEnd(event);
+    };
+
+    const handleTouchInteractionStart = (event: TouchEvent) => {
+      visibleRangeHistoryUserInitiatedRef.current = true;
+      interactionOwnership.setTouchFallbackHeld(event.touches.length > 0);
+      isChartUserInteractingRef.current = true;
+      if (autoScrollTimer) clearTimeout(autoScrollTimer);
+    };
+
+    const handleTouchInteractionEnd = (event: TouchEvent) => {
+      const hasRemainingTouches = event.touches.length > 0;
+      interactionOwnership.setTouchFallbackHeld(hasRemainingTouches);
+      if (!hasRemainingTouches) {
+        isChartUserInteractingRef.current = false;
+        resetAutoScrollTimer();
+      }
+    };
+
+    const handleWheelInteraction = (event: WheelEvent) => {
+      const barSpacingBefore = wheelTimeScaleBarSpacingBefore;
+      wheelTimeScaleBarSpacingBefore = null;
+
+      // Lightweight Charts already applies this wheel delta to the time scale.
+      // Mirror its actual before/after scale factor on the price range so the
+      // gesture changes both candle width and candle height. Reading the real
+      // bar-spacing change also respects drawing locks and library zoom limits.
+      if (event.deltaY === 0 || barSpacingBefore === null) return;
+
+      const barSpacingAfter = chart.timeScale().options().barSpacing;
+      if (
+        !Number.isFinite(barSpacingAfter)
+        || barSpacingAfter <= 0
+        || Math.abs(barSpacingAfter - barSpacingBefore) < Number.EPSILON
+      ) return;
+
+      const priceScale = chart.priceScale('right');
+      const visiblePriceRange = priceScale.getVisibleRange();
+      const series = seriesRef.current;
+      const surface = containerRef.current;
+      if (!visiblePriceRange || !series || !surface) return;
+
+      const from = Number(visiblePriceRange.from);
+      const to = Number(visiblePriceRange.to);
+      const span = to - from;
+      if (!Number.isFinite(from) || !Number.isFinite(to) || !Number.isFinite(span) || span <= 0) return;
+
+      const rect = surface.getBoundingClientRect();
+      const rawPointerPrice = series.coordinateToPrice((event.clientY - rect.top) as any);
+      const pointerPrice = rawPointerPrice === null ? null : Number(rawPointerPrice);
+      const anchorPrice = pointerPrice !== null && Number.isFinite(pointerPrice)
+        ? pointerPrice
+        : from + span / 2;
+      const configuredMinMove = Number((series.options().priceFormat as { minMove?: number }).minMove);
+      const minimumSpan = Number.isFinite(configuredMinMove) && configuredMinMove > 0
+        ? configuredMinMove
+        : Math.max(Math.abs(anchorPrice) * 1e-10, Number.EPSILON);
+      const nextSpan = Math.max(minimumSpan, span * (barSpacingBefore / barSpacingAfter));
+      const priceSpanFactor = nextSpan / span;
+      const nextFrom = anchorPrice + (from - anchorPrice) * priceSpanFactor;
+      const nextTo = anchorPrice + (to - anchorPrice) * priceSpanFactor;
+      if (!Number.isFinite(nextFrom) || !Number.isFinite(nextTo) || nextTo <= nextFrom) return;
+
+      try {
+        priceScale.setVisibleRange({ from: nextFrom, to: nextTo });
+        queueLivePriceOverlayGeometryRepaint();
+      } catch {
+        // The chart can be disposed between the wheel event and this update.
+      }
+    };
+
+    const handleDocumentVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        forceSettleInteraction();
+      }
     };
 
     const chartContainer = containerRef.current;
 
     if (chartContainer) {
       // Track pointer/drag interactions for auto-scroll timer
-      chartContainer.addEventListener('pointerdown', handleInteractionStart);
-      chartContainer.addEventListener('pointerup', handleInteractionEnd);
-      chartContainer.addEventListener('pointerleave', handleInteractionEnd);
-      chartContainer.addEventListener('touchstart', handleInteractionStart, { passive: true });
-      chartContainer.addEventListener('touchend', handleInteractionEnd);
+      chartContainer.addEventListener('pointerdown', handlePointerInteractionStart, true);
+      chartContainer.addEventListener('lostpointercapture', handleLostPointerCapture);
+      chartContainer.addEventListener('pointerleave', interactionOwnership.notePointerLeave);
+      chartContainer.addEventListener('touchstart', handleTouchInteractionStart, { passive: true, capture: true });
+      chartContainer.addEventListener('wheel', captureChartWheelTimeScaleState, { passive: true, capture: true });
       chartContainer.addEventListener('wheel', handleWheelInteraction, { passive: true });
-
+      window.addEventListener('pointermove', handleRightPriceScalePointerMove, { passive: true });
+      window.addEventListener('pointerup', handlePointerInteractionEnd, true);
+      window.addEventListener('pointercancel', handlePointerInteractionEnd, true);
+      window.addEventListener('touchend', handleTouchInteractionEnd, true);
+      window.addEventListener('touchcancel', handleTouchInteractionEnd, true);
+      window.addEventListener('blur', forceSettleInteraction);
+      document.addEventListener('visibilitychange', handleDocumentVisibilityChange);
     } // end if (chartContainer)
 
     // Crosshair move for legend
@@ -1958,15 +2230,21 @@ export const TradingChart = React.memo(function TradingChart({
 
     // Infinite scroll range handler
     const logicalRangeHandler = (logicalRange: any) => {
-      if (logicalRange && logicalRange.from < 50) {
-        if (isVisibleRangeHistoryLoadSuppressed()) return;
-        if (isChartInteractionActiveRef.current) {
-          pendingInteractionHistoryLoadRef.current = true;
-          return;
-        }
-        if (loadMoreHistoryRef.current) {
-          loadMoreHistoryRef.current();
-        }
+      // Kinetic scrolling can keep changing the visible range after pointerup.
+      // Re-arm the idle window until the final range change has settled.
+      interactionOwnership.noteRangeActivity();
+      const historyAction = resolveVisibleRangeHistoryAction({
+        logicalFrom: logicalRange?.from,
+        suppressed: isVisibleRangeHistoryLoadSuppressed(),
+        interactionActive: isChartInteractionActiveRef.current,
+        userInitiated: visibleRangeHistoryUserInitiatedRef.current,
+      });
+      if (historyAction === 'defer') {
+        postInteractionCoordinatorRef.current?.request({ history: true });
+        return;
+      }
+      if (historyAction === 'load') {
+        loadMoreHistoryRef.current?.();
       }
     };
     chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeHandler);
@@ -1974,20 +2252,43 @@ export const TradingChart = React.memo(function TradingChart({
     return () => {
       indicatorManager.setChart(null);
       isDisposedRef.current = true;
-      if (autoScrollTimer) clearTimeout(autoScrollTimer);
+      visibleRangeHistoryUserInitiatedRef.current = false;
+      isChartInteractionActiveRef.current = false;
+      isChartUserInteractingRef.current = false;
+      if (autoScrollTimer) {
+        clearTimeout(autoScrollTimer);
+        autoScrollTimer = null;
+      }
+      if (settleAutoScrollPolicyRef.current === resetAutoScrollTimer) {
+        settleAutoScrollPolicyRef.current = () => undefined;
+      }
+      interactionOwnership.dispose();
+      postInteractionCoordinatorRef.current?.clear();
+      if (chartInteractionOwnershipRef.current === interactionOwnership) {
+        chartInteractionOwnershipRef.current = null;
+      }
+      rightPriceScalePointerId = null;
+      wheelTimeScaleBarSpacingBefore = null;
+      if (livePriceGeometryRepaintFrame !== null) {
+        window.cancelAnimationFrame(livePriceGeometryRepaintFrame);
+        livePriceGeometryRepaintFrame = null;
+      }
       if (chartContainer) {
-        chartContainer.removeEventListener('pointerdown', handleInteractionStart);
-        chartContainer.removeEventListener('pointerup', handleInteractionEnd);
-        chartContainer.removeEventListener('pointerleave', handleInteractionEnd);
-        chartContainer.removeEventListener('touchstart', handleInteractionStart);
-        chartContainer.removeEventListener('touchend', handleInteractionEnd);
+        chartContainer.removeEventListener('pointerdown', handlePointerInteractionStart, true);
+        chartContainer.removeEventListener('lostpointercapture', handleLostPointerCapture);
+        chartContainer.removeEventListener('pointerleave', interactionOwnership.notePointerLeave);
+        chartContainer.removeEventListener('touchstart', handleTouchInteractionStart, true);
+        chartContainer.removeEventListener('wheel', captureChartWheelTimeScaleState, true);
         chartContainer.removeEventListener('wheel', handleWheelInteraction);
       }
-      if (chartInteractionIdleTimerRef.current !== null) {
-        window.clearTimeout(chartInteractionIdleTimerRef.current);
-        chartInteractionIdleTimerRef.current = null;
-      }
-      historyAbortRef.current?.abort();
+      window.removeEventListener('pointermove', handleRightPriceScalePointerMove);
+      window.removeEventListener('pointerup', handlePointerInteractionEnd, true);
+      window.removeEventListener('pointercancel', handlePointerInteractionEnd, true);
+      window.removeEventListener('touchend', handleTouchInteractionEnd, true);
+      window.removeEventListener('touchcancel', handleTouchInteractionEnd, true);
+      window.removeEventListener('blur', forceSettleInteraction);
+      document.removeEventListener('visibilitychange', handleDocumentVisibilityChange);
+      historyRequestCoordinatorRef.current.abort();
       cancelQueuedChartRender();
       chart.unsubscribeCrosshairMove(crosshairHandler);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(logicalRangeHandler);
@@ -2168,6 +2469,7 @@ export const TradingChart = React.memo(function TradingChart({
     updateChartData(candles, undefined, {
       immediate: true,
       resetVisibleRange: true,
+      finishLoadingAfterRender: true,
       reason,
     });
 
@@ -2185,54 +2487,8 @@ export const TradingChart = React.memo(function TradingChart({
     }
 
     setApiError(null);
-    setLoadingPhase('hidden');
     return true;
   }, [buildHistoryCacheTarget, cancelQueuedChartRender, clearPeriodSeparators, getLatestRenderableCandle, reloadAggregationCandles, symbol, updateChartData, updateLegendDOM]);
-
-  const prefetchTimeframesForSymbol = useCallback((activeTf: Timeframe) => {
-    if (!isActive || !symbol) return;
-
-    const scope = chartDataService.getCandleCacheScope();
-    const prefetchScopeKey = `${scope}::${symbol}::${candleCache.getGeneration()}`;
-    if (prefetchedSymbolScopeRef.current === prefetchScopeKey) return;
-    prefetchedSymbolScopeRef.current = prefetchScopeKey;
-
-    const queue = PREFETCH_TIMEFRAMES.filter(tf => tf !== activeTf);
-    let cursor = 0;
-
-    const worker = async () => {
-      while (cursor < queue.length) {
-        const tf = queue[cursor++];
-        const { key, metadata } = buildHistoryCacheTarget(tf);
-        if (candleCache.getLatest(key)?.candles.length) continue;
-
-        try {
-          const cacheGeneration = candleCache.getGeneration();
-          await candleCache.dedupe(key, async () => {
-            let candles = getValidSortedCandles(await chartDataService.fetchCandles({
-              symbol,
-              timeframe: tf,
-              count: getInitialHistoryCount(tf),
-            }) as Candle[]);
-            const detectedBrokerOffsetSecs = detectBrokerHistoryOffsetSeconds(candles);
-            if (detectedBrokerOffsetSecs) {
-              candles = applyBrokerTimeOffset(candles, detectedBrokerOffsetSecs);
-            }
-            if (candles.length > 0 && candleCache.getGeneration() === cacheGeneration) {
-              candleCache.setLatest(key, candles, { ...metadata, brokerOffsetSeconds: detectedBrokerOffsetSecs });
-            }
-            return candles;
-          });
-        } catch (error) {
-          console.warn(`[Chart] Prefetch failed for ${symbol} ${tf}:`, error);
-        }
-      }
-    };
-
-    for (let i = 0; i < TIMEFRAME_PREFETCH_CONCURRENCY; i += 1) {
-      void worker();
-    }
-  }, [buildHistoryCacheTarget, isActive, symbol]);
 
   const restoreProtectedDisplayedHistory = useCallback((activeTf: Timeframe, reason: string): boolean => {
     const protectedHistory = protectedDisplayedHistoryRef.current.length > 1
@@ -2256,9 +2512,9 @@ export const TradingChart = React.memo(function TradingChart({
     updateChartData(restoredCandles, undefined, {
       immediate: true,
       resetVisibleRange: false,
+      finishLoadingAfterRender: true,
       reason: `restore-protected-history:${reason}`,
     });
-    setLoadingPhase('ready');
     return true;
   }, [reloadAggregationCandles, symbol, updateChartData]);
 
@@ -2294,148 +2550,6 @@ export const TradingChart = React.memo(function TradingChart({
     };
   }, [symbol]);
 
-  const loadRemainingHistoryInBackground = useCallback(async (
-    loadSeq: number,
-    activeTf: Timeframe,
-    initialOlderThanRaw: number,
-    brokerOffsetSeconds: number,
-    signal: AbortSignal,
-  ) => {
-    if (!symbol || !Number.isFinite(initialOlderThanRaw)) return;
-
-    let olderThanRaw = initialOlderThanRaw;
-    historyBackfillDiagnosticsRef.current = markHistoryBackfillStarted(
-      historyBackfillDiagnosticsRef.current,
-      initialOlderThanRaw,
-    );
-    console.log(`[Chart] Background history started for ${symbol} ${activeTf} with pageSize=${getHistoryPageSize(activeTf)} before ${initialOlderThanRaw}`);
-
-    while (true) {
-      if (
-        isDisposedRef.current
-        || historyLoadSeqRef.current !== loadSeq
-        || hasReachedBeginningRef.current
-        || signal.aborted
-      ) {
-        if (isDisposedRef.current || historyLoadSeqRef.current !== loadSeq || signal.aborted) {
-          clearBackgroundHistoryRenderQueue();
-        } else {
-          flushBackgroundHistoryRender('background-history-complete');
-        }
-        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
-          historyBackfillDiagnosticsRef.current,
-          signal.aborted ? 'aborted' : 'superseded',
-          hasReachedBeginningRef.current,
-        );
-        return;
-      }
-
-      isLoadingMoreRef.current = true;
-
-      let olderPage: ChartHistoryPage;
-      try {
-        olderPage = await fetchOlderHistoryPage(activeTf, olderThanRaw, signal);
-      } catch (err) {
-        if (isAbortError(err)) {
-          clearBackgroundHistoryRenderQueue();
-          historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
-            historyBackfillDiagnosticsRef.current,
-            'aborted',
-            hasReachedBeginningRef.current,
-          );
-          return;
-        }
-        historyBackfillDiagnosticsRef.current = markHistoryBackfillError(
-          historyBackfillDiagnosticsRef.current,
-          err,
-        );
-        flushBackgroundHistoryRender('background-history-error');
-        console.warn('[Chart] Background history load failed:', err);
-        return;
-      } finally {
-        isLoadingMoreRef.current = false;
-      }
-
-      if (isDisposedRef.current || historyLoadSeqRef.current !== loadSeq || signal.aborted) {
-        clearBackgroundHistoryRenderQueue();
-        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
-          historyBackfillDiagnosticsRef.current,
-          signal.aborted ? 'aborted' : 'superseded',
-          hasReachedBeginningRef.current,
-        );
-        return;
-      }
-
-      const newRawCandles = selectOlderCandlesBeforeCursor(olderPage.candles, olderThanRaw) as Candle[];
-
-      if (newRawCandles.length === 0) {
-        hasReachedBeginningRef.current = true;
-        flushBackgroundHistoryRender('background-history-complete');
-        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
-          historyBackfillDiagnosticsRef.current,
-          'empty-page',
-          true,
-        );
-        console.log(`[Chart] Background history reached beginning for ${symbol} ${activeTf}`);
-        return;
-      }
-
-      const nextOlderThanRaw = getNextOlderHistoryCursor(newRawCandles);
-      if (nextOlderThanRaw === null || !Number.isFinite(nextOlderThanRaw) || nextOlderThanRaw >= olderThanRaw) {
-        hasReachedBeginningRef.current = true;
-        flushBackgroundHistoryRender('background-history-complete');
-        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
-          historyBackfillDiagnosticsRef.current,
-          'cursor-stalled',
-          true,
-        );
-        console.log(`[Chart] Background history stopped because cursor did not progress for ${symbol} ${activeTf}`);
-        return;
-      }
-
-      const adjustedCandles = applyBrokerTimeOffset(newRawCandles, brokerOffsetSeconds);
-      const reconciledNewCandles = reconcileCandlesWithLiveQuote(adjustedCandles, 'background older history');
-      const selectedOlderHistory = selectOlderHistoryCandlesForMerge(adjustedCandles, reconciledNewCandles);
-
-      if (selectedOlderHistory.candles.length === 0) {
-        flushBackgroundHistoryRender('background-history-complete');
-        historyBackfillDiagnosticsRef.current = markHistoryBackfillStopped(
-          historyBackfillDiagnosticsRef.current,
-          'invalid-page',
-          hasReachedBeginningRef.current,
-        );
-        console.warn(`[Chart] Stopping background history for ${symbol} ${activeTf}; older batch had no valid candles.`);
-        return;
-      }
-      if (selectedOlderHistory.usedRawFallback) {
-        console.warn(`[Chart] Keeping raw background older history for ${symbol} ${activeTf} after price reconciliation rejected the batch.`);
-      }
-
-      const prependResult = prependCandleHistory(candlesRef.current, selectedOlderHistory.candles);
-      candlesRef.current = prependResult.candles;
-      const addedCount = prependResult.addedCount;
-      historyBackfillDiagnosticsRef.current = markHistoryBackfillPageLoaded(
-        historyBackfillDiagnosticsRef.current,
-        addedCount,
-        candlesRef.current[0]?.time ?? nextOlderThanRaw,
-      );
-
-      if (addedCount > 0) {
-        mergeHistoryCache(activeTf, selectedOlderHistory.candles, brokerOffsetSeconds, olderPage.source);
-        const diagnostics = historyBackfillDiagnosticsRef.current;
-        console.log(
-          `[Chart] Background history added ${addedCount} older candles for ${symbol} ${activeTf} ` +
-          `(total ${candlesRef.current.length}, pages=${diagnostics.pagesLoaded}, oldest=${diagnostics.oldestTime})`
-        );
-        queueBackgroundHistoryRender(addedCount);
-      }
-
-      olderThanRaw = nextOlderThanRaw;
-
-      await waitForProgressiveHistoryIdleTurn(signal);
-    }
-  }, [clearBackgroundHistoryRenderQueue, fetchOlderHistoryPage, flushBackgroundHistoryRender, mergeHistoryCache, queueBackgroundHistoryRender, reconcileCandlesWithLiveQuote, symbol]);
-
   const normalizeRenderedCandlesToLivePrice = useCallback((price: number, activeTf: Timeframe): boolean => {
     const candles = candlesRef.current;
     if (candles.length === 0) return true;
@@ -2467,57 +2581,47 @@ export const TradingChart = React.memo(function TradingChart({
   }, [getCachedRenderedPriceReference, reloadAggregationCandles, symbol, updateChartData]);
 
   // Load historical data
-  const loadHistory = useCallback(async () => {
-    if (isDisposedRef.current || !symbol) {
+  const loadHistory = useCallback(async (selectedSymbol: string, selectedTimeframe: Timeframe) => {
+    if (isDisposedRef.current || !selectedSymbol) {
       console.log('[Chart] Cannot load history - symbol not set or chart disposed');
       return;
     }
 
     setApiError(null);
     resetLiveQuotePriceGuard();
-    const activeTf = prevTimeframeRef.current || timeframe;
-    console.log(`[Chart] Loading history for ${symbol}, timeframe: ${activeTf}`);
+    const activeTf = selectedTimeframe;
+    console.log(`[Chart] Loading history for ${selectedSymbol}, timeframe: ${activeTf}`);
 
     try {
-      const loadSeq = historyLoadSeqRef.current + 1;
-      historyLoadSeqRef.current = loadSeq;
-      historyAbortRef.current?.abort();
-      clearBackgroundHistoryRenderQueue();
-      const controller = new AbortController();
-      historyAbortRef.current = controller;
+      const historyRequest = historyRequestCoordinatorRef.current.start({
+        symbol: selectedSymbol,
+        timeframe: activeTf,
+        count: getInitialHistoryCount(activeTf),
+      }, options => chartDataService.fetchCandles(options));
       const isCurrentHistoryLoad = () => (
-        !isDisposedRef.current &&
-        historyLoadSeqRef.current === loadSeq &&
-        !controller.signal.aborted
+        !isDisposedRef.current && historyRequest.isCurrent()
       );
       hasReachedBeginningRef.current = false;
       isLoadingMoreRef.current = false;
       historyBackfillDiagnosticsRef.current = createChartHistoryBackfillDiagnostics();
 
       const hydratedFromCache = hydrateHistoryFromCache(activeTf, 'cached-history');
-      if (hydratedFromCache) {
-        prefetchTimeframesForSymbol(activeTf);
-      } else {
+      if (!hydratedFromCache) {
         setLoadingPhase('connecting');
       }
 
       let historySource: CandleCacheSource = 'backend';
-      let candles: Candle[] = await chartDataService.fetchCandles({
-        symbol,
-        timeframe: activeTf,
-        count: getInitialHistoryCount(activeTf),
-        signal: controller.signal,
-      });
+      let candles: Candle[] = await historyRequest.result;
 
       if (!isCurrentHistoryLoad()) return;
 
       candles = getValidSortedCandles(candles);
       if (candles.length === 0 && isM1DerivedFallbackTimeframe(activeTf)) {
-        console.log(`[Chart] Native ${symbol} ${activeTf} history empty; trying M1-derived fallback.`);
+        console.log(`[Chart] Native ${selectedSymbol} ${activeTf} history empty; trying M1-derived fallback.`);
         const derivedCandles = await fetchDerivedTimeframeCandlesFromM1({
-          symbol,
+          symbol: selectedSymbol,
           targetTimeframe: activeTf,
-          signal: controller.signal,
+          signal: historyRequest.signal,
           targetCandleLimit: getDerivedM1InitialTargetCandleLimit(activeTf),
           yieldBetweenPages: waitForProgressiveHistoryIdleTurn,
         });
@@ -2528,36 +2632,35 @@ export const TradingChart = React.memo(function TradingChart({
           candles = getValidSortedCandles(derivedCandles.candles as Candle[]);
           historySource = 'derived-m1';
           console.log(
-            `[Chart] M1-derived initial history produced ${candles.length} ${activeTf} candles for ${symbol} ` +
+            `[Chart] M1-derived initial history produced ${candles.length} ${activeTf} candles for ${selectedSymbol} ` +
             `(m1Candles=${derivedCandles.m1CandlesFetched}, pages=${derivedCandles.pagesFetched}, ` +
             `reachedBeginning=${derivedCandles.reachedBeginning})`
           );
         } else {
           console.log(
-            `[Chart] M1-derived initial history found no ${activeTf} candles for ${symbol} ` +
+            `[Chart] M1-derived initial history found no ${activeTf} candles for ${selectedSymbol} ` +
             `(pages=${derivedCandles.pagesFetched}, reachedBeginning=${derivedCandles.reachedBeginning})`
           );
         }
       }
-      const oldestRawHistoryTime = candles[0]?.time;
-      console.log(`[Chart] Received initial ${candles.length} candles from ${historySource}; older history will load in background`);
+      console.log(`[Chart] Received initial ${candles.length} candles from ${historySource}`);
 
       // If API returns empty candles, initialize series so live ticks can build candles
       if (candles.length === 0) {
         if (hydratedFromCache) {
-          console.warn(`[Chart] Keeping cached ${symbol} ${activeTf} history after empty refresh response.`);
+          console.warn(`[Chart] Keeping cached ${selectedSymbol} ${activeTf} history after empty refresh response.`);
           return;
         }
         if (restoreProtectedDisplayedHistory(activeTf, 'empty-history-reload')) {
           return;
         }
         if (activeTf === 'M1') {
-          console.warn(`[Chart] Ignoring empty ${symbol} ${activeTf} history response to avoid replacing displayed history with a tiny live cluster.`);
+          console.warn(`[Chart] Ignoring empty ${selectedSymbol} ${activeTf} history response to avoid replacing displayed history with a tiny live cluster.`);
           setLoadingPhase('receiving');
           return;
         }
 
-        console.log(`[Chart] No historical candles for ${symbol} ${activeTf} — live-only mode`);
+        console.log(`[Chart] No historical candles for ${selectedSymbol} ${activeTf} — live-only mode`);
         resetEmptyHistoryState(activeTf);
         if (seriesRef.current) seriesRef.current.setData([]);
         if (volumeRef.current) volumeRef.current.setData([]);
@@ -2567,7 +2670,7 @@ export const TradingChart = React.memo(function TradingChart({
         // DO NOT seed `currentCandleRef` using `Date.now()` here, because if the
         // PC clock is faster than the MT5 broker, all incoming ticks will be trapped
         // in the 'future' candle and the chart will never rollover (infinite volume bug).
-        console.warn(`[Chart] No history for ${symbol} on ${activeTf} — live-only mode (waiting for first live tick)`);
+        console.warn(`[Chart] No history for ${selectedSymbol} on ${activeTf} — live-only mode (waiting for first live tick)`);
         // Keep overlay up; advance phase so users see "Receiving candles…" instead of
         // a single live-tick candle behind a dismissed loader.
         setLoadingPhase('receiving');
@@ -2580,21 +2683,21 @@ export const TradingChart = React.memo(function TradingChart({
         candles.length === 0 &&
         rawHistoryCandles.length > getTradingChartDefaultVisibleBars(activeTf)
       ) {
-        console.warn(`[Chart] Keeping raw ${symbol} ${activeTf} history after live quote reconciliation rejected ${rawHistoryCandles.length} candles.`);
+        console.warn(`[Chart] Keeping raw ${selectedSymbol} ${activeTf} history after live quote reconciliation rejected ${rawHistoryCandles.length} candles.`);
         candles = rawHistoryCandles;
         setApiError(null);
       }
 
       if (candles.length === 0) {
         if (hydratedFromCache) {
-          console.warn(`[Chart] Keeping cached ${symbol} ${activeTf} history after rejected refresh response.`);
+          console.warn(`[Chart] Keeping cached ${selectedSymbol} ${activeTf} history after rejected refresh response.`);
           return;
         }
         if (restoreProtectedDisplayedHistory(activeTf, 'rejected-history-reload')) {
           return;
         }
         if (activeTf === 'M1') {
-          console.warn(`[Chart] Ignoring rejected ${symbol} ${activeTf} history response to avoid replacing displayed history with a tiny live cluster.`);
+          console.warn(`[Chart] Ignoring rejected ${selectedSymbol} ${activeTf} history response to avoid replacing displayed history with a tiny live cluster.`);
           setLoadingPhase('receiving');
           return;
         }
@@ -2656,9 +2759,9 @@ export const TradingChart = React.memo(function TradingChart({
       // Feed historical candles into the aggregation service
       // This enables proper candle building from where historical data ends
       const ohlcvCandles: OHLCV[] = formatHistoryForOhlcv(candles);
-      candleAggregationService.loadHistoricalCandles(symbol, activeTf as AggTimeframe, ohlcvCandles);
+      candleAggregationService.loadHistoricalCandles(selectedSymbol, activeTf as AggTimeframe, ohlcvCandles);
       setHistoryCache(activeTf, candles, detectedBrokerOffsetSecs, historySource);
-      console.log(`[Chart] Loaded ${ohlcvCandles.length} historical candles into aggregation service for ${symbol} ${activeTf}`);
+      console.log(`[Chart] Loaded ${ohlcvCandles.length} historical candles into aggregation service for ${selectedSymbol} ${activeTf}`);
 
       // Update chart - live data
       setApiError(null);
@@ -2666,6 +2769,7 @@ export const TradingChart = React.memo(function TradingChart({
       updateChartData(candles, undefined, {
         immediate: true,
         resetVisibleRange: shouldResetVisibleRange,
+        finishLoadingAfterRender: true,
         reason: 'initial-history',
       });
 
@@ -2706,19 +2810,8 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }
 
-      // Initial page rendered; older real candles continue loading in the background.
-      setLoadingPhase('ready');
-      prefetchTimeframesForSymbol(activeTf);
-
-      if (oldestRawHistoryTime) {
-        void loadRemainingHistoryInBackground(
-          loadSeq,
-          activeTf,
-          oldestRawHistoryTime,
-          detectedBrokerOffsetSecs,
-          controller.signal,
-        );
-      }
+      // Keep startup bounded to the initial page. Older candles remain available
+      // through the visible-left-edge loadMoreHistory path.
     } catch (err: unknown) {
       if (isAbortError(err)) return;
       console.warn('[Chart] Failed to load history:', err);
@@ -2726,16 +2819,11 @@ export const TradingChart = React.memo(function TradingChart({
       // we're still waiting on the WS snapshot rather than stuck connecting.
       setLoadingPhase(prev => (prev === 'connecting' ? 'receiving' : prev));
     }
-  }, [authToken, clearBackgroundHistoryRenderQueue, symbol, timeframe, getLatestRenderableCandle, hydrateHistoryFromCache, loadRemainingHistoryInBackground, prefetchTimeframesForSymbol, reconcileCandlesWithLiveQuote, resetEmptyHistoryState, resetLiveQuotePriceGuard, restoreProtectedDisplayedHistory, setHistoryCache, updateChartData]);
-
-  // Keep loadHistoryRef in sync so the boundary poller can trigger a silent refresh
-  useEffect(() => {
-    loadHistoryRef.current = loadHistory;
-  }, [loadHistory]);
+  }, [getLatestRenderableCandle, hydrateHistoryFromCache, reconcileCandlesWithLiveQuote, resetEmptyHistoryState, resetLiveQuotePriceGuard, restoreProtectedDisplayedHistory, setHistoryCache, updateChartData]);
 
   // Fade the loading overlay out after candles arrive. 'ready' starts the CSS
   // opacity transition; after it finishes we unmount the overlay entirely.
-  useEffect(() => {
+  useActiveChartRuntimeEffect(visibleRuntime.interval, () => {
     if (loadingPhase !== 'ready') return;
     const timer = window.setTimeout(() => setLoadingPhase('hidden'), 400);
     return () => window.clearTimeout(timer);
@@ -2745,6 +2833,10 @@ export const TradingChart = React.memo(function TradingChart({
   // three honest progress messages are visible before the snapshot lands on a
   // typical cold start. Index resets the moment we go ready/hidden.
   useEffect(() => {
+    if (!isActive) setLoadingMessageIdx(0);
+  }, [isActive]);
+
+  useActiveChartRuntimeEffect(visibleRuntime.interval, () => {
     if (loadingPhase === 'ready' || loadingPhase === 'hidden') {
       setLoadingMessageIdx(0);
       return;
@@ -2765,7 +2857,7 @@ export const TradingChart = React.memo(function TradingChart({
 
     isLoadingMoreRef.current = true;
     const activeTf = prevTimeframeRef.current || timeframe;
-    const signal = historyAbortRef.current?.signal;
+    const signal = historyRequestCoordinatorRef.current.getActiveSignal();
     historyBackfillDiagnosticsRef.current = markHistoryBackfillStarted(
       historyBackfillDiagnosticsRef.current,
       oldestCandle.time + brokerTimeOffsetSec,
@@ -2940,8 +3032,6 @@ export const TradingChart = React.memo(function TradingChart({
           candleAggregationService.loadHistoricalCandles(symbol, timeframe as AggTimeframe, []);
         }
 
-        // Trigger history load for new timeframe
-        loadHistory();
         return;
       } else {
         // ONLY symbol changed. Do NOT destroy the series! (Prevents Lightweight Charts disposal bug)
@@ -2980,8 +3070,6 @@ export const TradingChart = React.memo(function TradingChart({
         // Update drawing manager with new symbol context — pass overlay div directly
         drawingManager.setChart(chartRef.current, seriesRef.current, symbol, 1, overlayRef.current, timeframe);
 
-        // Trigger history load for new symbol
-        loadHistory();
         return;
       }
     }
@@ -3119,10 +3207,6 @@ export const TradingChart = React.memo(function TradingChart({
     if (candlesRef.current.length > 0) {
       console.log(`[TradingChart] Setting existing ${candlesRef.current.length} candles`);
       updateChartData(candlesRef.current, chartType);
-    } else {
-      // Try to load history now that series is ready
-      console.log(`[TradingChart] No cached candles, triggering history load`);
-      loadHistory();
     }
 
     // ✅ CRITICAL: Always unblock the tick-polling interval after series is ready.
@@ -3130,16 +3214,6 @@ export const TradingChart = React.memo(function TradingChart({
     // Now that seriesRef.current points to the new series, it is safe to resume ticks.
     isRebuildingRef.current = false;
     console.log('[TradingChart] Series ready — tick polling resumed');
-
-    // Fallback: only trigger if no data yet (not needed when chart type switching with cached data)
-    if (!hasCachedData) {
-      setTimeout(() => {
-        if (candlesRef.current.length === 0 && seriesRef.current) {
-          console.log(`[TradingChart] Fallback: triggering delayed history load`);
-          loadHistory();
-        }
-      }, 500);
-    }
 
     // Register scroll lock callbacks so drag on a drawing doesn't pan the chart
     drawingManager.setScrollLockCallbacks(
@@ -3285,6 +3359,18 @@ export const TradingChart = React.memo(function TradingChart({
     window.addEventListener('pointerup', handlePointerUp);
 
     const crosshairHandler = (param: any) => {
+      const activeDrawing = drawingManager.getActiveDrawing();
+      const needsDrawingPreview = Boolean(
+        activeDrawing
+        || activeToolRef.current
+        || isDrawingFreehand
+      );
+
+      // Cursor-mode crosshair events are owned entirely by lightweight-charts.
+      // Avoid canvas queries, coordinate conversion and drawing-manager work
+      // until a drawing tool actually needs a live preview.
+      if (!needsDrawingPreview) return;
+
       // lightweight-charts re-applies cursor:crosshair on every crosshair event.
       // Enforce the correct cursor here every frame so it doesn't flicker back.
       if (!activeToolRef.current && containerRef.current) {
@@ -3295,7 +3381,6 @@ export const TradingChart = React.memo(function TradingChart({
         });
       }
 
-      const activeD = drawingManager.getActiveDrawing();
       if (param.point && seriesRef.current) {
         // Project time if undefined (hovering in future blank margin)
         let time = param.time;
@@ -3318,8 +3403,7 @@ export const TradingChart = React.memo(function TradingChart({
             if (isDrawingFreehand) {
               drawingManager.addPoint(time, price);
             } else {
-              const activeD2 = drawingManager.getActiveDrawing();
-              if (activeD2 && (activeD2.type === 'vline' || activeD2.type === 'channel')) {
+              if (activeDrawing && (activeDrawing.type === 'vline' || activeDrawing.type === 'channel')) {
                 const rawX = (param.sourceEvent && containerRef.current)
                   ? (param.sourceEvent.clientX - containerRef.current.getBoundingClientRect().left)
                   : param.point.x;
@@ -3347,12 +3431,14 @@ export const TradingChart = React.memo(function TradingChart({
       }
     }, 0);
 
+    const drawingOverlayContainer = overlayRef.current;
     let drawingRenderFrame: number | null = null;
     const timeRangeHandler = () => {
+      if (!drawingManager.hasRenderableContent(drawingOverlayContainer)) return;
       if (drawingRenderFrame !== null) return;
       drawingRenderFrame = window.requestAnimationFrame(() => {
         drawingRenderFrame = null;
-        drawingManager.renderAll();
+        drawingManager.renderContext(drawingOverlayContainer);
       });
     };
 
@@ -3375,7 +3461,7 @@ export const TradingChart = React.memo(function TradingChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(timeRangeHandler);
 
     isRebuildingRef.current = false; // Safe to resume ticks and resizes
-  }, [cancelQueuedChartRender, chartType, symbol, loadHistory, resetLiveQuotePriceGuard, updateChartData, clearPeriodSeparators, hydrateHistoryFromCache]); // Note: intentional omit chartSettings
+  }, [cancelQueuedChartRender, chartType, symbol, resetLiveQuotePriceGuard, updateChartData, clearPeriodSeparators, hydrateHistoryFromCache, timeframe]); // Note: intentional omit chartSettings
 
 
 
@@ -3439,7 +3525,7 @@ export const TradingChart = React.memo(function TradingChart({
     const handleVisibleRangeChange = () => {
       syncLeftVisibleTime();
       if (isChartInteractionActiveRef.current) {
-        pendingInteractionPeriodSeparatorRenderRef.current = true;
+        postInteractionCoordinatorRef.current?.request({ separators: true });
         return;
       }
       schedulePeriodSeparatorRender();
@@ -3542,26 +3628,92 @@ export const TradingChart = React.memo(function TradingChart({
   // getTimeframeSeconds is imported from candleAggregationService (module scope)
   // so it is never a stale closure value after a timeframe switch.
 
-  // Load history when symbol/timeframe changes
-  useEffect(() => {
-    if (!symbol) {
-      console.log('[Chart] No symbol, skipping history load');
-      return;
+  const clearBrokerSessionCandleScope = useCallback((activeTf: Timeframe) => {
+    // Abort ownership first so an old broker response cannot repopulate any ref
+    // after the scope is cleared.
+    historyRequestCoordinatorRef.current.abort();
+    cancelQueuedChartRender();
+    candleCache.clearAll();
+    resetEmptyHistoryState(activeTf);
+    candleAggregationService.clearSymbol(symbol);
+
+    brokerTimeOffsetSecRef.current = 0;
+    setBrokerTimeOffsetSec(0);
+    historyBackfillDiagnosticsRef.current = createChartHistoryBackfillDiagnostics();
+    pendingLegendRenderRef.current = null;
+    renderedLegendSignatureRef.current = null;
+    if (typeof window !== 'undefined' && legendRenderFrameRef.current !== null) {
+      window.cancelAnimationFrame(legendRenderFrameRef.current);
+      legendRenderFrameRef.current = null;
     }
-    // Load history even if series is not ready - data will be stored and applied when series is created
-    console.log(`[Chart] Triggering history load for ${symbol} ${timeframe}`);
-    loadHistory();
-  }, [symbol, timeframe, loadHistory]);
+
+    try { seriesRef.current?.setData([]); } catch { /* chart may be rebuilding */ }
+    try { volumeRef.current?.setData([]); } catch { /* chart may be rebuilding */ }
+    if (ohlcOpenRef.current) ohlcOpenRef.current.textContent = '';
+    if (ohlcHighRef.current) ohlcHighRef.current.textContent = '';
+    if (ohlcLowRef.current) ohlcLowRef.current.textContent = '';
+    if (ohlcCloseRef.current) ohlcCloseRef.current.textContent = '';
+    if (ohlcVolumeRef.current) ohlcVolumeRef.current.textContent = '';
+    if (countdownTextRef.current) countdownTextRef.current.textContent = '';
+    setLoadingPhase('connecting');
+  }, [cancelQueuedChartRender, resetEmptyHistoryState, symbol]);
+
+  const loadSelectedHistory = useCallback((selection: { symbol: string; timeframe: string }) => {
+    const selectedTimeframe = selection.timeframe as Timeframe;
+    if (loadedHistorySessionScopeRef.current !== brokerAccountSessionScope) {
+      clearBrokerSessionCandleScope(selectedTimeframe);
+      loadedHistorySessionScopeRef.current = brokerAccountSessionScope;
+    }
+    return loadHistory(selection.symbol, selectedTimeframe);
+  }, [brokerAccountSessionScope, clearBrokerSessionCandleScope, loadHistory]);
+
+  useSelectedHistoryRequestOwner({
+    symbol,
+    timeframe,
+    enabled: visibleRuntime.history,
+    scopeRevision: brokerAccountSessionScope,
+    load: loadSelectedHistory,
+    abort: () => historyRequestCoordinatorRef.current.abort(),
+  });
 
   // ─── Live tick subscription + candle rollover ─────────────────────────────
-  useEffect(() => {
-    if (!symbol) return;
+  useActiveChartRuntimeEffect(visibleRuntime.candle, () => {
+    if (!isActive || !symbol) return;
 
     const normalizedSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 
     // ── State (local to this effect closure) ──────────────────────────────────
     let lastTickKey = '';          // dedup: ts+price
     let lastMarketGapSeriesRefreshTime: number | null = null;
+    let pendingLiveChartPaint = false;
+    let pendingLiveChartRequiresFullRender = false;
+    let pendingLiveShouldScrollToRealtime = false;
+
+    const canPaintLiveChart = (allowDuringSettle = false): boolean => (
+      isActiveRef.current
+      && (allowDuringSettle || !isChartInteractionActiveRef.current)
+      && !isDisposedRef.current
+      && !isRebuildingRef.current
+      && Boolean(seriesRef.current)
+    );
+
+    const requestDeferredLivePaint = (
+      requiresFullRender = false,
+      shouldScrollToRealtime = false,
+    ): void => {
+      pendingLiveChartPaint = true;
+      pendingLiveChartRequiresFullRender ||= requiresFullRender;
+      pendingLiveShouldScrollToRealtime ||= shouldScrollToRealtime;
+      postInteractionCoordinatorRef.current?.request({ live: true });
+    };
+
+    const repaintLivePriceOverlayOrDefer = (c: Candle): void => {
+      if (!canPaintLiveChart()) {
+        requestDeferredLivePaint();
+        return;
+      }
+      repaintLivePriceOverlayFromCurrentPrice(c);
+    };
 
     const refreshMarketGapSeriesForCandle = (c: Candle): boolean => {
       if (isDisposedRef.current || !seriesRef.current || !chartRef.current) {
@@ -3594,18 +3746,25 @@ export const TradingChart = React.memo(function TradingChart({
     // Pushes one candle update to lightweight-charts.
     // isNewCandle=true → append new bar + scroll to realtime.
     // isNewCandle=false → update the last bar in-place.
-    const push = (c: Candle, isNewCandle: boolean) => {
-      if (isDisposedRef.current || !seriesRef.current) return;
+    const push = (c: Candle, isNewCandle: boolean, allowDuringSettle = false) => {
+      if (isDisposedRef.current) return;
       if (liveMarketDataFrozenRef.current) return;
+      if (!canPaintLiveChart(allowDuringSettle)) {
+        requestDeferredLivePaint(isNewCandle, isNewCandle);
+        return;
+      }
+
+      const series = seriesRef.current;
+      if (!series) return;
       if (isNewCandle) {
         console.log(`[Push] 🆕 NEW candle → time=${new Date((c.time as number) * 1000).toISOString()}, O=${c.open} H=${c.high} L=${c.low} C=${c.close}`);
       }
       try {
         const ct = prevChartTypeRef.current || 'candlestick';
         if (ct === 'line' || ct === 'area') {
-          seriesRef.current.update({ time: c.time as Time, value: c.close });
+          series.update({ time: c.time as Time, value: c.close });
         } else {
-          seriesRef.current.update({ time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close });
+          series.update({ time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close });
         }
         if (volumeRef.current && shouldBuildVolumeData(chartSettingsRef.current)) {
           const theme = chartThemeRef.current;
@@ -3627,20 +3786,62 @@ export const TradingChart = React.memo(function TradingChart({
           shouldScrollToRealtime(chartRef.current, autoScrollEnabledRef.current, chartSettingsRef.current.chartAutoScroll)
         ) {
           try {
-            const totalBars = getCandlesForFullRender().length;
-            const activeTf = prevTimeframeRef.current || timeframe;
-            if (totalBars > 0 && totalBars <= getTradingChartDefaultVisibleBars(activeTf)) {
-              resetVisibleRangeOnNextDataRef.current = true;
-              loadHistoryRef.current?.();
-            } else {
-              chartRef.current.timeScale().scrollToRealTime();
-            }
+            chartRef.current.timeScale().scrollToRealTime();
           } catch { }
         }
       } catch (e) {
         console.error(`[Push] ❌ series.update FAILED for t=${new Date((c.time as number) * 1000).toISOString()}:`, e, c);
       }
     };
+
+    const prepareDeferredLiveModel = () => {
+      if (!pendingLiveChartPaint || !pendingLiveChartRequiresFullRender) return;
+      requestChartDataRender({
+        resetVisibleRange: false,
+        reason: 'deferred-live-rollover',
+      });
+    };
+
+    const paintDeferredLive = (fullModelPainted: boolean) => {
+      if (!pendingLiveChartPaint) return;
+      const current = currentCandleRef.current;
+      const shouldScroll = pendingLiveShouldScrollToRealtime;
+      pendingLiveChartPaint = false;
+      pendingLiveChartRequiresFullRender = false;
+      pendingLiveShouldScrollToRealtime = false;
+      if (!current) return;
+
+      if (!fullModelPainted) {
+        push(current, false, true);
+      } else {
+        updateLegendDOM(
+          current.open,
+          current.high,
+          current.low,
+          current.close,
+          getDisplayVolume(current, chartSettingsRef.current),
+        );
+        markCandlesReady();
+      }
+      repaintLivePriceOverlayFromCurrentPrice(current);
+
+      if (
+        shouldScroll
+        && chartRef.current
+        && shouldScrollToRealtime(
+          chartRef.current,
+          autoScrollEnabledRef.current,
+          chartSettingsRef.current.chartAutoScroll,
+        )
+      ) {
+        try {
+          chartRef.current.timeScale().scrollToRealTime();
+        } catch { }
+      }
+    };
+
+    postInteractionCallbacksRef.current.prepareLiveModel = prepareDeferredLiveModel;
+    postInteractionCallbacksRef.current.paintLive = paintDeferredLive;
 
     // ── rollover ───────────────────────────────────────────────────────────────
     // Opens a new candle at newTime. Does nothing if currentCandleRef is already
@@ -3650,7 +3851,7 @@ export const TradingChart = React.memo(function TradingChart({
       if (liveMarketDataFrozenRef.current) { console.warn('[Rollover] BAIL: market data frozen'); return; }
       if (!currentCandleRef.current) { console.warn('[Rollover] BAIL: currentCandleRef is null'); return; }
       if ((currentCandleRef.current.time as number) >= newTime) { console.warn(`[Rollover] BAIL: current=${currentCandleRef.current.time} >= newTime=${newTime} (already rolled)`); return; }
-      if (isDisposedRef.current || !seriesRef.current) { console.warn('[Rollover] BAIL: disposed or no series'); return; }
+      if (isDisposedRef.current) { console.warn('[Rollover] BAIL: disposed'); return; }
 
       // Archive the completed candle (once).
       const done = { ...currentCandleRef.current };
@@ -3668,8 +3869,13 @@ export const TradingChart = React.memo(function TradingChart({
 
     // ── Main tick polling loop ─────────────────────────────────────────
     const interval = setInterval(() => {
-      if (isDisposedRef.current || isRebuildingRef.current || !seriesRef.current) return;
-      if (liveMarketDataFrozenRef.current) return;
+      // Model ingestion must never pause for a pan on an active chart.
+      // Hidden tab instances release this entire runtime effect instead.
+      if (isDisposedRef.current || isRebuildingRef.current || liveMarketDataFrozenRef.current) return;
+
+      if (pendingLiveChartPaint && currentCandleRef.current && canPaintLiveChart()) {
+        flushPostInteractionWork();
+      }
       const activeTf = prevTimeframeRef.current || timeframe;
 
       // Get the latest tick from window.rtxTickCache map first for high performance, fallback to Zustand store
@@ -3697,6 +3903,16 @@ export const TradingChart = React.memo(function TradingChart({
 
       const price = getChartPriceFromQuote(tick);
       if (price == null) return;
+      const rawTickTimestamp = Number(tick.timestamp);
+      if (!Number.isFinite(rawTickTimestamp) || rawTickTimestamp <= 0) return;
+
+      // Reject only the exact quote already processed by the 50ms poll. Use the
+      // raw timestamp (before second bucketing) plus both quote sides so a newer
+      // same-price tick still advances candle time/volume and SL/TP semantics.
+      const tickKey = `${rawTickTimestamp}:${tick.bid}:${tick.ask ?? tick.bid}:${price}`;
+      if (tickKey === lastTickKey) return;
+      lastTickKey = tickKey;
+
       const livePriceMatchesRenderedScale = normalizeRenderedCandlesToLivePrice(price, activeTf);
       if (!livePriceMatchesRenderedScale || !isLivePriceSafeForCandles(price)) {
         const allowDrop = canDropPreloadedCandlesForLiveQuoteMismatch({
@@ -3758,8 +3974,7 @@ export const TradingChart = React.memo(function TradingChart({
         lastAcceptedQuoteRef.current = guard.state.lastAcceptedQuote;
         incompatibleQuoteCountRef.current = guard.state.incompatibleQuoteCount;
       }
-      let ts = tick.timestamp;
-      if (!ts) return;
+      let ts = rawTickTimestamp;
       if (ts > 1_000_000_000_000) ts = Math.floor(ts / 1000); // ms → sec
 
       // ── SAFEGUARD: prevent laggy broker ticks from pulling chart backwards ──
@@ -3769,13 +3984,6 @@ export const TradingChart = React.memo(function TradingChart({
 
       const tfs = getTimeframeSeconds(activeTf as AggTimeframe);
       const candleTime = alignTimeframeBoundarySeconds(ts, activeTf as AggTimeframe, tfs);
-
-      // Dedup: same raw timestamp AND same price → skip (prevents 100ms poll from
-      // re-processing the exact same tick repeatedly). candleTime is NOT used as the
-      // dedup key — that would block same-price ticks in a new minute.
-      const key = `${ts}:${price.toFixed(5)}`;
-      if (key === lastTickKey) return;
-      lastTickKey = key;
 
       // ── Update live price DOM line + badge ──
 
@@ -3817,7 +4025,7 @@ export const TradingChart = React.memo(function TradingChart({
       // Refresh after candle creation/update so the first live-only tick has a
       // price scale before we ask LightweightCharts for a coordinate.
       if (currentCandleRef.current) {
-        repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+        repaintLivePriceOverlayOrDefer(currentCandleRef.current);
       }
 
       // Backend/broker owns SL/TP execution. The frontend only refreshes server
@@ -3879,8 +4087,10 @@ export const TradingChart = React.memo(function TradingChart({
         // LightweightCharts cannot update historical datums via update(); merge the
         // authoritative server correction and repaint the full sorted set instead.
         mergeCandleIntoRef(c);
-        updateChartData(candlesRef.current);
-        if (candlesRef.current.length > 0) markCandlesReady();
+        updateChartData(candlesRef.current, undefined, {
+          finishLoadingAfterRender: true,
+          reason: 'server-candle-history-correction',
+        });
         return;
       }
 
@@ -3894,7 +4104,7 @@ export const TradingChart = React.memo(function TradingChart({
           refreshMarketGapSeriesForCandle(currentCandleRef.current);
           push(currentCandleRef.current, false);
         }
-        repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+        repaintLivePriceOverlayOrDefer(currentCandleRef.current);
         return;
       }
 
@@ -3908,7 +4118,7 @@ export const TradingChart = React.memo(function TradingChart({
           refreshMarketGapSeriesForCandle(currentCandleRef.current);
           push(currentCandleRef.current, true);
         }
-        repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+        repaintLivePriceOverlayOrDefer(currentCandleRef.current);
         return;
       }
 
@@ -3926,7 +4136,7 @@ export const TradingChart = React.memo(function TradingChart({
             refreshMarketGapSeriesForCandle(currentCandleRef.current);
             push(currentCandleRef.current, false);
           }
-          repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+          repaintLivePriceOverlayOrDefer(currentCandleRef.current);
         }
 
         // We no longer need to reschedule boundary timer here!
@@ -3957,16 +4167,17 @@ export const TradingChart = React.memo(function TradingChart({
         candlesRef.current = mergeBackendCandlePage(candlesRef.current, reconciledSnapshot).candles;
         mergeHistoryCache(prevTimeframeRef.current || streamTimeframe, reconciledSnapshot);
         updateChartData(candlesRef.current, undefined, {
+          immediate: true,
+          finishLoadingAfterRender: true,
           reason: 'stream-snapshot',
         });
         currentCandleRef.current = candlesRef.current[candlesRef.current.length - 1] ?? currentCandleRef.current;
         if (currentCandleRef.current) {
-          repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+          repaintLivePriceOverlayOrDefer(currentCandleRef.current);
         }
         // Snapshot is the authoritative full bar set — dismiss the loader if we
         // were still waiting on history (covers the cold-start path where REST
         // returned empty and the WS catches up ~tens of seconds later).
-        setLoadingPhase(prev => (prev === 'connecting' || prev === 'receiving' ? 'ready' : prev));
       },
       onCandle: (candle) => applyServerCandle(candle),
       onError: (error) => setApiError(error.message),
@@ -3975,16 +4186,22 @@ export const TradingChart = React.memo(function TradingChart({
     return () => {
       clearInterval(interval);
       candleStream.close();
+      if (postInteractionCallbacksRef.current.prepareLiveModel === prepareDeferredLiveModel) {
+        postInteractionCallbacksRef.current.prepareLiveModel = () => undefined;
+      }
+      if (postInteractionCallbacksRef.current.paintLive === paintDeferredLive) {
+        postInteractionCallbacksRef.current.paintLive = () => undefined;
+      }
+      postInteractionCoordinatorRef.current?.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, activeTimeframe, authToken, markCandlesReady]);
+  }, [symbol, activeTimeframe, authToken, brokerAccountSessionScope, markCandlesReady]);
 
   // ── Candle Countdown Timer ──
-  useEffect(() => {
-    if (!symbol) return;
-    let lastIntervalNum = 0;
+  useActiveChartRuntimeEffect(visibleRuntime.interval, () => {
+    if (!isActive || !symbol) return;
 
-    const interval = setInterval(() => {
+    const updateCountdown = () => {
       const activeTf = prevTimeframeRef.current || timeframe;
       const tfs = getTimeframeSeconds(activeTf as AggTimeframe);
 
@@ -4015,8 +4232,14 @@ export const TradingChart = React.memo(function TradingChart({
           countdownTextRef.current.textContent = '';
         }
       }
-    }, 1000);
-    return () => clearInterval(interval);
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => {
+      clearInterval(interval);
+      if (countdownTextRef.current) countdownTextRef.current.textContent = '';
+    };
   }, [symbol, timeframe]);
 
   // The primary tick aggregation interval handles all live OHLCV updates perfectly.
@@ -4156,10 +4379,8 @@ export const TradingChart = React.memo(function TradingChart({
         const prepareResetRender = () => {
           cancelQueuedChartRender();
           isChartInteractionActiveRef.current = false;
-          if (chartInteractionIdleTimerRef.current !== null) {
-            window.clearTimeout(chartInteractionIdleTimerRef.current);
-            chartInteractionIdleTimerRef.current = null;
-          }
+          chartInteractionOwnershipRef.current?.reset();
+          postInteractionCoordinatorRef.current?.clear();
         };
         const renderResetCandles = (candles: Candle[], reason: string): boolean => {
           if (candles.length < minimumResetBars) return false;
@@ -4173,21 +4394,27 @@ export const TradingChart = React.memo(function TradingChart({
           updateChartData(candles, undefined, {
             immediate: true,
             resetVisibleRange: true,
+            finishLoadingAfterRender: true,
             reason,
           });
-          setLoadingPhase('ready');
           return true;
         };
 
         if (activeSymbol) {
           setLoadingPhase('connecting');
           try {
-            let fetchedCandles = getValidSortedCandles(await chartDataService.fetchCandles({
+            const resetHistoryRequest = historyRequestCoordinatorRef.current.start({
               symbol: activeSymbol,
               timeframe: activeTf,
               count: getInitialHistoryCount(activeTf),
-            }));
-            if (isDisposedRef.current || (prevSymbolRef.current || symbol) !== activeSymbol) return;
+            }, options => chartDataService.fetchCandles(options));
+            let fetchedCandles = getValidSortedCandles(await resetHistoryRequest.result);
+            if (
+              isDisposedRef.current
+              || !resetHistoryRequest.isCurrent()
+              || (prevSymbolRef.current || symbol) !== activeSymbol
+              || (prevTimeframeRef.current || timeframe) !== activeTf
+            ) return;
 
             const rawFetchedCandles = fetchedCandles;
             fetchedCandles = reconcileCandlesWithLiveQuote(fetchedCandles, 'reset viewport history');
@@ -4349,7 +4576,9 @@ export const TradingChart = React.memo(function TradingChart({
           }
           setLoadingPhase('connecting');
         }
-        loadHistoryRef.current?.();
+        // The panel-prop update above drives the dedicated symbol/timeframe
+        // history effect. Keeping that effect as the only switch owner avoids
+        // a second request from this command path.
       }
     });
 
@@ -4490,23 +4719,14 @@ export const TradingChart = React.memo(function TradingChart({
     };
   }, []);
 
-  // Handle TOGGLE_CROSSHAIR command — toggles the crosshair button in the toolbar
-  // When ON: show crosshair lines + set Magnet mode. When OFF: hide lines (arrow mode).
-  useEffect(() => {
-    const unsubCrosshair = commandBus.subscribe('TOGGLE_CROSSHAIR', () => {
-      const next = !crosshairEnabledRef.current;
-      crosshairEnabledRef.current = next;
-      setCrosshairEnabled(next);
-      console.log(`[Chart] Custom crosshair: ${next ? 'ON' : 'OFF'}`);
-    });
-
-    return () => {
-      unsubCrosshair();
-    };
-  }, []);
+  // Crosshair command state is owned by useToolbarState. Hidden tabs retain the
+  // latest setting without owning another dedicated command subscription, while
+  // useCrosshair above only runs its pointer/RAF work for the visible chart.
 
   // Keyboard shortcuts for drawing tools + Alt+T one-click trading
   useEffect(() => {
+    if (!isActive) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Skip if user is typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName;
@@ -4628,7 +4848,7 @@ export const TradingChart = React.memo(function TradingChart({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('toggle-one-click-trading', handleToggleOneClick);
     };
-  }, [symbol]);
+  }, [isActive, symbol]);
 
   // ─── Trade Annotations on Chart (MT5-style entry/exit markers + live trails) ───
   const TRADE_BUY_COLOR = '#22c55e';
@@ -4649,7 +4869,6 @@ export const TradingChart = React.memo(function TradingChart({
   const tradeHistoryRefreshTimerRef = useRef<number | null>(null);
   const tradeMissingGraceTimerRef = useRef<number | null>(null);
   const tradeOverlayRafRef = useRef<number | null>(null);
-  const tradeOverlayInteractionRelayoutPendingRef = useRef(false);
   const tradeLevelCrossRefreshPendingRef = useRef<Set<string>>(new Set());
   const tradeLevelCrossCloseCandidatesRef = useRef<Map<string, number>>(new Map());
   const tradeLevelOverridesRef = useRef<Map<string, TradeLevelOverride>>(new Map());
@@ -4779,6 +4998,22 @@ export const TradingChart = React.memo(function TradingChart({
     clearTradeOverlayLayer('active');
     clearTradeOverlayLayer('history');
   }, [clearTradeOverlayLayer]);
+
+  const clearTradeOverlayVisualRuntime = useCallback(() => {
+    if (tradeHistoryRefreshTimerRef.current !== null) {
+      window.clearTimeout(tradeHistoryRefreshTimerRef.current);
+      tradeHistoryRefreshTimerRef.current = null;
+    }
+    if (tradeMissingGraceTimerRef.current !== null) {
+      window.clearTimeout(tradeMissingGraceTimerRef.current);
+      tradeMissingGraceTimerRef.current = null;
+    }
+    if (tradeOverlayRafRef.current !== null) {
+      window.cancelAnimationFrame(tradeOverlayRafRef.current);
+      tradeOverlayRafRef.current = null;
+    }
+    clearTradeOverlay();
+  }, [clearTradeOverlay]);
 
   const getNearestCandleByTime = useCallback((time: number, maxDistanceSeconds?: number): Candle | null => {
     const candles = candlesRef.current;
@@ -4977,20 +5212,39 @@ export const TradingChart = React.memo(function TradingChart({
       const y = series.priceToCoordinate(livePriceRef.current);
       if (y !== null && y !== undefined && y > 0) {
         const overlayColors = livePriceOverlayColorsRef.current;
+        applyStableLivePriceHorizontalGeometry(priceScaleWidth);
         livePriceLineRef.current.style.display = 'block';
         livePriceLineRef.current.style.top = `${y}px`;
-        livePriceLineRef.current.style.right = `${priceScaleWidth}px`;
         livePriceLineRef.current.style.borderTopColor = overlayColors.lineColor;
         livePriceBadgeRef.current.style.display = 'block';
         livePriceBadgeRef.current.style.top = `${y}px`;
-        livePriceBadgeRef.current.style.width = `${priceScaleWidth}px`;
         livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;
         livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;
       }
     }
-  }, []);
+  }, [applyStableLivePriceHorizontalGeometry]);
 
-  useEffect(() => {
+  const layoutPostInteractionOverlays = useCallback(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    const overlay = overlayRef.current;
+    if (!isDisposedRef.current && chart && series && overlay) {
+      drawingManager.setChart(
+        chart,
+        series,
+        prevSymbolRef.current || symbol,
+        1,
+        overlay,
+        prevTimeframeRef.current || timeframe,
+      );
+      drawingManager.renderAll();
+    }
+    updateLabelPositions();
+  }, [symbol, timeframe, updateLabelPositions]);
+
+  postInteractionCallbacksRef.current.layoutOverlay = layoutPostInteractionOverlays;
+
+  useActiveChartRuntimeEffect(visibleRuntime.overlay, () => {
     if (isDisposedRef.current || !seriesRef.current || !chartRef.current || !symbol) return;
 
     hydrateTradeLevelOverrides();
@@ -5000,7 +5254,7 @@ export const TradingChart = React.memo(function TradingChart({
 
     const queueTradeOverlayRelayout = () => {
       if (isChartInteractionActiveRef.current) {
-        tradeOverlayInteractionRelayoutPendingRef.current = true;
+        postInteractionCoordinatorRef.current?.request({ overlay: true });
         return;
       }
 
@@ -5989,18 +6243,8 @@ export const TradingChart = React.memo(function TradingChart({
 
     renderTradeOverlay();
 
-    const crosshairLabelUpdater = () => queueTradeOverlayRelayout();
-    chartRef.current.subscribeCrosshairMove(crosshairLabelUpdater);
-
     const timeScaleHandler = () => queueTradeOverlayRelayout();
     chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(timeScaleHandler);
-
-    const handleChartInteractionIdle = () => {
-      if (!tradeOverlayInteractionRelayoutPendingRef.current) return;
-      tradeOverlayInteractionRelayoutPendingRef.current = false;
-      queueTradeOverlayRelayout();
-    };
-    window.addEventListener(CHART_INTERACTION_IDLE_EVENT, handleChartInteractionIdle);
 
     const unsubscribeAppStore = useAppStore.subscribe((state, previousState) => {
       const currentTick = resolveSymbolTick(state.ticks);
@@ -6012,6 +6256,8 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       if (
+        isActiveRef.current
+        &&
         currentTick !== previousTick
         && (activeTradeSnapshotsRef.current.size > 0 || pendingMissingActiveTradesRef.current.size > 0)
       ) {
@@ -6119,28 +6365,10 @@ export const TradingChart = React.memo(function TradingChart({
       window.removeEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
       window.removeEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
       window.removeEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
-      window.removeEventListener(CHART_INTERACTION_IDLE_EVENT, handleChartInteractionIdle);
-      tradeOverlayInteractionRelayoutPendingRef.current = false;
-
-      if (tradeHistoryRefreshTimerRef.current !== null) {
-        window.clearTimeout(tradeHistoryRefreshTimerRef.current);
-        tradeHistoryRefreshTimerRef.current = null;
-      }
-      if (tradeMissingGraceTimerRef.current !== null) {
-        window.clearTimeout(tradeMissingGraceTimerRef.current);
-        tradeMissingGraceTimerRef.current = null;
-      }
-      if (tradeOverlayRafRef.current !== null) {
-        cancelAnimationFrame(tradeOverlayRafRef.current);
-        tradeOverlayRafRef.current = null;
-      }
-
-      try { chartRef.current?.unsubscribeCrosshairMove(crosshairLabelUpdater); } catch { }
       try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(timeScaleHandler); } catch { }
-
-      clearTradeOverlay();
+      clearTradeOverlayVisualRuntime();
     };
-  }, [brokerTimeOffsetSec, clearTradeOverlay, clearTradeOverlayLayer, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, symbol, timeframe, updateLabelPositions]);
+  }, [brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, symbol, timeframe, updateLabelPositions]);
 
   useEffect(() => {
     if (candlesLoadedRev <= 0) return;
@@ -6577,7 +6805,6 @@ export const TradingChart = React.memo(function TradingChart({
     renderPositionLines();
 
     let positionLabelRaf: number | null = null;
-    let positionLabelRelayoutPendingAfterInteraction = false;
     const queuePositionLabelUpdate = () => {
       if (positionLabelRaf !== null) return;
       positionLabelRaf = requestAnimationFrame(() => {
@@ -6587,25 +6814,12 @@ export const TradingChart = React.memo(function TradingChart({
     };
     const schedulePositionLabelUpdate = () => {
       if (isChartInteractionActiveRef.current) {
-        positionLabelRelayoutPendingAfterInteraction = true;
+        postInteractionCoordinatorRef.current?.request({ overlay: true });
         return;
       }
 
       queuePositionLabelUpdate();
     };
-    const handleChartInteractionIdle = () => {
-      if (!positionLabelRelayoutPendingAfterInteraction) return;
-      positionLabelRelayoutPendingAfterInteraction = false;
-      queuePositionLabelUpdate();
-    };
-
-    // Update label positions on every crosshair move
-    const crosshairLabelUpdater = (_param: any) => {
-      queuePositionLabelUpdate();
-    };
-    if (chartRef.current) {
-      chartRef.current.subscribeCrosshairMove(crosshairLabelUpdater);
-    }
 
     // Also update on time scale changes (scroll, zoom)
     const timeScaleHandler = () => {
@@ -6614,7 +6828,6 @@ export const TradingChart = React.memo(function TradingChart({
     if (chartRef.current) {
       chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(timeScaleHandler);
     }
-    window.addEventListener(CHART_INTERACTION_IDLE_EVENT, handleChartInteractionIdle);
 
     // Re-render when useAppStore positions change
     const unsubscribePositions = useAppStore.subscribe((state, prevState) => {
@@ -6637,13 +6850,11 @@ export const TradingChart = React.memo(function TradingChart({
     return () => {
       unsubscribePositions();
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
-      window.removeEventListener(CHART_INTERACTION_IDLE_EVENT, handleChartInteractionIdle);
       if (positionLabelRaf !== null) {
         cancelAnimationFrame(positionLabelRaf);
         positionLabelRaf = null;
       }
       if (chartRef.current) {
-        try { chartRef.current.unsubscribeCrosshairMove(crosshairLabelUpdater); } catch { }
         try { chartRef.current.timeScale().unsubscribeVisibleLogicalRangeChange(timeScaleHandler); } catch { }
       }
       cleanup();
@@ -6770,8 +6981,8 @@ export const TradingChart = React.memo(function TradingChart({
   }, [symbol]);
 
   const handleCtxRefresh = useCallback(() => {
-    loadHistory();
-  }, [loadHistory]);
+    loadHistory(symbol, prevTimeframeRef.current || timeframe);
+  }, [loadHistory, symbol, timeframe]);
 
   const handleCtxSaveAsPicture = useCallback(() => {
     captureFullPage();
@@ -6783,6 +6994,8 @@ export const TradingChart = React.memo(function TradingChart({
 
   // ── Drag to Spawn MT5 Trade Levels ──
   useEffect(() => {
+    if (!isActive) return;
+
     const container = containerRef.current;
     if (!container) return;
     const interactionRoot = container.parentElement ?? container;
@@ -6802,20 +7015,12 @@ export const TradingChart = React.memo(function TradingChart({
     let previousUserSelect = '';
     let dragCursorActive = false;
     let tradeHoverCursorActive = false;
+    let tradeHoverFrame: number | null = null;
+    let pendingTradeHoverPoint: { clientX: number; clientY: number } | null = null;
 
     const getChartY = (e: PointerEvent) => {
       const rect = container.getBoundingClientRect();
       return e.clientY - rect.top;
-    };
-
-    const isPointerInsideChart = (e: PointerEvent) => {
-      const rect = container.getBoundingClientRect();
-      return (
-        e.clientX >= rect.left
-        && e.clientX <= rect.right
-        && e.clientY >= rect.top
-        && e.clientY <= rect.bottom
-      );
     };
 
     const getEntryDragDirection = (y: number, startY: number): 1 | -1 | null => {
@@ -6980,7 +7185,7 @@ export const TradingChart = React.memo(function TradingChart({
     };
 
     const setTradeHoverCursor = (active: boolean) => {
-      if (dragCursorActive || (!active && !tradeHoverCursorActive)) return;
+      if (dragCursorActive || active === tradeHoverCursorActive) return;
       tradeHoverCursorActive = active;
       const cursor = active ? 'grab' : 'default';
       interactionRoot.style.cursor = active ? cursor : '';
@@ -6990,7 +7195,57 @@ export const TradingChart = React.memo(function TradingChart({
       });
     };
 
+    const cancelQueuedTradeHover = () => {
+      pendingTradeHoverPoint = null;
+      if (tradeHoverFrame === null) return;
+      window.cancelAnimationFrame(tradeHoverFrame);
+      tradeHoverFrame = null;
+    };
+
+    const queueTradeHover = (e: PointerEvent) => {
+      pendingTradeHoverPoint = { clientX: e.clientX, clientY: e.clientY };
+      if (tradeHoverFrame !== null) return;
+
+      tradeHoverFrame = window.requestAnimationFrame(() => {
+        tradeHoverFrame = null;
+        const point = pendingTradeHoverPoint;
+        pendingTradeHoverPoint = null;
+
+        if (
+          !point
+          || dragState
+          || isChartInteractionActiveRef.current
+          || !seriesRef.current
+          || activeToolRef.current !== null
+          || chartSettingsRef.current.showTradeLevels === false
+        ) {
+          setTradeHoverCursor(false);
+          return;
+        }
+
+        // Read chart geometry once for this coalesced hover frame. The actual
+        // trade-level scan is deliberately outside the active pan path.
+        const rect = container.getBoundingClientRect();
+        const isInside = (
+          point.clientX >= rect.left
+          && point.clientX <= rect.right
+          && point.clientY >= rect.top
+          && point.clientY <= rect.bottom
+        );
+        if (!isInside) {
+          setTradeHoverCursor(false);
+          return;
+        }
+
+        const y = point.clientY - rect.top;
+        setTradeHoverCursor(Boolean(findClosestTradeLevel(y, TRADE_LEVEL_HIT_AREA_PX / 2)));
+      });
+    };
+
     const handlePointerDown = (e: PointerEvent) => {
+      cancelQueuedTradeHover();
+      setTradeHoverCursor(false);
+
       // Trade levels get first priority when the pointer is actually on/near one.
       if (e.button !== 0 || !seriesRef.current) return;
       if (!tradeAllowed) return;
@@ -7058,84 +7313,93 @@ export const TradingChart = React.memo(function TradingChart({
     };
 
     const handlePointerMove = (e: PointerEvent) => {
-      if (!dragState) {
-        if (
-          !seriesRef.current
-          || activeToolRef.current !== null
-          || chartSettingsRef.current.showTradeLevels === false
-          || !isPointerInsideChart(e)
-        ) {
-          setTradeHoverCursor(false);
+      // A captured trade-level drag must stay synchronous even if the generic
+      // chart-interaction flag is still active from an earlier pan gesture.
+      if (dragState) {
+        if (!dragLineOverlay || !dragBadgeOverlay || !seriesRef.current) return;
+        if (capturedPointerId !== null && e.pointerId !== capturedPointerId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const y = getChartY(e);
+        const rawPrice = seriesRef.current.coordinateToPrice(y as any);
+        if (rawPrice === null) return;
+
+        const { tradeObj, grabbedType, entryAnchorY } = dragState;
+        const digits = getSymbolDigits(tradeObj.symbol);
+        const minStopDistance = getTradeLevelDragMinDistance(digits);
+        const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
+        const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
+
+        // Entry-line clicks are ignored, but any real vertical drag should create SL/TP.
+        // Existing SL/TP levels remain freely repositionable.
+        const hasRealEntryDrag = entryDragDirection !== null;
+        const showPreview = grabbedType !== 'ENTRY' || hasRealEntryDrag;
+        const previewUpdate = showPreview
+          ? applyTradeLevelDragUpdate({
+            side: tradeObj.side,
+            grabbedType,
+            entryPrice: tradeObj.entryPrice,
+            finalPrice: rawPrice,
+            currentSl: tradeObj.sl,
+            currentTp: tradeObj.tp,
+            digits,
+            currentPrice: liveCurrentPrice,
+            minStopDistance,
+            minEntryDistance: grabbedType === 'ENTRY' ? minStopDistance : undefined,
+            snapEntryToMinDistance: grabbedType === 'ENTRY',
+            entryDragDirection: entryDragDirection ?? undefined,
+          })
+          : null;
+
+        if (!previewUpdate || !Number.isFinite(previewUpdate.price) || previewUpdate.price <= 0) {
+          const idleY = grabbedType === 'ENTRY' ? entryAnchorY : y;
+          dragLineOverlay.style.borderTopColor = 'transparent';
+          dragBadgeOverlay.style.opacity = '0';
+          dragLineOverlay.style.transform = `translate3d(0, ${idleY}px, 0)`;
+          dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${idleY}px))`;
           return;
         }
-        setTradeHoverCursor(Boolean(findClosestTradeLevel(getChartY(e), TRADE_LEVEL_HIT_AREA_PX / 2)));
+
+        const price = previewUpdate.price;
+        const role = previewUpdate.role;
+        const color = getDragRoleColor(role);
+        const palette = getTradeOverlayCardPalette(role, isChartSurfaceLight());
+
+        // Draw at the clamped price coordinate so the level sticks to the broker-valid
+        // boundary instead of following the pointer into a zone the broker would reject.
+        const clampedY = seriesRef.current.priceToCoordinate(price);
+        const drawY = clampedY === null || !Number.isFinite(clampedY) ? y : (clampedY as number);
+
+        dragLineOverlay.style.borderTopColor = color;
+        dragBadgeOverlay.style.opacity = '1';
+        dragLineOverlay.style.transform = `translate3d(0, ${drawY}px, 0)`;
+
+        dragBadgeOverlay.style.background = palette.background;
+        dragBadgeOverlay.style.borderColor = palette.border;
+        dragBadgeOverlay.style.color = palette.text;
+        dragBadgeOverlay.style.boxShadow = palette.shadow.replace(/^box-shadow:/, '').replace(/;$/, '');
+        dragBadgeOverlay.textContent = `${role} ${price.toFixed(digits)}`;
+        dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${drawY}px))`;
         return;
       }
 
-      if (!dragLineOverlay || !dragBadgeOverlay || !seriesRef.current) return;
-      if (capturedPointerId !== null && e.pointerId !== capturedPointerId) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const y = getChartY(e);
-      const rawPrice = seriesRef.current.coordinateToPrice(y as any);
-      if (rawPrice === null) return;
-
-      const { tradeObj, grabbedType, entryAnchorY } = dragState;
-      const digits = getSymbolDigits(tradeObj.symbol);
-      const minStopDistance = getTradeLevelDragMinDistance(digits);
-      const liveCurrentPrice = activeTradeSnapshotsRef.current.get(tradeObj.key)?.currentPrice ?? tradeObj.currentPrice;
-      const entryDragDirection = grabbedType === 'ENTRY' ? getEntryDragDirection(y, entryAnchorY) : null;
-
-      // Entry-line clicks are ignored, but any real vertical drag should create SL/TP.
-      // Existing SL/TP levels remain freely repositionable.
-      const hasRealEntryDrag = entryDragDirection !== null;
-      const showPreview = grabbedType !== 'ENTRY' || hasRealEntryDrag;
-      const previewUpdate = showPreview
-        ? applyTradeLevelDragUpdate({
-          side: tradeObj.side,
-          grabbedType,
-          entryPrice: tradeObj.entryPrice,
-          finalPrice: rawPrice,
-          currentSl: tradeObj.sl,
-          currentTp: tradeObj.tp,
-          digits,
-          currentPrice: liveCurrentPrice,
-          minStopDistance,
-          minEntryDistance: grabbedType === 'ENTRY' ? minStopDistance : undefined,
-          snapEntryToMinDistance: grabbedType === 'ENTRY',
-          entryDragDirection: entryDragDirection ?? undefined,
-        })
-        : null;
-
-      if (!previewUpdate || !Number.isFinite(previewUpdate.price) || previewUpdate.price <= 0) {
-        const idleY = grabbedType === 'ENTRY' ? entryAnchorY : y;
-        dragLineOverlay.style.borderTopColor = 'transparent';
-        dragBadgeOverlay.style.opacity = '0';
-        dragLineOverlay.style.transform = `translate3d(0, ${idleY}px, 0)`;
-        dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${idleY}px))`;
+      if (isChartInteractionActiveRef.current) {
+        cancelQueuedTradeHover();
+        setTradeHoverCursor(false);
         return;
       }
 
-      const price = previewUpdate.price;
-      const role = previewUpdate.role;
-      const color = getDragRoleColor(role);
-      const palette = getTradeOverlayCardPalette(role, isChartSurfaceLight());
+      if (
+        !seriesRef.current
+        || activeToolRef.current !== null
+        || chartSettingsRef.current.showTradeLevels === false
+      ) {
+        cancelQueuedTradeHover();
+        setTradeHoverCursor(false);
+        return;
+      }
 
-      // Draw at the clamped price coordinate so the level sticks to the broker-valid
-      // boundary instead of following the pointer into a zone the broker would reject.
-      const clampedY = seriesRef.current.priceToCoordinate(price);
-      const drawY = clampedY === null || !Number.isFinite(clampedY) ? y : (clampedY as number);
-
-      dragLineOverlay.style.borderTopColor = color;
-      dragBadgeOverlay.style.opacity = '1';
-      dragLineOverlay.style.transform = `translate3d(0, ${drawY}px, 0)`;
-
-      dragBadgeOverlay.style.background = palette.background;
-      dragBadgeOverlay.style.borderColor = palette.border;
-      dragBadgeOverlay.style.color = palette.text;
-      dragBadgeOverlay.style.boxShadow = palette.shadow.replace(/^box-shadow:/, '').replace(/;$/, '');
-      dragBadgeOverlay.textContent = `${role} ${price.toFixed(digits)}`;
-      dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${drawY}px))`;
+      queueTradeHover(e);
     };
 
     const handlePointerUp = (e: PointerEvent) => {
@@ -7300,13 +7564,13 @@ export const TradingChart = React.memo(function TradingChart({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerCancel);
-      if (dragLineOverlay) dragLineOverlay.remove();
-      if (dragBadgeOverlay) dragBadgeOverlay.remove();
-      releasePointerCapture();
-      endDragCursor();
+      cancelQueuedTradeHover();
+      // A tab can deactivate mid-drag. Reuse the normal cancellation path so
+      // capture, overlays, cursors, and chart scroll options are restored.
+      handlePointerCancel();
       setTradeHoverCursor(false);
     };
-  }, [persistTradeLevelOverrides, tradeAllowed]);
+  }, [isActive, persistTradeLevelOverrides, tradeAllowed]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -7430,65 +7694,64 @@ export const TradingChart = React.memo(function TradingChart({
           advanced/untitled-light mode gets sans font, semibold/bold mix,
           theme-purple symbol with traditional H/L colors highlighted in soft pills. */}
       {isAdvancedUntitledLight ? (
-        <div style={{
+        <div className="rtx-chart-hud" style={{
           position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
-          fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
-          fontSize: '11px', letterSpacing: '0.01em',
+          fontFamily: 'var(--font-sans)', fontSize: '14px', fontWeight: 400, lineHeight: '16px', letterSpacing: 'normal',
           display: 'flex', alignItems: 'center', gap: '8px'
         }}>
           <span style={{
-            fontWeight: 700, color: '#7f56d9',
+            fontWeight: 400, color: '#7f56d9',
             background: 'rgba(127, 86, 217, 0.10)',
             padding: '2px 8px', borderRadius: '4px',
           }}>{symbol}, {timeframe}</span>
-          <span style={{ fontWeight: 500, color: '#475467' }}>
+          <span style={{ fontWeight: 400, color: '#475467' }}>
             O: <span ref={ohlcOpenRef} style={{
-              fontWeight: 600, color: '#1d2939',
+              fontWeight: 400, color: '#1d2939',
               background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
             }}>0.00000</span>
           </span>
-          <span style={{ fontWeight: 500, color: '#475467' }}>
+          <span style={{ fontWeight: 400, color: '#475467' }}>
             H: <span ref={ohlcHighRef} style={{
-              fontWeight: 600, color: '#16a34a',
+              fontWeight: 400, color: '#16a34a',
               background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
             }}>0.00000</span>
           </span>
-          <span style={{ fontWeight: 500, color: '#475467' }}>
+          <span style={{ fontWeight: 400, color: '#475467' }}>
             L: <span ref={ohlcLowRef} style={{
-              fontWeight: 600, color: '#dc2626',
+              fontWeight: 400, color: '#dc2626',
               background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
             }}>0.00000</span>
           </span>
-          <span style={{ fontWeight: 500, color: '#475467' }}>
+          <span style={{ fontWeight: 400, color: '#475467' }}>
             C: <span ref={ohlcCloseRef} style={{
-              fontWeight: 600, color: '#1d2939',
+              fontWeight: 400, color: '#1d2939',
               background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
             }}>0.00000</span>
           </span>
-          <span style={{ fontWeight: 500, color: '#475467' }}>
+          <span style={{ fontWeight: 400, color: '#475467' }}>
             V: <span ref={ohlcVolumeRef} style={{
-              fontWeight: 600, color: '#1d2939',
+              fontWeight: 400, color: '#1d2939',
               background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
             }}>0</span>
           </span>
           <span ref={countdownTextRef} style={{
-            marginLeft: '6px', fontWeight: 700, color: '#b45309',
+            marginLeft: '6px', fontWeight: 400, color: '#b45309',
             background: 'rgba(245, 158, 11, 0.12)', padding: '1px 6px', borderRadius: '3px'
           }}></span>
         </div>
       ) : (
-        <div style={{
+        <div className="rtx-chart-hud" style={{
           position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
-          fontFamily: "Consolas, 'Courier New', monospace", fontSize: '11px', color: '#A1A1AA',
+          fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 400, lineHeight: '16px', color: '#A1A1AA',
           textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px'
         }}>
-          <span style={{ fontWeight: 'bold', color: '#E4E4E7' }}>{symbol}, {timeframe}</span>
+          <span style={{ fontWeight: 400, color: '#E4E4E7' }}>{symbol}, {timeframe}</span>
           <span>O: <span ref={ohlcOpenRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
           <span>H: <span ref={ohlcHighRef} style={{ color: '#22C55E' }}>0.00000</span></span>
           <span>L: <span ref={ohlcLowRef} style={{ color: '#EF4444' }}>0.00000</span></span>
           <span>C: <span ref={ohlcCloseRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
           <span>V: <span ref={ohlcVolumeRef} style={{ color: '#E4E4E7' }}>0</span></span>
-          <span ref={countdownTextRef} style={{ marginLeft: '12px', color: '#F59E0B', fontWeight: 'bold' }}></span>
+          <span ref={countdownTextRef} style={{ marginLeft: '12px', color: '#F59E0B', fontWeight: 400 }}></span>
         </div>
       )}
 
@@ -7576,9 +7839,9 @@ export const TradingChart = React.memo(function TradingChart({
           position: 'absolute',
           top: -9999,
           left: 0,
-          right: 52,
+          right: LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX,
           height: 0,
-          borderTop: `1px dashed ${initialLivePriceOverlayColors.lineColor}`,
+          borderTop: `1px solid ${initialLivePriceOverlayColors.lineColor}`,
           pointerEvents: 'none',
           zIndex: 7,
           transform: 'translateY(-0.5px)',

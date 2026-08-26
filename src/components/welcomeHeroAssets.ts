@@ -79,7 +79,7 @@ const GTA_LOGIN_HERO_ASSET: LoginHeroAsset = {
 };
 
 const MYPROP_LOGIN_HERO_ASSET: LoginHeroAsset = {
-  src: toPublicAssetPath('login/myprop-hero-wide.png'),
+  src: toPublicAssetPath('login/myprop-hero-wide.webp'),
   mobileSrc: toPublicAssetPath('login/myprop-hero-mobile.jpg'),
   width: 1672,
   height: 941,
@@ -90,7 +90,7 @@ const MYPROP_LOGIN_HERO_ASSET: LoginHeroAsset = {
 };
 
 const ACHIEVER_LOGIN_HERO_ASSET: LoginHeroAsset = {
-  src: toPublicAssetPath('login/achiever-hero-desktop-fit.png'),
+  src: toPublicAssetPath('login/achiever-hero-desktop-fit.webp'),
   mobileSrc: toPublicAssetPath('login/achiever-hero-mobile.jpg'),
   width: 1024,
   height: 928,

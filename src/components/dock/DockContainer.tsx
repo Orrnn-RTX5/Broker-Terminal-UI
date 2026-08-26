@@ -369,6 +369,15 @@ export const DockContainer: React.FC<DockContainerProps> = ({
   if (currentContainer.type === 'split') {
     const isHorizontal = currentContainer.direction === 'horizontal';
     const hasChartFocusPanel = containerHasChartFocusPanel(currentContainer);
+    const fallbackRatio = currentContainer.children.length > 0
+      ? 1 / currentContainer.children.length
+      : 1;
+    const childRatios = currentContainer.children.map((child) => (
+      Number.isFinite(child.ratio) && child.ratio > 0
+        ? child.ratio
+        : fallbackRatio
+    ));
+    const totalChildRatio = childRatios.reduce((sum, ratio) => sum + ratio, 0);
 
     return (
       <div
@@ -389,7 +398,12 @@ export const DockContainer: React.FC<DockContainerProps> = ({
           const childContainer = isContainer ? child : null;
           const childPanel = isContainer ? null : child;
           const childItem = child;
-          const ratio = childItem.ratio || (1 / currentContainer.children.length);
+          // Split ratios are relative weights. A closed sibling can leave their
+          // persisted sum below 1; passing that directly to CSS flex reserves
+          // blank space instead of allowing the remaining panels to fill it.
+          const ratio = totalChildRatio > 0
+            ? childRatios[index] / totalChildRatio
+            : fallbackRatio;
           const childHasChartFocusPanel = childContainer !== null
             ? containerHasChartFocusPanel(childContainer)
             : childPanel !== null && isChartFocusPanel(childPanel);
@@ -479,7 +493,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
         {/* Tab Bar */}
         <div
           data-dock-tab-bar="true"
-          className="flex-none flex items-center gap-0 bg-[#2a2a2a] border-b border-zinc-700/40 overflow-x-auto h-[24px]"
+          className="flex-none flex items-center gap-0 bg-[#2a2a2a] border-b border-zinc-700/40 overflow-x-auto h-[30px]"
         >
           {currentContainer.children.map((child) => {
             const panel = child as DockPanelConfig;
@@ -489,7 +503,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
               <div
                 key={panel.id}
                 className={cn(
-                  'group flex items-center gap-1 px-2 h-full text-[11px] cursor-pointer select-none border-r border-zinc-700/30',
+                  'group flex items-center gap-1 px-2 h-full text-[14px] font-normal cursor-pointer select-none border-r border-zinc-700/30',
                   isActive
                     ? 'bg-[#131316] text-zinc-200'
                     : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/30'

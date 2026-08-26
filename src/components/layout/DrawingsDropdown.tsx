@@ -62,13 +62,13 @@ export const DrawingsDropdown: React.FC = () => {
                             />
                         ) : (
                             <div className="flex items-center gap-1 px-3 py-1.5">
-                                <span className="text-[10px] text-red-400 flex-1">Delete all drawings?</span>
+                                <span className="text-[12px] font-normal text-red-400 flex-1">Delete all drawings?</span>
                                 <button
-                                    className="px-2 py-0.5 text-[10px] bg-red-600 hover:bg-red-500 text-white rounded"
+                                    className="px-2 py-0.5 text-[12px] font-normal bg-red-600 hover:bg-red-500 text-white rounded"
                                     onClick={() => handleAction('clear_all')}
                                 >Yes</button>
                                 <button
-                                    className="px-2 py-0.5 text-[10px] bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded"
+                                    className="px-2 py-0.5 text-[12px] font-normal bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded"
                                     onClick={() => setConfirmDelete(false)}
                                 >No</button>
                             </div>
@@ -99,7 +99,7 @@ export const DrawingsDropdown: React.FC = () => {
 
 const DropdownItem = ({ icon, label, onClick }: { icon: React.ReactNode, label: string, onClick: () => void }) => (
     <div
-        className="flex items-center gap-3 px-3 py-2 text-[11px] text-zinc-300 hover:bg-[#2d2d2d] hover:text-white cursor-pointer transition-colors"
+        className="flex min-h-[30px] items-center gap-3 px-3 py-1.5 text-[14px] font-normal text-zinc-300 hover:bg-[#2d2d2d] hover:text-white cursor-pointer transition-colors"
         onClick={onClick}
     >
         <span className="w-4 flex justify-center text-zinc-500">{icon}</span>

@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const orderMocks = vi.hoisted(() => ({
+  placeMarketOrder: vi.fn(),
+}));
+
+vi.mock('../services/api', () => ({
+  default: { orders: { placeMarketOrder: orderMocks.placeMarketOrder } },
+}));
 
 import { useAppStore } from '../store/useAppStore';
 import { normalizeMarketStatus, type KnownMarketStatus } from '../utils/marketStatus';
@@ -18,6 +26,7 @@ const getTradeButton = (label: 'BUY' | 'SELL'): HTMLButtonElement => {
 describe('OneClickTrading market status', () => {
   beforeEach(() => {
     useAppStore.getState().reset();
+    orderMocks.placeMarketOrder.mockReset();
     useAppStore.getState().setTicks({
       EURUSD: {
         symbol: 'EURUSD',
@@ -32,6 +41,7 @@ describe('OneClickTrading market status', () => {
 
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
   });
 
   it('keeps BUY and SELL enabled when the market is open and prices are valid', () => {
@@ -45,6 +55,138 @@ describe('OneClickTrading market status', () => {
       />,
     );
 
+    expect(getTradeButton('BUY').disabled).toBe(false);
+    expect(getTradeButton('SELL').disabled).toBe(false);
+  });
+
+  it('keeps the last BTCUSD M1 prices visible but disables trading when freshness denies the symbol', () => {
+    useAppStore.getState().setTicks({
+      BTCUSD: {
+        symbol: 'BTCUSD',
+        bid: 79890.57,
+        ask: 79905.57,
+        spread: 15,
+        timestamp: Date.now() - 60_000,
+        digits: 2,
+      },
+    });
+
+    render(
+      <OneClickTrading
+        symbol="BTCUSD"
+        timeframe="M1"
+        visible
+        tradeAllowed={false}
+        marketStatus={normalizeMarketStatus({ symbol: 'BTCUSD', status: 'open' })}
+      />,
+    );
+
+    const buyButton = getTradeButton('BUY');
+    const sellButton = getTradeButton('SELL');
+    expect(buyButton).toHaveTextContent('79905.57');
+    expect(sellButton).toHaveTextContent('79890.57');
+    expect(buyButton.disabled).toBe(true);
+    expect(sellButton.disabled).toBe(true);
+    expect(buyButton).toHaveAttribute('title', 'Live tradable quote unavailable - order not sent');
+    expect(sellButton).toHaveAttribute('title', 'Live tradable quote unavailable - order not sent');
+    expect(screen.getByText('Live tradable quote unavailable - order not sent')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['BUY', 'buy'],
+    ['SELL', 'sell'],
+  ] as const)('dispatches an open-market %s click immediately without an HTTP status preflight', (label, side) => {
+    useAppStore.setState({ isAuthenticated: true, accountId: '200002' });
+    orderMocks.placeMarketOrder.mockReturnValue(new Promise(() => {}));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    render(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })}
+      />,
+    );
+
+    fireEvent.click(getTradeButton(label));
+
+    expect(orderMocks.placeMarketOrder).toHaveBeenCalledTimes(1);
+    expect(orderMocks.placeMarketOrder).toHaveBeenCalledWith({
+      side,
+      symbol: 'EURUSD',
+      volume: 0.01,
+      login: 200002,
+    }, { intentAtMs: expect.any(Number) });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps BUY and SELL enabled and dispatches all 20 clicks while earlier fills are pending', () => {
+    useAppStore.setState({ isAuthenticated: true, accountId: '200002' });
+    orderMocks.placeMarketOrder.mockImplementation(() => new Promise(() => {}));
+
+    render(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })}
+      />,
+    );
+
+    const buyButton = getTradeButton('BUY');
+    const sellButton = getTradeButton('SELL');
+
+    for (let index = 0; index < 20; index += 1) {
+      fireEvent.click(index % 2 === 0 ? buyButton : sellButton);
+      expect(buyButton.disabled).toBe(false);
+      expect(sellButton.disabled).toBe(false);
+    }
+
+    expect(orderMocks.placeMarketOrder).toHaveBeenCalledTimes(20);
+    expect(orderMocks.placeMarketOrder.mock.calls.map(([order]) => order.side)).toEqual(
+      Array.from({ length: 20 }, (_, index) => index % 2 === 0 ? 'buy' : 'sell'),
+    );
+    expect(buyButton.disabled).toBe(false);
+    expect(sellButton.disabled).toBe(false);
+  });
+
+  it('clears an older stale-quote banner when a concurrent newer order fills', async () => {
+    useAppStore.setState({ isAuthenticated: true, accountId: '200002' });
+    let rejectOlderOrder: ((reason: Error) => void) | undefined;
+    let resolveNewerOrder: ((position: Record<string, never>) => void) | undefined;
+    orderMocks.placeMarketOrder
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        rejectOlderOrder = reject;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveNewerOrder = resolve;
+      }));
+
+    render(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })}
+      />,
+    );
+
+    fireEvent.click(getTradeButton('BUY'));
+    fireEvent.click(getTradeButton('SELL'));
+
+    await act(async () => {
+      rejectOlderOrder?.(Object.assign(new Error('Quote is stale for EURUSD'), { code: 'QUOTE_STALE' }));
+    });
+    expect(screen.getByText('Order failed: Quote is stale for EURUSD')).not.toBeNull();
+
+    await act(async () => {
+      resolveNewerOrder?.({});
+    });
+    expect(screen.queryByText('Order failed: Quote is stale for EURUSD')).toBeNull();
     expect(getTradeButton('BUY').disabled).toBe(false);
     expect(getTradeButton('SELL').disabled).toBe(false);
   });

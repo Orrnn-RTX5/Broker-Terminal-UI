@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FetchCandlesOptions, OHLCData } from './chartDataService';
 import {
+  createSelectedTimeframeHistoryCoordinator,
   createChartHistoryBackfillDiagnostics,
   fetchOlderHistoryPage,
   getHistoryPageSize,
@@ -9,6 +10,8 @@ import {
   markHistoryBackfillPageLoaded,
   markHistoryBackfillStarted,
   markHistoryBackfillStopped,
+  resolveDeferredVisibleRangeHistoryAction,
+  resolveVisibleRangeHistoryAction,
   selectOlderCandlesBeforeCursor,
 } from './chartHistoryLoader';
 import { mergeBackendCandlePage } from '../utils/candleHistory';
@@ -23,6 +26,160 @@ const candle = (time: number): OHLCData => ({
 });
 
 describe('chart history loader', () => {
+  it('starts exactly one request for the selected timeframe and schedules no delayed fetches', async () => {
+    vi.useFakeTimers();
+    try {
+      const coordinator = createSelectedTimeframeHistoryCoordinator();
+      const fetchCandles = vi.fn(async () => [candle(60)]);
+      const request = coordinator.start({
+        symbol: 'XAUUSD',
+        timeframe: 'M5',
+        count: 500,
+      }, fetchCandles);
+
+      await request.result;
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(fetchCandles).toHaveBeenCalledTimes(1);
+      expect(fetchCandles).toHaveBeenCalledWith({
+        symbol: 'XAUUSD',
+        timeframe: 'M5',
+        count: 500,
+        signal: request.signal,
+      });
+      expect(request.isCurrent()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('aborts the previous timeframe request and makes the switched request current', () => {
+    const coordinator = createSelectedTimeframeHistoryCoordinator();
+    const fetchCandles = vi.fn(async () => []);
+    const first = coordinator.start(
+      { symbol: 'XAUUSD', timeframe: 'M1', count: 5000 },
+      fetchCandles,
+    );
+    const second = coordinator.start(
+      { symbol: 'XAUUSD', timeframe: 'H1', count: 500 },
+      fetchCandles,
+    );
+
+    expect(first.signal.aborted).toBe(true);
+    expect(first.isCurrent()).toBe(false);
+    expect(second.signal.aborted).toBe(false);
+    expect(second.isCurrent()).toBe(true);
+    expect(second.fetchOptions.timeframe).toBe('H1');
+    expect(coordinator.getActiveSignal()).toBe(second.signal);
+    expect(fetchCandles).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts the active request on unmount cleanup', () => {
+    const coordinator = createSelectedTimeframeHistoryCoordinator();
+    const request = coordinator.start(
+      { symbol: 'XAUUSD', timeframe: 'M1', count: 5000 },
+      async () => [],
+    );
+
+    coordinator.abort();
+
+    expect(request.signal.aborted).toBe(true);
+    expect(request.isCurrent()).toBe(false);
+    expect(coordinator.getActiveSignal()).toBeUndefined();
+  });
+
+  it('rejects a stale reset result after a selection switch', async () => {
+    const coordinator = createSelectedTimeframeHistoryCoordinator();
+    let resolveReset!: (candles: OHLCData[]) => void;
+    const resetResult = new Promise<OHLCData[]>(resolve => {
+      resolveReset = resolve;
+    });
+    const resetRequest = coordinator.start(
+      { symbol: 'XAUUSD', timeframe: 'M5', count: 500 },
+      () => resetResult,
+    );
+
+    const switchedRequest = coordinator.start(
+      { symbol: 'EURUSD', timeframe: 'H1', count: 500 },
+      async () => [candle(3600)],
+    );
+    resolveReset([candle(300)]);
+    await resetRequest.result;
+
+    expect(resetRequest.signal.aborted).toBe(true);
+    expect(resetRequest.isCurrent()).toBe(false);
+    expect(switchedRequest.isCurrent()).toBe(true);
+  });
+
+  it('loads at the visible left edge, defers during interaction, and ignores suppressed ranges', () => {
+    expect(resolveVisibleRangeHistoryAction({
+      logicalFrom: 49,
+      suppressed: false,
+      interactionActive: false,
+      userInitiated: true,
+    })).toBe('load');
+    expect(resolveVisibleRangeHistoryAction({
+      logicalFrom: 49,
+      suppressed: false,
+      interactionActive: true,
+      userInitiated: true,
+    })).toBe('defer');
+    expect(resolveVisibleRangeHistoryAction({
+      logicalFrom: 49,
+      suppressed: true,
+      interactionActive: false,
+      userInitiated: true,
+    })).toBe('none');
+    expect(resolveVisibleRangeHistoryAction({
+      logicalFrom: 50,
+      suppressed: false,
+      interactionActive: false,
+      userInitiated: true,
+    })).toBe('none');
+
+    expect(resolveVisibleRangeHistoryAction({
+      logicalFrom: 10,
+      suppressed: false,
+      interactionActive: false,
+      userInitiated: false,
+    })).toBe('none');
+  });
+
+  it('flushes one deferred left-edge request only when the edge is still eligible', () => {
+    const duringDrag = resolveVisibleRangeHistoryAction({
+      logicalFrom: 20,
+      suppressed: false,
+      interactionActive: true,
+      userInitiated: true,
+    });
+    expect(duringDrag).toBe('defer');
+
+    expect(resolveDeferredVisibleRangeHistoryAction({
+      pending: duringDrag === 'defer',
+      logicalFrom: 20,
+      suppressed: false,
+      userInitiated: true,
+    })).toBe('load');
+    expect(resolveDeferredVisibleRangeHistoryAction({
+      pending: false,
+      logicalFrom: 20,
+      suppressed: false,
+      userInitiated: true,
+    })).toBe('none');
+    expect(resolveDeferredVisibleRangeHistoryAction({
+      pending: true,
+      logicalFrom: 80,
+      suppressed: false,
+      userInitiated: true,
+    })).toBe('none');
+    expect(resolveDeferredVisibleRangeHistoryAction({
+      pending: true,
+      logicalFrom: 20,
+      suppressed: true,
+      userInitiated: true,
+    })).toBe('none');
+  });
+
   it('uses 5000-row older pages for M1 and M5 while preserving default initial counts', () => {
     expect(getHistoryPageSize('M1')).toBe(5000);
     expect(getHistoryPageSize('M5')).toBe(5000);

@@ -18,6 +18,7 @@ import {
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useAppStore } from '../store/useAppStore';
 import api from '../services/api';
+import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { formatOrderError } from '../utils/orderError';
 
 interface ModifyPositionDialogProps {
@@ -474,6 +475,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
     const handleMarketOrder = async (side: 'BUY' | 'SELL') => {
         if (isSubmitting) return;
+        const intentAtMs = captureTradeOrderIntent();
         if (actionVolume <= 0) {
             setError('Volume must be greater than zero');
             return;
@@ -493,7 +495,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 price_sl: slVal > 0 ? slVal : undefined,
                 price_tp: tpVal > 0 ? tpVal : undefined,
                 comment: comment.trim() || undefined,
-            });
+            }, { intentAtMs });
             setSuccessMessage(`${side === 'BUY' ? 'Buy' : 'Sell'} market order placed successfully`);
             refreshPositionsAfterTrade();
             setTimeout(() => onClose(), 600);
@@ -625,7 +627,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 { disabled: !showMiniChart || !canZoomOutMiniChart }
             )}
             {renderChartToolButton('Fit chart', <RotateCcw size={14} strokeWidth={1.8} />, resetMiniChartView)}
-            <div className="ml-auto min-w-0 truncate font-mono text-[10px] text-[#718096]">
+            <div className="ml-auto min-w-0 truncate font-mono text-[12px] font-normal text-[#718096]">
                 {MINI_CHART_ZOOM_LEVELS[miniChartZoomIndex].toFixed(2)}x
             </div>
         </div>
@@ -648,7 +650,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
             return (
                 <div
                     key={`${level.side}-${level.price}`}
-                    className={`grid h-[19px] grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#29344a] text-[10px] ${rowBackground}`}
+                    className={`grid h-[19px] grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#29344a] text-[14px] font-normal ${rowBackground}`}
                 >
                     <div className="relative flex min-w-0 items-center justify-end overflow-hidden border-r border-[#29344a] pr-1 font-mono text-[#d7e2f2]">
                         <div
@@ -681,7 +683,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 aria-label={`${position.symbol} market depth`}
                 className="flex h-full min-h-0 flex-col overflow-hidden border border-[#334057] bg-[#0d1420]"
             >
-                <div className="grid h-[24px] shrink-0 grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#334057] bg-[#121b2a] text-[10px] text-[#b8c4d6]">
+                <div className="grid h-[24px] shrink-0 grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#334057] bg-[#121b2a] text-[12px] font-normal text-[#b8c4d6]">
                     <div className="flex items-center justify-center border-r border-[#334057]">Volume</div>
                     <div className="flex items-center justify-center border-r border-[#334057]">Price</div>
                     <div className="flex items-center justify-center">Trade</div>
@@ -689,7 +691,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 <div className="flex-1 overflow-hidden">
                     <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
                     {asks.map(renderDepthLevel)}
-                    <div className="flex h-[22px] items-center justify-center border-y border-[#3d4b64] bg-[#111827] font-mono text-[10px] text-[#8fa2bd]">
+                    <div className="flex h-[22px] items-center justify-center border-y border-[#3d4b64] bg-[#111827] font-mono text-[12px] font-normal text-[#8fa2bd]">
                         Spread {spreadPoints}
                     </div>
                     {bids.map(renderDepthLevel)}
@@ -958,7 +960,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
             >
                 {/* Title Bar - MT5 style with position info */}
                 <div className="flex h-[43px] shrink-0 items-center justify-between border-b border-[#3f424a] bg-[#2b2b2e] px-4">
-                    <span id={dialogTitleId} className="min-w-0 truncate text-[13px] font-semibold text-[#d9dde5]">
+                    <span id={dialogTitleId} className="min-w-0 truncate text-[14px] font-semibold text-[#d9dde5]">
                         Position: #{position.id} {position.side.toLowerCase()} {position.volume.toFixed(2)} {position.symbol} {position.openPrice.toFixed(digits)}
                     </span>
                     <button
@@ -974,7 +976,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 <div className="flex min-h-0 flex-1 overflow-hidden max-[640px]:flex-col">
                     {/* Left: Mini Chart */}
                     <div className={`flex ${chartPanelWidthClass} shrink-0 flex-col border-r border-[#353842] bg-[#0a0f18] max-[640px]:h-[220px] max-[640px]:w-full max-[640px]:border-r-0 max-[640px]:border-b`}>
-                        <div className="flex h-[30px] min-w-0 items-center border-b border-[#263142] bg-[#0f1724] px-3 font-mono text-[11px] text-[#b8c4d6]">
+                        <div className="flex h-[30px] min-w-0 items-center border-b border-[#263142] bg-[#0f1724] px-3 font-mono text-[14px] font-normal text-[#b8c4d6]">
                             <span className="min-w-0 truncate font-semibold text-[#e6eefb]">{position.symbol}</span>
                             <span className="ml-2 shrink-0 text-[#4ea4ff]">{bid.toFixed(digits)}</span>
                             <span className="mx-1 text-[#697891]">/</span>
@@ -1001,12 +1003,12 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                     <div className="min-w-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain bg-[#101116] p-4 max-[420px]:p-3">
                         {/* Symbol */}
                         <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <label htmlFor={symbolFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-medium text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">Symbol:</label>
+                            <label htmlFor={symbolFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">Symbol:</label>
                             <select
                                 id={symbolFieldId}
                                 value={position.symbol}
                                 onChange={() => undefined}
-                                className="h-[31px] min-w-0 flex-1 rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-xs font-semibold text-[#e4e7ee] shadow-inner shadow-black/20 outline-none transition-colors focus:border-[#666b78]"
+                                className="h-[31px] min-w-0 flex-1 rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-[14px] font-normal text-[#e4e7ee] shadow-inner shadow-black/20 outline-none transition-colors focus:border-[#666b78]"
                             >
                                 <option value={position.symbol}>{getSymbolFullName(position.symbol)}</option>
                             </select>
@@ -1014,15 +1016,15 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
                         {/* Type */}
                         <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <span id={typeLabelId} className="w-[84px] shrink-0 text-right text-[11px] font-medium text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">Type:</span>
-                            <div id={typeValueId} aria-labelledby={`${typeLabelId} ${typeValueId}`} className="flex h-[31px] min-w-0 flex-1 items-center truncate rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-xs font-semibold text-[#e4e7ee] shadow-inner shadow-black/20">
+                            <span id={typeLabelId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">Type:</span>
+                            <div id={typeValueId} aria-labelledby={`${typeLabelId} ${typeValueId}`} className="flex h-[31px] min-w-0 flex-1 items-center truncate rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-[14px] font-normal text-[#e4e7ee] shadow-inner shadow-black/20">
                                 {kind === 'pending-order' ? 'Modify Pending Order' : 'Modify Position'}
                             </div>
                         </div>
 
                         {/* Volume */}
                         <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <label htmlFor={volumeFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-medium text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">Volume:</label>
+                            <label htmlFor={volumeFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">Volume:</label>
                             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
                                 <div className="flex h-[31px] w-[96px] items-stretch overflow-hidden rounded-sm border border-[#434650] bg-[#1f2026] shadow-inner shadow-black/20">
                                     <input
@@ -1037,7 +1039,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                             }
                                         }}
                                         onBlur={() => setVolumeStr(normalizeVolume(volumeStr))}
-                                        className="min-w-0 flex-1 bg-transparent px-2 text-right font-mono text-xs text-[#f3f4f6] focus:outline-none"
+                                        className="min-w-0 flex-1 bg-transparent px-2 text-right font-mono text-[14px] font-normal text-[#f3f4f6] focus:outline-none"
                                     />
                                     <div className="flex w-[18px] flex-col border-l border-[#434650] bg-[#272931]">
                                         <button
@@ -1058,20 +1060,20 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                         </button>
                                     </div>
                                 </div>
-                                <span className="min-w-0 break-words text-[11px] text-[#aeb5c3]">{volumeDescription}</span>
+                                <span className="min-w-0 break-words text-[12px] font-normal text-[#aeb5c3]">{volumeDescription}</span>
                             </div>
                         </div>
 
                         {/* Stop Loss with Points */}
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <label htmlFor={slFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-semibold text-[#ff626a] max-[420px]:w-full max-[420px]:text-left">Stop Loss:</label>
+                            <label htmlFor={slFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#ff626a] max-[420px]:w-full max-[420px]:text-left">Stop Loss:</label>
                             <input
                                 id={slFieldId}
                                 type="number"
                                 step={Math.pow(10, -digits).toString()}
                                 value={sl}
                                 onChange={(e) => setSl(e.target.value)}
-                                className="h-[31px] w-[96px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-xs text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
+                                className="h-[31px] w-[96px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
                             <input
                                 id={slPointsFieldId}
@@ -1079,21 +1081,21 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                 type="number"
                                 value={slPoints}
                                 onChange={(e) => handleSlPointsChange(parseInt(e.target.value) || 0)}
-                                className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-xs text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
+                                className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
-                            <span className="text-[10px] text-[#7f8796]">points</span>
+                            <span className="text-[12px] font-normal text-[#7f8796]">points</span>
                         </div>
 
                         {/* Take Profit with Points */}
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <label htmlFor={tpFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-semibold text-[#1fd79b] max-[420px]:w-full max-[420px]:text-left">Take Profit:</label>
+                            <label htmlFor={tpFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#1fd79b] max-[420px]:w-full max-[420px]:text-left">Take Profit:</label>
                             <input
                                 id={tpFieldId}
                                 type="number"
                                 step={Math.pow(10, -digits).toString()}
                                 value={tp}
                                 onChange={(e) => setTp(e.target.value)}
-                                className="h-[31px] w-[96px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-xs text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
+                                className="h-[31px] w-[96px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
                             <input
                                 id={tpPointsFieldId}
@@ -1101,21 +1103,21 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                 type="number"
                                 value={tpPoints}
                                 onChange={(e) => handleTpPointsChange(parseInt(e.target.value) || 0)}
-                                className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-xs text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
+                                className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
-                            <span className="text-[10px] text-[#7f8796]">points</span>
+                            <span className="text-[12px] font-normal text-[#7f8796]">points</span>
                         </div>
 
                         {/* Comment */}
                         <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <label htmlFor={commentFieldId} className="w-[84px] shrink-0 text-right text-[11px] font-medium text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">Comment:</label>
+                            <label htmlFor={commentFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">Comment:</label>
                             <input
                                 id={commentFieldId}
                                 type="text"
                                 maxLength={64}
                                 value={comment}
                                 onChange={(e) => setComment(e.target.value)}
-                                className="h-[31px] min-w-0 flex-1 rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-xs text-[#e4e7ee] shadow-inner shadow-black/20 outline-none transition-colors focus:border-[#666b78]"
+                                className="h-[31px] min-w-0 flex-1 rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-[14px] font-normal text-[#e4e7ee] shadow-inner shadow-black/20 outline-none transition-colors focus:border-[#666b78]"
                             />
                         </div>
 
@@ -1132,7 +1134,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                         <button
                             onClick={handleSubmit}
                             disabled={isSubmitting}
-                            className="min-h-[36px] w-full break-words rounded-sm border border-[#51535d] bg-[#4a4b53] px-2 py-2 text-xs font-bold leading-tight text-white transition-colors hover:bg-[#565861] active:bg-[#3f4047] disabled:cursor-not-allowed disabled:opacity-50"
+                            className="min-h-[36px] w-full break-words rounded-sm border border-[#51535d] bg-[#4a4b53] px-2 py-2 text-[14px] font-bold leading-tight text-white transition-colors hover:bg-[#565861] active:bg-[#3f4047] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {isSubmitting ? 'Processing...' : `Modify #${position.id} ${position.side.toLowerCase()} ${position.volume.toFixed(2)} ${position.symbol} ${position.openPrice.toFixed(digits)}`}
                         </button>
@@ -1144,7 +1146,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                         type="button"
                                         onClick={() => handleMarketOrder('SELL')}
                                         disabled={isSubmitting || bid <= 0}
-                                        className="min-h-[34px] rounded-sm bg-[#f23f45] px-2 py-2 text-xs font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#ff5258] active:bg-[#d8393f] disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="min-h-[34px] rounded-sm bg-[#f23f45] px-2 py-2 text-[14px] font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#ff5258] active:bg-[#d8393f] disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         Sell by Market
                                     </button>
@@ -1152,7 +1154,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                         type="button"
                                         onClick={() => handleMarketOrder('BUY')}
                                         disabled={isSubmitting || ask <= 0}
-                                        className="min-h-[34px] rounded-sm bg-[#3f73f1] px-2 py-2 text-xs font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#5486ff] active:bg-[#315fd1] disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="min-h-[34px] rounded-sm bg-[#3f73f1] px-2 py-2 text-[14px] font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#5486ff] active:bg-[#315fd1] disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         Buy by Market
                                     </button>
@@ -1161,7 +1163,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                     type="button"
                                     onClick={handleCloseByMarket}
                                     disabled={isSubmitting}
-                                    className="min-h-[31px] w-full break-words rounded-sm border border-[#d8c889] bg-[#fff8dc] px-2 py-2 text-xs font-semibold leading-tight text-zinc-900 transition-colors hover:bg-[#fff1b8] active:bg-[#f1df9b] disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="min-h-[31px] w-full break-words rounded-sm border border-[#d8c889] bg-[#fff8dc] px-2 py-2 text-[14px] font-semibold leading-tight text-zinc-900 transition-colors hover:bg-[#fff1b8] active:bg-[#f1df9b] disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     Close #{position.id} {position.side.toLowerCase()} {actionVolume > 0 ? actionVolume.toFixed(2) : '0.00'} {position.symbol} {position.openPrice.toFixed(digits)} by Market
                                 </button>
@@ -1170,18 +1172,18 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
                         {/* Error / Success */}
                         {error && (
-                            <div className="break-words rounded-sm border border-red-700/80 bg-red-950/40 px-3 py-2 text-center text-[11px] text-red-200">
+                            <div className="break-words rounded-sm border border-red-700/80 bg-red-950/40 px-3 py-2 text-center text-[12px] font-normal text-red-200">
                                 {error}
                             </div>
                         )}
                         {successMessage && (
-                            <div className="break-words rounded-sm border border-emerald-700/80 bg-emerald-950/35 px-3 py-2 text-center text-[11px] text-emerald-200">
+                            <div className="break-words rounded-sm border border-emerald-700/80 bg-emerald-950/35 px-3 py-2 text-center text-[12px] font-normal text-emerald-200">
                                 {successMessage}
                             </div>
                         )}
 
                         {/* MT5 Quote Text */}
-                        <div className="px-2 pt-1 text-center text-[10px] leading-relaxed text-[#777f8d]">
+                        <div className="px-2 pt-1 text-center text-[12px] font-normal leading-relaxed text-[#777f8d]">
                             Stop Loss or Take Profit you set must differ from market price by at least 0 points.<br />
                             Stops processing is performed on the broker side.
                         </div>

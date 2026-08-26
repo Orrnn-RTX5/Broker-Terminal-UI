@@ -268,31 +268,47 @@ export class DrawingManager {
       return;
     }
 
+    const existingContext = this.chartContexts.get(overlayContainer);
+    const nextSymbol = symbol || existingContext?.symbol || '';
+    const nextTimeframe = timeframe || existingContext?.timeframe || 'M1';
+    const isIdenticalActiveContext =
+      this.activeContainer === overlayContainer &&
+      existingContext?.chart === chart &&
+      existingContext.series === series &&
+      existingContext.symbol === nextSymbol &&
+      existingContext.timeframe === nextTimeframe &&
+      existingContext.svgOverlay?.parentElement === overlayContainer;
+
     this.activeContainer = overlayContainer;
     this.chart = chart;
     this.series = series;
     if (symbol) this.currentSymbol = symbol;
     if (timeframe) this.currentTimeframe = timeframe;
 
+    // Crosshair movement re-binds the active panel on every pointer event. If
+    // that binding is already current, rebuilding every SVG drawing is pure
+    // duplicate work and competes with lightweight-charts' pan frame.
+    if (isIdenticalActiveContext) return;
+
     // Get or create context
-    let context = this.chartContexts.get(overlayContainer);
-    const symbolChanged = !context || context.symbol !== symbol;
-    const timeframeChanged = !context || context.timeframe !== timeframe;
+    let context = existingContext;
+    const symbolChanged = !context || context.symbol !== nextSymbol;
+    const timeframeChanged = !context || context.timeframe !== nextTimeframe;
 
     if (!context) {
       context = {
         chart,
         series,
-        symbol: symbol || '',
-        timeframe: timeframe || 'M1',
+        symbol: nextSymbol,
+        timeframe: nextTimeframe,
         svgOverlay: null,
       };
       this.chartContexts.set(overlayContainer, context);
     } else {
       context.chart = chart;
       context.series = series;
-      if (symbol) context.symbol = symbol;
-      if (timeframe) context.timeframe = timeframe;
+      context.symbol = nextSymbol;
+      context.timeframe = nextTimeframe;
     }
 
     // Build or relocate the SVG overlay for this container
@@ -605,6 +621,101 @@ export class DrawingManager {
     return 'none';
   }
 
+  /** Whether this chart panel currently owns anything that must track its viewport. */
+  hasRenderableContent(overlayContainer?: HTMLElement | null): boolean {
+    if (!overlayContainer) return false;
+    const context = this.chartContexts.get(overlayContainer);
+    if (!context) return false;
+
+    const hasDrawings = (this.drawingsBySymbol.get(context.symbol)?.length ?? 0) > 0;
+    const ownsPreview =
+      this.activeContainer === overlayContainer &&
+      this.activeDrawing !== null &&
+      this.previewPoint !== null;
+    return hasDrawings || ownsPreview;
+  }
+
+  /** Re-render one chart panel after its own viewport changes. */
+  renderContext(overlayContainer?: HTMLElement | null): void {
+    if (!overlayContainer || !this.hasRenderableContent(overlayContainer)) return;
+    const context = this.chartContexts.get(overlayContainer);
+    if (!context) return;
+
+    const origChart = this.chart;
+    const origSeries = this.series;
+    const origSymbol = this.currentSymbol;
+
+    try {
+      this.renderContextContents(overlayContainer, context);
+    } finally {
+      this.chart = origChart;
+      this.series = origSeries;
+      this.currentSymbol = origSymbol;
+    }
+  }
+
+  private renderContextContents(container: HTMLElement, context: ChartContext): void {
+    this.ensureSvgOverlayForContainer(container, context);
+    const svg = context.svgOverlay;
+    if (!svg) return;
+
+    // Clear only this context. Pan frames must not tear down sibling overlays.
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    if (!context.chart || !context.series) return;
+
+    // Set active context temporarily for px() and rendering helpers
+    this.chart = context.chart;
+    this.series = context.series;
+    this.currentSymbol = context.symbol;
+
+    // Get chart container dimensions for full-span lines (hline, vline)
+    const W = container.clientWidth || 2000;
+    const H = container.clientHeight || 1200;
+
+    // Add defs for arrowhead
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    defs.innerHTML = `
+      <marker id="arr" markerWidth="7" markerHeight="7" refX="3" refY="3.5" orient="auto">
+        <polygon points="0 0, 7 3.5, 0 7" fill="#2196F3" />
+      </marker>`;
+    svg.appendChild(defs);
+
+    // Fetch drawings for this context's symbol
+    const symbolDrawings = this.drawingsBySymbol.get(context.symbol) || [];
+
+    // Render drawings for this symbol
+    symbolDrawings.forEach(d => this.renderDrawing(svg, d, W, H, false));
+
+    // Render cursor-following ghost BEFORE first click (vline, hline get a ghost from day 0)
+    // Only draw the active/preview drawings on the active container if it matches this context!
+    if (this.activeContainer === container && this.activeDrawing && this.activeDrawing.points.length === 0 && this.previewPoint) {
+      const type = this.activeDrawing.type;
+      if (type === 'vline' || type === 'hline' || type === 'stamp') {
+        const ghost: Drawing = {
+          ...this.activeDrawing,
+          id: this.activeDrawing.id + '-ghost',
+          points: [this.previewPoint],
+          selected: false,
+          color: this.activeDrawing.color || '#2196F3',
+        };
+        this.renderDrawing(svg, ghost, W, H, true);
+      }
+    }
+
+    // Render active drawing in progress with preview point appended
+    if (this.activeContainer === container && this.activeDrawing && this.activeDrawing.points.length > 0 && this.previewPoint) {
+      const preview: Drawing = {
+        ...this.activeDrawing,
+        id: this.activeDrawing.id + '-preview',
+        points: [...this.activeDrawing.points, this.previewPoint],
+        selected: false,
+        color: this.activeDrawing.color || '#2196F3',
+      };
+      this.renderDrawing(svg, preview, W, H, true);
+    }
+  }
+
 
   renderAll(): void {
     const origChart = this.chart;
@@ -613,68 +724,7 @@ export class DrawingManager {
 
     try {
       for (const [container, context] of this.chartContexts.entries()) {
-        if (!context.svgOverlay) {
-          this.ensureSvgOverlayForContainer(container, context);
-        }
-        const svg = context.svgOverlay;
-        if (!svg) continue;
-
-        // Clear all contents
-        while (svg.firstChild) svg.removeChild(svg.firstChild);
-
-        if (!context.chart || !context.series) continue;
-
-        // Set active context temporarily for px() and rendering helpers
-        this.chart = context.chart;
-        this.series = context.series;
-        this.currentSymbol = context.symbol;
-
-        // Get chart container dimensions for full-span lines (hline, vline)
-        const parent = svg.parentElement;
-        const W = parent ? parent.clientWidth : 2000;
-        const H = parent ? parent.clientHeight : 1200;
-
-        // Add defs for arrowhead
-        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-        defs.innerHTML = `
-          <marker id="arr" markerWidth="7" markerHeight="7" refX="3" refY="3.5" orient="auto">
-            <polygon points="0 0, 7 3.5, 0 7" fill="#2196F3" />
-          </marker>`;
-        svg.appendChild(defs);
-
-        // Fetch drawings for this context's symbol
-        const symbolDrawings = this.drawingsBySymbol.get(context.symbol) || [];
-
-        // Render drawings for this symbol
-        symbolDrawings.forEach(d => this.renderDrawing(svg, d, W, H, false));
-
-        // Render cursor-following ghost BEFORE first click (vline, hline get a ghost from day 0)
-        // Only draw the active/preview drawings on the active container if it matches this context!
-        if (this.activeContainer === container && this.activeDrawing && this.activeDrawing.points.length === 0 && this.previewPoint) {
-          const type = this.activeDrawing.type;
-          if (type === 'vline' || type === 'hline' || type === 'stamp') {
-            const ghost: Drawing = {
-              ...this.activeDrawing,
-              id: this.activeDrawing.id + '-ghost',
-              points: [this.previewPoint],
-              selected: false,
-              color: this.activeDrawing.color || '#2196F3',
-            };
-            this.renderDrawing(svg, ghost, W, H, true);
-          }
-        }
-
-        // Render active drawing in progress with preview point appended
-        if (this.activeContainer === container && this.activeDrawing && this.activeDrawing.points.length > 0 && this.previewPoint) {
-          const preview: Drawing = {
-            ...this.activeDrawing,
-            id: this.activeDrawing.id + '-preview',
-            points: [...this.activeDrawing.points, this.previewPoint],
-            selected: false,
-            color: this.activeDrawing.color || '#2196F3',
-          };
-          this.renderDrawing(svg, preview, W, H, true);
-        }
+        this.renderContextContents(container, context);
       }
     } finally {
       // Restore original references

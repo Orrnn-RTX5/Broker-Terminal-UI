@@ -252,7 +252,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Search broker name or server address…"
-                        className="w-full pl-9 pr-3 py-2 text-[11px] rounded-lg text-zinc-300 placeholder:text-zinc-600 focus:outline-none transition-all"
+                        className="w-full rounded-lg py-2 pl-9 pr-3 text-[14px] font-normal text-zinc-300 transition-all placeholder:text-zinc-600 focus:outline-none"
                         style={{
                             background: 'rgba(255,255,255,0.04)',
                             border: '1px solid rgba(255,255,255,0.08)',
@@ -265,7 +265,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
             {/* Section header */}
             <div className="flex items-center gap-2">
-                <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">
+                <span className="text-[12px] font-normal uppercase tracking-widest text-zinc-500">
                     Available Brokers
                 </span>
                 <div className="flex-1 h-px opacity-30" style={{ background: 'linear-gradient(90deg, rgba(180,180,190,0.3), transparent)' }} />
@@ -280,12 +280,12 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             {/* Broker list */}
             <div className="overflow-y-auto rounded-xl flex flex-col gap-2" style={{ maxHeight: '280px', minHeight: '80px' }}>
                 {loadingBrokers ? (
-                    <div className="py-10 flex flex-col items-center gap-2 text-zinc-600 text-[12px]">
+                    <div className="flex flex-col items-center gap-2 py-10 text-[12px] font-normal text-zinc-600">
                         <Loader2 className="w-6 h-6 animate-spin opacity-50" />
                         <p>Loading brokers…</p>
                     </div>
                 ) : filteredBrokers.length === 0 ? (
-                    <div className="py-10 text-center text-zinc-600 text-[12px]">
+                    <div className="py-10 text-center text-[12px] font-normal text-zinc-600">
                         <Globe className="w-8 h-8 mx-auto mb-2 opacity-30" />
                         <p>No brokers found</p>
                     </div>
@@ -317,7 +317,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                        <span className={`text-[14px] font-semibold truncate ${isSelected ? 'text-white' : 'text-zinc-200'}`}>
+                                        <span className={`truncate text-[14px] ${isSelected ? 'font-semibold text-white' : 'font-normal text-zinc-200'}`}>
                                             {broker.broker_name}
                                         </span>
                                         {broker.region && (
@@ -330,7 +330,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                         )}
                                     </div>
                                     <div className="flex items-center gap-2 mt-0.5">
-                                        <span className="text-[11.5px] text-zinc-400 font-mono truncate">{broker.broker_id}</span>
+                                        <span className="truncate font-mono text-[12px] font-normal text-zinc-400">{broker.broker_id}</span>
                                     </div>
                                 </div>
 
@@ -347,7 +347,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     style={{ background: 'rgba(180,180,190,0.06)', border: '1px solid rgba(180,180,190,0.12)' }}
                 >
                     <ExternalLink className="w-3 h-3 text-zinc-400 flex-shrink-0" />
-                    <p className="text-[10px] text-zinc-500">
+                    <p className="text-[12px] font-normal text-zinc-500">
                         Clicking <span className="text-zinc-400 font-semibold">Next</span> will proceed with{' '}
                         <span className="text-zinc-300">{selectedBroker.broker_name}</span>
                         <span className="text-zinc-600 font-mono ml-1">({selectedBroker.broker_id})</span>
@@ -366,8 +366,8 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         <input type="radio" checked={accountType === 'demo'} onChange={() => setAccountType('demo')} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div>
-                        <div className="text-[12px] font-medium text-zinc-200 group-hover:text-white transition-colors">Open a demo account to trade virtual money without risk</div>
-                        <div className="text-[11px] text-zinc-500 mt-1 leading-relaxed">A demo account allows you to learn trading on stock exchanges and test your strategies without risking real money.</div>
+                        <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">Open a demo account to trade virtual money without risk</div>
+                        <div className="mt-1 text-[12px] font-normal leading-relaxed text-zinc-500">A demo account allows you to learn trading on stock exchanges and test your strategies without risking real money.</div>
                     </div>
                 </label>
 
@@ -376,8 +376,8 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         <input type="radio" checked={accountType === 'real'} onChange={() => setAccountType('real')} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div>
-                        <div className="text-[12px] font-medium text-zinc-200 group-hover:text-white transition-colors">Open a real account for live trading</div>
-                        <div className="text-[11px] text-zinc-500 mt-1 leading-relaxed">A real account requires additional proof of identity. You will need to provide copies of identification documents.</div>
+                        <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">Open a real account for live trading</div>
+                        <div className="mt-1 text-[12px] font-normal leading-relaxed text-zinc-500">A real account requires additional proof of identity. You will need to provide copies of identification documents.</div>
                     </div>
                 </label>
 
@@ -386,44 +386,44 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         <input type="radio" checked={accountType === 'existing'} onChange={() => setAccountType('existing')} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div className="w-full">
-                        <div className="text-[12px] font-medium text-zinc-200 group-hover:text-white transition-colors">Connect with an existing trade account</div>
+                        <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">Connect with an existing trade account</div>
                         {accountType === 'existing' && (
                             <div className="mt-3 flex flex-col gap-2">
                                 <div className="flex items-center gap-3">
-                                    <span className="text-[11px] text-zinc-400 w-16 text-right flex-shrink-0">Login:</span>
+                                    <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Login:</span>
                                     <input
                                         type="text"
                                         value={existingLogin}
                                         onChange={e => setExistingLogin(e.target.value)}
-                                        className="flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1 text-[11px] text-white focus:border-indigo-500 outline-none"
+                                        className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1 text-[14px] font-normal text-white outline-none focus:border-indigo-500"
                                         placeholder="Account ID"
                                     />
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <span className="text-[11px] text-zinc-400 w-16 text-right flex-shrink-0">Password:</span>
+                                    <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Password:</span>
                                     <input
                                         type="password"
                                         value={existingPassword}
                                         onChange={e => setExistingPassword(e.target.value)}
-                                        className="flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1 text-[11px] text-white focus:border-indigo-500 outline-none"
+                                        className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1 text-[14px] font-normal text-white outline-none focus:border-indigo-500"
                                         placeholder="Password"
                                     />
                                 </div>
                                 {/* Server dropdown with search */}
                                 <div className="flex items-start gap-3">
-                                    <span className="text-[11px] text-zinc-400 w-16 text-right flex-shrink-0 mt-1.5">Server:</span>
+                                    <span className="mt-1.5 w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Server:</span>
                                     <div className="flex-1 relative">
                                         <button
                                             type="button"
                                             onClick={() => setExistingServerDropOpen(o => !o)}
-                                            className="w-full h-[32px] bg-[#1a1c23] border border-zinc-700 rounded px-2 text-[11px] text-left flex items-center justify-between gap-2 focus:border-indigo-500 outline-none"
+                                            className="flex h-[32px] w-full items-center justify-between gap-2 rounded border border-zinc-700 bg-[#1a1c23] px-2 text-left text-[14px] font-normal outline-none focus:border-indigo-500"
                                         >
                                             <div className="flex items-center gap-2 truncate flex-1">
                                                 {existingBroker ? (
                                                     <>
                                                         <DropdownBrokerLogo broker={existingBroker} index={0} />
                                                         <span className="truncate text-zinc-300">
-                                                            {existingBroker.broker_name} <span className="text-zinc-600 font-mono text-[10px]">({existingBroker.broker_id})</span>
+                                                            {existingBroker.broker_name} <span className="font-mono text-[12px] font-normal text-zinc-600">({existingBroker.broker_id})</span>
                                                         </span>
                                                     </>
                                                 ) : (
@@ -441,7 +441,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                                         value={existingServerSearch}
                                                         onChange={e => setExistingServerSearch(e.target.value)}
                                                         placeholder="Search broker or server…"
-                                                        className="w-full h-[24px] px-2 bg-[#131520] border border-zinc-600/40 rounded text-[10px] text-zinc-200 placeholder:text-zinc-600 outline-none"
+                                                        className="h-[24px] w-full rounded border border-zinc-600/40 bg-[#131520] px-2 text-[14px] font-normal text-zinc-200 outline-none placeholder:text-zinc-600"
                                                         onClick={e => e.stopPropagation()}
                                                     />
                                                 </div>
@@ -451,12 +451,12 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                                             key={b.id}
                                                             type="button"
                                                             onClick={() => { setExistingBroker(b); setExistingServerDropOpen(false); setExistingServerSearch(''); }}
-                                                            className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-zinc-700/60 transition-colors flex items-center gap-2 ${existingBroker?.id === b.id ? 'bg-zinc-700/40 text-white' : 'text-zinc-300'}`}
+                                                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[14px] transition-colors hover:bg-zinc-700/60 ${existingBroker?.id === b.id ? 'bg-zinc-700/40 font-semibold text-white' : 'font-normal text-zinc-300'}`}
                                                         >
                                                             <DropdownBrokerLogo broker={b} index={idx} />
                                                             <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                                                                <span className="font-medium truncate">{b.broker_name}</span>
-                                                                <span className="text-zinc-500 text-[9px] font-mono truncate">{b.broker_id}</span>
+                                                                <span className="truncate">{b.broker_name}</span>
+                                                                <span className="truncate font-mono text-[12px] font-normal text-zinc-500">{b.broker_id}</span>
                                                             </div>
                                                         </button>
                                                     ))}
@@ -478,38 +478,38 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         <div className="flex-1 overflow-hidden flex flex-col p-5">
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">First name:</span>
-                    <input type="text" value={formData.firstName} onChange={e => setFormData(s => ({ ...s, firstName: e.target.value }))} className="flex-1 bg-transparent border border-indigo-500 rounded px-2 py-1.5 text-[11px] text-white outline-none" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">First name:</span>
+                    <input type="text" value={formData.firstName} onChange={e => setFormData(s => ({ ...s, firstName: e.target.value }))} className="flex-1 rounded border border-indigo-500 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none" />
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Last name:</span>
-                    <input type="text" value={formData.lastName} onChange={e => setFormData(s => ({ ...s, lastName: e.target.value }))} className="flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Last name:</span>
+                    <input type="text" value={formData.lastName} onChange={e => setFormData(s => ({ ...s, lastName: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="h-2" />
                 <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Email:</span>
-                    <input type="email" value={formData.email} onChange={e => setFormData(s => ({ ...s, email: e.target.value }))} className="flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Email:</span>
+                    <input type="email" value={formData.email} onChange={e => setFormData(s => ({ ...s, email: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Mobile Phone:</span>
-                    <input type="text" value={formData.phone} onChange={e => setFormData(s => ({ ...s, phone: e.target.value }))} className="flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Mobile Phone:</span>
+                    <input type="text" value={formData.phone} onChange={e => setFormData(s => ({ ...s, phone: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="h-2" />
                 <div className="flex items-center gap-2 w-1/2 pr-2 mt-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Country:</span>
-                    <select value={formData.country} onChange={e => setFormData(s => ({ ...s, country: e.target.value }))} className="flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Country:</span>
+                    <select value={formData.country} onChange={e => setFormData(s => ({ ...s, country: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
                         <option value="US">United States (US)</option>
                         <option value="IN">India (IN)</option>
                     </select>
                 </div>
                 <div className="flex items-center gap-2 w-1/2 pr-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Account group:</span>
-                    <select value={formData.group} onChange={e => setFormData(s => ({ ...s, group: e.target.value }))} className="flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Account group:</span>
+                    <select value={formData.group} onChange={e => setFormData(s => ({ ...s, group: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
                         <option value="orrnn/demo-std">orrnn/demo-std</option>
                     </select>
                 </div>
                 <div className="pl-[104px] pt-4">
-                    <p className="text-[10px] text-zinc-500 leading-tight">
+                    <p className="text-[12px] font-normal leading-tight text-zinc-500">
                         Personal details are used for opening a trade account and are not passed to any third parties.<br />
                         The information is handled securely and confidentially.
                     </p>
@@ -524,15 +524,15 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 flex-1">
-                        <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Currency:</span>
-                        <select value={formData.currency} onChange={e => setFormData(s => ({ ...s, currency: e.target.value }))} className="flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
+                        <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Currency:</span>
+                        <select value={formData.currency} onChange={e => setFormData(s => ({ ...s, currency: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
                             <option value="USD">USD</option>
                             <option value="EUR">EUR</option>
                         </select>
                     </div>
                     <div className="flex items-center gap-2 flex-1">
-                        <span className="text-[11px] text-zinc-400 w-16 text-right flex-shrink-0">Leverage:</span>
-                        <select value={formData.leverage} onChange={e => setFormData(s => ({ ...s, leverage: e.target.value }))} className="flex-1 bg-[#1a1c23] border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-zinc-300 outline-none">
+                        <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Leverage:</span>
+                        <select value={formData.leverage} onChange={e => setFormData(s => ({ ...s, leverage: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
                             <option value="100">1:100</option>
                             <option value="200">1:200</option>
                             <option value="500">1:500</option>
@@ -540,33 +540,33 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2 w-1/2 pr-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Deposit:</span>
-                    <input type="number" value={formData.deposit} onChange={e => setFormData(s => ({ ...s, deposit: e.target.value }))} className="flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Deposit:</span>
+                    <input type="number" value={formData.deposit} onChange={e => setFormData(s => ({ ...s, deposit: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="h-2" />
                 <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Master password:</span>
-                    <input type="text" value={formData.masterPass} onChange={e => setFormData(s => ({ ...s, masterPass: e.target.value }))} className="flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Master password:</span>
+                    <input type="text" value={formData.masterPass} onChange={e => setFormData(s => ({ ...s, masterPass: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Investor password:</span>
-                    <input type="text" value={formData.investorPass} onChange={e => setFormData(s => ({ ...s, investorPass: e.target.value }))} className="flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Investor password:</span>
+                    <input type="text" value={formData.investorPass} onChange={e => setFormData(s => ({ ...s, investorPass: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="h-2" />
                 <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-400 w-24 text-right flex-shrink-0">Comment:</span>
-                    <input type="text" value={formData.comment} onChange={e => setFormData(s => ({ ...s, comment: e.target.value }))} className="flex-1 bg-transparent border border-zinc-700 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Comment:</span>
+                    <input type="text" value={formData.comment} onChange={e => setFormData(s => ({ ...s, comment: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="h-4" />
                 <div className="flex items-start gap-2 pl-[104px]">
                     <input type="checkbox" className="mt-0.5 accent-indigo-500 w-3 h-3" defaultChecked />
                     <div>
-                        <span className="text-[11px] text-zinc-300 block">I agree with the terms and conditions for opening an account and the data protection policy</span>
-                        <a href="https://rtx5.orrnn.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="text-[11px] text-indigo-400 hover:text-indigo-300 mt-1 block">www.rtx5.orrnn.com</a>
+                        <span className="block text-[14px] font-normal text-zinc-300">I agree with the terms and conditions for opening an account and the data protection policy</span>
+                        <a href="https://rtx5.orrnn.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="mt-1 block text-[14px] font-normal text-indigo-400 hover:text-indigo-300">www.rtx5.orrnn.com</a>
                     </div>
                 </div>
                 {createError && (
-                    <div className="pl-[104px] mt-2 text-[11px] text-red-400 bg-red-500/10 p-2 rounded border border-red-500/20">
+                    <div className="mt-2 rounded border border-red-500/20 bg-red-500/10 p-2 pl-[104px] text-[12px] font-normal text-red-400">
                         {createError}
                     </div>
                 )}
@@ -583,7 +583,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                 </div>
                 <h3 className="text-white font-semibold text-[16px] mb-1">Registration Complete</h3>
-                <p className="text-zinc-400 text-[12px] mb-6 text-center">Your new account has been successfully created.<br />Please save these credentials.</p>
+                <p className="mb-6 text-center text-[12px] font-normal text-zinc-400">Your new account has been successfully created.<br />Please save these credentials.</p>
                 <div className="w-full bg-[#1a1c23] border border-zinc-700/50 rounded-xl p-5 flex flex-col gap-3">
                     {[
                         { label: 'Login (Account)', value: createdAccount.login, mono: true, color: 'text-emerald-400', size: 'text-[16px]' },
@@ -596,9 +596,9 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         { label: 'Leverage', value: `1:${createdAccount.leverage || formData.leverage}` },
                     ].filter(isSummaryRow).map((row) => (
                         <div key={row.label} className="flex justify-between items-center pb-3 border-b border-zinc-800/80 last:border-0 last:pb-0">
-                            <span className="text-zinc-500 text-[11px] font-medium uppercase tracking-wider">{row.label}</span>
+                            <span className="text-[12px] font-normal uppercase tracking-wider text-zinc-500">{row.label}</span>
                             <div className="flex items-center gap-2">
-                                <span className={`${row.color || 'text-zinc-200'} ${row.mono ? 'font-mono' : ''} ${row.size || 'text-[13px]'} ${row.small ? 'text-[11px] truncate max-w-[200px]' : ''}`}>{String(row.value)}</span>
+                                <span className={`${row.color || 'text-zinc-200'} ${row.mono ? 'font-mono' : ''} ${row.size || (row.small ? 'text-[12px]' : 'text-[14px]')} ${row.small ? 'max-w-[200px] truncate' : ''} font-normal`}>{String(row.value)}</span>
                                 {row.mono && (
                                     <button onClick={() => navigator.clipboard.writeText(String(row.value))} className="text-zinc-500 hover:text-white transition-colors">
                                         <Copy className="w-3.5 h-3.5" />
@@ -608,7 +608,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         </div>
                     ))}
                 </div>
-                <div className="mt-5 text-[10.5px] leading-relaxed text-yellow-500/90 text-center bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20 w-full flex items-start gap-2">
+                <div className="mt-5 flex w-full items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-center text-[12px] font-normal leading-relaxed text-yellow-500/90">
                     <Shield className="w-4 h-4 flex-shrink-0 mt-0.5 opacity-80" />
                     <span className="text-left">Your password is securely hashed on the server. Please copy and save these credentials now.</span>
                 </div>
@@ -662,11 +662,11 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                             <h2 className="text-[14px] font-semibold text-white tracking-tight">
                                 {step > 0 ? `Open an Account: ${selectedBroker?.broker_name || 'Broker'}` : header.title}
                             </h2>
-                            <p className="text-[10px] text-zinc-500 mt-0.5">{step > 0 ? header.title : header.sub}</p>
+                            <p className="mt-0.5 text-[12px] font-normal text-zinc-500">{step > 0 ? header.title : header.sub}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-1">
-                        <button className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-zinc-300 hover:bg-white/5 transition-all text-sm font-medium" title="Help">?</button>
+                        <button className="flex h-7 w-7 items-center justify-center rounded-md text-[14px] font-normal text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300" title="Help">?</button>
                         <button onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-red-500/20 transition-all" title="Close">
                             <X className="w-3.5 h-3.5" />
                         </button>
@@ -681,14 +681,14 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
                 {/* Footer */}
                 <div className="flex items-center justify-between px-5 py-4 mt-auto" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <div className="text-[10px] text-zinc-600">
+                    <div className="text-[12px] font-normal text-zinc-600">
                         {step === 0 ? 'Double-click to proceed immediately' : ''}
                     </div>
                     <div className="flex items-center gap-2">
                         {step > 0 && (
                             <button
                                 onClick={handleBack}
-                                className="px-5 py-2 text-[12px] font-medium text-zinc-400 hover:text-zinc-200 rounded-lg transition-all"
+                                className="rounded-lg px-5 py-2 text-[14px] font-normal text-zinc-400 transition-all hover:text-zinc-200"
                                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
                             >
                                 &lt; Back
@@ -697,14 +697,14 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         <button
                             onClick={handleNext}
                             disabled={!isStepValid || isCreating}
-                            className="flex items-center gap-2 px-5 py-2 text-[12px] font-semibold text-white rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="flex items-center gap-2 rounded-lg px-5 py-2 text-[14px] font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-40"
                             style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', boxShadow: '0 4px 20px rgba(180,180,190,0.4), inset 0 1px 0 rgba(255,255,255,0.15)' }}
                         >
                             {isCreating ? 'Creating…' : step < 3 ? 'Next >' : step === 3 ? 'Register' : 'Finish'}
                         </button>
                         <button
                             onClick={onClose}
-                            className="px-5 py-2 text-[12px] font-medium text-zinc-400 hover:text-zinc-200 rounded-lg transition-all ml-1"
+                            className="ml-1 rounded-lg px-5 py-2 text-[14px] font-normal text-zinc-400 transition-all hover:text-zinc-200"
                             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
                         >
                             Cancel

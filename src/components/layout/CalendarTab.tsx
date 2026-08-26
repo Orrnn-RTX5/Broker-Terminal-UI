@@ -145,11 +145,11 @@ export function CalendarTab() {
     };
 
     return (
-        <div className="h-full flex flex-col bg-[#131316] font-sans text-[12px] relative" onContextMenu={handleContextMenu}>
+        <div className="rtx-calendar-tab h-full flex flex-col bg-[#131316] font-sans text-[14px] font-normal relative" onContextMenu={handleContextMenu}>
             <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
                 <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-bold text-[10px] uppercase tracking-wider border-b border-zinc-600 shadow-sm">
-                        <tr>
+                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] leading-[18px] uppercase tracking-wider border-b border-zinc-600 shadow-sm">
+                        <tr className="h-[30px]">
                             <th className="p-1 pl-3 border-r border-zinc-700 w-20">Time</th>
                             <th className="p-1 border-r border-zinc-700 w-16 text-center">Cur.</th>
                             <th className="p-1 border-r border-zinc-700 w-16 text-center">Imp.</th>
@@ -160,12 +160,12 @@ export function CalendarTab() {
                             <th className="p-1 w-20 text-right pr-3">Previous</th>
                         </tr>
                     </thead>
-                    <tbody className="text-zinc-300">
+                    <tbody className="text-[13px] font-normal leading-[19.5px] text-zinc-300">
                         {groupedEvents.map(([dateLabel, groupEvents]) => (
                             <React.Fragment key={dateLabel}>
                                 {/* Date Header */}
-                                <tr className="bg-[#262626] border-b border-zinc-800 sticky top-[25px] z-0">
-                                    <td colSpan={8} className="p-1 pl-3 font-medium text-blue-400/90 text-[11px] border-b border-zinc-700/50">
+                                <tr className="h-[30px] bg-[#262626] border-b border-zinc-800 sticky top-[30px] z-0">
+                                    <td colSpan={8} className="p-1 pl-3 font-normal text-blue-400/90 text-[12px] border-b border-zinc-700/50">
                                         {dateLabel}
                                     </td>
                                 </tr>
@@ -178,20 +178,20 @@ export function CalendarTab() {
                                             ${selectedEventId === e.id ? 'bg-[#8a8a8f]/20' : (i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]')}
                                             hover:bg-[#191a1e] transition-colors cursor-default
                                             ${e.priority === 'Holiday' ? 'text-zinc-500 italic' : ''}
-                                            border-b border-zinc-800/50
+                                            h-[30px] border-b border-zinc-800/50 font-normal
                                         `}
                                     >
-                                        <td className="p-1 pl-3 border-r border-zinc-800/50 text-zinc-400 font-mono text-[11px]">{formatTime(e.time)}</td>
-                                        <td className="p-1 border-r border-zinc-800/50 text-center font-bold text-zinc-300">{e.currency}</td>
+                                        <td className="p-1 pl-3 border-r border-zinc-800/50 text-zinc-400 font-mono font-normal">{formatTime(e.time)}</td>
+                                        <td className="p-1 border-r border-zinc-800/50 text-center font-normal text-zinc-300">{e.currency}</td>
                                         <td className="p-1 border-r border-zinc-800/50 text-center">
                                             <div className={`flex items-center justify-center ${getPriorityColor(e.priority)}`}>
                                                 {getPriorityIcon(e.priority)}
                                             </div>
                                         </td>
-                                        <td className="p-1 border-r border-zinc-800/50 font-medium">
+                                        <td className="p-1 border-r border-zinc-800/50 font-normal">
                                             {e.event}
                                         </td>
-                                        <td className="p-1 border-r border-zinc-800/50 text-center text-zinc-500 text-[11px]">{e.period}</td>
+                                        <td className="p-1 border-r border-zinc-800/50 text-center text-zinc-500">{e.period}</td>
                                         <td className={`p-1 border-r border-zinc-800/50 text-right font-mono ${e.actual && e.actual.includes('-') ? 'text-red-400' : 'text-emerald-400'}`}>
                                             {e.actual}
                                         </td>
@@ -208,7 +208,7 @@ export function CalendarTab() {
             {/* Context Menu */}
             {contextMenu && contextMenu.show && (
                 <div
-                    className="fixed bg-[#131316] border border-zinc-700 shadow-xl z-50 py-1 rounded w-56 text-[12px] text-zinc-200"
+                    className="fixed bg-[#131316] border border-zinc-700 shadow-xl z-50 py-1 rounded w-56 text-[14px] font-normal text-zinc-200"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                     onClick={(e) => e.stopPropagation()}
                 >
@@ -217,7 +217,7 @@ export function CalendarTab() {
                     </div>
                     <div className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer flex justify-between items-center">
                         <span>Refresh</span>
-                        <span className="text-zinc-500 group-hover:text-white text-[10px]">F5</span>
+                        <span className="text-zinc-500 group-hover:text-white text-[12px] font-normal">F5</span>
                     </div>
                     <div className="h-[1px] bg-zinc-700 my-1"></div>
 

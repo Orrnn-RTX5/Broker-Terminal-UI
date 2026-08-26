@@ -119,6 +119,7 @@ describe('backend target resolver', () => {
     };
 
     expect(getBackendTarget()).toBe('https://fxtrustbrokerbackend.orrnn.com');
+    expect(resolveBrokerBackendUrl({})).toBe('https://fxtrustbrokerbackend.orrnn.com');
     expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://fxtrustbrokerbackend.orrnn.com/ws/v2');
     expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://fxtrustbrokerbackend.orrnn.com/ws/feed');
     expect(getRuntimeDiscoveryBaseUrl()).toBe('https://fxtrustsuperbackned.orrnn.com');

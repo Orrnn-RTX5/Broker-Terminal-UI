@@ -1,0 +1,35 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const hookSource = readFileSync(resolve(process.cwd(), 'src/hooks/useToolboxTradeData.ts'), 'utf8');
+const dockSource = readFileSync(resolve(process.cwd(), 'src/components/BottomDock.tsx'), 'utf8');
+
+const lifecycleStart = hookSource.indexOf('const handleMarketOrderPlacement = (event: Event) => {');
+const lifecycleEnd = hookSource.indexOf('useEffect(() => {\n    const handleCloseState', lifecycleStart);
+const lifecycleHandler = hookSource.slice(lifecycleStart, lifecycleEnd);
+const pendingStart = lifecycleHandler.indexOf("if (detail.status === 'pending')");
+const pendingEnd = lifecycleHandler.indexOf('pendingMarketOrdersRef.current.delete(detail.clientOrderId)', pendingStart);
+const pendingBranch = lifecycleHandler.slice(pendingStart, pendingEnd);
+
+describe('Toolbox provisional market-order source contract', () => {
+  it('keeps pending rows isolated from confirmed positions and the app store', () => {
+    expect(lifecycleStart).toBeGreaterThan(-1);
+    expect(lifecycleEnd).toBeGreaterThan(lifecycleStart);
+    expect(pendingBranch).toContain('pendingMarketOrdersRef.current.set');
+    expect(pendingBranch).toContain('pendingPositions:');
+    expect(pendingBranch).not.toContain('commitPositions(');
+    expect(lifecycleHandler).toContain("if (detail.status === 'failed') return;");
+    expect(lifecycleHandler).toContain('commitPositions(next);');
+  });
+
+  it('passes pending rows separately and disables every trade action on them', () => {
+    expect(dockSource).toContain('pendingPositions={toolboxTrade.pendingPositions ?? []}');
+    expect(dockSource).toContain('() => [...pendingPositions, ...sortedLivePositions]');
+    expect(dockSource).toContain("const isPendingPlacement = pos.placementState === 'pending';");
+    expect(dockSource).toContain('disabled={isPendingPlacement}');
+    expect(dockSource).toContain('if (!isPendingPlacement) startEditing(pos);');
+    expect(dockSource).toContain('if (isPendingPlacement) return;');
+  });
+});
+

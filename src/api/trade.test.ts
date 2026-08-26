@@ -165,6 +165,30 @@ describe('trade v2 API contract calls', () => {
     expect(unauthorizedEvents).toBe(0);
   });
 
+  it('stops after one authenticated retry when refreshed credentials are also rejected', async () => {
+    setToken('expired-access-token');
+    localStorage.setItem('refresh_token', 'refresh-token');
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ message: 'expired' }, { status: 401 }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'refreshed-access-token' }))
+      .mockResolvedValueOnce(jsonResponse({ message: 'still unauthorized' }, { status: 401 }));
+
+    await expect(apiClient.get('/protected-after-refresh', {
+      baseUrl: 'https://broker.example/api/v2',
+      skipDynamicUrl: true,
+    })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 401,
+      message: 'Unauthorized',
+    } satisfies Partial<ApiError>);
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3);
+    expect(String(vi.mocked(fetch).mock.calls[1]?.[0]))
+      .toMatch(/\/api\/v2\/auth\/refresh$/);
+    expect(new Headers(vi.mocked(fetch).mock.calls[2]?.[1]?.headers).get('Authorization'))
+      .toBe('Bearer refreshed-access-token');
+  });
+
   it.each(abortLifecycleCalls)(
     'keeps $method abort active after headers arrive and while the body is parsing',
     async ({ invoke }) => {

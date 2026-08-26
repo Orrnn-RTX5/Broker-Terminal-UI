@@ -17,11 +17,11 @@ import { Icon } from './ui/Icon';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
+import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
 import { formatOrderError } from '../utils/orderError';
-import { fetchSymbolMarketStatus, useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
+import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import {
-    createUnavailableMarketStatus,
     getMarketStatusTradeBlockMessage,
     shouldBlockSymbolTrading,
 } from '../utils/marketStatus';
@@ -52,7 +52,6 @@ export function LastSymbolPanel() {
     const positions = useAppStore((s) => s.positions);
     const accountId = useAppStore((s) => s.accountId);
 
-    const [isPlacing, setIsPlacing] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
     const [statusType, setStatusType] = useState<'success' | 'error' | 'info'>('info');
@@ -157,31 +156,34 @@ export function LastSymbolPanel() {
     // Place order via MT5 Sync API
     const placeOrder = useCallback(
         async (side: 'BUY' | 'SELL') => {
-            if (isPlacing || !lastSymbol) {
+            if (!lastSymbol) {
                 if (!lastSymbol) flash('No last symbol — place a trade first', 'error');
                 return;
             }
-            setIsPlacing(true);
-            try {
-                const login = Number(accountId) || 0;
-                if (!login) {
-                    flash('No trading account is selected. Please sign in again.', 'error');
-                    return;
-                }
-                const latestMarketStatus = await fetchSymbolMarketStatus(lastSymbol, { force: true })
-                    .catch(() => createUnavailableMarketStatus(lastSymbol));
-                if (shouldBlockSymbolTrading(latestMarketStatus, lastSymbol)) {
-                    flash(getMarketStatusTradeBlockMessage(latestMarketStatus, lastSymbol), 'error');
-                    return;
-                }
+            const intentAtMs = captureTradeOrderIntent();
+            const login = Number(accountId) || 0;
+            if (!login) {
+                flash('No trading account is selected. Please sign in again.', 'error');
+                return;
+            }
+            // Status polling already keeps this rendered gate current. A forced
+            // HTTP check here previously added a complete network RTT per click.
+            if (!canPlaceTrade) {
+                flash(tradeBlockedMessage, 'error');
+                return;
+            }
 
+            try {
                 const orderData: any = {
                     symbol: lastSymbol,
                     side: side.toLowerCase(),
                     volume: effectiveLot,
                     login,
-                    comment: 'RTX sync trade',
                 };
+
+                // Deliberately omit the old informational REST-only comment so
+                // standard Last Symbol orders can use the fixed low-latency WS
+                // contract. User-authored comments elsewhere are still kept on REST.
 
                 // Auto SL/TP
                 if (autoSLTP && slPips > 0) {
@@ -200,18 +202,19 @@ export function LastSymbolPanel() {
                     }
                 }
 
-                await api.orders.placeMarketOrder(orderData);
+                const orderPromise = api.orders.placeMarketOrder(orderData, { intentAtMs });
+                // Do not serialize deliberate one-click orders behind a prior
+                // terminal fill; every call owns separate durable correlation IDs.
+                await orderPromise;
                 setLastSymbol(lastSymbol, side);
                 window.dispatchEvent(new Event('rtx:force-refresh-positions'));
                 flash(`${side} ${effectiveLot} ${lastSymbol} ✓`, 'success');
             } catch (err: unknown) {
                 console.error('LastSymbolPanel order failed:', err);
                 flash(formatOrderError(err), 'error');
-            } finally {
-                setIsPlacing(false);
             }
         },
-        [isPlacing, lastSymbol, effectiveLot, autoSLTP, slPips, tpPips, pipSize, bid, ask, accountId, setLastSymbol, flash]
+        [lastSymbol, effectiveLot, autoSLTP, slPips, tpPips, pipSize, bid, ask, accountId, canPlaceTrade, tradeBlockedMessage, setLastSymbol, flash]
     );
 
     // Close positions on last symbol via MT5 Sync API
@@ -414,7 +417,7 @@ export function LastSymbolPanel() {
                     <div className="flex items-center gap-1.5">
                         <button
                             onClick={() => setVolume(volume - 0.01)}
-                            disabled={volume <= 0.01 || isPlacing || useRiskSizing}
+                            disabled={volume <= 0.01 || useRiskSizing}
                             className="w-6 h-6 flex items-center justify-center bg-[#2a2e39] hover:bg-[#353a47] disabled:opacity-30 disabled:cursor-not-allowed text-zinc-300 rounded text-xs transition-colors"
                         >
                             <Icon name="minus" size="xs" />
@@ -428,12 +431,12 @@ export function LastSymbolPanel() {
                                 const val = parseFloat(e.target.value);
                                 if (!isNaN(val) && val >= 0.01) setVolume(val);
                             }}
-                            disabled={isPlacing || useRiskSizing}
+                            disabled={useRiskSizing}
                             className="flex-1 px-2 py-1 bg-[#0d0d11] border border-[#2a2e39] rounded text-center text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-blue-500/50 disabled:opacity-50 w-0"
                         />
                         <button
                             onClick={() => setVolume(volume + 0.01)}
-                            disabled={isPlacing || useRiskSizing}
+                            disabled={useRiskSizing}
                             className="w-6 h-6 flex items-center justify-center bg-[#2a2e39] hover:bg-[#353a47] disabled:opacity-30 disabled:cursor-not-allowed text-zinc-300 rounded text-xs transition-colors"
                         >
                             <Icon name="plus" size="xs" />
@@ -474,7 +477,7 @@ export function LastSymbolPanel() {
                 <div className="grid grid-cols-2 gap-2 p-3">
                     <button
                         onClick={() => placeOrder('SELL')}
-                        disabled={isPlacing || !canPlaceTrade || bid === 0}
+                        disabled={!canPlaceTrade || bid === 0}
                         className="flex flex-col items-center justify-center py-2 rounded-md bg-red-600/20 hover:bg-red-600/35 border border-red-500/30 hover:border-red-500/60 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-all group active:scale-95"
                     >
                         <Icon name="trending-down" size="lg" className="mb-0.5 group-hover:scale-110 transition-transform" />
@@ -485,7 +488,7 @@ export function LastSymbolPanel() {
 
                     <button
                         onClick={() => placeOrder('BUY')}
-                        disabled={isPlacing || !canPlaceTrade || ask === 0}
+                        disabled={!canPlaceTrade || ask === 0}
                         className="flex flex-col items-center justify-center py-2 rounded-md bg-teal-600/20 hover:bg-teal-600/35 border border-teal-500/30 hover:border-teal-500/60 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-all group active:scale-95"
                     >
                         <Icon name="trending-up" size="lg" className="mb-0.5 group-hover:scale-110 transition-transform" />

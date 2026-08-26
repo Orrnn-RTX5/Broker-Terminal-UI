@@ -16,7 +16,7 @@ export function BootstrapLoader() {
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: '#ffffff',
-      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+      fontFamily: 'var(--font-sans)',
     }}>
       <svg
         viewBox="0 0 100 50"

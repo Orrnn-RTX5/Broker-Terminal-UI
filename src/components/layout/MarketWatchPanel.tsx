@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { resolveTickFromLookup, useAppStore, useTick } from '../../store/useAppStore';
-import { useMarketDataStore } from '../../store/useMarketDataStore';
+import { resolveTickFromLookup, selectTickCount, useAppStore, useTick } from '../../store/useAppStore';
 import { useWatchlistStore } from '../../store/useWatchlistStore';
 import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
@@ -17,11 +16,24 @@ import {
   shouldUseWatchlistAsMarketWatchSource,
 } from '../../utils/marketWatchSource';
 
-interface MarketWatchPanelProps {
+export interface ActiveMarketSymbolsSnapshot {
+  symbols: string[];
+  loading: boolean;
+  settled: boolean;
+  current: boolean;
+  error: string | null;
+  reload: () => Promise<void>;
+}
+
+interface MarketWatchPanelBaseProps {
   allSymbols: unknown[];
   selectedSymbol: string;
   onSymbolSelect: (symbol: string) => void;
   className?: string;
+}
+
+interface MarketWatchPanelProps extends MarketWatchPanelBaseProps {
+  activeMarketSnapshot?: ActiveMarketSymbolsSnapshot;
 }
 
 interface ScopedManualSymbols {
@@ -96,10 +108,10 @@ const MarketWatchRow: React.FC<{
   contextMenuItems: ContextMenuItemConfig[];
   showAsk: boolean;
   showSpread: boolean;
-  showDaily: boolean;
+  showDailyChange: boolean;
   symbolUniverse: readonly string[];
   rowRef?: (node: HTMLTableRowElement | null) => void;
-}> = ({ symbol, isSelected, isLive, isAvailable, isStatusLoading, isStatusSettled, isStatusCurrent, isCatalogLoading, isActionable, now, onClick, contextMenuItems, showAsk, showSpread, showDaily, symbolUniverse, rowRef }) => {
+}> = ({ symbol, isSelected, isLive, isAvailable, isStatusLoading, isStatusSettled, isStatusCurrent, isCatalogLoading, isActionable, now, onClick, contextMenuItems, showAsk, showSpread, showDailyChange, symbolUniverse, rowRef }) => {
   const displaySymbol = getMarketWatchSymbolLabel(symbol, symbolUniverse);
   const cachedTick = useTick(symbol);
   const tick = cachedTick;
@@ -108,16 +120,13 @@ const MarketWatchRow: React.FC<{
   const bid = tick?.bid ?? 0;
   const ask = tick?.ask ?? 0;
   const spread = tick?.spread ?? (ask - bid);
-
-  const cachedStats = useMarketDataStore(state => state.symbolData[symbol]?.stats);
-  const stats = cachedStats;
-  const rawDaily = tick?.dailyChange;
-  const dailyPct: number | null =
-    rawDaily !== undefined && rawDaily !== null
-      ? Number(rawDaily)
-      : stats?.changePercent24h ?? null;
-
   const spreadDisplay = formatSpreadDisplay(symbol, spread, bid, ask);
+  const rawDaily = tick?.dailyChange;
+  const normalizedDaily = Number(rawDaily);
+  const dailyPct: number | null =
+    rawDaily !== undefined && rawDaily !== null && Number.isFinite(normalizedDaily)
+      ? normalizedDaily
+      : null;
 
   const hasData = tick && (tick.bid > 0 || tick.ask > 0);
   const hasDailyData = dailyPct !== null;
@@ -157,6 +166,7 @@ const MarketWatchRow: React.FC<{
         }}
         onClick={onClick}
         style={{
+          height: 36,
           cursor: 'pointer',
           borderBottom: '1px solid rgba(255,255,255,0.04)',
           background: isSelected
@@ -189,24 +199,25 @@ const MarketWatchRow: React.FC<{
               <span style={{ width: 7, flexShrink: 0, display: 'inline-block' }} />
             )}
             <span aria-label={displaySymbol} className="rtx-market-watch__symbol" style={{
-              fontSize: 11,
-              fontWeight: isSelected ? 600 : 500,
+              fontSize: 14,
+              fontWeight: 400,
               color: isSelected ? '#e2e2e8' : '#b8b8c0',
-              letterSpacing: '0.015em',
+              letterSpacing: 'normal',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}>
               {displaySymbol}
             </span>
-            {statusLabel && (
+            {statusLabel && statusLabel !== 'STALE' && (
               <span
                 className="rtx-market-watch__status"
                 aria-label={`${displaySymbol} ${statusLabel.toLowerCase()}${quoteAge ? `, last quote ${quoteAge} ago` : ''}`}
                 style={{
                   flexShrink: 0,
-                  fontSize: 7,
-                  color: statusLabel === 'STALE' ? '#d6a84b' : '#6b6b73',
+                  fontSize: 10,
+                  fontWeight: 400,
+                  color: '#6b6b73',
                   letterSpacing: '0.04em',
                 }}
               >
@@ -220,8 +231,8 @@ const MarketWatchRow: React.FC<{
         <td style={{ padding: '3px 5px', textAlign: 'right' }}>
           <span className={`rtx-market-watch__price rtx-market-watch__price--bid${bidPriceDirection ? ` rtx-market-watch__price--${bidPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
             display: 'inline-block',
-            fontSize: 12,
-            fontWeight: 600,
+            fontSize: 14,
+            fontWeight: 400,
             color: hasData
               ? bidFlash === 'up' ? '#4ade80'
               : bidFlash === 'down' ? '#f87171'
@@ -231,7 +242,7 @@ const MarketWatchRow: React.FC<{
             borderRadius: 3,
             background: 'transparent',
             transition: 'color 0.25s',
-            letterSpacing: '0.01em',
+            letterSpacing: 'normal',
             fontVariantNumeric: 'tabular-nums',
             tabularNums: true,
           } as React.CSSProperties}>
@@ -244,8 +255,8 @@ const MarketWatchRow: React.FC<{
           <td style={{ padding: '3px 5px', textAlign: 'right' }}>
             <span className={`rtx-market-watch__price rtx-market-watch__price--ask${askPriceDirection ? ` rtx-market-watch__price--${askPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
               display: 'inline-block',
-              fontSize: 12,
-              fontWeight: 500,
+              fontSize: 14,
+              fontWeight: 400,
               color: hasData
                 ? askFlash === 'up' ? '#4ade80'
                 : askFlash === 'down' ? '#f87171'
@@ -255,7 +266,7 @@ const MarketWatchRow: React.FC<{
               borderRadius: 3,
               background: 'transparent',
               transition: 'color 0.25s',
-              letterSpacing: '0.01em',
+              letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',
             }}>
               {hasData ? <PriceDisplay price={ask} symbol={symbol} /> : '—'}
@@ -263,14 +274,14 @@ const MarketWatchRow: React.FC<{
           </td>
         )}
 
-        {/* Spread — pill badge style, easy to scan */}
+        {/* Spread remains independently useful and sits immediately before Daily Change. */}
         {showSpread && (
           <td style={{ padding: '3px 5px', textAlign: 'right' }}>
             <span className={`rtx-market-watch__spread${!hasData ? ' rtx-market-watch__spread--empty' : ''}`} style={{
-              fontSize: 10,
-              fontWeight: 500,
+              fontSize: 14,
+              fontWeight: 400,
               color: hasData ? '#888890' : '#36363e',
-              letterSpacing: '0.01em',
+              letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',
             }}>
               {hasData ? spreadDisplay : '—'}
@@ -278,23 +289,23 @@ const MarketWatchRow: React.FC<{
           </td>
         )}
 
-        {/* Daily Change — bold, clear positive/negative */}
-        {showDaily && (
+        {/* MetaTrader-style Daily Change follows Spread without changing its session-close semantics. */}
+        {showDailyChange && (
           <td style={{ padding: '3px 8px', textAlign: 'right' }}>
             <span className={`rtx-market-watch__daily${!hasData ? ' rtx-market-watch__daily--empty' : ''}${dailyPositive ? ' rtx-market-watch__daily--up' : ''}${dailyNegative ? ' rtx-market-watch__daily--down' : ''}`} style={{
-              fontSize: 11,
-              fontWeight: 600,
+              fontSize: 14,
+              fontWeight: 400,
               color: !hasData ? '#36363e'
                 : !hasDailyData ? '#50505a'
-                : dailyPositive ? '#4ade80'
-                : dailyNegative ? '#f87171'
+                : dailyPositive ? '#4597ff'
+                : dailyNegative ? '#ff5858'
                 : '#606068',
-              letterSpacing: '0.01em',
+              letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',
             }}>
               {!hasData ? '—'
                 : hasDailyData
-                  ? `${dailyPct! > 0 ? '+' : ''}${dailyPct!.toFixed(2)}%`
+                  ? `${dailyPct!.toFixed(2)}%`
                   : <span style={{ color: '#50505a' }}>—</span>
               }
             </span>
@@ -306,15 +317,19 @@ const MarketWatchRow: React.FC<{
 };
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
-export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
+const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
+  activeMarketSnapshot: ActiveMarketSymbolsSnapshot;
+}> = ({
   allSymbols,
   selectedSymbol,
   onSymbolSelect,
   className,
+  activeMarketSnapshot,
 }) => {
-  const liveTicks = useAppStore((state) => state.ticks);
+  // This panel only needs to know whether any quote exists. Subscribing to the
+  // complete tick map redrew the entire panel for every freshness timestamp.
+  const liveTickCount = useAppStore(selectTickCount);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
-  const liveTickCount = Object.keys(liveTicks).length;
   const {
     symbols: marketInstruments,
     disabledSymbols,
@@ -328,7 +343,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     current: activeSymbolsCurrent,
     error: activeSymbolsError,
     reload: reloadActiveMarketSymbols,
-  } = useActiveMarketSymbols();
+  } = activeMarketSnapshot;
 
   const activeWatchlist = useWatchlistStore((s) => {
     return s.watchlists.find((w) => w.id === s.activeWatchlistId);
@@ -372,9 +387,11 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  const showAsk    = panelWidth >= 220;
-  const showSpread = panelWidth >= 300;
-  const showDaily  = panelWidth >= 380;
+  const showAsk = panelWidth >= 220;
+  // Keep Daily Change at the breakpoint requested for the previous replacement.
+  const showDailyChange = panelWidth >= 300;
+  // At 360 px both numeric columns fit without hiding Daily Change in the normal 379 px dock.
+  const showSpread = panelWidth >= 360;
 
   const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols(disabledSymbols)), [disabledSymbols]);
 
@@ -545,9 +562,13 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     const data = rows.map(sym => {
       const tick = getTickSnapshot(sym);
       const spreadDisplay = tick ? formatSpreadDisplay(sym, tick.spread, tick.bid, tick.ask) : '-';
-      return `${sym}\t${tick?.bid ?? '-'}\t${tick?.ask ?? '-'}\t${spreadDisplay}`;
+      const dailyChange = Number(tick?.dailyChange);
+      const dailyChangeDisplay = tick?.dailyChange !== undefined && Number.isFinite(dailyChange)
+        ? `${dailyChange.toFixed(2)}%`
+        : '-';
+      return `${sym}\t${tick?.bid ?? '-'}\t${tick?.ask ?? '-'}\t${spreadDisplay}\t${dailyChangeDisplay}`;
     }).join('\n');
-    navigator.clipboard.writeText(`Symbol\tBid\tAsk\tSpread\n${data}`);
+    navigator.clipboard.writeText(`Symbol\tBid\tAsk\tSpread\tDaily Change\n${data}`);
   }, [rows]);
 
   const getContextMenuItems = useCallback((symbol: string): ContextMenuItemConfig[] => {
@@ -755,15 +776,17 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
           height: '100%',
           background: 'transparent',
           color: '#e2e2e8',
-          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-          fontSize: 12,
+          fontFamily: 'var(--font-sans)',
+          fontSize: 14,
           userSelect: 'none',
           overflow: 'hidden',
         }}
       >
         {/* ── Header ──────────────────────────────────────────── */}
         <div className="rtx-market-watch__header" style={{
-          padding: '8px 12px 7px',
+          height: 30,
+          padding: '0 12px',
+          boxSizing: 'border-box',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
           display: 'flex',
           alignItems: 'center',
@@ -773,13 +796,14 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             {/* Subtle accent dot */}
-            <span className="rtx-market-watch__title" style={{ fontSize: 11, fontWeight: 500, color: '#808088', letterSpacing: '0.04em' }}>
+            <span className="rtx-market-watch__title" style={{ fontSize: 12, fontWeight: 400, color: '#808088', letterSpacing: 'normal' }}>
               MARKET WATCH
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="rtx-market-watch__time" style={{
-              fontSize: 10,
+              fontSize: 12,
+              fontWeight: 400,
               color: '#8a8a8f',
               letterSpacing: '0.04em',
               fontVariantNumeric: 'tabular-nums',
@@ -787,7 +811,8 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               {timeStr}
             </span>
             <span className="rtx-market-watch__count" style={{
-              fontSize: 9,
+              fontSize: 11,
+              fontWeight: 400,
               color: '#50505a',
               background: 'rgba(255,255,255,0.04)',
               border: '1px solid rgba(255,255,255,0.06)',
@@ -823,7 +848,8 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 6,
                 padding: '5px 8px 5px 26px',
-                fontSize: 11,
+                fontSize: 14,
+                fontWeight: 400,
                 color: '#e2e2e8',
                 outline: 'none',
                 fontFamily: 'inherit',
@@ -891,15 +917,16 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                       alignItems: 'center',
                       justifyContent: 'space-between',
                     cursor: 'pointer',
-                    fontSize: 11,
+                    fontSize: 14,
+                    fontWeight: 400,
                     background: idx === highlightIndex ? 'rgba(255,255,255,0.06)' : 'transparent',
                     opacity: 1,
                       transition: 'background 0.1s',
                     }}
                   >
-                    <span className="rtx-market-watch__dropdown-symbol" style={{ color: idx === highlightIndex ? '#e2e2e8' : '#808088', fontWeight: 500 }}>{displaySymbol}</span>
+                    <span className="rtx-market-watch__dropdown-symbol" style={{ color: idx === highlightIndex ? '#e2e2e8' : '#808088', fontWeight: 400 }}>{displaySymbol}</span>
                     <span className="rtx-market-watch__category" style={{
-                      fontSize: 9,
+                      fontSize: 10,
                       color: cat.color,
                       background: `${cat.color}18`,
                       border: `1px solid ${cat.color}30`,
@@ -929,7 +956,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '4px 10px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)',
             }}>
-              <span id={`${dockedSearchListboxId}-label`} className="rtx-market-watch__symbols-title" style={{ fontSize: 9, color: '#50505a', letterSpacing: '0.05em' }}>SEARCH RESULTS ({filteredSymbols.length})</span>
+              <span id={`${dockedSearchListboxId}-label`} className="rtx-market-watch__symbols-title" style={{ fontSize: 12, fontWeight: 400, color: '#50505a', letterSpacing: 'normal' }}>SEARCH RESULTS ({filteredSymbols.length})</span>
               <button
                 type="button"
                 aria-label="Close symbol search results"
@@ -964,15 +991,15 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setHighlightIndex(idx)}
                   style={{
-                  padding: '5px 10px', display: 'flex', alignItems: 'center',
-                  justifyContent: 'space-between', cursor: 'pointer', fontSize: 11, color: '#606068',
+                  minHeight: 30, padding: '4px 10px', display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between', cursor: 'pointer', fontSize: 14, fontWeight: 400, lineHeight: '21px', color: '#606068',
                   background: idx === highlightIndex ? 'rgba(255,255,255,0.06)' : 'transparent',
                   opacity: 1,
                   }}
                   className="mw-row"
                 >
                   <span className="rtx-market-watch__symbol">{displaySymbol}</span>
-                  <span className="rtx-market-watch__category" style={{ fontSize: 9, color: cat.color }}>{cat.label}</span>
+                  <span className="rtx-market-watch__category" style={{ fontSize: 12, fontWeight: 400, color: cat.color }}>{cat.label}</span>
                 </div>
               );
             })}
@@ -1017,20 +1044,20 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
               {/* Column sizing */}
               <colgroup>
                 <col />
-                <col style={{ width: panelWidth < 300 ? '45%' : '22%' }} />
-                {showAsk    && <col style={{ width: '22%' }} />}
+                <col style={{ width: panelWidth < 300 ? '45%' : showSpread ? '20%' : '22%' }} />
+                {showAsk && <col style={{ width: showSpread ? '20%' : '22%' }} />}
                 {showSpread && <col style={{ width: '14%' }} />}
-                {showDaily  && <col style={{ width: '20%' }} />}
+                {showDailyChange && <col style={{ width: 90 }} />}
               </colgroup>
 
               {/* Sticky header */}
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                  <th className="rtx-market-watch__column-heading" style={{ textAlign: 'left',  padding: '4px 8px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Symbol</th>
-                  <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 5px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Bid</th>
-                  {showAsk    && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 5px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Ask</th>}
-                  {showSpread && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 5px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>SPREAD</th>}
-                  {showDaily  && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 8px', fontSize: 9, fontWeight: 600, color: '#606068', letterSpacing: '0.09em', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Daily</th>}
+                  <th className="rtx-market-watch__column-heading" style={{ textAlign: 'left',  padding: '4px 8px', fontSize: 12, fontWeight: 400, color: '#606068', letterSpacing: 'normal', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Symbol</th>
+                  <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 5px', fontSize: 12, fontWeight: 400, color: '#606068', letterSpacing: 'normal', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Bid</th>
+                  {showAsk && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 5px', fontSize: 12, fontWeight: 400, color: '#606068', letterSpacing: 'normal', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Ask</th>}
+                  {showSpread && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 5px', fontSize: 12, fontWeight: 400, color: '#606068', letterSpacing: 'normal', background: '#131316', position: 'sticky', top: 0, zIndex: 10 }}>Spread</th>}
+                  {showDailyChange && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 8px', fontSize: 12, fontWeight: 400, color: '#606068', letterSpacing: 'normal', background: '#131316', position: 'sticky', top: 0, zIndex: 10 }}>Daily Change</th>}
                 </tr>
               </thead>
 
@@ -1053,7 +1080,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
                       contextMenuItems={getContextMenuItems(symbol)}
                       showAsk={showAsk}
                       showSpread={showSpread}
-                      showDaily={showDaily}
+                      showDailyChange={showDailyChange}
                       symbolUniverse={quoteEligibleSymbols}
                       rowRef={(node) => {
                         if (node) {
@@ -1091,7 +1118,7 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
             </svg>
             Add symbol
           </button>
-          <span className="rtx-market-watch__footer-count" style={{ fontSize: 9, color: '#36363e' }}>{rows.length} symbols</span>
+          <span className="rtx-market-watch__footer-count" style={{ fontSize: 10, color: '#36363e' }}>{rows.length} symbols</span>
         </div>
 
         {marketWatchErrors.length > 0 && (
@@ -1117,5 +1144,17 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
     </>
   );
 };
+
+const MarketWatchPanelWithLocalFreshnessOwner: React.FC<MarketWatchPanelBaseProps> = (props) => {
+  const activeMarketSnapshot = useActiveMarketSymbols();
+  return <MarketWatchPanelContent {...props} activeMarketSnapshot={activeMarketSnapshot} />;
+};
+
+export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
+  activeMarketSnapshot,
+  ...props
+}) => activeMarketSnapshot
+  ? <MarketWatchPanelContent {...props} activeMarketSnapshot={activeMarketSnapshot} />
+  : <MarketWatchPanelWithLocalFreshnessOwner {...props} />;
 
 export default MarketWatchPanel;

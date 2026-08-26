@@ -264,7 +264,7 @@ export const NavigatorPanel: React.FC = () => {
 
     return (
         <div className="navigator-panel flex flex-col h-full bg-[#131316] text-zinc-300 select-none border-r border-zinc-700">
-            <div className="navigator-panel__header px-2 py-1 bg-[#191a1e] border-b border-zinc-700 text-xs font-bold text-zinc-400 uppercase tracking-wider">
+            <div className="navigator-panel__header flex h-[30px] items-center px-2 bg-[#191a1e] border-b border-zinc-700 text-[12px] font-normal text-zinc-400 uppercase tracking-wider">
                 Navigator
             </div>
             <div className="navigator-panel__body flex-1 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-zinc-700">
@@ -472,7 +472,7 @@ function TreeItem({
                     className="navigator-tree-item__line absolute top-0 left-[5px] w-px"
                     style={{
                         borderLeft: '1px dashed var(--navigator-tree-line, #555)',
-                        height: '11px',
+                        height: '15px',
                     }}
                 />
             )}
@@ -481,14 +481,14 @@ function TreeItem({
             <div
                 className="navigator-tree-item__line absolute left-[5px]"
                 style={{
-                    top: '11px',
+                    top: '15px',
                     width: '8px',
                     borderTop: '1px dashed var(--navigator-tree-line, #555)',
                 }}
             />
 
             <div
-                className="navigator-tree-item__row flex items-center gap-1.5 py-[1px] px-1 hover:bg-[#191a1e] cursor-pointer rounded-sm group select-none"
+                className="navigator-tree-item__row flex min-h-[30px] items-center gap-1.5 px-1 hover:bg-[#191a1e] cursor-pointer rounded-sm group select-none"
                 onClick={() => {
                     if (hasChildren) {
                         setIsOpen(!isOpen);
@@ -505,7 +505,7 @@ function TreeItem({
                 )}
                 {!hasChildren && <span className="w-3 flex-shrink-0" />}
                 <span className="navigator-tree-item__icon text-zinc-400 group-hover:text-zinc-200 flex-shrink-0">{icon}</span>
-                <span className="navigator-tree-item__label text-[11px] font-medium text-zinc-300 group-hover:text-white truncate">{label}</span>
+                <span className="navigator-tree-item__label text-[14px] font-normal text-zinc-300 group-hover:text-white truncate">{label}</span>
             </div>
             {isOpen && children && (
                 <div className="relative">

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import api from '../services/api';
+import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import apiClient from '../api/client';
 import { tradeApi, type Tick } from '../api/trade';
 import { API_V2_BASE_URL } from '../config/api';
@@ -139,6 +140,7 @@ const submitBasicOrder = async (order: {
   expiration?: number;
   trailing_stop?: number;
 }) => {
+  const intentAtMs = captureTradeOrderIntent();
   assertOrderInputs(order.symbol, order.volume);
   const login = getLogin();
   const pendingType = toPendingType(order.side, order.type);
@@ -151,7 +153,7 @@ const submitBasicOrder = async (order: {
       price_sl: order.price_sl,
       price_tp: order.price_tp,
       trailing_stop: order.trailing_stop,
-    });
+    }, { intentAtMs });
     return;
   }
   if (!Number.isFinite(order.price) || Number(order.price) <= 0) throw new Error('Pending order price must be greater than zero');

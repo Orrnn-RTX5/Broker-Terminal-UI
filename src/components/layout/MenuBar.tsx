@@ -453,7 +453,7 @@ export const MenuBar = () => {
                         <button
                             onClick={() => setActiveMenu(activeMenu === key ? null : key)}
                             onMouseEnter={() => activeMenu && setActiveMenu(key)}
-                            className={`px-3 py-0.5 text-[12px] rounded-sm transition-colors cursor-default outline-none flex items-center border border-transparent
+                            className={`px-3 py-0.5 text-[14px] font-normal rounded-sm transition-colors cursor-default outline-none flex items-center border border-transparent
                                 ${activeMenu === key
                                     ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827] shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] [.rtx-advanced-view_&]:shadow-sm'
                                     : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#4b5563] hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'}`}
@@ -550,7 +550,7 @@ const MenuItem = ({ item, onClose }: { item: MenuItem; onClose?: () => void }) =
                         onClose?.();
                     }
                 }}
-                className={`w-full flex items-center gap-3 px-2 py-1.5 text-[12px] text-left border border-transparent rounded-[2px] transition-colors
+                className={`w-full flex items-center gap-3 px-2 py-1.5 text-[14px] font-normal text-left border border-transparent rounded-[2px] transition-colors
                     ${item.disabled ? 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] group-hover:bg-[#2a2e39] [.rtx-advanced-view_&]:group-hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-[#111827] cursor-default group'}`}
             >
                 {/* Icon Area */}
@@ -565,7 +565,7 @@ const MenuItem = ({ item, onClose }: { item: MenuItem; onClose?: () => void }) =
                 {item.children ? (
                     <Icon name="chevron-right" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-gray-700" />
                 ) : (
-                    item.shortcut && <span className="text-[11px] text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 font-segoe pl-4">{item.shortcut}</span>
+                    item.shortcut && <span className="text-[12px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 font-segoe pl-4">{item.shortcut}</span>
                 )}
             </button>
 

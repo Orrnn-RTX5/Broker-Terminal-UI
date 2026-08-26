@@ -173,6 +173,25 @@ const isBrokerApiHost = (value) => {
   );
 };
 
+const isConfirmedExplicitBrokerDiscoveryUrl = (value) => {
+  const normalized = normalizeHttpUrl(value, 'https');
+  if (!normalized || !isPublicBrokerUrl(normalized, normalizeHttpUrl)) return false;
+
+  const config = runtimeConfig();
+  const configuredPairs = [
+    [
+      first(config.DISCOVERY_BASE_URL, config.VITE_DISCOVERY_BASE_URL),
+      first(config.BROKER_DISCOVERY_URL, config.VITE_BROKER_DISCOVERY_URL),
+    ],
+    [envValue('VITE_DISCOVERY_BASE_URL'), envValue('VITE_BROKER_DISCOVERY_URL')],
+  ];
+
+  return configuredPairs.some(([discoveryBaseUrl, brokerDiscoveryUrl]) =>
+    normalizeHttpUrl(discoveryBaseUrl, 'https') === normalized
+    && normalizeHttpUrl(brokerDiscoveryUrl, 'https') === normalized
+  );
+};
+
 export const getPublicBackendTarget = () => {
   const candidate = first(
     runtimeFirst(
@@ -223,7 +242,10 @@ export const getRuntimeDiscoveryBaseUrl = (fallback = SHARED_DISCOVERY_FALLBACK)
 
   for (const candidate of candidates) {
     const normalized = normalizeHttpUrl(candidate, 'https');
-    if (normalized && !isBrokerApiHost(normalized)) return normalized;
+    if (normalized && (
+      !isBrokerApiHost(normalized)
+      || isConfirmedExplicitBrokerDiscoveryUrl(normalized)
+    )) return normalized;
   }
 
   return SHARED_DISCOVERY_FALLBACK;

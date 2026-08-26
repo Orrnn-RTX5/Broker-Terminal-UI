@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, Position } from '../store/useAppStore';
 import { getStoredAccountLogin, normalizePosition } from '../api/tradeGateway';
-import { buildBrokerWsV2Uri, getAccessToken, getServerUrl } from '../services/brokerSession';
+import {
+  buildBrokerWsV2Uri,
+  getAccessToken,
+  getCommittedBrokerAccountSessionScope,
+  getCommittedBrokerAccountSessionScopeKey,
+  getServerUrl,
+} from '../services/brokerSession';
 import { useAppStore } from '../store/useAppStore';
+import { TRADE_OVERLAY_CLOSE_STATE_EVENT } from '../services/tradeOverlayHistory';
+import {
+  MARKET_ORDER_PLACEMENT_STATE_EVENT,
+  type MarketOrderPlacementStateDetail,
+} from '../services/marketOrderPlacementEvents';
 
 type TradeWsState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -19,6 +30,8 @@ export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'>
   profit?: number;
   time_create?: number | string;
   time_update?: number | string;
+  clientOrderId?: string;
+  placementState?: 'pending' | 'confirmed';
 };
 
 export type ToolboxTradeDebugEvent = {
@@ -30,6 +43,7 @@ export type ToolboxTradeDebugEvent = {
 type ToolboxTradeState = {
   account: Account | null;
   positions: ToolboxTradePosition[];
+  pendingPositions: ToolboxTradePosition[];
   loading: boolean;
   error: string | null;
   login: number | null;
@@ -44,6 +58,7 @@ type ToolboxTradeState = {
 const INITIAL_STATE: ToolboxTradeState = {
   account: null,
   positions: [],
+  pendingPositions: [],
   loading: false,
   error: null,
   login: null,
@@ -57,6 +72,8 @@ const INITIAL_STATE: ToolboxTradeState = {
 
 const DEBUG_LIMIT = 18;
 const RECONNECT_MS = 3000;
+const IMMEDIATE_POSITION_RETENTION_MS = 30_000;
+const PENDING_MARKET_ORDER_ORPHAN_MS = 120_000;
 
 const toNumber = (value: unknown, fallback = 0): number => {
   if (value === null || value === undefined) return fallback;
@@ -176,6 +193,8 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     commission: toNumber(raw?.commission ?? normalized.commission, normalized.commission),
     time_create: raw?.time_create ?? normalized.time_create,
     time_update: raw?.time_update ?? normalized.time_update,
+    clientOrderId: raw?.clientOrderId ?? raw?.client_order_id,
+    placementState: raw?.placementState ?? raw?.placement_state,
     comment: raw?.comment ?? normalized.comment ?? '',
   };
 };
@@ -197,6 +216,8 @@ const positionSignature = (position: ToolboxTradePosition): string => [
   position.profit ?? position.unrealizedPnL,
   position.time_create ?? '',
   position.time_update ?? '',
+  position.clientOrderId ?? '',
+  position.placementState ?? '',
   position.comment ?? '',
 ].join(':');
 
@@ -323,6 +344,109 @@ export const patchToolboxPositions = (
   }
 
   return next;
+};
+
+export type ImmediateToolboxPositionDetail = {
+  login?: number | string;
+  position?: unknown;
+  sessionScope?: string;
+};
+
+export const applyImmediateToolboxPosition = (
+  current: ToolboxTradePosition[],
+  detail: ImmediateToolboxPositionDetail | null | undefined,
+  activeLogin: number,
+  activeSessionScope: string,
+): ToolboxTradePosition[] => {
+  const eventLogin = toNumber(detail?.login, 0);
+  if (
+    !detail?.position
+    || eventLogin !== activeLogin
+    || !detail.sessionScope
+    || detail.sessionScope !== activeSessionScope
+  ) {
+    return current;
+  }
+
+  return patchToolboxPositions(current, [detail.position]);
+};
+
+export const applyMarketOrderPlacementState = (
+  current: ToolboxTradePosition[],
+  detail: MarketOrderPlacementStateDetail | null | undefined,
+  activeLogin: number,
+  activeSessionScope: string,
+): ToolboxTradePosition[] => {
+  if (
+    !detail
+    || toNumber(detail.login, 0) !== activeLogin
+    || !detail.sessionScope
+    || detail.sessionScope !== activeSessionScope
+    || !detail.clientOrderId
+  ) {
+    return current;
+  }
+
+  const withoutProvisional = current.filter((position) => (
+    position.clientOrderId !== detail.clientOrderId
+    && position.id !== detail.provisionalTicket
+  ));
+  const removedProvisional = withoutProvisional.length !== current.length;
+
+  if (detail.status === 'failed') {
+    return removedProvisional ? withoutProvisional : current;
+  }
+
+  if (!detail.position || typeof detail.position !== 'object') {
+    return removedProvisional ? withoutProvisional : current;
+  }
+
+  const rawPosition = {
+    ...(detail.position as Record<string, unknown>),
+    client_order_id: detail.clientOrderId,
+    placement_state: detail.status,
+  };
+
+  if (detail.status === 'pending') {
+    const ticket = getPositionTicket(rawPosition);
+    const volume = toNumber(rawPosition.volume_lots ?? rawPosition.volume ?? rawPosition.quantity, 0);
+    if (!ticket || !rawPosition.symbol || !(volume > 0)) {
+      return removedProvisional ? withoutProvisional : current;
+    }
+    return [normalizeToolboxPosition(rawPosition), ...withoutProvisional];
+  }
+
+  return patchToolboxPositions(withoutProvisional, [rawPosition]);
+};
+
+export type RetainedImmediateToolboxPosition = {
+  position: ToolboxTradePosition;
+  expiresAt: number;
+};
+
+type OptimisticallyClosedToolboxPosition = {
+  position: ToolboxTradePosition;
+  status: 'pending' | 'confirmed';
+  expiresAt: number;
+};
+
+export const mergeRetainedImmediateToolboxPositions = (
+  snapshot: ToolboxTradePosition[],
+  retained: RetainedImmediateToolboxPosition[],
+  now = Date.now(),
+): ToolboxTradePosition[] => {
+  const byTicket = new Map(snapshot.map((position) => [position.id, position]));
+  retained.forEach(({ position, expiresAt }) => {
+    if (expiresAt > now && !byTicket.has(position.id)) {
+      byTicket.set(position.id, position);
+    }
+  });
+  return Array.from(byTicket.values()).sort((a, b) => {
+    const aPending = a.placementState === 'pending';
+    const bPending = b.placementState === 'pending';
+    if (aPending !== bPending) return aPending ? -1 : 1;
+    return b.id - a.id;
+  });
 };
 
 export const patchPositionsFromTick = (
@@ -454,6 +578,12 @@ export function useToolboxTradeData() {
 
   const accountRef = useRef<Account | null>(null);
   const positionsRef = useRef<ToolboxTradePosition[]>([]);
+  const retainedImmediatePositionsRef = useRef<Map<number, RetainedImmediateToolboxPosition>>(new Map());
+  const pendingMarketOrdersRef = useRef<Map<string, RetainedImmediateToolboxPosition>>(new Map());
+  const optimisticallyClosedPositionsRef = useRef<Map<number, OptimisticallyClosedToolboxPosition>>(new Map());
+  const placementSessionScopeRef = useRef(getCommittedBrokerAccountSessionScopeKey(
+    getCommittedBrokerAccountSessionScope(),
+  ));
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const subscribedChannelsRef = useRef<Set<string>>(new Set());
@@ -569,8 +699,43 @@ export function useToolboxTradeData() {
         accountRef.current,
       );
       const rawPositions = arrayFrom(positionsBody, 'positions');
+      const rawPositionTickets = new Set(rawPositions.map(getPositionTicket).filter(Boolean));
+      const now = Date.now();
+      const confirmedClientOrderIds = new Set(rawPositions
+        .map((position) => String(position?.client_order_id ?? position?.clientOrderId ?? '').trim())
+        .filter(Boolean));
+      pendingMarketOrdersRef.current.forEach(({ expiresAt }, clientOrderId) => {
+        if (expiresAt <= now || confirmedClientOrderIds.has(clientOrderId)) {
+          pendingMarketOrdersRef.current.delete(clientOrderId);
+        }
+      });
+      optimisticallyClosedPositionsRef.current.forEach((entry, ticket) => {
+        if (entry.expiresAt <= now || (entry.status === 'confirmed' && !rawPositionTickets.has(ticket))) {
+          optimisticallyClosedPositionsRef.current.delete(ticket);
+        }
+      });
+      const visibleRawPositions = rawPositions.filter(
+        (position) => !optimisticallyClosedPositionsRef.current.has(getPositionTicket(position)),
+      );
+      const snapshot = replaceToolboxPositions(positionsRef.current, visibleRawPositions);
+      const snapshotTickets = new Set(snapshot.map((position) => position.id));
+      retainedImmediatePositionsRef.current.forEach(({ expiresAt }, ticket) => {
+        if (expiresAt <= now || snapshotTickets.has(ticket)) {
+          retainedImmediatePositionsRef.current.delete(ticket);
+        }
+      });
       commitAccount(mergedAccount);
-      commitPositions(replaceToolboxPositions(positionsRef.current, rawPositions));
+      commitPositions(mergeRetainedImmediateToolboxPositions(
+        snapshot,
+        Array.from(retainedImmediatePositionsRef.current.values()),
+        now,
+      ));
+      setState((prev) => ({
+        ...prev,
+        pendingPositions: Array.from(pendingMarketOrdersRef.current.values())
+          .map(({ position }) => position)
+          .sort((a, b) => a.id - b.id),
+      }));
 
       setState((prev) => ({
         ...prev,
@@ -596,23 +761,40 @@ export function useToolboxTradeData() {
   }, [commitAccount, commitPositions, pushDebug]);
 
   const removePosition = useCallback((ticket: number) => {
+    retainedImmediatePositionsRef.current.delete(ticket);
     commitPositions(positionsRef.current.filter((position) => position.id !== ticket));
   }, [commitPositions]);
 
   const removePositionsByMode = useCallback((mode: 'ALL' | 'WINNERS' | 'LOSERS') => {
     const current = positionsRef.current;
     if (mode === 'ALL') {
+      retainedImmediatePositionsRef.current.clear();
       commitPositions([]);
       return;
     }
-    commitPositions(current.filter((position) => {
+    const retained = current.filter((position) => {
       const pnl = toNumber(position.profit ?? position.unrealizedPnL, 0);
       return mode === 'WINNERS' ? pnl <= 0 : pnl >= 0;
-    }));
+    });
+    const retainedTickets = new Set(retained.map((position) => position.id));
+    retainedImmediatePositionsRef.current.forEach((_value, ticket) => {
+      if (!retainedTickets.has(ticket)) retainedImmediatePositionsRef.current.delete(ticket);
+    });
+    commitPositions(retained);
   }, [commitPositions]);
 
   useEffect(() => {
     disposedRef.current = false;
+    retainedImmediatePositionsRef.current.clear();
+    optimisticallyClosedPositionsRef.current.clear();
+    const nextPlacementScope = getCommittedBrokerAccountSessionScopeKey(
+      getCommittedBrokerAccountSessionScope(),
+    );
+    if (placementSessionScopeRef.current !== nextPlacementScope) {
+      placementSessionScopeRef.current = nextPlacementScope;
+      pendingMarketOrdersRef.current.clear();
+      setState((prev) => ({ ...prev, pendingPositions: [] }));
+    }
     void refresh();
     return () => {
       activeRefreshControllerRef.current?.abort();
@@ -621,16 +803,163 @@ export function useToolboxTradeData() {
 
   useEffect(() => {
     disposedRef.current = false;
+    let forceRefreshTimer: number | null = null;
     const handleForceRefresh = () => {
-      void refresh();
+      if (forceRefreshTimer !== null) window.clearTimeout(forceRefreshTimer);
+      // Twenty fills may dispatch twenty reconciliation events. The Toolbox's
+      // REST snapshot performs three requests, so coalesce the burst while its
+      // live WS position stream continues updating the Trade tab immediately.
+      forceRefreshTimer = window.setTimeout(() => {
+        forceRefreshTimer = null;
+        void refresh();
+      }, 100);
     };
+    const handleManualRefresh = () => void refresh();
     window.addEventListener('rtx:force-refresh-positions', handleForceRefresh);
-    window.addEventListener('rtx:toolbox-trade-refresh', handleForceRefresh);
+    window.addEventListener('rtx:toolbox-trade-refresh', handleManualRefresh);
     return () => {
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
-      window.removeEventListener('rtx:toolbox-trade-refresh', handleForceRefresh);
+      window.removeEventListener('rtx:toolbox-trade-refresh', handleManualRefresh);
+      if (forceRefreshTimer !== null) window.clearTimeout(forceRefreshTimer);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    const handleMarketOrderPlacement = (event: Event) => {
+      const login = readLogin();
+      if (!login) return;
+
+      const activeSessionScope = getCommittedBrokerAccountSessionScopeKey(
+        getCommittedBrokerAccountSessionScope(),
+      );
+      const detail = (event as CustomEvent<MarketOrderPlacementStateDetail>).detail;
+      if (
+        !detail
+        || toNumber(detail.login, 0) !== login
+        || detail.sessionScope !== activeSessionScope
+      ) return;
+      if (detail.status === 'pending') {
+        const currentPending = Array.from(pendingMarketOrdersRef.current.values())
+          .map(({ position }) => position);
+        const nextPending = applyMarketOrderPlacementState(
+          currentPending,
+          detail,
+          login,
+          activeSessionScope,
+        );
+        if (nextPending === currentPending) return;
+
+        const position = nextPending.find((candidate) => candidate.clientOrderId === detail.clientOrderId);
+        if (position) {
+          pendingMarketOrdersRef.current.set(detail.clientOrderId, {
+            position,
+            expiresAt: Date.now() + PENDING_MARKET_ORDER_ORPHAN_MS,
+          });
+        }
+        setState((prev) => ({
+          ...prev,
+          pendingPositions: Array.from(pendingMarketOrdersRef.current.values())
+            .map(({ position: pendingPosition }) => pendingPosition)
+            .sort((a, b) => a.id - b.id),
+        }));
+        return;
+      }
+
+      pendingMarketOrdersRef.current.delete(detail.clientOrderId);
+      setState((prev) => ({
+        ...prev,
+        pendingPositions: Array.from(pendingMarketOrdersRef.current.values())
+          .map(({ position }) => position)
+          .sort((a, b) => a.id - b.id),
+      }));
+      if (detail.status === 'failed') return;
+
+      const next = applyMarketOrderPlacementState(
+        positionsRef.current,
+        detail,
+        login,
+        activeSessionScope,
+      );
+      if (next === positionsRef.current) return;
+
+      const ticket = getPositionTicket(detail.position);
+      const position = next.find((candidate) => candidate.id === ticket);
+      if (ticket && position) {
+        retainedImmediatePositionsRef.current.set(ticket, {
+          position,
+          expiresAt: Date.now() + IMMEDIATE_POSITION_RETENTION_MS,
+        });
+      }
+      commitPositions(next);
+    };
+
+    window.addEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, handleMarketOrderPlacement);
+    return () => window.removeEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, handleMarketOrderPlacement);
+  }, [commitPositions]);
+
+  useEffect(() => {
+    const handleCloseState = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        status?: 'pending' | 'confirmed' | 'failed';
+        ticketIds?: Array<number | string>;
+      }>).detail;
+      const ticketIds = Array.isArray(detail?.ticketIds)
+        ? detail.ticketIds.map((ticket) => toNumber(ticket, 0)).filter(Boolean)
+        : [];
+      if (ticketIds.length === 0) return;
+
+      if (detail.status === 'pending') {
+        const expiresAt = Date.now() + IMMEDIATE_POSITION_RETENTION_MS;
+        ticketIds.forEach((ticket) => {
+          const position = positionsRef.current.find((candidate) => candidate.id === ticket);
+          if (position) {
+            optimisticallyClosedPositionsRef.current.set(ticket, {
+              position,
+              status: 'pending',
+              expiresAt,
+            });
+          }
+          retainedImmediatePositionsRef.current.delete(ticket);
+        });
+        commitPositions(positionsRef.current.filter((position) => !ticketIds.includes(position.id)));
+        return;
+      }
+
+      if (detail.status === 'confirmed') {
+        ticketIds.forEach((ticket) => {
+          const existing = optimisticallyClosedPositionsRef.current.get(ticket);
+          if (existing) {
+            optimisticallyClosedPositionsRef.current.set(ticket, {
+              ...existing,
+              status: 'confirmed',
+              expiresAt: Date.now() + IMMEDIATE_POSITION_RETENTION_MS,
+            });
+          }
+          retainedImmediatePositionsRef.current.delete(ticket);
+        });
+        return;
+      }
+
+      if (detail.status === 'failed') {
+        let next = positionsRef.current;
+        ticketIds.forEach((ticket) => {
+          const existing = optimisticallyClosedPositionsRef.current.get(ticket);
+          optimisticallyClosedPositionsRef.current.delete(ticket);
+          if (existing) {
+            next = patchToolboxPositions(next, [existing.position]);
+            retainedImmediatePositionsRef.current.set(ticket, {
+              position: existing.position,
+              expiresAt: Date.now() + IMMEDIATE_POSITION_RETENTION_MS,
+            });
+          }
+        });
+        if (next !== positionsRef.current) commitPositions(next);
+      }
+    };
+
+    window.addEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleCloseState);
+    return () => window.removeEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleCloseState);
+  }, [commitPositions]);
 
   useEffect(() => {
     const login = readLogin();
@@ -692,7 +1021,15 @@ export function useToolboxTradeData() {
         const closeTickets = getCloseTickets(message);
         const updates = extractPositionUpdates(message);
         if (closeTickets.length > 0 || updates.length > 0) {
-          const next = patchToolboxPositions(positionsRef.current, updates, closeTickets);
+          closeTickets.forEach((ticket) => {
+            retainedImmediatePositionsRef.current.delete(ticket);
+            optimisticallyClosedPositionsRef.current.delete(ticket);
+          });
+          updates.forEach((update) => retainedImmediatePositionsRef.current.delete(getPositionTicket(update)));
+          const visibleUpdates = updates.filter(
+            (update) => !optimisticallyClosedPositionsRef.current.has(getPositionTicket(update)),
+          );
+          const next = patchToolboxPositions(positionsRef.current, visibleUpdates, closeTickets);
           commitPositions(next);
           setState((prev) => ({ ...prev, lastWsAt: Date.now() }));
         }

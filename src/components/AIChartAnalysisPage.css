@@ -52,7 +52,7 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono);
 }
 
 .symbol-tab:hover {

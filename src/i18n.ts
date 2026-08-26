@@ -26,7 +26,7 @@ const loadLocale = async (language: string, namespace: string) => {
     return {};
 };
 
-i18n
+export const i18nReady = i18n
     .use(resourcesToBackend((language: string, namespace: string) => loadLocale(language, namespace)))
     .use(LanguageDetector)
     .use(initReactI18next)
@@ -38,9 +38,10 @@ i18n
             escapeValue: false, // not needed for react as it escapes by default
         },
 
-        // React Suspense settings
+        // The static HTML splash remains visible until initialization finishes.
+        // Avoid replacing the whole terminal with a second Suspense loader.
         react: {
-            useSuspense: true,
+            useSuspense: false,
         }
     });
 

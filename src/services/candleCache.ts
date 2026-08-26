@@ -34,6 +34,8 @@ export interface CandleCacheEntry extends CandleCacheMetadata {
 const KEY_SEPARATOR = '\u001f';
 const STALE_AFTER_MS = 2 * 60 * 1000;
 const MAX_CACHE_AGE_MS = 30 * 60 * 1000;
+export const MAX_CANDLE_CACHE_ENTRIES = 64;
+export const MAX_CANDLES_PER_CACHE_ENTRY = 20_000;
 
 const normalizeScope = (scope: string): string => String(scope || 'default').trim().replace(/\/+$/, '') || 'default';
 const normalizeSymbol = (symbol: string): string => String(symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -76,11 +78,14 @@ class CandleCache {
       this.entries.delete(key);
       return null;
     }
+    // Map insertion order doubles as a tiny LRU without another index.
+    this.entries.delete(key);
+    this.entries.set(key, entry);
     return this.cloneEntry(entry);
   }
 
   setLatest(key: CandleCacheKey, candles: OHLCData[], metadata: CandleCacheMetadata): CandleCacheEntry {
-    const normalizedCandles = sortAndDedupeCandles(candles);
+    const normalizedCandles = this.boundCandles(sortAndDedupeCandles(candles));
     const entry: CandleCacheEntry = {
       key,
       ...this.normalizeMetadata(metadata),
@@ -90,15 +95,16 @@ class CandleCache {
       newestTime: normalizedCandles[normalizedCandles.length - 1]?.time ?? null,
     };
     this.entries.set(key, entry);
+    this.pruneEntries();
     return this.cloneEntry(entry);
   }
 
   mergeLatest(key: CandleCacheKey, candles: OHLCData[], metadata?: CandleCacheMetadata): CandleCacheEntry {
     const existing = this.entries.get(key);
-    const merged = sortAndDedupeCandles([
+    const merged = this.boundCandles(sortAndDedupeCandles([
       ...(existing?.candles ?? []),
       ...candles,
-    ]);
+    ]));
     const nextMetadata = metadata
       ? this.normalizeMetadata(metadata)
       : existing
@@ -115,6 +121,7 @@ class CandleCache {
       newestTime: merged[merged.length - 1]?.time ?? null,
     };
     this.entries.set(key, entry);
+    this.pruneEntries();
     return this.cloneEntry(entry);
   }
 
@@ -151,6 +158,24 @@ class CandleCache {
     this.entries.clear();
     this.inFlight.clear();
     this.generation += 1;
+  }
+
+  private boundCandles(candles: OHLCData[]): OHLCData[] {
+    return candles.length > MAX_CANDLES_PER_CACHE_ENTRY
+      ? candles.slice(-MAX_CANDLES_PER_CACHE_ENTRY)
+      : candles;
+  }
+
+  private pruneEntries(): void {
+    const oldestAllowed = Date.now() - MAX_CACHE_AGE_MS;
+    for (const [key, entry] of this.entries) {
+      if (entry.fetchedAt < oldestAllowed) this.entries.delete(key);
+    }
+    while (this.entries.size > MAX_CANDLE_CACHE_ENTRIES) {
+      const oldestKey = this.entries.keys().next().value as CandleCacheKey | undefined;
+      if (!oldestKey) break;
+      this.entries.delete(oldestKey);
+    }
   }
 
   private normalizeMetadata(metadata: CandleCacheMetadata): CandleCacheMetadata {

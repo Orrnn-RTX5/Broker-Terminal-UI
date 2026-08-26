@@ -619,24 +619,13 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   const [volume, setVolume] = useState(0.01);
   const [sl, setSl] = useState(0);
   const [tp, setTp] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerHeight, setContainerHeight] = useState(400);
+  const mainContentRef = useRef<HTMLDivElement>(null);
+  const [mainContentHeight, setMainContentHeight] = useState(280);
 
   // Toolbar state
   const [chartMode, setChartMode] = useState<ChartMode>('tick');
   const [crosshair, setCrosshair] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const observer = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        setContainerHeight(entry.contentRect.height);
-      }
-    });
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
 
   const handleZoomIn = useCallback(() => {
     setZoomLevel(prev => Math.min(8, prev * 1.5));
@@ -647,12 +636,29 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   }, []);
 
   const ROW_H = 19;
-  const OVERHEAD = 110;
-  const availableForRows = Math.max(200, containerHeight - OVERHEAD);
+  const COLUMN_HEADER_HEIGHT = 30;
+  const availableForRows = Math.max(ROW_H * 6 * 2, mainContentHeight - COLUMN_HEADER_HEIGHT);
   const dynamicLevels = Math.max(6, Math.floor(availableForRows / ROW_H / 2));
   const { orderBook, loading: depthLoading, error: depthError } = useLiveOrderBook(symbol, dynamicLevels);
   const bestBid = currentTick?.bid ?? orderBook?.bids[0]?.price ?? 0;
   const bestAsk = currentTick?.ask ?? orderBook?.asks[0]?.price ?? 0;
+  const hasDepthSurface = Boolean(currentTick || orderBook);
+
+  useEffect(() => {
+    const element = mainContentRef.current;
+    if (!element) return;
+
+    const updateHeight = () => setMainContentHeight(Math.max(120, element.getBoundingClientRect().height));
+    updateHeight();
+
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setMainContentHeight(Math.max(120, entry.contentRect.height));
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasDepthSurface]);
 
   const depthLevels = useMemo(() => {
     if (orderBook && (orderBook.asks.length > 0 || orderBook.bids.length > 0)) {
@@ -680,7 +686,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
     return (
       <div
         className="flex flex-col items-center justify-center h-full select-none"
-        style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: 11, color: C.textSecondary }}
+        style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: 14, fontWeight: 400, lineHeight: '21px', color: C.textSecondary }}
       >
         <div className="text-center">
           {depthLoading && <div className="w-4 h-4 border-2 border-zinc-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-2" />}
@@ -692,13 +698,12 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
 
   return (
     <div
-      ref={containerRef}
       className="flex flex-col w-full h-full select-none overflow-hidden"
-      style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: 11, borderRadius: 10 }}
+      style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: 12, fontWeight: 400, borderRadius: 10 }}
     >
       {/* ── Title Bar ── */}
       <div
-        className="flex items-center justify-between px-2.5 py-1.5 border-b shrink-0 cursor-move"
+        className="flex min-h-[30px] items-center justify-between px-2.5 py-1 border-b shrink-0 cursor-move"
         style={{
           background: C.bgTertiary,
           borderColor: C.borderPrimary,
@@ -710,10 +715,10 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-2 h-2 rounded-full shrink-0" style={{ background: C.profit, boxShadow: `0 0 6px ${C.profit}` }} />
           <div className="flex items-baseline gap-1.5 min-w-0">
-            <span className="text-[11px] font-bold uppercase tracking-wider shrink-0" style={{ color: C.textPrimary }}>
+            <span className="text-[14px] leading-[21px] font-normal uppercase tracking-normal shrink-0" style={{ color: C.textPrimary }}>
               {symbol}
             </span>
-            <span className="text-[10px] truncate" style={{ color: C.textTertiary, letterSpacing: '0.02em' }}>
+            <span className="text-[12px] leading-[18px] font-normal truncate" style={{ color: C.textTertiary, letterSpacing: 'normal' }}>
               {symbol.startsWith('BTC') ? 'Bitcoin vs US Dollar' :
                symbol.startsWith('ETH') ? 'Ethereum vs US Dollar' :
                symbol.startsWith('XAU') ? 'Gold vs US Dollar' :
@@ -723,10 +728,10 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <div className="px-1 text-[10px] leading-none" style={{ color: C.textTertiary }}>⠿</div>
+          <div className="px-1 text-[12px] leading-none" style={{ color: C.textTertiary }}>⠿</div>
           <button
             onClick={onClose}
-            className="px-1 py-0.5 rounded text-[11px] leading-none transition-colors"
+            className="px-1 py-0.5 rounded text-[14px] font-normal leading-none transition-colors"
             style={{ color: C.textSecondary }}
             onMouseDown={e => e.stopPropagation()}
             onMouseEnter={e => { e.currentTarget.style.color = C.textPrimary; e.currentTarget.style.background = C.bgElevated; }}
@@ -749,14 +754,14 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
       />
 
       {/* ── Main Content: Tick Chart + DOM Table ── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div ref={mainContentRef} className="flex flex-1 min-h-0 overflow-hidden">
 
         {/* ── Left: Tick Chart ── */}
         <div className="flex-[55] border-r min-w-0" style={{ borderColor: C.borderPrimary }}>
           <TickChart
             symbol={symbol}
             width={250}
-            height={containerHeight - OVERHEAD}
+            height={mainContentHeight}
             chartMode={chartMode}
             crosshair={crosshair}
             zoomLevel={zoomLevel}
@@ -774,13 +779,13 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
               background: C.bgTertiary,
             }}
           >
-            <div className="text-center py-[2px] border-r text-[10px] font-bold uppercase tracking-wider" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
+            <div className="flex min-h-[30px] items-center justify-center border-r text-[12px] leading-[18px] font-normal uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
               Volume
             </div>
-            <div className="text-center py-[2px] border-r text-[10px] font-bold uppercase tracking-wider" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
+            <div className="flex min-h-[30px] items-center justify-center border-r text-[12px] leading-[18px] font-normal uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
               Price
             </div>
-            <div className="text-center py-[2px] text-[10px] font-bold uppercase tracking-wider" style={{ color: C.textTertiary }}>
+            <div className="flex min-h-[30px] items-center justify-center text-[12px] leading-[18px] font-normal uppercase tracking-normal" style={{ color: C.textTertiary }}>
               Trade
             </div>
           </div>
@@ -788,7 +793,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           {/* Scrollable Price Levels */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ background: C.bgSecondary }}>
             {depthLevels.asks.length === 0 && depthLevels.bids.length === 0 && (
-              <div className="flex items-center justify-center h-full px-3 text-center text-[10px]" style={{ color: C.textTertiary }}>
+              <div className="flex items-center justify-center h-full px-3 text-center text-[14px] leading-[21px] font-normal" style={{ color: C.textTertiary }}>
                 {depthLoading ? 'Loading market depth...' : depthError || 'No market depth available'}
               </div>
             )}
@@ -814,7 +819,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: C.borderPrimary }}>
                     <div className="absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.lossDim }} />
                     {isNearSpread && (
-                      <span className="relative z-10 text-[10px] font-bold" style={{ fontFamily: MONO, color: C.loss }}>
+                      <span className="relative z-10 text-[12px] font-normal" style={{ fontFamily: MONO, color: C.loss }}>
                         {level.volume.toFixed(2)}
                       </span>
                     )}
@@ -845,7 +850,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                 }}
               >
                 <div className="flex items-center justify-center border-r" style={{ borderColor: C.borderSecondary }} />
-                <div className="flex items-center justify-center border-r text-[9px] font-bold uppercase tracking-widest" style={{ borderColor: C.borderSecondary, color: '#7aacca' }}>
+                <div className="flex items-center justify-center border-r text-[12px] font-normal uppercase tracking-normal" style={{ borderColor: C.borderSecondary, color: '#7aacca' }}>
                   ↕ {((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)} pts
                 </div>
                 <div className="flex items-center justify-center" />
@@ -874,7 +879,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: C.borderPrimary }}>
                     <div className="absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.profitDim }} />
                     {isNearSpread && (
-                      <span className="relative z-10 text-[10px] font-bold" style={{ fontFamily: MONO, color: C.profit }}>
+                      <span className="relative z-10 text-[12px] font-normal" style={{ fontFamily: MONO, color: C.profit }}>
                         {level.volume.toFixed(2)}
                       </span>
                     )}
@@ -901,7 +906,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         style={{ borderColor: C.borderPrimary, background: C.bgTertiary }}
       >
         <div className="flex items-center gap-0.5">
-          <label className="text-[9px] font-bold uppercase" style={{ color: C.textTertiary }}>sl</label>
+          <label className="text-[12px] leading-[18px] font-normal uppercase" style={{ color: C.textTertiary }}>sl</label>
           <input
             type="number"
             value={sl}
@@ -909,7 +914,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             step={1}
             onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0) setSl(v); }}
             onMouseDown={e => e.stopPropagation()}
-            className="w-[36px] text-[10px] text-center border rounded-sm px-0.5 py-[1px] outline-none focus:border-blue-500"
+            className="w-[42px] text-[14px] leading-[21px] font-normal text-center border rounded-sm px-0.5 py-[1px] outline-none focus:border-blue-500"
             style={{ fontFamily: MONO, borderColor: C.borderSecondary, background: C.bgElevated, color: C.textPrimary }}
           />
           <div className="flex flex-col">
@@ -928,7 +933,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             step={0.01}
             onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) setVolume(Math.round(v * 100) / 100); }}
             onMouseDown={e => e.stopPropagation()}
-            className="w-[48px] text-[11px] text-center border rounded-sm px-0.5 py-[1px] font-bold outline-none focus:border-blue-500"
+            className="w-[54px] text-[14px] leading-[21px] text-center border rounded-sm px-0.5 py-[1px] font-normal outline-none focus:border-blue-500"
             style={{ fontFamily: MONO, borderColor: '#1d4ed8', background: C.bgElevated, color: '#60a5fa' }}
           />
           <div className="flex flex-col">
@@ -940,7 +945,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         <div className="w-px h-4" style={{ background: C.borderSecondary }} />
 
         <div className="flex items-center gap-0.5">
-          <label className="text-[9px] font-bold uppercase" style={{ color: C.textTertiary }}>tp</label>
+          <label className="text-[12px] leading-[18px] font-normal uppercase" style={{ color: C.textTertiary }}>tp</label>
           <input
             type="number"
             value={tp}
@@ -948,7 +953,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             step={1}
             onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0) setTp(v); }}
             onMouseDown={e => e.stopPropagation()}
-            className="w-[36px] text-[10px] text-center border rounded-sm px-0.5 py-[1px] outline-none focus:border-blue-500"
+            className="w-[42px] text-[14px] leading-[21px] font-normal text-center border rounded-sm px-0.5 py-[1px] outline-none focus:border-blue-500"
             style={{ fontFamily: MONO, borderColor: C.borderSecondary, background: C.bgElevated, color: C.textPrimary }}
           />
           <div className="flex flex-col">
@@ -963,7 +968,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         <button
           onClick={() => onPlaceOrder?.('SELL', bestBid, volume)}
           onMouseDown={e => e.stopPropagation()}
-          className="flex-1 py-[5px] text-[11px] font-bold text-white transition-all"
+          className="flex-1 py-[6px] text-[14px] leading-[21px] font-semibold text-white transition-all"
           style={{ background: C.sellBtn, borderRight: `1px solid ${C.bgSecondary}`, borderRadius: '0 0 0 10px' }}
           onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.2)')}
           onMouseLeave={e => (e.currentTarget.style.filter = 'none')}
@@ -973,7 +978,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         <button
           onClick={handleCloseAll}
           onMouseDown={e => e.stopPropagation()}
-          className="flex-1 py-[5px] text-[11px] font-bold transition-all"
+          className="flex-1 py-[6px] text-[14px] leading-[21px] font-semibold transition-all"
           style={{ background: C.closeBtn, borderRight: `1px solid ${C.bgSecondary}`, color: C.textSecondary }}
           onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.3)'; e.currentTarget.style.color = C.textPrimary; }}
           onMouseLeave={e => { e.currentTarget.style.filter = 'none'; e.currentTarget.style.color = C.textSecondary; }}
@@ -983,7 +988,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         <button
           onClick={() => onPlaceOrder?.('BUY', bestAsk, volume)}
           onMouseDown={e => e.stopPropagation()}
-          className="flex-1 py-[5px] text-[11px] font-bold text-white transition-all"
+          className="flex-1 py-[6px] text-[14px] leading-[21px] font-semibold text-white transition-all"
           style={{ background: C.buyBtn, borderRadius: '0 0 10px 0' }}
           onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.2)')}
           onMouseLeave={e => (e.currentTarget.style.filter = 'none')}

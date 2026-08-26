@@ -264,6 +264,7 @@ export interface Order {
 export interface CreateOrderRequest {
   login?: number;
   account_login?: number;
+  client_order_id?: string;
   symbol: string;
   type?: 'market';
   side: 'buy' | 'sell' | 'BUY' | 'SELL';

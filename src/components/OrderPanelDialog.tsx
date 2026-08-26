@@ -432,9 +432,9 @@ export function OrderPanelDialog({
   const askF = formatPrice(ask);
 
   // Form row styles
-  const labelCls = "text-[11px] text-zinc-400 w-[75px] text-right flex-shrink-0 pr-1";
-  const inputCls = "flex-1 bg-[#0d0d11] border border-zinc-600 rounded px-2 py-1.5 text-[12px] text-zinc-200 font-mono focus:outline-none focus:border-zinc-600";
-  const spinnerInputCls = "w-full bg-transparent px-2 py-1.5 text-[12px] text-zinc-200 font-mono focus:outline-none";
+  const labelCls = "text-[14px] font-normal text-zinc-400 w-[75px] text-right flex-shrink-0 pr-1";
+  const inputCls = "flex-1 bg-[#0d0d11] border border-zinc-600 rounded px-2 py-1.5 text-[14px] font-normal text-zinc-200 font-mono focus:outline-none focus:border-zinc-600";
+  const spinnerInputCls = "w-full bg-transparent px-2 py-1.5 text-[14px] font-normal text-zinc-200 font-mono focus:outline-none";
   const spinBtnCls = "px-1.5 py-0 text-[9px] text-zinc-400 hover:bg-zinc-600 hover:text-white leading-tight";
 
   return (
@@ -461,7 +461,7 @@ export function OrderPanelDialog({
           className="flex items-center justify-between px-3 py-1.5 bg-[#252a37] border-b border-zinc-600 relative z-10 cursor-move active:cursor-grabbing"
           onMouseDown={handleHeaderMouseDown}
         >
-          <span className="text-[12px] text-zinc-300 font-medium">Order</span>
+          <span className="text-[14px] text-zinc-300 font-semibold">Order</span>
           <div className="flex items-center gap-0.5">
             <button className="px-2 py-0.5 hover:bg-zinc-600 rounded text-zinc-400 text-xs">—</button>
             <button className="px-2 py-0.5 hover:bg-zinc-600 rounded text-zinc-400 text-xs">□</button>
@@ -528,7 +528,7 @@ export function OrderPanelDialog({
                     <button onClick={() => adjustVolume(-0.01)} className={spinBtnCls}>▼</button>
                   </div>
                 </div>
-                <span className="text-[11px] text-zinc-400">{formatMargin(marginRequired)} {baseCurrency}</span>
+                <span className="text-[12px] font-normal text-zinc-400">{formatMargin(marginRequired)} {baseCurrency}</span>
               </div>
             </div>
 
@@ -550,10 +550,10 @@ export function OrderPanelDialog({
 
             {/* Error */}
             {error && (
-              <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 mb-2">{error}</div>
+              <div className="text-[12px] font-normal text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 mb-2">{error}</div>
             )}
             {isMarketExecutionBlocked && !error && (
-              <div className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded px-2 py-1 mb-2">
+              <div className="text-[12px] font-normal text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded px-2 py-1 mb-2">
                 {marketBlockedMessage || `Market is closed for ${symbol}.`}
               </div>
             )}
@@ -575,7 +575,7 @@ export function OrderPanelDialog({
             </div>
 
             {/* Spread */}
-            <div className="text-center text-[10px] text-zinc-500 mb-2">
+            <div className="text-center text-[12px] font-normal text-zinc-500 mb-2">
               Spread: {spreadDisplay}
             </div>
 
@@ -585,7 +585,7 @@ export function OrderPanelDialog({
                 <button
                   onClick={() => handleSubmit('sell')}
                   disabled={isPlacing || bid <= 0 || isMarketExecutionBlocked}
-                  className="py-3 rounded text-white font-bold text-[13px] transition-all disabled:opacity-40 disabled:cursor-not-allowed
+                  className="py-3 rounded text-white font-bold text-[14px] transition-all disabled:opacity-40 disabled:cursor-not-allowed
                     bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 active:from-red-600 active:to-red-800
                     border border-red-400/30 shadow-lg flex items-center justify-center gap-2"
                 >
@@ -595,7 +595,7 @@ export function OrderPanelDialog({
                 <button
                   onClick={() => handleSubmit('buy')}
                   disabled={isPlacing || ask <= 0 || isMarketExecutionBlocked}
-                  className="py-3 rounded text-white font-bold text-[13px] transition-all disabled:opacity-40 disabled:cursor-not-allowed
+                  className="py-3 rounded text-white font-bold text-[14px] transition-all disabled:opacity-40 disabled:cursor-not-allowed
                     bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 active:from-blue-600 active:to-blue-800
                     border border-blue-400/30 shadow-lg flex items-center justify-center gap-2"
                 >
@@ -607,7 +607,7 @@ export function OrderPanelDialog({
               <button
                 onClick={() => handleSubmit(orderType.includes('Buy') ? 'buy' : 'sell')}
                 disabled={isPlacing}
-                className={`w-full py-3 rounded text-white font-bold text-[13px] transition-all disabled:opacity-40
+                className={`w-full py-3 rounded text-white font-bold text-[14px] transition-all disabled:opacity-40
                   ${orderType.includes('Buy')
                     ? 'bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 border border-blue-400/30'
                     : 'bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 border border-red-400/30'

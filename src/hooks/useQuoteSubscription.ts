@@ -6,6 +6,7 @@
  *
  * Usage:
  *   const { isConnected } = useQuoteSubscription(['EURUSD', 'GBPUSD'], 'watchlist-main');
+ *   const hiddenChart = useQuoteSubscription(['EURUSD'], 'chart:1', { enabled: false });
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -21,20 +22,27 @@ export interface UseQuoteSubscriptionReturn {
   isConnected: boolean;
 }
 
+export interface UseQuoteSubscriptionOptions {
+  enabled?: boolean;
+}
+
 const hasReadyStoredBrokerSession = (): boolean =>
   Boolean(getServerUrl() && (getAccessToken() || hasFeedBrokerToken()));
 
 export function useQuoteSubscription(
   symbols: string[],
   sourceId: string,
+  options: UseQuoteSubscriptionOptions = {},
 ): UseQuoteSubscriptionReturn {
+  const enabled = options.enabled !== false;
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
   const storeAuthToken = useAppStore((s) => s.authToken);
   const [sessionRevision, setSessionRevision] = useState(0);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     return onSessionChange(() => setSessionRevision((revision) => revision + 1));
-  }, []);
+  }, [enabled]);
 
   const normalizedSymbols = useMemo(
     () => Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean))),
@@ -47,6 +55,8 @@ export function useQuoteSubscription(
   const canSubscribe = isAuthenticated || storedBrokerSessionReady;
 
   useEffect(() => {
+    if (!enabled) return undefined;
+
     const manager = managerRef.current;
     debugLog(`[useQuoteSubscription] effect - isAuthenticated=${isAuthenticated}, storedSession=${storedBrokerSessionReady}, symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
 
@@ -61,7 +71,7 @@ export function useQuoteSubscription(
       manager.removeDemand(sourceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedSymbols.join('|'), sourceId, canSubscribe, storeAuthToken, sessionRevision]);
+  }, [enabled, normalizedSymbols.join('|'), sourceId, canSubscribe, storeAuthToken, sessionRevision]);
 
   return {
     isConnected: managerRef.current.isConnected(),

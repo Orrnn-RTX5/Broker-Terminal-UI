@@ -406,7 +406,7 @@ const HeaderBar = ({
 
     return (
         <div
-            className="rtx-header-bar h-9 bg-transparent flex items-center justify-between text-[12px] font-segoe select-none text-slate-300 border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] backdrop-blur-md"
+            className="rtx-header-bar h-9 bg-transparent flex items-center justify-between text-[14px] font-normal font-segoe select-none text-slate-300 border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] backdrop-blur-md"
             style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
             {/* Left: Standard Title */}
@@ -526,14 +526,36 @@ const DEFAULT_ADVANCED_OPTIONS: AdvancedViewOptions = {
     focusChart: false,
 };
 
+const ADVANCED_FONT_SIZES: readonly AdvancedFontSize[] = ['small', 'normal', 'large'];
+const ADVANCED_DENSITIES: readonly AdvancedDensity[] = ['comfortable', 'compact'];
+const ADVANCED_ACCENTS: readonly AdvancedAccent[] = ['purple', 'blue', 'green', 'amber'];
+const ADVANCED_CHART_SURFACES: readonly AdvancedChartSurface[] = ['white', 'soft', 'paper'];
+
+function isStoredOption<T extends string>(value: unknown, options: readonly T[]): value is T {
+    return typeof value === 'string' && (options as readonly string[]).includes(value);
+}
+
 function loadAdvancedOptions(): AdvancedViewOptions {
     try {
         const raw = localStorage.getItem(ADVANCED_OPTIONS_STORAGE_KEY);
         if (!raw) return DEFAULT_ADVANCED_OPTIONS;
-        const parsed = JSON.parse(raw);
+        const parsed = JSON.parse(raw) as Partial<AdvancedViewOptions> | null;
         return {
-            ...DEFAULT_ADVANCED_OPTIONS,
-            focusChart: Boolean(parsed?.focusChart),
+            fontSize: isStoredOption(parsed?.fontSize, ADVANCED_FONT_SIZES)
+                ? parsed.fontSize
+                : DEFAULT_ADVANCED_OPTIONS.fontSize,
+            density: isStoredOption(parsed?.density, ADVANCED_DENSITIES)
+                ? parsed.density
+                : DEFAULT_ADVANCED_OPTIONS.density,
+            accent: isStoredOption(parsed?.accent, ADVANCED_ACCENTS)
+                ? parsed.accent
+                : DEFAULT_ADVANCED_OPTIONS.accent,
+            chartSurface: isStoredOption(parsed?.chartSurface, ADVANCED_CHART_SURFACES)
+                ? parsed.chartSurface
+                : DEFAULT_ADVANCED_OPTIONS.chartSurface,
+            focusChart: typeof parsed?.focusChart === 'boolean'
+                ? parsed.focusChart
+                : DEFAULT_ADVANCED_OPTIONS.focusChart,
         };
     } catch {
         return DEFAULT_ADVANCED_OPTIONS;
@@ -566,7 +588,6 @@ const MainToolbar = ({
     const [showDrawingDropdown, setShowDrawingDropdown] = useState(false);
     const [showHistoryOverlayMenu, setShowHistoryOverlayMenu] = useState(false);
     const [showCrosshair, setShowCrosshair] = useState(false);
-    const [loggingOut, setLoggingOut] = useState(false);
     const [advancedViewEnabled, setAdvancedViewEnabled] = useState(() => {
         try {
             return localStorage.getItem('rtx5-advanced-view-enabled') === 'true';
@@ -711,10 +732,9 @@ const MainToolbar = ({
             },
         }).catch(() => { /* ignore */ });
 
-        // Clear all auth state immediately
-        useAppStore.getState().logout();
-        // Force full page reload to show login
-        window.location.reload();
+        // Keep the current document alive. App owns the central cleanup and
+        // AppShell swaps the authenticated graph for the already-warm login UI.
+        window.dispatchEvent(new CustomEvent('rtx:logout'));
     };
 
     const getToolBtnClass = (isActive: boolean) => {
@@ -788,7 +808,7 @@ const MainToolbar = ({
             <MT5Group>
 
                 <button
-                    className="flex items-center gap-1.5 px-2.5 h-[32px] rounded-[3px] bg-transparent border border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-[12px] text-zinc-300 hover:text-blue-300 transition-all font-segoe"
+                    className="flex items-center gap-1.5 px-2.5 h-[32px] rounded-[3px] bg-transparent border border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-[14px] font-normal text-zinc-300 hover:text-blue-300 transition-all font-segoe"
                     title="New Order (F9)"
                     onClick={() => {
                         window.dispatchEvent(new CustomEvent('openNewOrder'));
@@ -800,7 +820,7 @@ const MainToolbar = ({
 
                 {/* Last Symbol Trader Toggle */}
                 <button
-                    className={`flex items-center gap-1.5 px-2.5 h-[32px] rounded-[3px] border text-[12px] transition-all font-segoe ${useLastSymbolStore.getState().panelVisible
+                    className={`flex items-center gap-1.5 px-2.5 h-[32px] rounded-[3px] border text-[14px] font-normal transition-all font-segoe ${useLastSymbolStore.getState().panelVisible
                         ? 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
                         : 'bg-transparent border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-zinc-300 hover:text-blue-300'
                         }`}
@@ -875,7 +895,7 @@ const MainToolbar = ({
                             dispatchCommand({ type: 'SET_TIMEFRAME', payload: { timeframe: tf } });
                             window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: tf } }));
                         }}
-                        className={`px-1.5 py-0.5 text-[11px] font-segoe rounded-[3px] transition-all border ${timeframe.toUpperCase() === tf
+                        className={`px-1.5 py-0.5 text-[14px] font-normal font-segoe rounded-[3px] transition-all border ${timeframe.toUpperCase() === tf
                             ? 'bg-blue-500/15 text-blue-400 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
                             : 'text-zinc-400 bg-transparent border-transparent hover:bg-blue-500/10 hover:text-blue-300 hover:border-blue-500/20'
                             }`}
@@ -947,7 +967,7 @@ const MainToolbar = ({
                 {showHistoryOverlayMenu && ReactDOM.createPortal(
                     <div
                         ref={historyOverlayDropdownRef}
-                        className="fixed z-[9999] w-[236px] rounded-[5px] border border-zinc-700/80 bg-[#151820] p-3 text-[11px] text-zinc-200 shadow-2xl shadow-black/50 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:bg-white [.rtx-advanced-view_&]:text-gray-800 [.rtx-advanced-view_&]:shadow-xl"
+                        className="fixed z-[9999] w-[236px] rounded-[5px] border border-zinc-700/80 bg-[#151820] p-3 text-[14px] font-normal text-zinc-200 shadow-2xl shadow-black/50 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:bg-white [.rtx-advanced-view_&]:text-gray-800 [.rtx-advanced-view_&]:shadow-xl"
                         style={{
                             top: (historyOverlayRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
                             left: Math.min(
@@ -959,10 +979,10 @@ const MainToolbar = ({
                         aria-label="Trade history overlay controls"
                     >
                         <div className="mb-2 flex items-center justify-between border-b border-zinc-700/70 pb-2 [.rtx-advanced-view_&]:border-gray-100">
-                            <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-400 [.rtx-advanced-view_&]:text-gray-500">Trade History</span>
+                            <span className="text-[12px] font-medium uppercase tracking-wide text-zinc-400 [.rtx-advanced-view_&]:text-gray-500">Trade History</span>
                             <button
                                 type="button"
-                                className="rounded-[3px] border border-zinc-700 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:text-gray-600 [.rtx-advanced-view_&]:hover:bg-gray-50"
+                                className="rounded-[3px] border border-zinc-700 px-1.5 py-0.5 text-[12px] font-normal text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:text-gray-600 [.rtx-advanced-view_&]:hover:bg-gray-50"
                                 onClick={resetTradeHistorySettings}
                             >
                                 Reset
@@ -970,7 +990,7 @@ const MainToolbar = ({
                         </div>
 
                         <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                            <span className="font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Lines</span>
+                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Lines</span>
                             <input
                                 type="checkbox"
                                 checked={tradeHistorySettings.showTradeHistory !== false}
@@ -980,7 +1000,7 @@ const MainToolbar = ({
                         </label>
 
                         <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                            <span className="font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Text boxes</span>
+                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Text boxes</span>
                             <input
                                 type="checkbox"
                                 checked={tradeHistorySettings.showTradeHistoryBoxes !== false}
@@ -990,7 +1010,7 @@ const MainToolbar = ({
                         </label>
 
                         <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                            <span className="font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Arrows</span>
+                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Arrows</span>
                             <input
                                 type="checkbox"
                                 checked={tradeHistorySettings.showTradeHistoryArrows !== false}
@@ -1002,8 +1022,8 @@ const MainToolbar = ({
                         <div className="space-y-2 rounded-[4px] border border-zinc-800/80 bg-zinc-950/35 p-2 [.rtx-advanced-view_&]:border-gray-100 [.rtx-advanced-view_&]:bg-gray-50">
                             <label className="block">
                                 <div className="mb-1 flex items-center justify-between">
-                                    <span className="font-semibold text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Lines</span>
-                                    <span className="font-mono text-[10px] text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryLineOpacity}%</span>
+                                    <span className="text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Lines</span>
+                                    <span className="font-mono text-[12px] font-normal text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryLineOpacity}%</span>
                                 </div>
                                 <input
                                     type="range"
@@ -1019,8 +1039,8 @@ const MainToolbar = ({
 
                             <label className="block">
                                 <div className="mb-1 flex items-center justify-between">
-                                    <span className="font-semibold text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Boxes</span>
-                                    <span className="font-mono text-[10px] text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryBoxOpacity}%</span>
+                                    <span className="text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Boxes</span>
+                                    <span className="font-mono text-[12px] font-normal text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryBoxOpacity}%</span>
                                 </div>
                                 <input
                                     type="range"
@@ -1065,7 +1085,7 @@ const MainToolbar = ({
                     {showAdvancedOptions && ReactDOM.createPortal(
                         <div
                             ref={advancedOptionsDropdownRef}
-                            className={`fixed z-[9999] w-[252px] rounded-[5px] border p-3 text-[11px] ${advancedMenuPanelClass}`}
+                            className={`fixed z-[9999] w-[252px] rounded-[5px] border p-3 text-[14px] font-normal ${advancedMenuPanelClass}`}
                             style={{
                                 top: (advancedOptionsRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
                                 right: Math.max(8, window.innerWidth - (advancedOptionsRef.current?.getBoundingClientRect().right ?? window.innerWidth)),
@@ -1074,15 +1094,15 @@ const MainToolbar = ({
                             aria-label="Advanced View settings"
                         >
                             <div className={`mb-3 flex items-center justify-between border-b pb-2 ${advancedMenuHeaderClass}`}>
-                                <span className="text-[11px] font-bold uppercase tracking-wide">Advanced View</span>
-                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${advancedViewEnabled ? 'bg-[#F3E5F5] text-[#7E57C2]' : 'bg-zinc-800 text-zinc-400'}`}>
+                                <span className="text-[12px] font-medium uppercase tracking-wide">Advanced View</span>
+                                <span className={`rounded px-1.5 py-0.5 text-[12px] font-normal ${advancedViewEnabled ? 'bg-[#F3E5F5] text-[#7E57C2]' : 'bg-zinc-800 text-zinc-400'}`}>
                                     {advancedViewEnabled ? 'Light' : 'Dark'}
                                 </span>
                             </div>
 
                             <div className="space-y-3">
                                 <div>
-                                    <div className={`mb-1.5 text-[10px] font-bold uppercase tracking-wide ${advancedMenuLabelClass}`}>Mode</div>
+                                    <div className={`mb-1.5 text-[12px] font-medium uppercase tracking-wide ${advancedMenuLabelClass}`}>Mode</div>
                                     <div className={`grid grid-cols-2 overflow-hidden rounded border ${advancedMenuSegmentClass}`}>
                                         {([
                                             { value: 'classic', label: 'Dark' },
@@ -1093,7 +1113,7 @@ const MainToolbar = ({
                                                 <button
                                                     key={mode.value}
                                                     type="button"
-                                                    className={`h-7 border-r text-[11px] font-semibold last:border-r-0 ${getAdvancedMenuOptionClass(selected)}`}
+                                                    className={`h-[30px] border-r text-[14px] font-normal last:border-r-0 ${getAdvancedMenuOptionClass(selected)}`}
                                                     onClick={() => setAdvancedViewEnabled(mode.value === 'advanced')}
                                                 >
                                                     {mode.label}
@@ -1103,8 +1123,31 @@ const MainToolbar = ({
                                     </div>
                                 </div>
 
+                                <div>
+                                    <div className={`mb-1.5 text-[12px] font-medium uppercase tracking-wide ${advancedMenuLabelClass}`}>Font Size</div>
+                                    <div className={`grid grid-cols-3 overflow-hidden rounded border ${advancedMenuSegmentClass}`} role="group" aria-label="Advanced View font size">
+                                        {ADVANCED_FONT_SIZES.map((fontSize) => {
+                                            const selected = advancedOptions.fontSize === fontSize;
+                                            const label = fontSize.charAt(0).toUpperCase() + fontSize.slice(1);
+                                            const pixelSize = fontSize === 'small' ? 13 : fontSize === 'large' ? 15 : 14;
+                                            return (
+                                                <button
+                                                    key={fontSize}
+                                                    type="button"
+                                                    aria-pressed={selected}
+                                                    title={`${label} (${pixelSize}px primary text)`}
+                                                    className={`h-[30px] border-r text-[14px] font-normal last:border-r-0 ${getAdvancedMenuOptionClass(selected)}`}
+                                                    onClick={() => updateAdvancedOptions({ fontSize })}
+                                                >
+                                                    {label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
                                 <label className={`flex cursor-pointer items-center justify-between gap-3 rounded px-1 py-1 ${advancedViewEnabled ? 'hover:bg-[#F3E5F5]' : 'hover:bg-white/5'}`}>
-                                    <span className={`text-[11px] font-semibold ${advancedMenuLabelClass}`}>Focus Chart</span>
+                                    <span className={`text-[14px] font-normal ${advancedMenuLabelClass}`}>Focus Chart</span>
                                     <input
                                         type="checkbox"
                                         checked={advancedOptions.focusChart}
@@ -1293,22 +1336,21 @@ const MainToolbar = ({
                         >
                             {/* Account info */}
                             <div className="px-3 py-2 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-100">
-                                <div className="text-[10px] text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 uppercase tracking-wider mb-1">Account</div>
-                                <div className="text-[12px] text-zinc-200 [.rtx-advanced-view_&]:text-gray-900 font-mono font-medium">{accountId}</div>
+                                <div className="text-[12px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 uppercase tracking-wider mb-1">Account</div>
+                                <div className="text-[14px] font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-900 font-mono">{accountId}</div>
                             </div>
 
                             {/* Logout button */}
                             <button
                                 onClick={handleLogout}
-                                disabled={loggingOut}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-[12px] text-red-400 [.rtx-advanced-view_&]:text-red-500 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.6)] transition-all duration-300 rounded-sm/15 hover:text-red-300 [.rtx-advanced-view_&]:hover:text-red-700 [.rtx-advanced-view_&]:hover:bg-red-50 [.rtx-advanced-view_&]:hover:shadow-none transition-colors disabled:opacity-50"
+                                className="w-full flex min-h-[30px] items-center gap-2.5 px-3 py-1.5 text-[14px] font-normal text-red-400 [.rtx-advanced-view_&]:text-red-500 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.6)] transition-all duration-300 rounded-sm/15 hover:text-red-300 [.rtx-advanced-view_&]:hover:text-red-700 [.rtx-advanced-view_&]:hover:bg-red-50 [.rtx-advanced-view_&]:hover:shadow-none transition-colors disabled:opacity-50"
                             >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                                     <polyline points="16 17 21 12 16 7" />
                                     <line x1="21" y1="12" x2="9" y2="12" />
                                 </svg>
-                                {loggingOut ? 'Logging out...' : 'Log Out'}
+                                Log Out
                             </button>
                         </div>,
                         document.body
@@ -1326,7 +1368,7 @@ const MainToolbar = ({
 
 const AdvancedOptionRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div className="flex items-center justify-between gap-3 py-1.5">
-        <span className="text-[11px] font-medium text-[#475467]">{label}</span>
+        <span className="text-[14px] font-normal text-[#475467]">{label}</span>
         {children}
     </div>
 );
@@ -1345,8 +1387,8 @@ const SegmentedControl = ({
             <button
                 key={option.value}
                 onClick={() => onChange(option.value)}
-                className={`px-2 py-1 text-[10px] transition-colors border-r border-[#d0d5dd] last:border-r-0 ${value === option.value
-                    ? 'bg-white text-[#101828] shadow-sm font-semibold'
+                className={`min-h-[30px] px-2 py-1 text-[14px] font-normal transition-colors border-r border-[#d0d5dd] last:border-r-0 ${value === option.value
+                    ? 'bg-white text-[#101828] shadow-sm font-medium'
                     : 'text-[#667085] hover:bg-white'
                     }`}
             >
@@ -1700,7 +1742,7 @@ const MT5ToolWithDropdown = ({ icon, title, active, onMainClick, items }: MT5Too
                         <button
                             key={item.label}
                             onClick={() => { item.onClick(); setOpen(false); }}
-                            className={`w-full flex items-center gap-3 px-3 py-[7px] text-[11.5px] transition-colors cursor-pointer
+                            className={`w-full flex min-h-[30px] items-center gap-3 px-3 py-1.5 text-[14px] font-normal transition-colors cursor-pointer
                                 ${item.active
                                     ? 'bg-blue-500/15 text-blue-300'
                                     : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'

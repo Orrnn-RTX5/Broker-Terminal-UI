@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CANDLE_HISTORY_CACHE_VERSION, candleCache, type CandleCacheKeyParts } from './candleCache';
+import {
+  CANDLE_HISTORY_CACHE_VERSION,
+  MAX_CANDLE_CACHE_ENTRIES,
+  MAX_CANDLES_PER_CACHE_ENTRY,
+  candleCache,
+  type CandleCacheKeyParts,
+} from './candleCache';
 import type { OHLCData } from './chartDataService';
 
 const baseKeyParts: CandleCacheKeyParts = {
@@ -138,5 +144,36 @@ describe('candleCache', () => {
 
     await expect(Promise.all([first, second])).resolves.toEqual([[candle(60)], [candle(60)]]);
     expect(calls).toBe(1);
+  });
+
+  it('bounds session cache keys with least-recently-used eviction', () => {
+    const keys = Array.from({ length: MAX_CANDLE_CACHE_ENTRIES + 1 }, (_, index) => (
+      candleCache.createKey({ ...baseKeyParts, symbol: `SYMBOL${index}` })
+    ));
+
+    keys.forEach((key, index) => {
+      candleCache.setLatest(key, [candle(index + 1)], {
+        ...baseKeyParts,
+        symbol: `SYMBOL${index}`,
+      });
+    });
+
+    expect(candleCache.getLatest(keys[0])).toBeNull();
+    expect(candleCache.getLatest(keys.at(-1)!)).not.toBeNull();
+  });
+
+  it('keeps only the newest bounded candles in each cache entry', () => {
+    const key = candleCache.createKey(baseKeyParts);
+    const candles = Array.from(
+      { length: MAX_CANDLES_PER_CACHE_ENTRY + 5 },
+      (_, index) => candle(index + 1),
+    );
+
+    candleCache.setLatest(key, candles, baseKeyParts);
+
+    const cached = candleCache.getLatest(key);
+    expect(cached?.candles).toHaveLength(MAX_CANDLES_PER_CACHE_ENTRY);
+    expect(cached?.oldestTime).toBe(6);
+    expect(cached?.newestTime).toBe(MAX_CANDLES_PER_CACHE_ENTRY + 5);
   });
 });

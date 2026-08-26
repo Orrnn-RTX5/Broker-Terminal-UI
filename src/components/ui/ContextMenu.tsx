@@ -307,8 +307,8 @@ const MenuItem: React.FC<MenuItemProps> = ({
     ? !item.disabled && (isSubmenuActive || isFocused || isPointerHovered)
     : isSubmenuActive || isHovered || isFocused;
   const itemClassName = isMt5
-    ? `flex h-[23px] items-center px-[5px] py-0 cursor-default group relative ${item.disabled ? 'cursor-default' : ''}`
-    : `flex items-center px-3 py-1.5 cursor-pointer group relative ${isActive
+    ? `flex h-[30px] items-center px-[5px] py-0 cursor-default group relative ${item.disabled ? 'cursor-default' : ''}`
+    : `flex min-h-[30px] items-center px-3 py-1.5 cursor-pointer group relative ${isActive
       ? 'bg-zinc-700 text-white'
       : 'text-zinc-300 hover:bg-zinc-700 hover:text-white'
       } ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
@@ -330,8 +330,8 @@ const MenuItem: React.FC<MenuItemProps> = ({
     ? "text-current"
     : "text-zinc-400 group-hover:text-white";
   const shortcutClassName = isMt5
-    ? "text-[12px] text-current ml-4"
-    : "text-[10px] text-zinc-500 group-hover:text-zinc-200 ml-4 font-mono";
+    ? "text-[12px] font-normal text-current ml-4"
+    : "text-[12px] font-normal text-zinc-500 group-hover:text-zinc-200 ml-4 font-mono";
   const chevronClassName = isMt5
     ? "ml-2 text-current"
     : "ml-2 text-zinc-500 group-hover:text-white";
@@ -607,10 +607,10 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
       <div
         ref={menuRef}
         className={variant === 'mt5-light'
-          ? "fixed w-[210px] bg-[#f2f2f2] border border-[#9a9a9a] shadow-[2px_2px_4px_rgba(0,0,0,0.35)] rounded-none py-[3px] text-[12px] leading-[18px] text-black outline-none transition-opacity duration-75 max-h-[80vh] overflow-y-auto"
+          ? "fixed w-[210px] bg-[#f2f2f2] border border-[#9a9a9a] shadow-[2px_2px_4px_rgba(0,0,0,0.35)] rounded-none py-[3px] text-[14px] font-normal leading-[20px] text-black outline-none transition-opacity duration-75 max-h-[80vh] overflow-y-auto"
           : variant === 'mt5-dark'
-            ? "fixed w-[210px] bg-[#15161a] border border-[#4b5563] shadow-[2px_2px_6px_rgba(0,0,0,0.65)] rounded-none py-[3px] text-[12px] leading-[18px] text-[#e4e7ee] outline-none transition-opacity duration-75 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-[#15161a]"
-            : "fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-xs text-zinc-200 outline-none transition-opacity duration-100 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700"}
+            ? "fixed w-[210px] bg-[#15161a] border border-[#4b5563] shadow-[2px_2px_6px_rgba(0,0,0,0.65)] rounded-none py-[3px] text-[14px] font-normal leading-[20px] text-[#e4e7ee] outline-none transition-opacity duration-75 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-[#15161a]"
+            : "fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-[14px] font-normal leading-[20px] text-zinc-200 outline-none transition-opacity duration-100 max-h-[80vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700"}
         style={{
           left: `${adjustedPosition.x}px`,
           top: `${adjustedPosition.y}px`,
@@ -772,14 +772,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     <div ref={menuRef}>
       {triggerSymbol && (
         <div
-          className="fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-xs text-zinc-200"
+          className="fixed w-64 bg-[#131316]/80 backdrop-blur-md border border-zinc-600 shadow-2xl rounded-sm py-1 text-[14px] font-normal leading-[20px] text-zinc-200"
           style={{
             top: position.y,
             left: position.x,
             zIndex: 9998 // Symbol header just below menu
           }}
         >
-          <div className="px-3 py-1.5 text-[10px] font-bold text-emerald-400 border-b border-zinc-700 mb-1">
+          <div className="px-3 py-1.5 text-[12px] font-medium text-emerald-400 border-b border-zinc-700 mb-1">
             {triggerSymbol}
           </div>
         </div>
@@ -823,7 +823,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 // ============================================================================
 
 export const MenuSectionHeader: React.FC<{ label: string }> = ({ label }) => (
-  <div className="px-3 py-1.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-2">
+  <div className="px-3 py-1.5 text-[12px] font-medium text-zinc-500 uppercase tracking-wider pl-2">
     {label}
   </div>
 );

@@ -26,10 +26,10 @@ export const ChartTabs: React.FC<ChartTabsProps> = ({ tabs, activeTabId, onTabCl
                         key={tab.id}
                         onClick={() => onTabClick(tab.id)}
                         className={`
-                            group flex items-center min-w-[120px] max-w-[160px] h-[24px] px-2 mr-1 cursor-pointer text-xs rounded-sm
+                            group flex items-center min-w-[120px] max-w-[160px] h-[24px] px-2 mr-1 cursor-pointer text-[14px] font-normal rounded-sm
                             border transition-all
                             ${isActive
-                                ? 'border-[#5a5a65] bg-[#0e0e12] text-[#e2e2e8] font-semibold shadow-[inset_0_-2px_0_0_#5a5a65]'
+                                ? 'border-[#5a5a65] bg-[#0e0e12] text-[#e2e2e8] shadow-[inset_0_-2px_0_0_#5a5a65]'
                                 : 'border-transparent bg-transparent text-[#808088] hover:bg-[#222226] hover:text-[#c8c8d0]'}
                         `}
                     >

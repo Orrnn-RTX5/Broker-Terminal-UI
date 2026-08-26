@@ -11,6 +11,12 @@
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { getWorkerManager } from '../services/aggregationWorkerManager';
+import {
+  areCanonicalUpstreamTicksEqual,
+  coalesceFreshestTickEntries,
+  compareCanonicalTickFreshness,
+  getCanonicalTickTimestamp,
+} from '../utils/liveTickSemantics';
 
 const MARKET_DATA_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
@@ -80,6 +86,8 @@ export interface UpdateTickOptions {
   syncAppStore?: boolean;
 }
 
+export type MarketTickEntry = readonly [symbol: string, tick: Tick];
+
 interface MarketDataState {
   // Symbol data organized by symbol for efficient access
   symbolData: Record<string, SymbolData>;
@@ -89,6 +97,7 @@ interface MarketDataState {
 
   // Actions
   updateTick: (symbol: string, tick: Tick, options?: UpdateTickOptions) => void;
+  updateTicksBatch: (ticks: readonly MarketTickEntry[], options?: UpdateTickOptions) => void;
   updateCandle: (update: CandleUpdate) => void;
   updateBulkTicks: (ticks: Tick[]) => void;
   subscribeSymbol: (symbol: string) => void;
@@ -120,6 +129,54 @@ function createEmptySymbolData(): SymbolData {
     lastAggregation: 0,
   };
 }
+
+export const MARKET_TICK_BUFFER_LIMIT = 10_000;
+
+/**
+ * Treat only byte-for-byte-equivalent enumerable payloads as duplicates.
+ * In particular, a newer timestamp at the same price is not a duplicate: it
+ * still carries freshness and aggregation semantics.
+ */
+export function areMarketTicksIdentical(previous: Tick | null, next: Tick): boolean {
+  return previous !== null && areCanonicalUpstreamTicksEqual(previous, next);
+}
+
+export function appendBoundedTick(
+  ticks: readonly Tick[],
+  tick: Tick,
+  limit = MARKET_TICK_BUFFER_LIMIT,
+): Tick[] {
+  if (limit <= 0) return [];
+  if (ticks.length < limit) return [...ticks, tick];
+  const firstRetainedIndex = Math.max(0, ticks.length - limit + 1);
+  return [...ticks.slice(firstRetainedIndex), tick];
+}
+
+interface PendingAggregation {
+  symbol: string;
+  tickBuffer: Tick[];
+}
+
+const replaceSameTimestampTick = (ticks: readonly Tick[], tick: Tick): Tick[] => {
+  const timestamp = getCanonicalTickTimestamp(tick);
+  if (timestamp === null) return [...ticks];
+  for (let index = ticks.length - 1; index >= 0; index -= 1) {
+    if (getCanonicalTickTimestamp(ticks[index]) !== timestamp) continue;
+    const next = [...ticks];
+    next[index] = tick;
+    return next;
+  }
+  return appendBoundedTick(ticks, tick);
+};
+
+const findLastStrictlyOlderTick = (ticks: readonly Tick[], timestamp: number | null): Tick | null => {
+  if (timestamp === null) return null;
+  for (let index = ticks.length - 1; index >= 0; index -= 1) {
+    const candidateTimestamp = getCanonicalTickTimestamp(ticks[index]);
+    if (candidateTimestamp !== null && candidateTimestamp < timestamp) return ticks[index];
+  }
+  return null;
+};
 
 function calculateVWAP(ticks: Tick[]): number {
   if (ticks.length === 0) return 0;
@@ -242,6 +299,73 @@ function calculateStats(
   };
 }
 
+const applyMarketTick = (
+  symbol: string,
+  tick: Tick,
+  data: SymbolData,
+  now: number,
+): { data: SymbolData; aggregation: PendingAggregation | null } | null => {
+  const freshness = data.currentTick
+    ? compareCanonicalTickFreshness(data.currentTick, tick)
+    : 1;
+  if (freshness < 0) return null;
+  if (freshness === 0 && areMarketTicksIdentical(data.currentTick, tick)) return null;
+
+  const isCorrection = freshness === 0;
+  const tickTimestamp = getCanonicalTickTimestamp(tick);
+  const previousTick = isCorrection
+    ? findLastStrictlyOlderTick(data.tickBuffer, tickTimestamp) ?? data.previousTick
+    : data.currentTick;
+  const tickBuffer = isCorrection
+    ? replaceSameTimestampTick(data.tickBuffer, tick)
+    : appendBoundedTick(data.tickBuffer, tick);
+  const shouldAggregate = isCorrection || now - data.lastAggregation > 60_000;
+  const shouldUpdateStats = isCorrection || !data.stats || now - data.stats.lastUpdate > 1_000;
+  const stats = shouldUpdateStats
+    ? calculateStats(symbol, tick, previousTick, tickBuffer, data.ohlcv1h)
+    : data.stats;
+
+  return {
+    data: {
+      ...data,
+      currentTick: tick,
+      previousTick,
+      stats,
+      tickBuffer,
+      lastAggregation: shouldAggregate ? now : data.lastAggregation,
+    },
+    aggregation: shouldAggregate ? { symbol, tickBuffer } : null,
+  };
+};
+
+const schedulePendingAggregations = (
+  requests: readonly PendingAggregation[],
+  commit: (symbol: string, results: Record<string, OHLCV[]>) => void,
+): void => {
+  requests.forEach(({ symbol, tickBuffer }) => {
+    try {
+      getWorkerManager().aggregateMultipleTimeframes(
+        tickBuffer,
+        [
+          { name: '1m', ms: 60 * 1_000 },
+          { name: '5m', ms: 5 * 60 * 1_000 },
+          { name: '15m', ms: 15 * 60 * 1_000 },
+          { name: '1h', ms: 60 * 60 * 1_000 },
+        ],
+        (results) => {
+          try {
+            commit(symbol, results);
+          } catch (error) {
+            console.error(`[MarketDataStore] Worker result failed for ${symbol}:`, error);
+          }
+        },
+      );
+    } catch (error) {
+      console.error(`[MarketDataStore] Worker scheduling failed for ${symbol}:`, error);
+    }
+  });
+};
+
 // ============================================
 // Store
 // ============================================
@@ -254,20 +378,25 @@ export const useMarketDataStore = create<MarketDataState>()(
         subscribedSymbols: new Set(),
 
         updateTick: (symbol, tick, options = {}) => {
+          get().updateTicksBatch([[symbol, tick]], options);
+          return;
           const { syncAppStore = true } = options;
 
           set((state) => {
             const data = state.symbolData[symbol] || createEmptySymbolData();
+
+            // Replayed websocket frames sometimes contain the exact same event.
+            // Avoid publishing a new global snapshot (and copying the rolling
+            // buffer) for those frames, while retaining same-price freshness
+            // events because their timestamps differ.
+            if (areMarketTicksIdentical(data.currentTick, tick)) return state;
 
             // Update ticks
             const previousTick = data.currentTick;
             const currentTick = tick;
 
             // Add to tick buffer (keep last 10,000 ticks per symbol)
-            const tickBuffer = [...data.tickBuffer, tick];
-            if (tickBuffer.length > 10000) {
-              tickBuffer.shift();
-            }
+            const tickBuffer = appendBoundedTick(data.tickBuffer, tick);
 
             // PERFORMANCE FIX: Aggregate OHLCV in Web Worker (async, non-blocking)
             const now = Date.now();
@@ -343,6 +472,65 @@ export const useMarketDataStore = create<MarketDataState>()(
           }
         },
 
+        updateTicksBatch: (ticks, options = {}) => {
+          const { syncAppStore = true } = options;
+          const latestTicks = coalesceFreshestTickEntries(ticks, (symbol, error) => {
+            console.error(`[MarketDataStore] Ignoring invalid tick for ${symbol}:`, error);
+          });
+          if (latestTicks.length === 0) return;
+
+          const pendingAggregations: PendingAggregation[] = [];
+          const now = Date.now();
+          set((state) => {
+            let nextSymbolData = state.symbolData;
+            let changed = false;
+
+            latestTicks.forEach(([symbol, tick]) => {
+              try {
+                const currentData = nextSymbolData[symbol] || createEmptySymbolData();
+                const transition = applyMarketTick(symbol, tick, currentData, now);
+                if (!transition) return;
+
+                if (!changed) nextSymbolData = { ...state.symbolData };
+                nextSymbolData[symbol] = transition.data;
+                changed = true;
+                if (transition.aggregation) pendingAggregations.push(transition.aggregation);
+              } catch (error) {
+                console.error(`[MarketDataStore] Tick transition failed for ${symbol}:`, error);
+              }
+            });
+
+            return changed ? { symbolData: nextSymbolData } : state;
+          });
+
+          schedulePendingAggregations(pendingAggregations, (symbol, results) => {
+            set((state) => {
+              const currentData = state.symbolData[symbol];
+              if (!currentData) return state;
+
+              return {
+                symbolData: {
+                  ...state.symbolData,
+                  [symbol]: {
+                    ...currentData,
+                    ohlcv1m: [...currentData.ohlcv1m, ...results['1m']].slice(-1000),
+                    ohlcv5m: [...currentData.ohlcv5m, ...results['5m']].slice(-500),
+                    ohlcv15m: [...currentData.ohlcv15m, ...results['15m']].slice(-300),
+                    ohlcv1h: [...currentData.ohlcv1h, ...results['1h']].slice(-200),
+                  },
+                },
+              };
+            });
+          });
+
+          // Keep the circular dependency asynchronous, but publish a whole
+          // frame to the app store in one state transition.
+          if (syncAppStore) {
+            import('../store/useAppStore').then(({ useAppStore }) => {
+              useAppStore.getState().setTicksBatch(latestTicks);
+            }).catch(() => {/* ignore */});
+          }
+        },
 
         updateCandle: (update) => {
           if (MARKET_DATA_DEBUG) {
@@ -400,21 +588,7 @@ export const useMarketDataStore = create<MarketDataState>()(
         },
 
         updateBulkTicks: (ticks) => {
-          // Group ticks by symbol for efficient processing
-          const ticksBySymbol = ticks.reduce((acc, tick) => {
-            if (!acc[tick.symbol]) {
-              acc[tick.symbol] = [];
-            }
-            acc[tick.symbol].push(tick);
-            return acc;
-          }, {} as Record<string, Tick[]>);
-
-          // Update each symbol
-          Object.entries(ticksBySymbol).forEach(([symbol, symbolTicks]) => {
-            // Process only the latest tick for each symbol
-            const latestTick = symbolTicks[symbolTicks.length - 1];
-            get().updateTick(symbol, latestTick);
-          });
+          get().updateTicksBatch(ticks.map((tick) => [tick.symbol, tick] as const));
         },
 
         subscribeSymbol: (symbol) => {
@@ -505,7 +679,9 @@ export const useMarketDataStore = create<MarketDataState>()(
           }
         },
       }),
-      { name: 'MarketDataStore' }
+      // Raw rolling buffers can contain 10,000 ticks per symbol. Keep this
+      // high-frequency store out of Redux DevTools serialization.
+      { name: 'MarketDataStore', enabled: false }
     )
   )
 );

@@ -123,4 +123,28 @@ describe('WelcomeTerminal broker runtime selection', () => {
     expect(pickDiscoveryBroker(brokers)?.broker_id).toBe('TEST');
     expect(pickDiscoveryBroker(brokers)?.broker_name).toBe('FX Trust TEST');
   });
+
+  it('selects the TEST row whose server URL matches the local FXTrust runtime', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
+      BROKER_ID: 'TEST',
+    };
+
+    const brokers = [
+      broker({
+        broker_id: 'local_demo_01',
+        broker_name: 'Local Demo Broker 01',
+        server_url: 'https://other-broker.example',
+      }),
+      broker({
+        broker_id: 'TEST',
+        broker_name: 'TEST',
+        server_url: 'https://fxtrustbrokerbackend.orrnn.com',
+      }),
+    ];
+
+    expect(findBrokerForWebRuntime(brokers, '127.0.0.1')?.broker_id).toBe('TEST');
+  });
 });

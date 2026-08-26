@@ -2,10 +2,14 @@ import type { Plugin, ProxyOptions } from 'vite'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
-import { lookup } from 'node:dns/promises'
 import * as http from 'node:http'
 import * as https from 'node:https'
-import { isIP, type LookupFunction, type Socket } from 'node:net'
+import { isIP, type Socket } from 'node:net'
+import {
+  createPinnedConnectionOptions,
+  resolveProxyAddresses,
+  type ResolvedProxyAddress,
+} from './viteBrokerProxyAddress'
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -212,104 +216,6 @@ const rewriteDynamicWsProxyPath = (path: string): string => {
   }
 }
 
-const isPrivateIPv4 = (address: string): boolean => {
-  const parts = address.split('.').map((part) => Number(part))
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true
-
-  const [a, b] = parts
-  return a === 0
-    || a === 10
-    || a === 127
-    || (a === 100 && b >= 64 && b <= 127)
-    || (a === 169 && b === 254)
-    || (a === 172 && b >= 16 && b <= 31)
-    || (a === 192 && b === 168)
-    || (a === 198 && (b === 18 || b === 19))
-    || a >= 224
-}
-
-const isPrivateIPv6 = (address: string): boolean => {
-  const normalized = address.toLowerCase()
-  if (normalized === '::' || normalized === '::1') return true
-
-  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)
-  if (mapped) return isPrivateIPv4(mapped[1])
-
-  const firstSegment = Number.parseInt(normalized.split(':')[0] || '0', 16)
-  return (firstSegment & 0xfe00) === 0xfc00 || (firstSegment & 0xffc0) === 0xfe80
-}
-
-const isPrivateAddress = (address: string): boolean => {
-  const version = isIP(address)
-  if (version === 4) return isPrivateIPv4(address)
-  if (version === 6) return isPrivateIPv6(address)
-  return true
-}
-
-const isInternalHostname = (hostname: string): boolean => {
-  const lower = hostname.toLowerCase()
-  return lower === 'localhost'
-    || lower.endsWith('.localhost')
-    || lower.endsWith('.local')
-    || lower.endsWith('.internal')
-    || lower.endsWith('.lan')
-    || lower.endsWith('.home')
-    || lower === 'metadata.google.internal'
-    || !lower.includes('.')
-}
-
-type ResolvedProxyAddress = {
-  address: string
-  family: 4 | 6
-}
-
-const toAddressFamily = (family: number): 4 | 6 | null => {
-  return family === 4 || family === 6 ? family : null
-}
-
-const normalizeAddressHostname = (hostname: string): string => {
-  const lower = hostname.toLowerCase()
-  return lower.startsWith('[') && lower.endsWith(']') ? lower.slice(1, -1) : lower
-}
-
-const resolveProxyAddress = async (
-  hostname: string,
-  requirePublicAddress: boolean
-): Promise<ResolvedProxyAddress | null> => {
-  const normalizedHostname = normalizeAddressHostname(hostname)
-  const directFamily = toAddressFamily(isIP(normalizedHostname))
-  if (directFamily) {
-    if (requirePublicAddress && isPrivateAddress(normalizedHostname)) return null
-    return { address: normalizedHostname, family: directFamily }
-  }
-
-  if (requirePublicAddress && isInternalHostname(normalizedHostname)) return null
-
-  try {
-    const addresses = await lookup(normalizedHostname, { all: true, verbatim: true })
-    if (!addresses.length) return null
-    if (requirePublicAddress && addresses.some((entry) => isPrivateAddress(entry.address))) return null
-
-    const selected = addresses[0]
-    const selectedFamily = toAddressFamily(selected.family)
-    if (!selectedFamily) return null
-    return { address: selected.address, family: selectedFamily }
-  } catch {
-    return null
-  }
-}
-
-const createPinnedLookup = (resolvedAddress: ResolvedProxyAddress): LookupFunction => {
-  return (_hostname, options, callback) => {
-    if (options.all) {
-      callback(null, [resolvedAddress])
-      return
-    }
-
-    callback(null, resolvedAddress.address, resolvedAddress.family)
-  }
-}
-
 type BrokerProxyAccess = {
   trustedOrigins: Set<string>
   envAllowedOrigins: Set<string>
@@ -349,7 +255,7 @@ const createBrokerProxyAccess = (env: Record<string, string>): BrokerProxyAccess
 const validateProxyTarget = async (
   target: URL,
   access: BrokerProxyAccess
-): Promise<{ allowed: true; resolvedAddress: ResolvedProxyAddress } | { allowed: false; reason: string }> => {
+): Promise<{ allowed: true; resolvedAddresses: ResolvedProxyAddress[] } | { allowed: false; reason: string }> => {
   const explicitlyAllowed = access.envAllowedOrigins.has(target.origin)
   const knownOrigin = explicitlyAllowed
     || access.trustedOrigins.has(target.origin)
@@ -359,8 +265,8 @@ const validateProxyTarget = async (
     return { allowed: false, reason: 'Broker proxy target is not in the trusted origin allowlist' }
   }
 
-  const resolvedAddress = await resolveProxyAddress(target.hostname, !explicitlyAllowed)
-  if (!resolvedAddress) {
+  const resolvedAddresses = await resolveProxyAddresses(target.hostname, !explicitlyAllowed)
+  if (!resolvedAddresses) {
     return {
       allowed: false,
       reason: explicitlyAllowed
@@ -369,7 +275,7 @@ const validateProxyTarget = async (
     }
   }
 
-  return { allowed: true, resolvedAddress }
+  return { allowed: true, resolvedAddresses }
 }
 
 const learnBrokerOrigins = (body: Buffer, access: BrokerProxyAccess): void => {
@@ -436,7 +342,7 @@ const forwardRequest = (
   req: IncomingMessage,
   res: ServerResponse,
   target: URL,
-  resolvedAddress: ResolvedProxyAddress,
+  resolvedAddresses: readonly ResolvedProxyAddress[],
   onResponseBody?: (body: Buffer) => void
 ): void => {
   const transport = target.protocol === 'https:' ? https : http
@@ -454,11 +360,11 @@ const forwardRequest = (
     path: `${target.pathname}${target.search}`,
     method: req.method,
     headers,
-    lookup: createPinnedLookup(resolvedAddress),
+    ...createPinnedConnectionOptions(resolvedAddresses),
     rejectUnauthorized: false,
   }
 
-  if (target.protocol === 'https:' && !isIP(normalizeAddressHostname(target.hostname))) {
+  if (target.protocol === 'https:' && !isIP(target.hostname.replace(/^\[|\]$/g, ''))) {
     requestOptions.servername = target.hostname
   }
 
@@ -521,12 +427,30 @@ const dynamicBrokerProxyPlugin = (prefixes: string[], access: BrokerProxyAccess)
           req,
           res,
           target,
-          validation.resolvedAddress,
+          validation.resolvedAddresses,
           isBrokerDiscoveryResponse(prefix, target) ? (body) => learnBrokerOrigins(body, access) : undefined
         )
       })().catch((error) => {
         sendProxyError(res, 502, `Broker proxy validation failed: ${error instanceof Error ? error.message : String(error)}`)
       })
+    })
+  },
+})
+
+const retiredServiceWorkerDevPlugin = (): Plugin => ({
+  name: 'rtx5-retired-service-worker',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const pathname = String(req.url || '').split(/[?#]/, 1)[0]
+      if (pathname !== '/sw.js') {
+        next()
+        return
+      }
+
+      res.statusCode = 404
+      res.setHeader('Cache-Control', 'no-store, max-age=0')
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+      res.end('Service worker retired')
     })
   },
 })
@@ -544,6 +468,7 @@ export default defineConfig(({ mode }) => {
   return {
   base: './',
   plugins: [
+    retiredServiceWorkerDevPlugin(),
     dynamicBrokerProxyPlugin(['/__broker_api', '/__broker_discovery'], brokerProxyAccess),
     react(),
   ],
@@ -551,6 +476,19 @@ export default defineConfig(({ mode }) => {
     host: '127.0.0.1',
     port: 5173,
     open: true,
+    warmup: {
+      clientFiles: [
+        './src/main.tsx',
+        './src/bootstrap.tsx',
+        './src/AppShell.tsx',
+        './src/components/WelcomeTerminal.tsx',
+        './src/App.tsx',
+        './src/components/dock/DockWorkspace.tsx',
+        './src/components/TradingChart.tsx',
+        './src/components/BottomDock.tsx',
+        './src/components/layout/TopToolbar.tsx',
+      ],
+    },
     proxy: {
       '/__broker_discovery': {
         target: discoveryTarget,

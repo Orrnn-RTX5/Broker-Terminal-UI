@@ -2,11 +2,10 @@ import { Icon } from './ui/Icon';
 import { PriceDisplay } from './ui/PriceDisplay';
 import { ContextMenu, type ContextMenuItemConfig } from './ui/ContextMenu';
 import { ModifyPositionDialog } from './ModifyPositionDialog';
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { CalendarTab } from './layout/CalendarTab';
 import { CodeBaseTab, ArticlesTab, ExpertsTab } from './layout/ResearchTabs';
 import { JournalTab } from './layout/JournalTab';
-import { HistoryDownloader } from './HistoryDownloader';
 import { useAppStore, type Trade } from '../store/useAppStore';
 import { useToolboxTradeData, type ToolboxTradePosition } from '../hooks/useToolboxTradeData';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
@@ -21,6 +20,12 @@ import {
     type ExposurePositionInput,
 } from './BottomDock.exposure';
 import { resolveTradeAccountMetrics, resolveTradeProfit } from './BottomDock.trade';
+import { MARKET_ORDER_PLACEMENT_STATE_EVENT } from '../services/marketOrderPlacementEvents';
+
+const LazyHistoryDownloader = lazy(async () => {
+    const module = await import('./HistoryDownloader');
+    return { default: module.HistoryDownloader };
+});
 
 // Rendered wherever the backend did not report an account metric. Never show "0.00" for a
 // value the backend never sent — a false zero reads as a real (and alarming) account state.
@@ -365,7 +370,6 @@ export function BottomDock({
     };
 
     const handleTradeClosePosition = (id: number, volume?: number) => {
-        toolboxTrade.removePosition(Number(id));
         try {
             const result = onClosePosition(id, volume) as unknown;
             if (result && typeof (result as any).finally === 'function') {
@@ -380,9 +384,6 @@ export function BottomDock({
     };
 
     const handleTradeCloseBulk = (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => {
-        if (!symbol) {
-            toolboxTrade.removePositionsByMode(type);
-        }
         try {
             const result = onCloseBulk?.(type, symbol) as unknown;
             if (result && typeof (result as any).finally === 'function') {
@@ -427,7 +428,11 @@ export function BottomDock({
             setActiveTab('Trade');
         };
         window.addEventListener('rtx:new-trade-placed', handleTradeExecution);
-        return () => window.removeEventListener('rtx:new-trade-placed', handleTradeExecution);
+        window.addEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, handleTradeExecution);
+        return () => {
+            window.removeEventListener('rtx:new-trade-placed', handleTradeExecution);
+            window.removeEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, handleTradeExecution);
+        };
     }, []);
 
     // Auto-switch to Journal if the account equity hits 0 (margin call / account blown)
@@ -494,6 +499,7 @@ export function BottomDock({
                 {activeTab === 'Trade' && (
                     <TradeTab
                         positions={toolboxTrade.positions ?? []}
+                        pendingPositions={toolboxTrade.pendingPositions ?? []}
                         account={toolboxTrade.account}
                         onClosePosition={handleTradeClosePosition}
                         onModifyPosition={onModifyPosition}
@@ -534,7 +540,9 @@ export function BottomDock({
                     <JournalTab />
                 )}
                 {activeTab === 'Historical Data' && (
-                    <HistoryDownloader />
+                    <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-zinc-500">Opening historical data…</div>}>
+                        <LazyHistoryDownloader />
+                    </Suspense>
                 )}
 
                 {/* Placeholder Tabs */}
@@ -551,7 +559,7 @@ export function BottomDock({
                         title={TAB_HOVER_COMMENTS[tab.id]}
                         aria-label={TAB_HOVER_COMMENTS[tab.id]}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`rtx-dock-tab h-[27px] px-4 text-[11px] font-normal whitespace-nowrap rounded-none border-r border-zinc-800 border-t transition-colors duration-75 relative
+                        className={`rtx-dock-tab h-[30px] px-4 text-[12px] font-normal whitespace-nowrap rounded-none border-r border-zinc-800 border-t transition-colors duration-75 relative
                         ${activeTab === tab.id
                                 ? 'text-white bg-[#131316] border-t-[#8b8f98] border-l border-l-zinc-700 active-tab'
                                 : 'text-slate-400 bg-[#090d19] border-t-transparent hover:text-zinc-100 hover:bg-[#111827]'}`}
@@ -632,14 +640,14 @@ function ToolboxTab() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 min-w-0">
                 {tools.map((section) => (
                     <div key={section.category} className="space-y-2 min-w-0">
-                        <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-700 pb-1 mb-2 truncate">
+                        <h3 className="text-[12px] font-normal text-zinc-400 uppercase tracking-wider border-b border-zinc-700 pb-1 mb-2 truncate">
                             {section.category}
                         </h3>
                         <div className="space-y-1">
                             {section.items.map((item) => (
                                 <button
                                     key={item.name}
-                                    className="w-full flex items-center justify-between px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-zinc-700/50 rounded transition-colors group text-left min-w-0"
+                                    className="w-full flex items-center justify-between px-2 py-1.5 text-[14px] font-normal text-zinc-300 hover:bg-zinc-700/50 rounded transition-colors group text-left min-w-0"
                                     onClick={() => {
                                         if (item.name === 'New Order') {
                                             // Same event as TopToolbar & MarketWatch — App.tsx opens the order dialog
@@ -659,7 +667,7 @@ function ToolboxTab() {
                                         <span className="group-hover:text-white truncate">{item.name}</span>
                                     </span>
                                     {item.shortcut && (
-                                        <span className="text-[9px] text-zinc-600 font-mono flex-shrink-0 ml-2">{item.shortcut}</span>
+                                        <span className="text-[12px] font-normal text-zinc-600 font-mono flex-shrink-0 ml-2">{item.shortcut}</span>
                                     )}
                                 </button>
                             ))}
@@ -717,6 +725,7 @@ function UnavailableMetric({ title = 'Not reported by the trading server' }: { t
 
 function TradeTab({
     positions,
+    pendingPositions = [],
     account,
     onClosePosition,
     onModifyPosition,
@@ -1157,6 +1166,10 @@ function TradeTab({
             return sortState.direction === 'asc' ? comparison : -comparison;
         });
     }, [livePositions, sortState, getSortValue]);
+    const displayedLivePositions = useMemo(
+        () => [...pendingPositions, ...sortedLivePositions],
+        [pendingPositions, sortedLivePositions],
+    );
 
     useEffect(() => {
         if (!selectedPositionKey) return;
@@ -1555,8 +1568,8 @@ ${rows}
                         ))}
                         <col style={{ width: columnWidths.close }} />
                     </colgroup>
-                    <thead className="rtx-trade-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-semibold text-[10.5px] leading-[18px] uppercase border-y border-zinc-700/70 select-none shadow-[0_1px_0_0_rgba(255,255,255,0.04)]">
-                        <tr>
+                    <thead className="rtx-trade-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-normal text-[12px] leading-[18px] uppercase border-y border-zinc-700/70 select-none shadow-[0_1px_0_0_rgba(255,255,255,0.04)]">
+                        <tr className="h-[30px]">
                             {renderSortableHeader('symbol', 'Symbol', 'symbol')}
                             {visibleTradeColumns.map(column => {
                                 if (column.key === 'ticket') return renderSortableHeader('ticket', column.label, 'ticket');
@@ -1567,15 +1580,16 @@ ${rows}
                             <th className="px-0.5 py-[3px] text-center" style={{ width: columnWidths.close }} aria-label="Close position" title={TRADE_COLUMN_HOVER_COMMENTS.close}></th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[11px] leading-[18px] font-normal">
-                        {livePositions.length === 0 && (
+                    <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[13px] leading-[19.5px] font-normal">
+                        {displayedLivePositions.length === 0 && (
                             <tr>
                                 <td colSpan={visibleOptionalColumnCount + 2} className="h-16 text-center text-zinc-600 text-xs italic">
                                     {loading ? 'Loading open positions...' : error ? error : 'No open positions'}
                                 </td>
                             </tr>
                         )}
-                        {sortedLivePositions.map((pos: ToolboxTradePosition, i: number) => {
+                        {displayedLivePositions.map((pos: ToolboxTradePosition, i: number) => {
+                            const isPendingPlacement = pos.placementState === 'pending';
                             const isBuy = String(pos.side).toUpperCase() === 'BUY';
                             const pnl = pos.profit ?? pos.unrealizedPnL;
                             const pnlValue = Number(pnl ?? 0);
@@ -1584,35 +1598,51 @@ ${rows}
                             const positionKey = getPositionKey(pos);
                             const isSelected = selectedPositionKey === positionKey;
                             const symbolLabel = pos.symbol ?? '-';
-                            const ticketLabel = String(pos.ticket ?? pos.id ?? '-');
+                            const ticketLabel = isPendingPlacement ? 'pending' : String(pos.ticket ?? pos.id ?? '-');
                             const timeLabel = formatTradeTime(pos.time_create);
                             const sideLabel = String(pos.side ?? '').toLowerCase() || '-';
                             const volumeLabel = String(formatTradeVolume(pos));
-                            const openPriceLabel = formatTradePrice(pos.price_open ?? pos.openPrice, symbolLabel);
+                            const rawOpenPrice = Number(pos.price_open ?? pos.openPrice);
+                            const openPriceLabel = isPendingPlacement
+                                ? '…'
+                                : formatTradePrice(rawOpenPrice, symbolLabel);
                             const slLabel = formatTradeLevel(pos.price_sl ?? pos.sl, symbolLabel);
                             const tpLabel = formatTradeLevel(pos.price_tp ?? pos.tp, symbolLabel);
-                            const currentPriceLabel = formatTradePrice(pos.price_current ?? pos.currentPrice, symbolLabel);
+                            const rawCurrentPrice = Number(pos.price_current ?? pos.currentPrice);
+                            const currentPriceLabel = isPendingPlacement
+                                ? '…'
+                                : formatTradePrice(rawCurrentPrice, symbolLabel);
                             const swapLabel = formatMoney(pos.swap);
                             const accountLoginLabel = String(pos.account_login ?? '-');
                             const timeUpdateLabel = formatTradeTime(pos.time_update);
                             const commentLabel = String(pos.comment || '-');
-                            const profitLabel = profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue);
-                            const rowComment = `${symbolLabel} ${sideLabel} ${volumeLabel} lots, ticket ${ticketLabel}. Double-click to modify, right-click for more options.`;
+                            const profitLabel = isPendingPlacement
+                                ? '…'
+                                : profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue);
+                            const rowComment = isPendingPlacement
+                                ? `${symbolLabel} ${sideLabel} ${volumeLabel} lots is being sent.`
+                                : `${symbolLabel} ${sideLabel} ${volumeLabel} lots, ticket ${ticketLabel}. Double-click to modify, right-click for more options.`;
                             return (
                             <tr
                                 key={pos.id ?? i}
                                 title={rowComment}
                                 aria-selected={isSelected}
-                                className={`rtx-trade-row h-[22px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-pointer`}
-                                onClick={() => setSelectedPositionKey(positionKey)}
+                                className={`rtx-trade-row h-[30px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-pointer`}
+                                onClick={() => {
+                                    if (!isPendingPlacement) setSelectedPositionKey(positionKey);
+                                }}
                                 onDoubleClick={() => {
+                                    if (isPendingPlacement) return;
                                     setSelectedPositionKey(positionKey);
                                     setModifyPosition(pos);
                                 }}
-                                onContextMenu={(event) => handleTradeContextMenu(event, pos)}
+                                onContextMenu={(event) => {
+                                    if (isPendingPlacement) return;
+                                    handleTradeContextMenu(event, pos);
+                                }}
                             >
                                 {/* symbol */}
-                                <td className="px-1.5 py-[2px] pl-2 border-r border-zinc-800 font-semibold text-zinc-100 whitespace-nowrap" title={`Symbol: ${symbolLabel}`}>
+                                <td className="px-1.5 py-[2px] pl-2 border-r border-zinc-800 font-normal text-zinc-100 whitespace-nowrap" title={`Symbol: ${symbolLabel}`}>
                                     <span className="inline-flex items-center gap-1.5">
                                         <span className={`h-[11px] w-[7px] rounded-[1px] border ${isBuy ? 'border-sky-400 text-sky-300' : 'border-red-400 text-red-300'} flex items-center justify-center text-[8px] leading-none`}>
                                             {isBuy ? '+' : '-'}
@@ -1628,14 +1658,14 @@ ${rows}
 
                                 {/* time_create */}
                                 {isColumnVisible('time') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap text-[11px]" title={`Open time: ${timeLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap" title={`Open time: ${timeLabel}`}>
                                         {timeLabel}
                                     </td>
                                 )}
 
                                 {/* side */}
                                 {isColumnVisible('side') && (
-                                    <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 font-semibold text-[11px]`} title={`Side / Type: ${sideLabel}`}>
+                                    <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 font-normal text-[13px]`} title={`Side / Type: ${sideLabel}`}>
                                         <div className="flex items-center gap-1">
                                             {isBuy ? (
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -1649,7 +1679,7 @@ ${rows}
 
                                 {/* volume */}
                                 {isColumnVisible('volume') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right font-semibold text-zinc-100 tabular-nums" title={`Volume: ${volumeLabel} lots`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right font-normal text-zinc-100 tabular-nums" title={`Volume: ${volumeLabel} lots`}>
                                         {volumeLabel}
                                     </td>
                                 )}
@@ -1663,10 +1693,10 @@ ${rows}
 
                                 {/* price_sl */}
                                 {isColumnVisible('sl') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" title={`Stop Loss: ${slLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); startEditing(pos); }}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" title={`Stop Loss: ${slLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
                                         {editingId === pos.id ? (
                                             <input
-                                                className="h-[17px] w-full bg-zinc-800 text-white text-right px-1 text-[11px] outline-none ring-1 ring-sky-500/70"
+                                                className="h-[21px] w-full bg-zinc-800 text-white text-right px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
                                                 value={editSL}
                                                 onChange={e => setEditSL(e.target.value)}
                                                 onBlur={() => saveEdit(pos)}
@@ -1674,7 +1704,7 @@ ${rows}
                                                 onDoubleClick={e => e.stopPropagation()}
                                             />
                                         ) : (
-                                            <span className={(pos.price_sl ?? pos.sl) > 0 ? "rtx-trade-sl-value text-[#ff7676] bg-red-950/20 px-1 rounded-sm cursor-pointer font-semibold" : "text-zinc-600 cursor-pointer"}>
+                                            <span className={(pos.price_sl ?? pos.sl) > 0 ? "rtx-trade-sl-value text-[#ff7676] bg-red-950/20 px-1 rounded-sm cursor-pointer font-normal" : "text-zinc-600 cursor-pointer"}>
                                                 {slLabel}
                                             </span>
                                         )}
@@ -1683,10 +1713,10 @@ ${rows}
 
                                 {/* price_tp */}
                                 {isColumnVisible('tp') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" title={`Take Profit: ${tpLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); startEditing(pos); }}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" title={`Take Profit: ${tpLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
                                         {editingId === pos.id ? (
                                             <input
-                                                className="h-[17px] w-full bg-zinc-800 text-white text-right px-1 text-[11px] outline-none ring-1 ring-sky-500/70"
+                                                className="h-[21px] w-full bg-zinc-800 text-white text-right px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
                                                 value={editTP}
                                                 onChange={e => setEditTP(e.target.value)}
                                                 onBlur={() => saveEdit(pos)}
@@ -1694,7 +1724,7 @@ ${rows}
                                                 onDoubleClick={e => e.stopPropagation()}
                                             />
                                         ) : (
-                                            <span className={(pos.price_tp ?? pos.tp) > 0 ? "rtx-trade-tp-value text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm cursor-pointer font-semibold" : "text-zinc-600 cursor-pointer"}>
+                                            <span className={(pos.price_tp ?? pos.tp) > 0 ? "rtx-trade-tp-value text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm cursor-pointer font-normal" : "text-zinc-600 cursor-pointer"}>
                                                 {tpLabel}
                                             </span>
                                         )}
@@ -1703,7 +1733,7 @@ ${rows}
 
                                 {/* price_current */}
                                 {isColumnVisible('priceCurrent') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-zinc-100 font-semibold tabular-nums" title={`Current price: ${currentPriceLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-zinc-100 font-normal tabular-nums" title={`Current price: ${currentPriceLabel}`}>
                                         {currentPriceLabel}
                                     </td>
                                 )}
@@ -1715,28 +1745,28 @@ ${rows}
 
                                 {/* account_login */}
                                 {isColumnVisible('accountLogin') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums" title={`Account login: ${accountLoginLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] whitespace-nowrap tabular-nums" title={`Account login: ${accountLoginLabel}`}>
                                         {accountLoginLabel}
                                     </td>
                                 )}
 
                                 {/* time_update */}
                                 {isColumnVisible('timeUpdate') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] whitespace-nowrap text-[11px] tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] whitespace-nowrap tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
                                         {timeUpdateLabel}
                                     </td>
                                 )}
 
                                 {/* comment */}
                                 {isColumnVisible('comment') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] text-[11px] truncate" title={`Comment: ${commentLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] truncate" title={`Comment: ${commentLabel}`}>
                                         {commentLabel}
                                     </td>
                                 )}
 
                                 {/* profit */}
                                 {isColumnVisible('profit') && (
-                                    <td className={`px-1.5 py-[2px] text-right font-semibold tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${profitMode === 'points' ? 'Profit points' : 'Profit'}: ${profitLabel}`}>
+                                    <td className={`px-1.5 py-[2px] text-right font-normal tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${profitMode === 'points' ? 'Profit points' : 'Profit'}: ${profitLabel}`}>
                                         {profitLabel}
                                     </td>
                                 )}
@@ -1745,15 +1775,17 @@ ${rows}
                                 <td className="px-0.5 py-[2px] text-center">
                                     <button
                                         type="button"
-                                        aria-label={`Close position ${pos.ticket ?? pos.id}`}
-                                        title={`Close position ${ticketLabel}`}
+                                        aria-label={isPendingPlacement ? 'Order is being sent' : `Close position ${pos.ticket ?? pos.id}`}
+                                        title={isPendingPlacement ? 'Order is being sent' : `Close position ${ticketLabel}`}
+                                        disabled={isPendingPlacement}
                                         onClick={(event) => {
                                             event.stopPropagation();
+                                            if (isPendingPlacement) return;
                                             onClosePosition(pos.id);
                                         }}
-                                        className="rtx-trade-close-button mx-auto flex h-[17px] w-[17px] items-center justify-center rounded-sm border border-transparent text-[12px] font-semibold leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400"
+                                        className="rtx-trade-close-button mx-auto flex h-[17px] w-[17px] items-center justify-center rounded-sm border border-transparent text-[12px] font-normal leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:cursor-wait disabled:text-zinc-600 disabled:hover:border-transparent disabled:hover:bg-transparent"
                                     >
-                                        x
+                                        {isPendingPlacement ? '…' : 'x'}
                                     </button>
                                 </td>
                             </tr>
@@ -1767,7 +1799,7 @@ ${rows}
             <div
                 ref={footerScrollRef}
                 onScroll={() => syncHorizontalScroll('footer')}
-                className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full overflow-x-auto overflow-y-hidden text-[11px] font-bold text-zinc-300 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] scrollbar-thin scrollbar-thumb-zinc-700"
+                className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full overflow-x-auto overflow-y-hidden text-[13px] font-normal text-zinc-300 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] scrollbar-thin scrollbar-thumb-zinc-700"
             >
                 <div className="rtx-trade-footer-inner flex w-max min-w-full items-center gap-1 px-1.5 py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
                     <button
@@ -1798,7 +1830,7 @@ ${rows}
                         title="Close all profitable positions"
                         onClick={() => onCloseBulk?.('WINNERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-bulk-close rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rtx-trade-bulk-close rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[12px] font-normal leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         Close Winners
                     </button>
@@ -1807,7 +1839,7 @@ ${rows}
                         title="Close all losing positions"
                         onClick={() => onCloseBulk?.('LOSERS')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[10px] font-bold leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[12px] font-normal leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         Close Losers
                     </button>
@@ -1816,12 +1848,12 @@ ${rows}
                         title="Close all open positions"
                         onClick={() => onCloseBulk?.('ALL')}
                         disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-footer-action rtx-trade-footer-action--danger inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-red-800/70 px-1.5 text-[10px] font-bold leading-none text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rtx-trade-footer-action rtx-trade-footer-action--danger inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-red-800/70 px-1.5 text-[12px] font-normal leading-none text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                         Close All
                     </button>
                     </div>
-                    <span className="rtx-trade-footer-floating inline-flex h-5 min-w-[112px] shrink-0 items-center justify-end gap-1 whitespace-nowrap rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-1.5 text-right font-bold leading-none" title={`Floating P/L: ${formatMoney(totalLivePnL)}`}>
+                    <span className="rtx-trade-footer-floating inline-flex h-5 min-w-[112px] shrink-0 items-center justify-end gap-1 whitespace-nowrap rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-1.5 text-right font-normal leading-none" title={`Floating P/L: ${formatMoney(totalLivePnL)}`}>
                         <span className="text-zinc-100">Floating P/L</span>
                         <BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-[#2563eb]"} />
                     </span>
@@ -1916,7 +1948,7 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
 
         if (visibleSegments.length === 0) {
             return (
-                <div className="flex h-[165px] items-center justify-center text-[10px] text-zinc-500">
+                <div className="flex h-[165px] items-center justify-center text-[12px] font-normal text-zinc-500">
                     No long exposure
                 </div>
             );
@@ -1980,13 +2012,13 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
     };
 
     return (
-        <div className="h-full flex bg-[#131316] text-[11px]">
+        <div className="rtx-exposure-tab h-full flex bg-[#131316] text-[14px] font-normal">
             {/* Table */}
             <div className="flex min-w-0 flex-1 flex-col border-r border-zinc-700">
                 <div className="min-h-0 flex-1 overflow-auto">
                     <table className="w-full min-w-[720px] table-fixed border-collapse text-left">
-                        <thead className="sticky top-0 z-10 border-b border-zinc-700/70 bg-[#090d19] text-[10px] font-bold uppercase tracking-widest text-[#c9d1df]">
-                            <tr>
+                        <thead className="sticky top-0 z-10 border-b border-zinc-700/70 bg-[#090d19] text-[12px] font-normal leading-[18px] uppercase tracking-wider text-[#c9d1df]">
+                            <tr className="h-[30px]">
                                 <th className="w-[120px] border-r border-zinc-800 p-1 pl-2">Assets</th>
                                 <th className="w-[130px] border-r border-zinc-800 p-1 text-right">Volume</th>
                                 <th className="w-[130px] border-r border-zinc-800 p-1 text-right">Rate</th>
@@ -1994,7 +2026,7 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
                                 <th className="p-1 text-center">Graph</th>
                             </tr>
                         </thead>
-                        <tbody className="font-mono text-[11px] text-zinc-200">
+                        <tbody className="font-mono text-[13px] font-normal leading-[19.5px] text-zinc-200">
                             {exposure.rows.length === 0 ? (
                                 <tr>
                                     <td colSpan={5} className="h-16 text-center text-zinc-500">
@@ -2004,8 +2036,8 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
                             ) : exposure.rows.map((exp, i) => {
                                 const isLong = exp.value >= 0;
                                 return (
-                                    <tr key={exp.asset} className={`${i % 2 === 0 ? 'bg-[#15161b]' : 'bg-[#101116]'}`}>
-                                        <td className="border-r border-zinc-800 p-1 pl-2 font-bold text-[#f4c542]">
+                                    <tr key={exp.asset} className={`h-[30px] font-normal ${i % 2 === 0 ? 'bg-[#15161b]' : 'bg-[#101116]'}`}>
+                                        <td className="border-r border-zinc-800 p-1 pl-2 font-normal text-[#f4c542]">
                                             <span className="mr-1 inline-flex h-[13px] w-[13px] items-center justify-center rounded-[2px] border border-[#ad8a11] bg-[#ffd735] text-[9px] font-black leading-none text-[#574800]">
                                                 $
                                             </span>
@@ -2030,7 +2062,7 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
                         </tbody>
                     </table>
                 </div>
-                <div className="flex h-[24px] shrink-0 items-center gap-2 overflow-hidden border-t border-[#3a3d45] bg-[#2a2d34] px-2 font-mono text-[11px] font-bold text-[#f6f7fb]">
+                <div className="flex h-[30px] shrink-0 items-center gap-2 overflow-hidden border-t border-[#3a3d45] bg-[#2a2d34] px-2 font-mono text-[13px] font-bold leading-[19.5px] text-[#f6f7fb]">
                     <span>Balance: {formatMoney(accountBalance)} {exposure.accountCurrency}</span>
                     <span>Equity: {formatMoney(accountEquity)}</span>
                     <span>Margin: {formatMoney(accountMargin)}</span>
@@ -2041,11 +2073,11 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
 
             {/* Pie Chart Area */}
             <div className="flex w-[270px] shrink-0 flex-col bg-[#0d0e12] p-3">
-                <div className="mb-2 text-center text-[10px] font-bold uppercase tracking-wider text-zinc-400">Long Positions</div>
+                <div className="mb-2 text-center text-[12px] font-normal uppercase tracking-wider text-zinc-400">Long Positions</div>
                 <div className="min-h-0 flex-1">
                     {renderLongPositionChart(exposure.longSegments)}
                 </div>
-                <div className="mt-1 grid grid-cols-1 gap-1 text-[10px] text-zinc-400">
+                <div className="mt-1 grid grid-cols-1 gap-1 text-[12px] font-normal text-zinc-400">
                     {exposure.longSegments.slice(0, 4).map(segment => (
                         <div key={segment.asset} className="flex items-center justify-between gap-2">
                             <span className="flex min-w-0 items-center gap-1">
@@ -2128,15 +2160,15 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
                 <div className="flex gap-1">
                     {(['today', 'week', 'month', 'all'] as const).map(f => (
                         <button key={f} onClick={() => setFilter(f)}
-                            className={`rtx-journal-time-btn px-2 py-0.5 text-[10px] rounded capitalize transition-colors ${filter === f ? 'bg-zinc-600 text-white' : 'text-zinc-400'}`}>
+                            className={`rtx-journal-time-btn px-2 py-0.5 text-[12px] font-normal rounded capitalize transition-colors ${filter === f ? 'bg-zinc-600 text-white' : 'text-zinc-400'}`}>
                             {f}
                         </button>
                     ))}
                 </div>
                 <div className="flex-1" />
-                <span className="text-[10px] text-zinc-500">{filteredOrders.length} records</span>
+                <span className="text-[12px] font-normal text-zinc-500">{filteredOrders.length} records</span>
                 <button onClick={fetchHistory} disabled={loading}
-                    className="text-[10px] px-2 py-0.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300 flex items-center gap-1">
+                    className="text-[12px] font-normal px-2 py-0.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300 flex items-center gap-1">
                     <Icon name="refresh" size="xs" className={loading ? 'animate-spin' : ''} />
                     {loading ? 'Loading…' : 'Refresh'}
                 </button>
@@ -2146,7 +2178,7 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
             {loading && <div className="flex-1 flex items-center justify-center text-zinc-500 text-xs">Loading closed trade history…</div>}
             {!loading && error && (
                 <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                    <button onClick={fetchHistory} className="text-[10px] px-3 py-1 bg-zinc-700 rounded hover:bg-zinc-600 text-zinc-300">Retry</button>
+                    <button onClick={fetchHistory} className="text-[12px] font-normal px-3 py-1 bg-zinc-700 rounded hover:bg-zinc-600 text-zinc-300">Retry</button>
                 </div>
             )}
             {!loading && !error && filteredOrders.length === 0 && (
@@ -2157,8 +2189,8 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
             {!loading && !error && filteredOrders.length > 0 && (
                 <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
                     <table className="w-full text-left border-collapse">
-                        <thead className="sticky top-0 bg-[#131316] text-[#a0a0a0] z-10 font-bold text-[10px] uppercase tracking-widest border-b border-zinc-700/50">
-                            <tr>
+                        <thead className="sticky top-0 bg-[#131316] text-[#a0a0a0] z-10 font-normal text-[12px] uppercase tracking-normal border-b border-zinc-700/50">
+                            <tr className="h-[30px]">
                                 <th className="p-1 pl-2 w-20">Ticket</th>
                                 <th className="p-1 w-28">Open Time</th>
                                 <th className="p-1 w-14">Type</th>
@@ -2175,17 +2207,17 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
                                 <th className="p-1 w-20 text-right">Status</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[11px]">
+                        <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[13px] leading-[19.5px] font-normal">
                             {filteredOrders.map((o, i) => (
                                 <tr key={`${o.type}-${o.id}-${i}`}
-                                    className="rtx-history-row group transition-all duration-300 ease-in-out">
+                                    className="rtx-history-row h-[30px] group transition-all duration-300 ease-in-out">
                                     <td className="p-1 pl-2 border-r border-zinc-800 text-zinc-500">{o.id ?? '-'}</td>
-                                    <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap text-[10px]">{formatTs(o.openTime)}</td>
-                                    <td className={`p-1 border-r border-zinc-800 font-bold text-[10px] ${typeColor(o.side)}`}>{(o.side || o.type || '-').toUpperCase()}</td>
-                                    <td className="p-1 border-r border-zinc-800 text-right font-medium text-zinc-200">
+                                    <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap">{formatTs(o.openTime)}</td>
+                                    <td className={`p-1 border-r border-zinc-800 font-normal ${typeColor(o.side)}`}>{(o.side || o.type || '-').toUpperCase()}</td>
+                                    <td className="p-1 border-r border-zinc-800 text-right font-normal text-zinc-200">
                                         {o.volume != null ? Number(o.volume).toFixed(2) : '-'}
                                     </td>
-                                    <td className="p-1 border-r border-zinc-800 font-bold text-zinc-100 pl-3">{o.symbol ?? '-'}</td>
+                                    <td className="p-1 border-r border-zinc-800 font-normal text-zinc-100 pl-3">{o.symbol ?? '-'}</td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">
                                         {formatPriceCell(o.openPrice, o.symbol)}
                                     </td>
@@ -2195,14 +2227,14 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-500">
                                         {formatPriceCell(o.tp, o.symbol)}
                                     </td>
-                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-400 text-[10px]">{formatTs(o.closeTime)}</td>
+                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">{formatTs(o.closeTime)}</td>
                                     <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">
                                         {formatPriceCell(o.closePrice, o.symbol)}
                                     </td>
                                     <td className={`p-1 border-r border-zinc-800 text-right ${moneyColor(o.commission)}`}>{formatMoney(o.commission)}</td>
                                     <td className={`p-1 border-r border-zinc-800 text-right ${moneyColor(o.swap)}`}>{formatMoney(o.swap)}</td>
-                                    <td className={`p-1 border-r border-zinc-800 text-right font-semibold ${moneyColor(o.profit)}`}>{formatMoney(o.profit)}</td>
-                                    <td className="p-1 pr-2 text-right text-zinc-500 text-[10px] capitalize">{formatTradeStatus(o)}</td>
+                                    <td className={`p-1 border-r border-zinc-800 text-right font-normal ${moneyColor(o.profit)}`}>{formatMoney(o.profit)}</td>
+                                    <td className="p-1 pr-2 text-right text-zinc-500 capitalize">{formatTradeStatus(o)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -2220,8 +2252,8 @@ function PlaceholderTab({ title }: { title: string }) {
     return (
         <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 bg-[#131316]">
             <Icon name="briefcase" size="xl" className="mb-2 opacity-20" />
-            <div className="text-xs font-medium">RTX5 {title}</div>
-            <div className="text-[10px]">No active items to display</div>
+            <div className="text-[12px] font-normal">RTX5 {title}</div>
+            <div className="text-[12px] font-normal">No active items to display</div>
         </div>
     );
 }

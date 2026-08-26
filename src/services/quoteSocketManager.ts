@@ -26,6 +26,7 @@ import {
 } from './brokerSession';
 import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
+import { resolveDailyChangePercent } from '../utils/dailyChange';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -131,10 +132,8 @@ function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unkno
   const ask = toNumber(payload?.ask, bid);
   if (bid <= 0 && ask <= 0) return null;
 
-  const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask;
   const previousClose = toNumber(payload?.previous_close ?? payload?.previousClose);
   const dailyOpen = toNumber(payload?.daily_open ?? payload?.dailyOpen ?? payload?.open);
-  const dailyReference = previousClose > 0 ? previousClose : dailyOpen;
 
   const session = isRecord(payload.session) ? payload.session : {};
   const sessionHigh = Math.max(toNumber(session?.high_bid), toNumber(session?.high_ask), toNumber(payload?.high));
@@ -155,9 +154,11 @@ function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unkno
     sourceTimestamp,
     lp: typeof payload?.lp === 'string' ? payload.lp : undefined,
     volume: toNumber(payload?.volume, 1),
-    dailyChange: payload?.dailyChange !== undefined
-      ? toNumber(payload.dailyChange)
-      : dailyReference > 0 ? ((mid - dailyReference) / dailyReference) * 100 : undefined,
+    dailyChange: resolveDailyChangePercent(
+      payload?.dailyChange ?? payload?.daily_change,
+      bid,
+      previousClose,
+    ),
     high24h: payload?.high24h !== undefined ? toNumber(payload.high24h) : sessionHigh || undefined,
     low24h: payload?.low24h !== undefined ? toNumber(payload.low24h) : sessionLow,
     high: payload?.high !== undefined ? toNumber(payload.high) : undefined,

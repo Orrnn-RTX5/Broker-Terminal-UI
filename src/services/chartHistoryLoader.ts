@@ -48,6 +48,108 @@ export interface ChartHistoryBackfillDiagnostics {
   lastStopReason: string | null;
 }
 
+export interface SelectedTimeframeHistoryRequest {
+  sequence: number;
+  timeframe: string;
+  signal: AbortSignal;
+  fetchOptions: FetchCandlesOptions;
+  result: Promise<OHLCData[]>;
+  isCurrent: () => boolean;
+}
+
+export interface SelectedTimeframeHistoryCoordinator {
+  start: (options: {
+    symbol: string;
+    timeframe: string;
+    count: number;
+  }, fetchCandles: FetchCandlesPage) => SelectedTimeframeHistoryRequest;
+  abort: () => void;
+  getActiveSignal: () => AbortSignal | undefined;
+}
+
+export type VisibleRangeHistoryAction = 'none' | 'defer' | 'load';
+
+export const createSelectedTimeframeHistoryCoordinator = (): SelectedTimeframeHistoryCoordinator => {
+  let sequence = 0;
+  let active: { sequence: number; controller: AbortController } | null = null;
+
+  return {
+    start: ({ symbol, timeframe, count }, fetchCandles) => {
+      active?.controller.abort();
+
+      const controller = new AbortController();
+      const requestSequence = sequence + 1;
+      sequence = requestSequence;
+      active = { sequence: requestSequence, controller };
+
+      const fetchOptions = {
+        symbol,
+        timeframe,
+        count,
+        signal: controller.signal,
+      };
+
+      return {
+        sequence: requestSequence,
+        timeframe,
+        signal: controller.signal,
+        fetchOptions,
+        result: fetchCandles(fetchOptions),
+        isCurrent: () => (
+          active?.sequence === requestSequence
+          && active.controller === controller
+          && !controller.signal.aborted
+        ),
+      };
+    },
+    abort: () => {
+      active?.controller.abort();
+      active = null;
+    },
+    getActiveSignal: () => active?.controller.signal,
+  };
+};
+
+export const resolveVisibleRangeHistoryAction = ({
+  logicalFrom,
+  suppressed,
+  interactionActive,
+  userInitiated,
+  threshold = 50,
+}: {
+  logicalFrom: number | null | undefined;
+  suppressed: boolean;
+  interactionActive: boolean;
+  userInitiated: boolean;
+  threshold?: number;
+}): VisibleRangeHistoryAction => {
+  if (!userInitiated || !Number.isFinite(logicalFrom) || (logicalFrom as number) >= threshold || suppressed) return 'none';
+  return interactionActive ? 'defer' : 'load';
+};
+
+export const resolveDeferredVisibleRangeHistoryAction = ({
+  pending,
+  logicalFrom,
+  suppressed,
+  userInitiated,
+  threshold = 50,
+}: {
+  pending: boolean;
+  logicalFrom: number | null | undefined;
+  suppressed: boolean;
+  userInitiated: boolean;
+  threshold?: number;
+}): VisibleRangeHistoryAction => {
+  if (!pending) return 'none';
+  return resolveVisibleRangeHistoryAction({
+    logicalFrom,
+    suppressed,
+    interactionActive: false,
+    userInitiated,
+    threshold,
+  });
+};
+
 const normalizeTimeframe = (timeframe: string): string => String(timeframe || '').trim().toUpperCase();
 
 export const getHistoryPageSize = (timeframe: string): number => {

@@ -95,10 +95,10 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
     <>
       <div className="w-80 h-full bg-[#131316] border-l border-zinc-800 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-[#252525]">
+        <div className="flex min-h-[30px] items-center justify-between px-4 py-1 border-b border-zinc-800 bg-[#252525]">
           <div className="flex items-center gap-2">
             <Icon name="credit-card" size="sm" className="w-4 h-4 text-blue-400" />
-            <h2 className="text-sm font-bold text-zinc-200">Account Management</h2>
+            <h2 className="text-[14px] leading-[21px] font-normal text-zinc-200">Account Management</h2>
           </div>
           <button
             onClick={onClose}
@@ -112,21 +112,21 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {/* Section 1: Account Summary */}
           <div className="p-4 border-b border-zinc-800">
-            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Account Summary</h3>
+            <h3 className="text-[12px] leading-[18px] font-normal text-zinc-500 uppercase tracking-normal mb-3">Account Summary</h3>
 
             {/* Account Info */}
             <div className="bg-[#252525] rounded-lg p-3 mb-3 border border-zinc-800">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] text-zinc-500">Account</span>
-                <span className="text-xs font-mono text-zinc-300 font-bold">{accountInfo.accountNumber}</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-500">Account</span>
+                <span className="text-[14px] leading-[21px] font-mono text-zinc-300 font-normal">{accountInfo.accountNumber}</span>
               </div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] text-zinc-500">Type</span>
-                <span className="text-xs text-blue-400 font-medium">{accountInfo.accountType}</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-500">Type</span>
+                <span className="text-[14px] leading-[21px] text-blue-400 font-normal">{accountInfo.accountType}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-zinc-500">Leverage</span>
-                <span className="text-xs text-zinc-300 font-bold">1:{accountInfo.leverage}</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-500">Leverage</span>
+                <span className="text-[14px] leading-[21px] text-zinc-300 font-normal">1:{accountInfo.leverage}</span>
               </div>
             </div>
 
@@ -152,7 +152,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
                 disabled
                 title="Deposits are not supported by the trade-facing API contract"
                 onClick={() => handleUnsupportedAccountAction('Deposit')}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/50 border border-zinc-700 rounded-lg text-zinc-500 text-sm font-medium cursor-not-allowed"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/50 border border-zinc-700 rounded-lg text-zinc-500 text-[14px] leading-[21px] font-normal cursor-not-allowed"
               >
                 <Icon name="trending-up" size="sm" className="w-4 h-4" />
                 Deposit
@@ -162,7 +162,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
                 disabled
                 title="Withdrawals are not supported by the trade-facing API contract"
                 onClick={() => handleUnsupportedAccountAction('Withdrawal')}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/50 border border-zinc-700 rounded-lg text-zinc-500 text-sm font-medium cursor-not-allowed"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/50 border border-zinc-700 rounded-lg text-zinc-500 text-[14px] leading-[21px] font-normal cursor-not-allowed"
               >
                 <Icon name="trending-up" size="sm" className="w-4 h-4 rotate-180" />
                 Withdraw
@@ -173,18 +173,18 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
           {/* Section 3: Transaction History */}
           <div className="p-4 border-b border-zinc-800">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Transaction History</h3>
-              <button className="text-[10px] text-blue-400 hover:text-zinc-300 transition-colors font-medium">
+              <h3 className="text-[12px] leading-[18px] font-normal text-zinc-500 uppercase tracking-normal">Transaction History</h3>
+              <button className="text-[12px] leading-[18px] text-blue-400 hover:text-zinc-300 transition-colors font-normal">
                 View All
               </button>
             </div>
 
             {isLoadingTransactions ? (
-              <div className="text-center py-6 text-zinc-600 text-xs">
+              <div className="text-center py-6 text-zinc-600 text-[14px] leading-[21px] font-normal">
                 Loading transactions...
               </div>
             ) : transactions.length === 0 ? (
-              <div className="text-center py-6 text-zinc-600 text-xs">
+              <div className="text-center py-6 text-zinc-600 text-[14px] leading-[21px] font-normal">
                 No transactions yet
               </div>
             ) : (
@@ -198,18 +198,18 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
 
           {/* Section 4: Account Settings */}
           <div className="p-4">
-            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Account Settings</h3>
+            <h3 className="text-[12px] leading-[18px] font-normal text-zinc-500 uppercase tracking-normal mb-3">Account Settings</h3>
 
             <div className="space-y-3">
               {/* Leverage Selector */}
               <div className="flex items-center justify-between py-2">
-                <span className="text-xs text-zinc-400">Leverage</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-400">Leverage</span>
                 <select
                   value={leverage}
                   disabled
                   onChange={() => undefined}
                   title="Leverage changes are not supported by the trade API"
-                  className="bg-[#252525] border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-500 focus:outline-none cursor-not-allowed"
+                  className="bg-[#252525] border border-zinc-700 rounded px-2 py-1 text-[14px] leading-[21px] font-normal text-zinc-500 focus:outline-none cursor-not-allowed"
                 >
                   <option value={50}>1:50</option>
                   <option value={100}>1:100</option>
@@ -224,7 +224,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
                 disabled
                 title="Password changes are not supported by the trade-facing API contract"
                 onClick={() => handleUnsupportedAccountAction('Password changes')}
-                className="w-full flex items-center justify-between px-3 py-2 bg-[#252525] border border-zinc-700 rounded-lg text-xs text-zinc-500 cursor-not-allowed"
+                className="w-full flex items-center justify-between px-3 py-2 bg-[#252525] border border-zinc-700 rounded-lg text-[14px] leading-[21px] font-normal text-zinc-500 cursor-not-allowed"
               >
                 <div className="flex items-center gap-2">
                   <Icon name="lock" size="sm" className="w-3.5 h-3.5 text-zinc-500" />
@@ -235,7 +235,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
 
               {/* One-Click Trading Toggle */}
               <div className="flex items-center justify-between py-2">
-                <span className="text-xs text-zinc-400">One-Click Trading</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-400">One-Click Trading</span>
                 <button
                   type="button"
                   disabled
@@ -288,8 +288,8 @@ const BalanceRow: React.FC<BalanceRowProps> = ({ label, value, currency, suffix,
 
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/50">
-      <span className="text-xs text-zinc-500">{label}</span>
-      <span className={`text-sm font-bold font-mono px-0.5 rounded-sm inline-block ${color}`}>
+      <span className="text-[14px] leading-[21px] font-normal text-zinc-500">{label}</span>
+      <span className={`text-[14px] leading-[21px] font-semibold font-mono px-0.5 rounded-sm inline-block ${color}`}>
         {currency && `${currency} `}
         {value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         {suffix}
@@ -319,14 +319,14 @@ const TransactionRow: React.FC<TransactionRowProps> = ({ transaction }) => {
     <div className="flex items-center justify-between p-2 bg-[#252525] rounded border border-zinc-800 hover:bg-zinc-800/30 transition-colors">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <span className={`text-xs font-bold ${typeColor} capitalize`}>{transaction.type}</span>
+          <span className={`text-[13px] leading-[19.5px] font-medium ${typeColor} capitalize`}>{transaction.type}</span>
           <span className={`text-[9px] px-1.5 py-0.5 rounded border ${status.color} font-medium`}>
             {status.label}
           </span>
         </div>
-        <div className="text-[10px] text-zinc-600">{new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+        <div className="text-[12px] leading-[18px] font-normal text-zinc-600">{new Date(transaction.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
       </div>
-      <div className={`text-sm font-bold font-mono ${typeColor}`}>
+      <div className={`text-[14px] leading-[21px] font-semibold font-mono ${typeColor}`}>
         {transaction.type === 'deposit' ? '+' : '-'}${transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
       </div>
     </div>
@@ -362,7 +362,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]" onClick={onClose}>
       <div className="bg-[#131316] border border-zinc-800 rounded-lg shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-zinc-200">{title}</h3>
+          <h3 className="text-[16px] leading-[24px] font-semibold text-zinc-200">{title}</h3>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
             <Icon name="x-close" size="sm" className="w-5 h-5" />
           </button>
@@ -375,7 +375,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-sm text-zinc-300 font-medium">
+            <p className="text-[14px] leading-[21px] text-zinc-300 font-normal">
               {type === 'deposit' ? 'Deposit' : 'Withdrawal'} request submitted successfully!
             </p>
           </div>
@@ -383,7 +383,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Amount Input */}
             <div>
-              <label className="block text-xs text-zinc-500 mb-1.5">Amount (USD)</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">Amount (USD)</label>
               <input
                 type="number"
                 value={amount}
@@ -392,17 +392,17 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
                 step="0.01"
                 min="0"
                 required
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-sm text-zinc-300 focus:outline-none focus:border-zinc-600"
+                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
               />
             </div>
 
             {/* Payment Method */}
             <div>
-              <label className="block text-xs text-zinc-500 mb-1.5">Payment Method</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">Payment Method</label>
               <select
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-sm text-zinc-300 focus:outline-none focus:border-zinc-600"
+                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
               >
                 <option value="card">Credit/Debit Card</option>
                 <option value="bank">Bank Transfer</option>
@@ -412,7 +412,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
 
             {/* Error Message */}
             {error && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded text-xs text-rose-400">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded text-[12px] leading-[18px] font-normal text-rose-400">
                 {error}
               </div>
             )}
@@ -421,7 +421,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
             <button
               type="submit"
               disabled={loading || !amount}
-              className={`w-full py-2.5 ${buttonColor} text-white text-sm font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+              className={`w-full py-2.5 ${buttonColor} text-white text-[14px] leading-[21px] font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {loading ? 'Processing...' : `Submit ${type === 'deposit' ? 'Deposit' : 'Withdrawal'}`}
             </button>
@@ -469,7 +469,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]" onClick={onClose}>
       <div className="bg-[#131316] border border-zinc-800 rounded-lg shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-zinc-200">Change Password</h3>
+          <h3 className="text-[16px] leading-[24px] font-semibold text-zinc-200">Change Password</h3>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
             <Icon name="x-close" size="sm" className="w-5 h-5" />
           </button>
@@ -482,45 +482,45 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-sm text-zinc-300 font-medium">Password changed successfully!</p>
+            <p className="text-[14px] leading-[21px] text-zinc-300 font-normal">Password changed successfully!</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs text-zinc-500 mb-1.5">Current Password</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">Current Password</label>
               <input
                 type="password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 required
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-sm text-zinc-300 focus:outline-none focus:border-zinc-600"
+                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-zinc-500 mb-1.5">New Password</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">New Password</label>
               <input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-sm text-zinc-300 focus:outline-none focus:border-zinc-600"
+                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-zinc-500 mb-1.5">Confirm New Password</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">Confirm New Password</label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-sm text-zinc-300 focus:outline-none focus:border-zinc-600"
+                className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
               />
             </div>
 
             {error && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded text-xs text-rose-400">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded text-[12px] leading-[18px] font-normal text-rose-400">
                 {error}
               </div>
             )}
@@ -528,7 +528,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-2.5 bg-zinc-700 hover:bg-zinc-600 text-white text-[14px] leading-[21px] font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Updating...' : 'Change Password'}
             </button>

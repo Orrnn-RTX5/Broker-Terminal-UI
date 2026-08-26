@@ -6,10 +6,10 @@ import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-c
 import { MarketWatch } from './MarketWatch';
 import './ProfessionalTradingDashboard.css';
 import { buildApiV2WsUrl } from '../config/api';
-import { marketApi } from '../services/api';
+import { api, marketApi } from '../services/api';
+import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { useTradeFacingData } from '../hooks/useTradeFacingData';
 import { getAuthToken } from '../api/client';
-import { tradeApi } from '../api/trade';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 import { chartDataService, type OHLCData } from '../services/chartDataService';
 import {
@@ -938,6 +938,7 @@ const ProfessionalTradingDashboard: React.FC = () => {
     };
 
     const placeOrder = async (side: 'BUY' | 'SELL') => {
+        const intentAtMs = captureTradeOrderIntent();
         try {
             const login = getStoredAccountLogin();
             if (!login) {
@@ -945,12 +946,12 @@ const ProfessionalTradingDashboard: React.FC = () => {
                 return;
             }
 
-            const data = await tradeApi.trading.placeOrder({
+            const data = await api.orders.placeMarketOrder({
                 login,
                 symbol: selectedSymbol,
                 side: side.toLowerCase() as 'buy' | 'sell',
                 volume: tradingVolume,
-            });
+            }, { intentAtMs });
 
             console.log('Order placed successfully:', data);
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));

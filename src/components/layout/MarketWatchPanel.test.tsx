@@ -18,6 +18,7 @@ const marketHooks = vi.hoisted(() => ({
   symbolsError: null as string | null,
   watchlistError: null as string | null,
   reloadActiveSymbols: vi.fn().mockResolvedValue(undefined),
+  useActiveMarketSymbols: vi.fn(),
   useLiveQuotes: vi.fn((symbols: string[]) => {
     void symbols;
     return {
@@ -28,14 +29,7 @@ const marketHooks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../hooks/useLiveMarketData', () => ({
-  useActiveMarketSymbols: () => ({
-    symbols: marketHooks.activeSymbols,
-    loading: marketHooks.activeSymbolsLoading,
-    settled: marketHooks.activeSymbolsSettled,
-    current: marketHooks.activeSymbolsCurrent,
-    error: null,
-    reload: marketHooks.reloadActiveSymbols,
-  }),
+  useActiveMarketSymbols: marketHooks.useActiveMarketSymbols,
   useLiveQuotes: marketHooks.useLiveQuotes,
   useMarketInstruments: () => ({
     symbols: marketHooks.instrumentSymbols.map((symbol) => ({ symbol })),
@@ -50,6 +44,15 @@ vi.mock('../../hooks/useLiveMarketData', () => ({
     reload: vi.fn(),
   }),
 }));
+
+const getActiveMarketSnapshot = () => ({
+    symbols: marketHooks.activeSymbols,
+    loading: marketHooks.activeSymbolsLoading,
+    settled: marketHooks.activeSymbolsSettled,
+    current: marketHooks.activeSymbolsCurrent,
+    error: null,
+    reload: marketHooks.reloadActiveSymbols,
+});
 
 const watchlistState = vi.hoisted(() => ({
   watchlists: [] as Array<{ id: string; symbols: string[]; isDefault: boolean }>,
@@ -88,6 +91,8 @@ describe('MarketWatchPanel symbol visibility', () => {
     marketHooks.symbolsError = null;
     marketHooks.watchlistError = null;
     marketHooks.reloadActiveSymbols.mockClear();
+    marketHooks.useActiveMarketSymbols.mockReset();
+    marketHooks.useActiveMarketSymbols.mockImplementation(getActiveMarketSnapshot);
     watchlistState.watchlists = [];
     watchlistState.activeWatchlistId = '';
     watchlistState.addSymbolToWatchlist.mockClear();
@@ -110,11 +115,11 @@ describe('MarketWatchPanel symbol visibility', () => {
     act(() => {
       useAppStore.setState({ isAuthenticated: false });
       useAppStore.getState().setTicks({
-        BTCUSD: { symbol: 'BTCUSD', bid: 65000, ask: 65001, spread: 1, timestamp: Date.now() },
-        XAUUSD: { symbol: 'XAUUSD', bid: 2400, ask: 2400.2, spread: 0.2, timestamp: Date.now() },
+        BTCUSD: { symbol: 'BTCUSD', bid: 65000, ask: 65001, spread: 1, dailyChange: 0.19, timestamp: Date.now() },
+        XAUUSD: { symbol: 'XAUUSD', bid: 2400, ask: 2400.2, spread: 0.2, dailyChange: -0.36, timestamp: Date.now() },
         GBPUSD: { symbol: 'GBPUSD', bid: 1.3, ask: 1.3001, spread: 0.0001, timestamp: Date.now() },
         SOLUSD: { symbol: 'SOLUSD', bid: 180, ask: 180.1, spread: 0.1, timestamp: Date.now() },
-        EURUSD: { symbol: 'EURUSD', bid: 1.1, ask: 1.1001, spread: 0.0001, timestamp: Date.now() },
+        EURUSD: { symbol: 'EURUSD', bid: 1.1, ask: 1.1001, spread: 0.0001, dailyChange: 0, timestamp: Date.now() },
         USDJPY: { symbol: 'USDJPY', bid: 157.1, ask: 157.11, spread: 0.01, timestamp: Date.now() },
         ETHUSD: { symbol: 'ETHUSD', bid: 3500, ask: 3501, spread: 1, timestamp: Date.now() },
         '0001.HK': { symbol: '0001.HK', bid: 71.11, ask: 71.16, spread: 0.05, timestamp: Date.now() },
@@ -132,11 +137,11 @@ describe('MarketWatchPanel symbol visibility', () => {
     vi.useRealTimers();
   });
 
-  it('uses the full SPREAD column heading', () => {
+  it('renders Spread immediately before MetaTrader-style Daily Change in the normal dock width', () => {
     const offsetWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
       configurable: true,
-      get: () => 400,
+      get: () => 379,
     });
 
     try {
@@ -148,8 +153,29 @@ describe('MarketWatchPanel symbol visibility', () => {
         />,
       );
 
-      expect(screen.getByRole('columnheader', { name: 'SPREAD' })).toBeInTheDocument();
-      expect(screen.queryByRole('columnheader', { name: 'SPRD' })).not.toBeInTheDocument();
+      expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+        'Symbol',
+        'Bid',
+        'Ask',
+        'Spread',
+        'Daily Change',
+      ]);
+
+      const btcCells = Array.from(screen.getByText('BTCUSD').closest('tr')!.querySelectorAll('td'));
+      expect(btcCells.at(-2)).toHaveTextContent('1.00');
+      expect(btcCells.at(-1)).toHaveTextContent('0.19%');
+
+      const positiveChange = screen.getByText('0.19%');
+      const negativeChange = screen.getByText('-0.36%');
+      expect(screen.queryByText('+0.19%')).not.toBeInTheDocument();
+      expect(positiveChange).toHaveClass('rtx-market-watch__daily--up');
+      expect(positiveChange).toHaveStyle({ color: '#4597ff' });
+      expect(negativeChange).toHaveClass('rtx-market-watch__daily--down');
+      expect(negativeChange).toHaveStyle({ color: '#ff5858' });
+
+      const missingDailyChange = screen.getByText('GBPUSD').closest('tr')
+        ?.querySelector('.rtx-market-watch__daily');
+      expect(missingDailyChange).toHaveTextContent('—');
     } finally {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
@@ -157,6 +183,48 @@ describe('MarketWatchPanel symbol visibility', () => {
         delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
       }
     }
+  });
+
+  it('keeps Daily Change visible when the dock is too narrow for the additional Spread column', () => {
+    const offsetWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get: () => 320,
+    });
+
+    try {
+      render(
+        <MarketWatchPanel
+          allSymbols={DEFAULT_SYMBOLS}
+          selectedSymbol="BTCUSD"
+          onSymbolSelect={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole('columnheader', { name: 'Daily Change' })).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader', { name: 'Spread' })).not.toBeInTheDocument();
+    } finally {
+      if (offsetWidthDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
+      } else {
+        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+      }
+    }
+  });
+
+  it('keeps selected and unselected rows on the measured 14/400 typography', () => {
+    render(
+      <MarketWatchPanel
+        allSymbols={DEFAULT_SYMBOLS}
+        selectedSymbol="BTCUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('BTCUSD')).toHaveStyle({ fontSize: '14px', fontWeight: '400' });
+    expect(screen.getByText('XAUUSD')).toHaveStyle({ fontSize: '14px', fontWeight: '400' });
+    expect(screen.getByRole('columnheader', { name: 'Symbol' })).toHaveStyle({ fontSize: '12px', fontWeight: '400' });
+    expect(screen.getByRole('columnheader', { name: 'Bid' })).toHaveStyle({ fontSize: '12px', fontWeight: '400' });
   });
 
   it('keeps all five authorized defaults visible in product order when feed freshness is partial', () => {
@@ -173,10 +241,35 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(screen.queryByText('ETHUSD')).not.toBeInTheDocument();
     expect(screen.queryByText('0001.HK')).not.toBeInTheDocument();
     expect(marketHooks.useLiveQuotes).toHaveBeenLastCalledWith(DEFAULT_SYMBOLS);
-    expect(screen.getByText('BTCUSD').closest('tr')).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByText('BTCUSD').closest('tr')).toHaveTextContent('STALE');
-    expect(screen.getByText('BTCUSD').closest('tr')).toHaveTextContent('65000');
+    const staleBtcRow = screen.getByText('BTCUSD').closest('tr');
+    expect(staleBtcRow).toHaveAttribute('aria-disabled', 'true');
+    expect(staleBtcRow).not.toHaveTextContent('STALE');
+    expect(staleBtcRow?.querySelector('.rtx-market-watch__status')).toBeNull();
+    expect(staleBtcRow).toHaveTextContent('65000');
     expect(screen.getByText('GBPUSD').closest('tr')).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  it('uses an injected freshness snapshot without starting a second status owner', () => {
+    marketHooks.useActiveMarketSymbols.mockClear();
+    const activeMarketSnapshot = {
+      ...getActiveMarketSnapshot(),
+      symbols: ['GBPUSD', 'EURUSD'],
+    };
+
+    render(
+      <MarketWatchPanel
+        allSymbols={[...DEFAULT_SYMBOLS, 'ETHUSD', '0001.HK']}
+        activeMarketSnapshot={activeMarketSnapshot}
+        selectedSymbol="BTCUSD"
+        onSymbolSelect={vi.fn()}
+      />,
+    );
+
+    const btcRow = screen.getByText('BTCUSD').closest('tr');
+    expect(marketHooks.useActiveMarketSymbols).not.toHaveBeenCalled();
+    expect(btcRow).toHaveAttribute('aria-disabled', 'true');
+    expect(btcRow).not.toHaveTextContent('STALE');
+    expect(btcRow).toHaveTextContent('65000');
   });
 
   it('shows non-default symbols only after a non-empty Ctrl+U search', () => {

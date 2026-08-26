@@ -13,6 +13,7 @@ import { getAccessToken, getServerUrl, onSessionChange } from '../services/broke
 import { resolveTickFromLookup, useAppStore, type Tick as AppTick } from '../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../store/useMarketDataStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
+import { resolveDailyChangePercent } from '../utils/dailyChange';
 import { isStaleQuoteErrorMessage, resolveMarketWatchSymbolInput } from '../utils/marketWatchSource';
 import { useQuoteSubscription } from './useQuoteSubscription';
 import type { WatchlistItem } from '../types/api';
@@ -175,10 +176,8 @@ const normalizeTick = (raw: any, fallbackSymbol?: string): (Tick & Partial<AppTi
   if (bid <= 0 && ask <= 0) return null;
 
   const spread = toNumber(payload?.spread, ask - bid);
-  const mid = bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask;
   const previousClose = toNumber(payload?.previous_close ?? payload?.previousClose);
   const dailyOpen = toNumber(payload?.daily_open ?? payload?.dailyOpen ?? payload?.open);
-  const dailyReference = previousClose > 0 ? previousClose : dailyOpen;
   const session = payload?.session ?? {};
   const sessionHigh = Math.max(
     toNumber(session?.high_bid),
@@ -202,11 +201,11 @@ const normalizeTick = (raw: any, fallbackSymbol?: string): (Tick & Partial<AppTi
     sourceTimestamp,
     lp: payload?.lp,
     volume: toNumber(payload?.volume, 1),
-    dailyChange: payload?.dailyChange !== undefined
-      ? toNumber(payload.dailyChange)
-      : dailyReference > 0
-        ? ((mid - dailyReference) / dailyReference) * 100
-        : undefined,
+    dailyChange: resolveDailyChangePercent(
+      payload?.dailyChange ?? payload?.daily_change,
+      bid,
+      previousClose,
+    ),
     high24h: payload?.high24h !== undefined ? toNumber(payload.high24h) : sessionHigh || undefined,
     low24h: payload?.low24h !== undefined ? toNumber(payload.low24h) : sessionLow,
     high: payload?.high !== undefined ? toNumber(payload.high) : undefined,

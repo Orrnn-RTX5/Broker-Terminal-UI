@@ -59,26 +59,26 @@ const EXPERTS_DATA: ExpertItem[] = [
 
 export function CodeBaseTab() {
     return (
-        <div className="h-full flex flex-col bg-[#131316] text-[12px]">
+        <div className="rtx-research-tab h-full flex flex-col bg-[#131316] text-[14px] font-normal">
             <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
                 <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-bold text-[10px] uppercase tracking-wider border-b border-zinc-600">
-                        <tr>
+                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] leading-[18px] uppercase tracking-wider border-b border-zinc-600">
+                        <tr className="h-[30px]">
                             <th className="p-1 pl-3 border-r border-zinc-700 w-1/3">Name</th>
                             <th className="p-1 border-r border-zinc-700 w-1/3">Category</th>
                             <th className="p-1 border-r border-zinc-700 w-24">Date</th>
                             <th className="p-1 w-1/4">Author</th>
                         </tr>
                     </thead>
-                    <tbody className="text-zinc-300">
+                    <tbody className="text-[13px] font-normal leading-[19.5px] text-zinc-300">
                         {CODE_BASE_DATA.map((item, i) => (
-                            <tr key={item.id} className={`${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-default`}>
+                            <tr key={item.id} className={`h-[30px] font-normal ${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-default`}>
                                 <td className="p-1 pl-3 border-r border-zinc-800/50 flex items-center gap-2">
                                     <Icon name="code" size="xs" className="text-blue-400 opacity-70" />
-                                    <span className="font-medium text-zinc-200">{item.name}</span>
+                                    <span className="font-normal text-zinc-200">{item.name}</span>
                                 </td>
                                 <td className="p-1 border-r border-zinc-800/50 text-zinc-500 italic">{item.category}</td>
-                                <td className="p-1 border-r border-zinc-800/50 text-zinc-500 font-mono text-[11px]">{item.date}</td>
+                                <td className="p-1 border-r border-zinc-800/50 text-zinc-500 font-mono font-normal">{item.date}</td>
                                 <td className="p-1 text-zinc-400">{item.author}</td>
                             </tr>
                         ))}
@@ -91,21 +91,21 @@ export function CodeBaseTab() {
 
 export function ArticlesTab() {
     return (
-        <div className="h-full flex flex-col bg-[#131316] text-[12px]">
+        <div className="rtx-research-tab h-full flex flex-col bg-[#131316] text-[14px] font-normal">
             <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
                 <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-bold text-[10px] uppercase tracking-wider border-b border-zinc-600">
-                        <tr>
+                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] leading-[18px] uppercase tracking-wider border-b border-zinc-600">
+                        <tr className="h-[30px]">
                             <th className="p-1 pl-3 border-r border-zinc-700 w-1/4">Name</th>
                             <th className="p-1 border-r border-zinc-700 w-2/4">Description</th>
                             <th className="p-1 border-r border-zinc-700 w-24 text-center">Rating</th>
                             <th className="p-1 w-32 text-right pr-3">Date</th>
                         </tr>
                     </thead>
-                    <tbody className="text-zinc-300">
+                    <tbody className="text-[13px] font-normal leading-[19.5px] text-zinc-300">
                         {ARTICLES_DATA.map((item, i) => (
-                            <tr key={item.id} className={`${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-default`}>
-                                <td className="p-1 pl-3 border-r border-zinc-800/50 font-medium text-blue-400/90">{item.name}</td>
+                            <tr key={item.id} className={`h-[30px] font-normal ${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-default`}>
+                                <td className="p-1 pl-3 border-r border-zinc-800/50 font-normal text-blue-400/90">{item.name}</td>
                                 <td className="p-1 border-r border-zinc-800/50 text-zinc-400 truncate max-w-xs">{item.description}</td>
                                 <td className="p-1 border-r border-zinc-800/50 text-center">
                                     <div className="flex items-center justify-center gap-0.5">
@@ -118,7 +118,7 @@ export function ArticlesTab() {
                                         ))}
                                     </div>
                                 </td>
-                                <td className="p-1 pr-3 text-right text-zinc-500 font-mono text-[11px]">{item.date}</td>
+                                <td className="p-1 pr-3 text-right text-zinc-500 font-mono font-normal">{item.date}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -140,11 +140,11 @@ export function ExpertsTab() {
     };
 
     return (
-        <div className="h-full flex flex-col bg-[#131316] text-[12px]">
+        <div className="rtx-research-tab h-full flex flex-col bg-[#131316] text-[14px] font-normal">
             <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
                 <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-bold text-[10px] uppercase tracking-wider border-b border-zinc-600">
-                        <tr>
+                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] leading-[18px] uppercase tracking-wider border-b border-zinc-600">
+                        <tr className="h-[30px]">
                             <th className="p-1 pl-3 border-r border-zinc-700 w-1/4">Name</th>
                             <th className="p-1 border-r border-zinc-700 w-1/2">Description</th>
                             <th className="p-1 border-r border-zinc-700 w-24 text-center">Rating</th>
@@ -152,12 +152,12 @@ export function ExpertsTab() {
                             <th className="p-1 w-20 text-right pr-3">Price</th>
                         </tr>
                     </thead>
-                    <tbody className="text-zinc-300">
+                    <tbody className="text-[13px] font-normal leading-[19.5px] text-zinc-300">
                         {EXPERTS_DATA.map((item, i) => (
-                            <tr key={item.id} className={`${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-default`}>
+                            <tr key={item.id} className={`h-[30px] font-normal ${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-default`}>
                                 <td className="p-1 pl-3 border-r border-zinc-800/50 flex items-center gap-2">
                                     {getTypeIcon(item.type)}
-                                    <span className="font-medium text-zinc-200">{item.name}</span>
+                                    <span className="font-normal text-zinc-200">{item.name}</span>
                                 </td>
                                 <td className="p-1 border-r border-zinc-800/50 text-zinc-400 truncate max-w-xs">{item.description}</td>
                                 <td className="p-1 border-r border-zinc-800/50 text-center">
@@ -171,7 +171,7 @@ export function ExpertsTab() {
                                         ))}
                                     </div>
                                 </td>
-                                <td className="p-1 border-r border-zinc-800/50 text-right text-zinc-500 font-mono text-[11px]">{item.date}</td>
+                                <td className="p-1 border-r border-zinc-800/50 text-right text-zinc-500 font-mono font-normal">{item.date}</td>
                                 <td className="p-1 pr-3 text-right font-bold text-emerald-400">{item.price}</td>
                             </tr>
                         ))}

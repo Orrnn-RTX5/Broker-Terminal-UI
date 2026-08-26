@@ -239,7 +239,7 @@ const MetaTraderDashboard: React.FC = () => {
                 background: { color: '#000000' },
                 textColor: '#D1D4DC',
                 fontSize: 12,
-                fontFamily: 'Inter, sans-serif',
+                fontFamily: 'var(--font-sans)',
             },
             grid: {
                 vertLines: { color: 'transparent' },

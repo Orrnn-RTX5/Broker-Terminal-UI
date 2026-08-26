@@ -129,16 +129,16 @@ export const HistoryDownloader: React.FC = () => {
     : 'Date range is user selected';
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 text-gray-100">
+    <div className="rtx-history-downloader flex flex-col h-full bg-gray-900 text-[14px] font-normal text-gray-100">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
         <div className="flex items-center gap-2">
           <Icon name="database" size="sm" className="w-5 h-5 text-blue-400" />
-          <h2 className="text-lg font-semibold">Historical Data Manager</h2>
+          <h2 className="text-[14px] font-normal">Historical Data Manager</h2>
         </div>
 
         {storageStats && (
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-4 text-[12px] font-normal">
             <div className="flex items-center gap-2">
               <Icon name="hard-drive" size="sm" className="w-4 h-4 text-gray-400" />
               <span>{formatBytes(storageStats.totalSize)}</span>
@@ -157,17 +157,17 @@ export const HistoryDownloader: React.FC = () => {
         {/* Left Panel - Symbol Selection */}
         <div className="w-80 border-r border-gray-700 flex flex-col">
           <div className="p-4 border-b border-gray-700">
-            <h3 className="text-sm font-semibold mb-2">Available Symbols</h3>
+            <h3 className="text-[12px] font-normal mb-2">Available Symbols</h3>
             <input
               type="text"
               placeholder="Search symbols..."
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm focus:outline-none focus:border-zinc-600"
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-[14px] font-normal focus:outline-none focus:border-zinc-600"
             />
           </div>
 
           <div className="flex-1 overflow-y-auto">
             {isLoading ? (
-              <div className="p-4 text-center text-gray-400">Loading...</div>
+              <div className="p-4 text-center text-[13px] font-normal text-gray-400">Loading...</div>
             ) : (
               <div className="divide-y divide-gray-700">
                 {symbols.map((symbolInfo) => (
@@ -179,7 +179,7 @@ export const HistoryDownloader: React.FC = () => {
                     onClick={() => setSelectedSymbol(symbolInfo.symbol)}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium">{symbolInfo.symbol}</span>
+                      <span className="text-[13px] font-normal">{symbolInfo.symbol}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -192,7 +192,7 @@ export const HistoryDownloader: React.FC = () => {
                       </button>
                     </div>
 
-                    <div className="text-xs text-gray-400 space-y-1">
+                    <div className="text-[12px] font-normal text-gray-400 space-y-1">
                       <div>
                         {symbolInfo.availableDates.length > 0
                           ? `${symbolInfo.downloadedDates.length} / ${symbolInfo.availableDates.length} days`
@@ -219,9 +219,9 @@ export const HistoryDownloader: React.FC = () => {
         <div className="flex-1 flex flex-col">
           <div className="p-4 border-b border-gray-700 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold mb-2">Download Settings</h3>
+              <h3 className="text-[12px] font-normal mb-2">Download Settings</h3>
               {selectedSymbolInfo && (
-                <div className="text-sm text-gray-400 mb-3">
+                <div className="text-[12px] font-normal text-gray-400 mb-3">
                   {selectedDateRangeLabel}
                 </div>
               )}
@@ -229,28 +229,28 @@ export const HistoryDownloader: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm mb-1">From Date</label>
+                <label className="block text-[12px] font-normal mb-1">From Date</label>
                 <input
                   type="date"
                   value={dateRange.from}
                   onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm focus:outline-none focus:border-zinc-600"
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-[14px] font-normal focus:outline-none focus:border-zinc-600"
                 />
               </div>
 
               <div>
-                <label className="block text-sm mb-1">To Date</label>
+                <label className="block text-[12px] font-normal mb-1">To Date</label>
                 <input
                   type="date"
                   value={dateRange.to}
                   onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-sm focus:outline-none focus:border-zinc-600"
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-[14px] font-normal focus:outline-none focus:border-zinc-600"
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-[14px] font-normal">
                 <input
                   type="checkbox"
                   checked={backgroundDownload}
@@ -264,7 +264,7 @@ export const HistoryDownloader: React.FC = () => {
             <button
               onClick={handleDownload}
               disabled={!selectedSymbol || isLoading}
-              className="w-full px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-gray-700 disabled:cursor-not-allowed rounded font-medium flex items-center justify-center gap-2 transition-colors"
+              className="w-full px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-[14px] font-normal flex items-center justify-center gap-2 transition-colors"
             >
               <Icon name="download" size="sm" className="w-4 h-4" />
               Download Historical Data
@@ -274,10 +274,10 @@ export const HistoryDownloader: React.FC = () => {
           {/* Download Tasks */}
           <div className="flex-1 overflow-y-auto">
             <div className="p-4">
-              <h3 className="text-sm font-semibold mb-3">Download Tasks</h3>
+              <h3 className="text-[12px] font-normal mb-3">Download Tasks</h3>
 
               {downloadTasks.length === 0 ? (
-                <div className="text-center text-gray-400 py-8">
+                <div className="text-center text-[13px] font-normal text-gray-400 py-8">
                   No download tasks
                 </div>
               ) : (
@@ -289,8 +289,8 @@ export const HistoryDownloader: React.FC = () => {
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div>
-                          <div className="font-medium">{task.symbol}</div>
-                          <div className="text-xs text-gray-400">
+                          <div className="text-[13px] font-normal">{task.symbol}</div>
+                          <div className="text-[12px] font-normal text-gray-400">
                             {task.dateRange.from} to {task.dateRange.to}
                           </div>
                         </div>
@@ -318,7 +318,7 @@ export const HistoryDownloader: React.FC = () => {
                       </div>
 
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center justify-between text-[12px] font-normal">
                           <span className="text-gray-400">
                             {task.status.toUpperCase()}
                           </span>
@@ -341,13 +341,13 @@ export const HistoryDownloader: React.FC = () => {
                         </div>
 
                         {task.endTime && (
-                          <div className="text-xs text-gray-400">
+                          <div className="text-[12px] font-normal text-gray-400">
                             Duration: {formatDuration(task.endTime - task.startTime)}
                           </div>
                         )}
 
                         {task.error && (
-                          <div className="text-xs text-red-400">
+                          <div className="text-[12px] font-normal text-red-400">
                             Error: {task.error}
                           </div>
                         )}
@@ -365,14 +365,14 @@ export const HistoryDownloader: React.FC = () => {
       <div className="p-4 border-t border-gray-700 flex justify-between items-center">
         <button
           onClick={handleClearAll}
-          className="px-4 py-2 text-sm text-red-400 hover:bg-red-900/20 rounded transition-colors"
+          className="px-4 py-2 text-[14px] font-normal text-red-400 hover:bg-red-900/20 rounded transition-colors"
         >
           Clear All Cached Data
         </button>
 
         <button
           onClick={loadStorageStats}
-          className="px-4 py-2 text-sm text-gray-400 hover:bg-gray-800 rounded transition-colors"
+          className="px-4 py-2 text-[14px] font-normal text-gray-400 hover:bg-gray-800 rounded transition-colors"
         >
           Refresh Stats
         </button>

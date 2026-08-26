@@ -1,13 +1,206 @@
 import { describe, expect, it } from 'vitest';
 import { resolveTradeAccountMetrics } from '../components/BottomDock.trade';
 import {
+  applyImmediateToolboxPosition,
+  applyMarketOrderPlacementState,
+  mergeRetainedImmediateToolboxPositions,
   normalizeToolboxAccount,
+  normalizeToolboxPosition,
   patchPositionsFromTick,
   patchToolboxPositions,
   replaceToolboxPositions,
 } from './useToolboxTradeData';
 
 describe('useToolboxTradeData helpers', () => {
+  it('shows a provisional market order immediately, then replaces it with the confirmed ticket', () => {
+    const pendingDetail = {
+      status: 'pending' as const,
+      clientOrderId: 'client-order-1',
+      login: 200002,
+      sessionScope: 'active-scope',
+      provisionalTicket: -1001,
+      position: {
+        ticket: -1001,
+        account_login: 200002,
+        client_order_id: 'client-order-1',
+        symbol: 'XAUUSD',
+        side: 'buy',
+        volume: 0.01,
+        price_open: 4615.5,
+        price_current: 4615.5,
+      },
+    };
+
+    const pending = applyMarketOrderPlacementState([], pendingDetail, 200002, 'active-scope');
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      id: -1001,
+      clientOrderId: 'client-order-1',
+      placementState: 'pending',
+    });
+
+    const confirmed = applyMarketOrderPlacementState(pending, {
+      ...pendingDetail,
+      status: 'confirmed',
+      position: {
+        ticket: 5010,
+        account_login: 200002,
+        symbol: 'XAUUSD',
+        side: 'buy',
+        volume: 0.01,
+        price_open: 4615.55,
+        price_current: 4615.55,
+      },
+    }, 200002, 'active-scope');
+
+    expect(confirmed).toHaveLength(1);
+    expect(confirmed[0]).toMatchObject({
+      id: 5010,
+      clientOrderId: 'client-order-1',
+      placementState: 'confirmed',
+      openPrice: 4615.55,
+    });
+  });
+
+  it('removes only the matching provisional market order when placement fails', () => {
+    const current = [normalizeToolboxPosition({
+      ticket: -1001,
+      client_order_id: 'client-order-1',
+      placement_state: 'pending',
+      symbol: 'XAUUSD',
+      side: 'sell',
+      volume: 0.01,
+      price_open: 4615,
+    }), normalizeToolboxPosition({
+      ticket: -1002,
+      client_order_id: 'client-order-2',
+      placement_state: 'pending',
+      symbol: 'XAUUSD',
+      side: 'sell',
+      volume: 0.01,
+      price_open: 4615,
+    })];
+
+    const next = applyMarketOrderPlacementState(current, {
+      status: 'failed',
+      clientOrderId: 'client-order-1',
+      login: 200002,
+      sessionScope: 'active-scope',
+      provisionalTicket: -1001,
+    }, 200002, 'active-scope');
+
+    expect(next.map((position) => position.clientOrderId)).toEqual(['client-order-2']);
+  });
+
+  it('inserts a confirmed fill immediately for the active broker account session', () => {
+    const current = replaceToolboxPositions([], [{
+      ticket: 101,
+      account_login: 200002,
+      symbol: 'XAUUSD',
+      side: 'buy',
+      volume: 0.01,
+      price_open: 4600,
+      price_current: 4600,
+    }]);
+    const filled = {
+      ticket: 102,
+      account_login: 200002,
+      symbol: 'XAUUSD',
+      side: 'sell',
+      volume: 0.02,
+      price_open: 4601.5,
+      price_current: 4601.5,
+    };
+
+    const next = applyImmediateToolboxPosition(
+      current,
+      { login: 200002, position: filled, sessionScope: 'active-scope' },
+      200002,
+      'active-scope',
+    );
+
+    expect(next.map((position) => position.id)).toEqual([102, 101]);
+    expect(next[0]).toMatchObject({
+      symbol: 'XAUUSD',
+      side: 'SELL',
+      volume: 0.02,
+      openPrice: 4601.5,
+    });
+  });
+
+  it('ignores late fills from another login or broker session', () => {
+    const current = replaceToolboxPositions([], [{
+      ticket: 101,
+      account_login: 200002,
+      symbol: 'XAUUSD',
+      side: 'buy',
+      volume: 0.01,
+      price_open: 4600,
+    }]);
+    const detail = {
+      login: 200002,
+      position: {
+        ticket: 102,
+        symbol: 'XAUUSD',
+        side: 'buy',
+        volume: 0.01,
+        price_open: 4601,
+      },
+      sessionScope: 'old-scope',
+    };
+
+    expect(applyImmediateToolboxPosition(current, detail, 200003, 'old-scope')).toBe(current);
+    expect(applyImmediateToolboxPosition(current, detail, 200002, 'new-scope')).toBe(current);
+  });
+
+  it('retains an immediate fill across a temporarily stale REST snapshot', () => {
+    const immediate = replaceToolboxPositions([], [{
+      ticket: 102,
+      account_login: 200002,
+      symbol: 'XAUUSD',
+      side: 'sell',
+      volume: 0.01,
+      price_open: 4601,
+    }])[0];
+    const staleSnapshot = replaceToolboxPositions([], [{
+      ticket: 101,
+      account_login: 200002,
+      symbol: 'XAUUSD',
+      side: 'buy',
+      volume: 0.01,
+      price_open: 4600,
+    }]);
+
+    expect(mergeRetainedImmediateToolboxPositions(
+      staleSnapshot,
+      [{ position: immediate, expiresAt: 40_000 }],
+      10_000,
+    ).map((position) => position.id)).toEqual([102, 101]);
+  });
+
+  it('deduplicates broker-confirmed fills and drops expired retention', () => {
+    const confirmedSnapshot = replaceToolboxPositions([], [{
+      ticket: 102,
+      account_login: 200002,
+      symbol: 'XAUUSD',
+      side: 'sell',
+      volume: 0.01,
+      price_open: 4601,
+    }]);
+    const immediate = confirmedSnapshot[0];
+
+    expect(mergeRetainedImmediateToolboxPositions(
+      confirmedSnapshot,
+      [{ position: immediate, expiresAt: 40_000 }],
+      10_000,
+    )).toHaveLength(1);
+    expect(mergeRetainedImmediateToolboxPositions(
+      [],
+      [{ position: immediate, expiresAt: 9_999 }],
+      10_000,
+    )).toEqual([]);
+  });
+
   it('normalizes account metrics from broker field names', () => {
     const account = normalizeToolboxAccount({
       balance: 10000,

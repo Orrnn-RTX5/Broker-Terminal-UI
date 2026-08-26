@@ -7,6 +7,16 @@ import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { useSystemJournalStore } from './useSystemJournalStore';
 import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
+import {
+  commitBrokerAccountSessionScope,
+  emitSessionChange,
+  getCommittedBrokerAccountSessionScope,
+} from '../services/brokerSession';
+import {
+  areCanonicalUpstreamTicksEqual,
+  coalesceFreshestTickEntries,
+  compareCanonicalTickFreshness,
+} from '../utils/liveTickSemantics';
 
 export interface Tick {
   symbol: string;
@@ -14,6 +24,7 @@ export interface Tick {
   ask: number;
   spread: number;
   timestamp: number;
+  sourceTimestamp?: number;
   lp?: string;
   prevBid?: number;
   prevAsk?: number;
@@ -31,6 +42,8 @@ export interface Tick {
   bidDirection?: 'up' | 'down' | 'none';
   askDirection?: 'up' | 'down' | 'none';
 }
+
+export type AppTickEntry = readonly [symbol: string, tick: Tick];
 
 export interface Position {
   id: number;
@@ -177,6 +190,7 @@ interface AppState {
   clearAuth: () => void;
   logout: () => void;
   setTick: (symbol: string, tick: Tick) => void;
+  setTicksBatch: (ticks: readonly AppTickEntry[]) => void;
   setTicks: (ticks: Record<string, Tick>) => void;
   setSelectedSymbol: (symbol: string) => void;
   setPositions: (positions: Position[]) => void;
@@ -273,8 +287,6 @@ export const getTickBaseLookupKey = (symbol: string | undefined | null): string 
   normalizeTickLookupKey(symbol).split('.')[0]
 );
 
-const getTickTimestamp = (tick?: Tick): number => Number(tick?.timestamp ?? 0);
-
 const buildTickLookup = (ticks: Record<string, Tick>): Record<string, string> => {
   const lookup: Record<string, string> = {};
 
@@ -289,7 +301,7 @@ const buildTickLookup = (ticks: Record<string, Tick>): Record<string, string> =>
 
     const currentBaseKey = lookup[baseSymbol];
     const currentBaseTick = currentBaseKey ? ticks[currentBaseKey] : undefined;
-    if (baseSymbol && (!currentBaseTick || getTickTimestamp(tick) >= getTickTimestamp(currentBaseTick))) {
+    if (baseSymbol && (!currentBaseTick || compareCanonicalTickFreshness(currentBaseTick, tick) > 0)) {
       lookup[baseSymbol] = storeSymbol;
     }
   });
@@ -308,18 +320,93 @@ const updateTickLookup = (
   const baseSymbol = getTickBaseLookupKey(normalizedStoreSymbol || normalizedTickSymbol);
   if (!normalizedStoreSymbol && !normalizedTickSymbol) return currentLookup;
 
-  const nextLookup = { ...currentLookup };
-  if (normalizedStoreSymbol) nextLookup[normalizedStoreSymbol] = storeSymbol;
-  if (normalizedTickSymbol) nextLookup[normalizedTickSymbol] = storeSymbol;
+  let nextLookup = currentLookup;
+  const setLookup = (key: string, value: string) => {
+    if (nextLookup[key] === value) return;
+    if (nextLookup === currentLookup) nextLookup = { ...currentLookup };
+    nextLookup[key] = value;
+  };
+
+  if (normalizedStoreSymbol) setLookup(normalizedStoreSymbol, storeSymbol);
+  if (normalizedTickSymbol) setLookup(normalizedTickSymbol, storeSymbol);
 
   const currentBaseKey = baseSymbol ? nextLookup[baseSymbol] : undefined;
   const currentBaseTick = currentBaseKey ? currentTicks[currentBaseKey] : undefined;
-  if (baseSymbol && (!currentBaseTick || getTickTimestamp(tick) >= getTickTimestamp(currentBaseTick))) {
-    nextLookup[baseSymbol] = storeSymbol;
+  // Equal-time aliases retain the existing base owner so iteration order does
+  // not make an unsuffixed lookup flap between broker suffixes.
+  if (baseSymbol && (!currentBaseTick || compareCanonicalTickFreshness(currentBaseTick, tick) > 0)) {
+    setLookup(baseSymbol, storeSymbol);
   }
 
   return nextLookup;
 };
+
+const applyAppTickBatch = (
+  state: AppState,
+  entries: readonly AppTickEntry[],
+): AppState | Pick<AppState, 'ticks' | 'tickLookup'> => {
+  const latestTicks = coalesceFreshestTickEntries(entries, (symbol, error) => {
+    console.error(`[AppStore] Ignoring invalid tick for ${symbol}:`, error);
+  });
+
+  let nextTicks = state.ticks;
+  let nextLookup = state.tickLookup;
+  let changed = false;
+
+  latestTicks.forEach(([symbol, tick]) => {
+    const prevTick = nextTicks[symbol];
+    const candidate: Tick = { ...tick };
+    if (candidate.dailyChange === undefined && prevTick?.dailyChange !== undefined) {
+      candidate.dailyChange = prevTick.dailyChange;
+    }
+    if (candidate.high24h === undefined && prevTick?.high24h !== undefined) {
+      candidate.high24h = prevTick.high24h;
+    }
+    if (candidate.low24h === undefined && prevTick?.low24h !== undefined) {
+      candidate.low24h = prevTick.low24h;
+    }
+    if (candidate.high === undefined && prevTick?.high !== undefined) {
+      candidate.high = prevTick.high;
+    }
+    if (candidate.low === undefined && prevTick?.low !== undefined) {
+      candidate.low = prevTick.low;
+    }
+
+    const freshness = prevTick ? compareCanonicalTickFreshness(prevTick, candidate) : 1;
+    if (freshness < 0) return;
+    if (freshness === 0 && areCanonicalUpstreamTicksEqual(prevTick, candidate)) return;
+
+    // A same-time payload is a correction, not another chronological tick.
+    // Its direction remains anchored to the last strictly older event.
+    const previousBid = freshness === 0 ? prevTick?.prevBid : prevTick?.bid;
+    const previousAsk = freshness === 0 ? prevTick?.prevAsk : prevTick?.ask;
+    const bidDirection: 'up' | 'down' | 'none' = previousBid === undefined
+      ? 'none'
+      : candidate.bid > previousBid ? 'up' : candidate.bid < previousBid ? 'down' : 'none';
+    const askDirection: 'up' | 'down' | 'none' = previousAsk === undefined
+      ? 'none'
+      : candidate.ask > previousAsk ? 'up' : candidate.ask < previousAsk ? 'down' : 'none';
+
+    const nextTick: Tick = {
+      ...candidate,
+      prevBid: previousBid,
+      prevAsk: previousAsk,
+      bidDirection,
+      askDirection,
+    };
+
+    if (!changed) nextTicks = { ...state.ticks };
+    nextTicks[symbol] = nextTick;
+    nextLookup = updateTickLookup(nextLookup, nextTicks, symbol, nextTick);
+    changed = true;
+  });
+
+  return changed ? { ticks: nextTicks, tickLookup: nextLookup } : state;
+};
+
+export const selectTickCount = (state: { ticks: Record<string, Tick> }): number => (
+  Object.keys(state.ticks).length
+);
 
 export const resolveTickFromLookup = (
   ticks: Record<string, Tick>,
@@ -355,6 +442,10 @@ export const useAppStore = create<AppState>()(
             authToken: authToken || null,
             refreshToken: refreshToken || null,
             tokenExpiresAt: expiresAt || null
+          });
+          commitBrokerAccountSessionScope({
+            authenticated: isAuth,
+            accountId: accountId || null,
           });
         },
 
@@ -397,6 +488,7 @@ export const useAppStore = create<AppState>()(
             sessionStorage.removeItem('token_expires_at');
           }
           set({ isAuthenticated: false, accountId: null, authToken: null, refreshToken: null, tokenExpiresAt: null });
+          commitBrokerAccountSessionScope({ authenticated: false, accountId: null });
           dispatchAuthTokenUpdated();
         },
 
@@ -413,6 +505,14 @@ export const useAppStore = create<AppState>()(
             localStorage.removeItem('rtx_last_login');
             localStorage.removeItem('rtx_saved_username');
             localStorage.removeItem('rtx_saved_password');
+            localStorage.removeItem('feed_broker_token');
+            localStorage.removeItem('broker_feed_token');
+            localStorage.removeItem('feed_token');
+            localStorage.removeItem('ws_feed_token');
+            sessionStorage.removeItem('feed_broker_token');
+            sessionStorage.removeItem('broker_feed_token');
+            sessionStorage.removeItem('feed_token');
+            sessionStorage.removeItem('ws_feed_token');
             // NOTE: Do NOT remove 'trading-app-storage' — it holds savedAccounts
           }
           // Reset auth state but KEEP savedAccounts for multi-account switching
@@ -429,63 +529,14 @@ export const useAppStore = create<AppState>()(
             tradeApiStatus: initialState.tradeApiStatus,
             // savedAccounts intentionally NOT cleared — they persist across logout
           });
+          commitBrokerAccountSessionScope({ authenticated: false, accountId: null });
           dispatchAuthTokenUpdated();
+          emitSessionChange('logout');
         },
 
-        setTick: (symbol, tick) =>
-          set((state) => {
-            const prevTick = state.ticks[symbol];
-            if (
-              prevTick &&
-              prevTick.bid === tick.bid &&
-              prevTick.ask === tick.ask &&
-              prevTick.spread === tick.spread &&
-              getTickTimestamp(prevTick) === getTickTimestamp(tick) &&
-              (tick.dailyChange === undefined || prevTick.dailyChange === tick.dailyChange) &&
-              (tick.high24h === undefined || prevTick.high24h === tick.high24h) &&
-              (tick.low24h === undefined || prevTick.low24h === tick.low24h)
-            ) {
-              return state;
-            }
+        setTick: (symbol, tick) => set((state) => applyAppTickBatch(state, [[symbol, tick]])),
 
-            let bidDirection: 'up' | 'down' | 'none' = prevTick?.bidDirection || 'none';
-            if (prevTick && tick.bid > prevTick.bid) {
-              bidDirection = 'up';
-            } else if (prevTick && tick.bid < prevTick.bid) {
-              bidDirection = 'down';
-            }
-
-            let askDirection: 'up' | 'down' | 'none' = prevTick?.askDirection || 'none';
-            if (prevTick && tick.ask > prevTick.ask) {
-              askDirection = 'up';
-            } else if (prevTick && tick.ask < prevTick.ask) {
-              askDirection = 'down';
-            }
-
-            const nextTick = {
-              // Preserve daily/high/low fields from previous tick if new tick doesn't include them
-              // (broker often sends price-only ticks without dailyChange)
-              dailyChange: prevTick?.dailyChange,
-              high24h: prevTick?.high24h,
-              low24h: prevTick?.low24h,
-              high: prevTick?.high,
-              low: prevTick?.low,
-              // New tick data overrides everything above
-              ...tick,
-              // Computed fields always override
-              prevBid: prevTick?.bid,
-              prevAsk: prevTick?.ask,
-              bidDirection,
-              askDirection,
-            };
-            return {
-              ticks: {
-                ...state.ticks,
-                [symbol]: nextTick,
-              },
-              tickLookup: updateTickLookup(state.tickLookup, state.ticks, symbol, nextTick),
-            };
-          }),
+        setTicksBatch: (ticks) => set((state) => applyAppTickBatch(state, ticks)),
 
         setTicks: (ticks) => set({ ticks, tickLookup: buildTickLookup(ticks) }),
 
@@ -493,8 +544,12 @@ export const useAppStore = create<AppState>()(
 
         setPositions: (positions) =>
           set((state) => {
+            // Position streams can update on every tick. Index once so a burst
+            // of filled orders merges in O(n), instead of doing an O(n) find
+            // for every incoming row and blocking the next Buy/Sell click.
+            const existingById = new Map(state.positions.map((position) => [position.id, position]));
             const nextPositions = positions.map((incoming) => {
-              const existing = state.positions.find((p) => p.id === incoming.id);
+              const existing = existingById.get(incoming.id);
               if (!existing) return incoming;
 
               // A full update always has non-zero openPrice/open_price and volume/quantity.
@@ -566,13 +621,23 @@ export const useAppStore = create<AppState>()(
             savedAccounts: state.savedAccounts.filter((a) => a.login !== login)
           })),
 
-        setActiveAccount: (login) =>
-          set((state) => ({
-            accountId: login.toString(),
-            savedAccounts: state.savedAccounts.map((a) =>
-              a.login === login ? { ...a, lastUsed: Date.now() } : a
-            )
-          })),
+        setActiveAccount: (login) => {
+          set((state) => {
+            return {
+              accountId: login.toString(),
+              savedAccounts: state.savedAccounts.map((a) =>
+                a.login === login ? { ...a, lastUsed: Date.now() } : a
+              )
+            };
+          });
+          const committedScope = getCommittedBrokerAccountSessionScope();
+          commitBrokerAccountSessionScope({
+            authenticated: committedScope.authenticated,
+            accountId: committedScope.authenticated ? login.toString() : null,
+            brokerId: committedScope.brokerId,
+            serverUrl: committedScope.serverUrl,
+          });
+        },
 
         setChartMaximized: (isMaximized) => set({ isChartMaximized: isMaximized }),
 

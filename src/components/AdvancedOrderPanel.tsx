@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { tradeApi } from '../api/trade';
 import { getStoredAccountLogin } from '../api/tradeGateway';
+import { api } from '../services/api';
+import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
 import { useAppStore } from '../store/useAppStore';
 
 type SupportedOrderType = 'MARKET' | 'LIMIT' | 'STOP';
@@ -138,6 +140,7 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
     };
 
     const executeOrder = async (nextSide = side) => {
+        const intentAtMs = captureTradeOrderIntent();
         setLoading(true);
         setShowConfirmation(false);
 
@@ -163,7 +166,7 @@ export function AdvancedOrderPanel({ symbol, currentPrice, onOrderPlaced }: Orde
             };
 
             if (orderType === 'MARKET') {
-                const data = await tradeApi.trading.placeOrder(body);
+                const data = await api.orders.placeMarketOrder(body, { intentAtMs });
                 if (onOrderPlaced) onOrderPlaced(data);
                 return;
             }

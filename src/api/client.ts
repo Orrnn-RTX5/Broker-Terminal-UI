@@ -433,7 +433,6 @@ const handleResponse = async <T>(
       try {
         accessToken = await awaitWithAbort(refreshState.promise, signal);
       } catch (error) {
-        const refreshError = error instanceof Error ? error : new Error('Session refresh failed');
         if (signal?.aborted) throw getAbortReason(signal);
         if (error instanceof ApiError && error.message === 'Stale unauthorized response ignored') {
           throw error;
@@ -447,7 +446,10 @@ const handleResponse = async <T>(
       const retryRequest = withBearerToken(originalRequest, accessToken);
       const retryResponse = await fetch(retryRequest.url, retryRequest.init);
       throwIfAborted(signal);
-      return handleResponse<T>(retryResponse, retryRequest);
+      return handleResponse<T>(retryResponse, {
+        ...retryRequest,
+        authRecoveryEnabled: false,
+      });
     }
 
     const errorData: Record<string, unknown> =

@@ -59,7 +59,7 @@ interface ChartContextMenuProps {
 }
 
 // ─── CSS variables injected once ─────────────────────────────────────────────
-const MENU_FONT = "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif";
+const MENU_FONT = 'var(--font-sans)';
 const C_BG = 'var(--ctx-bg, rgba(19, 19, 22, 0.85))';
 const C_BORDER = 'var(--ctx-border, rgba(255, 255, 255, 0.08))';
 const C_HOVER = 'var(--ctx-hover, rgba(255, 255, 255, 0.06))';
@@ -119,7 +119,8 @@ const Shortcut = ({ keys }: { keys: string }) => (
     <span style={{
         marginLeft: 'auto',
         paddingLeft: 20,
-        fontSize: 11,
+        fontSize: 12,
+        fontWeight: 400,
         fontFamily: MENU_FONT,
         letterSpacing: '0.03em',
         color: C_HEADER,
@@ -162,11 +163,11 @@ const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
                 alignItems: 'center',
                 gap: 8,
                 padding: '3px 14px 3px 12px',
-                minHeight: 24,
-                fontSize: 12,
-                lineHeight: '16px',
+                minHeight: 30,
+                fontSize: 14,
+                lineHeight: '20px',
                 fontFamily: MENU_FONT,
-                fontWeight: 450,
+                fontWeight: 400,
                 letterSpacing: '0.015em',
                 color: fg,
                 background: bg,
@@ -240,9 +241,9 @@ const Submenu = ({ children, label, icon, disabled }: {
             <div
                 style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '3px 14px 3px 12px', minHeight: 24,
-                    fontSize: 12, lineHeight: '16px',
-                    fontFamily: MENU_FONT, fontWeight: 450, letterSpacing: '0.015em',
+                    padding: '3px 14px 3px 12px', minHeight: 30,
+                    fontSize: 14, lineHeight: '20px',
+                    fontFamily: MENU_FONT, fontWeight: 400, letterSpacing: '0.015em',
                     color: disabled ? C_DISABLED : open ? C_ACTIVE_FG : C_TEXT,
                     background: open ? C_ACTIVE_BG : 'transparent',
                     cursor: disabled ? 'default' : 'pointer',
@@ -473,8 +474,9 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 alignItems: 'center',
                 gap: 8,
                 padding: '5px 14px 5px 12px',
-                fontSize: 10,
-                fontWeight: 700,
+                minHeight: 30,
+                fontSize: 12,
+                fontWeight: 500,
                 letterSpacing: '0.12em',
                 textTransform: 'uppercase',
                 color: C_HEADER,

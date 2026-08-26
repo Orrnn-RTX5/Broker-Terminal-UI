@@ -253,6 +253,22 @@ describe('QuoteSocketManager feed protocol', () => {
     manager.destroy();
   });
 
+  it('normalizes server Daily Change aliases and the previous-close fallback', () => {
+    const manager = new QuoteSocketManager();
+
+    internals(manager).handleMessage([
+      { symbol: 'eurusd', bid: 100, ask: 101, dailyChange: 0.19, timestamp: 1 },
+      { symbol: 'gbpusd', bid: 100, ask: 101, daily_change: -0.36, timestamp: 1 },
+      { symbol: 'usdjpy', bid: 110, ask: 112, previous_close: 100, timestamp: 1 },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({ dailyChange: 0.19 });
+    expect(enqueueLiveTick.mock.calls[1][1]).toMatchObject({ dailyChange: -0.36 });
+    expect(enqueueLiveTick.mock.calls[2][1].dailyChange).toBeCloseTo(10, 10);
+
+    manager.destroy();
+  });
+
   it('preserves source timestamp provenance separately from receipt-time fallback', () => {
     const manager = new QuoteSocketManager();
     const receivedAt = Date.now();

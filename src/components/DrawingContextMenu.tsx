@@ -238,8 +238,8 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
             <div style={menuStyle}>
                 {/* Header */}
                 <div style={headerStyle}>
-                    <span style={{ color: '#4a9eff', fontSize: 11, fontWeight: 600 }}>{drawingLabel}</span>
-                    {shortId && <span style={{ color: '#4b5563', fontSize: 10 }}>#{shortId}</span>}
+                    <span style={{ color: '#4a9eff', fontSize: 12, fontWeight: 500 }}>{drawingLabel}</span>
+                    {shortId && <span style={{ color: '#4b5563', fontSize: 12, fontWeight: 400 }}>#{shortId}</span>}
                 </div>
 
                 <Separator />
@@ -383,7 +383,8 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                                 border: '1px solid #2d3548',
                                 borderRadius: 4,
                                 color: '#c8ccd4',
-                                fontSize: 11,
+                                fontSize: 12,
+                                fontWeight: 400,
                                 padding: '4px 8px',
                                 outline: 'none',
                                 fontFamily: 'monospace',
@@ -395,7 +396,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                     {/* Preview swatch */}
                     <div style={{ padding: '0 12px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 60, height: 3, background: localColor, borderRadius: 2, flex: 1 }} />
-                        <span style={{ fontSize: 10, color: '#6b7280' }}>Preview</span>
+                        <span style={{ fontSize: 12, fontWeight: 400, color: '#6b7280' }}>Preview</span>
                     </div>
                 </div>
             )}
@@ -440,7 +441,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                                 <span style={{ color: localStyle === opt.value ? '#4a9eff' : '#9ca3af' }}>
                                     {opt.preview}
                                 </span>
-                                <span style={{ fontSize: 11 }}>{opt.label}</span>
+                                <span style={{ fontSize: 14, fontWeight: 400 }}>{opt.label}</span>
                                 {localStyle === opt.value && (
                                     <CheckIcon style={{ marginLeft: 'auto' }} />
                                 )}
@@ -483,7 +484,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                                         borderRadius: opt.value > 1 ? 1 : 0,
                                     }}
                                 />
-                                <span style={{ fontSize: 10, color: localWidth === opt.value ? '#4a9eff' : '#6b7280' }}>
+                                <span style={{ fontSize: 12, fontWeight: 400, color: localWidth === opt.value ? '#4a9eff' : '#6b7280' }}>
                                     {opt.label}
                                 </span>
                             </button>
@@ -492,7 +493,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
 
                     {/* Custom width slider */}
                     <div style={{ padding: '0 12px 12px' }}>
-                        <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 4 }}>
+                        <div style={{ fontSize: 12, fontWeight: 400, color: '#6b7280', marginBottom: 4 }}>
                             Custom: <span style={{ color: '#c8ccd4' }}>{localWidth}px</span>
                         </div>
                         <input
@@ -520,7 +521,8 @@ const menuStyle: React.CSSProperties = {
     padding: '4px 0',
     minWidth: 230,
     fontFamily: "'Segoe UI', Tahoma, sans-serif",
-    fontSize: 12,
+    fontSize: 14,
+    fontWeight: 400,
 };
 
 const subPanelStyle: React.CSSProperties = {
@@ -530,7 +532,8 @@ const subPanelStyle: React.CSSProperties = {
     boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
     minWidth: 220,
     fontFamily: "'Segoe UI', Tahoma, sans-serif",
-    fontSize: 12,
+    fontSize: 14,
+    fontWeight: 400,
     marginLeft: 2,
     padding: '4px 0',
 };
@@ -543,8 +546,8 @@ const headerStyle: React.CSSProperties = {
 };
 
 const subHeaderStyle: React.CSSProperties = {
-    fontSize: 10,
-    fontWeight: 700,
+    fontSize: 12,
+    fontWeight: 500,
     letterSpacing: '0.08em',
     textTransform: 'uppercase' as const,
     color: '#4b5563',
@@ -570,6 +573,8 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, onClick, dan
             alignItems: 'center',
             gap: 8,
             padding: '5px 10px 5px 8px',
+            minHeight: 30,
+            fontWeight: 400,
             cursor: disabled ? 'default' : 'pointer',
             opacity: disabled ? 0.4 : 1,
             color: active ? '#4a9eff' : danger ? '#ef6b6b' : '#c8ccd4',
@@ -586,7 +591,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, onClick, dan
             {label}
         </span>
         {shortcut && (
-            <span style={{ fontSize: 10, color: '#4b5563', marginLeft: 16, whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 12, fontWeight: 400, color: '#4b5563', marginLeft: 16, whiteSpace: 'nowrap' }}>
                 {shortcut}
             </span>
         )}

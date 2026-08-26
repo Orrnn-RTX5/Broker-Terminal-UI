@@ -67,7 +67,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose })
             <div className="w-[800px] h-[600px] bg-[#252528] rounded-lg shadow-2xl border border-zinc-700 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="h-10 bg-[#131316] border-b border-zinc-700 flex items-center justify-between px-4 select-none">
-                    <span className="text-sm font-medium text-zinc-200">Options</span>
+                    <span className="text-[14px] font-semibold text-zinc-200">Options</span>
                     <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
                         <Icon name="x-close" size="md" />
                     </button>
@@ -79,10 +79,10 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose })
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`px-3 py-2 text-[12px] font-medium border-b-2 transition-all whitespace-nowrap
+                            className={`px-3 py-2 text-[14px] border-b-2 transition-all whitespace-nowrap
                                 ${activeTab === tab.id
-                                    ? 'border-zinc-600 text-blue-400'
-                                    : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'}`}
+                                    ? 'border-zinc-600 text-blue-400 font-semibold'
+                                    : 'border-transparent text-zinc-400 font-normal hover:text-zinc-200 hover:bg-zinc-800/50'}`}
                         >
                             {tab.label}
                         </button>
@@ -105,13 +105,13 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose })
 
                 {/* Footer */}
                 <div className="h-14 bg-[#131316] border-t border-zinc-700 flex items-center justify-end px-4 gap-3">
-                    <button onClick={handleCancel} className="px-4 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 rounded transition-colors">
+                    <button onClick={handleCancel} className="rounded px-4 py-1.5 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-zinc-700">
                         Cancel
                     </button>
-                    <button onClick={handleOK} className="px-4 py-1.5 text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-white rounded transition-colors">
+                    <button onClick={handleOK} className="rounded bg-zinc-700 px-4 py-1.5 text-[14px] font-semibold text-white transition-colors hover:bg-zinc-600">
                         Apply
                     </button>
-                    <button onClick={handleOK} className="px-4 py-1.5 text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-white rounded transition-colors shadow-sm">
+                    <button onClick={handleOK} className="rounded bg-zinc-700 px-4 py-1.5 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-zinc-600">
                         OK
                     </button>
                 </div>
@@ -126,7 +126,7 @@ const ServerTab = () => {
     const accountId = useAppStore(state => state.accountId);
 
     return (
-        <div className="space-y-6 text-xs text-zinc-300">
+        <div className="space-y-6 text-[14px] font-normal text-zinc-300">
             <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
                 <label className="text-right text-zinc-400">Server:</label>
                 <input
@@ -185,7 +185,7 @@ const ChartsTab = () => {
     const updateChartsSettings = useSettingsStore((state) => state.updateChartsSettings);
 
     return (
-        <div className="space-y-4 text-xs text-zinc-300">
+        <div className="space-y-4 text-[14px] font-normal text-zinc-300">
             <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -276,7 +276,7 @@ const TradeTab = () => {
     const selectedSymbol = useAppStore((state) => state.selectedSymbol);
 
     return (
-        <div className="space-y-5 text-xs text-zinc-300">
+        <div className="space-y-5 text-[14px] font-normal text-zinc-300">
             <div className="grid grid-cols-[100px_1fr_1fr] gap-4 items-center">
                 <label className="text-right text-zinc-400">Symbol:</label>
                 <select
@@ -339,7 +339,7 @@ const TradeTab = () => {
                     </div>
                     <span className="font-medium group-hover:text-white transition-colors">One Click Trading</span>
                 </label>
-                <p className="mt-2 text-zinc-500 ml-11 text-[11px]">
+                <p className="ml-11 mt-2 text-[12px] font-normal text-zinc-500">
                     Allows performing trade operations with a single mouse click without additional confirmation.
                 </p>
             </div>
@@ -368,7 +368,7 @@ const AutomationTab = () => {
     };
 
     return (
-        <div className="space-y-5 text-xs text-zinc-300">
+        <div className="space-y-5 text-[14px] font-normal text-zinc-300">
             <div className="space-y-3">
                 <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -465,7 +465,7 @@ const AutomationTab = () => {
                         {newURL && (
                             <button
                                 onClick={handleAddURL}
-                                className="text-emerald-500 hover:text-emerald-400 text-[10px] font-medium"
+                                className="text-[14px] font-normal text-emerald-500 hover:text-emerald-400"
                             >
                                 ADD
                             </button>
@@ -482,7 +482,7 @@ const NotificationsTab = () => {
     const updateNotificationsSettings = useSettingsStore((state) => state.updateNotificationsSettings);
 
     return (
-        <div className="space-y-5 text-xs text-zinc-300">
+        <div className="space-y-5 text-[14px] font-normal text-zinc-300">
             <div className="space-y-3">
                 <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -493,7 +493,7 @@ const NotificationsTab = () => {
                     />
                     <span className="font-medium text-zinc-200">Enable push notifications</span>
                 </label>
-                <p className="ml-6 text-zinc-500 text-[11px]">
+                <p className="ml-6 text-[12px] font-normal text-zinc-500">
                     Send notifications to RTX5 Mobile app for important trading events.
                 </p>
             </div>
@@ -508,7 +508,7 @@ const NotificationsTab = () => {
                     />
                     <span className="font-medium text-zinc-200">Enable sound alerts</span>
                 </label>
-                <p className="ml-6 text-zinc-500 text-[11px]">
+                <p className="ml-6 text-[12px] font-normal text-zinc-500">
                     Play audio notifications for order fills, stop-loss hits, and other events.
                 </p>
             </div>
@@ -523,13 +523,13 @@ const NotificationsTab = () => {
                     />
                     <span className="font-medium text-zinc-200">Enable email alerts</span>
                 </label>
-                <p className="ml-6 text-zinc-500 text-[11px]">
+                <p className="ml-6 text-[12px] font-normal text-zinc-500">
                     Send email notifications for critical account events and margin calls.
                 </p>
             </div>
 
             <div className="pt-4 border-t border-zinc-700/50 text-zinc-500">
-                <p className="text-[11px]">
+                <p className="text-[12px] font-normal">
                     Configure specific notification rules and thresholds in the Events tab.
                 </p>
             </div>
@@ -541,8 +541,8 @@ const PlaceholderTab = ({ icon, title, desc }: { icon: React.ReactNode, title: s
     <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
         <div className="text-zinc-600">{icon}</div>
         <div>
-            <h3 className="text-lg font-medium text-zinc-300">{title}</h3>
-            <p className="text-zinc-500 max-w-xs mx-auto">{desc}</p>
+            <h3 className="text-[14px] font-semibold text-zinc-300">{title}</h3>
+            <p className="mx-auto max-w-xs text-[12px] font-normal text-zinc-500">{desc}</p>
         </div>
     </div>
 );

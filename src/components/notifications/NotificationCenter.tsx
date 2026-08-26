@@ -32,9 +32,10 @@ export const NotificationCenter: React.FC = () => {
 
   // Filter notifications
   const filteredNotifications = useMemo(() => {
+    if (!isOpen) return [];
     if (activeFilter === 'all') return notifications;
     return notifications.filter(n => n.type === activeFilter);
-  }, [notifications, activeFilter]);
+  }, [notifications, activeFilter, isOpen]);
 
   // Group by time periods
   const groupedNotifications = useMemo(() => {
