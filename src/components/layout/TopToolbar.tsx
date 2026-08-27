@@ -194,7 +194,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     }, [timeframe, toolbarState.timeframe, dispatchToolbar]);
 
     return (
-        <div className="flex flex-col z-50 relative bg-slate-950/20 backdrop-blur-2xl border-b border-white/5 shadow-2xl">
+        <div className="rtx-top-chrome flex flex-col z-50 relative border-b border-white/5 shadow-2xl">
             {/* 1. Header Bar (Topmost) */}
             <HeaderBar
                 symbol={symbol}

@@ -216,6 +216,10 @@ body {
   line-height: var(--leading-normal);
 }
 
+.rtx-top-chrome {
+  background: var(--bg-secondary);
+}
+
 button,
 input,
 select,
