@@ -2,10 +2,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+// Normalize CRLF so the multi-line anchors keep matching on Windows checkouts
+// (core.autocrlf=true materializes the working tree with \r\n).
 const source = readFileSync(
   resolve(process.cwd(), 'src/components/TradingChart.tsx'),
   'utf8',
-);
+).replace(/\r\n/g, '\n');
 
 describe('TradingChart interaction-priority contract', () => {
   it('keeps tick ingestion running while chart painting is deferred', () => {
@@ -182,7 +184,7 @@ describe('TradingChart interaction-priority contract', () => {
     const paintEnd = source.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
     const paint = source.slice(paintStart, paintEnd);
     const geometryStart = source.indexOf('const repaintLivePriceOverlayGeometry = () => {');
-    const geometryEnd = source.indexOf('const queueLivePriceOverlayGeometryRepaint = () => {', geometryStart);
+    const geometryEnd = source.indexOf('const queuePriceBoundOverlayGeometryRepaint = () => {', geometryStart);
     const geometry = source.slice(geometryStart, geometryEnd);
     const markupStart = source.indexOf('ref={livePriceLineRef}');
     const markupEnd = source.indexOf('ref={livePriceBadgeRef}', markupStart);
@@ -216,10 +218,13 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).not.toMatch(/livePriceLineRef\.current\.style\.(?:left|right|width)\s*=/);
   });
 
-  it('repaints only cached live-price geometry during a held right-price-scale drag', () => {
-    const dragStart = source.indexOf('let rightPriceScalePointerId: number | null = null;');
+  it('repaints cached live-price and trade geometry during held plot and price-scale drags', () => {
+    const dragStart = source.indexOf('let heldChartPointerId: number | null = null;');
     const dragEnd = source.indexOf('const handleLostPointerCapture =', dragStart);
     const drag = source.slice(dragStart, dragEnd);
+    const heldMoveStart = drag.indexOf('const handleHeldChartPointerMove = (event: PointerEvent) => {');
+    const heldMoveEnd = drag.indexOf('const handlePointerInteractionEnd =', heldMoveStart);
+    const heldMove = drag.slice(heldMoveStart, heldMoveEnd);
 
     expect(dragStart).toBeGreaterThan(-1);
     expect(dragEnd).toBeGreaterThan(dragStart);
@@ -230,16 +235,35 @@ describe('TradingChart interaction-priority contract', () => {
     expect(drag).toContain('series.priceToCoordinate(livePrice)');
     expect(drag).toContain('line.style.top');
     expect(drag).toContain('badge.style.top');
+    expect(drag).toContain('repaintTradeOverlayGeometryRef.current();');
+    expect(drag).toContain('queuePriceBoundOverlayGeometryRepaint()');
     expect(drag).toContain('rightPriceScalePointerId !== event.pointerId');
+    expect(drag).toContain('heldChartPointerId = event.pointerId;');
+    expect(drag).toContain('heldChartPointerId = null;');
     expect(drag).toContain('rightPriceScalePointerId = null;');
     expect(drag).not.toContain('currentCandleRef.current');
-    expect(drag).not.toContain('updateLabelPositions');
+    expect(drag).not.toContain('renderTradeOverlay');
     expect(drag).not.toContain('repaintLivePriceOverlayFromCurrentPrice');
     expect(drag).not.toContain('flushPostInteractionWork');
+    expect(source).toContain('repaintTradeOverlayGeometryRef.current = updateLabelPositions;');
 
-    expect(source).toContain("window.addEventListener('pointermove', handleRightPriceScalePointerMove, { passive: true })");
-    expect(source).toContain("window.removeEventListener('pointermove', handleRightPriceScalePointerMove)");
-    expect(source).toContain('window.cancelAnimationFrame(livePriceGeometryRepaintFrame)');
+    expect(heldMoveStart).toBeGreaterThan(-1);
+    expect(heldMoveEnd).toBeGreaterThan(heldMoveStart);
+    expect(heldMove).toContain('if (isDisposedRef.current || !isActiveRef.current) return;');
+    expect(heldMove).toContain('if (heldChartPointerId !== event.pointerId || (event.buttons & 1) === 0) return;');
+    expect(heldMove.indexOf('handleRightPriceScalePointerMove(event);')).toBeGreaterThan(-1);
+    expect(heldMove.indexOf('queuePriceBoundOverlayGeometryRepaint();')).toBeGreaterThan(
+      heldMove.indexOf('handleRightPriceScalePointerMove(event);'),
+    );
+
+    expect(source).toContain("window.addEventListener('pointermove', handleHeldChartPointerMove, { passive: true })");
+    expect(source).toContain("window.removeEventListener('pointermove', handleHeldChartPointerMove)");
+    expect(source).toContain("window.addEventListener('blur', forceSettleLocalPointerInteraction)");
+    expect(source).toContain("window.removeEventListener('blur', forceSettleLocalPointerInteraction)");
+    expect(source).toContain('clearLocalChartPointerStateRef.current();');
+    expect(source).toContain('clearLocalChartPointerStateRef.current = clearLocalChartPointerState;');
+    expect(source).toContain('const forceSettleLocalPointerInteraction = () => {');
+    expect(source).toContain('window.cancelAnimationFrame(priceBoundOverlayGeometryRepaintFrame)');
   });
 
   it('adds cursor-anchored price zoom to plot wheels while preserving native time zoom', () => {
@@ -253,10 +277,10 @@ describe('TradingChart interaction-priority contract', () => {
     expect(wheel).toContain('barSpacingBefore / barSpacingAfter');
     expect(wheel).toContain('priceScale.getVisibleRange()');
     expect(wheel).toContain('series.coordinateToPrice((event.clientY - rect.top) as any)');
-    expect(wheel).toContain('series.options().priceFormat');
+    expect(wheel).toContain('const minimumSpan = getMinimumVisiblePriceSpan();');
     expect(wheel).toContain('anchorPrice + (from - anchorPrice) * priceSpanFactor');
     expect(wheel).toContain('priceScale.setVisibleRange({ from: nextFrom, to: nextTo })');
-    expect(wheel).toContain('queueLivePriceOverlayGeometryRepaint()');
+    expect(wheel).toContain('queuePriceBoundOverlayGeometryRepaint()');
     expect(wheel).not.toContain('preventDefault');
 
     expect(source).toContain('if (event.deltaY === 0 || !isChartPaneWheel(event)) return;');
@@ -266,6 +290,27 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).toContain("chartContainer.addEventListener('wheel', handleWheelInteraction, { passive: true })");
     expect(source).toContain("chartContainer.removeEventListener('wheel', captureChartWheelTimeScaleState, true)");
     expect(source).toContain("chartContainer.removeEventListener('wheel', handleWheelInteraction)");
+  });
+
+  it('shares the one-point label-density zoom floor between axis and plot gestures', () => {
+    const floorStart = source.indexOf('const getMinimumVisiblePriceSpan = (): number => {');
+    const floorEnd = source.indexOf('const isRightPriceScalePointer =', floorStart);
+    const floor = source.slice(floorStart, floorEnd);
+    const axisStart = source.indexOf('const handleRightPriceScalePointerMove =');
+    const axisEnd = source.indexOf('const handleHeldChartPointerMove =', axisStart);
+    const axis = source.slice(axisStart, axisEnd);
+    const wheelStart = source.indexOf('const handleWheelInteraction = (event: WheelEvent) => {');
+    const wheelEnd = source.indexOf('const clearLocalChartPointerState =', wheelStart);
+    const wheel = source.slice(wheelStart, wheelEnd);
+
+    expect(floorStart).toBeGreaterThan(-1);
+    expect(floorEnd).toBeGreaterThan(floorStart);
+    expect(floor).toContain('seriesRef.current?.options().priceFormat');
+    expect(floor).toContain("chart.priceScale('right').options().scaleMargins");
+    expect(floor).toContain('chart.timeScale().height()');
+    expect(floor).toContain('computeMinimumVisiblePriceSpan({');
+    expect(axis).toContain('minSpan: getMinimumVisiblePriceSpan()');
+    expect(wheel).toContain('const minimumSpan = getMinimumVisiblePriceSpan();');
   });
 
   it('keeps held-pointer ownership authoritative across sparse range events', () => {
@@ -287,11 +332,11 @@ describe('TradingChart interaction-priority contract', () => {
     expect(settle).toContain('isChartInteractionActiveRef.current = false;');
     expect(settle).toContain('settleAutoScrollPolicyRef.current();');
     expect(source.match(/\.forceSettle\(\)/g)).toHaveLength(1);
-    expect(source).toContain("window.addEventListener('blur', forceSettleInteraction)");
-    expect(source).toContain("window.removeEventListener('blur', forceSettleInteraction)");
+    expect(source).toContain("window.addEventListener('blur', forceSettleLocalPointerInteraction)");
+    expect(source).toContain("window.removeEventListener('blur', forceSettleLocalPointerInteraction)");
     expect(source).toContain("document.addEventListener('visibilitychange', handleDocumentVisibilityChange)");
     expect(source).toContain("document.removeEventListener('visibilitychange', handleDocumentVisibilityChange)");
-    expect(source).toContain('if (!isActive) {\n      forceSettleInteraction();');
+    expect(source).toContain('if (!isActive) {\n      clearLocalChartPointerStateRef.current();\n      forceSettleInteraction();');
     expect(source).toContain("|| document.visibilityState === 'hidden'");
     expect(source).toContain('settleAutoScrollPolicyRef.current = resetAutoScrollTimer;');
     expect(source).toContain('postInteractionCoordinatorRef.current?.clear();');
@@ -420,5 +465,23 @@ describe('TradingChart interaction-priority contract', () => {
     expect(legend).toContain('renderedLegendSignatureRef.current === next.signature');
     expect(legend).toContain('window.cancelAnimationFrame(legendRenderFrameRef.current)');
     expect(legend).toContain('renderedLegendSignatureRef.current = next.signature;');
+  });
+
+  it('forces an autoSize-safe repaint after a Theme change without rebuilding chart data', () => {
+    const layoutRefreshStart = source.indexOf('const refreshVisibleChartLayout = useCallback');
+    const layoutRefreshEnd = source.indexOf('const hideLivePriceOverlay', layoutRefreshStart);
+    const layoutRefresh = source.slice(layoutRefreshStart, layoutRefreshEnd);
+    const transitionStart = source.indexOf('if (previousAdvancedUntitledLightRef.current === isAdvancedUntitledLight) return;');
+    const transitionEnd = source.indexOf('// getTimeframeSeconds is imported', transitionStart);
+    const transition = source.slice(transitionStart, transitionEnd);
+
+    expect(layoutRefreshStart).toBeGreaterThan(-1);
+    expect(layoutRefresh).toContain('refreshLightweightChartSurface(chart, offsetWidth, offsetHeight)');
+    expect(layoutRefresh).not.toContain('chart.applyOptions({ width: offsetWidth, height: offsetHeight })');
+    expect(transitionStart).toBeGreaterThan(-1);
+    expect(transition).toContain('scheduleChartThemeTransition({');
+    expect(transition).toContain('refreshVisibleChartLayout();');
+    expect(transition).not.toContain('removeSeries(');
+    expect(transition).not.toContain('setData([])');
   });
 });

@@ -106,14 +106,15 @@ const renderWorkspace = (
   selectedSymbol: string,
   chartRuntimeEnabled = true,
   activeMarketSnapshot = createActiveMarketSnapshot(),
+  allSymbols: unknown[] = ['BTCUSD'],
 ) => {
   useDockLayoutStore.setState({ layout });
   return render(
     <DockWorkspace
       globalChartType="candlestick"
       globalTimeframe="M5"
-      allSymbols={['BTCUSD']}
-      chartSymbols={['BTCUSD']}
+      allSymbols={allSymbols}
+      chartSymbols={allSymbols}
       tradeSymbols={activeMarketSnapshot.current ? activeMarketSnapshot.symbols : []}
       activeMarketSnapshot={activeMarketSnapshot}
       selectedSymbol={selectedSymbol}
@@ -169,6 +170,22 @@ describe('DockWorkspace chart diagnostic attributes', () => {
     expect(panel?.getAttribute('data-chart-panel-id')).toBe('chart-1700000000000');
     expect(panel?.getAttribute('data-chart-panel-symbol')).toBe('BTCUSD');
     expect(panel?.getAttribute('data-chart-rendered-symbol')).toBe('BTCUSD');
+  });
+
+  it('passes broker-authoritative zero-digit precision to the chart', async () => {
+    renderWorkspace(
+      chartLayout('chart-1', 'BTCUSD'),
+      'BTCUSD',
+      true,
+      createActiveMarketSnapshot(),
+      [{ symbol: 'BTCUSD', digits: 0 }],
+    );
+
+    await waitFor(() => expect(chartMocks.render).toHaveBeenCalled());
+    expect(chartMocks.render.mock.lastCall?.[0]).toMatchObject({
+      symbol: 'BTCUSD',
+      priceDigits: 0,
+    });
   });
 
   it('keeps chart network runtime disabled until startup selection is settled', async () => {

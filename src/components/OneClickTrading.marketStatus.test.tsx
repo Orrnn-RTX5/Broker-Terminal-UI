@@ -41,6 +41,7 @@ describe('OneClickTrading market status', () => {
 
   afterEach(() => {
     cleanup();
+    document.documentElement.classList.remove('rtx-advanced-view', 'rtx-skin-untitled-light');
     vi.restoreAllMocks();
   });
 
@@ -57,6 +58,72 @@ describe('OneClickTrading market status', () => {
 
     expect(getTradeButton('BUY').disabled).toBe(false);
     expect(getTradeButton('SELL').disabled).toBe(false);
+  });
+
+  it('renders the compact SELL, horizontal lot controls, BUY order and preserves the lot step', () => {
+    render(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })}
+      />,
+    );
+
+    const row = screen.getByTestId('one-click-trading-row');
+    const volumeControl = screen.getByTestId('one-click-volume-control');
+    const rowChildren = Array.from(row.children);
+    const volumeChildren = Array.from(volumeControl.children);
+    const decreaseButton = screen.getByRole('button', { name: 'Decrease lot size' });
+    const increaseButton = screen.getByRole('button', { name: 'Increase lot size' });
+    const volumeInput = screen.getByRole('spinbutton', { name: 'Lot size' });
+
+    expect(row).toHaveStyle({ display: 'flex' });
+    expect(row).toHaveStyle({ background: '#111827' });
+    expect(volumeControl).toHaveStyle({ flexDirection: 'row' });
+    expect(rowChildren[0]).toHaveAttribute('data-side', 'sell');
+    expect(rowChildren[1]).toBe(volumeControl);
+    expect(rowChildren[2]).toHaveAttribute('data-side', 'buy');
+    expect(volumeChildren).toEqual([decreaseButton, volumeInput, increaseButton]);
+    expect(rowChildren[0]).toHaveStyle({ width: 'auto', minWidth: '104px', height: '34px' });
+    expect(rowChildren[0]).toHaveStyle({ opacity: '1' });
+    expect((rowChildren[0] as HTMLElement).style.background).not.toContain('rgba');
+    expect((rowChildren[2] as HTMLElement).style.background).not.toContain('rgba');
+    expect((volumeControl as HTMLElement).style.background).not.toContain('rgba');
+    expect(volumeControl).toHaveStyle({ width: '110px', height: '34px' });
+    expect(volumeInput).toHaveStyle({ width: '48px', height: '24px' });
+    expect(volumeInput.style.background).not.toContain('rgba');
+
+    expect(volumeInput).toHaveValue(0.01);
+    fireEvent.click(increaseButton);
+    expect(volumeInput).toHaveValue(0.02);
+    fireEvent.click(decreaseButton);
+    expect(volumeInput).toHaveValue(0.01);
+    fireEvent.click(decreaseButton);
+    expect(volumeInput).toHaveValue(0.01);
+  });
+
+  it('uses the roomier OneClickTrading dimensions in advanced light mode', () => {
+    document.documentElement.classList.add('rtx-advanced-view', 'rtx-skin-untitled-light');
+
+    render(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })}
+      />,
+    );
+
+    const row = screen.getByTestId('one-click-trading-row');
+    const volumeControl = screen.getByTestId('one-click-volume-control');
+    const rowChildren = Array.from(row.children);
+
+    expect(rowChildren[0]).toHaveStyle({ width: 'auto', minWidth: '110px', height: '34px' });
+    expect(volumeControl).toHaveStyle({ width: '114px', height: '34px' });
+    expect(rowChildren[2]).toHaveStyle({ width: 'auto', minWidth: '110px', height: '34px' });
   });
 
   it('keeps the last BTCUSD M1 prices visible but disables trading when freshness denies the symbol', () => {
@@ -87,6 +154,8 @@ describe('OneClickTrading market status', () => {
     expect(sellButton).toHaveTextContent('79890.57');
     expect(buyButton.disabled).toBe(true);
     expect(sellButton.disabled).toBe(true);
+    expect(buyButton).toHaveStyle({ opacity: '1' });
+    expect(sellButton).toHaveStyle({ opacity: '1' });
     expect(buyButton).toHaveAttribute('title', 'Live tradable quote unavailable - order not sent');
     expect(sellButton).toHaveAttribute('title', 'Live tradable quote unavailable - order not sent');
     expect(screen.getByText('Live tradable quote unavailable - order not sent')).toBeInTheDocument();

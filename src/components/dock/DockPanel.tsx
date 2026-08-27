@@ -67,12 +67,12 @@ export const DockPanel: React.FC<DockPanelProps> = ({
       {showHeader && (
         <div
           className={cn(
-            'flex items-center h-[30px] px-1.5 select-none flex-shrink-0',
+            'dock-panel__header flex items-center h-[30px] px-1.5 select-none flex-shrink-0',
             // Make cursor a pointer when minimized (click to restore)
             minimized ? 'cursor-pointer' : 'cursor-default',
             isActive
-              ? 'bg-[#202126] border-b border-[#34363d]'
-              : 'bg-[#17181c] border-b border-[#27282d]',
+              ? 'dock-panel__header--active bg-[#202126] border-b border-[#34363d]'
+              : 'dock-panel__header--inactive bg-[#17181c] border-b border-[#27282d]',
           )}
           onMouseDown={(e) => {
             // Click on empty header area while minimized → restore
@@ -87,7 +87,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
           title={minimized ? `Click to restore ${panel.title}` : undefined}
         >
           {/* Title */}
-          <span className="flex-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]">
+          <span className="dock-panel__title flex-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]">
             {panel.title}
             {minimized && (
               <span className="ml-1 text-[12px] font-normal text-zinc-600 italic">(minimized)</span>
@@ -101,7 +101,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
                 e.stopPropagation();
                 setMinimized((m) => !m);
               }}
-              className="w-[16px] h-[16px] flex items-center justify-center rounded-sm hover:bg-zinc-600/80 text-zinc-400 hover:text-white transition-colors mr-0.5"
+              className="dock-panel__action w-[16px] h-[16px] flex items-center justify-center rounded-sm hover:bg-zinc-600/80 text-zinc-400 hover:text-white transition-colors mr-0.5"
               title={minimized ? 'Restore' : 'Minimize'}
             >
               {minimized
@@ -118,7 +118,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
                 e.stopPropagation();
                 onClose?.();
               }}
-              className="w-[16px] h-[16px] flex items-center justify-center rounded-sm hover:bg-red-500/80 text-zinc-400 hover:text-white transition-colors"
+              className="dock-panel__action dock-panel__action--close w-[16px] h-[16px] flex items-center justify-center rounded-sm hover:bg-red-500/80 text-zinc-400 hover:text-white transition-colors"
               title="Close"
             >
               <X className="w-3 h-3" />
@@ -129,7 +129,7 @@ export const DockPanel: React.FC<DockPanelProps> = ({
 
       {/* ── Content — hidden when minimized ── */}
       {!minimized && (
-        <div className="flex-1 overflow-hidden min-h-0 min-w-0 relative">
+        <div className="dock-panel__content flex-1 overflow-hidden min-h-0 min-w-0 relative">
           {children || (
             <div className="flex items-center justify-center h-full text-zinc-500 p-4">
               <p className="text-xs">{panel.title}</p>

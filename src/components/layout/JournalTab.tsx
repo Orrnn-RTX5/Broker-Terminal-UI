@@ -11,7 +11,15 @@
  * Auto-refreshes every 15 seconds while the tab is visible.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, {
+    useCallback,
+    useDeferredValue,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import { Icon } from '../ui/Icon';
 import { journalApi, type JournalLogEntry } from '../../services/api';
 import { useBrokerAccountSessionScope } from '../../hooks/useBrokerAccountSessionScope';
@@ -48,6 +56,17 @@ const TIME_RANGES: { label: string; hours: number }[] = [
     { label: '24h', hours: 24 },
     { label: '7d', hours: 24 * 7 },
 ];
+
+const JOURNAL_HEADER_HEIGHT = 30;
+const JOURNAL_ROW_HEIGHT = 30;
+const JOURNAL_ROW_OVERSCAN = 8;
+const JOURNAL_FALLBACK_VIEWPORT_HEIGHT = 320;
+
+const JOURNAL_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+    year: '2-digit', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+});
 
 // ─── Type highlight colours ───────────────────────────────────────────────────
 
@@ -87,11 +106,7 @@ function getRowBg(typeText: string, evenRow: boolean): string {
 const formatDateTime = (unixSec: number): string => {
     if (!unixSec) return '—';
     try {
-        return new Date(unixSec * 1000).toLocaleString('en-US', {
-            year: '2-digit', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit',
-            hour12: false,
-        }).replace(',', '');
+        return JOURNAL_DATE_TIME_FORMATTER.format(new Date(unixSec * 1000)).replace(',', '');
     } catch {
         return String(unixSec);
     }
@@ -167,13 +182,188 @@ const serializeJournalLogs = (logs: JournalLogEntry[]): string => {
     return [header, ...rows].join('\n');
 };
 
+const getJournalLogKey = (log: JournalLogEntry, index: number): React.Key => (
+    log.id
+    ?? log.client_order_id
+    ?? log.request_id
+    ?? log.position_ticket
+    ?? log.order_ticket
+    ?? `${log.datetime}-${log.code}-${log.type}-${index}`
+);
+
+type JournalLogTableProps = {
+    logs: JournalLogEntry[];
+    autoScroll: boolean;
+    onAutoScrollChange: (enabled: boolean) => void;
+};
+
+const JournalLogTable = React.memo(function JournalLogTable({
+    logs,
+    autoScroll,
+    onAutoScrollChange,
+}: JournalLogTableProps) {
+    const scrollViewportRef = useRef<HTMLDivElement>(null);
+    const [viewport, setViewport] = useState({
+        scrollTop: 0,
+        height: JOURNAL_FALLBACK_VIEWPORT_HEIGHT,
+    });
+
+    useLayoutEffect(() => {
+        const element = scrollViewportRef.current;
+        if (!element) return;
+
+        const measure = () => {
+            const height = element.clientHeight || JOURNAL_FALLBACK_VIEWPORT_HEIGHT;
+            setViewport(current => current.height === height ? current : { ...current, height });
+        };
+
+        measure();
+        if (typeof ResizeObserver === 'undefined') return;
+
+        const observer = new ResizeObserver(measure);
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, []);
+
+    useLayoutEffect(() => {
+        if (!autoScroll) return;
+        const element = scrollViewportRef.current;
+        if (element) element.scrollTop = 0;
+        setViewport(current => current.scrollTop === 0 ? current : { ...current, scrollTop: 0 });
+    }, [autoScroll, logs]);
+
+    const handleScroll = useCallback(() => {
+        const element = scrollViewportRef.current;
+        if (!element) return;
+
+        const scrollTop = element.scrollTop;
+        const height = element.clientHeight || JOURNAL_FALLBACK_VIEWPORT_HEIGHT;
+        setViewport(current => (
+            current.scrollTop === scrollTop && current.height === height
+                ? current
+                : { scrollTop, height }
+        ));
+
+        const shouldAutoScroll = scrollTop < 40;
+        if (shouldAutoScroll !== autoScroll) onAutoScrollChange(shouldAutoScroll);
+    }, [autoScroll, onAutoScrollChange]);
+
+    const virtualWindow = useMemo(() => {
+        const rowViewportHeight = Math.max(
+            JOURNAL_ROW_HEIGHT,
+            viewport.height - JOURNAL_HEADER_HEIGHT,
+        );
+        const maxScrollTop = Math.max(
+            0,
+            JOURNAL_HEADER_HEIGHT + logs.length * JOURNAL_ROW_HEIGHT - viewport.height,
+        );
+        const effectiveScrollTop = Math.min(viewport.scrollTop, maxScrollTop);
+        const startIndex = Math.max(
+            0,
+            Math.floor(effectiveScrollTop / JOURNAL_ROW_HEIGHT) - JOURNAL_ROW_OVERSCAN,
+        );
+        const endIndex = Math.min(
+            logs.length,
+            Math.ceil((effectiveScrollTop + rowViewportHeight) / JOURNAL_ROW_HEIGHT)
+                + JOURNAL_ROW_OVERSCAN,
+        );
+
+        return {
+            startIndex,
+            endIndex,
+            topSpacerHeight: startIndex * JOURNAL_ROW_HEIGHT,
+            bottomSpacerHeight: (logs.length - endIndex) * JOURNAL_ROW_HEIGHT,
+        };
+    }, [logs.length, viewport]);
+
+    const visibleLogs = logs.slice(virtualWindow.startIndex, virtualWindow.endIndex);
+
+    return (
+        <div
+            ref={scrollViewportRef}
+            data-testid="journal-scroll-viewport"
+            onScroll={handleScroll}
+            className="virtualized-list flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700"
+        >
+            <table
+                aria-rowcount={logs.length + 1}
+                className="rtx-journal-table w-full table-fixed text-left border-collapse font-mono"
+            >
+                <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] uppercase tracking-normal border-b border-zinc-600">
+                    <tr className="h-[30px]">
+                        <th className="p-1 pl-3 border-r border-zinc-700 w-36 whitespace-nowrap">Time</th>
+                        <th className="p-1 border-r border-zinc-700 w-16">Code</th>
+                        <th className="p-1 border-r border-zinc-700 w-20">Type</th>
+                        <th className="p-1 border-r border-zinc-700 w-28">Source</th>
+                        <th className="p-1 border-r border-zinc-700 w-24 whitespace-nowrap">Latency</th>
+                        <th className="p-1 pl-2">Message</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/30 text-[13px] leading-[19.5px] font-normal">
+                    {virtualWindow.topSpacerHeight > 0 && (
+                        <tr aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }}>
+                            <td colSpan={6} className="p-0 border-0" />
+                        </tr>
+                    )}
+                    {visibleLogs.map((log, visibleIndex) => {
+                        const absoluteIndex = virtualWindow.startIndex + visibleIndex;
+                        return (
+                            <tr
+                                key={getJournalLogKey(log, absoluteIndex)}
+                                data-testid="journal-rendered-row"
+                                aria-rowindex={absoluteIndex + 2}
+                                className={`${getRowBg(log.type_text, absoluteIndex % 2 === 0)} h-[30px] hover:brightness-125`}
+                            >
+                                <td className="p-1 pl-3 border-r border-zinc-800/50 text-zinc-500 whitespace-nowrap">
+                                    {formatDateTime(log.datetime)}
+                                </td>
+                                <td
+                                    className={`p-1 truncate whitespace-nowrap border-r border-zinc-800/50 font-normal ${Number(log.code) ? 'text-red-400' : 'text-zinc-500'}`}
+                                    title={log.code_text || (log.code === 0 ? 'OK' : String(log.code ?? ''))}
+                                >
+                                    {log.code_text || (log.code === 0 ? 'OK' : String(log.code ?? ''))}
+                                </td>
+                                <td className="p-1 truncate whitespace-nowrap border-r border-zinc-800/50" title={log.type_text || 'All'}>
+                                    <span className={`font-normal uppercase ${getTypeColor(log.type_text)}`}>
+                                        {log.type_text || 'All'}
+                                    </span>
+                                </td>
+                                <td className="p-1 border-r border-zinc-800/50 text-zinc-400 truncate max-w-[110px]" title={log.source}>
+                                    {log.source}
+                                </td>
+                                <td className="p-1 border-r border-zinc-800/50 text-zinc-400 whitespace-nowrap">
+                                    {formatLatencyMs(log.latency_ms)}
+                                </td>
+                                <td
+                                    className={`p-1 pl-2 truncate whitespace-nowrap ${getTypeColor(log.type_text)} leading-snug`}
+                                    title={log.message}
+                                >
+                                    {log.message}
+                                </td>
+                            </tr>
+                        );
+                    })}
+                    {virtualWindow.bottomSpacerHeight > 0 && (
+                        <tr aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }}>
+                            <td colSpan={6} className="p-0 border-0" />
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+    );
+});
+
 type CopyStatus = 'idle' | 'copied' | 'error';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function JournalTab() {
-    const isAuthenticated = useAppStore(state => state.isAuthenticated);
-    const sessionScope = useBrokerAccountSessionScope();
+type JournalTabSurfaceProps = {
+    isAuthenticated: boolean;
+    sessionScope: string;
+};
+
+function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceProps) {
     const [lastTradeLatency, setLastTradeLatency] = useState<ScopedTradeLatency | null>(() => (
         getLatestTerminalTradeLatency(getTradeOrderLatencySamples(), sessionScope)
     ));
@@ -183,6 +373,7 @@ export function JournalTab() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
     const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null);
+    const [loadedSessionScope, setLoadedSessionScope] = useState<string | null>(null);
     const [errorRequestKey, setErrorRequestKey] = useState<string | null>(null);
 
     // Filters
@@ -193,10 +384,23 @@ export function JournalTab() {
     const [autoScroll, setAutoScroll] = useState(true);
     const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle');
 
-    const requestKey = JSON.stringify([sessionScope, logMode, logType]);
+    // Keep the controls urgent. React can apply the heavier table/query update
+    // immediately after the selected pill or native select has painted.
+    const deferredLogType = useDeferredValue(logType);
+    const deferredLogMode = useDeferredValue(logMode);
+    const deferredTimeRange = useDeferredValue(timeRange);
+    const deferredSearch = useDeferredValue(search);
+    const isFilterSettling = logType !== deferredLogType
+        || logMode !== deferredLogMode
+        || timeRange !== deferredTimeRange
+        || search !== deferredSearch;
+
+    const requestKey = JSON.stringify([sessionScope, deferredLogMode, deferredLogType]);
 
     const manualRefreshRef = useRef<() => void>(() => undefined);
-    const tableBodyRef = useRef<HTMLDivElement>(null);
+    const loadedSessionScopeRef = useRef<string | null>(null);
+    const cachedResponsesRef = useRef(new Map<string, JournalLogEntry[]>());
+    const cacheSessionScopeRef = useRef(sessionScope);
     const copyFeedbackTimerRef = useRef<number | null>(null);
     const copySequenceRef = useRef(0);
 
@@ -228,7 +432,18 @@ export function JournalTab() {
         let pollTimer: number | null = null;
         let activeController: AbortController | null = null;
         let requestSequence = 0;
-        let hasSuccessfulResponse = false;
+
+        if (cacheSessionScopeRef.current !== sessionScope) {
+            cachedResponsesRef.current.clear();
+            cacheSessionScopeRef.current = sessionScope;
+        }
+
+        const cachedLogs = isAuthenticated
+            ? cachedResponsesRef.current.get(requestKey)
+            : undefined;
+        const canReuseCurrentResponse = isAuthenticated
+            && loadedSessionScopeRef.current === sessionScope;
+        let hasSuccessfulResponse = cachedLogs !== undefined || canReuseCurrentResponse;
 
         const clearPollTimer = () => {
             if (pollTimer !== null) {
@@ -262,15 +477,18 @@ export function JournalTab() {
 
             try {
                 const data = await journalApi.getLogs(
-                    { mode: logMode, type: logType },
+                    { mode: deferredLogMode, type: deferredLogType },
                     { signal: controller.signal },
                 );
                 if (disposed || controller.signal.aborted || sequence !== requestSequence) return;
 
                 hasSuccessfulResponse = true;
+                cachedResponsesRef.current.set(requestKey, data.logs);
+                loadedSessionScopeRef.current = sessionScope;
                 setServerLogs(data.logs);
                 setHasLoaded(true);
                 setLoadedRequestKey(requestKey);
+                setLoadedSessionScope(sessionScope);
                 setFetchError(null);
                 setErrorRequestKey(null);
             } catch (err) {
@@ -287,13 +505,29 @@ export function JournalTab() {
             }
         };
 
-        setServerLogs([]);
-        setHasLoaded(false);
-        setLoadedRequestKey(null);
         setFetchError(null);
         setErrorRequestKey(null);
-        setIsLoading(isAuthenticated);
         setIsRefreshing(false);
+
+        if (cachedLogs !== undefined) {
+            loadedSessionScopeRef.current = sessionScope;
+            setServerLogs(cachedLogs);
+            setHasLoaded(true);
+            setLoadedRequestKey(requestKey);
+            setLoadedSessionScope(sessionScope);
+            setIsLoading(false);
+        } else if (!canReuseCurrentResponse) {
+            loadedSessionScopeRef.current = null;
+            setServerLogs([]);
+            setHasLoaded(false);
+            setLoadedRequestKey(null);
+            setLoadedSessionScope(null);
+            setIsLoading(isAuthenticated);
+        } else {
+            // Keep the last response mounted while a new Type/Mode query loads.
+            // This avoids a full table teardown and gives immediate filter feedback.
+            setIsLoading(false);
+        }
 
         const requestRefresh = () => { void loadJournal(); };
         manualRefreshRef.current = requestRefresh;
@@ -308,42 +542,46 @@ export function JournalTab() {
                 manualRefreshRef.current = () => undefined;
             }
         };
-    }, [isAuthenticated, requestKey, logMode, logType]);
+    }, [isAuthenticated, requestKey, deferredLogMode, deferredLogType, sessionScope]);
 
     const refreshJournal = useCallback(() => {
         manualRefreshRef.current();
     }, []);
 
-    const ownsCurrentRequest = loadedRequestKey === requestKey;
-    const scopeHasLoaded = hasLoaded && ownsCurrentRequest;
-    const scopeFetchError = errorRequestKey === requestKey ? fetchError : null;
+    const scopeHasLoaded = hasLoaded && loadedSessionScope === sessionScope;
+    const ownsCurrentRequest = scopeHasLoaded
+        && loadedRequestKey === requestKey
+        && !isFilterSettling;
+    const scopeFetchError = !isFilterSettling && errorRequestKey === requestKey
+        ? fetchError
+        : null;
 
     // Client-side filtering
-    const filteredLogs = React.useMemo(() => {
-        const scopedLogs = loadedRequestKey === requestKey ? serverLogs : [];
+    const filteredLogs = useMemo(() => {
+        const scopedLogs = loadedSessionScope === sessionScope ? serverLogs : [];
         if (scopedLogs.length === 0) return scopedLogs;
 
         let filtered = scopedLogs;
 
         // Time filter
-        if (timeRange) {
-            const cutoff = Math.floor(Date.now() / 1000) - timeRange * 3600;
+        if (deferredTimeRange) {
+            const cutoff = Math.floor(Date.now() / 1000) - deferredTimeRange * 3600;
             filtered = filtered.filter(l => l.datetime >= cutoff);
         }
 
         // Type filter
-        if (logType !== 0) {
-            filtered = filtered.filter(l => l.type === logType);
+        if (loadedRequestKey === requestKey && deferredLogType !== 0) {
+            filtered = filtered.filter(l => l.type === deferredLogType);
         }
 
         // Search filter
-        if (search.trim()) {
-            const query = search.toLowerCase();
+        if (deferredSearch.trim()) {
+            const query = deferredSearch.toLowerCase();
             filtered = filtered.filter(l => l.message.toLowerCase().includes(query) || l.source.toLowerCase().includes(query));
         }
 
         return filtered;
-    }, [loadedRequestKey, requestKey, serverLogs, timeRange, logType, search]);
+    }, [loadedRequestKey, requestKey, loadedSessionScope, sessionScope, serverLogs, deferredTimeRange, deferredLogType, deferredSearch]);
 
     useEffect(() => () => {
         copySequenceRef.current += 1;
@@ -359,7 +597,7 @@ export function JournalTab() {
             copyFeedbackTimerRef.current = null;
         }
         setCopyStatus('idle');
-    }, [requestKey, timeRange, search]);
+    }, [sessionScope, logMode, logType, timeRange, search]);
 
     const copyFilteredJournal = useCallback(async () => {
         if (filteredLogs.length === 0) return;
@@ -386,18 +624,9 @@ export function JournalTab() {
         }, 2000);
     }, [filteredLogs]);
 
-    // The API returns newest-first. Auto-follow therefore tracks the top edge.
-    useEffect(() => {
-        if (autoScroll && tableBodyRef.current) {
-            tableBodyRef.current.scrollTop = 0;
-        }
-    }, [filteredLogs, autoScroll]);
-
-    const handleScroll = () => {
-        const el = tableBodyRef.current;
-        if (!el) return;
-        setAutoScroll(el.scrollTop < 40);
-    };
+    const handleAutoScrollChange = useCallback((enabled: boolean) => {
+        setAutoScroll(current => current === enabled ? current : enabled);
+    }, []);
 
     const scopedLastTradeLatency = lastTradeLatency?.sessionScope === sessionScope
         ? lastTradeLatency.latencyMs
@@ -405,18 +634,22 @@ export function JournalTab() {
 
     // ── Render ─────────────────────────────────────────────────────────────
     return (
-        <div className="h-full flex flex-col bg-[#131316] text-[13px] font-normal font-sans">
+        <div
+            aria-busy={isFilterSettling || isLoading || isRefreshing}
+            className="h-full flex flex-col bg-[#131316] text-[13px] font-normal font-sans"
+        >
 
             {/* ── Toolbar ─────────────────────────────────────────────────── */}
-            <div className="flex flex-wrap items-center gap-1.5 px-2 py-1 border-b border-zinc-700 bg-[#1a1a1a] shrink-0 select-none">
+            <div className="rtx-journal-toolbar flex min-h-[42px] flex-wrap items-center gap-x-3 gap-y-2 border-b border-zinc-700 bg-[#1a1a1a] px-3 py-1.5 shrink-0 select-none">
 
                 {/* Type filter */}
-                <div className="flex items-center gap-1">
-                    <span className="text-[12px] font-normal text-zinc-500 uppercase tracking-normal">Type:</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="rtx-journal-toolbar__label text-[13px] font-medium text-zinc-400 uppercase tracking-[0.02em]">Type</span>
                     <select
+                        aria-label="Journal type"
                         value={logType}
                         onChange={e => setLogType(Number(e.target.value))}
-                        className="bg-zinc-800 text-zinc-300 text-[12px] font-normal border border-zinc-700 rounded px-1 py-0.5 cursor-pointer hover:border-zinc-500 outline-none"
+                        className="rtx-journal-control h-7 min-w-[94px] cursor-pointer border border-zinc-600 bg-zinc-800 px-2 py-0 text-[13px] font-medium text-zinc-200 outline-none hover:border-zinc-500"
                     >
                         {LOG_TYPES.map(t => (
                             <option key={t.value} value={t.value}>{t.label}</option>
@@ -425,12 +658,13 @@ export function JournalTab() {
                 </div>
 
                 {/* Mode filter */}
-                <div className="flex items-center gap-1">
-                    <span className="text-[12px] font-normal text-zinc-500 uppercase tracking-normal">Mode:</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="rtx-journal-toolbar__label text-[13px] font-medium text-zinc-400 uppercase tracking-[0.02em]">Mode</span>
                     <select
+                        aria-label="Journal mode"
                         value={logMode}
                         onChange={e => setLogMode(Number(e.target.value))}
-                        className="bg-zinc-800 text-zinc-300 text-[12px] font-normal border border-zinc-700 rounded px-1 py-0.5 cursor-pointer hover:border-zinc-500 outline-none"
+                        className="rtx-journal-control h-7 min-w-[112px] cursor-pointer border border-zinc-600 bg-zinc-800 px-2 py-0 text-[13px] font-medium text-zinc-200 outline-none hover:border-zinc-500"
                     >
                         {LOG_MODES.map(m => (
                             <option key={m.value} value={m.value}>{m.label}</option>
@@ -439,14 +673,16 @@ export function JournalTab() {
                 </div>
 
                 {/* Time range pills */}
-                <div className="flex items-center gap-0.5">
+                <div className="flex items-center gap-1 border-l border-zinc-700/50 pl-3 shrink-0">
                     {TIME_RANGES.map(t => (
                         <button
                             key={t.label}
+                            type="button"
+                            aria-pressed={timeRange === t.hours}
                             onClick={() => setTimeRange(t.hours)}
-                            className={`rtx-journal-time-btn px-2 py-0.5 text-[12px] font-normal rounded transition-colors ${timeRange === t.hours
-                                ? 'bg-zinc-600 text-white'
-                                : 'text-zinc-400'
+                            className={`rtx-journal-control rtx-journal-time-btn h-7 min-w-[42px] border px-2.5 py-0 text-[13px] font-medium transition-colors ${timeRange === t.hours
+                                ? 'border-zinc-500 bg-zinc-600 text-white'
+                                : 'border-transparent text-zinc-400 hover:border-zinc-700 hover:bg-zinc-800/70 hover:text-zinc-200'
                                 }`}
                         >
                             {t.label}
@@ -455,21 +691,22 @@ export function JournalTab() {
                 </div>
 
                 {/* Text search */}
-                <div className="flex items-center gap-1 flex-1 min-w-[120px]">
-                    <Icon name="search" size="xs" className="text-zinc-500" />
+                <div className="relative h-7 min-w-[220px] max-w-[400px] flex-[1_1_260px]">
+                    <Icon name="search" size="sm" className="pointer-events-none absolute left-2 top-1/2 z-[1] -translate-y-1/2 text-zinc-500" />
                     <input
                         type="text"
+                        aria-label="Filter journal messages"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         placeholder="Filter messages…"
-                        className="flex-1 bg-zinc-800 text-zinc-300 text-[12px] font-normal border border-zinc-700 rounded px-1.5 py-0.5 outline-none focus:border-zinc-600 placeholder:text-zinc-600"
+                        className="rtx-journal-control h-7 w-full border border-zinc-600 bg-zinc-800 py-0 pl-7 pr-2 text-[13px] font-normal text-zinc-200 outline-none placeholder:text-zinc-500 hover:border-zinc-500"
                     />
                 </div>
 
-                <div className="flex-1" />
+                <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
 
                 {/* Log count */}
-                <span className="text-[12px] font-normal text-zinc-500">
+                <span className="min-w-[88px] text-right text-[13px] font-normal text-zinc-400 whitespace-nowrap">
                     {filteredLogs.length} entries
                 </span>
 
@@ -477,7 +714,7 @@ export function JournalTab() {
                     data-testid="last-trade-latency"
                     role="status"
                     aria-live="polite"
-                    className="text-[12px] font-normal text-zinc-400 whitespace-nowrap"
+                    className="min-w-[196px] border-l border-zinc-700/50 pl-3 text-[13px] font-normal text-zinc-400 whitespace-nowrap"
                     title="Latest locally measured total order-attempt time for this broker and account"
                 >
                     Last trade latency: {formatLatencyMs(scopedLastTradeLatency)}
@@ -486,17 +723,17 @@ export function JournalTab() {
                 <button
                     type="button"
                     onClick={() => { void copyFilteredJournal(); }}
-                    disabled={!scopeHasLoaded || filteredLogs.length === 0}
+                    disabled={!ownsCurrentRequest || filteredLogs.length === 0}
                     aria-label="Copy filtered journal"
                     title={`Copy ${filteredLogs.length} filtered journal ${filteredLogs.length === 1 ? 'entry' : 'entries'}`}
-                    className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[12px] font-normal transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${copyStatus === 'copied'
+                    className={`rtx-journal-control flex h-7 min-w-[78px] items-center justify-center gap-1.5 border px-2.5 py-0 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${copyStatus === 'copied'
                         ? 'border-emerald-700 text-emerald-400'
                         : copyStatus === 'error'
                             ? 'border-red-800 text-red-400'
                             : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
                         }`}
                 >
-                    <Icon name={copyStatus === 'copied' ? 'check' : 'copy'} size="xs" />
+                    <Icon name={copyStatus === 'copied' ? 'check' : 'copy'} size="sm" />
                     {copyStatus === 'copied' ? 'Copied' : copyStatus === 'error' ? 'Failed' : 'Copy'}
                 </button>
                 <span role="status" aria-live="polite" className="sr-only">
@@ -512,7 +749,7 @@ export function JournalTab() {
                     onClick={() => setAutoScroll(current => !current)}
                     aria-pressed={autoScroll}
                     title="Toggle auto-follow newest entries"
-                    className={`rounded border px-1.5 py-0.5 text-[12px] font-normal transition-colors ${autoScroll
+                    className={`rtx-journal-control rtx-journal-auto h-7 min-w-[68px] border px-2.5 py-0 text-[13px] font-medium transition-colors ${autoScroll
                         ? 'border-zinc-600 bg-blue-950/30 text-blue-400'
                         : 'border-zinc-700 text-zinc-500 hover:border-zinc-500'
                         }`}
@@ -523,13 +760,14 @@ export function JournalTab() {
                 <button
                     type="button"
                     onClick={refreshJournal}
-                    disabled={!isAuthenticated || isLoading || isRefreshing}
+                    disabled={!isAuthenticated || isFilterSettling || isLoading || isRefreshing}
                     aria-label="Refresh journal"
-                    className="flex items-center gap-1 rounded border border-zinc-700 px-1.5 py-0.5 text-[12px] font-normal text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rtx-journal-control flex h-7 min-w-[108px] items-center justify-center gap-1.5 border border-zinc-700 px-2.5 py-0 text-[13px] font-medium text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                    <Icon name="refresh" size="xs" className={isLoading || isRefreshing ? 'animate-spin' : ''} />
+                    <Icon name="refresh" size="sm" className={isLoading || isRefreshing ? 'animate-spin' : ''} />
                     {isLoading ? 'Loading…' : isRefreshing ? 'Refreshing…' : 'Refresh'}
                 </button>
+                </div>
             </div>
 
             {/* ── Status rows ──────────────────────────────────────────────── */}
@@ -573,54 +811,27 @@ export function JournalTab() {
 
             {/* ── Log table ────────────────────────────────────────────────── */}
             {isAuthenticated && scopeHasLoaded && filteredLogs.length > 0 && (
-                <div
-                    ref={tableBodyRef}
-                    onScroll={handleScroll}
-                    className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700"
-                >
-                    <table className="rtx-journal-table w-full text-left border-collapse font-mono">
-                        <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] uppercase tracking-normal border-b border-zinc-600">
-                            <tr className="h-[30px]">
-                                <th className="p-1 pl-3 border-r border-zinc-700 w-36 whitespace-nowrap">Time</th>
-                                <th className="p-1 border-r border-zinc-700 w-16">Code</th>
-                                <th className="p-1 border-r border-zinc-700 w-20">Type</th>
-                                <th className="p-1 border-r border-zinc-700 w-28">Source</th>
-                                <th className="p-1 border-r border-zinc-700 w-24 whitespace-nowrap">Latency</th>
-                                <th className="p-1 pl-2">Message</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800/30 text-[13px] leading-[19.5px] font-normal">
-                            {filteredLogs.map((log, i) => (
-                                <tr
-                                    key={log.id ?? log.client_order_id ?? log.request_id ?? log.position_ticket ?? log.order_ticket ?? `${log.datetime}-${log.code}-${log.type}-${i}`}
-                                    className={`${getRowBg(log.type_text, i % 2 === 0)} h-[30px] hover:brightness-125 transition-all`}
-                                >
-                                    <td className="p-1 pl-3 border-r border-zinc-800/50 text-zinc-500 whitespace-nowrap">
-                                        {formatDateTime(log.datetime)}
-                                    </td>
-                                    <td className={`p-1 border-r border-zinc-800/50 font-normal ${Number(log.code) ? 'text-red-400' : 'text-zinc-500'}`}>
-                                        {log.code_text || (log.code === 0 ? 'OK' : String(log.code ?? ''))}
-                                    </td>
-                                    <td className="p-1 border-r border-zinc-800/50">
-                                        <span className={`font-normal uppercase ${getTypeColor(log.type_text)}`}>
-                                            {log.type_text || 'All'}
-                                        </span>
-                                    </td>
-                                    <td className="p-1 border-r border-zinc-800/50 text-zinc-400 truncate max-w-[110px]" title={log.source}>
-                                        {log.source}
-                                    </td>
-                                    <td className="p-1 border-r border-zinc-800/50 text-zinc-400 whitespace-nowrap">
-                                        {formatLatencyMs(log.latency_ms)}
-                                    </td>
-                                    <td className={`p-1 pl-2 ${getTypeColor(log.type_text)} leading-snug`}>
-                                        {log.message}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <JournalLogTable
+                    logs={filteredLogs}
+                    autoScroll={autoScroll}
+                    onAutoScrollChange={handleAutoScrollChange}
+                />
             )}
         </div>
+    );
+}
+
+const MemoizedJournalTabSurface = React.memo(JournalTabSurface);
+MemoizedJournalTabSurface.displayName = 'JournalTabSurface';
+
+export function JournalTab() {
+    const isAuthenticated = useAppStore(state => state.isAuthenticated);
+    const sessionScope = useBrokerAccountSessionScope();
+
+    return (
+        <MemoizedJournalTabSurface
+            isAuthenticated={isAuthenticated}
+            sessionScope={sessionScope}
+        />
     );
 }

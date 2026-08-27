@@ -122,6 +122,24 @@ describe('JournalTab', () => {
         expect(screen.getByText('1 entries')).toBeInTheDocument();
     });
 
+    it('uses readable square desktop controls across the Journal toolbar', async () => {
+        journalHarness.getLogs.mockResolvedValue({ count: 0, logs: [] });
+
+        render(<JournalTab />);
+        await screen.findByText('No journal entries for the selected filters');
+
+        const typeSelect = screen.getByRole('combobox', { name: 'Journal type' });
+        const modeSelect = screen.getByRole('combobox', { name: 'Journal mode' });
+        const searchInput = screen.getByRole('textbox', { name: 'Filter journal messages' });
+        const timeButton = screen.getByRole('button', { name: '24h' });
+
+        expect(typeSelect).toHaveClass('rtx-journal-control', 'h-7', 'text-[13px]');
+        expect(modeSelect).toHaveClass('rtx-journal-control', 'h-7', 'text-[13px]');
+        expect(searchInput).toHaveClass('rtx-journal-control', 'h-7', 'text-[13px]');
+        expect(timeButton).toHaveClass('rtx-journal-control', 'h-7', 'text-[13px]');
+        expect(typeSelect.closest('.rtx-journal-toolbar')).not.toBeNull();
+    });
+
     it('hydrates the last completed trade latency recorded before Journal mounts', async () => {
         journalHarness.getLogs.mockResolvedValue({ count: 0, logs: [] });
         recordTradeOrderLatency({
@@ -211,7 +229,9 @@ describe('JournalTab', () => {
         expect(await screen.findByText('Recent order filled')).toBeInTheDocument();
         expect(screen.getByText('Older connection event')).toBeInTheDocument();
 
-        fireEvent.click(screen.getByRole('button', { name: '1h' }));
+        const oneHourButton = screen.getByRole('button', { name: '1h' });
+        fireEvent.click(oneHourButton);
+        expect(oneHourButton).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByText('Recent order filled')).toBeInTheDocument();
         expect(screen.queryByText('Older connection event')).not.toBeInTheDocument();
 
@@ -238,6 +258,158 @@ describe('JournalTab', () => {
             { mode: 0, type: 6 },
             { signal: expect.any(AbortSignal) },
         );
+    });
+
+    it('virtualizes a 1000-entry response while copy and scrolling still use the full result', async () => {
+        const now = nowSeconds();
+        const logs = Array.from({ length: 1000 }, (_, index) => makeLog({
+            id: `large-${index}`,
+            datetime: index < 40 ? now - index * 5 : now - 2 * 60 * 60 - index,
+            message: `Journal row ${index}`,
+        }));
+        journalHarness.getLogs.mockResolvedValue({ count: logs.length, logs });
+
+        render(<JournalTab />);
+
+        expect(await screen.findByText('Journal row 0')).toBeInTheDocument();
+        expect(screen.getByText('1000 entries')).toBeInTheDocument();
+        expect(screen.getAllByTestId('journal-rendered-row').length).toBeLessThan(50);
+        expect(screen.queryByText('Journal row 999')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Copy filtered journal' }));
+        await waitFor(() => expect(clipboardWriteText).toHaveBeenCalledOnce());
+        expect(String(clipboardWriteText.mock.calls[0]?.[0])).toContain('Journal row 999');
+
+        const viewport = screen.getByTestId('journal-scroll-viewport');
+        act(() => {
+            viewport.scrollTop = 1000 * 30;
+            fireEvent.scroll(viewport);
+        });
+
+        expect(await screen.findByText('Journal row 999')).toBeInTheDocument();
+        expect(screen.getAllByTestId('journal-rendered-row').length).toBeLessThan(50);
+
+        const oneHourButton = screen.getByRole('button', { name: '1h' });
+        fireEvent.click(oneHourButton);
+        expect(oneHourButton).toHaveAttribute('aria-pressed', 'true');
+        expect(await screen.findByText('40 entries')).toBeInTheDocument();
+        expect(screen.getAllByTestId('journal-rendered-row').length).toBeLessThan(50);
+        expect(journalHarness.getLogs).toHaveBeenCalledTimes(1);
+    });
+
+    it('updates Mode immediately and keeps the current rows mounted during the refetch', async () => {
+        const standardLoad = deferred<JournalResponse>();
+        journalHarness.getLogs
+            .mockResolvedValueOnce({
+                count: 1,
+                logs: [makeLog({ id: 'full-row', message: 'Existing full mode row' })],
+            })
+            .mockReturnValueOnce(standardLoad.promise);
+
+        render(<JournalTab />);
+        expect(await screen.findByText('Existing full mode row')).toBeInTheDocument();
+
+        const [, modeSelect] = screen.getAllByRole('combobox');
+        fireEvent.change(modeSelect, { target: { value: '0' } });
+
+        expect(modeSelect).toHaveValue('0');
+        expect(screen.getByText('Existing full mode row')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Copy filtered journal' })).toBeDisabled();
+        await waitFor(() => expect(journalHarness.getLogs).toHaveBeenCalledTimes(2));
+
+        await act(async () => {
+            standardLoad.resolve({
+                count: 1,
+                logs: [makeLog({ id: 'standard-row', message: 'Loaded standard mode row' })],
+            });
+            await standardLoad.promise;
+        });
+
+        expect(screen.getByText('Loaded standard mode row')).toBeInTheDocument();
+        expect(screen.queryByText('Existing full mode row')).not.toBeInTheDocument();
+    });
+
+    it('updates Type immediately without showing a false empty state during the refetch', async () => {
+        const systemLoad = deferred<JournalResponse>();
+        journalHarness.getLogs
+            .mockResolvedValueOnce({
+                count: 1,
+                logs: [makeLog({ id: 'trade-row', type: 6, type_text: 'Trade', message: 'Existing trade row' })],
+            })
+            .mockReturnValueOnce(systemLoad.promise);
+
+        render(<JournalTab />);
+        expect(await screen.findByText('Existing trade row')).toBeInTheDocument();
+
+        const typeSelect = screen.getByRole('combobox', { name: 'Journal type' });
+        fireEvent.change(typeSelect, { target: { value: '2' } });
+
+        expect(typeSelect).toHaveValue('2');
+        expect(screen.getByText('Existing trade row')).toBeInTheDocument();
+        expect(screen.queryByText('No journal entries for the selected filters')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Copy filtered journal' })).toBeDisabled();
+        await waitFor(() => expect(journalHarness.getLogs).toHaveBeenCalledTimes(2));
+        expect(journalHarness.getLogs).toHaveBeenNthCalledWith(
+            2,
+            { mode: 2, type: 2 },
+            { signal: expect.any(AbortSignal) },
+        );
+
+        await act(async () => {
+            systemLoad.resolve({
+                count: 1,
+                logs: [makeLog({ id: 'system-row', type: 2, type_text: 'System', message: 'Loaded system row' })],
+            });
+            await systemLoad.promise;
+        });
+
+        expect(screen.getByText('Loaded system row')).toBeInTheDocument();
+        expect(screen.queryByText('Existing trade row')).not.toBeInTheDocument();
+    });
+
+    it('aborts superseded Mode requests and commits only the latest selection', async () => {
+        const standardLoad = deferred<JournalResponse>();
+        const errorsLoad = deferred<JournalResponse>();
+        journalHarness.getLogs
+            .mockResolvedValueOnce({
+                count: 1,
+                logs: [makeLog({ id: 'full-row', message: 'Initial full row' })],
+            })
+            .mockReturnValueOnce(standardLoad.promise)
+            .mockReturnValueOnce(errorsLoad.promise);
+
+        render(<JournalTab />);
+        expect(await screen.findByText('Initial full row')).toBeInTheDocument();
+
+        const [, modeSelect] = screen.getAllByRole('combobox');
+        fireEvent.change(modeSelect, { target: { value: '0' } });
+        await waitFor(() => expect(journalHarness.getLogs).toHaveBeenCalledTimes(2));
+        const standardSignal = journalHarness.getLogs.mock.calls[1][1].signal as AbortSignal;
+
+        fireEvent.change(modeSelect, { target: { value: '1' } });
+        await waitFor(() => expect(journalHarness.getLogs).toHaveBeenCalledTimes(3));
+        expect(standardSignal.aborted).toBe(true);
+
+        await act(async () => {
+            standardLoad.resolve({
+                count: 1,
+                logs: [makeLog({ id: 'stale-standard', message: 'Stale standard row' })],
+            });
+            await standardLoad.promise;
+        });
+        expect(screen.queryByText('Stale standard row')).not.toBeInTheDocument();
+
+        await act(async () => {
+            errorsLoad.resolve({
+                count: 1,
+                logs: [makeLog({ id: 'errors-row', code: 500, message: 'Latest errors row' })],
+            });
+            await errorsLoad.promise;
+        });
+
+        expect(modeSelect).toHaveValue('1');
+        expect(screen.getByText('Latest errors row')).toBeInTheDocument();
+        expect(screen.queryByText('Stale standard row')).not.toBeInTheDocument();
     });
 
     it('copies only rows inside the selected 1h, 6h, 24h, and 7d time filter', async () => {

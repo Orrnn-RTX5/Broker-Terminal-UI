@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useAppStore, type Position } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import api from '../services/api';
@@ -106,10 +107,17 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
     // Track price direction for color flash
     const [bidFlash, setBidFlash] = useState<'up' | 'down' | ''>('');
     const [askFlash, setAskFlash] = useState<'up' | 'down' | ''>('');
+    // MT5 colors each side by its own last tick direction (blue = up, red =
+    // down) and the color persists until the next tick — unlike the transient
+    // *Flash states above, which clear after 350ms.
+    const [bidDir, setBidDir] = useState<'up' | 'down'>('up');
+    const [askDir, setAskDir] = useState<'up' | 'down'>('up');
 
     useEffect(() => {
         if (prevBidRef.current && bid !== prevBidRef.current) {
-            setBidFlash(bid > prevBidRef.current ? 'up' : 'down');
+            const dir = bid > prevBidRef.current ? 'up' : 'down';
+            setBidFlash(dir);
+            setBidDir(dir);
             const t = setTimeout(() => setBidFlash(''), 350);
             prevBidRef.current = bid;
             return () => clearTimeout(t);
@@ -119,7 +127,9 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
 
     useEffect(() => {
         if (prevAskRef.current && ask !== prevAskRef.current) {
-            setAskFlash(ask > prevAskRef.current ? 'up' : 'down');
+            const dir = ask > prevAskRef.current ? 'up' : 'down';
+            setAskFlash(dir);
+            setAskDir(dir);
             const t = setTimeout(() => setAskFlash(''), 350);
             prevAskRef.current = ask;
             return () => clearTimeout(t);
@@ -270,29 +280,90 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
     };
     const desc = descriptions[symbol] || symbol;
 
-    const btnWidth = isAdvancedMode ? 95 : 90;
-    const btnHeight = isAdvancedMode ? 55 : 52;
-    const centerWidth = isAdvancedMode ? 48 : 48;
+    const btnWidth = isAdvancedMode ? 110 : 104;
+    const btnHeight = 34;
+    const centerWidth = isAdvancedMode ? 114 : 110;
 
     // Shared button style for BUY and SELL — identical structure
     const sharedButtonStyle: React.CSSProperties = {
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '6px 8px',
-        width: btnWidth,
+        gap: 8,
+        padding: '5px 10px',
+        width: 'auto',
         minWidth: btnWidth,
-        maxWidth: btnWidth,
+        flexShrink: 0,
         height: btnHeight,
         minHeight: btnHeight,
         maxHeight: btnHeight,
         border: '1px solid rgba(255,255,255,0.1)',
         cursor: !canSubmitOrder ? 'not-allowed' : 'pointer',
         position: 'relative',
-        opacity: canSubmitOrder ? 1 : 0.5,
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        opacity: 1,
+        filter: canSubmitOrder ? 'none' : 'brightness(0.78) saturate(0.75)',
+        transition: 'background 150ms ease, filter 150ms ease',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
         boxSizing: 'border-box',
+    };
+
+    const renderTradeButton = (side: 'buy' | 'sell') => {
+        const isBuy = side === 'buy';
+        const price = isBuy ? askPrice : bidPrice;
+        const priceText = `${price.small}${price.big}${price.pip}`;
+        const priceFlash = isBuy ? askFlash : bidFlash;
+        const priceFlashColor = priceFlash === 'down'
+            ? '#ff6b6b'
+            : isBuy ? '#6b9fff' : '#6bff6b';
+        const restingBackground = isBuy
+            ? 'linear-gradient(180deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%)'
+            : 'linear-gradient(180deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%)';
+        const activeBackground = isBuy
+            ? 'linear-gradient(180deg, #1e3a8a 0%, #172554 100%)'
+            : 'linear-gradient(180deg, #991b1b 0%, #7f1d1d 100%)';
+        const hoverBackground = isBuy
+            ? 'linear-gradient(180deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)'
+            : 'linear-gradient(180deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%)';
+        const label = isBuy ? 'BUY' : 'SELL';
+
+        return (
+            <button
+                type="button"
+                className="rtx-oct-trade-button"
+                data-side={side}
+                data-dir={isBuy ? askDir : bidDir}
+                data-active={flashSide === side}
+                onClick={() => placeOrder(side)}
+                disabled={!canSubmitOrder}
+                title={orderBlockedReason}
+                aria-label={`${label} ${symbol} at ${priceText}`}
+                style={{
+                    ...sharedButtonStyle,
+                    background: flashSide === side ? activeBackground : restingBackground,
+                    borderRadius: 0,
+                }}
+                onMouseEnter={(event) => {
+                    if (!flashSide) event.currentTarget.style.background = hoverBackground;
+                }}
+                onMouseLeave={(event) => {
+                    if (!flashSide) event.currentTarget.style.background = restingBackground;
+                }}
+            >
+                {isBuy && <span className="rtx-oct-side-label">{label}</span>}
+                <span
+                    className="rtx-oct-price"
+                    style={{
+                        textShadow: priceFlash
+                            ? `0 0 8px ${priceFlashColor}`
+                            : '0 1px 2px rgba(0,0,0,0.45)',
+                    }}
+                >
+                    {priceText}
+                </span>
+                {!isBuy && <span className="rtx-oct-side-label">{label}</span>}
+            </button>
+        );
     };
 
     return (
@@ -301,92 +372,63 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
             style={{ pointerEvents: 'auto', fontFamily: 'var(--font-sans)', display: 'inline-block', width: 'fit-content' }}
         >
             <div
+                data-testid="one-click-trading-row"
                 style={{
                     display: 'flex',
-                    background: 'rgba(15, 23, 42, 0.22)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: '#111827',
+                    backdropFilter: 'none',
+                    WebkitBackdropFilter: 'none',
+                    border: '1px solid rgba(255,255,255,0.18)',
                     borderRadius: '0px',
                     overflow: 'hidden',
-                    boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.05), 0 10px 40px rgba(0,0,0,0.5)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 20px rgba(0,0,0,0.42)',
                 }}
             >
-                {/* ── BUY Button ── */}
-                <button
-                    onClick={() => placeOrder('buy')}
-                    disabled={!canSubmitOrder}
-                    title={orderBlockedReason}
-                    style={{
-                        ...sharedButtonStyle,
-                        background: flashSide === 'buy'
-                            ? 'linear-gradient(180deg, rgba(30,58,138,0.66) 0%, rgba(30,58,138,0.74) 100%)'
-                            : 'linear-gradient(180deg, rgba(37,99,235,0.68) 0%, rgba(29,78,216,0.68) 50%, rgba(30,64,175,0.78) 100%)',
-                        borderRight: 'none',
-                        borderRadius: '0px'
-                    }}
-                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(59,130,246,0.76) 0%, rgba(37,99,235,0.76) 50%, rgba(29,78,216,0.84) 100%)'; }}
-                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(37,99,235,0.68) 0%, rgba(29,78,216,0.68) 50%, rgba(30,64,175,0.78) 100%)'; }}
-                >
-                    <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.86)', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                        BUY
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1, marginTop: 2 }}>
-                        <span className="rtx-oct-digit-small" style={{
-                            color: '#fff',
-                            textShadow: askFlash === 'up' ? '0 0 8px #6b9fff' : askFlash === 'down' ? '0 0 8px #ff6b6b' : 'none',
-                        }}>
-                            {askPrice.small}
-                        </span>
-                        <span className="rtx-oct-digit-big" style={{
-                            color: '#fff',
-                            textShadow: askFlash === 'up' ? '0 0 12px #6b9fff' : askFlash === 'down' ? '0 0 12px #ff6b6b' : '0 1px 3px rgba(0,0,0,0.5)',
-                        }}>
-                            {askPrice.big}
-                        </span>
-                        {askPrice.pip && (
-                            <span className="rtx-oct-digit-pip" style={{
-                                color: '#fff',
-                                position: 'relative', top: -8,
-                                textShadow: askFlash === 'up' ? '0 0 8px #6b9fff' : askFlash === 'down' ? '0 0 8px #ff6b6b' : 'none',
-                            }}>
-                                {askPrice.pip}
-                            </span>
-                        )}
-                    </div>
-                </button>
+                {renderTradeButton('sell')}
 
                 {/* ── Volume Control (Center) ── */}
                 <div
+                    className="rtx-oct-volume-control"
+                    data-testid="one-click-volume-control"
                     style={{
                         display: 'flex',
-                        flexDirection: 'column',
+                        flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '3px 4px',
+                        gap: 3,
+                        padding: 3,
+                        width: centerWidth,
                         minWidth: centerWidth,
+                        maxWidth: centerWidth,
                         height: btnHeight,
                         minHeight: btnHeight,
                         maxHeight: btnHeight,
-                        background: 'linear-gradient(180deg, rgba(31,41,55,0.72) 0%, rgba(17,24,39,0.76) 100%)',
-                        borderLeft: '1px solid rgba(255,255,255,0.15)',
-                        borderRight: '1px solid rgba(255,255,255,0.15)',
+                        background: 'linear-gradient(180deg, #1f2937 0%, #111827 100%)',
+                        borderLeft: '1px solid rgba(255,255,255,0.22)',
+                        borderRight: '1px solid rgba(255,255,255,0.22)',
                         boxSizing: 'border-box',
                     }}
                 >
                     <button
-                        onClick={() => setVolume(v => Math.round((v + 0.01) * 100) / 100)}
+                        type="button"
+                        aria-label="Decrease lot size"
+                        title="Decrease lot size"
+                        data-at-min={volume <= 0.01}
+                        onClick={() => setVolume(v => Math.max(0.01, Math.round((v - 0.01) * 100) / 100))}
                         style={{
-                            background: 'none', border: 'none', color: '#8a8a8f', cursor: 'pointer',
-                            fontSize: 9, lineHeight: 1, padding: '1px 0',
+                            background: 'none', border: 'none', color: '#b8c1d1', cursor: 'pointer',
+                            width: 24, height: 28, minWidth: 24,
+                            display: 'grid', placeItems: 'center', padding: 0,
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = '#d1d5db'}
-                        onMouseLeave={(e) => e.currentTarget.style.color = '#8a8a8f'}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#ffffff'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#b8c1d1'}
                     >
-                        ▲
+                        <ChevronDown size={14} strokeWidth={2.5} aria-hidden="true" />
                     </button>
                     <input
+                        aria-label="Lot size"
                         type="number"
+                        inputMode="decimal"
                         step={0.01}
                         min={0.01}
                         value={volume}
@@ -395,12 +437,12 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                             if (!isNaN(val) && val >= 0) setVolume(Math.round(val * 100) / 100);
                         }}
                         style={{
-                            width: 42, height: 20,
-                            background: 'rgba(15,23,42,0.78)',
-                            border: '1px solid #374151',
+                            width: 48, height: 24,
+                            background: '#0f172a',
+                            border: '1px solid #526174',
                             borderRadius: 0,
                             color: '#fff',
-                            fontSize: 11,
+                            fontSize: 12,
                             fontFamily: 'monospace',
                             fontWeight: 700,
                             textAlign: 'center',
@@ -409,61 +451,23 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         }}
                     />
                     <button
-                        onClick={() => setVolume(v => Math.max(0.01, Math.round((v - 0.01) * 100) / 100))}
+                        type="button"
+                        aria-label="Increase lot size"
+                        title="Increase lot size"
+                        onClick={() => setVolume(v => Math.round((v + 0.01) * 100) / 100)}
                         style={{
-                            background: 'none', border: 'none', color: '#8a8a8f', cursor: 'pointer',
-                            fontSize: 9, lineHeight: 1, padding: '1px 0',
+                            background: 'none', border: 'none', color: '#b8c1d1', cursor: 'pointer',
+                            width: 24, height: 28, minWidth: 24,
+                            display: 'grid', placeItems: 'center', padding: 0,
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = '#d1d5db'}
-                        onMouseLeave={(e) => e.currentTarget.style.color = '#8a8a8f'}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#ffffff'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#b8c1d1'}
                     >
-                        ▼
+                        <ChevronUp size={14} strokeWidth={2.5} aria-hidden="true" />
                     </button>
                 </div>
 
-                {/* ── SELL Button ── */}
-                <button
-                    onClick={() => placeOrder('sell')}
-                    disabled={!canSubmitOrder}
-                    title={orderBlockedReason}
-                    style={{
-                        ...sharedButtonStyle,
-                        background: flashSide === 'sell'
-                            ? 'linear-gradient(180deg, rgba(153,27,27,0.66) 0%, rgba(127,29,29,0.74) 100%)'
-                            : 'linear-gradient(180deg, rgba(220,38,38,0.68) 0%, rgba(185,28,28,0.68) 50%, rgba(153,27,27,0.78) 100%)',
-                        borderLeft: 'none',
-                        borderRadius: '0px'
-                    }}
-                    onMouseEnter={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(239,68,68,0.76) 0%, rgba(220,38,38,0.76) 50%, rgba(185,28,28,0.84) 100%)'; }}
-                    onMouseLeave={(e) => { if (!flashSide) e.currentTarget.style.background = 'linear-gradient(180deg, rgba(220,38,38,0.68) 0%, rgba(185,28,28,0.68) 50%, rgba(153,27,27,0.78) 100%)'; }}
-                >
-                    <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.86)', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                        SELL
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1, marginTop: 2 }}>
-                        <span className="rtx-oct-digit-small" style={{
-                            color: '#fff',
-                            textShadow: bidFlash === 'down' ? '0 0 8px #ff6b6b' : bidFlash === 'up' ? '0 0 8px #6bff6b' : 'none',
-                        }}>
-                            {bidPrice.small}
-                        </span>
-                        <span className="rtx-oct-digit-big" style={{
-                            color: '#fff',
-                            textShadow: bidFlash === 'down' ? '0 0 12px #ff6b6b' : bidFlash === 'up' ? '0 0 12px #6bff6b' : '0 1px 3px rgba(0,0,0,0.5)',
-                        }}>
-                            {bidPrice.big}
-                        </span>
-                        {bidPrice.pip && (
-                            <span className="rtx-oct-digit-pip" style={{
-                                color: '#fff',
-                                position: 'relative', top: -8,
-                                textShadow: bidFlash === 'down' ? '0 0 8px #ff6b6b' : bidFlash === 'up' ? '0 0 8px #6bff6b' : 'none',
-                            }}>
-                                {bidPrice.pip}
-                            </span>
-                        )}
-                    </div>
-                </button>
+                {renderTradeButton('buy')}
             </div>
 
             {/* Invalid volume warning */}
@@ -473,7 +477,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     color: '#f87171',
                     textAlign: 'center',
                     padding: '3px 8px',
-                    background: 'rgba(127, 29, 29, 0.6)',
+                    background: '#7f1d1d',
                     borderRadius: 0,
                     border: '1px solid #7f1d1d',
                     borderTop: 'none',
@@ -487,7 +491,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     color: '#fbbf24',
                     textAlign: 'center',
                     padding: '3px 8px',
-                    background: 'rgba(120, 53, 15, 0.62)',
+                    background: '#78350f',
                     borderRadius: 0,
                     border: '1px solid rgba(245, 158, 11, 0.45)',
                     borderTop: 'none',
@@ -501,7 +505,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     color: '#fbbf24',
                     textAlign: 'center',
                     padding: '3px 8px',
-                    background: 'rgba(120, 53, 15, 0.62)',
+                    background: '#78350f',
                     borderRadius: 0,
                     border: '1px solid rgba(245, 158, 11, 0.45)',
                     borderTop: 'none',
@@ -515,7 +519,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     color: '#fbbf24',
                     textAlign: 'center',
                     padding: '3px 8px',
-                    background: 'rgba(120, 53, 15, 0.62)',
+                    background: '#78350f',
                     borderRadius: 0,
                     border: '1px solid rgba(245, 158, 11, 0.45)',
                     borderTop: 'none',
@@ -529,7 +533,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     color: '#fecaca',
                     textAlign: 'center',
                     padding: '3px 8px',
-                    background: 'rgba(127, 29, 29, 0.72)',
+                    background: '#7f1d1d',
                     borderRadius: 0,
                     border: '1px solid #7f1d1d',
                     borderTop: 'none',

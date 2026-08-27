@@ -447,7 +447,7 @@ export const MenuBar = () => {
 
     return (
         <>
-            <div className="h-6 bg-[#131316] [.rtx-advanced-view_&]:bg-[#fcfcfc] border-b border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] flex items-center px-1 select-none z-50 relative font-segoe" ref={menuRef}>
+            <div className="h-6 bg-[#131316] [.rtx-advanced-view_&]:bg-[var(--bg-secondary)] border-b border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] flex items-center px-1 select-none z-50 relative font-segoe" ref={menuRef}>
                 {Object.keys(menuItems).map((key) => (
                     <div key={key} className="relative">
                         <button

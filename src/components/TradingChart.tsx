@@ -6,12 +6,13 @@
  * - Proper candle aggregation
  */
 
-import React, { useEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
 import {
   createChart,
   createSeriesMarkers,
   ColorType,
   CrosshairMode,
+  LineStyle,
   TickMarkType,
   CandlestickSeries,
   LineSeries,
@@ -19,7 +20,7 @@ import {
   AreaSeries,
   HistogramSeries,
 } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
+import type { IChartApi, IPriceLine, ISeriesApi, Time } from 'lightweight-charts';
 import { useToolbarState } from '../hooks/useToolbarState';
 import { useCrosshair } from '../hooks/useCrosshair';
 import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
@@ -30,6 +31,9 @@ import { useBrokerAccountSessionScope } from '../hooks/useBrokerAccountSessionSc
 import { useTradingChartVisibleRuntime } from '../hooks/useTradingChartVisibleRuntime';
 import { createChartInteractionOwnership } from '../utils/chartInteractionOwnership';
 import { createChartPostInteractionCoordinator } from '../utils/chartPostInteractionCoordinator';
+import { RTX_ADVANCED_VIEW_CHANGE_EVENT } from '../utils/advancedViewRootClasses';
+import { scheduleChartThemeTransition } from '../utils/chartThemeTransition';
+import { refreshLightweightChartSurface } from '../utils/lightweightChartSurface';
 import { isLikelyAlwaysOpenCryptoSymbol } from '../utils/marketStatus';
 import { setLiveMarketDataFrozen } from '../services/liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
@@ -45,6 +49,11 @@ import { OneClickTrading } from './OneClickTrading';
 import { DrawingContextMenu } from './DrawingContextMenu';
 import { PriceDisplay } from './ui/PriceDisplay';
 import { getSymbolDigits } from '../utils/symbolUtils';
+import {
+  computeMinimumVisiblePriceSpan,
+  getPricePointFromDigits,
+  resolveSymbolPriceDigits,
+} from '../utils/chartPriceScale';
 import type { PeriodSeparator } from '../utils/periodSeparators';
 import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
 import { ChartContextMenu } from './ChartContextMenu';
@@ -109,6 +118,22 @@ import {
   getTradeLevelDragMinDistance,
   selectNearestTradeLevel,
 } from '../utils/tradeLevelDrag';
+import {
+  computeSignedPips,
+  createDockedLevelChip,
+  createEntryTradeControlBar,
+  createTradeLevelControlBar,
+  estimateTradeLevelMoney,
+  estimateTradeMoneyAtPrice,
+  formatMoneyLabel,
+  formatPipsLabel,
+} from '../utils/chartTradeControls';
+import {
+  buildTradeShareUrl,
+  copyTextToClipboard,
+  getSharedChartTrade,
+} from '../utils/tradeShareLink';
+import { computePriceAxisDragRange } from '../utils/priceAxisDragZoom';
 import {
   activateActiveChartSource,
   findLargestChartCanvas,
@@ -194,6 +219,13 @@ const TRADE_LEVEL_OPTIMISTIC_GRACE_MS = 15_000;
 const TRADE_LEVEL_HIT_AREA_PX = 24;
 const TRADE_LEVEL_MIN_DRAG_PX = 2;
 const TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS = 15_000;
+// A level-cross close is only GUESSED once the position has been missing this
+// long. Routine feed gaps (REST refresh races, WS commits) are shorter, so a
+// still-open trade hovering at its SL/TP no longer blinks into a fake close.
+const TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS = 1_500;
+// One backend refresh per window for the whole position cluster: a dozen
+// trades riding their levels must not turn every tick into a request storm.
+const TRADE_LEVEL_CROSS_REFRESH_MIN_DISPATCH_INTERVAL_MS = 3_000;
 const TRADE_LEVEL_BADGE_LEFT_INSET_PX = 10;
 const TRADE_LEVEL_BADGE_STACK_OFFSET_PX = 76;
 const LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX = 52;
@@ -376,7 +408,9 @@ const TRADING_VIEW_HANDLE_SCROLL = {
 } as const;
 
 const TRADING_VIEW_HANDLE_SCALE = {
-  axisPressedMouseMove: { time: true, price: true },
+  // Price-axis dragging is custom (MT5-style gentle exponential curve driven
+  // by computePriceAxisDragRange); the native hyperbolic handler stays off.
+  axisPressedMouseMove: { time: true, price: false },
   axisDoubleClickReset: { time: true, price: true },
   mouseWheel: true,
   pinch: true,
@@ -624,6 +658,8 @@ interface OverlayNodeData {
   markerSide?: TradeSide;
   labelOffsetX?: number;
   labelOffsetY?: number;
+  /** Extra vertical shift (px) applied after the price coordinate for price-badge nodes. */
+  pixelOffsetY?: number;
   resolveTime?: () => number | null;
   resolveEndPrice?: () => number | null;
   resolveEndTime?: () => number | null;
@@ -636,7 +672,7 @@ interface PriceLevelOptions {
   role?: TradeLevelRole;
   badgeOffsetIndex?: number;
   title?: string;
-  labelVariant?: 'badge' | 'lineText';
+  labelVariant?: 'badge' | 'lineText' | 'none';
   lineColor?: string;
   lineWidthPx?: number;
 }
@@ -648,6 +684,8 @@ interface TradingChartProps {
   panelId?: string;
   tradeAllowed?: boolean;
   isActive?: boolean;
+  /** Broker-authoritative quote precision from the authorized instrument catalog. */
+  priceDigits?: number;
 }
 
 export const TradingChart = React.memo(function TradingChart({
@@ -657,7 +695,10 @@ export const TradingChart = React.memo(function TradingChart({
   panelId,
   tradeAllowed = false,
   isActive = true,
+  priceDigits,
 }: TradingChartProps) {
+  const resolvedPriceDigits = resolveSymbolPriceDigits(symbol, priceDigits);
+  const resolvedPricePoint = getPricePointFromDigits(resolvedPriceDigits);
   const authToken = useAppStore((state) => state.authToken);
   const brokerAccountSessionScope = useBrokerAccountSessionScope();
   const visibleRuntime = useTradingChartVisibleRuntime({
@@ -749,7 +790,7 @@ export const TradingChart = React.memo(function TradingChart({
     seriesRef,
     containerRef,
     enabled: isActive && crosshairEnabled,
-    digits: getSymbolDigits(symbol),
+    digits: resolvedPriceDigits,
     timeframe,
     brokerOffsetSeconds: brokerTimeOffsetSec,
   });
@@ -809,7 +850,7 @@ export const TradingChart = React.memo(function TradingChart({
   const renderedLegendSignatureRef = useRef<string | null>(null);
 
   const updateLegendDOM = useCallback((o: number, h: number, l: number, c: number, v: number) => {
-    const digits = getSymbolDigits(symbol);
+    const digits = resolvedPriceDigits;
     const pending = {
       open: o.toFixed(digits),
       high: h.toFixed(digits),
@@ -849,7 +890,7 @@ export const TradingChart = React.memo(function TradingChart({
       return;
     }
     legendRenderFrameRef.current = window.requestAnimationFrame(flushLegendDOM);
-  }, [symbol]);
+  }, [resolvedPriceDigits]);
 
   useEffect(() => {
     renderedLegendSignatureRef.current = null;
@@ -934,6 +975,7 @@ export const TradingChart = React.memo(function TradingChart({
   const livePriceRef = useRef<number | null>(null);
   const livePriceScaleWidthRef = useRef<number | null>(null);
   const livePriceRepaintFrameRef = useRef<number | null>(null);
+  const repaintTradeOverlayGeometryRef = useRef<() => void>(() => undefined);
   const livePriceOverlayColorsRef = useRef<LivePriceOverlayColors>(
     getLivePriceOverlayColors(defaultChartProperties.colors, defaultChartProperties.colors.barUp)
   );
@@ -953,6 +995,7 @@ export const TradingChart = React.memo(function TradingChart({
   const isChartUserInteractingRef = useRef(false);
   const chartInteractionOwnershipRef = useRef<ReturnType<typeof createChartInteractionOwnership> | null>(null);
   const settleAutoScrollPolicyRef = useRef<() => void>(() => undefined);
+  const clearLocalChartPointerStateRef = useRef<() => void>(() => undefined);
   const postInteractionCallbacksRef = useRef({
     consumeHistory: () => undefined,
     prepareLiveModel: () => undefined,
@@ -1045,11 +1088,7 @@ export const TradingChart = React.memo(function TradingChart({
     if (chart && container) {
       const { offsetWidth, offsetHeight } = container;
       if (offsetWidth > 0 && offsetHeight > 0) {
-        try {
-          chart.applyOptions({ width: offsetWidth, height: offsetHeight });
-        } catch {
-          // Chart can be disposed during fast tab/workspace switches.
-        }
+        refreshLightweightChartSurface(chart, offsetWidth, offsetHeight);
       }
     }
 
@@ -1114,7 +1153,7 @@ export const TradingChart = React.memo(function TradingChart({
     const badge = livePriceBadgeRef.current;
     if (!line || !badge) return;
 
-    const digits = getSymbolDigits(symbol);
+    const digits = resolvedPriceDigits;
     const overlayColors = getLivePriceOverlayColors(
       livePriceColorPaletteRef.current,
       getLivePriceDirectionalColor(activeCandleTime, directionClose),
@@ -1131,7 +1170,7 @@ export const TradingChart = React.memo(function TradingChart({
     badge.style.color = overlayColors.badgeTextColor;
     badge.textContent = livePrice.toFixed(digits);
     badge.style.display = 'block';
-  }, [applyStableLivePriceHorizontalGeometry, getLivePriceDirectionalColor, symbol]);
+  }, [applyStableLivePriceHorizontalGeometry, getLivePriceDirectionalColor, resolvedPriceDigits]);
 
   const repaintLivePriceOverlayFromCurrentPrice = useCallback((activeCandle: Candle) => {
     const livePrice = Number(activeCandle.close);
@@ -1217,17 +1256,29 @@ export const TradingChart = React.memo(function TradingChart({
     return root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light');
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     const syncSkinState = () => {
       setIsAdvancedUntitledLight(
         root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light')
       );
     };
+    const handleAdvancedViewChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ isAdvancedUntitledLight?: boolean }>).detail;
+      if (typeof detail?.isAdvancedUntitledLight === 'boolean') {
+        setIsAdvancedUntitledLight(detail.isAdvancedUntitledLight);
+        return;
+      }
+      syncSkinState();
+    };
     syncSkinState();
     const observer = new MutationObserver(syncSkinState);
     observer.observe(root, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
+    window.addEventListener(RTX_ADVANCED_VIEW_CHANGE_EVENT, handleAdvancedViewChange);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener(RTX_ADVANCED_VIEW_CHANGE_EVENT, handleAdvancedViewChange);
+    };
   }, []);
 
   const chartColors = useMemo(
@@ -1243,6 +1294,7 @@ export const TradingChart = React.memo(function TradingChart({
     [chartColors, chartSettings.showGrid],
   );
   const chartThemeRef = useRef(chartTheme);
+  const previousAdvancedUntitledLightRef = useRef(isAdvancedUntitledLight);
 
   useEffect(() => {
     livePriceColorPaletteRef.current = chartColors;
@@ -1864,6 +1916,7 @@ export const TradingChart = React.memo(function TradingChart({
 
   useEffect(() => {
     if (!isActive) {
+      clearLocalChartPointerStateRef.current();
       forceSettleInteraction();
       return;
     }
@@ -1929,6 +1982,9 @@ export const TradingChart = React.memo(function TradingChart({
         borderColor: chartTheme.scaleBorder,
         scaleMargins: { top: 0.05, bottom: 0.28 },
         autoScale: !chartSettings.scaleFixOneToOne,
+        // Trade price-line labels must stay on their real price coordinate.
+        // Close prices intentionally overlap instead of being collision-shifted.
+        alignLabels: false,
       },
       timeScale: {
         ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
@@ -2000,9 +2056,40 @@ export const TradingChart = React.memo(function TradingChart({
     };
     settleAutoScrollPolicyRef.current = resetAutoScrollTimer;
 
+    let heldChartPointerId: number | null = null;
     let rightPriceScalePointerId: number | null = null;
-    let livePriceGeometryRepaintFrame: number | null = null;
+    let rightPriceScaleDragStartY: number | null = null;
+    let rightPriceScaleDragStartRange: { from: number; to: number } | null = null;
+    let priceBoundOverlayGeometryRepaintFrame: number | null = null;
     let wheelTimeScaleBarSpacingBefore: number | null = null;
+
+    const getMinimumVisiblePriceSpan = (): number => {
+      const configuredPoint = Number(
+        (seriesRef.current?.options().priceFormat as { minMove?: number } | undefined)?.minMove,
+      );
+      const point = Number.isFinite(configuredPoint) && configuredPoint > 0
+        ? configuredPoint
+        : resolvedPricePoint;
+
+      try {
+        const surfaceHeight = containerRef.current?.getBoundingClientRect().height ?? 0;
+        const paneHeight = Math.max(0, surfaceHeight - chart.timeScale().height());
+        const scaleMargins = chart.priceScale('right').options().scaleMargins;
+        const chartFontSize = Number(chart.options().layout.fontSize);
+        const minimumSpan = computeMinimumVisiblePriceSpan({
+          point,
+          paneHeight,
+          fontSize: Number.isFinite(chartFontSize) && chartFontSize > 0
+            ? chartFontSize
+            : CHART_AXIS_FONT_SIZE,
+          topMargin: Number(scaleMargins?.top),
+          bottomMargin: Number(scaleMargins?.bottom),
+        });
+        return minimumSpan > 0 ? minimumSpan : point;
+      } catch {
+        return point;
+      }
+    };
 
     const isRightPriceScalePointer = (event: PointerEvent): boolean => {
       const surface = containerRef.current;
@@ -2070,11 +2157,15 @@ export const TradingChart = React.memo(function TradingChart({
       }
     };
 
-    const queueLivePriceOverlayGeometryRepaint = () => {
-      if (livePriceGeometryRepaintFrame !== null) return;
-      livePriceGeometryRepaintFrame = window.requestAnimationFrame(() => {
-        livePriceGeometryRepaintFrame = null;
+    const queuePriceBoundOverlayGeometryRepaint = () => {
+      if (priceBoundOverlayGeometryRepaintFrame !== null) return;
+      priceBoundOverlayGeometryRepaintFrame = window.requestAnimationFrame(() => {
+        priceBoundOverlayGeometryRepaintFrame = null;
         repaintLivePriceOverlayGeometry();
+        // Active/history trade overlays are DOM nodes, so Lightweight Charts
+        // cannot reposition them when only the price range changes. Keep their
+        // cached price-to-coordinate geometry in the same frame as the canvas.
+        repaintTradeOverlayGeometryRef.current();
       });
     };
 
@@ -2084,7 +2175,24 @@ export const TradingChart = React.memo(function TradingChart({
         button: event.button,
         isPrimary: event.isPrimary,
       })) return;
+      heldChartPointerId = event.pointerId;
       rightPriceScalePointerId = isRightPriceScalePointer(event) ? event.pointerId : null;
+      rightPriceScaleDragStartY = null;
+      rightPriceScaleDragStartRange = null;
+      if (rightPriceScalePointerId !== null) {
+        // Anchor the MT5-style axis zoom on the range captured at press time.
+        try {
+          const startRange = chart.priceScale('right').getVisibleRange();
+          const startFrom = Number(startRange?.from);
+          const startTo = Number(startRange?.to);
+          if (Number.isFinite(startFrom) && Number.isFinite(startTo) && startTo > startFrom) {
+            rightPriceScaleDragStartY = event.clientY;
+            rightPriceScaleDragStartRange = { from: startFrom, to: startTo };
+          }
+        } catch {
+          // Chart may be mid-teardown; the drag then only repaints geometry.
+        }
+      }
       visibleRangeHistoryUserInitiatedRef.current = true;
       isChartUserInteractingRef.current = true;
       if (autoScrollTimer) clearTimeout(autoScrollTimer);
@@ -2092,13 +2200,51 @@ export const TradingChart = React.memo(function TradingChart({
 
     const handleRightPriceScalePointerMove = (event: PointerEvent) => {
       if (rightPriceScalePointerId !== event.pointerId || (event.buttons & 1) === 0) return;
-      queueLivePriceOverlayGeometryRepaint();
+      if (rightPriceScaleDragStartY !== null && rightPriceScaleDragStartRange !== null) {
+        const dragDeltaY = event.clientY - rightPriceScaleDragStartY;
+        if (Math.abs(dragDeltaY) >= 1) {
+          const nextRange = computePriceAxisDragRange({
+            startFrom: rightPriceScaleDragStartRange.from,
+            startTo: rightPriceScaleDragStartRange.to,
+            dragDeltaY,
+            minSpan: getMinimumVisiblePriceSpan(),
+          });
+          if (nextRange) {
+            try {
+              chart.priceScale('right').setVisibleRange(nextRange);
+            } catch {
+              // The chart can be disposed between the pointer event and this update.
+            }
+          }
+        }
+      }
+    };
+
+    const handleHeldChartPointerMove = (event: PointerEvent) => {
+      if (isDisposedRef.current || !isActiveRef.current) return;
+      if (heldChartPointerId !== event.pointerId || (event.buttons & 1) === 0) return;
+
+      // Lightweight Charts can shift both price and time coordinates while a
+      // pointer is held anywhere in the plot. Apply our axis-only zoom when
+      // applicable, then repaint every price-bound DOM overlay in the next
+      // animation frame, after the library has processed this move. The shared
+      // queue coalesces repeated events to one RAF.
+      handleRightPriceScalePointerMove(event);
+      queuePriceBoundOverlayGeometryRepaint();
     };
 
     const handlePointerInteractionEnd = (event: PointerEvent) => {
+      const endedHeldChartPointer = heldChartPointerId === event.pointerId;
+      if (endedHeldChartPointer) {
+        heldChartPointerId = null;
+      }
       if (rightPriceScalePointerId === event.pointerId) {
         rightPriceScalePointerId = null;
-        queueLivePriceOverlayGeometryRepaint();
+        rightPriceScaleDragStartY = null;
+        rightPriceScaleDragStartRange = null;
+      }
+      if (endedHeldChartPointer) {
+        queuePriceBoundOverlayGeometryRepaint();
       }
       if (!interactionOwnership.releasePointer(event.pointerId)) return;
       isChartUserInteractingRef.current = false;
@@ -2162,10 +2308,7 @@ export const TradingChart = React.memo(function TradingChart({
       const anchorPrice = pointerPrice !== null && Number.isFinite(pointerPrice)
         ? pointerPrice
         : from + span / 2;
-      const configuredMinMove = Number((series.options().priceFormat as { minMove?: number }).minMove);
-      const minimumSpan = Number.isFinite(configuredMinMove) && configuredMinMove > 0
-        ? configuredMinMove
-        : Math.max(Math.abs(anchorPrice) * 1e-10, Number.EPSILON);
+      const minimumSpan = getMinimumVisiblePriceSpan();
       const nextSpan = Math.max(minimumSpan, span * (barSpacingBefore / barSpacingAfter));
       const priceSpanFactor = nextSpan / span;
       const nextFrom = anchorPrice + (from - anchorPrice) * priceSpanFactor;
@@ -2174,15 +2317,28 @@ export const TradingChart = React.memo(function TradingChart({
 
       try {
         priceScale.setVisibleRange({ from: nextFrom, to: nextTo });
-        queueLivePriceOverlayGeometryRepaint();
+        queuePriceBoundOverlayGeometryRepaint();
       } catch {
         // The chart can be disposed between the wheel event and this update.
       }
     };
 
+    const clearLocalChartPointerState = () => {
+      heldChartPointerId = null;
+      rightPriceScalePointerId = null;
+      rightPriceScaleDragStartY = null;
+      rightPriceScaleDragStartRange = null;
+    };
+    clearLocalChartPointerStateRef.current = clearLocalChartPointerState;
+
+    const forceSettleLocalPointerInteraction = () => {
+      clearLocalChartPointerState();
+      forceSettleInteraction();
+    };
+
     const handleDocumentVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        forceSettleInteraction();
+        forceSettleLocalPointerInteraction();
       }
     };
 
@@ -2196,12 +2352,12 @@ export const TradingChart = React.memo(function TradingChart({
       chartContainer.addEventListener('touchstart', handleTouchInteractionStart, { passive: true, capture: true });
       chartContainer.addEventListener('wheel', captureChartWheelTimeScaleState, { passive: true, capture: true });
       chartContainer.addEventListener('wheel', handleWheelInteraction, { passive: true });
-      window.addEventListener('pointermove', handleRightPriceScalePointerMove, { passive: true });
+      window.addEventListener('pointermove', handleHeldChartPointerMove, { passive: true });
       window.addEventListener('pointerup', handlePointerInteractionEnd, true);
       window.addEventListener('pointercancel', handlePointerInteractionEnd, true);
       window.addEventListener('touchend', handleTouchInteractionEnd, true);
       window.addEventListener('touchcancel', handleTouchInteractionEnd, true);
-      window.addEventListener('blur', forceSettleInteraction);
+      window.addEventListener('blur', forceSettleLocalPointerInteraction);
       document.addEventListener('visibilitychange', handleDocumentVisibilityChange);
     } // end if (chartContainer)
 
@@ -2267,11 +2423,14 @@ export const TradingChart = React.memo(function TradingChart({
       if (chartInteractionOwnershipRef.current === interactionOwnership) {
         chartInteractionOwnershipRef.current = null;
       }
-      rightPriceScalePointerId = null;
+      clearLocalChartPointerState();
+      if (clearLocalChartPointerStateRef.current === clearLocalChartPointerState) {
+        clearLocalChartPointerStateRef.current = () => undefined;
+      }
       wheelTimeScaleBarSpacingBefore = null;
-      if (livePriceGeometryRepaintFrame !== null) {
-        window.cancelAnimationFrame(livePriceGeometryRepaintFrame);
-        livePriceGeometryRepaintFrame = null;
+      if (priceBoundOverlayGeometryRepaintFrame !== null) {
+        window.cancelAnimationFrame(priceBoundOverlayGeometryRepaintFrame);
+        priceBoundOverlayGeometryRepaintFrame = null;
       }
       if (chartContainer) {
         chartContainer.removeEventListener('pointerdown', handlePointerInteractionStart, true);
@@ -2281,12 +2440,12 @@ export const TradingChart = React.memo(function TradingChart({
         chartContainer.removeEventListener('wheel', captureChartWheelTimeScaleState, true);
         chartContainer.removeEventListener('wheel', handleWheelInteraction);
       }
-      window.removeEventListener('pointermove', handleRightPriceScalePointerMove);
+      window.removeEventListener('pointermove', handleHeldChartPointerMove);
       window.removeEventListener('pointerup', handlePointerInteractionEnd, true);
       window.removeEventListener('pointercancel', handlePointerInteractionEnd, true);
       window.removeEventListener('touchend', handleTouchInteractionEnd, true);
       window.removeEventListener('touchcancel', handleTouchInteractionEnd, true);
-      window.removeEventListener('blur', forceSettleInteraction);
+      window.removeEventListener('blur', forceSettleLocalPointerInteraction);
       document.removeEventListener('visibilitychange', handleDocumentVisibilityChange);
       historyRequestCoordinatorRef.current.abort();
       cancelQueuedChartRender();
@@ -3057,8 +3216,8 @@ export const TradingChart = React.memo(function TradingChart({
         prevTimeframeRef.current = timeframe;
 
         // Apply new precision
-        const digits = getSymbolDigits(symbol);
-        const minMove = 1 / Math.pow(10, digits);
+        const digits = resolvedPriceDigits;
+        const minMove = resolvedPricePoint;
         seriesRef.current.applyOptions({
           priceFormat: { type: 'price', precision: digits, minMove }
         });
@@ -3121,8 +3280,8 @@ export const TradingChart = React.memo(function TradingChart({
     let series: ISeriesApi<any>;
 
     // Compute price format based on symbol
-    const digits = getSymbolDigits(symbol);
-    const minMove = 1 / Math.pow(10, digits); // e.g. 0.01 for 2 digits, 0.00001 for 5
+    const digits = resolvedPriceDigits;
+    const minMove = resolvedPricePoint; // e.g. 0.01 for 2 digits, 0.00001 for 5
     const priceFormatOpts = { type: 'price' as const, precision: digits, minMove };
     const theme = chartThemeRef.current;
 
@@ -3461,7 +3620,24 @@ export const TradingChart = React.memo(function TradingChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(timeRangeHandler);
 
     isRebuildingRef.current = false; // Safe to resume ticks and resizes
-  }, [cancelQueuedChartRender, chartType, symbol, resetLiveQuotePriceGuard, updateChartData, clearPeriodSeparators, hydrateHistoryFromCache, timeframe]); // Note: intentional omit chartSettings
+  }, [cancelQueuedChartRender, chartType, symbol, resetLiveQuotePriceGuard, updateChartData, clearPeriodSeparators, hydrateHistoryFromCache, timeframe]); // Note: precision changes are hot-applied below; intentional omit chartSettings
+
+  // The authorized instrument catalog can resolve after the chart mounts.
+  // Hot-apply its precision without rebuilding the series or resetting data.
+  useEffect(() => {
+    if (isDisposedRef.current || !seriesRef.current) return;
+    try {
+      seriesRef.current.applyOptions({
+        priceFormat: {
+          type: 'price',
+          precision: resolvedPriceDigits,
+          minMove: resolvedPricePoint,
+        },
+      });
+    } catch {
+      // The series can be disposed during fast chart/tab switches.
+    }
+  }, [resolvedPriceDigits, resolvedPricePoint]);
 
 
 
@@ -3542,7 +3718,7 @@ export const TradingChart = React.memo(function TradingChart({
   }, [schedulePeriodSeparatorRender, syncLeftVisibleTime, timeframe, candlesLoadedRev]);
 
   // Watch chart settings and hot-apply to chart without unmounting
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!chartRef.current || isDisposedRef.current) return;
     const chart = chartRef.current;
 
@@ -3567,6 +3743,7 @@ export const TradingChart = React.memo(function TradingChart({
       rightPriceScale: {
         borderColor: chartTheme.scaleBorder,
         autoScale: !chartSettings.scaleFixOneToOne,
+        alignLabels: false,
       },
       timeScale: {
         ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
@@ -3624,6 +3801,24 @@ export const TradingChart = React.memo(function TradingChart({
 
     window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
   }, [chartSettings, chartTheme, chartType, requestChartDataRender, schedulePeriodSeparatorRender, symbol, timeframe, updateLegendDOM]);
+
+  useLayoutEffect(() => {
+    if (previousAdvancedUntitledLightRef.current === isAdvancedUntitledLight) return;
+    if (!isActive || isDisposedRef.current || !chartRef.current || !seriesRef.current) return;
+
+    previousAdvancedUntitledLightRef.current = isAdvancedUntitledLight;
+    return scheduleChartThemeTransition({
+      refreshSurface: () => {
+        refreshVisibleChartLayout();
+        schedulePeriodSeparatorRender();
+      },
+    });
+  }, [
+    isActive,
+    isAdvancedUntitledLight,
+    refreshVisibleChartLayout,
+    schedulePeriodSeparatorRender,
+  ]);
 
   // getTimeframeSeconds is imported from candleAggregationService (module scope)
   // so it is never a stale closure value after a timeframe switch.
@@ -4052,15 +4247,22 @@ export const TradingChart = React.memo(function TradingChart({
             trade.key,
             Date.now() + TRADE_LEVEL_CROSS_CLOSE_CANDIDATE_TTL_MS,
           );
-          const pId = trade.key.replace('trade:', '');
-          console.log(`[Chart] SL/TP crossed for trade ${pId}; requesting server refresh`);
+          // Cluster-wide throttle: with many positions riding their levels the
+          // per-trade cooldowns interleave into a near-continuous request
+          // storm that destabilizes the positions feed itself.
+          const crossDispatchNow = Date.now();
+          if (crossDispatchNow - lastCrossRefreshDispatchAtRef.current >= TRADE_LEVEL_CROSS_REFRESH_MIN_DISPATCH_INTERVAL_MS) {
+            lastCrossRefreshDispatchAtRef.current = crossDispatchNow;
+            const pId = trade.key.replace('trade:', '');
+            console.log(`[Chart] SL/TP crossed for trade ${pId}; requesting server refresh`);
 
-          window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-          const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
-          if (Number.isFinite(login) && login > 0) {
-            window.dispatchEvent(new CustomEvent('rtx:refresh-trade-history-requested', {
-              detail: { login },
-            }));
+            window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+            const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
+            if (Number.isFinite(login) && login > 0) {
+              window.dispatchEvent(new CustomEvent('rtx:refresh-trade-history-requested', {
+                detail: { login },
+              }));
+            }
           }
           window.setTimeout(() => {
             tradeLevelCrossRefreshPendingRef.current.delete(trade.key);
@@ -4259,7 +4461,7 @@ export const TradingChart = React.memo(function TradingChart({
             // Force chart to recompute its size
             const { offsetWidth, offsetHeight } = el;
             if (offsetWidth > 0 && offsetHeight > 0) {
-              chartRef.current.applyOptions({ width: offsetWidth, height: offsetHeight });
+              refreshLightweightChartSurface(chartRef.current, offsetWidth, offsetHeight);
               if (resetVisibleRangeOnNextDataRef.current) {
                 const totalBars = getCandlesForFullRender().length;
                 resetVisibleRangeOnNextDataRef.current = !applyInitialVisibleLogicalRange(
@@ -4853,17 +5055,29 @@ export const TradingChart = React.memo(function TradingChart({
   // ─── Trade Annotations on Chart (MT5-style entry/exit markers + live trails) ───
   const TRADE_BUY_COLOR = '#22c55e';
   const TRADE_SELL_COLOR = '#ef4444';
-  const TRADE_ENTRY_LEVEL_COLOR = '#a8adb7';
+  // MT5-style entry lines: dotted blue for BUY, dotted red for SELL.
+  const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';
+  const TRADE_ENTRY_LINE_SELL_COLOR = '#ef4444';
+  const getEntryLineColor = (side: TradeSide) => side === 'BUY' ? TRADE_ENTRY_LINE_BUY_COLOR : TRADE_ENTRY_LINE_SELL_COLOR;
   const activeOverlayNodesRef = useRef<HTMLElement[]>([]);
   const activeOverlayNodeDataRef = useRef<OverlayNodeData[]>([]);
   const historyOverlayNodesRef = useRef<HTMLElement[]>([]);
   const historyOverlayNodeDataRef = useRef<OverlayNodeData[]>([]);
+  // Live Pips/USD refresh hooks for the on-line position control bars.
+  const tradeControlLiveUpdatersRef = useRef<Array<() => void>>([]);
+  // Entry/SL/TP price-scale axis labels (lightweight-charts price lines).
+  const tradeAxisPriceLinesRef = useRef<Map<string, IPriceLine>>(new Map());
   const frozenEntryTimesRef = useRef<Map<number | string, number>>(new Map());
   const stableActiveMarkerTimesRef = useRef<Map<number | string, number>>(new Map());
   const frozenEntryPricesRef = useRef<Map<number | string, number>>(new Map());
   const activeTradeSnapshotsRef = useRef<Map<string, ActiveTradeSnapshot>>(new Map());
   const pendingMissingActiveTradesRef = useRef<Map<string, { trade: ActiveTradeSnapshot; missingSince: number }>>(new Map());
   const closeSuppressedTradeKeysRef = useRef<Map<string, number>>(new Map());
+  // Suppressions created by the SL/TP level-cross GUESS (not by a real close
+  // request). If the broker feed shows the position open again, the guess was
+  // wrong and its suppression must be lifted immediately.
+  const crossCloseGuessedTradeKeysRef = useRef<Set<string>>(new Set());
+  const lastCrossRefreshDispatchAtRef = useRef(0);
   const pendingClosedTradeSnapshotsRef = useRef<Map<string, ActiveTradeSnapshot>>(new Map());
   const optimisticClosedTradeSnapshotsRef = useRef<Map<string, ClosedTradeSnapshot>>(new Map());
   const tradeHistoryRefreshTimerRef = useRef<number | null>(null);
@@ -4989,6 +5203,12 @@ export const TradingChart = React.memo(function TradingChart({
     dataRef.current = [];
     if (layer === 'active') {
       lastActiveTradeOverlaySignatureRef.current = '';
+      tradeControlLiveUpdatersRef.current = [];
+      const series = seriesRef.current;
+      tradeAxisPriceLinesRef.current.forEach((priceLine) => {
+        try { series?.removePriceLine(priceLine); } catch { }
+      });
+      tradeAxisPriceLinesRef.current.clear();
     } else {
       lastHistoryTradeOverlaySignatureRef.current = '';
     }
@@ -5036,6 +5256,7 @@ export const TradingChart = React.memo(function TradingChart({
     activeTradeSnapshotsRef.current.clear();
     pendingMissingActiveTradesRef.current.clear();
     closeSuppressedTradeKeysRef.current.clear();
+    crossCloseGuessedTradeKeysRef.current.clear();
     pendingClosedTradeSnapshotsRef.current.clear();
     optimisticClosedTradeSnapshotsRef.current.clear();
     frozenEntryTimesRef.current.clear();
@@ -5070,6 +5291,9 @@ export const TradingChart = React.memo(function TradingChart({
     ];
     const chartWidth = containerRef.current?.offsetWidth || 0;
     const chartHeight = containerRef.current?.offsetHeight || 0;
+    // A collapsed/zero-size container has no valid geometry; leave nodes as
+    // they are rather than culling the entire overlay against height 0.
+    if (chartWidth <= 0 || chartHeight <= 0) return;
     const priceScaleWidth = series.priceScale().width();
     const snapCssPixel = (value: number): number => Math.round(value);
     const resolveTimeCoordinate = (time: unknown): number | null => {
@@ -5108,16 +5332,25 @@ export const TradingChart = React.memo(function TradingChart({
             }
 
             const y = series.priceToCoordinate(node.price);
-            if (y == null || y < -20 || y > chartHeight + 20) {
+            if (y == null) {
+              // The scale reports no coordinates while candles reload (feed
+              // reconnects, empty snapshots from a flaky backend). Freeze
+              // already-placed nodes instead of blinking the overlay off.
+              if (!el.style.top) el.style.display = 'none';
+              continue;
+            }
+            if (y < -20 || y > chartHeight + 20) {
               el.style.display = 'none';
               continue;
             }
 
             const snappedY = snapCssPixel(y);
-            el.style.display = 'block';
+            // Restore the node's own display mode: flex control bars must not
+            // be flattened to block or their buttons fall onto the text baseline.
+            el.style.display = el.dataset.display || 'block';
             el.style.top = node.kind === 'price-badge' && el.classList.contains('rtx-trade-level-badge--line-text')
               ? `${snappedY - 14}px`
-              : `${snappedY}px`;
+              : `${snappedY + (node.pixelOffsetY ?? 0)}px`;
 
             if (node.kind === 'horizontal-line' || node.kind === 'price-hit-area') {
               el.style.left = '0px';
@@ -5156,7 +5389,8 @@ export const TradingChart = React.memo(function TradingChart({
               minLengthPx: el.classList.contains('rtx-trade-history-line') ? 24 : 0,
             });
             if (!geometry) {
-              el.style.display = 'none';
+              // Coordinate gaps during candle reloads freeze placed segments.
+              if (!el.style.top) el.style.display = 'none';
               continue;
             }
 
@@ -5182,7 +5416,12 @@ export const TradingChart = React.memo(function TradingChart({
             }
           }
           const y = series.priceToCoordinate(node.price);
-          if (x == null || y == null || x < -24 || x > chartWidth + 24 || y < -24 || y > chartHeight + 24) {
+          if (x == null || y == null) {
+            // Keep last placement through transient coordinate gaps.
+            if (!el.style.top) el.style.display = 'none';
+            continue;
+          }
+          if (x < -24 || x > chartWidth + 24 || y < -24 || y > chartHeight + 24) {
             el.style.display = 'none';
             continue;
           }
@@ -5208,6 +5447,12 @@ export const TradingChart = React.memo(function TradingChart({
       }
     }
 
+    // Refresh the live Pips/USD text on position control bars. Relayout is
+    // already tick-driven for active trades, so this stays in the same frame.
+    for (const refreshTradeControlMetrics of tradeControlLiveUpdatersRef.current) {
+      try { refreshTradeControlMetrics(); } catch { }
+    }
+
     if (livePriceRef.current !== null && livePriceLineRef.current && livePriceBadgeRef.current) {
       const y = series.priceToCoordinate(livePriceRef.current);
       if (y !== null && y !== undefined && y > 0) {
@@ -5223,6 +5468,8 @@ export const TradingChart = React.memo(function TradingChart({
       }
     }
   }, [applyStableLivePriceHorizontalGeometry]);
+
+  repaintTradeOverlayGeometryRef.current = updateLabelPositions;
 
   const layoutPostInteractionOverlays = useCallback(() => {
     const chart = chartRef.current;
@@ -5250,7 +5497,7 @@ export const TradingChart = React.memo(function TradingChart({
     hydrateTradeLevelOverrides();
 
     const normalizedChartSymbol = symbol.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-    const digits = getSymbolDigits(symbol);
+    const digits = resolvedPriceDigits;
 
     const queueTradeOverlayRelayout = () => {
       if (isChartInteractionActiveRef.current) {
@@ -5603,8 +5850,15 @@ export const TradingChart = React.memo(function TradingChart({
       const serverTp = trade.tp || 0;
       const overrideSl = override.sl || 0;
       const overrideTp = override.tp || 0;
-      const slSynced = overrideSl <= 0 || (serverSl > 0 && Math.abs(serverSl - overrideSl) <= priceTolerance);
-      const tpSynced = overrideTp <= 0 || (serverTp > 0 && Math.abs(serverTp - overrideTp) <= priceTolerance);
+      // A zero override normally means "role untouched" and defers to the
+      // server. While a modify request is pending (or in its optimistic grace
+      // window) it instead means "level removed", so the stale server value
+      // must stay suppressed until the backend confirms the removal.
+      const hasActiveModifyWindow = hasPendingTradeLevelModifyRequest(trade) || hasRecentTradeLevelModifyGrace(trade);
+      const slRemovalPending = overrideSl <= 0 && serverSl > 0 && hasActiveModifyWindow;
+      const tpRemovalPending = overrideTp <= 0 && serverTp > 0 && hasActiveModifyWindow;
+      const slSynced = (overrideSl <= 0 && !slRemovalPending) || (serverSl > 0 && Math.abs(serverSl - overrideSl) <= priceTolerance);
+      const tpSynced = (overrideTp <= 0 && !tpRemovalPending) || (serverTp > 0 && Math.abs(serverTp - overrideTp) <= priceTolerance);
 
       if (slSynced && tpSynced) {
         rememberTradeLevels(trade, { sl: serverSl, tp: serverTp });
@@ -5614,8 +5868,8 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       const levels = {
-        sl: overrideSl > 0 ? overrideSl : serverSl,
-        tp: overrideTp > 0 ? overrideTp : serverTp,
+        sl: overrideSl > 0 ? overrideSl : slRemovalPending ? 0 : serverSl,
+        tp: overrideTp > 0 ? overrideTp : tpRemovalPending ? 0 : serverTp,
       };
       rememberTradeLevels(trade, levels);
       return levels;
@@ -5662,7 +5916,7 @@ export const TradingChart = React.memo(function TradingChart({
       marker.className = `rtx-trade-marker rtx-trade-marker--${layer}`;
       marker.title = title;
       marker.innerHTML = createArrowSvg(side, color);
-      marker.style.cssText = `position:absolute;z-index:14;pointer-events:none;opacity:${opacity};`;
+      marker.style.cssText = `position:absolute;display:none;z-index:14;pointer-events:none;opacity:${opacity};`;
       appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side, resolveTime }, layer);
     };
 
@@ -5679,7 +5933,7 @@ export const TradingChart = React.memo(function TradingChart({
       const ticketText = ticketLabel ? ` ${ticketLabel}` : '';
       label.className = `rtx-trade-history-label rtx-trade-history-label--${side.toLowerCase()}`;
       label.textContent = `${side}${ticketText} ${price.toFixed(digits)}${timeLabel ? ` | ${timeLabel}` : ''}`;
-      label.style.cssText = `position:absolute;padding:2px 5px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:15;pointer-events:none;border-radius:2px;line-height:13px;opacity:${opacity};${palette.shadow}`;
+      label.style.cssText = `position:absolute;display:none;padding:2px 5px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:15;pointer-events:none;border-radius:2px;line-height:13px;opacity:${opacity};${palette.shadow}`;
       appendOverlayNode(label, { kind: 'label', price, time, labelOffsetX: 10, labelOffsetY: -18 }, layer);
     };
 
@@ -5690,7 +5944,7 @@ export const TradingChart = React.memo(function TradingChart({
       const background = lineStyle === 'solid'
         ? color
         : `repeating-linear-gradient(to right, ${color} 0 6px, transparent 6px 10px)`;
-      line.style.cssText = `position:absolute;height:${thickness}px;background:${background};border:0;border-radius:999px;z-index:${lineStyle === 'solid' ? 13 : 9};pointer-events:none;opacity:${opacity};transform-origin:0 50%;will-change:transform,width;`;
+      line.style.cssText = `position:absolute;display:none;height:${thickness}px;background:${background};border:0;border-radius:999px;z-index:${lineStyle === 'solid' ? 13 : 9};pointer-events:none;opacity:${opacity};transform-origin:0 50%;will-change:transform,width;`;
       appendOverlayNode(line, { kind: 'segment', price, time, endPrice, endTime, resolveEndPrice, resolveEndTime }, layer);
     };
 
@@ -5702,7 +5956,7 @@ export const TradingChart = React.memo(function TradingChart({
       const lineColor = options.lineColor ?? color;
       const lineWidth = options.lineWidthPx ?? 1;
       const lineOpacity = options.role === 'SL' || options.role === 'TP' ? 0.68 : 0.92;
-      line.style.cssText = `position:absolute;height:0;border-top:${lineWidth}px dashed ${lineColor};z-index:12;pointer-events:none;opacity:${lineOpacity};`;
+      line.style.cssText = `position:absolute;display:none;height:0;border-top:${lineWidth}px dashed ${lineColor};z-index:12;pointer-events:none;opacity:${lineOpacity};`;
       appendOverlayNode(line, { kind: 'horizontal-line', price }, 'active');
 
       if (options.tradeKey && options.role) {
@@ -5711,9 +5965,13 @@ export const TradingChart = React.memo(function TradingChart({
         hitArea.dataset.tradeKey = options.tradeKey;
         hitArea.dataset.role = options.role;
         if (options.title) hitArea.title = options.title;
-        hitArea.style.cssText = `position:absolute;height:${TRADE_LEVEL_HIT_AREA_PX}px;transform:translateY(-50%);z-index:15;pointer-events:auto;cursor:grab;background:transparent;touch-action:none;`;
+        hitArea.style.cssText = `position:absolute;display:none;height:${TRADE_LEVEL_HIT_AREA_PX}px;transform:translateY(-50%);z-index:15;pointer-events:auto;cursor:grab;background:transparent;touch-action:none;`;
         appendActiveInteractionNode(hitArea, { kind: 'price-hit-area', price });
       }
+
+      // 'none' keeps the line + drag hit-area but hands labelling over to the
+      // cTrader-style control bars built alongside.
+      if (options.labelVariant === 'none') return;
 
       const badge = document.createElement('div');
       badge.textContent = labelText;
@@ -5739,16 +5997,285 @@ export const TradingChart = React.memo(function TradingChart({
       const isLineTextLabel = options.labelVariant === 'lineText';
       if (isLineTextLabel) badge.classList.add('rtx-trade-level-badge--line-text');
       badge.dataset.leftInset = String(leftInset);
+      badge.dataset.display = isLineTextLabel ? 'block' : 'inline-flex';
       badge.style.cssText = isLineTextLabel
-        ? `position:absolute;left:${leftInset}px;display:block;padding:0 2px;background:transparent;border:0;color:${color};font-size:11px;font-family:Consolas,'Courier New',monospace;font-weight:700;line-height:14px;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:0;transform:none;width:max-content;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:left;touch-action:none;letter-spacing:0;text-shadow:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;`
-        : `position:absolute;left:${leftInset}px;display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;${palette.shadow}`;
+        ? `position:absolute;left:${leftInset}px;display:none;padding:0 2px;background:transparent;border:0;color:${color};font-size:11px;font-family:Consolas,'Courier New',monospace;font-weight:700;line-height:14px;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:0;transform:none;width:max-content;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:left;touch-action:none;letter-spacing:0;text-shadow:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;`
+        : `position:absolute;left:${leftInset}px;display:none;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;${palette.shadow}`;
       appendOverlayNode(badge, { kind: 'price-badge', price }, 'active');
     };
+
+    // ── cTrader-style position controls ────────────────────────────────────
+    const getAccountCurrencyLabel = (): string => {
+      const currency = String(useAppStore.getState().account?.currency || '').trim().toUpperCase();
+      return currency || 'USD';
+    };
+
+    const getTradeTicket = (tradeKey: string): number => {
+      const ticket = Number.parseInt(tradeKey.replace(/^trade:/, ''), 10);
+      return Number.isFinite(ticket) && ticket > 0 ? ticket : 0;
+    };
+
+    const findStorePosition = (ticket: number): any | null => {
+      if (!ticket) return null;
+      const positions = useAppStore.getState().positions;
+      if (!Array.isArray(positions)) return null;
+      return positions.find((position: any) => Number(position?.id ?? position?.ticket) === ticket) ?? null;
+    };
+
+    const getTradeClosePrice = (trade: ActiveTradeSnapshot): number => {
+      const tick = resolveSymbolTick(useAppStore.getState().ticks);
+      const closeQuote = trade.side === 'BUY' ? Number(tick?.bid) : Number(tick?.ask);
+      if (Number.isFinite(closeQuote) && closeQuote > 0) return closeQuote;
+      const live = activeTradeSnapshotsRef.current.get(trade.key)?.currentPrice ?? trade.currentPrice;
+      return Number.isFinite(live) && live > 0 ? live : trade.entryPrice;
+    };
+
+    // Projected money at a level. Prefers scaling the backend-reported live
+    // profit (keeps account-currency conversion authoritative); falls back to
+    // a contract-size estimate when the live P/L baseline is too small.
+    const estimateMoneyAtLevel = (trade: ActiveTradeSnapshot, levelPrice: number): number | null => {
+      const position = findStorePosition(getTradeTicket(trade.key));
+      const backendPnl = Number(position?.unrealizedPnL ?? position?.profit ?? position?.unrealized_pl);
+      return estimateTradeLevelMoney({
+        symbol: trade.symbol,
+        side: trade.side,
+        volume: trade.volume,
+        entryPrice: trade.entryPrice,
+        levelPrice,
+        digits,
+        backendPnl: Number.isFinite(backendPnl) ? backendPnl : null,
+        currentPrice: getTradeClosePrice(trade),
+        contractSize: Number(position?.contractSize ?? position?.contract_size) || undefined,
+      });
+    };
+
+    const addTradeAxisPriceLine = (key: string, price: number, color: string, textColor = '#ffffff') => {
+      if (!(price > 0) || !seriesRef.current) return;
+      try {
+        const priceLine = seriesRef.current.createPriceLine({
+          price,
+          color,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          lineVisible: false,
+          axisLabelVisible: true,
+          axisLabelColor: color,
+          axisLabelTextColor: textColor,
+          title: '',
+        });
+        tradeAxisPriceLinesRef.current.set(key, priceLine);
+      } catch { }
+    };
+
+    // Optimistic SL/TP submission used by the level-bar ✕ buttons. Mirrors the
+    // drag-release flow: override immediately, then reconcile or roll back.
+    const submitTradeLevelChange = (
+      tradeObj: ActiveTradeSnapshot,
+      nextLevels: TradeLevelOverride,
+      previousLevels: TradeLevelOverride,
+    ) => {
+      const ticket = getTradeTicket(tradeObj.key);
+      if (!ticket) return;
+      const requestId = tradeLevelModifyRequestSeqRef.current + 1;
+      tradeLevelModifyRequestSeqRef.current = requestId;
+      const requestKeys = getTradeLevelStateKeys(tradeObj);
+      const optimisticGraceUntil = Date.now() + TRADE_LEVEL_OPTIMISTIC_GRACE_MS;
+      requestKeys.forEach((key) => pendingTradeLevelModifyRequestsRef.current.set(key, requestId));
+      requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.set(key, optimisticGraceUntil));
+      const isCurrentRequest = () => requestKeys.some((key) => (
+        pendingTradeLevelModifyRequestsRef.current.get(key) === requestId
+      ));
+      const clearCurrentRequest = () => {
+        requestKeys.forEach((key) => {
+          if (pendingTradeLevelModifyRequestsRef.current.get(key) === requestId) {
+            pendingTradeLevelModifyRequestsRef.current.delete(key);
+          }
+        });
+      };
+
+      setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, { sl: nextLevels.sl || 0, tp: nextLevels.tp || 0 });
+      setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, { sl: nextLevels.sl || 0, tp: nextLevels.tp || 0 });
+      persistTradeLevelOverrides();
+      rememberTradeHistoryPositionLevels([
+        {
+          id: ticket,
+          symbol: tradeObj.symbol,
+          side: tradeObj.side,
+          volume: tradeObj.volume,
+          entryPrice: tradeObj.entryPrice,
+          entryTime: tradeObj.entryTime,
+          sl: nextLevels.sl || 0,
+          tp: nextLevels.tp || 0,
+          price_sl: nextLevels.sl || 0,
+          price_tp: nextLevels.tp || 0,
+        },
+      ], useAppStore.getState().accountId);
+      window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+      window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: nextLevels.sl || 0, tp: nextLevels.tp || 0 } }));
+
+      api.positions.modifyPosition(ticket, { price_sl: nextLevels.sl || 0, price_tp: nextLevels.tp || 0 })
+        .then(() => {
+          if (!isCurrentRequest()) return;
+          clearCurrentRequest();
+          window.setTimeout(() => window.dispatchEvent(new Event('rtx:force-refresh-positions')), 250);
+        })
+        .catch((err) => {
+          if (!isCurrentRequest()) return;
+          clearCurrentRequest();
+          requestKeys.forEach((key) => tradeLevelOptimisticGraceUntilRef.current.delete(key));
+          console.error('[Chart] Failed to update SL/TP from level bar:', err);
+          if ((previousLevels.sl || 0) > 0 || (previousLevels.tp || 0) > 0) {
+            setTradeLevelState(tradeLevelOverridesRef.current, tradeObj, previousLevels);
+            setTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj, previousLevels);
+          } else {
+            deleteTradeLevelState(tradeLevelOverridesRef.current, tradeObj);
+            deleteTradeLevelState(tradeLevelLastKnownLevelsRef.current, tradeObj);
+          }
+          persistTradeLevelOverrides();
+          window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
+        });
+    };
+
+    const createEntryControlsForTrade = (
+      trade: ActiveTradeSnapshot,
+      levels: TradeLevelOverride,
+      tradeOrdinal: number,
+      totalTrades: number,
+    ) => {
+      const ticket = getTradeTicket(trade.key);
+      if (!ticket) return;
+      const lightSurface = isChartSurfaceLight();
+      const ticketLabel = getTradeTicketLabel(trade.key);
+      const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
+      const currencyLabel = getAccountCurrencyLabel();
+
+      const controlBar = createEntryTradeControlBar({
+        tradeKey: trade.key,
+        ticket,
+        symbol: trade.symbol,
+        side: trade.side,
+        volume: trade.volume,
+        isLightSurface: lightSurface,
+        leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
+        currencyLabel,
+        title: `${trade.side} ${trade.volume} ${ticketLabel} @ ${entryPriceLabel}. Drag above/below to create TP or SL.`,
+        onShare: () => {
+          const shareUrl = buildTradeShareUrl({
+            version: 1,
+            ticket,
+            symbol: trade.symbol,
+            timeframe: String(prevTimeframeRef.current || timeframe),
+            side: trade.side,
+            volume: trade.volume,
+            entryPrice: trade.entryPrice,
+            entryTime: trade.entryTime,
+            sl: levels.sl || 0,
+            tp: levels.tp || 0,
+          });
+          void copyTextToClipboard(shareUrl).then((copied) => {
+            window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+              detail: copied
+                ? { message: `Share link for ${ticketLabel || trade.symbol} copied to clipboard`, type: 'success' }
+                : { message: 'Could not copy the share link to the clipboard', type: 'error' },
+            }));
+          });
+        },
+      });
+      // The bar sits exactly on the entry line so bar, dashed line and the
+      // right-scale price box always share one horizontal line — overlapping
+      // bars from same-price trades are expected (cTrader behaviour).
+      appendOverlayNode(controlBar.root, { kind: 'price-badge', price: trade.entryPrice }, 'active');
+
+      const refreshLiveMetrics = () => {
+        const closePrice = getTradeClosePrice(trade);
+        const pips = computeSignedPips(trade.side, trade.entryPrice, closePrice, digits);
+        const position = findStorePosition(ticket);
+        const backendPnl = Number(position?.unrealizedPnL ?? position?.profit ?? position?.unrealized_pl);
+        const money = position && Number.isFinite(backendPnl)
+          ? backendPnl
+          : estimateTradeMoneyAtPrice({
+            symbol: trade.symbol,
+            side: trade.side,
+            volume: trade.volume,
+            entryPrice: trade.entryPrice,
+            price: closePrice,
+          });
+        controlBar.setLiveMetrics(pips, money);
+      };
+      tradeControlLiveUpdatersRef.current.push(refreshLiveMetrics);
+      refreshLiveMetrics();
+
+      addTradeAxisPriceLine(`${trade.key}:entry`, trade.entryPrice, getEntryLineColor(trade.side));
+
+      // Docked SL/TP handles while the level does not exist yet. SL sits on the
+      // losing side of the entry line, TP on the winning side.
+      const dockSuffix = totalTrades > 1 ? ` ${tradeOrdinal}` : '';
+      const slDockOffset = trade.side === 'SELL' ? -22 : 22;
+      if (!(levels.sl > 0)) {
+        const slChip = createDockedLevelChip({
+          tradeKey: trade.key,
+          role: 'SL',
+          label: `SL${dockSuffix}`,
+          isLightSurface: lightSurface,
+          leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
+          title: `Drag to set Stop Loss for ${ticketLabel || trade.key}`,
+        });
+        appendOverlayNode(slChip, { kind: 'price-badge', price: trade.entryPrice, pixelOffsetY: slDockOffset }, 'active');
+      }
+      if (!(levels.tp > 0)) {
+        const tpChip = createDockedLevelChip({
+          tradeKey: trade.key,
+          role: 'TP',
+          label: `TP${dockSuffix}`,
+          isLightSurface: lightSurface,
+          leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
+          title: `Drag to set Take Profit for ${ticketLabel || trade.key}`,
+        });
+        appendOverlayNode(tpChip, { kind: 'price-badge', price: trade.entryPrice, pixelOffsetY: -slDockOffset }, 'active');
+      }
+    };
+
+    const createLevelControlsForTrade = (
+      trade: ActiveTradeSnapshot,
+      role: 'SL' | 'TP',
+      levels: TradeLevelOverride,
+    ) => {
+      const levelPrice = role === 'SL' ? levels.sl : levels.tp;
+      if (!(levelPrice > 0)) return;
+      const lightSurface = isChartSurfaceLight();
+      const ticketLabel = getTradeTicketLabel(trade.key);
+      const levelBar = createTradeLevelControlBar({
+        tradeKey: trade.key,
+        role,
+        side: trade.side,
+        label: role,
+        pips: computeSignedPips(trade.side, trade.entryPrice, levelPrice, digits),
+        money: estimateMoneyAtLevel(trade, levelPrice),
+        isLightSurface: lightSurface,
+        leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
+        currencyLabel: getAccountCurrencyLabel(),
+        title: `${role === 'SL' ? 'Stop Loss' : 'Take Profit'} for ${ticketLabel || trade.key} @ ${formatTradeLevelBadgePrice(levelPrice)}. Drag to move.`,
+        onRemove: () => submitTradeLevelChange(
+          trade,
+          role === 'SL' ? { sl: 0, tp: levels.tp || 0 } : { sl: levels.sl || 0, tp: 0 },
+          { sl: levels.sl || 0, tp: levels.tp || 0 },
+        ),
+      });
+      appendOverlayNode(levelBar, { kind: 'price-badge', price: levelPrice }, 'active');
+      addTradeAxisPriceLine(
+        `${trade.key}:${role.toLowerCase()}`,
+        levelPrice,
+        lightSurface ? '#3f4756' : '#2a2e39',
+        '#ffffff',
+      );
+    };
+    // ── end cTrader-style position controls ────────────────────────────────
 
     const pruneCloseSuppressedTradeKeys = (now = Date.now()) => {
       closeSuppressedTradeKeysRef.current.forEach((expiresAt, key) => {
         if (expiresAt <= now) {
           closeSuppressedTradeKeysRef.current.delete(key);
+          crossCloseGuessedTradeKeysRef.current.delete(key);
         }
       });
     };
@@ -5895,8 +6422,21 @@ export const TradingChart = React.memo(function TradingChart({
       for (const position of matchingPositions) {
         const key = `trade:${String(position.id)}`;
         if (closeSuppressedTradeKeys.has(key)) {
-          pendingMissingActiveTradesRef.current.delete(key);
-          continue;
+          if (crossCloseGuessedTradeKeysRef.current.has(key)) {
+            // The level-cross close was only a guess and the broker feed still
+            // reports the position open — the guess was wrong. Lift the
+            // suppression and drop the fake closed snapshot so the live
+            // controls come back on this very render.
+            crossCloseGuessedTradeKeysRef.current.delete(key);
+            closeSuppressedTradeKeysRef.current.delete(key);
+            closeSuppressedTradeKeys.delete(key);
+            optimisticClosedTradeSnapshotsRef.current.delete(key);
+            forgetTradeOverlayOptimisticClosedSnapshot(key);
+            pendingClosedTradeSnapshotsRef.current.delete(key);
+          } else {
+            pendingMissingActiveTradesRef.current.delete(key);
+            continue;
+          }
         }
 
         const activeTf = prevTimeframeRef.current || timeframe;
@@ -5977,7 +6517,16 @@ export const TradingChart = React.memo(function TradingChart({
 
         const elapsedMs = now - pending.missingSince;
         const crossedLevelCandidateExpiresAt = tradeLevelCrossCloseCandidatesRef.current.get(key) ?? 0;
-        if (crossedLevelCandidateExpiresAt > now) {
+        const crossCandidateArmed = crossedLevelCandidateExpiresAt > now;
+        // Guess a level-cross close only after a real dwell AND while the
+        // positions feed itself is alive (it still reports some position). A
+        // dead feed loses every trade at once — that is a backend outage, not
+        // a fill, and open trades must not be painted as closed.
+        if (
+          crossCandidateArmed
+          && elapsedMs >= TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS
+          && appPositions.length > 0
+        ) {
           const closedTrade = buildImmediateClosedTrade(pending.trade);
           if (closedTrade) {
             optimisticClosedTradeSnapshotsRef.current.set(key, closedTrade);
@@ -5985,6 +6534,7 @@ export const TradingChart = React.memo(function TradingChart({
           pendingClosedTradeSnapshotsRef.current.delete(key);
           pendingMissingActiveTradesRef.current.delete(key);
           closeSuppressedTradeKeysRef.current.set(key, now + TRADE_OVERLAY_CLOSE_SUPPRESSION_TTL_MS);
+          crossCloseGuessedTradeKeysRef.current.add(key);
           tradeLevelCrossCloseCandidatesRef.current.delete(key);
           tradeLevelCrossRefreshPendingRef.current.delete(key);
           didClearCrossClosedTradeLevels = clearTradeLevelRuntimeState(pending.trade) || didClearCrossClosedTradeLevels;
@@ -5992,21 +6542,23 @@ export const TradingChart = React.memo(function TradingChart({
           return;
         }
 
-        if (elapsedMs < TRADE_MISSING_POSITION_GRACE_MS) {
-          // Broker/account feeds can briefly emit an empty or partial positions
-          // snapshot between live updates. Keep drawing the last confirmed levels
-          // during the grace window so active trade lines do not blink off.
-          renderActiveSnapshots.set(key, pending.trade);
-          visuallyRetainedActiveTradeKeys.add(key);
-          const remainingMs = TRADE_MISSING_POSITION_GRACE_MS - elapsedMs;
+        // Retain until the trade is PROVEN closed — a close event, a closed
+        // history row, or an evidenced level-cross. Feed gaps and backend
+        // outages of any length must never hide open trades; only the settings
+        // toggle or a real close removes the on-chart controls.
+        renderActiveSnapshots.set(key, pending.trade);
+        visuallyRetainedActiveTradeKeys.add(key);
+        if (crossCandidateArmed) {
+          const remainingMs = Math.max(50, TRADE_LEVEL_CROSS_CLOSE_MIN_MISSING_MS - elapsedMs);
           nextMissingGraceDelayMs = nextMissingGraceDelayMs == null
             ? remainingMs
             : Math.min(nextMissingGraceDelayMs, remainingMs);
-          return;
         }
-
-        scheduleHistoryRefresh();
-        pendingMissingActiveTradesRef.current.delete(key);
+        if (elapsedMs >= TRADE_MISSING_POSITION_GRACE_MS) {
+          // Keep nudging history so a genuinely closed trade gets its closed
+          // row and leaves retention through the proven path.
+          scheduleHistoryRefresh();
+        }
       });
 
       if (didClearCrossClosedTradeLevels) persistTradeLevelOverrides();
@@ -6107,10 +6659,15 @@ export const TradingChart = React.memo(function TradingChart({
             trade.source,
           ].join(':')).join('|')
         : '';
+      const sharedTradeForSignature = getSharedChartTrade();
+      const sharedTradeSignature = sharedTradeForSignature && sharedTradeForSignature.symbol === normalizedChartSymbol
+        ? `shared:${sharedTradeForSignature.ticket}:${activeTradeKeys.has(`trade:${sharedTradeForSignature.ticket}`) ? 'live' : 'annotated'}`
+        : 'shared:none';
       const nextActiveSignature = [
         normalizedChartSymbol,
         timeframe,
         showTradeLevels ? 'levels:on' : 'levels:off',
+        sharedTradeSignature,
         activeSignature,
       ].join('\n');
       const nextHistorySignature = [
@@ -6167,6 +6724,12 @@ export const TradingChart = React.memo(function TradingChart({
               () => stableActiveMarkerTimesRef.current.get(activeMarkerTimeKey) ?? stableActiveMarkerTime,
             );
 
+            // Keep the control bars rendered while a position momentarily
+            // drops out of the store (REST refresh / WS reconnect gaps). A
+            // live<->retained flap must not blink the on-chart controls; only
+            // the settings toggle or a real close removes them.
+            const showTradeControls = isLiveActiveTrade || isVisuallyRetainedTrade;
+            const entryStackIndex = nextLevelOffset('ENTRY', trade.entryPrice);
             createPriceLevel(
               `${trade.side} ${ticketLabel} ${trade.volume} at ${entryPriceLabel}`.trim(),
               trade.entryPrice,
@@ -6174,39 +6737,97 @@ export const TradingChart = React.memo(function TradingChart({
               {
                 tradeKey: isLiveActiveTrade ? trade.key : undefined,
                 role: isLiveActiveTrade ? 'ENTRY' : undefined,
-                badgeOffsetIndex: nextLevelOffset('ENTRY', trade.entryPrice),
+                badgeOffsetIndex: showTradeControls ? 0 : entryStackIndex,
                 title: isLiveActiveTrade ? `${markerTitle}. Drag above/below to create TP or SL.` : markerTitle,
-                labelVariant: 'lineText',
-                lineColor: TRADE_ENTRY_LEVEL_COLOR,
+                // The control bar replaces the plain text label.
+                labelVariant: showTradeControls ? 'none' : 'lineText',
+                lineColor: getEntryLineColor(trade.side),
               },
             );
 
             const levels = isLiveActiveTrade || isVisuallyRetainedTrade ? resolveTradeLevels(trade) : { sl: 0, tp: 0 };
+
+            if (showTradeControls) {
+              createEntryControlsForTrade(
+                trade,
+                levels,
+                sortedActiveSnapshots.indexOf(trade) + 1,
+                sortedActiveSnapshots.length,
+              );
+            }
+
             if (levels.sl && levels.sl > 0) {
               const stopLossPriceLabel = formatTradeLevelBadgePrice(levels.sl);
+              const slStackIndex = nextLevelOffset('SL', levels.sl);
               createPriceLevel(`SL ${ticketLabel} ${stopLossPriceLabel}`.trim(), levels.sl, TRADE_SELL_COLOR, {
                 tradeKey: isLiveActiveTrade ? trade.key : undefined,
                 role: isLiveActiveTrade ? 'SL' : undefined,
-                badgeOffsetIndex: nextLevelOffset('SL', levels.sl),
+                badgeOffsetIndex: showTradeControls ? 0 : slStackIndex,
                 title: isVisuallyRetainedTrade
                   ? `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}. Waiting for position refresh.`
                   : `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}`,
-                labelVariant: 'lineText',
+                labelVariant: showTradeControls ? 'none' : 'lineText',
               });
+              if (showTradeControls) {
+                createLevelControlsForTrade(trade, 'SL', levels);
+              }
             }
             if (levels.tp && levels.tp > 0) {
               const takeProfitPriceLabel = formatTradeLevelBadgePrice(levels.tp);
+              const tpStackIndex = nextLevelOffset('TP', levels.tp);
               createPriceLevel(`TP ${ticketLabel} ${takeProfitPriceLabel}`.trim(), levels.tp, TRADE_BUY_COLOR, {
                 tradeKey: isLiveActiveTrade ? trade.key : undefined,
                 role: isLiveActiveTrade ? 'TP' : undefined,
-                badgeOffsetIndex: nextLevelOffset('TP', levels.tp),
+                badgeOffsetIndex: showTradeControls ? 0 : tpStackIndex,
                 title: isVisuallyRetainedTrade
                   ? `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}. Waiting for position refresh.`
                   : `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}`,
+                labelVariant: showTradeControls ? 'none' : 'lineText',
+              });
+              if (showTradeControls) {
+                createLevelControlsForTrade(trade, 'TP', levels);
+              }
+            }
+          });
+
+          // A trade opened from a share link renders as an annotation drawn
+          // purely from the URL payload, so the shared view keeps showing the
+          // trade even after the position closes. Suppressed while the same
+          // ticket is still live (the live control bar already shows it).
+          const sharedTrade = getSharedChartTrade();
+          if (
+            sharedTrade
+            && sharedTrade.symbol === normalizedChartSymbol
+            && !activeTradeKeys.has(`trade:${sharedTrade.ticket}`)
+          ) {
+            const sharedColor = getEntryLineColor(sharedTrade.side);
+            const sharedTicketLabel = sharedTrade.ticket > 0 ? `#${sharedTrade.ticket} ` : '';
+            const sharedLabel = `Shared ${sharedTrade.side} ${sharedTicketLabel}${sharedTrade.volume} at ${formatTradeLevelBadgePrice(sharedTrade.entryPrice)}`.trim();
+            createPriceLevel(sharedLabel, sharedTrade.entryPrice, sharedColor, {
+              badgeOffsetIndex: nextLevelOffset('ENTRY', sharedTrade.entryPrice),
+              title: `${sharedLabel} (from share link)`,
+              labelVariant: 'lineText',
+              lineColor: sharedColor,
+            });
+            addTradeAxisPriceLine(`shared:${sharedTrade.ticket}:entry`, sharedTrade.entryPrice, sharedColor);
+            if (sharedTrade.entryTime > 0) {
+              createTradeMarker(sharedTrade.side, sharedTrade.entryPrice, sharedTrade.entryTime, sharedLabel, sharedColor, 'active', 0.9);
+            }
+            if (sharedTrade.sl > 0) {
+              createPriceLevel(`SL ${formatTradeLevelBadgePrice(sharedTrade.sl)}`, sharedTrade.sl, TRADE_SELL_COLOR, {
+                badgeOffsetIndex: nextLevelOffset('SL', sharedTrade.sl),
+                title: `Shared Stop Loss @ ${formatTradeLevelBadgePrice(sharedTrade.sl)}`,
                 labelVariant: 'lineText',
               });
             }
-          });
+            if (sharedTrade.tp > 0) {
+              createPriceLevel(`TP ${formatTradeLevelBadgePrice(sharedTrade.tp)}`, sharedTrade.tp, TRADE_BUY_COLOR, {
+                badgeOffsetIndex: nextLevelOffset('TP', sharedTrade.tp),
+                title: `Shared Take Profit @ ${formatTradeLevelBadgePrice(sharedTrade.tp)}`,
+                labelVariant: 'lineText',
+              });
+            }
+          }
         }
       }
 
@@ -6238,7 +6859,13 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }
 
-      queueTradeOverlayRelayout();
+      // Rebuilt nodes are created hidden; place them in this same frame when
+      // the chart is idle so a rebuild never paints an empty overlay.
+      if (isChartInteractionActiveRef.current) {
+        queueTradeOverlayRelayout();
+      } else {
+        updateLabelPositions();
+      }
     };
 
     renderTradeOverlay();
@@ -6299,6 +6926,7 @@ export const TradingChart = React.memo(function TradingChart({
       if (status === 'failed') {
         tradeKeys.forEach((key) => {
           closeSuppressedTradeKeysRef.current.delete(key);
+          crossCloseGuessedTradeKeysRef.current.delete(key);
           pendingClosedTradeSnapshotsRef.current.delete(key);
           optimisticClosedTradeSnapshotsRef.current.delete(key);
           forgetTradeOverlayOptimisticClosedSnapshot(key);
@@ -6336,6 +6964,9 @@ export const TradingChart = React.memo(function TradingChart({
             pendingClosedTradeSnapshotsRef.current.delete(key);
           }
           closeSuppressedTradeKeysRef.current.set(key, expiresAt);
+          // A real close request owns this suppression from here on; the
+          // level-cross guess marker must not lift it on stale snapshots.
+          crossCloseGuessedTradeKeysRef.current.delete(key);
           activeTradeSnapshotsRef.current.delete(key);
           pendingMissingActiveTradesRef.current.delete(key);
           if (status === 'confirmed') {
@@ -6368,7 +6999,7 @@ export const TradingChart = React.memo(function TradingChart({
       try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(timeScaleHandler); } catch { }
       clearTradeOverlayVisualRuntime();
     };
-  }, [brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, symbol, timeframe, updateLabelPositions]);
+  }, [brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, updateLabelPositions]);
 
   useEffect(() => {
     if (candlesLoadedRev <= 0) return;
@@ -6399,7 +7030,7 @@ export const TradingChart = React.memo(function TradingChart({
     ) => {
       const overlayEl = overlayRef.current;
       if (!overlayEl || !seriesRef.current) return;
-      const digits = getSymbolDigits(symbol);
+      const digits = resolvedPriceDigits;
       const isEntry = isDashed;
 
       // All lines: dashed gray — same visual weight as live crosshair
@@ -6667,7 +7298,7 @@ export const TradingChart = React.memo(function TradingChart({
         const entryColor = isBuy ? '#26a69a' : '#ef5350';
         const volume = pos.volume != null ? Number(pos.volume) : 0;
         const entryPrice = Number(pos.openPrice) > 0 ? Number(pos.openPrice) : (Number(pos.currentPrice) || 0);
-        const digits = getSymbolDigits(symbol);
+        const digits = resolvedPriceDigits;
 
         let openTimestamp = 0;
         const ticketKey = pos.id;
@@ -6859,7 +7490,7 @@ export const TradingChart = React.memo(function TradingChart({
       }
       cleanup();
     };
-  }, [symbol, chartType, updateLabelPositions, candlesLoadedRev]);
+  }, [symbol, chartType, resolvedPriceDigits, updateLabelPositions, candlesLoadedRev]);
 
 
   // ── Context menu handlers ──────────────────────────────────────────────────
@@ -7007,6 +7638,26 @@ export const TradingChart = React.memo(function TradingChart({
       grabbedType: 'ENTRY' | 'SL' | 'TP';
       entryAnchorY: number;
     } | null = null;
+    // Level bars hidden while their level is being dragged (the live preview
+    // replaces them); restored on release/cancel, and rebuilt on flush anyway.
+    let hiddenDragControlBars: HTMLElement[] = [];
+
+    const hideDraggedLevelControls = (tradeKey: string, role: 'SL' | 'TP') => {
+      const overlayHost = overlayRef.current?.parentElement ?? overlayRef.current;
+      overlayHost?.querySelectorAll<HTMLElement>(
+        `.rtx-trade-controls[data-trade-key="${tradeKey}"][data-role="${role}"]`,
+      ).forEach((node) => {
+        node.style.visibility = 'hidden';
+        hiddenDragControlBars.push(node);
+      });
+    };
+
+    const restoreDraggedLevelControls = () => {
+      hiddenDragControlBars.forEach((node) => {
+        try { node.style.visibility = ''; } catch { }
+      });
+      hiddenDragControlBars = [];
+    };
     let capturedPointerElement: HTMLElement | null = null;
     let capturedPointerId: number | null = null;
     let previousRootCursor = '';
@@ -7248,6 +7899,9 @@ export const TradingChart = React.memo(function TradingChart({
 
       // Trade levels get first priority when the pointer is actually on/near one.
       if (e.button !== 0 || !seriesRef.current) return;
+      // Position control buttons (reverse/double/close/remove) handle their own
+      // clicks; this capture-phase handler must never turn them into drags.
+      if (e.target instanceof Element && e.target.closest('.rtx-trade-control-btn')) return;
       if (!tradeAllowed) return;
       if (chartSettingsRef.current.showTradeLevels === false) return;
 
@@ -7268,6 +7922,11 @@ export const TradingChart = React.memo(function TradingChart({
         if (directTrade) {
           closestTrade = directTrade;
           grabbedType = targetRole;
+        } else {
+          // The badge belongs to a retained trade whose position data is
+          // refreshing; it is not draggable right now and the press must not
+          // fall through to another trade's nearby level.
+          return;
         }
       }
 
@@ -7299,6 +7958,9 @@ export const TradingChart = React.memo(function TradingChart({
           : y;
         const initialOverlayY = grabbedType === 'ENTRY' ? entryAnchorY : y;
         dragState = { tradeObj: closestTrade, grabbedType, entryAnchorY };
+        if (grabbedType !== 'ENTRY') {
+          hideDraggedLevelControls(closestTrade.key, grabbedType);
+        }
 
         dragLineOverlay = document.createElement('div');
         dragLineOverlay.style.cssText = `position:absolute;left:0;right:${getPriceScaleOffset()}px;top:0;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translate3d(0, ${initialOverlayY}px, 0);will-change:transform;`;
@@ -7378,7 +8040,28 @@ export const TradingChart = React.memo(function TradingChart({
         dragBadgeOverlay.style.borderColor = palette.border;
         dragBadgeOverlay.style.color = palette.text;
         dragBadgeOverlay.style.boxShadow = palette.shadow.replace(/^box-shadow:/, '').replace(/;$/, '');
-        dragBadgeOverlay.textContent = `${role} ${price.toFixed(digits)}`;
+        // Live cTrader-style preview: Pips and money keep updating while the
+        // level is dragged, so the drop target's risk/reward is always visible.
+        const previewState = useAppStore.getState();
+        const previewTicket = Number(tradeObj.key.replace(/^trade:/, ''));
+        const previewPosition = Array.isArray(previewState.positions)
+          ? previewState.positions.find((candidate: any) => Number(candidate?.id ?? candidate?.ticket) === previewTicket)
+          : null;
+        const previewBackendPnl = Number(previewPosition?.unrealizedPnL ?? previewPosition?.profit ?? previewPosition?.unrealized_pl);
+        const previewPips = computeSignedPips(tradeObj.side, tradeObj.entryPrice, price, digits);
+        const previewMoney = estimateTradeLevelMoney({
+          symbol: tradeObj.symbol,
+          side: tradeObj.side,
+          volume: tradeObj.volume,
+          entryPrice: tradeObj.entryPrice,
+          levelPrice: price,
+          digits,
+          backendPnl: Number.isFinite(previewBackendPnl) ? previewBackendPnl : null,
+          currentPrice: liveCurrentPrice,
+          contractSize: Number(previewPosition?.contractSize ?? previewPosition?.contract_size) || undefined,
+        });
+        const previewCurrency = String(previewState.account?.currency || 'USD').trim().toUpperCase() || 'USD';
+        dragBadgeOverlay.textContent = `${role} ${price.toFixed(digits)}  Pips: ${formatPipsLabel(previewPips)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;
         dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${drawY}px))`;
         return;
       }
@@ -7524,6 +8207,7 @@ export const TradingChart = React.memo(function TradingChart({
       dragLineOverlay = null;
       dragBadgeOverlay = null;
       dragState = null;
+      restoreDraggedLevelControls();
       releasePointerCapture();
       endDragCursor();
       setTradeHoverCursor(false);
@@ -7543,6 +8227,7 @@ export const TradingChart = React.memo(function TradingChart({
       dragLineOverlay = null;
       dragBadgeOverlay = null;
       dragState = null;
+      restoreDraggedLevelControls();
       releasePointerCapture();
       endDragCursor();
       setTradeHoverCursor(false);

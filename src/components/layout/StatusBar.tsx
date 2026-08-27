@@ -8,13 +8,74 @@ import {
     getDesktopReleaseVersionLabel,
     openDesktopReleaseDownload,
 } from '../../services/desktopRelease';
+import {
+    WEB_TERMINAL_TITLE,
+    formatTerminalTitle,
+    getLogoUrl,
+    useTerminalBrokerInfo,
+} from '../../hooks/useTerminalTitle';
+import type { NormalizedMarketStatus } from '../../utils/marketStatus';
 
 interface StatusBarProps {
     wsRef?: React.RefObject<WebSocket | null>;
     reconnectCallback?: () => void;
+    symbol?: string;
+    timeframe?: string;
+    marketStatus?: NormalizedMarketStatus & { loading?: boolean };
 }
 
-export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
+export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketStatus }: StatusBarProps) {
+    const brokerInfo = useTerminalBrokerInfo();
+    const terminalTitle = symbol && timeframe
+        ? formatTerminalTitle(brokerInfo, symbol, timeframe, marketStatus)
+        : WEB_TERMINAL_TITLE;
+
+    const [logoError, setLogoError] = useState(false);
+    useEffect(() => {
+        setLogoError(false); // Reset error state on server/logo change
+    }, [brokerInfo.logoUrl]);
+    const brokerLogo = brokerInfo.logoUrl && !logoError
+        ? getLogoUrl(brokerInfo.logoUrl, brokerInfo.logoBaseCandidates)
+        : './titlebar-icon.png';
+
+    // Align the title with the bottom dock's tab strip (the "Trade" tab column),
+    // tracking live panel resizes via ResizeObserver + a slow fallback poll.
+    const [dockLeft, setDockLeft] = useState<number | null>(null);
+
+    useEffect(() => {
+        let observed: Element | null = null;
+        const observer = typeof ResizeObserver !== 'undefined'
+            ? new ResizeObserver(() => measure())
+            : null;
+
+        function measure() {
+            const el = document.querySelector('.rtx-bottom-dock__tabs');
+            if (!el) {
+                if (observed) {
+                    observer?.disconnect();
+                    observed = null;
+                }
+                setDockLeft(null);
+                return;
+            }
+            if (observer && observed !== el) {
+                observer.disconnect();
+                observer.observe(el);
+                observed = el;
+            }
+            const left = Math.round(el.getBoundingClientRect().left);
+            setDockLeft((prev) => (prev === left ? prev : left));
+        }
+
+        measure();
+        window.addEventListener('resize', measure);
+        const poll = window.setInterval(measure, 1000);
+        return () => {
+            window.removeEventListener('resize', measure);
+            window.clearInterval(poll);
+            observer?.disconnect();
+        };
+    }, []);
     const appVersion = window.electron?.appVersion || '1.0.0';
     const hasUpdater = Boolean(window.electron?.updater?.isSupported);
     const showDesktopDownload = !window.electron || !window.electron.isPackaged;
@@ -100,16 +161,26 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
 
     return (
         <div className="rtx-status-bar h-6 flex items-center justify-between border-t border-[#2a3342] bg-[#10151d] px-2 text-[13px] leading-[19.5px] font-normal font-sans text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] select-none z-50 [.rtx-advanced-view_&]:border-zinc-400 [.rtx-advanced-view_&]:bg-[#e1e1e1] [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:shadow-none">
-            <div className="rtx-status-bar__metric text-zinc-400 font-normal [.rtx-advanced-view_&]:text-zinc-600">
-                For Help, press F1
+            <div className="flex min-w-0 flex-1 items-center">
+                <div
+                    className="rtx-status-bar__metric overflow-hidden whitespace-nowrap text-zinc-400 font-normal [.rtx-advanced-view_&]:text-zinc-600"
+                    style={dockLeft != null ? { width: Math.max(0, dockLeft - 8), flexShrink: 1 } : undefined}
+                >
+                    For Help, press F1
+                </div>
+                <div className={`flex min-w-0 items-center gap-2 ${dockLeft != null ? '' : 'ml-4 border-l border-zinc-700 pl-4 [.rtx-advanced-view_&]:border-zinc-400'}`}>
+                    <img
+                        src={brokerLogo}
+                        alt={`${brokerInfo.brokerName} Logo`}
+                        className="h-4 w-4 shrink-0 rounded-sm object-contain"
+                        onError={() => setLogoError(true)}
+                    />
+                    <span className="rtx-status-bar__metric truncate whitespace-nowrap font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black">{terminalTitle}</span>
+                </div>
             </div>
-            <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 border-r border-zinc-700 pr-4 [.rtx-advanced-view_&]:border-zinc-400">
-                    <Icon name="server" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-zinc-500" />
-                    <span className="rtx-status-bar__metric font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black">RTX 5 Web Terminal</span>
-                    {showDesktopDownload && (
-                        <>
-                            <span className="h-3 w-px bg-zinc-700/80 [.rtx-advanced-view_&]:bg-zinc-400/70" aria-hidden="true" />
+            <div className="flex shrink-0 items-center gap-4">
+                {showDesktopDownload && (
+                    <div className="flex items-center gap-2 border-r border-zinc-700 pr-4 [.rtx-advanced-view_&]:border-zinc-400">
                             <button
                                 type="button"
                                 onClick={() => openDesktopReleaseDownload(desktopReleaseState.release)}
@@ -124,9 +195,8 @@ export function StatusBar({ wsRef, reconnectCallback }: StatusBarProps) {
                                     </span>
                                 )}
                             </button>
-                        </>
-                    )}
-                </div>
+                    </div>
+                )}
                 {/* Connection Status Indicator (Live) */}
                 {wsRef && (
                     <ConnectionStatus wsRef={wsRef} reconnectCallback={reconnectCallback} />

@@ -53,6 +53,8 @@ import {
 } from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
 import { formatOrderError } from './utils/orderError';
+import { CHART_POSITION_ACTION_EVENT, type ChartPositionActionDetail } from './utils/chartTradeControls';
+import { getSharedChartTrade } from './utils/tradeShareLink';
 import { closePositionsLocalFirst } from './services/localFirstCloseCoordinator';
 import { createUnavailableMarketStatus, getMarketStatusTradeBlockMessage, shouldBlockSymbolTrading } from './utils/marketStatus';
 import { getStoredBrokerServer } from './services/brokerServers';
@@ -1459,6 +1461,22 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: chartSymbol, newTab: true } }));
   }, [getChartEligibleSymbol]);
 
+  // A `#share=` deep link opens the shared trade's chart: switch to its
+  // symbol and timeframe once the account's symbol list is available. The
+  // chart itself draws the shared trade annotation from the same URL payload.
+  const sharedTradeLinkAppliedRef = useRef(false);
+  useEffect(() => {
+    if (sharedTradeLinkAppliedRef.current || !isAuthenticated || !hasLoadedChartSymbols) return;
+    const sharedTrade = getSharedChartTrade();
+    if (!sharedTrade) return;
+    sharedTradeLinkAppliedRef.current = true;
+    const validTimeframes: Timeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
+    if ((validTimeframes as string[]).includes(sharedTrade.timeframe)) {
+      setTimeframe(sharedTrade.timeframe as Timeframe);
+    }
+    handleSymbolSelect(sharedTrade.symbol);
+  }, [handleSymbolSelect, hasLoadedChartSymbols, isAuthenticated]);
+
   // Multi-Chart State (Now managed by DockManager)
   useEffect(() => {
     // Sync selected symbol to persistence
@@ -1809,11 +1827,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const closingTicketsRef = useRef<Set<number>>(new Set());
   const bulkCloseInFlightRef = useRef(false);
 
-  const handleClosePosition = async (id: number) => {
+  const handleClosePosition = async (id: number): Promise<boolean> => {
     // Guard against double-click: skip if already closing this ticket
     if (closingTicketsRef.current.has(id)) {
       console.log(`[App] Close already in progress for ticket ${id}, skipping duplicate`);
-      return;
+      return false;
     }
     closingTicketsRef.current.add(id);
 
@@ -1836,15 +1854,113 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       if (loginId) {
         refreshOrdersAndHistory(loginId).catch(err => console.error('[Trade] Failed to refresh orders/history after close:', err));
       }
+      return true;
     } catch (err: any) {
       clearOptimisticClosedTickets([id]);
       dispatchTradeOverlayCloseState([id], 'failed');
       console.error('Failed to close position:', err);
       refreshPositions(getLiveTradingLogin() || undefined, { allowWsCommit: true });
+      return false;
     } finally {
       closingTicketsRef.current.delete(id);
     }
   };
+
+  // ── cTrader-style chart position actions (reverse / double / close) ──
+  const chartPositionActionBusyRef = useRef<Set<number>>(new Set());
+
+  const handleReversePosition = async (ticket: number) => {
+    if (chartPositionActionBusyRef.current.has(ticket)) return;
+    const position = (useAppStore.getState().positions as Position[])
+      .find((candidate) => Number(candidate.id) === ticket);
+    if (!position) return;
+    const login = getLiveTradingLogin();
+    if (!login) {
+      publishOrderFeedback('No trading account is selected. Please sign in again.');
+      return;
+    }
+    const intentAtMs = captureTradeOrderIntent();
+    const reverseSide = position.side === 'BUY' ? 'sell' : 'buy';
+    const { symbol: positionSymbol, volume: positionVolume } = position;
+    chartPositionActionBusyRef.current.add(ticket);
+    try {
+      const closed = await handleClosePosition(ticket);
+      if (!closed) {
+        publishOrderFeedback('Reverse cancelled: the position could not be closed.');
+        return;
+      }
+      await api.orders.placeMarketOrder({
+        side: reverseSide,
+        symbol: positionSymbol,
+        volume: positionVolume,
+        login,
+      }, { intentAtMs });
+      publishOrderFeedback(
+        `Reversed #${ticket}: now ${reverseSide.toUpperCase()} ${positionVolume} ${positionSymbol}`,
+        'success',
+      );
+      window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+    } catch (err) {
+      console.error('[Chart] Reverse position failed:', err);
+      publishOrderFeedback(`Position closed, but the reverse order failed: ${formatOrderError(err)}`);
+      window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+    } finally {
+      chartPositionActionBusyRef.current.delete(ticket);
+    }
+  };
+
+  const handleDoublePosition = async (ticket: number) => {
+    if (chartPositionActionBusyRef.current.has(ticket)) return;
+    const position = (useAppStore.getState().positions as Position[])
+      .find((candidate) => Number(candidate.id) === ticket);
+    if (!position) return;
+    const login = getLiveTradingLogin();
+    if (!login) {
+      publishOrderFeedback('No trading account is selected. Please sign in again.');
+      return;
+    }
+    const intentAtMs = captureTradeOrderIntent();
+    chartPositionActionBusyRef.current.add(ticket);
+    try {
+      await api.orders.placeMarketOrder({
+        side: position.side === 'SELL' ? 'sell' : 'buy',
+        symbol: position.symbol,
+        volume: position.volume,
+        login,
+      }, { intentAtMs });
+      publishOrderFeedback(
+        `Doubled #${ticket}: +${position.volume} ${position.symbol} ${position.side}`,
+        'success',
+      );
+      window.dispatchEvent(new Event('rtx:force-refresh-positions'));
+    } catch (err) {
+      console.error('[Chart] Double position failed:', err);
+      publishOrderFeedback(formatOrderError(err));
+    } finally {
+      chartPositionActionBusyRef.current.delete(ticket);
+    }
+  };
+
+  const chartPositionActionHandlerRef = useRef<(detail: ChartPositionActionDetail) => void>(() => { });
+  chartPositionActionHandlerRef.current = (detail) => {
+    const ticket = Number(detail?.ticket);
+    if (!Number.isFinite(ticket) || ticket <= 0) return;
+    if (detail.action === 'close') {
+      void handleClosePosition(ticket);
+    } else if (detail.action === 'reverse') {
+      void handleReversePosition(ticket);
+    } else if (detail.action === 'double') {
+      void handleDoublePosition(ticket);
+    }
+  };
+
+  useEffect(() => {
+    const handleChartPositionAction = (event: Event) => {
+      chartPositionActionHandlerRef.current((event as CustomEvent<ChartPositionActionDetail>).detail);
+    };
+    window.addEventListener(CHART_POSITION_ACTION_EVENT, handleChartPositionAction);
+    return () => window.removeEventListener(CHART_POSITION_ACTION_EVENT, handleChartPositionAction);
+  }, []);
 
   const handleCancelOrder = async (orderId: string) => {
     if (!(await useConfirmStore.getState().showConfirm('Confirm Action', 'Cancel this order?'))) return;
@@ -3585,7 +3701,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           </div>
 
           {/* 4. Status Bar */}
-          <StatusBar wsRef={wsRef} reconnectCallback={reconnectCallbackRef.current || undefined} />
+          <StatusBar
+            wsRef={wsRef}
+            reconnectCallback={reconnectCallbackRef.current || undefined}
+            symbol={selectedSymbol}
+            timeframe={timeframe}
+            marketStatus={selectedMarketStatus}
+          />
 
           {/* OTA Update Banner (fixed overlay, top-right) */}
           <UpdateBanner />

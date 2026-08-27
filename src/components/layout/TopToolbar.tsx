@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Icon } from '../ui/Icon';
 import type { ChartType, Timeframe } from '../TradingChart';
 import {
     FileText, TrendingUp, BarChart2, CandlestickChart, LineChart,
-    ZoomIn, ZoomOut, LayoutGrid,
+    ZoomIn, ZoomOut, Palette,
     MousePointer2, Crosshair, ArrowUpDown, MoveHorizontal, MoveVertical,
     Pencil, Type, Shapes, Camera, Search, User,
     LogOut, GitCommitHorizontal, AlignCenter, BookMarked, RefreshCw,
@@ -16,7 +16,6 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcut';
 import { SHORTCUT_CATEGORIES } from '../../services/keyboardShortcutManager';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { Command } from '../../types/commands';
-import type { Broker, BrokerServer } from '../../types/api';
 import { NotificationBadge } from '../notifications/NotificationBadge';
 import { NotificationCenter } from '../notifications/NotificationCenter';
 import { useNotificationStore } from '../../store/useNotificationStore';
@@ -28,9 +27,7 @@ import {
     type ChartProperties,
 } from '../../store/useChartSettingsStore';
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
-import { brokerV2Api } from '../../api/trade';
 import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
-import { configApi } from '../../services/api';
 
 interface TopToolbarProps {
     chartType: ChartType;
@@ -49,9 +46,17 @@ import { ChartTemplateManager } from '../ChartTemplateManager';
 import { indicatorManager } from '../../services/indicatorManager';
 import { drawingManager } from '../../services/drawingManager';
 import { captureFullPage } from '../../services/screenshotService';
-
-const WEB_TERMINAL_TITLE = 'RTX 5 Web Terminal';
-const DEFAULT_BROKER_SERVER = WEB_TERMINAL_TITLE;
+import {
+    clearAdvancedViewRootClasses,
+    RTX_ADVANCED_VIEW_CHANGE_EVENT,
+    syncAdvancedViewRootClasses,
+    type AdvancedViewAccent,
+    type AdvancedViewChartSurface,
+    type AdvancedViewDensity,
+    type AdvancedViewFontSize,
+    type AdvancedViewRootOptions,
+} from '../../utils/advancedViewRootClasses';
+import { suppressThemeTransitions } from '../../utils/themeTransitionSuppression';
 
 const getLogoutBase = (): string => {
   const fallback = normalizeServerUrl(RTX5_API_URL || import.meta.env.VITE_API_URL || '');
@@ -70,7 +75,6 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     onTimeframeChange,
     onToggleDOM,
     symbol = 'BTCUSD',
-    marketStatus,
     onLoadTemplate
 }) => {
     const { state: toolbarState, dispatch: dispatchToolbar } = useToolbarState();
@@ -196,11 +200,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     return (
         <div className="rtx-top-chrome flex flex-col z-50 relative border-b border-white/5 shadow-2xl">
             {/* 1. Header Bar (Topmost) */}
-            <HeaderBar
-                symbol={symbol}
-                timeframe={timeframe}
-                marketStatus={marketStatus}
-            />
+            <HeaderBar />
 
             {/* 2. Menu Bar (File, View, etc.) */}
             <MenuBar />
@@ -225,200 +225,17 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
 // --- Sub-Components ---
 
-const normalizeHeaderText = (value: unknown): string => String(value || '').trim();
-
-const getStoredHeaderValue = (key: string): string => {
-    if (typeof window === 'undefined') return '';
-    return normalizeHeaderText(localStorage.getItem(key));
-};
-
-const getStoredLogoUrl = (): string => getStoredHeaderValue('logo_url');
-
-const normalizeLogoBaseUrl = (value: unknown): string => {
-    const normalized = normalizeServerUrl(normalizeHeaderText(value));
-    return normalized.replace(/\/api\/v\d+\/?$/i, '').replace(/\/$/, '');
-};
-
-const getLogoUrl = (url?: string, baseCandidates: string[] = []) => {
-    const rawUrl = normalizeHeaderText(url);
-    if (!rawUrl) return '';
-    if (/^(?:https?:|data:|blob:)/i.test(rawUrl)) {
-        return rawUrl;
-    }
-    if (rawUrl.startsWith('./')) {
-        return rawUrl;
-    }
-
-    const base = [
-        ...baseCandidates,
-        getStoredHeaderValue('server_url'),
-        getStoredHeaderValue('backend_url'),
-        RTX5_API_URL,
-    ].map(normalizeLogoBaseUrl).find(Boolean);
-    if (!base) return rawUrl;
-
-    const path = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`;
-    return `${base}${path}`;
-};
-
-type BrokerTitleConfig = {
-    name?: string;
-    brokerName?: string;
-    logo_url?: string;
-};
-
 type ElectronWindowApi = NonNullable<Window['electron']>['window'];
 
-const matchesBrokerServer = (server: BrokerServer, serverName: string): boolean => {
-    const target = normalizeHeaderText(serverName).toLowerCase();
-    if (!target) return false;
-
-    return [
-        server.server,
-        server.server_url,
-        server.backend_url,
-        server.market_api_url,
-        server.broker_id,
-        server.broker_name,
-    ].some((value) => normalizeHeaderText(value).toLowerCase() === target);
-};
-
-const resolveBrokerDisplayName = (
-    serverName: string,
-    config: BrokerTitleConfig | null,
-    matchedServer?: BrokerServer,
-    brokers: Broker[] = [],
-): string => {
-    const matchedBroker = matchedServer?.broker_id
-        ? brokers.find((broker) => broker.broker_id === matchedServer.broker_id)
-        : undefined;
-
-    return normalizeHeaderText(matchedServer?.broker_name)
-        || normalizeHeaderText(matchedBroker?.name)
-        || normalizeHeaderText(config?.brokerName)
-        || normalizeHeaderText(config?.name)
-        || serverName;
-};
-
-const HeaderBar = ({
-    symbol,
-    timeframe,
-    marketStatus,
-}: {
-    symbol: string;
-    timeframe: string;
-    marketStatus?: NormalizedMarketStatus & { loading?: boolean };
-}) => {
-    const accountId = useAppStore((s) => s.accountId) || '---';
-    const savedAccounts = useAppStore((s) => s.savedAccounts) || [];
-    const activeAccount = savedAccounts.find(a => String(a.login) === String(accountId));
-    const serverName = activeAccount?.server || localStorage.getItem('rtx_broker_server') || DEFAULT_BROKER_SERVER;
-
-    const [logoUrl, setLogoUrl] = useState<string>(() => getStoredLogoUrl());
-    const [logoBaseCandidates, setLogoBaseCandidates] = useState<string[]>([]);
-    const [brokerName, setBrokerName] = useState<string>(serverName);
-    const [marginMode, setMarginMode] = useState<string>('Hedge');
-    const [logoError, setLogoError] = useState<boolean>(false);
-
-    React.useEffect(() => {
-        let active = true;
-        setBrokerName(serverName);
-        setLogoUrl(getStoredLogoUrl());
-        setLogoBaseCandidates([]);
-        setLogoError(false);
-
-        const fetchDetails = async () => {
-            try {
-                // Fetch config for marginMode and broker logo.
-                const [config, servers, brokersData] = await Promise.all([
-                    configApi.getConfig().catch(() => null),
-                    brokerV2Api.getServers().catch(() => []),
-                    brokerV2Api.getBrokers().catch(() => ({ brokers: [], count: 0 })),
-                ]);
-
-                if (!active) return;
-
-                // 1. Margin mode from config
-                if (config) {
-                    if (config.marginMode === 'NETTING') {
-                        setMarginMode('Netting');
-                    } else {
-                        setMarginMode('Hedge');
-                    }
-                }
-
-                // 2. Find broker ID, broker name, and logo from server matching
-                const matchedServer = servers.find(
-                    (server) => matchesBrokerServer(server, serverName)
-                );
-                const brokersList = brokersData?.brokers || [];
-
-                let finalLogoUrl = getStoredLogoUrl();
-                let nextLogoBaseCandidates: string[] = [];
-                if (matchedServer) {
-                    nextLogoBaseCandidates = [
-                        matchedServer.server_url || '',
-                        matchedServer.backend_url || '',
-                        matchedServer.market_api_url || '',
-                    ];
-
-                    if (matchedServer.logo_url) {
-                        finalLogoUrl = matchedServer.logo_url;
-                    }
-
-                    // If no logo_url on server, cross-reference with broker list using broker_id
-                    if (!finalLogoUrl && matchedServer.broker_id) {
-                        const matchedBroker = brokersList.find(
-                            (broker) => broker.broker_id === matchedServer.broker_id
-                        );
-                        if (matchedBroker?.logo_url) {
-                            finalLogoUrl = matchedBroker.logo_url;
-                        }
-                    }
-                }
-                if (!finalLogoUrl && config?.logo_url) {
-                    finalLogoUrl = config.logo_url;
-                }
-
-                setBrokerName(resolveBrokerDisplayName(serverName, config, matchedServer, brokersList));
-                setLogoUrl(finalLogoUrl);
-                setLogoBaseCandidates(nextLogoBaseCandidates);
-                setLogoError(false); // Reset error state on server/logo change
-            } catch (err) {
-                console.error('[HeaderBar] Error loading dynamic titlebar info:', err);
-                setBrokerName(serverName);
-                setLogoUrl(getStoredLogoUrl());
-                setLogoBaseCandidates([]);
-            }
-        };
-
-        fetchDetails();
-        return () => {
-            active = false;
-        };
-    }, [accountId, serverName]);
-
-    const displayLogo = logoUrl && !logoError ? getLogoUrl(logoUrl, logoBaseCandidates) : './titlebar-icon.png';
-    const marketStatusSuffix = marketStatus?.isTradeBlocked && !marketStatus.loading && marketStatus.status !== 'unknown'
-        ? ` - ${marketStatus.label}`
-        : '';
-    const terminalTitle = `${WEB_TERMINAL_TITLE} - ${accountId} - ${brokerName} - ${marginMode} - ${symbol},${timeframe.toUpperCase()}${marketStatusSuffix}`;
-
+const HeaderBar = () => {
+    // The title bar only serves the desktop app (drag region + window controls).
+    // In the browser it would render as an empty strip, so skip it entirely.
+    if (!window.electron?.window) return null;
     return (
         <div
-            className="rtx-header-bar h-9 bg-transparent flex items-center justify-between text-[14px] font-normal font-segoe select-none text-slate-300 border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] backdrop-blur-md"
+            className="rtx-header-bar h-9 bg-transparent flex items-center justify-end text-[14px] font-normal font-segoe select-none text-slate-300 border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] backdrop-blur-md"
             style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
-            {/* Left: Standard Title */}
-            <div className="flex items-center gap-2 px-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-                <img
-                    src={displayLogo}
-                    alt={`${brokerName} Logo`}
-                    className="w-4 h-4 object-contain ml-1 rounded-sm"
-                    onError={() => setLogoError(true)}
-                />
-                <span>{terminalTitle}</span>
-            </div>
             <WindowControls />
         </div>
     );
@@ -503,18 +320,11 @@ interface MainToolbarProps extends TopToolbarProps {
     onLoadTemplate?: (template: any) => void;
 }
 
-type AdvancedFontSize = 'small' | 'normal' | 'large';
-type AdvancedDensity = 'comfortable' | 'compact';
-type AdvancedAccent = 'purple' | 'blue' | 'green' | 'amber';
-type AdvancedChartSurface = 'white' | 'soft' | 'paper';
-
-interface AdvancedViewOptions {
-    fontSize: AdvancedFontSize;
-    density: AdvancedDensity;
-    accent: AdvancedAccent;
-    chartSurface: AdvancedChartSurface;
-    focusChart: boolean;
-}
+type AdvancedFontSize = AdvancedViewFontSize;
+type AdvancedDensity = AdvancedViewDensity;
+type AdvancedAccent = AdvancedViewAccent;
+type AdvancedChartSurface = AdvancedViewChartSurface;
+type AdvancedViewOptions = AdvancedViewRootOptions;
 
 const ADVANCED_OPTIONS_STORAGE_KEY = 'rtx5-advanced-view-options';
 
@@ -606,37 +416,36 @@ const MainToolbar = ({
     const accountId = useAppStore((s) => s.accountId) || '---';
     const tradeHistorySettings = useChartSettingsStore((state) => state.symbolProperties[symbol] || state.globalProperties);
 
-    useEffect(() => {
-        const root = document.documentElement;
-        root.classList.toggle('rtx-advanced-view', advancedViewEnabled);
-        root.classList.toggle('rtx-skin-untitled-light', advancedViewEnabled);
+    const themeSuppressionCleanupRef = useRef<(() => void) | null>(null);
+    const previousAdvancedViewEnabledRef = useRef(advancedViewEnabled);
 
-        root.classList.remove(
-            'rtx-advanced-font-small',
-            'rtx-advanced-font-normal',
-            'rtx-advanced-font-large',
-            'rtx-advanced-density-compact',
-            'rtx-advanced-density-comfortable',
-            'rtx-advanced-accent-purple',
-            'rtx-advanced-accent-blue',
-            'rtx-advanced-accent-green',
-            'rtx-advanced-accent-amber',
-            'rtx-advanced-surface-white',
-            'rtx-advanced-surface-soft',
-            'rtx-advanced-surface-paper',
-            'rtx-advanced-focus-chart'
-        );
+    useLayoutEffect(() => () => {
+        themeSuppressionCleanupRef.current?.();
+        clearAdvancedViewRootClasses(document.documentElement);
+    }, []);
 
-        if (advancedViewEnabled) {
-            root.classList.add(
-                `rtx-advanced-font-${advancedOptions.fontSize}`,
-                `rtx-advanced-density-${advancedOptions.density}`,
-                `rtx-advanced-accent-${advancedOptions.accent}`,
-                `rtx-advanced-surface-${advancedOptions.chartSurface}`,
-            );
+    useLayoutEffect(() => {
+        // Suppress CSS transitions before flipping the theme classes so every
+        // color snaps in the same paint (see themeTransitionSuppression.ts).
+        if (previousAdvancedViewEnabledRef.current !== advancedViewEnabled) {
+            previousAdvancedViewEnabledRef.current = advancedViewEnabled;
+            themeSuppressionCleanupRef.current?.();
+            themeSuppressionCleanupRef.current = suppressThemeTransitions(document.documentElement);
         }
-        root.classList.toggle('rtx-advanced-focus-chart', advancedOptions.focusChart);
+        syncAdvancedViewRootClasses(document.documentElement, advancedViewEnabled, advancedOptions);
+        window.dispatchEvent(new CustomEvent(RTX_ADVANCED_VIEW_CHANGE_EVENT, {
+            detail: { isAdvancedUntitledLight: advancedViewEnabled },
+        }));
+    }, [
+        advancedViewEnabled,
+        advancedOptions.fontSize,
+        advancedOptions.density,
+        advancedOptions.accent,
+        advancedOptions.chartSurface,
+        advancedOptions.focusChart,
+    ]);
 
+    useEffect(() => {
         const resizeFrame = window.requestAnimationFrame(() => {
             window.dispatchEvent(new Event('resize'));
         });
@@ -650,23 +459,6 @@ const MainToolbar = ({
 
         return () => {
             window.cancelAnimationFrame(resizeFrame);
-            root.classList.remove(
-                'rtx-advanced-view',
-                'rtx-skin-untitled-light',
-                'rtx-advanced-font-small',
-                'rtx-advanced-font-normal',
-                'rtx-advanced-font-large',
-                'rtx-advanced-density-compact',
-                'rtx-advanced-density-comfortable',
-                'rtx-advanced-accent-purple',
-                'rtx-advanced-accent-blue',
-                'rtx-advanced-accent-green',
-                'rtx-advanced-accent-amber',
-                'rtx-advanced-surface-white',
-                'rtx-advanced-surface-soft',
-                'rtx-advanced-surface-paper',
-                'rtx-advanced-focus-chart'
-            );
         };
     }, [advancedViewEnabled, advancedOptions]);
 
@@ -762,8 +554,8 @@ const MainToolbar = ({
     const getAdvancedMenuOptionClass = (isSelected: boolean) => {
         if (advancedViewEnabled) {
             return isSelected
-                ? 'border-[#7E57C2] bg-[#7E57C2] text-white shadow-sm'
-                : 'border-[#d0d5dd] bg-white text-[#475467] hover:border-[#7E57C2] hover:bg-[#F3E5F5] hover:text-[#7E57C2]';
+                ? 'border-[#6941C6] bg-[#6941C6] text-white shadow-sm'
+                : 'border-[#d0d5dd] bg-white text-[#344054] hover:border-[#b692f6] hover:bg-[#f9f5ff] hover:text-[#6941C6]';
         }
 
         return isSelected
@@ -774,8 +566,8 @@ const MainToolbar = ({
     const getAdvancedGridButtonClass = () => {
         if (advancedViewEnabled) {
             return showAdvancedOptions
-                ? 'border-[#7E57C2] bg-[#7E57C2] text-white shadow-sm'
-                : 'border-[#d0d5dd] bg-white text-[#475467] shadow-sm hover:border-[#7E57C2] hover:bg-[#7E57C2] hover:text-white';
+                ? 'border-[#6941C6] bg-[#6941C6] text-white shadow-sm'
+                : 'border-[#d0d5dd] bg-white text-[#475467] shadow-sm hover:border-[#6941C6] hover:bg-[#6941C6] hover:text-white';
         }
 
         if (showAdvancedOptions) {
@@ -786,17 +578,17 @@ const MainToolbar = ({
     };
 
     const advancedMenuPanelClass = advancedViewEnabled
-        ? 'border-gray-200 bg-white text-gray-800 shadow-xl'
+        ? 'border-[#d0d5dd] bg-white text-[#101828] shadow-[0_16px_32px_-8px_rgba(16,24,40,0.24)]'
         : 'border-zinc-700/80 bg-[#151820] text-zinc-200 shadow-2xl shadow-black/50';
 
     const advancedMenuHeaderClass = advancedViewEnabled
-        ? 'border-gray-100 text-[#101828]'
+        ? 'border-[#eaecf0] text-[#101828]'
         : 'border-zinc-700/70 text-zinc-100';
 
     const advancedMenuLabelClass = advancedViewEnabled ? 'text-[#475467]' : 'text-zinc-400';
 
     const advancedMenuSegmentClass = advancedViewEnabled
-        ? 'border-[#d0d5dd] bg-[#f9fafb]'
+        ? 'border-[#d0d5dd] bg-[#f9fafb] shadow-sm'
         : 'border-zinc-700 bg-[#0f1117]';
 
     return (
@@ -1068,8 +860,8 @@ const MainToolbar = ({
                 <div className="relative" ref={advancedOptionsRef}>
                     <button
                         type="button"
-                        title="Advanced View Settings"
-                        aria-label="Advanced View Settings"
+                        title="Theme"
+                        aria-label="Theme"
                         aria-haspopup="menu"
                         aria-expanded={showAdvancedOptions}
                         onClick={() => {
@@ -1079,31 +871,31 @@ const MainToolbar = ({
                         }}
                         className={`rtx-advanced-grid-button flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all ${getAdvancedGridButtonClass()}`}
                     >
-                        <LayoutGrid size={15} strokeWidth={1.5} />
+                        <Palette size={15} strokeWidth={1.5} />
                     </button>
 
                     {showAdvancedOptions && ReactDOM.createPortal(
                         <div
                             ref={advancedOptionsDropdownRef}
-                            className={`fixed z-[9999] w-[252px] rounded-[5px] border p-3 text-[14px] font-normal ${advancedMenuPanelClass}`}
+                            className={`fixed z-[9999] w-[264px] rounded-[8px] border p-3.5 text-[14px] font-normal ${advancedMenuPanelClass}`}
                             style={{
                                 top: (advancedOptionsRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
                                 right: Math.max(8, window.innerWidth - (advancedOptionsRef.current?.getBoundingClientRect().right ?? window.innerWidth)),
                             }}
                             role="menu"
-                            aria-label="Advanced View settings"
+                            aria-label="Theme"
                         >
-                            <div className={`mb-3 flex items-center justify-between border-b pb-2 ${advancedMenuHeaderClass}`}>
-                                <span className="text-[12px] font-medium uppercase tracking-wide">Advanced View</span>
-                                <span className={`rounded px-1.5 py-0.5 text-[12px] font-normal ${advancedViewEnabled ? 'bg-[#F3E5F5] text-[#7E57C2]' : 'bg-zinc-800 text-zinc-400'}`}>
+                            <div className={`mb-3 flex items-center justify-between border-b pb-2.5 ${advancedMenuHeaderClass}`}>
+                                <span className="text-[12px] font-semibold uppercase tracking-[0.08em]">Theme</span>
+                                <span className={`rounded-full px-2 py-0.5 text-[12px] font-medium ${advancedViewEnabled ? 'bg-[#f4f3ff] text-[#6941C6]' : 'bg-zinc-800 text-zinc-400'}`}>
                                     {advancedViewEnabled ? 'Light' : 'Dark'}
                                 </span>
                             </div>
 
                             <div className="space-y-3">
                                 <div>
-                                    <div className={`mb-1.5 text-[12px] font-medium uppercase tracking-wide ${advancedMenuLabelClass}`}>Mode</div>
-                                    <div className={`grid grid-cols-2 overflow-hidden rounded border ${advancedMenuSegmentClass}`}>
+                                    <div className={`mb-1.5 text-[12px] font-medium uppercase tracking-wide ${advancedMenuLabelClass}`}>Color Scheme</div>
+                                    <div className={`grid grid-cols-2 overflow-hidden rounded border ${advancedMenuSegmentClass}`} role="group" aria-label="Theme color scheme">
                                         {([
                                             { value: 'classic', label: 'Dark' },
                                             { value: 'advanced', label: 'Light' },
@@ -1125,7 +917,7 @@ const MainToolbar = ({
 
                                 <div>
                                     <div className={`mb-1.5 text-[12px] font-medium uppercase tracking-wide ${advancedMenuLabelClass}`}>Font Size</div>
-                                    <div className={`grid grid-cols-3 overflow-hidden rounded border ${advancedMenuSegmentClass}`} role="group" aria-label="Advanced View font size">
+                                    <div className={`grid grid-cols-3 overflow-hidden rounded border ${advancedMenuSegmentClass}`} role="group" aria-label="Theme font size">
                                         {ADVANCED_FONT_SIZES.map((fontSize) => {
                                             const selected = advancedOptions.fontSize === fontSize;
                                             const label = fontSize.charAt(0).toUpperCase() + fontSize.slice(1);
@@ -1146,13 +938,13 @@ const MainToolbar = ({
                                     </div>
                                 </div>
 
-                                <label className={`flex cursor-pointer items-center justify-between gap-3 rounded px-1 py-1 ${advancedViewEnabled ? 'hover:bg-[#F3E5F5]' : 'hover:bg-white/5'}`}>
+                                <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-[5px] px-2 py-1.5 ${advancedViewEnabled ? 'hover:bg-[#f9fafb]' : 'hover:bg-white/5'}`}>
                                     <span className={`text-[14px] font-normal ${advancedMenuLabelClass}`}>Focus Chart</span>
                                     <input
                                         type="checkbox"
                                         checked={advancedOptions.focusChart}
                                         onChange={(event) => updateAdvancedOptions({ focusChart: event.target.checked })}
-                                        className="h-3.5 w-3.5 accent-[#7E57C2]"
+                                        className="h-3.5 w-3.5 accent-[#6941C6]"
                                     />
                                 </label>
                             </div>

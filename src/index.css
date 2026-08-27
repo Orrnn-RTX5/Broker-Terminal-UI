@@ -21,6 +21,18 @@ html, body, #root {
 button {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* While a theme switch is in flight, disable every transition so text and
+   backgrounds flip in the same paint. Without this, main-thread-bound
+   background/color transitions stall at their old-theme value while
+   non-transitioned properties flip instantly, leaving unreadable frames
+   (dark rows with dark text, white-on-white values). The class is added and
+   removed by suppressThemeTransitions (src/utils/themeTransitionSuppression.ts). */
+html.rtx-theme-transition-suppress *,
+html.rtx-theme-transition-suppress *::before,
+html.rtx-theme-transition-suppress *::after {
+  transition: none !important;
+}
 button:active {
   transform: scale(0.96);
 }
@@ -37,6 +49,10 @@ button:active {
   border-color: rgba(255, 255, 255, 0.1) !important;
   border-radius: 10px !important;
   box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.05), 0 8px 32px 0 rgba(0,0,0,0.3) !important;
+}
+
+.rtx-chart-panel {
+  border-radius: 0 !important;
 }
 
 .rtx-bottom-dock__tabs {
@@ -361,6 +377,37 @@ input[type="number"]::-webkit-outer-spin-button {
 .virtualized-list {
   contain: strict;
   overflow-anchor: none;
+}
+
+/* Journal toolbar: compact desktop geometry without pill-shaped focus rings. */
+html .rtx-journal-toolbar .rtx-journal-control {
+  border-radius: 2px !important;
+  font-size: max(13px, var(--rtx-advanced-primary-font-size, 13px)) !important;
+  line-height: 1;
+}
+
+.rtx-journal-toolbar button.rtx-journal-control:active {
+  transform: none;
+}
+
+html .rtx-journal-toolbar .rtx-journal-control:focus,
+html .rtx-journal-toolbar .rtx-journal-control:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  border-color: #60a5fa !important;
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.5) !important;
+}
+
+html.rtx-skin-untitled-light .rtx-journal-toolbar .rtx-journal-control:focus,
+html.rtx-skin-untitled-light .rtx-journal-toolbar .rtx-journal-control:focus-visible {
+  border-color: #7f56d9 !important;
+  box-shadow: inset 0 0 0 1px rgba(127, 86, 217, 0.38) !important;
+}
+
+html.rtx-skin-untitled-light .rtx-journal-toolbar .rtx-journal-auto[aria-pressed="true"] {
+  background: #f4ebff !important;
+  border-color: #d6bbfb !important;
+  color: #6941c6 !important;
 }
 
 /* No-select for draggable elements */

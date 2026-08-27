@@ -4,13 +4,14 @@ import { describe, expect, it } from 'vitest';
 
 const readSource = (path: string): string => readFileSync(resolve(process.cwd(), path), 'utf8');
 
-const mainSource = readSource('src/main.tsx');
+const authenticatedStylesSource = readSource('src/authenticatedStyles.ts');
 const appSource = readSource('src/App.tsx');
 const themeCss = readSource('src/styles/theme.css');
 const indexCss = readSource('src/index.css');
 const loginCss = readSource('src/styles/login.css');
 const advancedCss = readSource('src/styles/advanced-untitled-light.css');
 const topToolbarSource = readSource('src/components/layout/TopToolbar.tsx');
+const advancedViewRootClassesSource = readSource('src/utils/advancedViewRootClasses.ts');
 const tradingChartSource = readSource('src/components/TradingChart.tsx');
 const marketWatchSource = readSource('src/components/layout/MarketWatchPanel.tsx');
 const bottomDockSource = readSource('src/components/BottomDock.tsx');
@@ -35,9 +36,9 @@ const loginDialogSource = readSource('src/components/LoginDialog.tsx');
 
 describe('enterprise typography contract', () => {
   it('loads the bundled variable font, including real italic glyphs, before global CSS', () => {
-    const normalFontImport = mainSource.indexOf("import '@fontsource-variable/plus-jakarta-sans'\n");
-    const italicFontImport = mainSource.indexOf("import '@fontsource-variable/plus-jakarta-sans/wght-italic.css'");
-    const globalCssImport = mainSource.indexOf("import './index.css'");
+    const normalFontImport = authenticatedStylesSource.indexOf("import '@fontsource-variable/plus-jakarta-sans';");
+    const italicFontImport = authenticatedStylesSource.indexOf("import '@fontsource-variable/plus-jakarta-sans/wght-italic.css';");
+    const globalCssImport = authenticatedStylesSource.indexOf("import './index.css';");
 
     expect(normalFontImport).toBeGreaterThan(-1);
     expect(italicFontImport).toBeGreaterThan(normalFontImport);
@@ -84,11 +85,28 @@ describe('enterprise typography contract', () => {
     expect(advancedCss).not.toContain('font-size: 10.5px !important;');
     expect(advancedCss).toContain('.h-\\[24px\\]');
     expect(advancedCss).not.toContain('.h-\\\\[24px\\\\]');
-    expect(topToolbarSource).toContain('`rtx-advanced-font-${advancedOptions.fontSize}`');
+    expect(topToolbarSource).toContain('syncAdvancedViewRootClasses(document.documentElement, advancedViewEnabled, advancedOptions);');
+    expect(advancedViewRootClassesSource).toContain('setExclusiveClass(root, ADVANCED_VIEW_FONT_CLASSES, `rtx-advanced-font-${options.fontSize}`);');
+    expect(advancedViewRootClassesSource).toContain("root.classList.toggle('rtx-advanced-focus-chart', enabled && options.focusChart);");
     expect(topToolbarSource).toContain("const ADVANCED_FONT_SIZES: readonly AdvancedFontSize[] = ['small', 'normal', 'large'];");
     expect(topToolbarSource).toContain('fontSize: isStoredOption(parsed?.fontSize, ADVANCED_FONT_SIZES)');
-    expect(topToolbarSource).toContain('aria-label="Advanced View font size"');
+    expect(topToolbarSource).toContain('title="Theme"');
+    expect(topToolbarSource).toContain('aria-label="Theme"');
+    expect(topToolbarSource).toContain('aria-label="Theme color scheme"');
+    expect(topToolbarSource).toContain('aria-label="Theme font size"');
     expect(topToolbarSource).toContain('onClick={() => updateAdvancedOptions({ fontSize })}');
+    expect(topToolbarSource).toContain('>Theme</span>');
+    expect(topToolbarSource).toContain('>Color Scheme</div>');
+    expect(advancedCss).toContain('html.rtx-advanced-font-small {');
+    expect(advancedCss).toContain('html.rtx-advanced-font-normal {');
+    expect(advancedCss).toContain('html.rtx-advanced-font-large {');
+    expect(advancedCss).toContain('.rtx-app-shell :where(');
+    expect(advancedCss).toContain('.text-\\[14px\\],');
+    expect(advancedCss).toContain('.text-\\[13px\\],');
+    expect(advancedCss).toContain('.text-\\[12px\\],');
+    expect(advancedCss).toContain('.rtx-chart-hud');
+    expect(advancedCss).toContain('.rtx-status-bar');
+    expect(advancedCss).toContain('.rtx-market-watch__column-heading');
   });
 
   it('locks the physically measured terminal chrome and chart HUD typography', () => {

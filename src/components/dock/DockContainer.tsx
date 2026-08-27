@@ -71,6 +71,7 @@ const getFocusChartTabId = (
 
 const getAdvancedFocusChartEnabled = (): boolean => (
   typeof document !== 'undefined' &&
+  document.documentElement.classList.contains('rtx-advanced-view') &&
   document.documentElement.classList.contains('rtx-advanced-focus-chart')
 );
 
@@ -81,7 +82,10 @@ const useAdvancedFocusChartEnabled = (): boolean => {
     if (typeof document === 'undefined') return;
 
     const root = document.documentElement;
-    const syncFocusState = () => setIsEnabled(root.classList.contains('rtx-advanced-focus-chart'));
+    const syncFocusState = () => setIsEnabled(
+      root.classList.contains('rtx-advanced-view') &&
+      root.classList.contains('rtx-advanced-focus-chart')
+    );
     const observer = new MutationObserver(syncFocusState);
 
     syncFocusState();
@@ -430,6 +434,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
                 ) : childPanel !== null ? (
                   <PanelSlot
                     panel={childPanel}
+                    showHeader={childPanel.component !== 'EmptyChartArea' && childPanel.component !== 'Chart'}
                     isDragging={isDragging}
                     dropTargetId={dropTargetId}
                     compassDir={compassDir}

@@ -9,7 +9,8 @@ import type { DockContainer as IDockContainer } from '../../services/dockManager
 import { MarketWatchPanel, type ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';
 import { NavigatorPanel } from '../layout/NavigatorPanel';
 import { BottomDock } from '../BottomDock';
-import { getUniqueSymbolNames, resolveAuthorizedChartSymbol } from '../../utils/symbolEligibility';
+import { getInstrumentSymbolName, getUniqueSymbolNames, resolveAuthorizedChartSymbol } from '../../utils/symbolEligibility';
+import { getInstrumentPriceDigits } from '../../utils/chartPriceScale';
 import {
     getAuthorizedChartDiagnosticSymbol,
     getChartPanelDiagnosticId,
@@ -60,6 +61,15 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     const authorizedChartSymbols = useMemo(() => {
         return getUniqueSymbolNames(chartSymbols ?? allSymbols);
     }, [allSymbols, chartSymbols]);
+    const priceDigitsBySymbol = useMemo(() => {
+        const digitsBySymbol = new Map<string, number>();
+        allSymbols.forEach((instrument) => {
+            const instrumentSymbol = getInstrumentSymbolName(instrument);
+            const digits = getInstrumentPriceDigits(instrument);
+            if (instrumentSymbol && digits !== undefined) digitsBySymbol.set(instrumentSymbol, digits);
+        });
+        return digitsBySymbol;
+    }, [allSymbols]);
 
     const resolveChartSymbol = useCallback((value: unknown): string => {
         return resolveAuthorizedChartSymbol(value, authorizedChartSymbols);
@@ -85,7 +95,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                     data-chart-panel-active={isActive ? 'true' : 'false'}
                     data-chart-panel-symbol={diagnosticPanelSymbol}
                     data-chart-rendered-symbol={chartSymbol}
-                    style={{ background: '#0e0e12', border: '1px solid #28282e', borderRadius: 6, overflow: 'hidden', transition: 'border-color 0.15s, background 0.15s' }}
+                    style={{ background: '#0e0e12', border: '1px solid #28282e', borderRadius: 0, overflow: 'hidden', transition: 'border-color 0.15s, background 0.15s' }}
                     onMouseEnter={e => (e.currentTarget.style.borderColor = '#5a5a65')}
                     onMouseLeave={e => (e.currentTarget.style.borderColor = '#28282e')}
                     onDragOver={e => {
@@ -118,6 +128,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                                     panelId={panel.id}
                                     tradeAllowed={tradeAllowed}
                                     isActive={isActive}
+                                    priceDigits={priceDigitsBySymbol.get(chartSymbol)}
                                 />
                             </ErrorBoundary>
                         </div>
@@ -186,7 +197,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     }, [
         authorizedChartSymbols,
         globalChartType, globalTimeframe,
-        activeMarketSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, resolveChartSymbol, tradeSymbolSet,
+        activeMarketSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, priceDigitsBySymbol, resolveChartSymbol, tradeSymbolSet,
         onClosePosition, onModifyPosition, onCancelOrder, onCloseBulk
     ]);
 
