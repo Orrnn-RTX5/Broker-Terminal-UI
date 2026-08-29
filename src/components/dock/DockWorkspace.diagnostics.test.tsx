@@ -172,6 +172,17 @@ describe('DockWorkspace chart diagnostic attributes', () => {
     expect(panel?.getAttribute('data-chart-rendered-symbol')).toBe('BTCUSD');
   });
 
+  it('keeps the dock flush against the toolbar and status bar while preserving side gutters', () => {
+    const { container } = renderWorkspace(chartLayout('chart-1', 'BTCUSD'), 'BTCUSD');
+    const workspace = container.querySelector<HTMLElement>('[data-rtx-authenticated-viewport="true"]');
+
+    expect(workspace).not.toBeNull();
+    expect(workspace?.style.paddingTop).toBe('0px');
+    expect(workspace?.style.paddingRight).toBe('6px');
+    expect(workspace?.style.paddingBottom).toBe('0px');
+    expect(workspace?.style.paddingLeft).toBe('6px');
+  });
+
   it('passes broker-authoritative zero-digit precision to the chart', async () => {
     renderWorkspace(
       chartLayout('chart-1', 'BTCUSD'),

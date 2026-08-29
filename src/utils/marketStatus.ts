@@ -20,6 +20,7 @@ export interface NormalizedMarketStatus {
   label: string;
   sessionOpenTimeMs?: number;
   sessionCloseTimeMs?: number;
+  serverTimeMs?: number;
   sessionOpenText?: string;
   sessionCloseText?: string;
   scheduleText?: string;
@@ -149,6 +150,7 @@ export const normalizeMarketStatus = (
   const isOpen = normalizedStatus === 'open';
   const sessionOpenTimeMs = parseMarketSessionTimestampMs(status?.session_open) ?? undefined;
   const sessionCloseTimeMs = parseMarketSessionTimestampMs(status?.session_close) ?? undefined;
+  const serverTimeMs = parseMarketSessionTimestampMs(status?.server_time) ?? undefined;
   const sessionOpenText = formatMarketSessionTimestamp(sessionOpenTimeMs, options);
   const sessionCloseText = formatMarketSessionTimestamp(sessionCloseTimeMs, options);
   const scheduleText = isOpen
@@ -165,6 +167,7 @@ export const normalizeMarketStatus = (
       : MARKET_STATUS_LABELS[normalizedStatus],
     sessionOpenTimeMs,
     sessionCloseTimeMs,
+    serverTimeMs,
     sessionOpenText,
     sessionCloseText,
     scheduleText,

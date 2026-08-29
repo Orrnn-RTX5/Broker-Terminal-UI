@@ -426,6 +426,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         <ChevronDown size={14} strokeWidth={2.5} aria-hidden="true" />
                     </button>
                     <input
+                        className="rtx-oct-lot-input"
                         aria-label="Lot size"
                         type="number"
                         inputMode="decimal"
@@ -438,9 +439,12 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         }}
                         style={{
                             width: 48, height: 24,
-                            background: '#0f172a',
-                            border: '1px solid #526174',
-                            borderRadius: 0,
+                            background: 'transparent',
+                            border: 'none',
+                            borderRadius: '0px',
+                            appearance: 'none',
+                            WebkitAppearance: 'none',
+                            MozAppearance: 'textfield',
                             color: '#fff',
                             fontSize: 12,
                             fontFamily: 'monospace',

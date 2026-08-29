@@ -1,14 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
+import { Menu as MenuIcon } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import { OptionsDialog } from '../settings/OptionsDialog';
 import { FileMenu } from './FileMenu';
 import { useTranslation } from 'react-i18next';
-import { useTheme } from '../../contexts/ThemeContext';
 import { SymbolsDialog } from '../SymbolsDialog';
 import { commandBus } from '../../services/commandBus';
 import { useChartSettingsStore } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
 import { useAppStore } from '../../store/useAppStore';
+import type { PayloadFor } from '../../types/commands';
 
 // Local interface definition to avoid export issues
 interface MenuItem {
@@ -16,11 +18,46 @@ interface MenuItem {
     shortcut?: string;
     icon?: React.ReactNode;
     children?: MenuItem[];
+    checked?: boolean;
+    checkRole?: 'checkbox' | 'radio';
     divider?: boolean;
     disabled?: boolean;
     action?: () => void;
     scrollableChildren?: boolean;
 }
+
+interface MenuSymbol {
+    name: string;
+    symbol?: string;
+    category?: string;
+}
+
+export interface MenuBarProps {
+    advancedViewEnabled?: boolean;
+    advancedFontSize?: 'small' | 'normal' | 'large';
+    focusChart?: boolean;
+    activeDrawingTool?: string | null;
+    crosshairEnabled?: boolean;
+    accountId?: string;
+    onSetAdvancedViewEnabled?: (enabled: boolean) => void;
+    onSetAdvancedFontSize?: (fontSize: 'small' | 'normal' | 'large') => void;
+    onSetFocusChart?: (enabled: boolean) => void;
+    onLogout?: () => void;
+}
+
+const STAMP_OPTIONS = [
+    { subtype: 'thumbsUp', label: 'Thumbs Up', icon: 'thumbs-up' },
+    { subtype: 'thumbsDown', label: 'Thumbs Down', icon: 'thumbs-down' },
+    { subtype: 'arrowUp', label: 'Arrow Up', icon: 'arrow-up' },
+    { subtype: 'arrowDown', label: 'Arrow Down', icon: 'arrow-down' },
+    { subtype: 'stopSign', label: 'Stop Sign', icon: 'stop' },
+    { subtype: 'checkSign', label: 'Check Sign', icon: 'check-circle' },
+    { subtype: 'leftPriceLabel', label: 'Left Price Label', icon: 'label' },
+    { subtype: 'rightPriceLabel', label: 'Right Price Label', icon: 'label' },
+    { subtype: 'buy', label: 'Buy', icon: 'arrow-up' },
+    { subtype: 'sell', label: 'Sell', icon: 'arrow-down' },
+    { subtype: 'arrow', label: 'Arrow', icon: 'arrow-right' },
+] as const;
 
 const setVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
     const store = useChartSettingsStore.getState();
@@ -36,13 +73,33 @@ const setVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
     });
 };
 
-export const MenuBar = () => {
+export const MenuBar = ({
+    advancedViewEnabled = false,
+    advancedFontSize = 'normal',
+    focusChart = false,
+    activeDrawingTool = null,
+    crosshairEnabled = false,
+    accountId,
+    onSetAdvancedViewEnabled,
+    onSetAdvancedFontSize,
+    onSetFocusChart,
+    onLogout,
+}: MenuBarProps = {}) => {
     const { t, i18n } = useTranslation();
-    const { theme, setTheme } = useTheme();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [isOptionsOpen, setIsOptionsOpen] = useState(false);
     const [isSymbolsOpen, setIsSymbolsOpen] = useState(false);
+    const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
+    const menuPopupRef = useRef<HTMLDivElement>(null);
+    const [menuPosition, setMenuPosition] = useState({ top: 40, left: 4 });
+
+    const closeMenu = useCallback(() => {
+        setIsMenuOpen(false);
+        setActiveMenu(null);
+    }, []);
 
     // Open Symbols dialog via Alt+U
     useEffect(() => {
@@ -56,19 +113,51 @@ export const MenuBar = () => {
         return () => window.removeEventListener('keydown', handler);
     }, []);
 
-    // Close menu when clicking outside
+    // Close the launcher when clicking outside either the trigger or its portal.
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setActiveMenu(null);
+            if (isFileDialogOpen) return;
+            const target = event.target as Node;
+            if (!menuRef.current?.contains(target) && !menuPopupRef.current?.contains(target)) {
+                closeMenu();
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    }, [closeMenu, isFileDialogOpen]);
+
+    useEffect(() => {
+        if (!isMenuOpen) return;
+
+        const updateMenuPosition = () => {
+            const rect = menuButtonRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            setMenuPosition({
+                top: Math.min(rect.bottom + 2, Math.max(4, window.innerHeight - 250)),
+                left: Math.max(4, Math.min(rect.left, window.innerWidth - 204)),
+            });
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            if (isFileDialogOpen) return;
+            event.preventDefault();
+            closeMenu();
+            menuButtonRef.current?.focus();
+        };
+
+        updateMenuPosition();
+        window.addEventListener('resize', updateMenuPosition);
+        window.addEventListener('scroll', updateMenuPosition, true);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('resize', updateMenuPosition);
+            window.removeEventListener('scroll', updateMenuPosition, true);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [closeMenu, isFileDialogOpen, isMenuOpen]);
 
     // Dynamic Symbol Loading
-    const [availableSymbols, setAvailableSymbols] = useState<any[]>([]);
+    const [availableSymbols, setAvailableSymbols] = useState<MenuSymbol[]>([]);
     const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
     const isAuthenticated = useAppStore(state => state.isAuthenticated);
     const selectedSymbol = useAppStore(state => state.selectedSymbol);
@@ -132,6 +221,13 @@ export const MenuBar = () => {
         { label: 'हिंदी', action: () => i18n.changeLanguage('hi'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'hi' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> }
     ];
 
+    const selectDrawingTool = (tool: PayloadFor<'SELECT_TOOL'>['tool'], subtype?: string) => {
+        commandBus.dispatch({
+            type: 'SELECT_TOOL',
+            payload: subtype ? { tool, subtype } : { tool },
+        });
+    };
+
     const menuItems: { [key: string]: MenuItem[] } = {
         File: [
             {
@@ -150,7 +246,7 @@ export const MenuBar = () => {
                                     if (!sym.category || sym.category.trim() === '') {
                                         root.push({
                                             label: sym.name,
-                                            action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: sym.symbol } }))
+                                            action: () => window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: sym.symbol ?? sym.name } }))
                                         });
                                         return;
                                     }
@@ -219,6 +315,41 @@ export const MenuBar = () => {
             { label: t('menu.file.exit'), icon: <Icon name="log-out" size="sm" className="text-rose-400" />, action: () => alert('Exit clicked') }
         ],
         View: [
+            {
+                label: 'Theme',
+                icon: <Icon name="palette" size="sm" />,
+                children: [
+                    {
+                        label: 'Dark Theme',
+                        checked: !advancedViewEnabled,
+                        checkRole: 'radio',
+                        action: () => onSetAdvancedViewEnabled?.(false),
+                    },
+                    {
+                        label: 'Light Theme',
+                        checked: advancedViewEnabled,
+                        checkRole: 'radio',
+                        action: () => onSetAdvancedViewEnabled?.(true),
+                    },
+                    { divider: true, label: '' },
+                    {
+                        label: 'Font Size',
+                        children: (['small', 'normal', 'large'] as const).map((fontSize) => ({
+                            label: fontSize.charAt(0).toUpperCase() + fontSize.slice(1),
+                            checked: advancedFontSize === fontSize,
+                            checkRole: 'radio' as const,
+                            action: () => onSetAdvancedFontSize?.(fontSize),
+                        })),
+                    },
+                    {
+                        label: 'Focus Chart',
+                        checked: focusChart,
+                        checkRole: 'checkbox',
+                        action: () => onSetFocusChart?.(!focusChart),
+                    },
+                ],
+            },
+            { divider: true, label: '' },
             { label: t('menu.view.languages'), children: languageList, scrollableChildren: true },
 
             { divider: true, label: '' },
@@ -226,7 +357,7 @@ export const MenuBar = () => {
             { label: t('menu.view.statusBar'), icon: <Icon name="layout" size="sm" /> },
             { label: t('menu.view.chartsBar'), icon: <Icon name="layers" size="sm" /> },
             { divider: true, label: '' },
-            { label: t('menu.view.symbols'), shortcut: 'Alt+U', action: () => { setIsSymbolsOpen(true); setActiveMenu(null); } },
+            { label: 'Search Symbols', shortcut: 'Alt+U', icon: <Icon name="search" size="sm" />, action: () => { setIsSymbolsOpen(true); setActiveMenu(null); } },
             { label: t('menu.view.depthOfMarket'), shortcut: 'Alt+B', action: () => { window.dispatchEvent(new CustomEvent('openDepthOfMarket')); setActiveMenu(null); } },
             { label: t('menu.view.marketWatch'), shortcut: 'Ctrl+M', icon: <Icon name="monitor" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'MarketWatch' })); setActiveMenu(null); } },
             { label: t('menu.view.dataWindow'), shortcut: 'Ctrl+D', action: () => { window.dispatchEvent(new CustomEvent('openDataWindow')); setActiveMenu(null); } },
@@ -281,6 +412,19 @@ export const MenuBar = () => {
                             { label: 'Ellipse', icon: <Icon name="ellipse" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'ellipse' } }); setActiveMenu(null); } },
                         ]
                     },
+                    {
+                        label: 'Stamps',
+                        icon: <Icon name="thumbs-up" size="sm" />,
+                        children: STAMP_OPTIONS.map((stamp) => ({
+                            label: stamp.label,
+                            icon: <Icon
+                                name={stamp.icon}
+                                size="sm"
+                                className={stamp.subtype === 'buy' ? 'text-emerald-400' : stamp.subtype === 'sell' ? 'text-rose-400' : undefined}
+                            />,
+                            action: () => selectDrawingTool('stamp', stamp.subtype),
+                        })),
+                    },
                     { divider: true, label: '' },
                     { label: 'Text', shortcut: 'Alt+X', icon: <Icon name="text" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'text' } }); setActiveMenu(null); } },
                     { label: 'Callout', icon: <Icon name="callout" size="sm" />, action: () => { commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'callout' } }); setActiveMenu(null); } },
@@ -295,6 +439,14 @@ export const MenuBar = () => {
             { label: t('menu.charts.depthOfMarket'), shortcut: 'Alt+B', icon: <Icon name="box" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('openDepthOfMarket')); setActiveMenu(null); } },
             { label: t('menu.charts.indicatorList'), shortcut: 'Ctrl+I', icon: <Icon name="line-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: {} }); setActiveMenu(null); } },
             {
+                label: 'Crosshair',
+                shortcut: 'C',
+                icon: <Icon name="crosshair" size="sm" />,
+                checked: crosshairEnabled,
+                checkRole: 'checkbox',
+                action: () => { commandBus.dispatch({ type: 'TOGGLE_CROSSHAIR', payload: {} }); setActiveMenu(null); },
+            },
+            {
                 label: t('menu.charts.objects'),
                 children: [
                     // Management
@@ -305,18 +457,19 @@ export const MenuBar = () => {
                     { label: 'Delete Last', shortcut: 'Backspace', icon: <Icon name="x-close" size="sm" className="text-rose-400" />, action: () => { commandBus.dispatch({ type: 'UNDO', payload: {} }); setActiveMenu(null); } },
                     { label: 'Delete All Selected', shortcut: 'Del', icon: <Icon name="trash" size="sm" className="text-rose-400" />, action: () => { commandBus.dispatch({ type: 'DELETE_SELECTED_DRAWING', payload: {} }); setActiveMenu(null); } },
                     { label: 'Delete All Arrows', icon: <Icon name="minus" size="sm" className="text-rose-400" /> },
-                    { label: 'Delete All', icon: <Icon name="trash" size="sm" className="text-rose-500" />, action: () => { drawingManager.clearAllDrawings(); setActiveMenu(null); } },
+                    { label: 'Delete All', icon: <Icon name="trash" size="sm" className="text-rose-500" />, action: () => { drawingManager.clearAllDrawings(); selectDrawingTool('cursor'); setActiveMenu(null); } },
                     { divider: true, label: '' },
 
                     // Selection / Undo
-                    { label: 'Unselect All', icon: <Icon name="cursor" size="sm" /> },
+                    { label: 'Selection Mode', shortcut: 'Esc', icon: <Icon name="cursor" size="sm" />, checked: activeDrawingTool === null || activeDrawingTool === 'cursor', checkRole: 'radio', action: () => { selectDrawingTool('cursor'); setActiveMenu(null); } },
                     { label: 'Undo Delete', shortcut: 'Ctrl+Z', icon: <Icon name="refresh" size="sm" />, action: () => { commandBus.dispatch({ type: 'UNDO', payload: {} }); setActiveMenu(null); } }
                 ]
             },
             { divider: true, label: '' },
             { label: t('menu.charts.barChart'), shortcut: 'Alt+1', icon: <Icon name="bar-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar' } }); setActiveMenu(null); } },
             { label: t('menu.charts.candlesticks'), shortcut: 'Alt+2', icon: <Icon name="candlestick" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick' } }); setActiveMenu(null); } },
-            { label: t('menu.charts.lineChart'), shortcut: 'Alt+3', icon: <Icon name="line-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'area' } }); setActiveMenu(null); } },
+            { label: t('menu.charts.lineChart'), shortcut: 'Alt+3', icon: <Icon name="line-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'line' } }); setActiveMenu(null); } },
+            { label: t('menu.charts.areaChart'), icon: <Icon name="area-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'area' } }); setActiveMenu(null); } },
             { divider: true, label: '' },
             { label: t('menu.charts.grid'), shortcut: 'Ctrl+G', icon: <Icon name="grid-3x3" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('showGrid', !s.globalProperties.showGrid); setActiveMenu(null); } },
             { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('chartAutoScroll', !s.globalProperties.chartAutoScroll); setActiveMenu(null); } },
@@ -445,77 +598,160 @@ export const MenuBar = () => {
         ]
     };
 
+    useEffect(() => {
+        if (!isMenuOpen) return;
+        const frame = window.requestAnimationFrame(() => {
+            menuPopupRef.current?.querySelector<HTMLButtonElement>('[data-root-menu-item="true"]')?.focus();
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [isMenuOpen]);
+
     return (
         <>
-            <div className="h-6 bg-[#131316] [.rtx-advanced-view_&]:bg-[var(--bg-secondary)] border-b border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] flex items-center px-1 select-none z-50 relative font-segoe" ref={menuRef}>
-                {Object.keys(menuItems).map((key) => (
-                    <div key={key} className="relative">
-                        <button
-                            onClick={() => setActiveMenu(activeMenu === key ? null : key)}
-                            onMouseEnter={() => activeMenu && setActiveMenu(key)}
-                            className={`px-3 py-0.5 text-[14px] font-normal rounded-sm transition-colors cursor-default outline-none flex items-center border border-transparent
-                                ${activeMenu === key
-                                    ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827] shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)] [.rtx-advanced-view_&]:shadow-sm'
-                                    : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#4b5563] hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'}`}
-                        >
-                            {key}
-                        </button>
-
-                        {/* Dropdown */}
-                        {activeMenu === key && (
-                            <div className="absolute top-full left-0 mt-0 z-[100]">
-                                {key === 'File' ? (
-                                    <FileMenu
-                                        onSave={() => {
-                                            console.log('[MenuBar] Save workspace triggered');
-                                            // Dispatch custom event for save workspace
-                                            window.dispatchEvent(new CustomEvent('saveWorkspace'));
-                                            setActiveMenu(null);
-                                        }}
-                                        onSaveAsPicture={() => {
-                                            console.log('Save as picture');
-                                            setActiveMenu(null);
-                                        }}
-                                        onOpenDataFolder={() => {
-                                            console.log('[MenuBar] Open data folder triggered');
-                                            window.dispatchEvent(new CustomEvent('openDataFolder'));
-                                            setActiveMenu(null);
-                                        }}
-                                        onPrint={() => {
-                                            console.log('[MenuBar] Print triggered');
-                                            window.dispatchEvent(new CustomEvent('printChart'));
-                                            setActiveMenu(null);
-                                        }}
-                                        onPrintPreview={() => {
-                                            console.log('Print preview');
-                                            setActiveMenu(null);
-                                        }}
-                                        onPrintSetup={() => {
-                                            console.log('Print setup');
-                                            setActiveMenu(null);
-                                        }}
-                                        onExit={() => {
-                                            console.log('Exit');
-                                            setActiveMenu(null);
-                                        }}
-                                        hasUnsavedChanges={false}
-                                    />
-                                ) : (
-                                    <div className="min-w-[240px] bg-[#18181b] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1">
-                                        {menuItems[key].map((item, index) => (
-                                            <MenuItem
-                                                key={index}
-                                                item={item}
-                                                onClose={() => setActiveMenu(null)}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                ))}
+            <div
+                ref={menuRef}
+                className="rtx-menu-launcher flex h-[40px] shrink-0 items-center"
+                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            >
+                <button
+                    ref={menuButtonRef}
+                    type="button"
+                    aria-label="Open application menu"
+                    aria-haspopup="menu"
+                    aria-expanded={isMenuOpen}
+                    title="Application menu"
+                    onClick={() => {
+                        if (isMenuOpen) {
+                            closeMenu();
+                        } else {
+                            setActiveMenu(null);
+                            setIsMenuOpen(true);
+                        }
+                    }}
+                    className={`flex h-[36px] w-[40px] items-center justify-center border border-transparent text-zinc-300 transition-colors outline-none hover:bg-[#252932] hover:text-white focus-visible:border-blue-400 [.rtx-advanced-view_&]:text-[#344054] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] [.rtx-advanced-view_&]:hover:text-[#101828] ${isMenuOpen ? 'bg-[#252932] text-white [.rtx-advanced-view_&]:bg-[#f3f4f6] [.rtx-advanced-view_&]:text-[#101828]' : ''}`}
+                >
+                    <MenuIcon size={23} strokeWidth={1.8} aria-hidden="true" />
+                </button>
             </div>
+
+            {isMenuOpen && ReactDOM.createPortal(
+                <div
+                    ref={menuPopupRef}
+                    className="rtx-application-menu fixed z-[9999] w-[200px] border border-[#3a414f] bg-[#202733] py-1 font-segoe text-[14px] font-normal text-zinc-200 shadow-2xl [.rtx-advanced-view_&]:border-[#d0d5dd] [.rtx-advanced-view_&]:bg-white [.rtx-advanced-view_&]:text-[#344054]"
+                    style={{ top: menuPosition.top, left: menuPosition.left }}
+                    role="menu"
+                    aria-label="Application menu"
+                    onKeyDown={(event) => {
+                        const target = event.target as HTMLElement;
+                        if (target.dataset.rootMenuItem !== 'true') return;
+                        const rootItems = Array.from(menuPopupRef.current?.querySelectorAll<HTMLButtonElement>('[data-root-menu-item="true"]') ?? []);
+                        const currentIndex = rootItems.indexOf(target as HTMLButtonElement);
+                        if (currentIndex < 0) return;
+
+                        let nextIndex: number | null = null;
+                        if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % rootItems.length;
+                        if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + rootItems.length) % rootItems.length;
+                        if (event.key === 'Home') nextIndex = 0;
+                        if (event.key === 'End') nextIndex = rootItems.length - 1;
+                        if (nextIndex !== null) {
+                            event.preventDefault();
+                            rootItems[nextIndex]?.focus();
+                            return;
+                        }
+
+                        if (event.key === 'ArrowRight') {
+                            const key = target.dataset.menuKey;
+                            if (!key) return;
+                            event.preventDefault();
+                            setActiveMenu(key);
+                            window.requestAnimationFrame(() => {
+                                menuPopupRef.current
+                                    ?.querySelector<HTMLDivElement>(`[aria-label="${key} menu"]`)
+                                    ?.querySelector<HTMLButtonElement>('button:not(:disabled)')
+                                    ?.focus();
+                            });
+                        }
+                        if (event.key === 'ArrowLeft' && activeMenu) {
+                            event.preventDefault();
+                            setActiveMenu(null);
+                        }
+                    }}
+                >
+                    {Object.keys(menuItems).map((key, rootIndex) => (
+                        <div key={key} className="relative px-1">
+                            <button
+                                type="button"
+                                role="menuitem"
+                                data-root-menu-item="true"
+                                data-menu-key={key}
+                                aria-haspopup="menu"
+                                aria-expanded={activeMenu === key}
+                                onClick={() => setActiveMenu(activeMenu === key ? null : key)}
+                                className={`flex min-h-[34px] w-full items-center gap-3 px-3 py-1.5 text-left transition-colors outline-none ${activeMenu === key
+                                    ? 'bg-[#344154] text-white [.rtx-advanced-view_&]:bg-[#f3f4f6] [.rtx-advanced-view_&]:text-[#101828]'
+                                    : 'text-zinc-200 hover:bg-[#2c3544] hover:text-white focus-visible:bg-[#2c3544] [.rtx-advanced-view_&]:text-[#344054] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] [.rtx-advanced-view_&]:hover:text-[#101828] [.rtx-advanced-view_&]:focus-visible:bg-[#f3f4f6]'}`}
+                            >
+                                <span className="flex-1">{key}</span>
+                                <Icon name="chevron-right" size="xs" className="text-zinc-400 [.rtx-advanced-view_&]:text-[#667085]" />
+                            </button>
+
+                            {activeMenu === key && (
+                                <div
+                                    className="absolute left-full ml-px z-[10000]"
+                                    style={{ top: -rootIndex * 34 }}
+                                    role="menu"
+                                    aria-label={`${key} menu`}
+                                >
+                                    {key === 'File' ? (
+                                        <FileMenu
+                                            accountId={accountId}
+                                            onDialogOpenChange={setIsFileDialogOpen}
+                                            onLogout={onLogout ? () => {
+                                                onLogout();
+                                                closeMenu();
+                                            } : undefined}
+                                            onSave={() => {
+                                                console.log('[MenuBar] Save workspace triggered');
+                                                window.dispatchEvent(new CustomEvent('saveWorkspace'));
+                                                closeMenu();
+                                            }}
+                                            onSaveAsPicture={() => {
+                                                console.log('Save as picture');
+                                            }}
+                                            onOpenDataFolder={() => {
+                                                console.log('[MenuBar] Open data folder triggered');
+                                                window.dispatchEvent(new CustomEvent('openDataFolder'));
+                                                closeMenu();
+                                            }}
+                                            onPrint={() => {
+                                                console.log('[MenuBar] Print triggered');
+                                                window.dispatchEvent(new CustomEvent('printChart'));
+                                                closeMenu();
+                                            }}
+                                            onPrintPreview={() => {
+                                                console.log('Print preview');
+                                            }}
+                                            onPrintSetup={() => {
+                                                console.log('Print setup');
+                                            }}
+                                            onExit={() => {
+                                                console.log('Exit');
+                                                closeMenu();
+                                            }}
+                                            hasUnsavedChanges={false}
+                                        />
+                                    ) : (
+                                        <div className="min-w-[240px] border border-[#3a414f] bg-[#18181b] py-1 shadow-2xl [.rtx-advanced-view_&]:border-[#e5e7eb] [.rtx-advanced-view_&]:bg-white">
+                                            <MenuList items={menuItems[key]} onClose={closeMenu} />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>,
+                document.body,
+            )}
 
             {/* Options Dialog Modal */}
             <OptionsDialog isOpen={isOptionsOpen} onClose={() => setIsOptionsOpen(false)} />
@@ -535,23 +771,63 @@ export const MenuBar = () => {
     );
 };
 
-const MenuItem = ({ item, onClose }: { item: MenuItem; onClose?: () => void }) => {
+const MenuList = ({ items, onClose }: { items: MenuItem[]; onClose?: () => void }) => {
+    const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+    return (
+        <>
+            {items.map((item, index) => (
+                <MenuItem
+                    key={index}
+                    item={item}
+                    isSubmenuOpen={openIndex === index}
+                    onToggleSubmenu={(open) => setOpenIndex(open ? index : null)}
+                    onClose={onClose}
+                />
+            ))}
+        </>
+    );
+};
+
+const MenuItem = ({
+    item,
+    isSubmenuOpen,
+    onToggleSubmenu,
+    onClose,
+}: {
+    item: MenuItem;
+    isSubmenuOpen: boolean;
+    onToggleSubmenu: (open: boolean) => void;
+    onClose?: () => void;
+}) => {
+    const submenuRef = useRef<HTMLDivElement>(null);
+
     if (item.divider) {
         return <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>;
     }
 
     return (
-        <div className="relative group px-1 [&:hover>div]:block">
+        <div className="relative px-1">
             <button
+                type="button"
                 disabled={item.disabled}
+                aria-label={item.label}
+                role={item.checkRole === 'radio' ? 'menuitemradio' : item.checkRole === 'checkbox' ? 'menuitemcheckbox' : 'menuitem'}
+                aria-checked={item.checkRole ? Boolean(item.checked) : undefined}
+                aria-haspopup={item.children ? 'menu' : undefined}
+                aria-expanded={item.children ? isSubmenuOpen : undefined}
                 onClick={() => {
+                    if (item.children) {
+                        onToggleSubmenu(!isSubmenuOpen);
+                        return;
+                    }
                     if (item.action) {
                         item.action();
                         onClose?.();
                     }
                 }}
                 className={`w-full flex items-center gap-3 px-2 py-1.5 text-[14px] font-normal text-left border border-transparent rounded-[2px] transition-colors
-                    ${item.disabled ? 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] group-hover:bg-[#2a2e39] [.rtx-advanced-view_&]:group-hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-[#111827] cursor-default group'}`}
+                    ${item.disabled ? 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group'}`}
             >
                 {/* Icon Area */}
                 <div className="flex h-4 w-4 shrink-0 items-center justify-center leading-none text-zinc-400 [.rtx-advanced-view_&]:text-gray-500 group-hover:text-zinc-200 [.rtx-advanced-view_&]:group-hover:text-gray-700 [&_svg]:block [&_svg]:shrink-0">
@@ -565,22 +841,23 @@ const MenuItem = ({ item, onClose }: { item: MenuItem; onClose?: () => void }) =
                 {item.children ? (
                     <Icon name="chevron-right" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-gray-700" />
                 ) : (
-                    item.shortcut && <span className="text-[12px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 font-segoe pl-4">{item.shortcut}</span>
+                    <span className="flex items-center gap-2">
+                        {item.shortcut && <span className="text-[12px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 font-segoe pl-4">{item.shortcut}</span>}
+                        {item.checkRole && (
+                            item.checked
+                                ? <Icon name="check-circle" size="xs" className="text-blue-400 [.rtx-advanced-view_&]:text-[#6941C6]" />
+                                : <span className="h-3.5 w-3.5" aria-hidden="true" />
+                        )}
+                    </span>
                 )}
             </button>
 
-            {/* Submenu Logic (Hover-based strict) */}
-            {item.children && (
-                <div className={`absolute left-full top-0 ml-[-2px] mt-0 hidden min-w-[180px] bg-[#18181b] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1 z-[101]
+            {/* Nested sections are click-driven and sibling-exclusive. */}
+            {item.children && isSubmenuOpen && (
+                <div ref={submenuRef} role="menu" aria-label={`${item.label} menu`} className={`absolute left-full top-0 ml-[-2px] mt-0 min-w-[180px] bg-[#18181b] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1 z-[101]
                     ${item.scrollableChildren ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}
                  `}>
-                    {item.children.map((subItem, idx) => (
-                        <MenuItem
-                            key={idx}
-                            item={subItem}
-                            onClose={onClose}
-                        />
-                    ))}
+                    <MenuList items={item.children} onClose={onClose} />
                 </div>
             )}
         </div>

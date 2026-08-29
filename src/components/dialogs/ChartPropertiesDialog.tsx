@@ -6,12 +6,15 @@ import {
   type ChartProperties,
   type ColorScheme,
 } from '../../store/useChartSettingsStore';
+import type { ChartType } from '../TradingChart';
 
 interface ChartPropertiesDialogProps {
   isOpen: boolean;
   onClose: () => void;
   symbol: string;
   timeframe: string;
+  currentChartType?: ChartType;
+  onChartTypeChange?: (chartType: ChartType) => void;
 }
 
 const showOptions = [
@@ -70,7 +73,14 @@ const getIsAdvancedUntitledLight = (): boolean => {
   return root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light');
 };
 
-export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ isOpen, onClose, symbol, timeframe }) => {
+export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
+  isOpen,
+  onClose,
+  symbol,
+  timeframe,
+  currentChartType,
+  onChartTypeChange,
+}) => {
   const [activeTab, setActiveTab] = useState<'Common' | 'Show' | 'Colors'>('Common');
   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(getIsAdvancedUntitledLight);
   
@@ -87,6 +97,15 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
     resetSymbolToDefaults,
   } = useChartSettingsStore();
   const state = symbolProperties[symbol] || globalProperties;
+  const selectedChartType: ChartType = currentChartType ?? (
+    state.chartType === 'Bar'
+      ? 'bar'
+      : state.chartType === 'Line'
+        ? 'line'
+        : state.chartType === 'Area'
+          ? 'area'
+          : 'candlestick'
+  );
   const showState = symbolProperties[symbol] || globalProperties;
   const effectiveColors = getEffectiveChartColors(state, { isAdvancedUntitledLight });
   const previewBackground = effectiveColors.background || '#000000';
@@ -118,6 +137,11 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
   const updateActiveChartProperty = <K extends keyof ChartProperties>(key: K, value: ChartProperties[K]) => {
     updateGlobalProperty(key, value);
     updateSymbolProperty(symbol, key, value);
+  };
+
+  const updateActiveChartType = (settingsType: ChartProperties['chartType'], runtimeType: ChartType) => {
+    updateActiveChartProperty('chartType', settingsType);
+    onChartTypeChange?.(runtimeType);
   };
 
   const updateChartShift = (enabled: boolean) => {
@@ -330,16 +354,20 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({ is
                   <div className="flex flex-col gap-2 flex-1">
                     <div className="rtx-cp-fieldset flex flex-col gap-[3px] p-2 border border-[#444] bg-transparent rounded-sm relative mt-2">
                       <label className="rtx-cp-radio-row flex items-center gap-2 cursor-pointer">
-                         <input type="radio" name="chartType" className="rtx-cp-radio accent-blue-500 bg-[#2b2b2b]" checked={state.chartType === 'Bar'} onChange={() => updateActiveChartProperty('chartType', 'Bar')} />
+                         <input type="radio" name="chartType" className="rtx-cp-radio accent-blue-500 bg-[#2b2b2b]" checked={selectedChartType === 'bar'} onChange={() => updateActiveChartType('Bar', 'bar')} />
                          <span className="rtx-cp-radio-label text-[12px] text-[#ccc]">Bar chart</span>
                       </label>
                       <label className="rtx-cp-radio-row flex items-center gap-2 cursor-pointer">
-                         <input type="radio" name="chartType" className="rtx-cp-radio accent-blue-500 bg-[#2b2b2b]" checked={state.chartType === 'Candlesticks'} onChange={() => updateActiveChartProperty('chartType', 'Candlesticks')} />
+                         <input type="radio" name="chartType" className="rtx-cp-radio accent-blue-500 bg-[#2b2b2b]" checked={selectedChartType === 'candlestick'} onChange={() => updateActiveChartType('Candlesticks', 'candlestick')} />
                          <span className="rtx-cp-radio-label text-[12px] text-[#ccc]">Candlesticks</span>
                       </label>
                       <label className="rtx-cp-radio-row flex items-center gap-2 cursor-pointer">
-                         <input type="radio" name="chartType" className="rtx-cp-radio accent-blue-500 bg-[#2b2b2b]" checked={state.chartType === 'Line'} onChange={() => updateActiveChartProperty('chartType', 'Line')} />
+                         <input type="radio" name="chartType" className="rtx-cp-radio accent-blue-500 bg-[#2b2b2b]" checked={selectedChartType === 'line'} onChange={() => updateActiveChartType('Line', 'line')} />
                          <span className="rtx-cp-radio-label text-[12px] text-[#ccc]">Line chart</span>
+                      </label>
+                      <label className="rtx-cp-radio-row flex items-center gap-2 cursor-pointer">
+                         <input type="radio" name="chartType" className="rtx-cp-radio accent-blue-500 bg-[#2b2b2b]" checked={selectedChartType === 'area'} onChange={() => updateActiveChartType('Area', 'area')} />
+                         <span className="rtx-cp-radio-label text-[12px] text-[#ccc]">Area chart</span>
                       </label>
                     </div>
                     <div className="rtx-cp-fieldset flex flex-col gap-[3px] p-2 py-3 border border-[#444] bg-transparent rounded-sm mt-1">

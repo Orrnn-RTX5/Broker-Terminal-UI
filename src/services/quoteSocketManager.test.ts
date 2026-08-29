@@ -259,12 +259,14 @@ describe('QuoteSocketManager feed protocol', () => {
     internals(manager).handleMessage([
       { symbol: 'eurusd', bid: 100, ask: 101, dailyChange: 0.19, timestamp: 1 },
       { symbol: 'gbpusd', bid: 100, ask: 101, daily_change: -0.36, timestamp: 1 },
+      { symbol: 'xauusd', bid: 4604, ask: 4605, daily_change_pct: 0.45, timestamp: 1 },
       { symbol: 'usdjpy', bid: 110, ask: 112, previous_close: 100, timestamp: 1 },
     ]);
 
     expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({ dailyChange: 0.19 });
     expect(enqueueLiveTick.mock.calls[1][1]).toMatchObject({ dailyChange: -0.36 });
-    expect(enqueueLiveTick.mock.calls[2][1].dailyChange).toBeCloseTo(10, 10);
+    expect(enqueueLiveTick.mock.calls[2][1]).toMatchObject({ dailyChange: 0.45 });
+    expect(enqueueLiveTick.mock.calls[3][1].dailyChange).toBeCloseTo(10, 10);
 
     manager.destroy();
   });

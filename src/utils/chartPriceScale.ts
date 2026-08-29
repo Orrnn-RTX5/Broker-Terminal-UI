@@ -2,10 +2,12 @@ import { getSymbolDigits } from './symbolUtils';
 
 const MAX_SUPPORTED_PRICE_DIGITS = 12;
 
-// Lightweight Charts spaces price ticks at ceil(fontSize * 2.5). Keeping the
-// maximum-zoom range large enough for one broker point per tick prevents the
-// scale from zooming past its smallest meaningful displayed increment.
+// Lightweight Charts' nominal label height is ceil(fontSize * 2.5), but its
+// margin extension and integer-coordinate math need a little more room at the
+// boundary. A 32px floor reliably selects one broker point instead of the next
+// 2/5-point tick step at maximum zoom.
 export const PRICE_SCALE_TICK_DENSITY = 2.5;
+export const PRICE_SCALE_MIN_TICK_SPACING_PX = 32;
 
 export const normalizePriceDigits = (value: unknown): number | null => {
   if (typeof value !== 'number' && typeof value !== 'string') return null;
@@ -57,7 +59,10 @@ export const computeMinimumVisiblePriceSpan = ({
   const safeBottomMargin = Number.isFinite(bottomMargin) ? Math.max(0, Math.min(1, bottomMargin)) : 0;
   const usableRatio = Math.max(0, 1 - safeTopMargin - safeBottomMargin);
   const usableHeight = paneHeight * usableRatio;
-  const tickMarkHeight = Math.ceil(fontSize * PRICE_SCALE_TICK_DENSITY);
+  const tickMarkHeight = Math.max(
+    PRICE_SCALE_MIN_TICK_SPACING_PX,
+    Math.ceil(fontSize * PRICE_SCALE_TICK_DENSITY),
+  );
   const visiblePointIntervals = Math.max(1, Math.floor(usableHeight / tickMarkHeight));
 
   return point * visiblePointIntervals;

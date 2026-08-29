@@ -36,6 +36,7 @@ describe('EnhancedWebSocketService tick normalization', () => {
       symbol: 'BTCUSD',
       bid: 78_900.25,
       ask: 78_912.75,
+      daily_change_pct: -0.64,
       timestamp: 1_725_000_000,
     };
 
@@ -52,6 +53,7 @@ describe('EnhancedWebSocketService tick normalization', () => {
       { bid: 78_900.25, ask: 78_912.75 },
     ]);
     expect(mocks.enqueueLiveTick.mock.calls[0][1]).toMatchObject({
+      dailyChange: -0.64,
       timestamp: 1_725_000_000_000,
       sourceTimestamp: 1_725_000_000_000,
     });
@@ -71,6 +73,7 @@ describe('EnhancedWebSocketService tick normalization', () => {
         symbol: 'EURUSD',
         bid: 1.10203,
         ask: 1.10215,
+        daily_change_pct: 0.08,
       },
     });
 
@@ -79,6 +82,7 @@ describe('EnhancedWebSocketService tick normalization', () => {
       symbol: 'EURUSD.PRO',
       bid: 1.10203,
       ask: 1.10215,
+      dailyChange: 0.08,
       timestamp: 1_725_000_000_000,
       sourceTimestamp: 1_725_000_000_000,
     }));

@@ -99,7 +99,7 @@ const TRADE_FOOTER_METRIC_STORAGE_KEY = 'rtx5_trade_footer_metrics_v1';
 const TRADE_COLUMN_DEFS: TradeColumnDef[] = [
     { key: 'ticket', label: 'Ticket', defaultWidth: 96, minWidth: 70, maxWidth: 180 },
     { key: 'time', label: 'Time', defaultWidth: 150, minWidth: 120, maxWidth: 220 },
-    { key: 'side', label: 'Side / Type', defaultWidth: 76, minWidth: 64, maxWidth: 130 },
+    { key: 'side', label: 'Type', defaultWidth: 76, minWidth: 64, maxWidth: 130 },
     { key: 'volume', label: 'Volume', defaultWidth: 74, minWidth: 62, maxWidth: 120 },
     { key: 'priceOpen', label: 'Price Open', defaultWidth: 98, minWidth: 82, maxWidth: 150 },
     { key: 'sl', label: 'S / L', defaultWidth: 92, minWidth: 80, maxWidth: 150 },
@@ -271,7 +271,7 @@ const TRADE_COLUMN_HOVER_COMMENTS: Record<TradeColumnWidthKey, string> = {
     symbol: 'Instrument for the open position',
     ticket: 'Unique order or position ticket',
     time: 'Position open time',
-    side: 'Order side: buy or sell',
+    side: 'Order type: buy or sell',
     volume: 'Position volume in lots',
     priceOpen: 'Price at which the position was opened',
     sl: 'Stop Loss level. Double-click a value to modify it',
@@ -602,6 +602,7 @@ function ToolboxTab() {
                 { name: 'Bar Chart', shortcut: 'Alt+1', icon: 'bar-chart' },
                 { name: 'Candlesticks', shortcut: 'Alt+2', icon: 'candlestick' },
                 { name: 'Line Chart', shortcut: 'Alt+3', icon: 'line-chart' },
+                { name: 'Area Chart', shortcut: '', icon: 'area-chart' },
                 { name: 'Indicators', shortcut: 'Ctrl+I', icon: 'line-chart' },
                 { name: 'Objects', shortcut: '', icon: 'square' },
             ]
@@ -1219,7 +1220,7 @@ function TradeTab({
         ];
         if (isColumnVisible('ticket')) columns.push({ label: 'Ticket', value: pos => pos.ticket ?? pos.id ?? '-' });
         if (isColumnVisible('time')) columns.push({ label: 'Time', value: pos => formatTradeTime(pos.time_create) });
-        if (isColumnVisible('side')) columns.push({ label: 'Side / Type', value: pos => String(pos.side ?? '').toLowerCase() || '-' });
+        if (isColumnVisible('side')) columns.push({ label: 'Type', value: pos => String(pos.side ?? '').toLowerCase() || '-' });
         if (isColumnVisible('volume')) columns.push({ label: 'Volume', value: pos => formatTradeVolume(pos) });
         if (isColumnVisible('priceOpen')) columns.push({ label: 'Price Open', value: pos => formatTradePrice(pos.price_open ?? pos.openPrice, pos.symbol ?? '') });
         if (isColumnVisible('sl')) columns.push({ label: 'S / L', value: pos => formatTradeLevel(pos.price_sl ?? pos.sl, pos.symbol ?? '') });
@@ -1254,8 +1255,7 @@ function TradeTab({
 <style>
 body{font-family:Segoe UI,Tahoma,Arial,sans-serif;font-size:12px;color:#111;background:#fff;margin:18px}
 table{border-collapse:collapse;width:100%}
-th,td{border:1px solid #bdbdbd;padding:4px 6px;text-align:right;white-space:nowrap}
-th:first-child,td:first-child{text-align:left}
+th,td{border:1px solid #bdbdbd;padding:4px 6px;text-align:center;white-space:nowrap}
 th{background:#ececec;font-weight:600}
 .summary{margin:0 0 12px 0;font-weight:600}
 </style>
@@ -1512,10 +1512,9 @@ ${rows}
         key: TradeColumnWidthKey,
         label: string,
         sortColumn: TradeSortColumn,
-        align: 'left' | 'right' = 'left',
     ) => (
         <th
-            className={`relative px-1.5 py-[3px] ${key === 'symbol' ? 'pl-2' : ''} ${align === 'right' ? 'text-right' : 'text-left'} border-r border-zinc-700/70`}
+            className="relative px-1.5 py-[3px] text-center border-r border-zinc-700/70"
             style={{ width: columnWidths[key] }}
             title={TRADE_COLUMN_HOVER_COMMENTS[key]}
             aria-sort={sortState?.column === sortColumn ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
@@ -1524,10 +1523,10 @@ ${rows}
                 type="button"
                 title={`Sort by ${label}`}
                 onClick={() => toggleSort(sortColumn)}
-                className={`flex w-full items-center gap-1 pr-2 hover:text-white ${align === 'right' ? 'justify-end text-right' : 'justify-between text-left'}`}
+                className="relative flex w-full items-center justify-center px-2 text-center hover:text-white"
             >
                 <span>{label}</span>
-                <span className="inline-block w-[8px] text-center text-zinc-500">
+                <span className="absolute right-0 inline-block w-[8px] text-center text-zinc-500">
                     {sortState?.column === sortColumn ? (sortState.direction === 'asc' ? '^' : 'v') : ''}
                 </span>
             </button>
@@ -1536,15 +1535,14 @@ ${rows}
     );
 
     const renderHeader = (column: TradeColumnDef) => {
-        const isLeftAligned = column.key === 'side';
         return (
             <th
                 key={column.key}
-                className={`relative px-1.5 py-[3px] ${isLeftAligned ? 'text-left' : 'text-right'} border-r border-zinc-700/70`}
+                className="relative px-1.5 py-[3px] text-center border-r border-zinc-700/70"
                 style={{ width: columnWidths[column.key] }}
                 title={TRADE_COLUMN_HOVER_COMMENTS[column.key]}
             >
-                <span className="block pr-2">{column.label}</span>
+                <span className="block px-2">{column.label}</span>
                 {renderColumnResizeHandle(column.key)}
             </th>
         );
@@ -1558,7 +1556,7 @@ ${rows}
                 className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700"
             >
                 <table
-                    className="rtx-trade-table w-full text-left border-collapse table-fixed"
+                    className="rtx-trade-table w-full text-center border-collapse table-fixed"
                     style={{ minWidth: visibleTradeTableWidth, fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif', fontVariantNumeric: 'tabular-nums' }}
                 >
                     <colgroup>
@@ -1574,7 +1572,7 @@ ${rows}
                             {visibleTradeColumns.map(column => {
                                 if (column.key === 'ticket') return renderSortableHeader('ticket', column.label, 'ticket');
                                 if (column.key === 'time') return renderSortableHeader('time', column.label, 'time_create');
-                                if (column.key === 'profit') return renderSortableHeader('profit', column.label, 'profit', 'right');
+                                if (column.key === 'profit') return renderSortableHeader('profit', column.label, 'profit');
                                 return renderHeader(column);
                             })}
                             <th className="px-0.5 py-[3px] text-center" style={{ width: columnWidths.close }} aria-label="Close position" title={TRADE_COLUMN_HOVER_COMMENTS.close}></th>
@@ -1642,36 +1640,26 @@ ${rows}
                                 }}
                             >
                                 {/* symbol */}
-                                <td className="px-1.5 py-[2px] pl-2 border-r border-zinc-800 font-normal text-zinc-100 whitespace-nowrap" title={`Symbol: ${symbolLabel}`}>
-                                    <span className="inline-flex items-center gap-1.5">
-                                        <span className={`h-[11px] w-[7px] rounded-[1px] border ${isBuy ? 'border-sky-400 text-sky-300' : 'border-red-400 text-red-300'} flex items-center justify-center text-[8px] leading-none`}>
-                                            {isBuy ? '+' : '-'}
-                                        </span>
-                                        <span>{symbolLabel}</span>
-                                    </span>
+                                <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={`Symbol: ${symbolLabel}`}>
+                                    <span>{symbolLabel}</span>
                                 </td>
 
                                 {/* ticket */}
                                 {isColumnVisible('ticket') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#d8dde8] font-normal tabular-nums whitespace-nowrap" title={`Ticket: ${ticketLabel}`}>{ticketLabel}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#d8dde8] font-normal tabular-nums whitespace-nowrap" title={`Ticket: ${ticketLabel}`}>{ticketLabel}</td>
                                 )}
 
                                 {/* time_create */}
                                 {isColumnVisible('time') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-[#aeb5c3] whitespace-nowrap" title={`Open time: ${timeLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] whitespace-nowrap" title={`Open time: ${timeLabel}`}>
                                         {timeLabel}
                                     </td>
                                 )}
 
                                 {/* side */}
                                 {isColumnVisible('side') && (
-                                    <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 font-normal text-[13px]`} title={`Side / Type: ${sideLabel}`}>
-                                        <div className="flex items-center gap-1">
-                                            {isBuy ? (
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                                            ) : (
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
-                                            )}
+                                    <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={`Type: ${sideLabel}`}>
+                                        <div className="flex items-center justify-center">
                                             <span>{sideLabel}</span>
                                         </div>
                                     </td>
@@ -1679,24 +1667,24 @@ ${rows}
 
                                 {/* volume */}
                                 {isColumnVisible('volume') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right font-normal text-zinc-100 tabular-nums" title={`Volume: ${volumeLabel} lots`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={`Volume: ${volumeLabel} lots`}>
                                         {volumeLabel}
                                     </td>
                                 )}
 
                                 {/* price_open */}
                                 {isColumnVisible('priceOpen') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] tabular-nums" title={`Open price: ${openPriceLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] tabular-nums" title={`Open price: ${openPriceLabel}`}>
                                         {openPriceLabel}
                                     </td>
                                 )}
 
                                 {/* price_sl */}
                                 {isColumnVisible('sl') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" title={`Stop Loss: ${slLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Stop Loss: ${slLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
                                         {editingId === pos.id ? (
                                             <input
-                                                className="h-[21px] w-full bg-zinc-800 text-white text-right px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
+                                                className="h-[21px] w-full bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
                                                 value={editSL}
                                                 onChange={e => setEditSL(e.target.value)}
                                                 onBlur={() => saveEdit(pos)}
@@ -1713,10 +1701,10 @@ ${rows}
 
                                 {/* price_tp */}
                                 {isColumnVisible('tp') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right tabular-nums" title={`Take Profit: ${tpLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Take Profit: ${tpLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
                                         {editingId === pos.id ? (
                                             <input
-                                                className="h-[21px] w-full bg-zinc-800 text-white text-right px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
+                                                className="h-[21px] w-full bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
                                                 value={editTP}
                                                 onChange={e => setEditTP(e.target.value)}
                                                 onBlur={() => saveEdit(pos)}
@@ -1733,40 +1721,40 @@ ${rows}
 
                                 {/* price_current */}
                                 {isColumnVisible('priceCurrent') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-zinc-100 font-normal tabular-nums" title={`Current price: ${currentPriceLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums" title={`Current price: ${currentPriceLabel}`}>
                                         {currentPriceLabel}
                                     </td>
                                 )}
 
                                 {/* swap */}
                                 {isColumnVisible('swap') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#8d95a3] tabular-nums" title={`Swap: ${swapLabel}`}>{swapLabel}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#8d95a3] tabular-nums" title={`Swap: ${swapLabel}`}>{swapLabel}</td>
                                 )}
 
                                 {/* account_login */}
                                 {isColumnVisible('accountLogin') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] whitespace-nowrap tabular-nums" title={`Account login: ${accountLoginLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] whitespace-nowrap tabular-nums" title={`Account login: ${accountLoginLabel}`}>
                                         {accountLoginLabel}
                                     </td>
                                 )}
 
                                 {/* time_update */}
                                 {isColumnVisible('timeUpdate') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] whitespace-nowrap tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] whitespace-nowrap tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
                                         {timeUpdateLabel}
                                     </td>
                                 )}
 
                                 {/* comment */}
                                 {isColumnVisible('comment') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-right text-[#aeb5c3] truncate" title={`Comment: ${commentLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] truncate" title={`Comment: ${commentLabel}`}>
                                         {commentLabel}
                                     </td>
                                 )}
 
                                 {/* profit */}
                                 {isColumnVisible('profit') && (
-                                    <td className={`px-1.5 py-[2px] text-right font-normal tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${profitMode === 'points' ? 'Profit points' : 'Profit'}: ${profitLabel}`}>
+                                    <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${profitMode === 'points' ? 'Profit points' : 'Profit'}: ${profitLabel}`}>
                                         {profitLabel}
                                     </td>
                                 )}

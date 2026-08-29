@@ -83,6 +83,38 @@ const closedSessionRun = (
   }))
 );
 
+describe('formatChartSeriesData chart types', () => {
+  it('maps Area to the same close-value data contract as Line', () => {
+    const candles = [
+      realCandle(100, 1.1050),
+      realCandle(160, 1.1075),
+    ];
+
+    const areaResult = formatChartSeriesData(
+      candles,
+      'area',
+      theme,
+      defaultChartProperties,
+      undefined,
+      { includeVolumeData: false },
+    );
+    const lineResult = formatChartSeriesData(
+      candles,
+      'line',
+      theme,
+      defaultChartProperties,
+      undefined,
+      { includeVolumeData: false },
+    );
+
+    expect(areaResult.seriesData).toEqual([
+      { time: 100, value: 1.1050 },
+      { time: 160, value: 1.1075 },
+    ]);
+    expect(areaResult.seriesData).toEqual(lineResult.seriesData);
+  });
+});
+
 describe('formatChartSeriesData market gap separators', () => {
   it('disables implicit live new-bar viewport shifting for M1 charts', () => {
     expect(TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS).toEqual({

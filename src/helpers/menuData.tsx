@@ -216,6 +216,7 @@ Charts: [
     item('Bar Chart', 'Alt+1'),
     item('Candlesticks', 'Alt+2'),
     item('Line Chart', 'Alt+3'),
+    item('Area Chart', undefined, <Icon name="area-chart" size="sm" />),
     divider(),
     item('Grid', 'Ctrl+G'),
     item('Auto Scroll'),

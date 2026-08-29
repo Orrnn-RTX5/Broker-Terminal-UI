@@ -141,6 +141,11 @@ describe('marketStatus helpers', () => {
     })).toBe('Aug 31, 11:45');
   });
 
+  it('preserves the server clock as a normalized millisecond timestamp', () => {
+    expect(normalizeMarketStatus({ server_time: 1_788_176_700 }).serverTimeMs)
+      .toBe(1_788_176_700_000);
+  });
+
   it('builds open and closed schedule labels', () => {
     const open = normalizeMarketStatus({
       symbol: 'EURUSD',

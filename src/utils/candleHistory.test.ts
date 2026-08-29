@@ -4,6 +4,7 @@ import {
   buildOlderHistoryRangeFallbackWindows,
   formatHistoryForOhlcv,
   getVisibleLogicalRangeForDataRender,
+  mergeFormingCandleEnvelope,
   mergeBackendCandlePage,
   normalizeCandlePageAscending,
   offsetLogicalRangeForPrependedCandles,
@@ -28,6 +29,56 @@ const candle = (
 });
 
 describe('candle history helpers', () => {
+  it('keeps the observed forming-candle envelope when a partial server update narrows it', () => {
+    const previous = candle(60, 105, {
+      open: 100,
+      high: 110,
+      low: 90,
+      volume: 18,
+      tickVolume: 18,
+      realVolume: 4,
+    });
+    const incoming = candle(60, 99, {
+      open: 101,
+      high: 108,
+      low: 95,
+      volume: 12,
+      tickVolume: 12,
+      realVolume: 3,
+    });
+
+    expect(mergeFormingCandleEnvelope(previous, incoming)).toEqual({
+      time: 60,
+      open: 101,
+      high: 110,
+      low: 90,
+      close: 99,
+      volume: 18,
+      tickVolume: 18,
+      realVolume: 4,
+    });
+  });
+
+  it('accepts a forming candle close retracement and any new true extreme', () => {
+    const previous = candle(60, 105, { open: 100, high: 110, low: 90, volume: 18 });
+    const incoming = candle(60, 96, { open: 100, high: 114, low: 88, volume: 20 });
+
+    expect(mergeFormingCandleEnvelope(previous, incoming)).toMatchObject({
+      open: 100,
+      high: 114,
+      low: 88,
+      close: 96,
+      volume: 20,
+    });
+  });
+
+  it('starts a different candle bucket from the incoming server values', () => {
+    const previous = candle(60, 105, { open: 100, high: 110, low: 90, volume: 18 });
+    const incoming = candle(120, 201, { open: 200, high: 202, low: 199, volume: 2 });
+
+    expect(mergeFormingCandleEnvelope(previous, incoming)).toEqual(incoming);
+  });
+
   it('retains every valid backend candle while merging paged history', () => {
     const initial = normalizeCandlePageAscending([
       candle(180, 180),

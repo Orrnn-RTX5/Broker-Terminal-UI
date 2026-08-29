@@ -3,12 +3,10 @@ import ReactDOM from 'react-dom';
 import { Icon } from '../ui/Icon';
 import type { ChartType, Timeframe } from '../TradingChart';
 import {
-    FileText, TrendingUp, BarChart2, CandlestickChart, LineChart,
-    ZoomIn, ZoomOut, Palette,
-    MousePointer2, Crosshair, ArrowUpDown, MoveHorizontal, MoveVertical,
-    Pencil, Type, Shapes, Camera, Search, User,
-    LogOut, GitCommitHorizontal, AlignCenter, BookMarked, RefreshCw,
-    PanelBottomOpen, LayoutPanelTop, SlidersHorizontal,
+    FileText, TrendingUp, BarChart2, CandlestickChart, LineChart, AreaChart,
+    ZoomIn, ZoomOut, Camera,
+    GitCommitHorizontal, RefreshCw,
+    LayoutPanelTop, SlidersHorizontal,
     Minus, Square, Copy, X
 } from 'lucide-react';
 import { useToolbarState } from '../../hooks/useToolbarState';
@@ -16,9 +14,6 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcut';
 import { SHORTCUT_CATEGORIES } from '../../services/keyboardShortcutManager';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { Command } from '../../types/commands';
-import { NotificationBadge } from '../notifications/NotificationBadge';
-import { NotificationCenter } from '../notifications/NotificationCenter';
-import { useNotificationStore } from '../../store/useNotificationStore';
 import { useAppStore } from '../../store/useAppStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
 import {
@@ -41,7 +36,7 @@ interface TopToolbarProps {
 }
 
 import { MenuBar } from './MenuBar';
-import { DrawingsDropdown } from './DrawingsDropdown';
+import { TimeframePicker } from './TimeframePicker';
 import { ChartTemplateManager } from '../ChartTemplateManager';
 import { indicatorManager } from '../../services/indicatorManager';
 import { drawingManager } from '../../services/drawingManager';
@@ -199,13 +194,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
     return (
         <div className="rtx-top-chrome flex flex-col z-50 relative border-b border-white/5 shadow-2xl">
-            {/* 1. Header Bar (Topmost) */}
-            <HeaderBar />
-
-            {/* 2. Menu Bar (File, View, etc.) */}
-            <MenuBar />
-
-            {/* 3. Main Toolbar (Icons Row) */}
+            {/* Single chrome row: application menu, chart tools, and desktop window controls. */}
             <MainToolbar
                 chartType={chartType}
                 timeframe={timeframe}
@@ -226,20 +215,6 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 // --- Sub-Components ---
 
 type ElectronWindowApi = NonNullable<Window['electron']>['window'];
-
-const HeaderBar = () => {
-    // The title bar only serves the desktop app (drag region + window controls).
-    // In the browser it would render as an empty strip, so skip it entirely.
-    if (!window.electron?.window) return null;
-    return (
-        <div
-            className="rtx-header-bar h-9 bg-transparent flex items-center justify-end text-[14px] font-normal font-segoe select-none text-slate-300 border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] backdrop-blur-md"
-            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-        >
-            <WindowControls />
-        </div>
-    );
-};
 
 const WindowControls = () => {
     const [electronWindow, setElectronWindow] = useState<ElectronWindowApi | null>(null);
@@ -272,16 +247,17 @@ const WindowControls = () => {
 
     if (!electronWindow) return null;
 
-    const buttonClassName = 'h-9 w-11 inline-flex items-center justify-center text-slate-300 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-400';
+    const buttonClassName = 'h-[40px] w-11 inline-flex items-center justify-center text-slate-300 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-400';
 
     return (
         <div
-            className="ml-auto flex h-9 items-center"
+            className="rtx-window-controls ml-auto flex h-[40px] shrink-0 items-center"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
             <button
                 type="button"
                 aria-label="Minimize window"
+                title="Minimize"
                 className={buttonClassName}
                 onClick={() => electronWindow.minimize()}
             >
@@ -290,6 +266,7 @@ const WindowControls = () => {
             <button
                 type="button"
                 aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
+                title={isMaximized ? 'Restore' : 'Maximize'}
                 className={buttonClassName}
                 onClick={() => electronWindow.maximize()}
             >
@@ -302,6 +279,7 @@ const WindowControls = () => {
             <button
                 type="button"
                 aria-label="Close window"
+                title="Close"
                 className={`${buttonClassName} hover:bg-red-600 hover:text-white`}
                 onClick={() => electronWindow.close()}
             >
@@ -385,19 +363,7 @@ const MainToolbar = ({
     onLoadTemplate
 }: MainToolbarProps) => {
 
-    const handleToolSelect = (toolId: string) => {
-        // 1. Update toolbar visual state (button highlights)
-        dispatchToolbar({ type: 'SELECT_TOOL', tool: toolId as any });
-        // 2. Notify TradingChart via commandBus so it calls drawingManager.startDrawing()
-        dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: toolId } } as any);
-    };
-
-    // User dropdown state
-    const [showUserMenu, setShowUserMenu] = useState(false);
-    const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
-    const [showDrawingDropdown, setShowDrawingDropdown] = useState(false);
     const [showHistoryOverlayMenu, setShowHistoryOverlayMenu] = useState(false);
-    const [showCrosshair, setShowCrosshair] = useState(false);
     const [advancedViewEnabled, setAdvancedViewEnabled] = useState(() => {
         try {
             return localStorage.getItem('rtx5-advanced-view-enabled') === 'true';
@@ -406,11 +372,6 @@ const MainToolbar = ({
         }
     });
     const [advancedOptions, setAdvancedOptions] = useState<AdvancedViewOptions>(loadAdvancedOptions);
-    const userMenuRef = useRef<HTMLDivElement>(null);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-    const advancedOptionsRef = useRef<HTMLDivElement>(null);
-    const advancedOptionsDropdownRef = useRef<HTMLDivElement>(null);
-    const drawingDropdownRef = useRef<HTMLDivElement>(null);
     const historyOverlayRef = useRef<HTMLDivElement>(null);
     const historyOverlayDropdownRef = useRef<HTMLDivElement>(null);
     const accountId = useAppStore((s) => s.accountId) || '---';
@@ -466,23 +427,15 @@ const MainToolbar = ({
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             const target = e.target as Node;
-            const clickedUserMenu = !!userMenuRef.current?.contains(target) || !!dropdownRef.current?.contains(target);
-            const clickedAdvancedOptions = !!advancedOptionsRef.current?.contains(target) || !!advancedOptionsDropdownRef.current?.contains(target);
-            const clickedDrawing = !!drawingDropdownRef.current?.contains(target);
             const clickedHistoryOverlay = !!historyOverlayRef.current?.contains(target) || !!historyOverlayDropdownRef.current?.contains(target);
 
-            if (!clickedDrawing) setShowDrawingDropdown(false);
             if (!clickedHistoryOverlay) setShowHistoryOverlayMenu(false);
-            if (!clickedUserMenu && !clickedAdvancedOptions) {
-                setShowUserMenu(false);
-                setShowAdvancedOptions(false);
-            }
         };
-        if (showUserMenu || showAdvancedOptions || showHistoryOverlayMenu) {
+        if (showHistoryOverlayMenu) {
             document.addEventListener('mousedown', handleClickOutside);
         }
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showUserMenu, showAdvancedOptions, showHistoryOverlayMenu]);
+    }, [showHistoryOverlayMenu]);
 
     const updateAdvancedOptions = (patch: Partial<AdvancedViewOptions>) => {
         setAdvancedOptions((current) => ({ ...current, ...patch }));
@@ -500,8 +453,6 @@ const MainToolbar = ({
         const store = useChartSettingsStore.getState();
         store.updateGlobalProperty('showPeriodSeparators', nextValue);
         store.updateSymbolProperty(symbol, 'showPeriodSeparators', nextValue);
-        setShowUserMenu(false);
-        setShowAdvancedOptions(false);
         setShowHistoryOverlayMenu(false);
     };
 
@@ -529,73 +480,31 @@ const MainToolbar = ({
         window.dispatchEvent(new CustomEvent('rtx:logout'));
     };
 
-    const getToolBtnClass = (isActive: boolean) => {
-        if (advancedViewEnabled) {
-            return isActive
-                ? 'bg-[#7E57C2] text-white'
-                : 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]';
-        } else {
-            return isActive
-                ? 'bg-blue-500/15 text-blue-400'
-                : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300';
-        }
-    };
-
-    const getToolsContainerClass = () => {
-        return advancedViewEnabled
-            ? 'border-[#d0d5dd] bg-white'
-            : 'border-zinc-700/50 bg-[#16181d]';
-    };
-
-    const getDividerClass = () => {
-        return advancedViewEnabled ? 'bg-[#e5e7eb]' : 'bg-zinc-700/50';
-    };
-
-    const getAdvancedMenuOptionClass = (isSelected: boolean) => {
-        if (advancedViewEnabled) {
-            return isSelected
-                ? 'border-[#6941C6] bg-[#6941C6] text-white shadow-sm'
-                : 'border-[#d0d5dd] bg-white text-[#344054] hover:border-[#b692f6] hover:bg-[#f9f5ff] hover:text-[#6941C6]';
-        }
-
-        return isSelected
-            ? 'border-blue-500/40 bg-blue-500/15 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.12)]'
-            : 'border-zinc-700 bg-[#10131a] text-zinc-400 hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-blue-300';
-    };
-
-    const getAdvancedGridButtonClass = () => {
-        if (advancedViewEnabled) {
-            return showAdvancedOptions
-                ? 'border-[#6941C6] bg-[#6941C6] text-white shadow-sm'
-                : 'border-[#d0d5dd] bg-white text-[#475467] shadow-sm hover:border-[#6941C6] hover:bg-[#6941C6] hover:text-white';
-        }
-
-        if (showAdvancedOptions) {
-            return 'border-blue-500/30 bg-blue-500/15 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]';
-        }
-
-        return 'border-transparent bg-transparent text-zinc-400 hover:border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-300';
-    };
-
-    const advancedMenuPanelClass = advancedViewEnabled
-        ? 'border-[#d0d5dd] bg-white text-[#101828] shadow-[0_16px_32px_-8px_rgba(16,24,40,0.24)]'
-        : 'border-zinc-700/80 bg-[#151820] text-zinc-200 shadow-2xl shadow-black/50';
-
-    const advancedMenuHeaderClass = advancedViewEnabled
-        ? 'border-[#eaecf0] text-[#101828]'
-        : 'border-zinc-700/70 text-zinc-100';
-
-    const advancedMenuLabelClass = advancedViewEnabled ? 'text-[#475467]' : 'text-zinc-400';
-
-    const advancedMenuSegmentClass = advancedViewEnabled
-        ? 'border-[#d0d5dd] bg-[#f9fafb] shadow-sm'
-        : 'border-zinc-700 bg-[#0f1117]';
-
     return (
-        <div className="flex items-center bg-[#131316] border-b border-white/10 h-[40px] px-1.5 shadow-sm select-none overflow-x-auto no-scrollbar gap-[2px]">
-
-
-
+        <div
+            className="rtx-main-toolbar flex h-[40px] items-center bg-[#131316] border-b border-white/10 shadow-sm select-none"
+            style={window.electron?.window ? ({ WebkitAppRegion: 'drag' } as React.CSSProperties) : undefined}
+        >
+            <MenuBar
+                advancedViewEnabled={advancedViewEnabled}
+                advancedFontSize={advancedOptions.fontSize}
+                focusChart={advancedOptions.focusChart}
+                activeDrawingTool={toolbarState.activeTool}
+                crosshairEnabled={toolbarState.crosshairEnabled}
+                accountId={accountId}
+                onSetAdvancedViewEnabled={setAdvancedViewEnabled}
+                onSetAdvancedFontSize={(fontSize) => updateAdvancedOptions({ fontSize })}
+                onSetFocusChart={(focusChart) => updateAdvancedOptions({ focusChart })}
+                onLogout={handleLogout}
+            />
+            <MT5Divider />
+            <div
+                className="flex min-w-0 flex-1 self-stretch items-center overflow-x-auto px-1.5 no-scrollbar"
+            >
+            <div
+                className="flex shrink-0 items-center gap-[2px]"
+                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            >
             {/* New Order & Last Symbol */}
             <MT5Group>
 
@@ -638,7 +547,8 @@ const MainToolbar = ({
             <MT5Group>
                 <MT5Btn icon={<BarChart2 size={16} strokeWidth={1.5} />} title="Bar Chart" active={toolbarState.chartType === 'bar'} onClick={() => { onChartTypeChange('bar'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'bar' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar' } }); }} />
                 <MT5Btn icon={<CandlestickChart size={16} strokeWidth={1.5} />} title="Candlesticks" active={toolbarState.chartType === 'candlestick'} onClick={() => { onChartTypeChange('candlestick'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'candlestick' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick' } }); }} />
-                <MT5Btn icon={<LineChart size={16} strokeWidth={1.5} />} title="Line Chart" active={toolbarState.chartType === 'line' || toolbarState.chartType === 'area'} onClick={() => { onChartTypeChange('area'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'area' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'area' } }); }} />
+                <MT5Btn icon={<LineChart size={16} strokeWidth={1.5} />} title="Line Chart" active={toolbarState.chartType === 'line'} onClick={() => { onChartTypeChange('line'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'line' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'line' } }); }} />
+                <MT5Btn icon={<AreaChart size={16} strokeWidth={1.5} />} title="Area Chart" active={toolbarState.chartType === 'area'} onClick={() => { onChartTypeChange('area'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'area' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'area' } }); }} />
             </MT5Group>
 
             <MT5Divider />
@@ -677,25 +587,16 @@ const MainToolbar = ({
 
             <MT5Divider />
 
-            {/* Group 8: Timeframes */}
-            <div className="flex items-center gap-[1px]">
-                {(['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'] as string[]).map((tf) => (
-                    <button
-                        key={tf}
-                        onClick={() => {
-                            onTimeframeChange(tf as Timeframe);
-                            dispatchCommand({ type: 'SET_TIMEFRAME', payload: { timeframe: tf } });
-                            window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: tf } }));
-                        }}
-                        className={`px-1.5 py-0.5 text-[14px] font-normal font-segoe rounded-[3px] transition-all border ${timeframe.toUpperCase() === tf
-                            ? 'bg-blue-500/15 text-blue-400 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
-                            : 'text-zinc-400 bg-transparent border-transparent hover:bg-blue-500/10 hover:text-blue-300 hover:border-blue-500/20'
-                            }`}
-                    >
-                        {tf}
-                    </button>
-                ))}
-            </div>
+            {/* Group 8: Horizontal MT-style timeframe strip */}
+            <TimeframePicker
+                timeframe={timeframe}
+                advancedViewEnabled={advancedViewEnabled}
+                onSelect={(nextTimeframe) => {
+                    onTimeframeChange(nextTimeframe);
+                    dispatchCommand({ type: 'SET_TIMEFRAME', payload: { timeframe: nextTimeframe } });
+                    window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: nextTimeframe } }));
+                }}
+            />
 
             <MT5Divider />
 
@@ -740,8 +641,6 @@ const MainToolbar = ({
                     aria-haspopup="menu"
                     aria-expanded={showHistoryOverlayMenu}
                     onClick={() => {
-                        setShowUserMenu(false);
-                        setShowAdvancedOptions(false);
                         setShowHistoryOverlayMenu((open) => !open);
                     }}
                     className={`rtx-trade-history-overlay-button flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all ${showHistoryOverlayMenu
@@ -850,306 +749,14 @@ const MainToolbar = ({
                     document.body,
                 )}
             </div>
+            </div>
 
-            {/* Spacer pushing the rest to the right (if space permits) */}
-            <div className="flex-1" />
+            {/* Keep a usable Electron drag surface without moving the fixed hamburger. */}
+            <div className="min-w-[24px] flex-1 self-stretch" aria-hidden="true" />
 
-            {/* Group 10: Far right controls */}
-            <MT5Group>
-                <MT5Btn icon={<Search size={15} strokeWidth={1.5} />} title="Search" />
-                <div className="relative" ref={advancedOptionsRef}>
-                    <button
-                        type="button"
-                        title="Theme"
-                        aria-label="Theme"
-                        aria-haspopup="menu"
-                        aria-expanded={showAdvancedOptions}
-                        onClick={() => {
-                            setShowUserMenu(false);
-                            setShowHistoryOverlayMenu(false);
-                            setShowAdvancedOptions((open) => !open);
-                        }}
-                        className={`rtx-advanced-grid-button flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all ${getAdvancedGridButtonClass()}`}
-                    >
-                        <Palette size={15} strokeWidth={1.5} />
-                    </button>
-
-                    {showAdvancedOptions && ReactDOM.createPortal(
-                        <div
-                            ref={advancedOptionsDropdownRef}
-                            className={`fixed z-[9999] w-[264px] rounded-[8px] border p-3.5 text-[14px] font-normal ${advancedMenuPanelClass}`}
-                            style={{
-                                top: (advancedOptionsRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
-                                right: Math.max(8, window.innerWidth - (advancedOptionsRef.current?.getBoundingClientRect().right ?? window.innerWidth)),
-                            }}
-                            role="menu"
-                            aria-label="Theme"
-                        >
-                            <div className={`mb-3 flex items-center justify-between border-b pb-2.5 ${advancedMenuHeaderClass}`}>
-                                <span className="text-[12px] font-semibold uppercase tracking-[0.08em]">Theme</span>
-                                <span className={`rounded-full px-2 py-0.5 text-[12px] font-medium ${advancedViewEnabled ? 'bg-[#f4f3ff] text-[#6941C6]' : 'bg-zinc-800 text-zinc-400'}`}>
-                                    {advancedViewEnabled ? 'Light' : 'Dark'}
-                                </span>
-                            </div>
-
-                            <div className="space-y-3">
-                                <div>
-                                    <div className={`mb-1.5 text-[12px] font-medium uppercase tracking-wide ${advancedMenuLabelClass}`}>Color Scheme</div>
-                                    <div className={`grid grid-cols-2 overflow-hidden rounded border ${advancedMenuSegmentClass}`} role="group" aria-label="Theme color scheme">
-                                        {([
-                                            { value: 'classic', label: 'Dark' },
-                                            { value: 'advanced', label: 'Light' },
-                                        ] as const).map((mode) => {
-                                            const selected = (advancedViewEnabled ? 'advanced' : 'classic') === mode.value;
-                                            return (
-                                                <button
-                                                    key={mode.value}
-                                                    type="button"
-                                                    className={`h-[30px] border-r text-[14px] font-normal last:border-r-0 ${getAdvancedMenuOptionClass(selected)}`}
-                                                    onClick={() => setAdvancedViewEnabled(mode.value === 'advanced')}
-                                                >
-                                                    {mode.label}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <div className={`mb-1.5 text-[12px] font-medium uppercase tracking-wide ${advancedMenuLabelClass}`}>Font Size</div>
-                                    <div className={`grid grid-cols-3 overflow-hidden rounded border ${advancedMenuSegmentClass}`} role="group" aria-label="Theme font size">
-                                        {ADVANCED_FONT_SIZES.map((fontSize) => {
-                                            const selected = advancedOptions.fontSize === fontSize;
-                                            const label = fontSize.charAt(0).toUpperCase() + fontSize.slice(1);
-                                            const pixelSize = fontSize === 'small' ? 13 : fontSize === 'large' ? 15 : 14;
-                                            return (
-                                                <button
-                                                    key={fontSize}
-                                                    type="button"
-                                                    aria-pressed={selected}
-                                                    title={`${label} (${pixelSize}px primary text)`}
-                                                    className={`h-[30px] border-r text-[14px] font-normal last:border-r-0 ${getAdvancedMenuOptionClass(selected)}`}
-                                                    onClick={() => updateAdvancedOptions({ fontSize })}
-                                                >
-                                                    {label}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-[5px] px-2 py-1.5 ${advancedViewEnabled ? 'hover:bg-[#f9fafb]' : 'hover:bg-white/5'}`}>
-                                    <span className={`text-[14px] font-normal ${advancedMenuLabelClass}`}>Focus Chart</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={advancedOptions.focusChart}
-                                        onChange={(event) => updateAdvancedOptions({ focusChart: event.target.checked })}
-                                        className="h-3.5 w-3.5 accent-[#6941C6]"
-                                    />
-                                </label>
-                            </div>
-                        </div>,
-                        document.body,
-                    )}
-                </div>
-
-                <>
-                    {/* Crosshair toggle — before drawing tools */}
-                    <button
-                        onClick={() => {
-                            const next = !showCrosshair;
-                            setShowCrosshair(next);
-                            dispatchCommand({ type: 'TOGGLE_CROSSHAIR', payload: {} });
-                        }}
-                        title="Toggle Crosshair (C)"
-                        className={`ml-2 flex items-center justify-center w-[28px] h-[26px] rounded border transition-colors shadow-sm ${showCrosshair
-                            ? advancedViewEnabled ? 'bg-[#7E57C2] border-[#7E57C2] text-white' : 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
-                            : advancedViewEnabled ? 'bg-white border-[#d0d5dd] text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2] hover:border-[#7E57C2]' : 'bg-transparent border-transparent text-zinc-400 hover:bg-white/5 hover:text-blue-300'
-                            }`}
-                    >
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                            <line x1="8" y1="1" x2="8" y2="5" />
-                            <line x1="8" y1="11" x2="8" y2="15" />
-                            <line x1="1" y1="8" x2="5" y2="8" />
-                            <line x1="11" y1="8" x2="15" y2="8" />
-                            <circle cx="8" cy="8" r="2.5" />
-                        </svg>
-                    </button>
-
-                    {/* Drawing Tools — Direct inline icon buttons, Advanced Mode only */}
-                    <div className={`ml-2 flex h-[28px] items-center gap-[2px] border rounded shadow-sm px-1 leading-none ${getToolsContainerClass()}`}>
-                        {/* Cursor */}
-                        <button
-                            onClick={() => handleToolSelect('cursor')}
-                            title="Cursor (Esc)"
-                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === null || toolbarState.activeTool === 'cursor')
-                                }`}
-                        >
-                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M3 2L3 13L6.5 10L8.5 14.5L10 13.8L8 9.3L12 9.3Z" fill="currentColor" stroke="currentColor" />
-                            </svg>
-                        </button>
-
-                        <div className={`w-px h-4 ${getDividerClass()}`} />
-
-                        {/* Trend Line */}
-                        <button
-                            onClick={() => handleToolSelect('trendline')}
-                            title="Trend Line"
-                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'trendline')
-                                }`}
-                        >
-                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                <line x1="3" y1="13" x2="13" y2="3" />
-                                <circle cx="3" cy="13" r="1.5" fill="currentColor" />
-                                <circle cx="13" cy="3" r="1.5" fill="currentColor" />
-                            </svg>
-                        </button>
-
-                        {/* Horizontal Line */}
-                        <button
-                            onClick={() => handleToolSelect('hline')}
-                            title="Horizontal Line"
-                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'hline')
-                                }`}
-                        >
-                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                <line x1="2" y1="8" x2="14" y2="8" />
-                                <circle cx="4" cy="8" r="1.5" fill="currentColor" />
-                                <circle cx="12" cy="8" r="1.5" fill="currentColor" />
-                            </svg>
-                        </button>
-
-                        {/* Vertical Line */}
-                        <button
-                            onClick={() => handleToolSelect('vline')}
-                            title="Vertical Line"
-                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'vline')
-                                }`}
-                        >
-                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                                <line x1="8" y1="2" x2="8" y2="14" />
-                                <circle cx="8" cy="4" r="1.5" fill="currentColor" />
-                                <circle cx="8" cy="12" r="1.5" fill="currentColor" />
-                            </svg>
-                        </button>
-
-                        {/* Equidistant Channel */}
-                        <button
-                            onClick={() => handleToolSelect('channel')}
-                            title="Equidistant Channel"
-                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'channel')
-                                }`}
-                        >
-                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-                                <line x1="2" y1="11" x2="11" y2="3" />
-                                <line x1="5" y1="14" x2="14" y2="6" />
-                                <circle cx="2" cy="11" r="1.3" fill="currentColor" />
-                                <circle cx="11" cy="3" r="1.3" fill="currentColor" />
-                            </svg>
-                        </button>
-
-                        {/* Fibonacci Retracement */}
-                        <button
-                            onClick={() => handleToolSelect('fibonacci')}
-                            title="Fibonacci Retracement"
-                            className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded leading-none transition-colors ${getToolBtnClass(toolbarState.activeTool === 'fibonacci')
-                                }`}
-                        >
-                            <svg className="block shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-                                <line x1="1" y1="3" x2="15" y2="3" />
-                                <line x1="1" y1="6.5" x2="15" y2="6.5" />
-                                <line x1="1" y1="10" x2="15" y2="10" />
-                                <line x1="1" y1="13" x2="15" y2="13" />
-                                <line x1="3" y1="13" x2="13" y2="3" />
-                                <circle cx="3" cy="13" r="1.3" fill="currentColor" />
-                                <circle cx="13" cy="3" r="1.3" fill="currentColor" />
-                            </svg>
-                        </button>
-                    </div>
-
-                    {/* Stamps dropdown — beside drawing tools */}
-                    <div className={`ml-1 flex h-[28px] shrink-0 items-center border rounded shadow-sm overflow-visible leading-none ${getToolsContainerClass()}`}>
-                        <StampsPopover
-                            dispatchCommand={dispatchCommand}
-                            dispatchToolbar={dispatchToolbar}
-                            activeTool={toolbarState.activeTool}
-                            advancedViewEnabled={advancedViewEnabled}
-                        />
-                    </div>
-
-                    {/* Clear All Drawings button */}
-                    <button
-                        onClick={() => {
-                            drawingManager.clearAllDrawings();
-                            handleToolSelect('cursor');
-                        }}
-                        title="Clear All Drawings"
-                        className={`ml-1 flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded border leading-none transition-colors shadow-sm ${advancedViewEnabled
-                            ? 'border-[#fda29b] bg-white text-[#d92d20] hover:bg-[#fef3f2] hover:border-[#f97066]'
-                            : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/50'
-                            }`}
-                    >
-                        <svg className="block shrink-0" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="2 4 4 4 14 4" />
-                            <path d="M5 4V2h6v2" />
-                            <path d="M6 7v5M10 7v5" />
-                            <path d="M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9" />
-                        </svg>
-                    </button>
-                </>
-
-                {/* User Icon with Logout Dropdown */}
-                <div className="relative" ref={userMenuRef}>
-                    <button
-                        onClick={() => {
-                            setShowAdvancedOptions(false);
-                            setShowUserMenu(!showUserMenu);
-                        }}
-                        className={`flex items-center justify-center w-[32px] h-[32px] rounded-[3px] transition-all border group relative ${showUserMenu
-                            ? 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
-                            : 'bg-transparent border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-zinc-400 hover:text-blue-300'
-                            }`}
-                        title="Account"
-                    >
-                        <User size={16} strokeWidth={1.5} />
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 text-white rounded-full flex items-center justify-center text-[7px] font-bold">1</div>
-                    </button>
-
-                    {/* Dropdown Menu - rendered via portal to escape overflow clipping */}
-                    {showUserMenu && ReactDOM.createPortal(
-                        <div
-                            ref={dropdownRef}
-                            className="fixed w-52 bg-[#1e222d] [.rtx-advanced-view_&]:bg-white border border-zinc-600 [.rtx-advanced-view_&]:border-gray-200 rounded shadow-2xl z-[9999] py-1"
-                            style={{
-                                top: (userMenuRef.current?.getBoundingClientRect().bottom ?? 0) + 4,
-                                right: window.innerWidth - (userMenuRef.current?.getBoundingClientRect().right ?? 0),
-                            }}
-                        >
-                            {/* Account info */}
-                            <div className="px-3 py-2 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-100">
-                                <div className="text-[12px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 uppercase tracking-wider mb-1">Account</div>
-                                <div className="text-[14px] font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-900 font-mono">{accountId}</div>
-                            </div>
-
-                            {/* Logout button */}
-                            <button
-                                onClick={handleLogout}
-                                className="w-full flex min-h-[30px] items-center gap-2.5 px-3 py-1.5 text-[14px] font-normal text-red-400 [.rtx-advanced-view_&]:text-red-500 hover:bg-red-500 hover:shadow-[0_0_15px_rgba(239,68,68,0.6)] transition-all duration-300 rounded-sm/15 hover:text-red-300 [.rtx-advanced-view_&]:hover:text-red-700 [.rtx-advanced-view_&]:hover:bg-red-50 [.rtx-advanced-view_&]:hover:shadow-none transition-colors disabled:opacity-50"
-                            >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                                    <polyline points="16 17 21 12 16 7" />
-                                    <line x1="21" y1="12" x2="9" y2="12" />
-                                </svg>
-                                Log Out
-                            </button>
-                        </div>,
-                        document.body
-                    )}
-                </div>
-            </MT5Group>
-
+            {/* Search, appearance, drawing, stamps, and account controls now live in the application menu. */}
+            </div>
+            <WindowControls />
         </div>
     );
 };
@@ -1157,38 +764,6 @@ const MainToolbar = ({
 
 
 
-
-const AdvancedOptionRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div className="flex items-center justify-between gap-3 py-1.5">
-        <span className="text-[14px] font-normal text-[#475467]">{label}</span>
-        {children}
-    </div>
-);
-
-const SegmentedControl = ({
-    value,
-    options,
-    onChange,
-}: {
-    value: string;
-    options: { value: string; label: string }[];
-    onChange: (value: string) => void;
-}) => (
-    <div className="inline-flex items-center rounded border border-[#d0d5dd] overflow-hidden bg-[#f9fafb]">
-        {options.map((option) => (
-            <button
-                key={option.value}
-                onClick={() => onChange(option.value)}
-                className={`min-h-[30px] px-2 py-1 text-[14px] font-normal transition-colors border-r border-[#d0d5dd] last:border-r-0 ${value === option.value
-                    ? 'bg-white text-[#101828] shadow-sm font-medium'
-                    : 'text-[#667085] hover:bg-white'
-                    }`}
-            >
-                {option.label}
-            </button>
-        ))}
-    </div>
-);
 
 const MT5Group = ({ children }: { children: React.ReactNode }) => (
     <div className="flex items-center gap-[2px]">
@@ -1197,236 +772,8 @@ const MT5Group = ({ children }: { children: React.ReactNode }) => (
 );
 
 
-// ─── Stamps Popover ──────────────────────────────────────────────────────────
-const STAMP_OPTIONS = [
-    { subtype: 'thumbsUp', label: 'Thumbs Up' },
-    { subtype: 'thumbsDown', label: 'Thumbs Down' },
-    { subtype: 'arrowUp', label: 'Arrow Up' },
-    { subtype: 'arrowDown', label: 'Arrow Down' },
-    { subtype: 'stopSign', label: 'Stop Sign' },
-    { subtype: 'checkSign', label: 'Check Sign' },
-    { subtype: 'leftPriceLabel', label: 'Left Price Label' },
-    { subtype: 'rightPriceLabel', label: 'Right Price Label' },
-    { subtype: 'buy', label: 'Buy' },
-    { subtype: 'sell', label: 'Sell' },
-    { subtype: 'arrow', label: 'Arrow' },
-];
-
-const StampIcon = ({ subtype, size = 18 }: { subtype: string; size?: number }) => {
-    const stroke = '#2563eb';
-    const sharedSvgProps = {
-        width: size,
-        height: size,
-        viewBox: '0 0 24 24',
-        fill: 'none',
-        strokeWidth: 1.8,
-        strokeLinecap: 'round' as const,
-        strokeLinejoin: 'round' as const,
-        className: 'block shrink-0',
-        style: { display: 'block', width: size, height: size } as React.CSSProperties,
-    };
-
-    switch (subtype) {
-        case 'thumbsUp':
-            return (
-                <svg {...sharedSvgProps} stroke={stroke}>
-                    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
-                </svg>
-            );
-        case 'thumbsDown':
-            return (
-                <svg {...sharedSvgProps} stroke={stroke}>
-                    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
-                </svg>
-            );
-        case 'arrowUp':
-            return (
-                <svg {...sharedSvgProps} stroke={stroke}>
-                    <line x1="12" y1="19" x2="12" y2="5" />
-                    <polyline points="5 12 12 5 19 12" />
-                </svg>
-            );
-        case 'arrowDown':
-            return (
-                <svg {...sharedSvgProps} stroke={stroke}>
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <polyline points="19 12 12 19 5 12" />
-                </svg>
-            );
-        case 'stopSign':
-            return (
-                <svg {...sharedSvgProps} stroke={stroke}>
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="8" y1="12" x2="16" y2="12" />
-                </svg>
-            );
-        case 'checkSign':
-            return (
-                <svg {...sharedSvgProps} stroke={stroke}>
-                    <circle cx="12" cy="12" r="10" />
-                    <polyline points="9 12 11 14 15 10" />
-                </svg>
-            );
-        case 'leftPriceLabel':
-            return (
-                <svg {...sharedSvgProps} stroke={stroke}>
-                    <path d="M8 6h12v12H8l-6-6 6-6z" />
-                    <path d="M12 10v4" />
-                    <path d="M12 10h3c1 0 1 4 0 4h-3" />
-                </svg>
-            );
-        case 'rightPriceLabel':
-            return (
-                <svg {...sharedSvgProps} stroke={stroke}>
-                    <path d="M16 6H4v12h12l6-6-6-6z" />
-                    <path d="M8 10v4" />
-                    <path d="M8 10h3c1 0 1 4 0 4H8" />
-                </svg>
-            );
-        case 'buy':
-            return (
-                <svg {...sharedSvgProps} stroke="#22c55e">
-                    <line x1="12" y1="19" x2="12" y2="5" />
-                    <polyline points="5 12 12 5 19 12" />
-                </svg>
-            );
-        case 'sell':
-            return (
-                <svg {...sharedSvgProps} stroke="#ef4444">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <polyline points="19 12 12 19 5 12" />
-                </svg>
-            );
-        case 'arrow':
-            return (
-                <svg {...sharedSvgProps} stroke={stroke}>
-                    <polygon points="12 4 6 12 18 12" />
-                    <rect x="5" y="15" width="6" height="6" />
-                    <circle cx="17" cy="18" r="3" />
-                </svg>
-            );
-        default:
-            return <span className="block leading-none" style={{ fontSize: size - 2 }}>?</span>;
-    }
-};
-
-const StampsPopover: React.FC<{
-    dispatchCommand: (cmd: any) => void;
-    dispatchToolbar: (action: any) => void;
-    activeTool?: string;
-    advancedViewEnabled?: boolean;
-}> = ({ dispatchCommand, dispatchToolbar, activeTool, advancedViewEnabled = true }) => {
-    const [open, setOpen] = useState(false);
-    const [lastSubtype, setLastSubtype] = useState('thumbsUp');
-    const ref = useRef<HTMLDivElement>(null);
-    const portalRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (!open) return;
-        const handler = (e: MouseEvent) => {
-            if (
-                !ref.current?.contains(e.target as Node) &&
-                !portalRef.current?.contains(e.target as Node)
-            ) {
-                setOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [open]);
-
-    const selectStamp = (subtype: string) => {
-        setLastSubtype(subtype);
-        setOpen(false);
-        dispatchToolbar({ type: 'SELECT_TOOL', tool: 'stamp' as any });
-        dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'stamp', subtype } } as any);
-    };
-
-    const isActive = activeTool === 'stamp';
-    const opt = STAMP_OPTIONS.find(o => o.subtype === lastSubtype) || STAMP_OPTIONS[0];
-    const pickerCellSize = 24;
-    const pickerGap = 2;
-    const pickerPadding = 6;
-    const pickerWidth = (pickerCellSize * 5) + (pickerGap * 4) + (pickerPadding * 2) + 2;
-    const triggerRect = ref.current?.getBoundingClientRect();
-    const pickerLeft = Math.max(
-        8,
-        Math.min(
-            triggerRect?.left ?? 0,
-            (typeof window !== 'undefined' ? window.innerWidth : pickerWidth) - pickerWidth - 8
-        )
-    );
-
-    return (
-        <div ref={ref} className="relative flex h-[26px] shrink-0 items-center leading-none">
-            {/* Main button — icon only, re-uses last subtype */}
-            <button
-                className={`flex h-[26px] w-[28px] shrink-0 items-center justify-center rounded-l leading-none transition-colors ${isActive
-                    ? (advancedViewEnabled ? 'bg-[#7E57C2] text-white' : 'bg-blue-500/15 text-blue-400')
-                    : (advancedViewEnabled ? 'text-[#475467] hover:bg-[#F3E5F5] hover:text-[#7E57C2]' : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300')
-                    }`}
-                title={`Stamp: ${opt.label} — click on chart to place`}
-                onClick={() => selectStamp(lastSubtype)}
-            >
-                <StampIcon subtype={lastSubtype} size={17} />
-            </button>
-
-            {/* Chevron — opens picker */}
-            <button
-                className={`flex h-[26px] w-[14px] shrink-0 items-center justify-center rounded-r border-l leading-none transition-colors ${advancedViewEnabled ? 'border-[#e5e7eb]' : 'border-zinc-700/50'
-                    } ${isActive || open
-                        ? (advancedViewEnabled ? 'bg-[#7E57C2] text-white border-[#7E57C2]' : 'bg-blue-500/15 text-blue-400 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)]')
-                        : (advancedViewEnabled ? 'text-[#667085] hover:bg-[#F3E5F5] hover:text-[#7E57C2]' : 'text-zinc-400 hover:bg-white/5 hover:text-blue-300')
-                    }`}
-                title="Choose stamp"
-                onClick={() => setOpen(o => !o)}
-            >
-                <svg className="block shrink-0" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                    <path d="M2 3.5l3 3 3-3" />
-                </svg>
-            </button>
-
-            {open && ReactDOM.createPortal(
-                <div
-                    ref={portalRef}
-                    className={`fixed border rounded shadow-xl z-[9999] p-1.5 leading-none ${advancedViewEnabled ? 'bg-white border-[#d0d5dd]' : 'bg-[#1a1c23] border-zinc-700'
-                    }`}
-                    style={{
-                        top: (triggerRect?.bottom ?? 0) + 4,
-                        left: pickerLeft,
-                    }}
-                >
-                    {/* 5-column icon grid */}
-                    <div
-                        className="grid"
-                        style={{
-                            gridTemplateColumns: `repeat(5, ${pickerCellSize}px)`,
-                            gridAutoRows: `${pickerCellSize}px`,
-                            gap: pickerGap,
-                        }}
-                    >
-                        {STAMP_OPTIONS.map(o => (
-                            <button
-                                key={o.subtype}
-                                title={o.label}
-                                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded leading-none transition-colors ${o.subtype === lastSubtype
-                                    ? (advancedViewEnabled ? 'bg-[#F3E5F5] ring-1 ring-[#7E57C2]' : 'bg-blue-500/15 ring-1 ring-blue-500/50')
-                                    : (advancedViewEnabled ? 'hover:bg-[#f3f4f6]' : 'hover:bg-white/5')
-                                    }`}
-                                onClick={() => selectStamp(o.subtype)}
-                            >
-                                <StampIcon subtype={o.subtype} size={16} />
-                            </button>
-                        ))}
-                    </div>
-                </div>,
-                document.body
-            )}
-        </div>
-    );
-};
 const MT5Divider = () => (
-    <div className="rtx-mt5-divider mx-[4px] w-[2px] h-6 border-l border-white/10 bg-[#1a1c23] shadow-sm" />
+    <div aria-hidden="true" className="rtx-mt5-divider invisible mx-[4px] h-6 w-[2px] shrink-0" />
 );
 
 interface MT5BtnProps {

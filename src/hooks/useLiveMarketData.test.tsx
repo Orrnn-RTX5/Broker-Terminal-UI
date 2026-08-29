@@ -294,6 +294,31 @@ describe('useLiveQuotes REST fallback batching', () => {
     expect(batches.flat()).toEqual(symbols);
   });
 
+  it('normalizes the broker daily_change_pct field from the REST quote snapshot', async () => {
+    apiGet.mockResolvedValueOnce({
+      quotes: [{
+        symbol: 'XAUUSD',
+        bid: 4604.44,
+        ask: 4604.54,
+        daily_change_pct: 0.45,
+        daily_open: 4583.88,
+        previous_close: 0,
+        timestamp_ms: 1_777_000_000_000,
+      }],
+    });
+
+    const { unmount } = renderHook(() => useLiveQuotes(['XAUUSD']));
+    await flushPromises();
+
+    expect(enqueueLiveTick).toHaveBeenCalledWith('XAUUSD', expect.objectContaining({
+      bid: 4604.44,
+      ask: 4604.54,
+      dailyChange: 0.45,
+    }));
+
+    unmount();
+  });
+
   it('polls one REST batch per interval while leaving websocket demand on all symbols', async () => {
     const symbols = Array.from({ length: LIVE_QUOTES_REST_BATCH_SIZE + 3 }, (_, index) => `S${index}`);
 

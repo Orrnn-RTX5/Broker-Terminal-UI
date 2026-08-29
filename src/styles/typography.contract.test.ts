@@ -11,6 +11,8 @@ const indexCss = readSource('src/index.css');
 const loginCss = readSource('src/styles/login.css');
 const advancedCss = readSource('src/styles/advanced-untitled-light.css');
 const topToolbarSource = readSource('src/components/layout/TopToolbar.tsx');
+const menuBarSource = readSource('src/components/layout/MenuBar.tsx');
+const timeframePickerSource = readSource('src/components/layout/TimeframePicker.tsx');
 const advancedViewRootClassesSource = readSource('src/utils/advancedViewRootClasses.ts');
 const tradingChartSource = readSource('src/components/TradingChart.tsx');
 const marketWatchSource = readSource('src/components/layout/MarketWatchPanel.tsx');
@@ -90,13 +92,12 @@ describe('enterprise typography contract', () => {
     expect(advancedViewRootClassesSource).toContain("root.classList.toggle('rtx-advanced-focus-chart', enabled && options.focusChart);");
     expect(topToolbarSource).toContain("const ADVANCED_FONT_SIZES: readonly AdvancedFontSize[] = ['small', 'normal', 'large'];");
     expect(topToolbarSource).toContain('fontSize: isStoredOption(parsed?.fontSize, ADVANCED_FONT_SIZES)');
-    expect(topToolbarSource).toContain('title="Theme"');
-    expect(topToolbarSource).toContain('aria-label="Theme"');
-    expect(topToolbarSource).toContain('aria-label="Theme color scheme"');
-    expect(topToolbarSource).toContain('aria-label="Theme font size"');
-    expect(topToolbarSource).toContain('onClick={() => updateAdvancedOptions({ fontSize })}');
-    expect(topToolbarSource).toContain('>Theme</span>');
-    expect(topToolbarSource).toContain('>Color Scheme</div>');
+    expect(menuBarSource).toContain("label: 'Theme'");
+    expect(menuBarSource).toContain("label: 'Dark Theme'");
+    expect(menuBarSource).toContain("label: 'Light Theme'");
+    expect(menuBarSource).toContain("label: 'Font Size'");
+    expect(menuBarSource).toContain("label: 'Focus Chart'");
+    expect(topToolbarSource).toContain('onSetAdvancedFontSize={(fontSize) => updateAdvancedOptions({ fontSize })}');
     expect(advancedCss).toContain('html.rtx-advanced-font-small {');
     expect(advancedCss).toContain('html.rtx-advanced-font-normal {');
     expect(advancedCss).toContain('html.rtx-advanced-font-large {');
@@ -111,7 +112,9 @@ describe('enterprise typography contract', () => {
 
   it('locks the physically measured terminal chrome and chart HUD typography', () => {
     expect(topToolbarSource).toContain('text-[14px] font-normal');
-    expect(topToolbarSource).toMatch(/text-\[14px\] font-normal font-segoe[\s\S]*timeframe\.toUpperCase\(\) === tf/);
+    expect(timeframePickerSource).toMatch(/text-\[14px\] font-normal font-segoe[\s\S]*\{option\.value\}/);
+    expect(advancedCss).toContain('.rtx-timeframe-strip');
+    expect(advancedCss).toContain('.rtx-timeframe-option[aria-checked="true"]');
     expect(tradingChartSource.match(/className="rtx-chart-hud"/g)).toHaveLength(2);
     expect(tradingChartSource).toMatch(/className="rtx-chart-hud"[\s\S]*fontSize: '14px', fontWeight: 400, lineHeight: '16px'/);
   });

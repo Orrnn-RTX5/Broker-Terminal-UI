@@ -63,26 +63,34 @@ export const DockResizeHandle: React.FC<DockResizeHandleProps> = ({
 
   return (
     <div
+      data-dock-resize-handle={direction}
       className={cn(
         'dock-resize-handle',
         direction === 'vertical'
           ? 'dock-resize-handle--vertical'
           : 'dock-resize-handle--horizontal',
         isDragging && 'dock-resize-handle--dragging',
-        'relative flex items-center justify-center flex-shrink-0 z-30',
-        // Invisible by default — only cursor changes
+        'relative flex-shrink-0 z-30',
+        // Reserve no split-layout space. A centered hit target overlaps both
+        // adjacent panels so the divider stays easy to drag.
         direction === 'vertical'
-          ? 'w-[3px] cursor-col-resize'
-          : 'h-[3px] cursor-row-resize',
-        // Subtle highlight on hover and during drag
-        isDragging
-          ? 'bg-zinc-500/60'
-          : 'bg-transparent hover:bg-zinc-500/30',
-        'transition-colors duration-75',
+          ? 'h-full w-0'
+          : 'h-0 w-full',
         className
       )}
-      onMouseDown={handleMouseDown}
-    />
+    >
+      <div
+        data-dock-resize-hit-target={direction}
+        className={cn(
+          'absolute bg-transparent transition-colors duration-75',
+          direction === 'vertical'
+            ? 'inset-y-0 left-1/2 w-[7px] -translate-x-1/2 cursor-col-resize'
+            : 'inset-x-0 top-1/2 h-[7px] -translate-y-1/2 cursor-row-resize',
+          isDragging && 'bg-zinc-500/40',
+        )}
+        onMouseDown={handleMouseDown}
+      />
+    </div>
   );
 };
 

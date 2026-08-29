@@ -215,9 +215,9 @@ describe('chart history loader', () => {
   });
 
   it('keeps native higher-timeframe older candles when the backend returns them', async () => {
-    const fetchCandles = vi.fn(async () => [
-      candle(3600),
-    ]);
+    const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => (
+      options.timeframe === 'M1' ? [] : [candle(3600)]
+    ));
 
     const result = await fetchOlderHistoryPage({
       symbol: 'XAUUSD',
@@ -226,19 +226,25 @@ describe('chart history loader', () => {
       fetchCandles,
     });
 
-    expect(fetchCandles).toHaveBeenCalledTimes(1);
-    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fetchCandles).toHaveBeenCalledTimes(2);
+    expect(fetchCandles).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      timeframe: 'M1',
+      count: 5000,
+      to: 7199,
+    }));
+    expect(fetchCandles).toHaveBeenNthCalledWith(2, expect.objectContaining({
       timeframe: 'H1',
       to: 7199,
     }));
     expect(result.candles.map(item => item.time)).toEqual([3600]);
+    expect(result.attempts).toBe(2);
     expect(result.source).toBe('backend');
     expect(result.usedDerivedFallback).toBe(false);
   });
 
-  it('derives higher-timeframe older candles from M1 when the native backend page is empty', async () => {
+  it('derives higher-timeframe older candles from M1 before requesting the native timeframe', async () => {
     const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => {
-      if (options.timeframe === 'H1') return [];
+      if (options.timeframe !== 'M1') return [];
       return Array.from({ length: 60 }, (_, index) => candle(3600 + index * 60))
         .sort((left, right) => right.time - left.time);
     });
@@ -250,23 +256,44 @@ describe('chart history loader', () => {
       fetchCandles,
     });
 
-    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
-      symbol: 'GBPUSD',
-      timeframe: 'H1',
-      to: 7199,
-    }));
+    expect(fetchCandles).toHaveBeenCalledTimes(1);
     expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
       symbol: 'GBPUSD',
       timeframe: 'M1',
       count: 5000,
       to: 7199,
     }));
+    expect(result.attempts).toBe(1);
     expect(result.source).toBe('derived-m1');
     expect(result.usedDerivedFallback).toBe(true);
     expect(result.candles.map(item => item.time)).toEqual([3600]);
   });
 
-  it('returns empty history only after native and M1 fallback pages are empty', async () => {
+  it.each(['M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'])(
+    'tries M1 derivation before the native %s older-history request',
+    async timeframe => {
+      const requestedTimeframes: string[] = [];
+      const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => {
+        requestedTimeframes.push(options.timeframe);
+        return [];
+      });
+
+      const result = await fetchOlderHistoryPage({
+        symbol: 'US30',
+        timeframe,
+        olderThanRaw: 7200,
+        fetchCandles,
+      });
+
+      expect(fetchCandles).toHaveBeenCalledTimes(2);
+      expect(requestedTimeframes).toEqual(['M1', timeframe]);
+      expect(result.attempts).toBe(2);
+      expect(result.source).toBe('backend');
+      expect(result.usedDerivedFallback).toBe(false);
+    },
+  );
+
+  it('returns empty history only after M1 derivation and the native page are empty', async () => {
     const fetchCandles = vi.fn(async () => []);
 
     const result = await fetchOlderHistoryPage({
@@ -276,18 +303,45 @@ describe('chart history loader', () => {
       fetchCandles,
     });
 
-    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
-      symbol: 'US30',
-      timeframe: 'H1',
-      to: 7199,
-    }));
-    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fetchCandles).toHaveBeenNthCalledWith(1, expect.objectContaining({
       symbol: 'US30',
       timeframe: 'M1',
       count: 5000,
       to: 7199,
     }));
+    expect(fetchCandles).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      symbol: 'US30',
+      timeframe: 'H1',
+      to: 7199,
+    }));
     expect(result.candles).toEqual([]);
+    expect(result.attempts).toBe(2);
+    expect(result.source).toBe('backend');
+    expect(result.usedDerivedFallback).toBe(false);
+  });
+
+  it('does not start a native higher-timeframe request after M1 derivation is aborted', async () => {
+    const controller = new AbortController();
+    const fetchCandles = vi.fn(async () => {
+      controller.abort();
+      return [];
+    });
+
+    const result = await fetchOlderHistoryPage({
+      symbol: 'XAUUSD',
+      timeframe: 'H1',
+      olderThanRaw: 7200,
+      signal: controller.signal,
+      fetchCandles,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledTimes(1);
+    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
+      timeframe: 'M1',
+      signal: controller.signal,
+    }));
+    expect(result.candles).toEqual([]);
+    expect(result.attempts).toBe(1);
     expect(result.source).toBe('backend');
     expect(result.usedDerivedFallback).toBe(false);
   });
@@ -297,8 +351,6 @@ describe('chart history loader', () => {
     const juneStart = 1780272000;
     const candles = Array.from({ length: 44_640 }, (_, index) => candle(mayStart + index * 60));
     const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => {
-      if (options.timeframe === 'MN') return [];
-
       const to = options.to ?? Number.MAX_SAFE_INTEGER;
       const count = options.count ?? 5000;
       return candles
@@ -318,6 +370,9 @@ describe('chart history loader', () => {
 
     expect(result.source).toBe('derived-m1');
     expect(result.candles.map(item => item.time)).toEqual([mayStart]);
+    expect(result.attempts).toBe(9);
+    expect(fetchCandles).toHaveBeenCalledTimes(9);
+    expect(fetchCandles.mock.calls.every(([options]) => options.timeframe === 'M1')).toBe(true);
     expect(yieldBetweenPages).toHaveBeenCalled();
   });
 

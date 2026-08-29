@@ -26,7 +26,7 @@ import {
 } from './brokerSession';
 import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
-import { resolveDailyChangePercent } from '../utils/dailyChange';
+import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ function normalizeQuotePayload(payload: Record<string, unknown>, envelope: unkno
     lp: typeof payload?.lp === 'string' ? payload.lp : undefined,
     volume: toNumber(payload?.volume, 1),
     dailyChange: resolveDailyChangePercent(
-      payload?.dailyChange ?? payload?.daily_change,
+      readDailyChangePercent(payload),
       bid,
       previousClose,
     ),

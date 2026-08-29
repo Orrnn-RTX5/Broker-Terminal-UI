@@ -173,6 +173,25 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-advanced-grid-button svg {
   color: inherit !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option {
+  color: #344054 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option:focus-visible {
+  background: #f9f5ff !important;
+  border-color: #d0d5dd !important;
+  color: #344054 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option[aria-checked="true"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option[aria-checked="true"]:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option[aria-checked="true"]:focus-visible {
+  background: #f3e5f5 !important;
+  border-color: #7e57c2 !important;
+  color: #6941c6 !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light :where(.text-emerald-300, .text-emerald-400, .text-green-400, .text-green-500) {
   color: #027a48 !important;
 }
@@ -750,11 +769,6 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(
   .rtx-history-downloader
 ) .text-\[12px\] {
   font-size: var(--rtx-advanced-header-font-size, 12px) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .rtx-header-bar {
-  height: 32px !important;
-  min-height: 32px !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .dock-panel__header,
@@ -1666,35 +1680,31 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-modify-dialog {
   --chart-text-muted: #475467;
 }
 
-/* Keep all three top-chrome rows on the same light surface. */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-header-bar {
-  background: var(--bg-secondary) !important;
-  color: #101828 !important;
-  border-bottom: 1px solid var(--border-primary) !important;
-  backdrop-filter: none !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-header-bar span,
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-header-bar svg {
+/* Keep the relocated desktop window controls on the single chrome surface. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-window-controls {
   color: #101828 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-header-bar button {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-window-controls svg {
   color: #101828 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-header-bar button:hover {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-window-controls button {
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-window-controls button:hover {
   background: rgba(0, 0, 0, 0.05) !important;
   color: #101828 !important;
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-header-bar button[title="Close"]:hover {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-window-controls button[title="Close"]:hover {
   background: #e11d48 !important;
   color: #ffffff !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-header-bar button[title="Close"]:hover svg {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-window-controls button[title="Close"]:hover svg {
   color: #ffffff !important;
 }
 
@@ -1838,10 +1848,9 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-connection-dropdown .text-ye
   /* Darker yellow/orange for readability on white */
 }
 
-/* ===== Hide dark MT5 toolbar dividers in Advanced Light Mode ===== */
-/* They appear as dark | pipes on the white navbar background */
+/* Keep toolbar group spacing consistent without rendering pipe dividers. */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-mt5-divider {
-  display: none !important;
+  visibility: hidden !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-history-overlay-button[aria-expanded="false"],
@@ -1996,14 +2005,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-r
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--buy,
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--buy svg,
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--buy span {
   color: #2563eb !important;
   font-weight: 400 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--sell,
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--sell svg,
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-row--selected) td.rtx-trade-side-cell--sell span {
   color: #dc2626 !important;
   font-weight: 400 !important;

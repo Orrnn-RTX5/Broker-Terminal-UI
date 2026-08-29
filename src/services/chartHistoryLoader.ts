@@ -257,17 +257,10 @@ export const fetchOlderHistoryPage = async ({
     };
   }
 
-  const directCandles = normalizeCandlePageAscending(await fetchCandles({
-    symbol,
-    timeframe,
-    count: pageSize,
-    to: requestedTo,
-    signal,
-  }));
-
   const normalizedTimeframe = normalizeTimeframe(timeframe);
-  const directHasOlderCandles = directCandles.some(candle => candle.time < olderThanRaw);
-  if (normalizedTimeframe !== 'M1' && !directHasOlderCandles && isM1DerivedFallbackTimeframe(timeframe)) {
+  let derivedAttempts = 0;
+
+  if (normalizedTimeframe !== 'M1' && isM1DerivedFallbackTimeframe(timeframe)) {
     const derivedCandles = await fetchDerivedTimeframeCandlesFromM1({
       symbol,
       targetTimeframe: timeframe,
@@ -276,26 +269,48 @@ export const fetchOlderHistoryPage = async ({
       yieldBetweenPages,
       fetchCandles,
     });
+    derivedAttempts = derivedCandles.pagesFetched;
 
     if (derivedCandles.candles.length > 0) {
       return {
         candles: derivedCandles.candles,
         requestedTo,
         pageSize,
-        attempts: 1 + derivedCandles.pagesFetched,
+        attempts: derivedAttempts,
         usedRangeFallback: false,
         usedDerivedFallback: true,
         source: 'derived-m1',
       };
     }
+
+    if (derivedCandles.aborted || signal?.aborted) {
+      return {
+        candles: [],
+        requestedTo,
+        pageSize,
+        attempts: derivedAttempts,
+        usedRangeFallback: false,
+        usedDerivedFallback: false,
+        source: 'backend',
+      };
+    }
   }
 
+  const directCandles = normalizeCandlePageAscending(await fetchCandles({
+    symbol,
+    timeframe,
+    count: pageSize,
+    to: requestedTo,
+    signal,
+  }));
+
+  const directHasOlderCandles = directCandles.some(candle => candle.time < olderThanRaw);
   if (normalizedTimeframe !== 'M1' || directHasOlderCandles) {
     return {
       candles: directCandles,
       requestedTo,
       pageSize,
-      attempts: 1,
+      attempts: derivedAttempts + 1,
       usedRangeFallback: false,
       usedDerivedFallback: false,
       source: 'backend',

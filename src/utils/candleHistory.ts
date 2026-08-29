@@ -25,6 +25,49 @@ export interface CandleHistoryMergeResult<T extends CandleHistoryCandle> {
   updatedCount: number;
 }
 
+/**
+ * Accept the latest forming-candle values without allowing a delayed partial
+ * snapshot to erase price extremes that were already observed in this bucket.
+ * Closed historical corrections intentionally do not use this helper.
+ */
+export const mergeFormingCandleEnvelope = <T extends CandleHistoryCandle>(
+  previous: T,
+  incoming: T,
+): T => {
+  if (previous.time !== incoming.time) return { ...incoming };
+
+  const realVolume = previous.realVolume === undefined && incoming.realVolume === undefined
+    ? undefined
+    : Math.max(previous.realVolume ?? 0, incoming.realVolume ?? 0);
+
+  return {
+    ...previous,
+    ...incoming,
+    high: Math.max(
+      previous.high,
+      previous.open,
+      previous.close,
+      incoming.high,
+      incoming.open,
+      incoming.close,
+    ),
+    low: Math.min(
+      previous.low,
+      previous.open,
+      previous.close,
+      incoming.low,
+      incoming.open,
+      incoming.close,
+    ),
+    volume: Math.max(previous.volume, incoming.volume),
+    tickVolume: Math.max(
+      previous.tickVolume ?? previous.volume,
+      incoming.tickVolume ?? incoming.volume,
+    ),
+    ...(realVolume === undefined ? {} : { realVolume }),
+  };
+};
+
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 

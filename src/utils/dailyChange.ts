@@ -5,6 +5,18 @@
  * client-side fallback is Bid versus the previous session close. Daily open,
  * midpoint, and rolling 24-hour values describe different measurements.
  */
+export const readDailyChangePercent = (payload: unknown): unknown => {
+  if (!payload || typeof payload !== 'object') return undefined;
+
+  const quote = payload as Record<string, unknown>;
+  return [
+    quote.dailyChangePct,
+    quote.daily_change_pct,
+    quote.dailyChange,
+    quote.daily_change,
+  ].find((value) => value !== undefined && value !== null && value !== '');
+};
+
 export const resolveDailyChangePercent = (
   upstreamDailyChange: unknown,
   bid: number,

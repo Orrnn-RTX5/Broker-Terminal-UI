@@ -82,6 +82,9 @@ describe('OneClickTrading market status', () => {
     expect(row).toHaveStyle({ display: 'flex' });
     expect(row).toHaveStyle({ background: '#111827' });
     expect(volumeControl).toHaveStyle({ flexDirection: 'row' });
+    expect(volumeInput).toHaveClass('rtx-oct-lot-input');
+    expect(volumeInput.style.borderStyle).toBe('none');
+    expect(volumeInput).toHaveStyle({ borderRadius: '0px', appearance: 'none' });
     expect(rowChildren[0]).toHaveAttribute('data-side', 'sell');
     expect(rowChildren[1]).toBe(volumeControl);
     expect(rowChildren[2]).toHaveAttribute('data-side', 'buy');

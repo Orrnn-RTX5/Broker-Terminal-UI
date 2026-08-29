@@ -268,6 +268,58 @@ describe('derived timeframe history from M1', () => {
     });
   });
 
+  it('fetches initial MN history through the calendar bucket start before returning it', async () => {
+    const julyStart = utcSeconds(2026, 7, 1);
+    const midMonth = utcSeconds(2026, 7, 15);
+    const newestPage = [
+      candle(midMonth, 20, 22, 19, 21, 5),
+      candle(midMonth + 60, 21, 24, 20, 23, 7),
+    ];
+    const bucketStartPage = [
+      candle(julyStart, 10, 12, 9, 11, 2),
+      candle(julyStart + 60, 11, 13, 10, 12, 3),
+    ];
+    const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => (
+      options.to === undefined ? newestPage : bucketStartPage
+    ));
+
+    const result = await fetchDerivedTimeframeCandlesFromM1({
+      symbol: 'XAUUSD',
+      targetTimeframe: 'MN',
+      pageSize: 2,
+      maxM1Pages: 2,
+      targetCandleLimit: 1,
+      includeM1Candles: true,
+      fetchCandles,
+      yieldToMainThread: async () => undefined,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledTimes(2);
+    expect(fetchCandles.mock.calls[0]?.[0]).not.toHaveProperty('to');
+    expect(fetchCandles.mock.calls[1]?.[0]).toMatchObject({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      count: 2,
+      to: midMonth - 1,
+    });
+    expect(result.pagesFetched).toBe(2);
+    expect(result.m1CandlesFetched).toBe(4);
+    expect(result.m1Candles.map(item => item.time)).toEqual([
+      julyStart,
+      julyStart + 60,
+      midMonth,
+      midMonth + 60,
+    ]);
+    expect(result.candles).toEqual([{
+      time: julyStart,
+      open: 10,
+      high: 24,
+      low: 9,
+      close: 23,
+      volume: 17,
+    }]);
+  });
+
   it('stops initial fallback after the requested derived target candle count', async () => {
     const start = utcSeconds(2026, 5, 1);
     const m1Candles = Array.from({ length: 180 }, (_, index) => candle(start + index * 60));

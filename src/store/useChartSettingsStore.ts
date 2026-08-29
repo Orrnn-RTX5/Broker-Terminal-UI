@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
-export type ChartTypeEnum = "Bar" | "Candlesticks" | "Line";
+export type ChartTypeEnum = "Bar" | "Candlesticks" | "Line" | "Area";
 export type ColorScheme =
   | "Green on Black"
   | "Black on White"

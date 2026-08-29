@@ -34,7 +34,7 @@ import {
   getChartSelectionReadinessSnapshot,
   shouldMountChartRuntime,
 } from './utils/chartSelectionReadiness';
-import { resolveDailyChangePercent } from './utils/dailyChange';
+import { readDailyChangePercent, resolveDailyChangePercent } from './utils/dailyChange';
 import {
   isAuthenticatedSessionHandoffValid,
   type AuthenticatedSessionHandoff,
@@ -416,7 +416,7 @@ const normalizeRealtimeTick = (raw: any, previous?: Tick): Tick | null => {
     sourceTimestamp: normalizedSourceTimestamp,
     lp,
     dailyChange: resolveDailyChangePercent(
-      raw?.daily_change ?? raw?.dailyChange ?? previous?.dailyChange,
+      readDailyChangePercent(raw) ?? previous?.dailyChange,
       bid,
       previousClose,
     ),
@@ -3803,6 +3803,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
              onClose={() => setShowChartProperties(false)}
              symbol={chartPropsSymbol}
              timeframe={chartPropsTimeframe as Timeframe}
+             currentChartType={chartType}
+             onChartTypeChange={setChartType}
           />
         </div>
       </KeyboardShortcutProvider>

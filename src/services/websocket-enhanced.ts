@@ -12,7 +12,7 @@ import { useWebSocketStore } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
 import { buildBrokerWsV2Uri } from './brokerSession';
 import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
-import { resolveDailyChangePercent } from '../utils/dailyChange';
+import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
 
 const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
@@ -657,7 +657,7 @@ export class EnhancedWebSocketService {
     ].filter((value) => value > 0);
     const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
     const dailyChange = resolveDailyChangePercent(
-      data.dailyChange ?? data.daily_change,
+      readDailyChangePercent(data),
       bid,
       previousClose,
     );

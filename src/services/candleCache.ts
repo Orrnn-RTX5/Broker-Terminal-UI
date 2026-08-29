@@ -1,6 +1,6 @@
 /**
  * Session-only candle cache used to make chart timeframe switches render
- * immediately while the backend remains the source of truth.
+ * immediately while broker M1 history remains the higher-timeframe source.
  */
 
 import type { OHLCData } from './chartDataService';
@@ -8,7 +8,7 @@ import { onSessionChange } from './brokerSession';
 
 export type CandleCacheKey = string & { readonly __brand: 'CandleCacheKey' };
 export type CandleCacheSource = 'backend' | 'derived-m1' | 'mixed';
-export const CANDLE_HISTORY_CACHE_VERSION = 'backend-first-m1-fallback-v2';
+export const CANDLE_HISTORY_CACHE_VERSION = 'm1-derived-timeframes-v4';
 
 export interface CandleCacheKeyParts {
   scope: string;

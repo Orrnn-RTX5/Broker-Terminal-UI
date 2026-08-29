@@ -679,9 +679,13 @@ tr:hover {
 }
 
 .rtx-oct input[type='number'] {
-  background-color: #0f172a !important;
-  border-color: #526174 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
   color: #ffffff !important;
+  appearance: none;
+  -webkit-appearance: none;
   -moz-appearance: textfield;
 }
 

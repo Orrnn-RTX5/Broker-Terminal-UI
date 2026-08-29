@@ -251,7 +251,7 @@ const DockWorkspaceClean: React.FC<{
         <div
             className="rtx-dock-workspace flex-1 w-full h-full relative overflow-hidden flex flex-col"
             data-rtx-authenticated-viewport="true"
-            style={{ background: '#0d0d11', padding: '6px', gap: '6px' }}
+            style={{ background: '#0d0d11', padding: '0 6px', gap: '6px' }}
         >
             {/* Reset Layout Button */}
             {isLayoutEmpty && (

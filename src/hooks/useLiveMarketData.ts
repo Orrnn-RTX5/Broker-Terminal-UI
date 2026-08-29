@@ -13,7 +13,7 @@ import { getAccessToken, getServerUrl, onSessionChange } from '../services/broke
 import { resolveTickFromLookup, useAppStore, type Tick as AppTick } from '../store/useAppStore';
 import { type Tick, useMarketDataStore } from '../store/useMarketDataStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
-import { resolveDailyChangePercent } from '../utils/dailyChange';
+import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
 import { isStaleQuoteErrorMessage, resolveMarketWatchSymbolInput } from '../utils/marketWatchSource';
 import { useQuoteSubscription } from './useQuoteSubscription';
 import type { WatchlistItem } from '../types/api';
@@ -202,7 +202,7 @@ const normalizeTick = (raw: any, fallbackSymbol?: string): (Tick & Partial<AppTi
     lp: payload?.lp,
     volume: toNumber(payload?.volume, 1),
     dailyChange: resolveDailyChangePercent(
-      payload?.dailyChange ?? payload?.daily_change,
+      readDailyChangePercent(payload),
       bid,
       previousClose,
     ),

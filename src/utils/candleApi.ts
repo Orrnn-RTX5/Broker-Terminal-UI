@@ -1,4 +1,9 @@
-export type BackendCandleTimeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
+import {
+  TIMEFRAME_SECONDS,
+  type BoundaryTimeframe,
+} from './timeframeBoundary';
+
+export type BackendCandleTimeframe = BoundaryTimeframe;
 
 export interface CandleApiQueryInput {
   timeframe?: unknown;
@@ -17,17 +22,7 @@ export interface CandleApiQueryParams {
 
 export const MAX_CANDLE_API_LIMIT = 5000;
 
-export const CANDLE_TIMEFRAME_SECONDS: Record<BackendCandleTimeframe, number> = {
-  M1: 60,
-  M5: 5 * 60,
-  M15: 15 * 60,
-  M30: 30 * 60,
-  H1: 60 * 60,
-  H4: 4 * 60 * 60,
-  D1: 24 * 60 * 60,
-  W1: 7 * 24 * 60 * 60,
-  MN: 30 * 24 * 60 * 60,
-};
+export const CANDLE_TIMEFRAME_SECONDS: Readonly<Record<BackendCandleTimeframe, number>> = TIMEFRAME_SECONDS;
 
 const TIMEFRAME_ALIASES: Record<string, BackendCandleTimeframe> = {
   M1: 'M1',

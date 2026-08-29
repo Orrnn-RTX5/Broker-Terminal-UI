@@ -14,17 +14,50 @@ const dockContainerSource = readSource('src/components/dock/DockContainer.tsx');
 describe('terminal top chrome background contract', () => {
   it('uses the shared panel surface instead of the blue glass backdrop', () => {
     expect(topToolbarSource).toContain('className="rtx-top-chrome flex flex-col');
-    expect(topToolbarSource).not.toMatch(/rtx-top-chrome[^\"]*bg-slate-950\/20/);
-    expect(topToolbarSource).not.toMatch(/rtx-top-chrome[^\"]*backdrop-blur/);
+    expect(topToolbarSource).not.toMatch(/rtx-top-chrome[^"]*bg-slate-950\/20/);
+    expect(topToolbarSource).not.toMatch(/rtx-top-chrome[^"]*backdrop-blur/);
     expect(themeCss).toMatch(/\.rtx-top-chrome\s*\{[^}]*background: var\(--bg-secondary\);/);
     expect(themeCss).toMatch(/--bg-secondary:\s*#131316;/);
   });
 
-  it('uses one shared white surface for every light-mode chrome row', () => {
+  it('uses one shared surface for the single-row chrome and its menus', () => {
     expect(advancedCss).toMatch(/html\.rtx-advanced-view\.rtx-skin-untitled-light\s*\{[\s\S]*--bg-secondary:\s*#ffffff;/);
-    expect(advancedCss).toMatch(/\.rtx-header-bar\s*\{[\s\S]*?background: var\(--bg-secondary\) !important;[\s\S]*?border-bottom: 1px solid var\(--border-primary\) !important;/);
-    expect(menuBarSource).toContain('[.rtx-advanced-view_&]:bg-[var(--bg-secondary)]');
-    expect(advancedCss).not.toMatch(/\.rtx-header-bar\s*\{[^}]*background: #F3E5F5 !important;/);
+    expect(topToolbarSource).not.toContain('<HeaderBar');
+    expect(topToolbarSource).toContain('<MenuBar');
+    expect(topToolbarSource).toContain('<WindowControls />');
+    expect(menuBarSource).toContain('rtx-menu-launcher');
+    expect(menuBarSource).toContain('rtx-application-menu');
+    expect(menuBarSource).toContain('[.rtx-advanced-view_&]:bg-white');
+    expect(advancedCss).toContain('.rtx-window-controls');
+    expect(advancedCss).not.toContain('.rtx-header-bar');
+  });
+
+  it('keeps the former far-right controls inside the sectioned application menu', () => {
+    expect(topToolbarSource).not.toContain('Group 10: Far right controls');
+    expect(topToolbarSource).not.toContain('title="Clear All Drawings"');
+    expect(menuBarSource).toContain("label: 'Theme'");
+    expect(menuBarSource).toContain("label: 'Search Symbols'");
+    expect(menuBarSource).toContain("label: 'Crosshair'");
+    expect(menuBarSource).toContain("label: 'Selection Mode'");
+    expect(menuBarSource).toContain("label: 'Stamps'");
+    expect(menuBarSource).toContain("label: 'Delete All'");
+    expect(menuBarSource).toContain('accountId={accountId}');
+  });
+
+  it('keeps the hamburger fixed and preserves an Electron drag surface', () => {
+    const menuIndex = topToolbarSource.indexOf('<MenuBar');
+    const scrollingStripIndex = topToolbarSource.indexOf('overflow-x-auto px-1.5 no-scrollbar');
+    expect(menuIndex).toBeGreaterThan(-1);
+    expect(scrollingStripIndex).toBeGreaterThan(menuIndex);
+    expect(topToolbarSource).toContain('className="min-w-[24px] flex-1 self-stretch"');
+    expect(menuBarSource).toContain("WebkitAppRegion: 'no-drag'");
+  });
+
+  it('keeps toolbar group spacing without rendering pipe symbols', () => {
+    expect(topToolbarSource).toContain('aria-hidden="true" className="rtx-mt5-divider invisible');
+    expect(topToolbarSource).not.toContain('rtx-mt5-divider mx-[4px] w-[2px] h-6 border-l');
+    expect(advancedCss).toMatch(/\.rtx-mt5-divider\s*\{[^}]*visibility: hidden !important;/);
+    expect(advancedCss).not.toMatch(/\.rtx-mt5-divider\s*\{[^}]*display: none !important;/);
   });
 
   it('keeps dock chrome and core workspace surfaces enterprise-light', () => {

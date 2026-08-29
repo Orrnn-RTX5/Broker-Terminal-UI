@@ -192,6 +192,9 @@ export interface FileMenuProps {
     onPrint?: () => void;
     onPrintPreview?: () => void;
     onPrintSetup?: () => void;
+    accountId?: string;
+    onLogout?: () => void;
+    onDialogOpenChange?: (open: boolean) => void;
     onExit?: () => void;
     hasUnsavedChanges?: boolean;
 }
@@ -203,6 +206,9 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     onPrint,
     onPrintPreview,
     onPrintSetup,
+    accountId,
+    onLogout,
+    onDialogOpenChange,
     onExit,
     hasUnsavedChanges = false
 }) => {
@@ -219,6 +225,25 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload });
     const desktopReleaseVersionLabel = getDesktopReleaseVersionLabel(desktopReleaseState.release);
     const desktopReleaseMetaLabel = desktopReleaseVersionLabel || (desktopReleaseState.status === 'loading' ? 'Latest' : '');
+
+    useEffect(() => {
+        onDialogOpenChange?.(
+            showSaveDialog
+            || showSavePictureDialog
+            || showPrintSetupDialog
+            || showPrintPreviewDialog
+            || showExitDialog
+            || showOpenAccountDialog,
+        );
+    }, [
+        onDialogOpenChange,
+        showExitDialog,
+        showOpenAccountDialog,
+        showPrintPreviewDialog,
+        showPrintSetupDialog,
+        showSaveDialog,
+        showSavePictureDialog,
+    ]);
 
     // Dynamic symbol loading for New Chart menu
     const [availableSymbols, setAvailableSymbols] = useState<SymbolData[]>([]);
@@ -643,6 +668,40 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 </button>
 
                 <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
+
+                {(accountId || onLogout) && (
+                    <>
+                        <div
+                            className="mx-1 flex min-h-[42px] items-center gap-3 rounded-sm px-2 py-1.5 text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151]"
+                            aria-label={`Current trading account ${accountId || ''}`.trim()}
+                            role="presentation"
+                        >
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-400 [.rtx-advanced-view_&]:border-[#d6bbfb] [.rtx-advanced-view_&]:bg-[#f4f3ff] [.rtx-advanced-view_&]:text-[#6941C6]">
+                                <Icon name="user" size="sm" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="text-[12px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-[#667085]">Current account</div>
+                                <div className="truncate font-mono text-[14px] font-normal text-zinc-200 [.rtx-advanced-view_&]:text-[#101828]">{accountId || '---'}</div>
+                            </div>
+                        </div>
+
+                        {onLogout && (
+                            <button
+                                type="button"
+                                role="menuitem"
+                                onClick={onLogout}
+                                className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 [.rtx-advanced-view_&]:text-[#b42318] [.rtx-advanced-view_&]:hover:bg-[#fef3f2] [.rtx-advanced-view_&]:hover:text-[#912018] cursor-default group"
+                            >
+                                <div className="w-4 flex items-center justify-center">
+                                    <Icon name="log-out" size="sm" />
+                                </div>
+                                <span className="flex-1">Log Out</span>
+                            </button>
+                        )}
+
+                        <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
+                    </>
+                )}
 
                 {/* Open an Account */}
                 <button

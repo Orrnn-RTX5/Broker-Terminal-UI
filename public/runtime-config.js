@@ -1,15 +1,14 @@
 (function () {
   var config = {
     BACKEND_TARGET: 'web',
-    API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
-    API_HOST_EXT: 'https://fxtrustbrokerbackend.orrnn.com',
-    WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
-    DEFAULT_MT5_SERVER: 'TEST',
-    DISCOVERY_BASE_URL: 'https://fxtrustsuperbackned.orrnn.com',
-    BROKER_ID: 'TEST',
-    VITE_BROKER_ID: 'TEST',
-    FEED_BROKER_ID: 'TEST',
-    FEED_BROKER_TOKEN: 'rtx5_clp_feed_test_zFME8a4Koen-dxouADdZffWr_emD3IJuTsI49qZdvq8',
+    API_HOST: 'https://services.growtradingacademy.com',
+    API_HOST_EXT: 'https://services.growtradingacademy.com',
+    WS_HOST: 'wss://services.growtradingacademy.com',
+    DEFAULT_MT5_SERVER: 'RTX 5 Web Terminal',
+    DISCOVERY_BASE_URL: 'https://superbackend.orrnn.com',
+    BROKER_ID: 'gta_broker',
+    VITE_BROKER_ID: 'gta_broker',
+    FEED_BROKER_ID: 'gta_broker',
     USE_MOCK_DISCOVERY: false
   };
 

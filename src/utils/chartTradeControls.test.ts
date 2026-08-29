@@ -184,6 +184,39 @@ describe('createEntryTradeControlBar', () => {
     expect(root.querySelector('.rtx-trade-chip--money')?.textContent).toBe(grouped('USD:1 008.00'));
   });
 
+  it('fills dark entry Pips and USD chips red for SELL and blue for BUY', () => {
+    const sell = buildBar().root;
+    const buy = createEntryTradeControlBar({
+      tradeKey: 'trade:988',
+      ticket: 988,
+      symbol: 'XAUUSD',
+      side: 'BUY',
+      volume: 1,
+      isLightSurface: false,
+      leftInset: 10,
+    }).root;
+
+    for (const selector of ['.rtx-trade-chip--pips', '.rtx-trade-chip--money']) {
+      expect(sell.querySelector(selector)).toHaveStyle({ backgroundColor: '#ef4444', color: '#ffffff' });
+      expect(buy.querySelector(selector)).toHaveStyle({ backgroundColor: '#2962ff', color: '#ffffff' });
+    }
+  });
+
+  it('keeps light entry metric chips on the neutral light surface', () => {
+    const { root } = createEntryTradeControlBar({
+      tradeKey: 'trade:989',
+      ticket: 989,
+      symbol: 'XAUUSD',
+      side: 'SELL',
+      volume: 1,
+      isLightSurface: true,
+      leftInset: 10,
+    });
+
+    expect(root.querySelector('.rtx-trade-chip--pips')).toHaveStyle({ backgroundColor: '#ffffff', color: '#232c39' });
+    expect(root.querySelector('.rtx-trade-chip--money')).toHaveStyle({ backgroundColor: '#ffffff', color: '#232c39' });
+  });
+
   it('dispatches the position action event when a button is clicked', () => {
     const actions: string[] = [];
     const seen: ChartPositionActionDetail[] = [];
@@ -261,6 +294,8 @@ describe('createTradeLevelControlBar', () => {
     expect(bar.classList.contains('rtx-trade-level-badge')).toBe(true);
     expect(bar.querySelector('.rtx-trade-chip--pips')?.textContent).toBe('Pips:-723.5');
     expect(bar.querySelector('.rtx-trade-chip--money')?.textContent).toBe(grouped('USD:-7 242.00'));
+    expect(bar.querySelector('.rtx-trade-chip--pips')).toHaveStyle({ backgroundColor: '#10151c', color: '#e6ecf5' });
+    expect(bar.querySelector('.rtx-trade-chip--money')).toHaveStyle({ backgroundColor: '#10151c', color: '#e6ecf5' });
 
     (bar.querySelector('.rtx-trade-control-btn--remove') as HTMLButtonElement).click();
     expect(onRemove).toHaveBeenCalledTimes(1);

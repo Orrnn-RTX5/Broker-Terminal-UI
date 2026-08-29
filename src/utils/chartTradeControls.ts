@@ -169,6 +169,11 @@ export const TRADE_CONTROL_SIDE_COLORS: Record<ChartTradeSide, string> = {
   SELL: '#ef4444',
 };
 
+const TRADE_CONTROL_DARK_ENTRY_METRIC_COLORS: Record<ChartTradeSide, string> = {
+  BUY: '#2962ff',
+  SELL: '#ef4444',
+};
+
 export const TRADE_CONTROL_ACTION_COLOR = '#2563eb';
 const TRADE_CONTROL_ACTION_HOVER_COLOR = '#3b82f6';
 export const TRADE_CONTROL_SHARE_COLOR = '#5b6472';
@@ -263,10 +268,13 @@ const createMetricChip = (
   initialValue: string,
   surface: TradeControlSurface,
   accentColor: string,
+  filledBackground?: string,
 ): { chip: HTMLSpanElement; valueEl: HTMLSpanElement } => {
   const chip = document.createElement('span');
   chip.className = `rtx-trade-chip rtx-trade-chip--${variant}`;
-  chip.style.cssText = `display:inline-flex;align-items:center;gap:3px;padding:2px 6px;margin-left:-1px;background:${surface.chipBackground};border:1px solid ${accentColor};color:${surface.chipText};${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
+  const background = filledBackground ?? surface.chipBackground;
+  const textColor = filledBackground ? '#ffffff' : surface.chipText;
+  chip.style.cssText = `display:inline-flex;align-items:center;gap:3px;padding:2px 6px;margin-left:-1px;background-color:${background};border:1px solid ${accentColor};color:${textColor};${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
   const labelEl = document.createElement('span');
   labelEl.textContent = label;
   labelEl.style.cssText = 'opacity:0.78;font-weight:600;';
@@ -336,8 +344,11 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   volumeChip.appendChild(volumeText);
   volumeChip.appendChild(volumeArrow);
 
-  const pips = createMetricChip('pips', 'Pips:', '—', surface, sideColor);
-  const money = createMetricChip('money', `${currencyLabel}:`, '—', surface, sideColor);
+  const darkMetricBackground = isLightSurface
+    ? undefined
+    : TRADE_CONTROL_DARK_ENTRY_METRIC_COLORS[side];
+  const pips = createMetricChip('pips', 'Pips:', '—', surface, sideColor, darkMetricBackground);
+  const money = createMetricChip('money', `${currencyLabel}:`, '—', surface, sideColor, darkMetricBackground);
 
   chipGroup.appendChild(volumeChip);
   chipGroup.appendChild(pips.chip);

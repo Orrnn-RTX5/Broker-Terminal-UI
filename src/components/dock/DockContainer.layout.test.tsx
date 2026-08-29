@@ -81,10 +81,18 @@ describe('DockContainer split sizing', () => {
     const navigator = container.querySelector<HTMLElement>('[data-dock-child="navigator"]');
     const chart = container.querySelector<HTMLElement>('[data-dock-child="chart"]');
     const toolbox = container.querySelector<HTMLElement>('[data-dock-panel="toolbox"]');
+    const verticalHandles = container.querySelectorAll<HTMLElement>('[data-dock-resize-handle="vertical"]');
+    const horizontalHandles = container.querySelectorAll<HTMLElement>('[data-dock-resize-handle="horizontal"]');
 
     expect(marketWatch?.style.flexGrow).toBe('0.5');
     expect(navigator?.style.flexGrow).toBe('0.5');
     expect(chart?.style.flexGrow).toBe('0.44');
+    expect(verticalHandles).toHaveLength(1);
+    expect(horizontalHandles).toHaveLength(2);
+    expect(verticalHandles[0].className).toContain('w-0');
+    expect(horizontalHandles[0].className).toContain('h-0');
+    expect(verticalHandles[0].querySelector('[data-dock-resize-hit-target="vertical"]')).not.toBeNull();
+    expect(horizontalHandles[0].querySelector('[data-dock-resize-hit-target="horizontal"]')).not.toBeNull();
 
     const closeButton = toolbox?.querySelector<HTMLButtonElement>('button[title="Close"]');
     expect(closeButton).not.toBeNull();

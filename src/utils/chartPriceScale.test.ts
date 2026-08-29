@@ -54,8 +54,8 @@ describe('maximum price-scale zoom', () => {
     'derives a geometry-aware minimum span for $label with one point per label interval',
     ({ point }) => {
       // 600px pane with 5% top and 28% bottom margins leaves 402px.
-      // At a 12px font, Lightweight Charts reserves ceil(12 * 2.5) = 30px
-      // per tick, so thirteen one-point intervals remain visible.
+      // Lightweight Charts' nominal label height is 30px here; the 32px
+      // boundary-safe spacing leaves twelve one-point intervals visible.
       const minimumSpan = computeMinimumVisiblePriceSpan({
         point,
         paneHeight: 600,
@@ -64,7 +64,7 @@ describe('maximum price-scale zoom', () => {
         bottomMargin: 0.28,
       });
 
-      expect(minimumSpan / point).toBeCloseTo(13, 12);
+      expect(minimumSpan / point).toBeCloseTo(12, 12);
     },
   );
 
@@ -74,6 +74,16 @@ describe('maximum price-scale zoom', () => {
       paneHeight: 0,
       fontSize: 12,
     })).toBe(0.01);
+  });
+
+  it('keeps the common 460px Gold pane below the two-point tick boundary', () => {
+    expect(computeMinimumVisiblePriceSpan({
+      point: 0.01,
+      paneHeight: 460,
+      fontSize: 11,
+      topMargin: 0.05,
+      bottomMargin: 0.28,
+    })).toBeCloseTo(0.09, 12);
   });
 
   it.each(digitCases)(

@@ -38,44 +38,6 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
         ? getLogoUrl(brokerInfo.logoUrl, brokerInfo.logoBaseCandidates)
         : './titlebar-icon.png';
 
-    // Align the title with the bottom dock's tab strip (the "Trade" tab column),
-    // tracking live panel resizes via ResizeObserver + a slow fallback poll.
-    const [dockLeft, setDockLeft] = useState<number | null>(null);
-
-    useEffect(() => {
-        let observed: Element | null = null;
-        const observer = typeof ResizeObserver !== 'undefined'
-            ? new ResizeObserver(() => measure())
-            : null;
-
-        function measure() {
-            const el = document.querySelector('.rtx-bottom-dock__tabs');
-            if (!el) {
-                if (observed) {
-                    observer?.disconnect();
-                    observed = null;
-                }
-                setDockLeft(null);
-                return;
-            }
-            if (observer && observed !== el) {
-                observer.disconnect();
-                observer.observe(el);
-                observed = el;
-            }
-            const left = Math.round(el.getBoundingClientRect().left);
-            setDockLeft((prev) => (prev === left ? prev : left));
-        }
-
-        measure();
-        window.addEventListener('resize', measure);
-        const poll = window.setInterval(measure, 1000);
-        return () => {
-            window.removeEventListener('resize', measure);
-            window.clearInterval(poll);
-            observer?.disconnect();
-        };
-    }, []);
     const appVersion = window.electron?.appVersion || '1.0.0';
     const hasUpdater = Boolean(window.electron?.updater?.isSupported);
     const showDesktopDownload = !window.electron || !window.electron.isPackaged;
@@ -163,12 +125,8 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
         <div className="rtx-status-bar h-6 flex items-center justify-between border-t border-[#2a3342] bg-[#10151d] px-2 text-[13px] leading-[19.5px] font-normal font-sans text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] select-none z-50 [.rtx-advanced-view_&]:border-zinc-400 [.rtx-advanced-view_&]:bg-[#e1e1e1] [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:shadow-none">
             <div className="flex min-w-0 flex-1 items-center">
                 <div
-                    className="rtx-status-bar__metric overflow-hidden whitespace-nowrap text-zinc-400 font-normal [.rtx-advanced-view_&]:text-zinc-600"
-                    style={dockLeft != null ? { width: Math.max(0, dockLeft - 8), flexShrink: 1 } : undefined}
+                    className="rtx-status-bar__metric flex min-w-0 max-w-full items-center gap-2 overflow-hidden whitespace-nowrap font-normal text-zinc-400 [.rtx-advanced-view_&]:text-zinc-600"
                 >
-                    For Help, press F1
-                </div>
-                <div className={`flex min-w-0 items-center gap-2 ${dockLeft != null ? '' : 'ml-4 border-l border-zinc-700 pl-4 [.rtx-advanced-view_&]:border-zinc-400'}`}>
                     <img
                         src={brokerLogo}
                         alt={`${brokerInfo.brokerName} Logo`}

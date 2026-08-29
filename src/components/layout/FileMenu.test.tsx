@@ -209,6 +209,17 @@ describe('FileMenu Component', () => {
     });
 
     describe('Basic Actions', () => {
+        it('shows the active account and logs out from the File section', () => {
+            const onLogout = vi.fn();
+            render(<FileMenu {...mockHandlers} accountId="200002" onLogout={onLogout} />);
+
+            expect(screen.getByLabelText('Current trading account 200002')).toBeInTheDocument();
+            expect(screen.getByText('200002')).toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Log Out' }));
+            expect(onLogout).toHaveBeenCalledTimes(1);
+        });
+
         it('calls onSave when Save is clicked', () => {
             render(<FileMenu {...mockHandlers} hasUnsavedChanges={false} />);
 

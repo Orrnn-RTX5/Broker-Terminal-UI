@@ -49,6 +49,7 @@
             "barChart": "Bar Chart",
             "candlesticks": "Candlesticks",
             "lineChart": "Line Chart",
+            "areaChart": "Area Chart",
             "grid": "Grid",
             "autoScroll": "Auto Scroll",
             "chartShift": "Chart Shift",

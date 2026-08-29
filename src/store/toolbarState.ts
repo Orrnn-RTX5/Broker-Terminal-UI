@@ -1,5 +1,5 @@
 export interface ToolbarState {
-  activeTool: 'cursor' | 'trendline' | 'hline' | 'vline' | 'text' | 'channel' | 'fibonacci' | 'fib_extension' | 'measure' | 'freehand' | 'callout' | 'shapes' | 'rectangle' | 'ellipse' | null;
+  activeTool: 'cursor' | 'trendline' | 'hline' | 'vline' | 'text' | 'channel' | 'fibonacci' | 'fib_extension' | 'measure' | 'freehand' | 'callout' | 'shapes' | 'rectangle' | 'ellipse' | 'stamp' | null;
   chartType: 'candlestick' | 'bar' | 'line' | 'area';
   timeframe: string;
   crosshairEnabled: boolean;

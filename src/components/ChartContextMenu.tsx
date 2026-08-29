@@ -11,7 +11,7 @@ import { commandBus } from '../services/commandBus';
 import { useTemplates, useTemplateStore } from '../store/useTemplateStore';
 import type { ChartTemplate } from '../store/useTemplateStore';
 import {
-    CandlestickChart, BarChart2, LineChart, ZoomIn, ZoomOut,
+    CandlestickChart, BarChart2, LineChart, AreaChart, ZoomIn, ZoomOut,
     Grid3X3, RefreshCw, Camera, Settings, ChevronRight,
     Activity, Crosshair, AlignJustify, Volume2, Layers,
     Save, FolderOpen, Trash2, FileText, TrendingUp,
@@ -600,11 +600,18 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 onClick={() => { onChangeChartType('candlestick'); onClose(); }}
             />
             <MenuItem
-                icon={<LineChart size={13} strokeWidth={1.5} style={{ color: (currentChartType === 'line' || currentChartType === 'area') ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
+                icon={<LineChart size={13} strokeWidth={1.5} style={{ color: currentChartType === 'line' ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
                 label="Line Chart"
                 shortcut="Alt+3"
-                checked={currentChartType === 'line' || currentChartType === 'area'}
-                active={currentChartType === 'line' || currentChartType === 'area'}
+                checked={currentChartType === 'line'}
+                active={currentChartType === 'line'}
+                onClick={() => { onChangeChartType('line'); onClose(); }}
+            />
+            <MenuItem
+                icon={<AreaChart size={13} strokeWidth={1.5} style={{ color: currentChartType === 'area' ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
+                label="Area Chart"
+                checked={currentChartType === 'area'}
+                active={currentChartType === 'area'}
                 onClick={() => { onChangeChartType('area'); onClose(); }}
             />
 

@@ -21,7 +21,7 @@ export function useToolbarState() {
       // Map commands to toolbar actions
       switch (cmd.type) {
         case 'SELECT_TOOL':
-          dispatchLocal({ type: 'SELECT_TOOL', tool: cmd.payload.tool, subtype: (cmd.payload as any).subtype });
+          dispatchLocal({ type: 'SELECT_TOOL', tool: cmd.payload.tool, subtype: cmd.payload.subtype });
           break;
 
         case 'SET_CHART_TYPE':

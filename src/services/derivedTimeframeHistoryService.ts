@@ -1,7 +1,13 @@
 import type { ApiTimeframe, FetchCandlesOptions, OHLCData } from './chartDataService';
 import { chartDataService } from './chartDataService';
 import { normalizeCandlePageAscending } from '../utils/candleHistory';
-import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
+import {
+  normalizeBackendCandleTimeframeOrNull,
+} from '../utils/candleApi';
+import {
+  getTimeframeCloseSeconds,
+  getTimeframePeriodSeconds,
+} from '../utils/timeframeBoundary';
 
 export const DERIVED_M1_PAGE_SIZE = 5000;
 export const DERIVED_M1_PROCESSING_CHUNK_SIZE = 1000;
@@ -20,6 +26,7 @@ export interface FetchDerivedTimeframeCandlesFromM1Options {
   maxM1Pages?: number;
   targetCandleLimit?: number;
   processingChunkSize?: number;
+  includeM1Candles?: boolean;
   fetchCandles?: FetchCandlesPage;
   yieldBetweenPages?: YieldBetweenPages;
   yieldToMainThread?: YieldToMainThread;
@@ -27,6 +34,8 @@ export interface FetchDerivedTimeframeCandlesFromM1Options {
 
 export interface FetchDerivedTimeframeCandlesFromM1Result {
   candles: OHLCData[];
+  /** Deduplicated M1 rows used for aggregation, sorted oldest first. */
+  m1Candles: OHLCData[];
   pagesFetched: number;
   m1CandlesFetched: number;
   requestedTo: number | null;
@@ -34,48 +43,6 @@ export interface FetchDerivedTimeframeCandlesFromM1Result {
   reachedBeginning: boolean;
   aborted: boolean;
 }
-
-const TIMEFRAME_SECONDS: Record<ApiTimeframe, number> = {
-  M1: 60,
-  M5: 5 * 60,
-  M15: 15 * 60,
-  M30: 30 * 60,
-  H1: 60 * 60,
-  H4: 4 * 60 * 60,
-  D1: 24 * 60 * 60,
-  W1: 7 * 24 * 60 * 60,
-  MN: 30 * 24 * 60 * 60,
-};
-
-const TIMEFRAME_ALIASES: Record<string, ApiTimeframe> = {
-  M1: 'M1',
-  '1': 'M1',
-  '1M': 'M1',
-  '1MIN': 'M1',
-  M5: 'M5',
-  '5': 'M5',
-  '5M': 'M5',
-  '5MIN': 'M5',
-  M15: 'M15',
-  '15': 'M15',
-  '15M': 'M15',
-  '15MIN': 'M15',
-  M30: 'M30',
-  '30': 'M30',
-  '30M': 'M30',
-  '30MIN': 'M30',
-  H1: 'H1',
-  '1H': 'H1',
-  '60': 'H1',
-  H4: 'H4',
-  '4H': 'H4',
-  D1: 'D1',
-  '1D': 'D1',
-  W1: 'W1',
-  '1W': 'W1',
-  MN: 'MN',
-  '1MO': 'MN',
-};
 
 interface IdleDeadlineLike {
   didTimeout: boolean;
@@ -97,6 +64,8 @@ interface DerivedBucket {
 interface M1AggregationState {
   buckets: Map<number, DerivedBucket>;
   seenM1Times: Set<number>;
+  m1CandlesByTime: Map<number, OHLCData>;
+  retainM1Candles: boolean;
   oldestM1Time: number | null;
   m1CandlesFetched: number;
 }
@@ -111,6 +80,7 @@ const emptyDerivedResult = (
   aborted = false,
 ): FetchDerivedTimeframeCandlesFromM1Result => ({
   candles: [],
+  m1Candles: [],
   pagesFetched: 0,
   m1CandlesFetched: 0,
   requestedTo,
@@ -120,7 +90,7 @@ const emptyDerivedResult = (
 });
 
 const normalizeTimeframe = (timeframe: string): ApiTimeframe | null => (
-  TIMEFRAME_ALIASES[String(timeframe || '').trim().toUpperCase()] ?? null
+  normalizeBackendCandleTimeframeOrNull(timeframe)
 );
 
 const isFiniteNumber = (value: unknown): value is number => (
@@ -148,15 +118,6 @@ const getNewestTime = (candles: readonly OHLCData[]): number | null => {
   return isFiniteNumber(newest) ? newest : null;
 };
 
-const getBucketEndSeconds = (bucketTime: number, targetTf: ApiTimeframe): number => {
-  if (targetTf === 'MN') {
-    const date = new Date(bucketTime * 1000);
-    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1) / 1000;
-  }
-
-  return bucketTime + TIMEFRAME_SECONDS[targetTf];
-};
-
 const isAbortError = (error: unknown, signal?: AbortSignal): boolean => (
   signal?.aborted === true
   || (
@@ -172,9 +133,11 @@ const toPositiveInteger = (value: number | undefined, fallback: number): number 
   return Number.isFinite(candidate) && candidate > 0 ? Math.floor(candidate) : 0;
 };
 
-const createM1AggregationState = (): M1AggregationState => ({
+const createM1AggregationState = (retainM1Candles = false): M1AggregationState => ({
   buckets: new Map<number, DerivedBucket>(),
   seenM1Times: new Set<number>(),
+  m1CandlesByTime: new Map<number, OHLCData>(),
+  retainM1Candles,
   oldestM1Time: null,
   m1CandlesFetched: 0,
 });
@@ -227,11 +190,8 @@ const upsertM1CandleIntoBucket = (
   candle: OHLCData,
   targetTf: ApiTimeframe,
 ): void => {
-  const bucketTime = alignTimeframeBoundarySeconds(
-    candle.time,
-    targetTf,
-    TIMEFRAME_SECONDS[targetTf],
-  );
+  const bucketTime = getTimeframePeriodSeconds(candle.time, targetTf)?.startTime;
+  if (bucketTime === undefined) return;
   const existing = state.buckets.get(bucketTime);
   const volume = finiteVolume(candle.volume);
 
@@ -290,6 +250,9 @@ const accumulateM1Page = async (
     if (state.seenM1Times.has(candle.time)) continue;
 
     state.seenM1Times.add(candle.time);
+    if (state.retainM1Candles) {
+      state.m1CandlesByTime.set(candle.time, { ...candle });
+    }
     state.oldestM1Time = state.oldestM1Time === null
       ? candle.time
       : Math.min(state.oldestM1Time, candle.time);
@@ -314,9 +277,13 @@ const isBucketCoveredForResult = (
 ): boolean => {
   const hasCursor = isFiniteNumber(olderThanRaw);
   const bucketStart = bucket.candle.time;
-  if (!hasCursor) return true;
+  if (!hasCursor) {
+    // Initial/current-period derivation must include the bucket's real first M1,
+    // not merely the newest page fragment (especially important for W1/MN).
+    return coveredFromInclusive !== null && coveredFromInclusive <= bucketStart;
+  }
 
-  const bucketEnd = getBucketEndSeconds(bucketStart, targetTf);
+  const bucketEnd = getTimeframeCloseSeconds(bucketStart, targetTf);
   return (
     bucketStart < olderThanRaw &&
     bucketEnd <= olderThanRaw &&
@@ -415,11 +382,8 @@ export const aggregateM1CandlesToTimeframe = (
 
   const buckets = new Map<number, OHLCData>();
   for (const candle of normalizeCandlePageAscending(m1Candles)) {
-    const bucketTime = alignTimeframeBoundarySeconds(
-      candle.time,
-      targetTf,
-      TIMEFRAME_SECONDS[targetTf],
-    );
+    const bucketTime = getTimeframePeriodSeconds(candle.time, targetTf)?.startTime;
+    if (bucketTime === undefined) continue;
     const existing = buckets.get(bucketTime);
     const volume = finiteVolume(candle.volume);
 
@@ -462,6 +426,7 @@ export const fetchDerivedTimeframeCandlesFromM1 = async ({
   maxM1Pages = getDerivedM1MaxPages(targetTimeframe),
   targetCandleLimit,
   processingChunkSize = DERIVED_M1_PROCESSING_CHUNK_SIZE,
+  includeM1Candles = false,
   fetchCandles = chartDataService.fetchCandles.bind(chartDataService),
   yieldBetweenPages,
   yieldToMainThread = defaultYieldToMainThread,
@@ -496,7 +461,7 @@ export const fetchDerivedTimeframeCandlesFromM1 = async ({
   let previousOldestTime: number | null = null;
   let coveredFromInclusive: number | null = null;
   let coveredToInclusive: number | null = requestedTo;
-  const aggregationState = createM1AggregationState();
+  const aggregationState = createM1AggregationState(includeM1Candles);
 
   const buildResult = (aborted: boolean): FetchDerivedTimeframeCandlesFromM1Result => ({
     candles: aborted
@@ -509,6 +474,9 @@ export const fetchDerivedTimeframeCandlesFromM1 = async ({
         normalizedTargetCandleLimit,
         olderThanRaw,
       ),
+    m1Candles: aborted
+      ? []
+      : normalizeCandlePageAscending(Array.from(aggregationState.m1CandlesByTime.values())),
     pagesFetched,
     m1CandlesFetched: aggregationState.m1CandlesFetched,
     requestedTo,

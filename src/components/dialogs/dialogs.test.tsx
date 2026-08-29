@@ -131,6 +131,40 @@ describe('dialog components', () => {
     }
   });
 
+  it('offers Area after Line and changes the active chart type', async () => {
+    const user = userEvent.setup();
+    const onChartTypeChange = vi.fn();
+
+    useChartSettingsStore.setState({
+      globalProperties: { ...defaultChartProperties, chartType: 'Line' },
+      symbolProperties: {},
+    });
+
+    render(
+      <ChartPropertiesDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        timeframe="M1"
+        currentChartType="line"
+        onChartTypeChange={onChartTypeChange}
+      />
+    );
+
+    const lineLabel = screen.getByText('Line chart');
+    const areaLabel = screen.getByText('Area chart');
+    const chartTypeLabels = Array.from(
+      lineLabel.closest('.rtx-cp-fieldset')?.querySelectorAll('.rtx-cp-radio-label') ?? [],
+    ).map(label => label.textContent);
+
+    expect(chartTypeLabels.indexOf('Area chart')).toBe(chartTypeLabels.indexOf('Line chart') + 1);
+    await user.click(areaLabel);
+
+    expect(onChartTypeChange).toHaveBeenCalledWith('area');
+    expect(useChartSettingsStore.getState().globalProperties.chartType).toBe('Area');
+    expect(useChartSettingsStore.getState().symbolProperties.XAUUSD.chartType).toBe('Area');
+  });
+
   it('applies color schemes to the active symbol override', async () => {
     const user = userEvent.setup();
 

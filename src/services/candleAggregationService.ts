@@ -9,7 +9,13 @@
  *  5. All completed candles remain immutable; only forming candles accept late ticks
  */
 
-import { alignTimeframeBoundaryMilliseconds, alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
+import {
+  CANDLE_TIMEFRAMES,
+  TIMEFRAME_SECONDS,
+  getTimeframePeriodSeconds,
+  getTimeframeSeconds as getBoundaryTimeframeSeconds,
+  type BoundaryTimeframe,
+} from '../utils/timeframeBoundary';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -37,31 +43,11 @@ export interface OHLCV {
 // Alias for compatibility
 export type CandleData = OHLCV;
 
-export type Timeframe =
-  | 'M1' | 'M5' | 'M15' | 'M30'
-  | 'H1' | 'H4'
-  | 'D1' | 'W1' | 'MN';
-
-interface TimeframeConfig {
-  seconds: number;
-  name: Timeframe;
-}
+export type Timeframe = BoundaryTimeframe;
 
 // ---------------------------------------------------------------------------
 // Timeframe registry
 // ---------------------------------------------------------------------------
-
-const TIMEFRAME_CONFIG: Record<Timeframe, TimeframeConfig> = {
-  M1:  { seconds: 60,      name: 'M1'  },
-  M5:  { seconds: 300,     name: 'M5'  },
-  M15: { seconds: 900,     name: 'M15' },
-  M30: { seconds: 1800,    name: 'M30' },
-  H1:  { seconds: 3600,    name: 'H1'  },
-  H4:  { seconds: 14400,   name: 'H4'  },
-  D1:  { seconds: 86400,   name: 'D1'  },
-  W1:  { seconds: 604800,  name: 'W1'  },
-  MN:  { seconds: 2592000, name: 'MN'  },
-};
 
 // ---------------------------------------------------------------------------
 // Pure utility: timestamp normalisation
@@ -79,13 +65,48 @@ export function normalizeTimestamp(ts: number): number {
  * Align a millisecond timestamp to the start of the given timeframe period.
  * Example: 11:17:43 on M5 → 11:15:00.
  */
-export function alignToTimeframe(timestampMs: number, tf: Timeframe): number {
-  return alignTimeframeBoundaryMilliseconds(timestampMs, tf, TIMEFRAME_CONFIG[tf].seconds);
+export function alignToTimeframe(
+  timestampMs: number,
+  tf: Timeframe,
+  boundaryOffsetSeconds = 0,
+): number {
+  const period = getTimeframePeriodSeconds(timestampMs / 1000, tf, boundaryOffsetSeconds);
+  return (period?.startTime ?? timestampMs / 1000) * 1000;
 }
 
 /** Return the period length in seconds for a Timeframe label. */
 export function getTimeframeSeconds(tf: Timeframe): number {
-  return TIMEFRAME_CONFIG[tf]?.seconds ?? 60;
+  return getBoundaryTimeframeSeconds(tf);
+}
+
+/**
+ * Remove the leading aggregate only when retained M1 coverage starts inside
+ * that same timeframe bucket. If the seed starts on the boundary, or builder
+ * trimming has already advanced beyond that bucket, the first aggregate is
+ * complete relative to the retained M1 source and must be kept.
+ */
+export function omitPartialLeadingM1Aggregate(
+  candles: OHLCV[],
+  oldestM1Time: number | null | undefined,
+  timeframe: Timeframe,
+  boundaryOffsetSeconds = 0,
+): OHLCV[] {
+  if (candles.length === 0 || !Number.isFinite(oldestM1Time)) return candles;
+
+  const normalizedOldestM1Time = Number(oldestM1Time);
+  const seedPeriodStart = getTimeframePeriodSeconds(
+    normalizedOldestM1Time,
+    timeframe,
+    boundaryOffsetSeconds,
+  )?.startTime;
+  const firstAggregateTime = candles[0]?.time;
+  const startsInsideFirstAggregate = (
+    Number.isFinite(seedPeriodStart)
+    && firstAggregateTime === seedPeriodStart
+    && normalizedOldestM1Time > Number(seedPeriodStart)
+  );
+
+  return startsInsideFirstAggregate ? candles.slice(1) : candles;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +185,15 @@ export interface SymbolCandleBuilderOptions {
    * Default: 2  (e.g. 2 × 60 s = 120 s for M1).
    */
   lateTickGraceFactor?: number;
+  /** Broker wall-clock offset after REST candles have been normalized to UTC. */
+  boundaryOffsetSeconds?: number;
+}
+
+interface HigherTimeframeState {
+  forming: OHLCV | null;
+  completed: OHLCV[];
+  lastAppliedM1Time: number | null;
+  lastAppliedM1Volume: number;
 }
 
 /**
@@ -180,23 +210,35 @@ export interface SymbolCandleBuilderOptions {
 export class SymbolCandleBuilder {
   private readonly symbol: string;
   private readonly lateTickGraceFactor: number;
+  private boundaryOffsetSeconds: number;
+  private lastTickKey: string | null = null;
 
   // M1 state
   private m1Completed: OHLCV[] = [];
   private m1Forming: OHLCV | null = null;
 
   // Higher TF state
-  private higherTFs: Map<Timeframe, { forming: OHLCV | null; completed: OHLCV[] }> = new Map();
+  private higherTFs: Map<Timeframe, HigherTimeframeState> = new Map();
 
   constructor(symbol: string, options?: SymbolCandleBuilderOptions) {
     this.symbol = symbol;
     this.lateTickGraceFactor = options?.lateTickGraceFactor ?? 2;
+    this.boundaryOffsetSeconds = options?.boundaryOffsetSeconds ?? 0;
 
-    (Object.keys(TIMEFRAME_CONFIG) as Timeframe[]).forEach(tf => {
+    CANDLE_TIMEFRAMES.forEach(tf => {
       if (tf !== 'M1') {
-        this.higherTFs.set(tf, { forming: null, completed: [] });
+        this.higherTFs.set(tf, {
+          forming: null,
+          completed: [],
+          lastAppliedM1Time: null,
+          lastAppliedM1Volume: 0,
+        });
       }
     });
+  }
+
+  setBoundaryOffsetSeconds(boundaryOffsetSeconds: number): void {
+    this.boundaryOffsetSeconds = Number.isFinite(boundaryOffsetSeconds) ? boundaryOffsetSeconds : 0;
   }
 
   // ─── Public: tick ingestion ──────────────────────────────────────────────
@@ -211,13 +253,27 @@ export class SymbolCandleBuilder {
     const updates = new Map<Timeframe, OHLCV>();
 
     const tsMs  = normalizeTimestamp(tick.timestamp);
-    const price  = (tick.bid + tick.ask) / 2;
-    const volume = tick.volume || 1;
+    // MT-style chart candles are Bid candles; Ask remains available for order
+    // execution but must not shift the displayed OHLC by half the spread.
+    const price = Number.isFinite(tick.bid) ? tick.bid : tick.ask;
+    const volume = Number.isFinite(tick.volume) && (tick.volume ?? 0) > 0 ? tick.volume! : 1;
+
+    if (!Number.isFinite(tsMs) || !Number.isFinite(price)) return updates;
+
+    // More than one chart surface can forward the same feed frame into this
+    // shared builder. Exact-frame idempotency prevents volume inflation.
+    const tickKey = `${tsMs}:${tick.bid}:${tick.ask}:${volume}`;
+    if (tickKey === this.lastTickKey) return updates;
+    this.lastTickKey = tickKey;
 
     // ── M1 bucket ──────────────────────────────────────────────────────────
-    const m1Ms          = 60 * 1000;
-    const m1Time        = Math.floor(tsMs / m1Ms) * m1Ms;
-    const m1TimeSeconds = Math.floor(m1Time / 1000);
+    const m1Period = getTimeframePeriodSeconds(
+      tsMs / 1000,
+      'M1',
+      this.boundaryOffsetSeconds,
+    );
+    if (!m1Period) return updates;
+    const m1TimeSeconds = m1Period.startTime;
 
     if (this.m1Forming) {
       if (m1TimeSeconds > this.m1Forming.time) {
@@ -280,12 +336,10 @@ export class SymbolCandleBuilder {
 
     if (this.m1Forming) {
       updates.set('M1', this.m1Forming);
+      // Higher frames consume M1 OHLCV snapshots. Repeated snapshots of the
+      // current minute contribute only their volume delta.
+      this.updateHigherTimeframesWithM1(this.m1Forming, updates, true);
     }
-
-    // ── Higher TF tick-update ─────────────────────────────────────────────
-    // Only updates forming higher-TF candles that already exist.
-    // New higher-TF candles are always opened by processCompletedM1(), not here.
-    this.updateHigherTimeframesWithTick(price, volume, tsMs, updates);
 
     return updates;
   }
@@ -305,9 +359,12 @@ export class SymbolCandleBuilder {
     }
 
     const sorted = [...candles].sort((a, b) => a.time - b.time);
-    const tfSec           = TIMEFRAME_CONFIG[timeframe].seconds;
-    const nowSec          = Math.floor(Date.now() / 1000);
-    const currentBoundary = alignTimeframeBoundarySeconds(nowSec, timeframe, tfSec);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const currentBoundary = getTimeframePeriodSeconds(
+      nowSec,
+      timeframe,
+      this.boundaryOffsetSeconds,
+    )?.startTime ?? nowSec;
     const lastCandle      = sorted[sorted.length - 1];
     const lastIsForming   = lastCandle.time >= currentBoundary;
 
@@ -319,14 +376,16 @@ export class SymbolCandleBuilder {
         this.m1Completed = sorted.map(c => ({ ...c, isComplete: true }));
         this.m1Forming   = null;
       }
-      this.trimM1History();
       this.rebuildHigherTimeframes();
 
       // Fold the forming M1 into higher TFs
       if (this.m1Forming) {
         const updates = new Map<Timeframe, OHLCV>();
-        this.updateHigherTimeframesWithM1(this.m1Forming, updates);
+        this.updateHigherTimeframesWithM1(this.m1Forming, updates, true);
       }
+      // Rebuild every higher frame from the complete fetched M1 coverage first;
+      // only the retained minute-level working set is trimmed afterward.
+      this.trimM1History();
     } else {
       const data = this.higherTFs.get(timeframe);
       if (data) {
@@ -337,6 +396,8 @@ export class SymbolCandleBuilder {
           data.completed = sorted.map(c => ({ ...c, isComplete: true }));
           data.forming   = null;
         }
+        data.lastAppliedM1Time = null;
+        data.lastAppliedM1Volume = 0;
         this.trimHigherTFHistory(timeframe);
       }
     }
@@ -399,8 +460,8 @@ export class SymbolCandleBuilder {
       completed  = data ? [...data.completed] : [];
     }
 
-    if (fillGaps && completed.length >= 2) {
-      completed = fillCandleGaps(completed, TIMEFRAME_CONFIG[timeframe].seconds);
+    if (fillGaps && timeframe !== 'MN' && completed.length >= 2) {
+      completed = fillCandleGaps(completed, TIMEFRAME_SECONDS[timeframe]);
     }
 
     if (includeForming) {
@@ -428,9 +489,12 @@ export class SymbolCandleBuilder {
   clear(): void {
     this.m1Completed = [];
     this.m1Forming   = null;
+    this.lastTickKey = null;
     for (const [, data] of this.higherTFs) {
       data.completed = [];
       data.forming   = null;
+      data.lastAppliedM1Time = null;
+      data.lastAppliedM1Volume = 0;
     }
   }
 
@@ -441,122 +505,39 @@ export class SymbolCandleBuilder {
    * This is the ONLY place where new higher-TF forming candles are opened.
    */
   private processCompletedM1(m1: OHLCV, updates: Map<Timeframe, OHLCV>): void {
-    for (const [tf, data] of this.higherTFs) {
-      const config = TIMEFRAME_CONFIG[tf];
-      const tfTime = alignTimeframeBoundarySeconds(m1.time, tf, config.seconds);
-
-      if (!data.forming || data.forming.time !== tfTime) {
-        // Finalize the previous forming candle (if any)
-        if (data.forming) {
-          data.forming.isComplete = true;
-          data.completed.push(data.forming);
-          this.trimHigherTFHistory(tf);
-        }
-
-        // Open a new higher-TF bar seeded from the M1 OHLCV
-        data.forming = {
-          time:   tfTime,
-          open:   m1.open,
-          high:   m1.high,
-          low:    m1.low,
-          close:  m1.close,
-          volume: m1.volume,
-          isComplete: false,
-        };
-      } else {
-        // Aggregate into the existing bar
-        data.forming.high    = Math.max(data.forming.high, m1.high);
-        data.forming.low     = Math.min(data.forming.low,  m1.low);
-        data.forming.close   = m1.close;
-        data.forming.volume += m1.volume;
-      }
-
-      updates.set(tf, data.forming);
-    }
-  }
-
-  /**
-   * Update forming higher-TF candles with an intra-period tick.
-   *
-   * Rules enforced here (higher TF layer):
-   *   1. No forming candle yet → skip (opened exclusively by processCompletedM1).
-   *   2. Same period → update in-place.
-   *   3. Period crossed by tick (thin market leap) → finalize + open new bar.
-   *   4. Late tick within grace window → update forming high/low/volume only.
-   *   5. Beyond grace → drop silently.
-   */
-  private updateHigherTimeframesWithTick(
-    price:   number,
-    volume:  number,
-    tsMs:    number,
-    updates: Map<Timeframe, OHLCV>,
-  ): void {
-    for (const [tf, data] of this.higherTFs) {
-      if (!data.forming) continue;
-
-      const config         = TIMEFRAME_CONFIG[tf];
-      const tfTimeMs       = alignTimeframeBoundaryMilliseconds(tsMs, tf, config.seconds);
-      const tfTimeSeconds  = Math.floor(tfTimeMs / 1000);
-
-      if (tfTimeSeconds === data.forming.time) {
-        // ── Same period ────────────────────────────────────────────────────
-        data.forming.high    = Math.max(data.forming.high, price);
-        data.forming.low     = Math.min(data.forming.low,  price);
-        data.forming.close   = price;
-        data.forming.volume += volume;
-        updates.set(tf, data.forming);
-
-      } else if (tfTimeSeconds > data.forming.time) {
-        // ── Period crossed by tick (no completed M1 triggered it) ──────────
-        data.forming.isComplete = true;
-        data.completed.push(data.forming);
-        this.trimHigherTFHistory(tf);
-
-        data.forming = {
-          time:   tfTimeSeconds,
-          open:   price,
-          high:   price,
-          low:    price,
-          close:  price,
-          volume,
-          isComplete: false,
-        };
-        updates.set(tf, data.forming);
-
-      } else {
-        // ── Late tick ──────────────────────────────────────────────────────
-        const graceSec = config.seconds * this.lateTickGraceFactor;
-        const lateSec  = data.forming.time - tfTimeSeconds;
-
-        if (lateSec <= graceSec) {
-          // Within grace — update forming high/low/volume; preserve .close
-          data.forming.high    = Math.max(data.forming.high, price);
-          data.forming.low     = Math.min(data.forming.low,  price);
-          data.forming.volume += volume;
-          updates.set(tf, data.forming);
-        }
-        // Beyond grace → drop silently
-      }
-    }
+    this.updateHigherTimeframesWithM1(m1, updates, false);
   }
 
   /**
    * Fold an M1 candle (forming or completed) into higher TFs.
    * Used after loading historical M1 data to prime the higher-TF state.
    */
-  private updateHigherTimeframesWithM1(m1: OHLCV, updates: Map<Timeframe, OHLCV>): void {
-    const m1TimeMs = m1.time * 1000;
-
+  private updateHigherTimeframesWithM1(
+    m1: OHLCV,
+    updates: Map<Timeframe, OHLCV>,
+    isForming: boolean,
+  ): void {
     for (const [tf, data] of this.higherTFs) {
-      const config        = TIMEFRAME_CONFIG[tf];
-      const tfTimeMs      = alignTimeframeBoundaryMilliseconds(m1TimeMs, tf, config.seconds);
-      const tfTimeSeconds = Math.floor(tfTimeMs / 1000);
+      const period = getTimeframePeriodSeconds(
+        m1.time,
+        tf,
+        this.boundaryOffsetSeconds,
+      );
+      if (!period) continue;
+      const tfTimeSeconds = period.startTime;
 
-      if (data.forming && data.forming.time !== tfTimeSeconds) {
+      if (data.forming && data.forming.time > tfTimeSeconds) {
+        // Completed bars remain immutable when an older M1 frame arrives late.
+        continue;
+      }
+
+      if (data.forming && data.forming.time < tfTimeSeconds) {
         data.forming.isComplete = true;
         data.completed.push(data.forming);
         this.trimHigherTFHistory(tf);
         data.forming = null;
+        data.lastAppliedM1Time = null;
+        data.lastAppliedM1Volume = 0;
       }
 
       if (!data.forming) {
@@ -569,11 +550,30 @@ export class SymbolCandleBuilder {
           volume: m1.volume,
           isComplete: false,
         };
+        data.lastAppliedM1Time = m1.time;
+        data.lastAppliedM1Volume = m1.volume;
       } else {
+        if (data.lastAppliedM1Time !== null && m1.time < data.lastAppliedM1Time) {
+          continue;
+        }
+
         data.forming.high    = Math.max(data.forming.high, m1.high);
         data.forming.low     = Math.min(data.forming.low,  m1.low);
         data.forming.close   = m1.close;
-        data.forming.volume += m1.volume;
+
+        if (data.lastAppliedM1Time === m1.time) {
+          const volumeDelta = m1.volume - data.lastAppliedM1Volume;
+          data.forming.volume = Math.max(0, data.forming.volume + volumeDelta);
+        } else {
+          data.forming.volume += m1.volume;
+        }
+        data.lastAppliedM1Time = m1.time;
+        data.lastAppliedM1Volume = m1.volume;
+      }
+
+      if (!isForming && data.lastAppliedM1Time === m1.time) {
+        // Keep the contribution ledger so a duplicate completed M1 is a no-op.
+        data.lastAppliedM1Volume = m1.volume;
       }
 
       updates.set(tf, data.forming);
@@ -585,6 +585,8 @@ export class SymbolCandleBuilder {
     for (const [, data] of this.higherTFs) {
       data.completed = [];
       data.forming   = null;
+      data.lastAppliedM1Time = null;
+      data.lastAppliedM1Volume = 0;
     }
     const updates = new Map<Timeframe, OHLCV>();
     for (const m1 of this.m1Completed) {
@@ -606,7 +608,12 @@ export class SymbolCandleBuilder {
       this.rebuildHigherTimeframes();
     } else {
       const data = this.higherTFs.get(timeframe);
-      if (data) { data.completed = []; data.forming = null; }
+      if (data) {
+        data.completed = [];
+        data.forming = null;
+        data.lastAppliedM1Time = null;
+        data.lastAppliedM1Volume = 0;
+      }
     }
   }
 
@@ -657,8 +664,15 @@ export class CandleAggregationService {
   }
 
   /** Seed historical candles for a symbol/timeframe. */
-  loadHistoricalCandles(symbol: string, timeframe: Timeframe, candles: OHLCV[]): void {
-    this.getOrCreateBuilder(symbol).loadHistoricalCandles(timeframe, candles);
+  loadHistoricalCandles(
+    symbol: string,
+    timeframe: Timeframe,
+    candles: OHLCV[],
+    boundaryOffsetSeconds = 0,
+  ): void {
+    const builder = this.getOrCreateBuilder(symbol);
+    builder.setBoundaryOffsetSeconds(boundaryOffsetSeconds);
+    builder.loadHistoricalCandles(timeframe, candles);
   }
 
   /**

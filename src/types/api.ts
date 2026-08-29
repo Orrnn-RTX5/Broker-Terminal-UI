@@ -162,6 +162,8 @@ export interface Tick {
   symbol: string;
   bid: number;
   ask: number;
+  daily_change?: number;
+  daily_change_pct?: number;
   daily_open?: number;
   previous_close?: number;
   session?: {
