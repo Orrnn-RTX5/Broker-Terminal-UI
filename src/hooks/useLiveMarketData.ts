@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   apiClient,
   ApiError,
@@ -27,6 +27,16 @@ export interface MarketInstrument {
   ask?: number;
   contractSize?: number;
   tradingEnabled?: boolean;
+  timestamp?: number;
+}
+
+export interface MarketInstrumentsSnapshot {
+  symbols: MarketInstrument[];
+  authorizedSymbols: string[];
+  disabledSymbols: string[];
+  loading: boolean;
+  error: string | null;
+  reload: () => Promise<void>;
 }
 
 export interface OrderBookLevel {
@@ -163,6 +173,7 @@ const normalizeInstrument = (raw: any): MarketInstrument | null => {
     ask: toOptionalNumber(raw?.ask),
     contractSize: toOptionalNumber(raw?.contract_size ?? raw?.contractSize),
     tradingEnabled: normalizeInstrumentEnabled(raw),
+    timestamp: sourceTimestampToMs(raw?.time ?? raw?.timestamp),
   };
 };
 
@@ -270,7 +281,7 @@ const upsertInstrumentTickSnapshot = (instrument: MarketInstrument): void => {
     bid,
     ask,
     spread: Math.max(0, ask - bid),
-    timestamp: Date.now(),
+    timestamp: instrument.timestamp ?? Date.now(),
     volume: 1,
     digits: instrument.digits,
   });
@@ -792,8 +803,9 @@ export function useActiveMarketSymbols() {
   return { symbols, loading, settled, current, error, reload };
 }
 
-export function useMarketInstruments() {
+export function useMarketInstruments(): MarketInstrumentsSnapshot {
   const [symbols, setSymbols] = useState<MarketInstrument[]>([]);
+  const [authorizedSymbols, setAuthorizedSymbols] = useState<string[]>([]);
   const [disabledSymbols, setDisabledSymbols] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -816,76 +828,89 @@ export function useMarketInstruments() {
       : null,
     [sessionDescriptor, storeAuthToken, storeRefreshToken],
   );
+  const publicApiRootBaseUrl = useMemo(
+    () => getApiSessionDescriptor(accountId || 'public').apiRootBaseUrl,
+    [accountId, sessionRevision],
+  );
 
   const reload = useCallback(async () => {
     const requestGeneration = ++requestGenerationRef.current;
     requestAbortRef.current?.abort();
     requestAbortRef.current = null;
 
-    if (!isAuthenticated || !requestSession) {
-      setSymbols([]);
-      setDisabledSymbols([]);
-      setError(null);
-      setLoading(false);
-      return;
-    }
     const controller = new AbortController();
     requestAbortRef.current = controller;
     setLoading(true);
     setError(null);
 
-    const endpoints = ['/api/v2/instruments', '/api/v1/market/symbols', '/api/v1/market/symbol-list'];
     try {
-      for (const endpoint of endpoints) {
-        try {
-          const request = endpoint.startsWith('/api/v2')
-            ? {
-              endpoint: toV2Endpoint(endpoint),
-              baseUrl: requestSession.v2BaseUrl,
-            }
-            : {
-              endpoint,
-              baseUrl: requestSession.apiRootBaseUrl,
-            };
-          const response = await apiClient.get<unknown>(
-            request.endpoint,
-            getCapturedRequestOptions(requestSession, request.baseUrl, controller.signal),
-          );
-          if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
-          const raw = extractInstrumentRows(response);
-          const normalized = raw.map(normalizeInstrument).filter(Boolean) as MarketInstrument[];
-          if (normalized.length > 0) {
-            const disabled = normalized
-              .filter((instrument) => instrument.tradingEnabled === false)
-              .map((instrument) => instrument.symbol);
-            const next = normalized.filter((instrument) => instrument.tradingEnabled !== false);
-            const watchlistScope = remoteWatchlistScopes.get(requestSession.runtimeKey);
-            if (watchlistScope) {
-              watchlistScope.catalogSymbols =
-                normalizeWatchlistSymbols(normalized.map((instrument) => instrument.symbol));
-            }
-            setDisabledSymbols(disabled);
-            setSymbols(next);
-            upsertInstrumentTickSnapshots(next);
-            return;
-          }
-        } catch (err) {
-          if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
-          if (endpoint === endpoints[endpoints.length - 1]) {
-            setError(err instanceof ApiError ? err.message : 'Failed to load symbols');
-          }
-        }
+      const response = await apiClient.get<unknown>('/api/v1/market/symbols', {
+        baseUrl: publicApiRootBaseUrl,
+        skipAuth: true,
+        skipDynamicUrl: true,
+        signal: controller.signal,
+      });
+      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
+
+      const publicCatalog = extractInstrumentRows(response)
+        .map(normalizeInstrument)
+        .filter(Boolean) as MarketInstrument[];
+      if (publicCatalog.length === 0) {
+        throw new ApiError(0, 'No symbols returned by /api/v1/market/symbols');
       }
 
+      setSymbols(publicCatalog);
+      upsertInstrumentTickSnapshots(publicCatalog);
+
+      if (!isAuthenticated || !requestSession) {
+        setAuthorizedSymbols([]);
+        setDisabledSymbols([]);
+        return;
+      }
+
+      try {
+        const authorizedResponse = await apiClient.get<unknown>(
+          '/instruments',
+          getCapturedRequestOptions(requestSession, requestSession.v2BaseUrl, controller.signal),
+        );
+        if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
+        const authorizedCatalog = extractInstrumentRows(authorizedResponse)
+          .map(normalizeInstrument)
+          .filter(Boolean) as MarketInstrument[];
+        const disabled = authorizedCatalog
+          .filter((instrument) => instrument.tradingEnabled === false)
+          .map((instrument) => instrument.symbol);
+        const enabled = authorizedCatalog
+          .filter((instrument) => instrument.tradingEnabled !== false)
+          .map((instrument) => instrument.symbol);
+        const watchlistScope = remoteWatchlistScopes.get(requestSession.runtimeKey);
+        if (watchlistScope) {
+          watchlistScope.catalogSymbols = normalizeWatchlistSymbols(
+            authorizedCatalog.map((instrument) => instrument.symbol),
+          );
+        }
+        setAuthorizedSymbols(uniqueSymbols(enabled));
+        setDisabledSymbols(uniqueSymbols(disabled));
+      } catch {
+        if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
+        // The public grid is still valid. Trading actions stay disabled until
+        // the authenticated catalog can prove that a symbol is authorized.
+        setAuthorizedSymbols([]);
+        setDisabledSymbols([]);
+      }
+    } catch (err) {
+      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
       setSymbols([]);
+      setAuthorizedSymbols([]);
       setDisabledSymbols([]);
+      setError(err instanceof ApiError ? err.message : 'Failed to load symbols');
     } finally {
       if (requestGeneration === requestGenerationRef.current && !controller.signal.aborted) {
         requestAbortRef.current = null;
         setLoading(false);
       }
     }
-  }, [isAuthenticated, requestSession]);
+  }, [isAuthenticated, publicApiRootBaseUrl, requestSession]);
 
   useEffect(() => {
     void reload();
@@ -896,10 +921,11 @@ export function useMarketInstruments() {
     };
   }, [reload]);
 
-  return { symbols, disabledSymbols, loading, error, reload };
+  return { symbols, authorizedSymbols, disabledSymbols, loading, error, reload };
 }
 
 export function useLiveQuotes(symbols: string[]) {
+  const quoteDemandId = useId();
   const normalizedSymbols = useMemo(
     () => Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean))),
     [symbols.join('|')]
@@ -913,8 +939,8 @@ export function useLiveQuotes(symbols: string[]) {
   } | null>(null);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
 
-  // Section 2: Use QuoteSocketManager via useQuoteSubscription for /ws/feed
-  useQuoteSubscription(normalizedSymbols, 'live-quotes');
+  // Section 2: Public /ws/v2 quote demand is owned by QuoteSocketManager.
+  useQuoteSubscription(normalizedSymbols, `live-quotes:${quoteDemandId}`);
 
   // REST polling fallback (still needed for initial quote snapshot)
   useEffect(() => {

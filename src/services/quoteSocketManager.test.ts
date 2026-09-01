@@ -11,6 +11,9 @@ const brokerSessionMock = vi.hoisted(() => ({
 
 vi.mock('./brokerSession', () => ({
   buildBrokerWsFeedUri: vi.fn(() => 'wss://broker.example/ws/feed'),
+  buildBrokerWsV2Uri: vi.fn((token?: string | null) => (
+    `wss://broker.example/ws/v2${token ? `?token=${token}` : ''}`
+  )),
   getAccessToken: vi.fn(() => brokerSessionMock.accessToken),
   hasFeedBrokerToken: vi.fn(() => brokerSessionMock.hasFeedToken),
   onSessionChange: vi.fn((cb) => {
@@ -79,7 +82,7 @@ type QuoteSocketManagerInternals = QuoteSocketManager & {
 const internals = (manager: QuoteSocketManager): QuoteSocketManagerInternals =>
   manager as unknown as QuoteSocketManagerInternals;
 
-describe('QuoteSocketManager feed protocol', () => {
+describe('QuoteSocketManager public v2 batch protocol', () => {
   beforeEach(() => {
     FakeWebSocket.instances = [];
     brokerSessionMock.accessToken = 'access-token';
@@ -96,20 +99,22 @@ describe('QuoteSocketManager feed protocol', () => {
     vi.restoreAllMocks();
   });
 
-  it('subscribes to demanded symbols when the feed socket opens', () => {
+  it('opens public v2 without a token and batches initial demand', () => {
+    brokerSessionMock.accessToken = null;
     const manager = new QuoteSocketManager();
 
     manager.setDemand('watchlist', ['EURUSD', 'XAUUSD']);
 
     expect(FakeWebSocket.instances).toHaveLength(1);
     const ws = FakeWebSocket.instances[0];
+    expect(ws.url).toBe('wss://broker.example/ws/v2');
 
     ws.open();
 
     expect(ws.sent.map((payload) => JSON.parse(payload))).toEqual([
       {
-        type: 'subscribe',
-        symbols: ['EURUSD', 'XAUUSD'],
+        action: 'subscribe',
+        channels: ['ticks.EURUSD', 'ticks.XAUUSD'],
       },
     ]);
     expect(manager.getActiveSymbols()).toEqual(['EURUSD', 'XAUUSD']);
@@ -118,12 +123,12 @@ describe('QuoteSocketManager feed protocol', () => {
 
     expect(ws.sent.map((payload) => JSON.parse(payload))).toEqual([
       {
-        type: 'subscribe',
-        symbols: ['EURUSD', 'XAUUSD'],
+        action: 'subscribe',
+        channels: ['ticks.EURUSD', 'ticks.XAUUSD'],
       },
       {
-        type: 'subscribe',
-        symbols: ['GBPUSD'],
+        action: 'subscribe',
+        channel: 'ticks.GBPUSD',
       },
     ]);
     expect(manager.getActiveSymbols()).toEqual(['EURUSD', 'XAUUSD', 'GBPUSD']);
@@ -146,16 +151,16 @@ describe('QuoteSocketManager feed protocol', () => {
 
     expect(ws.sent.map((payload) => JSON.parse(payload))).toEqual([
       {
-        type: 'subscribe',
-        symbols: ['EURUSD', 'XAUUSD'],
+        action: 'subscribe',
+        channels: ['ticks.EURUSD', 'ticks.XAUUSD'],
       },
       {
-        type: 'unsubscribe',
-        symbols: ['EURUSD'],
+        action: 'unsubscribe',
+        channel: 'ticks.EURUSD',
       },
       {
-        type: 'subscribe',
-        symbols: ['EURUSD'],
+        action: 'subscribe',
+        channel: 'ticks.EURUSD',
       },
     ]);
     expect(manager.getActiveSymbols()).toEqual(['EURUSD', 'XAUUSD']);
@@ -163,7 +168,7 @@ describe('QuoteSocketManager feed protocol', () => {
     manager.destroy();
   });
 
-  it('sends feed-protocol unsubscribe messages', () => {
+  it('sends one batch unsubscribe frame for multiple symbols', () => {
     const manager = new QuoteSocketManager();
     const send = vi.fn();
 
@@ -177,39 +182,93 @@ describe('QuoteSocketManager feed protocol', () => {
 
     expect(send).toHaveBeenCalledOnce();
     expect(JSON.parse(send.mock.calls[0][0])).toEqual({
-      type: 'unsubscribe',
-      symbols: ['EURUSD', 'XAUUSD'],
+      action: 'unsubscribe',
+      channels: ['ticks.EURUSD', 'ticks.XAUUSD'],
     });
 
     manager.destroy();
   });
 
-  it('reconnects a deferred quote socket when login completes the session', () => {
+  it('does not wait for login before opening the public quote socket', () => {
     brokerSessionMock.accessToken = null;
     const manager = new QuoteSocketManager();
 
     manager.setDemand('watchlist', ['EURUSD']);
 
-    expect(FakeWebSocket.instances).toHaveLength(0);
-
-    brokerSessionMock.accessToken = 'access-token';
-    brokerSessionMock.sessionListener?.('login');
-
     expect(FakeWebSocket.instances).toHaveLength(1);
-    expect(FakeWebSocket.instances[0].url).toBe('wss://broker.example/ws/feed');
+    expect(FakeWebSocket.instances[0].url).toBe('wss://broker.example/ws/v2');
 
     manager.destroy();
   });
 
-  it('opens the quote feed with a feed token even without an account token', () => {
-    brokerSessionMock.accessToken = null;
-    brokerSessionMock.hasFeedToken = true;
+  it('never attaches the available account token to the public quote URL', () => {
     const manager = new QuoteSocketManager();
 
     manager.setDemand('watchlist', ['EURUSD']);
 
     expect(FakeWebSocket.instances).toHaveLength(1);
-    expect(FakeWebSocket.instances[0].url).toBe('wss://broker.example/ws/feed');
+    expect(FakeWebSocket.instances[0].url).toBe('wss://broker.example/ws/v2');
+    expect(FakeWebSocket.instances[0].url).not.toContain('token=');
+
+    manager.destroy();
+  });
+
+  it('chunks bulk demand at the backend limit and uses singular form for the remainder', () => {
+    const manager = new QuoteSocketManager();
+    const symbols = Array.from({ length: 501 }, (_, index) => `SYM${index}`);
+
+    manager.setDemand('watchlist', symbols);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    const frames = socket.sent.map((payload) => JSON.parse(payload));
+    expect(frames).toHaveLength(2);
+    expect(frames[0]).toMatchObject({ action: 'subscribe' });
+    expect(frames[0].channels).toHaveLength(500);
+    expect(frames[1]).toEqual({ action: 'subscribe', channel: 'ticks.SYM500' });
+
+    manager.destroy();
+  });
+
+  it('reconciles one subscribed acknowledgement per channel in a batch', () => {
+    const manager = new QuoteSocketManager();
+    const symbols = ['EURUSD', 'GBPUSD', 'BTCUSD', 'XAUUSD'];
+
+    manager.setDemand('watchlist', symbols);
+    FakeWebSocket.instances[0].open();
+
+    expect(internals(manager).pendingSubscriptions.size).toBe(4);
+    symbols.forEach((symbol, index) => {
+      internals(manager).handleMessage({ type: 'subscribed', channel: `ticks.${symbol}` });
+      expect(internals(manager).pendingSubscriptions.size).toBe(3 - index);
+      expect(internals(manager).subscribedSymbols.has(symbol)).toBe(true);
+    });
+    expect(internals(manager).subscribedSymbols.size).toBe(4);
+
+    manager.destroy();
+  });
+
+  it('releases all pending entries after an all-or-none batch error', () => {
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD', 'XAUUSD']);
+    FakeWebSocket.instances[0].open();
+    expect(internals(manager).pendingSubscriptions.size).toBe(2);
+    internals(manager).handleMessage({ type: 'error', message: 'Too many channels' });
+    expect(internals(manager).pendingSubscriptions.size).toBe(0);
+    expect(internals(manager).subscribedSymbols.size).toBe(0);
+
+    manager.destroy();
+  });
+
+  it('reconnects the same public v2 origin after a session transition', () => {
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    brokerSessionMock.sessionListener?.('token_rotation');
+
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(FakeWebSocket.instances[1].url).toBe('wss://broker.example/ws/v2');
 
     manager.destroy();
   });
@@ -491,7 +550,7 @@ describe('QuoteSocketManager feed protocol', () => {
     ws.sent.length = 0;
     internals(manager).sendSubscribe(['EURUSD']);
     expect(ws.sent.map((p: string) => JSON.parse(p))).toEqual([
-      { type: 'subscribe', symbols: ['EURUSD'] },
+      { action: 'subscribe', channel: 'ticks.EURUSD' },
     ]);
 
     manager.destroy();
@@ -504,6 +563,19 @@ describe('QuoteSocketManager feed protocol', () => {
     FakeWebSocket.instances[0].open();
 
     internals(manager).handleMessage({ type: 'subscribed', symbols: ['ticks.eurusd'] });
+    expect(internals(manager).subscribedSymbols.has('EURUSD')).toBe(true);
+    expect(internals(manager).pendingSubscriptions.has('EURUSD')).toBe(false);
+
+    manager.destroy();
+  });
+
+  it('accepts the singular channel used by v2 subscription confirmations', () => {
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    FakeWebSocket.instances[0].open();
+
+    internals(manager).handleMessage({ type: 'subscribed', channel: 'ticks.EURUSD' });
     expect(internals(manager).subscribedSymbols.has('EURUSD')).toBe(true);
     expect(internals(manager).pendingSubscriptions.has('EURUSD')).toBe(false);
 

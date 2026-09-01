@@ -1,5 +1,5 @@
 /**
- * Quotes Live Bid/Ask WebSocket — /ws/feed  (Section 2 of WebSocket Flow)
+ * Quotes Live Bid/Ask WebSocket — public /ws/v2 (Section 2 of WebSocket Flow)
  *
  * Flow:
  *   1. Quotes route active          → Screen is mounted/visible
@@ -8,8 +8,8 @@
  *   4. Set live subscriptions       → Load active watchlist override (setSubscriptions)
  *   5. Merge active demand          → Sticky + row + chart consumers (syncActiveSymbols)
  *   6. Any symbols?                 → No: close socket  |  Yes: connect
- *   7. Open quote socket            → Resolved from broker URL → wss://broker/ws/feed
- *   8. Send subscribe message       → { type: 'subscribe', symbols: [...] }
+ *   7. Open quote socket            → Public /ws/v2, without token or headers
+ *   8. Send subscribe message       → One channel for a single add, channel batches for bulk demand
  *   9. Incoming tick payloads       → processIncomingPayload()
  *  10. Normalize + validate         → Per-symbol raw updates
  *  11. Immediate listeners          → Per-symbol row updates
@@ -19,9 +19,7 @@
  */
 
 import {
-  buildBrokerWsFeedUri,
-  getAccessToken,
-  hasFeedBrokerToken,
+  buildBrokerWsV2Uri,
   onSessionChange,
 } from './brokerSession';
 import { enqueueLiveTick, isLiveMarketDataFrozen, type LiveTick } from './liveTickDispatcher';
@@ -50,6 +48,7 @@ export interface NormalizedQuoteTick {
 }
 
 type QuoteTickCallback = (tick: NormalizedQuoteTick) => void;
+type QuoteTransport = 'v2';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -60,6 +59,23 @@ const toNumber = (v: unknown, fallback = 0): number => {
 
 const normalizeSymbol = (v: unknown): string =>
   typeof v === 'string' ? v.trim().toUpperCase() : '';
+
+const MAX_V2_CHANNELS_PER_FRAME = 500;
+const MAX_LOGGED_SYMBOLS = 12;
+
+const summarizeSymbols = (symbols: Iterable<string>): string => {
+  const values = Array.from(symbols);
+  if (values.length <= MAX_LOGGED_SYMBOLS) return values.join(', ');
+  return `${values.slice(0, MAX_LOGGED_SYMBOLS).join(', ')} ... (+${values.length - MAX_LOGGED_SYMBOLS})`;
+};
+
+const chunkChannels = (channels: string[]): string[][] => {
+  const chunks: string[][] = [];
+  for (let index = 0; index < channels.length; index += MAX_V2_CHANNELS_PER_FRAME) {
+    chunks.push(channels.slice(index, index + MAX_V2_CHANNELS_PER_FRAME));
+  }
+  return chunks;
+};
 
 const sourceTimestampToMs = (value: unknown): number | undefined => {
   if (value === null || value === undefined || value === '') return undefined;
@@ -204,6 +220,7 @@ class QuoteSocketManager {
   private maxReconnectDelay = 30000;
   private baseReconnectDelay = 1000;
   private disposed = false;
+  private preferredTransport: QuoteTransport = 'v2';
 
   // Session change unsubscribe
   private unsubSessionChange: (() => void) | null = null;
@@ -211,10 +228,14 @@ class QuoteSocketManager {
   constructor() {
     // Listen for session changes (token rotation, logout, broker change)
     this.unsubSessionChange = onSessionChange((reason) => {
-      if (reason === 'logout') {
-        this.close();
-      } else if (reason === 'token_rotation' || reason === 'broker_url_change' || reason === 'login') {
-        // Rebuild URL and reconnect
+      if (
+        reason === 'logout'
+        || reason === 'token_rotation'
+        || reason === 'broker_url_change'
+        || reason === 'login'
+      ) {
+        // The quote stream is public, but session transitions can change the
+        // selected broker origin. Rebuild the URL without attaching the token.
         this.reconnect();
       }
     });
@@ -231,7 +252,7 @@ class QuoteSocketManager {
   /** Register demand from a consumer (watchlist row, chart, depth panel, etc.) */
   setDemand(sourceId: string, symbols: string[]): void {
     const normalized = new Set(symbols.map(normalizeSymbol).filter(Boolean));
-    console.log(`[QuoteSocket] setDemand(${sourceId}) → ${[...normalized].join(', ')} (${normalized.size} symbols)`);
+    console.log(`[QuoteSocket] setDemand(${sourceId}) → ${summarizeSymbols(normalized)} (${normalized.size} symbols)`);
     this.demandSources.set(sourceId, normalized);
     this.syncActiveSymbols();
   }
@@ -281,13 +302,14 @@ class QuoteSocketManager {
 
   // ─── Step 7: Open quote socket ───────────────────────────────────────────
 
-  private connect(): void {
-    console.log(`[QuoteSocket] connect() called — disposed=${this.disposed}, activeSymbols=${[...this.activeSymbols].join(',')}`);
+  private connect(transport: QuoteTransport = this.preferredTransport): void {
+    console.log(`[QuoteSocket] connect() called — disposed=${this.disposed}, transport=${transport}, activeSymbols=${summarizeSymbols(this.activeSymbols)}`);
 
     if (this.disposed) return;
-    const nextWsUrl = buildBrokerWsFeedUri();
-    if (!nextWsUrl || (!getAccessToken() && !hasFeedBrokerToken())) {
-      console.warn('[QuoteSocket] Session not ready, deferring connect');
+    const nextTransport: QuoteTransport = transport;
+    const nextWsUrl = buildBrokerWsV2Uri(null);
+    if (!nextWsUrl) {
+      console.warn('[QuoteSocket] Public v2 URL is not ready, deferring connect');
       return;
     }
 
@@ -295,13 +317,13 @@ class QuoteSocketManager {
     this.closeSocket();
 
     this.wsUrl = nextWsUrl;
+    this.preferredTransport = nextTransport;
 
-    console.log(`[QuoteSocket] Opening WebSocket → ${this.wsUrl.replace(/token=[^&]+/, 'token=***')}`);
+    console.log(`[QuoteSocket] Opening ${nextTransport} WebSocket → ${this.wsUrl.replace(/token=[^&]+/, 'token=***')}`);
 
     try {
       const socket = new WebSocket(this.wsUrl);
       this.ws = socket;
-
       socket.onopen = () => {
         if (this.ws !== socket) return;
 
@@ -340,14 +362,19 @@ class QuoteSocketManager {
         if (this.ws !== socket) return;
 
         console.log(`[QuoteSocket] Closed (code: ${event.code}, reason: ${event.reason})`);
+        this.ws = null;
+        this.subscribedSymbols.clear();
+        this.pendingSubscriptions.clear();
 
         try {
           useWebSocketStore.getState().setConnectionState('disconnected', 'fix_socket');
         } catch { /* store not ready */ }
 
-        // Auth failure — don't reconnect
+        // Policy/authorization failures should not reconnect in a tight loop.
+        // Public tick channels require no auth, so this indicates a deployment
+        // or endpoint-policy mismatch rather than an expired account token.
         if (event.code === 1008 || event.code === 4001) {
-          console.error('[QuoteSocket] Auth failure — not reconnecting');
+          console.error('[QuoteSocket] Public v2 policy failure — not reconnecting');
           return;
         }
 
@@ -373,12 +400,14 @@ class QuoteSocketManager {
     )).filter((symbol) => !this.subscribedSymbols.has(symbol) && !this.pendingSubscriptions.has(symbol));
     if (subscriptionSymbols.length === 0) return;
 
-    const message = {
-      type: 'subscribe',
-      symbols: subscriptionSymbols,
-    };
-    console.log(`[QuoteSocket] Subscribing to symbols: ${subscriptionSymbols.join(', ')}`);
-    this.ws.send(JSON.stringify(message));
+    console.log(`[QuoteSocket] Subscribing to symbols: ${summarizeSymbols(subscriptionSymbols)}`);
+    const channels = subscriptionSymbols.map((symbol) => `ticks.${symbol}`);
+    chunkChannels(channels).forEach((channelBatch) => {
+      const frame = channelBatch.length === 1
+        ? { action: 'subscribe', channel: channelBatch[0] }
+        : { action: 'subscribe', channels: channelBatch };
+      this.ws?.send(JSON.stringify(frame));
+    });
     // Mark as pending — promoted to subscribedSymbols only on server confirmation
     // (handleMessage), so a symbol the server rejects can be retried later.
     subscriptionSymbols.forEach((symbol) => this.pendingSubscriptions.add(symbol));
@@ -388,12 +417,16 @@ class QuoteSocketManager {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
     const unsubscribeSymbols = symbols.length > 0 ? symbols : ['*'];
-    const message = {
-      type: 'unsubscribe',
-      symbols: unsubscribeSymbols,
-    };
-    console.log(`[QuoteSocket] Unsubscribing from symbols: ${unsubscribeSymbols.join(', ')}`);
-    this.ws.send(JSON.stringify(message));
+    console.log(`[QuoteSocket] Unsubscribing from symbols: ${summarizeSymbols(unsubscribeSymbols)}`);
+    const channels = unsubscribeSymbols.map((symbol) => (
+      symbol === '*' ? '*' : `ticks.${normalizeSymbol(symbol)}`
+    ));
+    chunkChannels(channels).forEach((channelBatch) => {
+      const frame = channelBatch.length === 1
+        ? { action: 'unsubscribe', channel: channelBatch[0] }
+        : { action: 'unsubscribe', channels: channelBatch };
+      this.ws?.send(JSON.stringify(frame));
+    });
     unsubscribeSymbols.forEach((symbol) => {
       this.subscribedSymbols.delete(symbol);
       this.pendingSubscriptions.delete(symbol);
@@ -411,8 +444,20 @@ class QuoteSocketManager {
     // Handle subscription confirmation — reconcile local state with the server's
     // authoritative view so a rejected/unconfirmed symbol is not stranded.
     if (data.type === 'subscribed' || data.type === 'unsubscribed') {
-      console.log(`[QuoteSocket] ${data.type}:`, data.symbols ?? data.channels);
-      this.reconcileSubscriptionConfirmation(data.type, data.symbols ?? data.channels);
+      console.log(`[QuoteSocket] ${data.type}:`, data.symbols ?? data.channels ?? data.channel);
+      this.reconcileSubscriptionConfirmation(data.type, data.symbols ?? data.channels ?? data.channel);
+      return;
+    }
+
+    if (data.type === 'error') {
+      const rejectedChannels = data.channels ?? data.channel;
+      if (rejectedChannels !== undefined) {
+        this.reconcileSubscriptionConfirmation('unsubscribed', rejectedChannels);
+      } else {
+        // A batch-level validation error is all-or-none. Release every pending
+        // entry so later visible demand can retry instead of remaining stranded.
+        this.pendingSubscriptions.clear();
+      }
       return;
     }
 
@@ -462,9 +507,14 @@ class QuoteSocketManager {
    * Accepts either bare symbols (`'EURUSD'`) or feed channels (`'ticks.eurusd'`).
    */
   private reconcileSubscriptionConfirmation(type: 'subscribed' | 'unsubscribed', list: unknown): void {
-    if (!Array.isArray(list)) return;
+    const confirmedItems = Array.isArray(list)
+      ? list
+      : typeof list === 'string'
+        ? [list]
+        : [];
+    if (confirmedItems.length === 0) return;
 
-    const symbols = list
+    const symbols = confirmedItems
       .map((entry) => {
         const raw = typeof entry === 'string' ? entry : '';
         const symbolPart = raw.startsWith('ticks.') ? raw.slice('ticks.'.length) : raw;
@@ -536,6 +586,7 @@ class QuoteSocketManager {
   /** Force reconnect (e.g. on session change or foreground resume). */
   reconnect(): void {
     this.reconnectAttempts = 0;
+    this.preferredTransport = 'v2';
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -563,6 +614,7 @@ class QuoteSocketManager {
 
   close(): void {
     this.closeSocket();
+    this.preferredTransport = 'v2';
     try {
       useWebSocketStore.getState().setConnectionState('disconnected', 'fix_socket');
     } catch { /* store not ready */ }

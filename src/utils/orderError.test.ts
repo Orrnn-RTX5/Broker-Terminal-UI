@@ -46,6 +46,18 @@ describe('formatOrderError', () => {
       .toBe('Order failed: Volume below minimum');
   });
 
+  it('warns against resubmission when a sent order has an unknown outcome', () => {
+    const error = Object.assign(new Error('Timed out while confirming the order status'), {
+      code: 'ORDER_STATUS_TIMEOUT',
+      orderWasSent: true,
+      retryable: false,
+    });
+
+    expect(formatOrderError(error)).toBe(
+      'Order status unknown: the request was sent, but the server did not confirm the final result. Do not place it again; check open positions and order history.',
+    );
+  });
+
   it('handles non-error / empty input gracefully', () => {
     expect(formatOrderError(undefined)).toBe('Order failed: cannot reach the trading server. Check your connection and try again.');
     expect(formatOrderError(null)).toBe('Order failed: cannot reach the trading server. Check your connection and try again.');

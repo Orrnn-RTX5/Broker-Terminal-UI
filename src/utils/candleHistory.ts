@@ -26,9 +26,10 @@ export interface CandleHistoryMergeResult<T extends CandleHistoryCandle> {
 }
 
 /**
- * Accept the latest forming-candle values without allowing a delayed partial
- * snapshot to erase price extremes that were already observed in this bucket.
- * Closed historical corrections intentionally do not use this helper.
+ * Accept the latest forming-candle close without allowing a delayed partial
+ * snapshot to move the established open or erase price extremes that were
+ * already observed in this bucket. Closed historical corrections intentionally
+ * do not use this helper.
  */
 export const mergeFormingCandleEnvelope = <T extends CandleHistoryCandle>(
   previous: T,
@@ -43,6 +44,7 @@ export const mergeFormingCandleEnvelope = <T extends CandleHistoryCandle>(
   return {
     ...previous,
     ...incoming,
+    open: previous.open,
     high: Math.max(
       previous.high,
       previous.open,
@@ -63,6 +65,51 @@ export const mergeFormingCandleEnvelope = <T extends CandleHistoryCandle>(
     tickVolume: Math.max(
       previous.tickVolume ?? previous.volume,
       incoming.tickVolume ?? incoming.volume,
+    ),
+    ...(realVolume === undefined ? {} : { realVolume }),
+  };
+};
+
+/**
+ * Joins history that arrived after live ticks were already buffered for the
+ * same bucket. History owns the true bucket open and prior range; the buffered
+ * candle owns the newest close while extending (never narrowing) that range.
+ */
+export const mergeHistoricalCandleWithBufferedLive = <T extends CandleHistoryCandle>(
+  historical: T,
+  bufferedLive: T,
+): T => {
+  if (historical.time !== bufferedLive.time) return { ...bufferedLive };
+
+  const realVolume = historical.realVolume === undefined && bufferedLive.realVolume === undefined
+    ? undefined
+    : Math.max(historical.realVolume ?? 0, bufferedLive.realVolume ?? 0);
+
+  return {
+    ...historical,
+    ...bufferedLive,
+    open: historical.open,
+    high: Math.max(
+      historical.high,
+      historical.open,
+      historical.close,
+      bufferedLive.high,
+      bufferedLive.open,
+      bufferedLive.close,
+    ),
+    low: Math.min(
+      historical.low,
+      historical.open,
+      historical.close,
+      bufferedLive.low,
+      bufferedLive.open,
+      bufferedLive.close,
+    ),
+    close: bufferedLive.close,
+    volume: Math.max(historical.volume, bufferedLive.volume),
+    tickVolume: Math.max(
+      historical.tickVolume ?? historical.volume,
+      bufferedLive.tickVolume ?? bufferedLive.volume,
     ),
     ...(realVolume === undefined ? {} : { realVolume }),
   };
@@ -98,6 +145,26 @@ export const normalizeCandlePageAscending = <T extends CandleHistoryCandle>(
   }
 
   return Array.from(byTime.values()).sort((left, right) => left.time - right.time);
+};
+
+export const mergeHistoricalCandlesWithBufferedLive = <T extends CandleHistoryCandle>(
+  historicalCandles: readonly T[],
+  bufferedLiveCandles: readonly T[],
+): T[] => {
+  const historical = normalizeCandlePageAscending(historicalCandles);
+  const bufferedLive = normalizeCandlePageAscending(bufferedLiveCandles);
+  const bufferedByTime = new Map(bufferedLive.map(candle => [candle.time, candle]));
+  const historicalTimes = new Set(historical.map(candle => candle.time));
+
+  return normalizeCandlePageAscending([
+    ...historical.map(candle => {
+      const buffered = bufferedByTime.get(candle.time);
+      return buffered
+        ? mergeHistoricalCandleWithBufferedLive(candle, buffered)
+        : candle;
+    }),
+    ...bufferedLive.filter(candle => !historicalTimes.has(candle.time)),
+  ]);
 };
 
 export const mergeSortedCandleHistory = <T extends CandleHistoryCandle>(

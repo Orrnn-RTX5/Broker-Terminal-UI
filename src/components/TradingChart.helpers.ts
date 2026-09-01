@@ -46,7 +46,8 @@ export interface TradingViewChartTheme {
   background: string;
   text: string;
   axisText: string;
-  grid: string;
+  gridVertical: string;
+  gridHorizontal: string;
   scaleBorder: string;
   crosshair: string;
   candleUp: string;
@@ -416,6 +417,16 @@ export const shouldApplyVisibleRangeResetForRender = ({
   suppressGlobalVisibleRangeReset: boolean;
 }): boolean => (
   resetVisibleRange || (!suppressGlobalVisibleRangeReset && resetVisibleRangeOnNextData)
+);
+
+export const shouldResetInitialHistoryVisibleRange = ({
+  resetVisibleRangeOnNextData,
+  hydratedFromCache,
+}: {
+  resetVisibleRangeOnNextData: boolean;
+  hydratedFromCache: boolean;
+}): boolean => (
+  resetVisibleRangeOnNextData || !hydratedFromCache
 );
 
 export const TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS = {

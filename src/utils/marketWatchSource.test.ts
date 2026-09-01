@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_MARKET_WATCH_SYMBOLS,
-  getDefaultMarketWatchSymbols,
   getMarketWatchDisplayErrors,
   getMarketWatchSymbolLabel,
   isStaleQuoteErrorMessage,
@@ -11,38 +9,20 @@ import {
 } from './marketWatchSource';
 
 describe('Market Watch symbol source', () => {
-  it('uses the five requested symbols in the product-defined order', () => {
-    expect(DEFAULT_MARKET_WATCH_SYMBOLS).toEqual([
-      'XAUUSD',
-      'BTCUSD',
-      'EURUSD',
-      'GBPUSD',
-      'USDJPY',
-    ]);
-    expect(getDefaultMarketWatchSymbols()).toEqual(DEFAULT_MARKET_WATCH_SYMBOLS);
-  });
-
-  it('keeps SOLUSD available for user search without restoring it as a default', () => {
+  it('searches and resolves every symbol supplied by the public catalog', () => {
     const symbolUniverse = ['BTCUSD', 'SOLUSD', 'EURUSD'];
 
-    expect(getDefaultMarketWatchSymbols(symbolUniverse)).not.toContain('SOLUSD');
     expect(searchMarketWatchSymbols(symbolUniverse, 'sol')).toEqual(['SOLUSD']);
     expect(resolveMarketWatchSymbolInput(symbolUniverse, 'solusd')).toBe('SOLUSD');
   });
 
   it('presents either broker identifier as EURUSD without changing its identity', () => {
-    const euroUsdDefaults = getDefaultMarketWatchSymbols(['EUROUSD']);
-    const eurUsdDefaults = getDefaultMarketWatchSymbols(['EURUSD']);
-
-    expect(euroUsdDefaults).toContain('EUROUSD');
-    expect(eurUsdDefaults).toContain('EURUSD');
     expect(getMarketWatchSymbolLabel('EUROUSD', ['EUROUSD'])).toBe('EURUSD');
     expect(getMarketWatchSymbolLabel('EURUSD')).toBe('EURUSD');
     expect(getMarketWatchSymbolLabel('eurusd', ['EURUSD'])).toBe('EURUSD');
   });
 
-  it('searches the complete universe case-insensitively without changing the defaults', () => {
-    const defaults = getDefaultMarketWatchSymbols();
+  it('searches the complete universe case-insensitively and de-duplicates results', () => {
     const results = searchMarketWatchSymbols(
       ['BTCUSD', 'eurusd', 'ETHUSD', 'EURJPY', 'ETHUSD'],
       'eth',
@@ -50,7 +30,6 @@ describe('Market Watch symbol source', () => {
 
     expect(results).toEqual(['ETHUSD']);
     expect(searchMarketWatchSymbols(['EURUSD', 'EURJPY'], 'euro')).toEqual([]);
-    expect(getDefaultMarketWatchSymbols()).toEqual(defaults);
   });
 
   it('searches the canonical EURUSD label while accepting the legacy alias as direct input', () => {

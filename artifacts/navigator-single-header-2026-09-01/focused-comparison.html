@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Navigator focused header comparison</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 20px;
+        background: #0d0d11;
+        color: #e5e7eb;
+        font: 14px/1.4 Arial, sans-serif;
+      }
+      h1 { margin: 0 0 16px; font-size: 20px; }
+      main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      section { overflow: hidden; border: 1px solid #3f3f46; background: #131316; }
+      h2 { margin: 0; padding: 10px 12px; border-bottom: 1px solid #3f3f46; font-size: 14px; }
+      .focus { position: relative; height: 700px; overflow: hidden; }
+      img { position: absolute; display: block; max-width: none; }
+      .before img { top: -800px; left: 0; width: 2000px; }
+      .after img { top: -584px; left: -45px; width: 2203px; }
+    </style>
+  </head>
+  <body>
+    <h1>Focused Navigator header comparison</h1>
+    <main>
+      <section>
+        <h2>Before — outer title plus duplicate content strip</h2>
+        <div class="focus before">
+          <img src="/artifacts/desktop-toolbar-dynamic-status/09-final-xauusd-live.png" alt="Duplicate Navigator header before correction" />
+        </div>
+      </section>
+      <section>
+        <h2>After — retained title, minimize and close controls</h2>
+        <div class="focus after">
+          <img src="/artifacts/navigator-single-header-2026-09-01/after-single-header.jpg" alt="Single Navigator header after correction" />
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,7 +1,12 @@
-import { fireEvent, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { keyboardShortcutManager, type ShortcutDefinition } from '../services/keyboardShortcutManager';
+import {
+  activateActiveChartSource,
+  clearActiveChartSources,
+  registerActiveChartSource,
+} from '../services/activeChartSource';
 import { defaultChartProperties, useChartSettingsStore } from '../store/useChartSettingsStore';
 import { GlobalShortcuts } from './GlobalShortcuts';
 
@@ -33,6 +38,7 @@ const normalizedCombo = (shortcut: ShortcutDefinition): string =>
 describe('GlobalShortcuts chart shortcut registration', () => {
   beforeEach(() => {
     keyboardShortcutManager.clear();
+    clearActiveChartSources();
     useChartSettingsStore.setState({
       globalProperties: { ...defaultChartProperties },
       symbolProperties: {},
@@ -40,7 +46,9 @@ describe('GlobalShortcuts chart shortcut registration', () => {
   });
 
   afterEach(() => {
+    cleanup();
     keyboardShortcutManager.clear();
+    clearActiveChartSources();
     vi.restoreAllMocks();
   });
 
@@ -133,5 +141,45 @@ describe('GlobalShortcuts chart shortcut registration', () => {
 
     unmount();
     expect(keyboardShortcutManager.getShortcuts()).toHaveLength(0);
+  });
+
+  it('includes the active chart context in undo, redo, and delete drawing events', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    registerActiveChartSource({ id: 'chart-active', getContainer: () => container });
+    activateActiveChartSource('chart-active');
+
+    const received = new Map<string, string | undefined>();
+    const eventNames = [
+      'chart-undo-drawing',
+      'chart-redo-drawing',
+      'chart-delete-drawing',
+    ] as const;
+    const listeners = eventNames.map((eventName) => {
+      const listener = (event: Event) => {
+        received.set(
+          eventName,
+          (event as CustomEvent<{ targetContextId?: string }>).detail?.targetContextId,
+        );
+      };
+      window.addEventListener(eventName, listener);
+      return { eventName, listener };
+    });
+
+    render(<GlobalShortcuts {...createProps()} />);
+    const disposeKeyboardListener = keyboardShortcutManager.initialize();
+
+    fireEvent.keyDown(document.body, { key: 'z', code: 'KeyZ', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'y', code: 'KeyY', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'Delete', code: 'Delete' });
+
+    expect(received).toEqual(new Map([
+      ['chart-undo-drawing', 'chart-active'],
+      ['chart-redo-drawing', 'chart-active'],
+      ['chart-delete-drawing', 'chart-active'],
+    ]));
+
+    disposeKeyboardListener();
+    listeners.forEach(({ eventName, listener }) => window.removeEventListener(eventName, listener));
   });
 });

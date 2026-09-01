@@ -55,6 +55,21 @@ describe('chart price guards', () => {
     });
   });
 
+  it('keeps the GTA XAUUSD Friday history and Monday live quote on one price scale', () => {
+    const fridayHistory = candles.map(candle => ({
+      ...candle,
+      open: 4521,
+      high: 4529,
+      low: 4512,
+      close: 4521,
+    }));
+
+    expect(normalizeCandlesToReference(fridayHistory, 4438)).toMatchObject({
+      status: 'compatible',
+      factor: 1,
+    });
+  });
+
   it('normalizes obvious power-of-ten scaled candles', () => {
     const scaled = candles.map(candle => ({
       ...candle,

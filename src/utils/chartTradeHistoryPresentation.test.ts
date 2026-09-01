@@ -1,0 +1,137 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildTradeHistoryBadgeText,
+  formatTradeHistoryGmtTime,
+  getTradeHistoryLabelMaxWidth,
+  getTradeHistoryExecutionSide,
+  resolveTradeHistoryLabelPlacement,
+  resolveTradeHistoryLabelVerticalPlacement,
+} from './chartTradeHistoryPresentation';
+
+describe('chart trade-history presentation', () => {
+  it('formats execution time in GMT instead of the machine timezone', () => {
+    const timestamp = Date.UTC(2026, 7, 31, 16, 30, 45) / 1000;
+
+    expect(formatTradeHistoryGmtTime(timestamp)).toBe('16:30 GMT');
+  });
+
+  it('builds explicit open and close labels with one GMT timestamp', () => {
+    const time = Date.UTC(2026, 7, 31, 17, 15) / 1000;
+
+    expect(buildTradeHistoryBadgeText({
+      positionSide: 'BUY',
+      lifecycle: 'OPEN',
+      ticketLabel: '#5',
+      price: 4599.58,
+      digits: 2,
+      time,
+    })).toBe('BUY OPEN · #5 · 4599.58 · 17:15 GMT');
+
+    expect(buildTradeHistoryBadgeText({
+      positionSide: 'SELL',
+      lifecycle: 'CLOSE',
+      ticketLabel: '#8',
+      price: 4601.1,
+      digits: 2,
+      time,
+    })).toBe('SELL CLOSE · #8 · 4601.10 · 17:15 GMT');
+  });
+
+  it('keeps the position side in the label while reversing only close execution', () => {
+    expect(getTradeHistoryExecutionSide('BUY', 'OPEN')).toBe('BUY');
+    expect(getTradeHistoryExecutionSide('BUY', 'CLOSE')).toBe('SELL');
+    expect(getTradeHistoryExecutionSide('SELL', 'OPEN')).toBe('SELL');
+    expect(getTradeHistoryExecutionSide('SELL', 'CLOSE')).toBe('BUY');
+  });
+
+  it('flips labels before the price scale and clamps them inside the plot', () => {
+    expect(resolveTradeHistoryLabelPlacement({
+      anchorX: 80,
+      labelWidth: 180,
+      plotWidth: 900,
+    })).toEqual({ left: 94, anchor: 'right' });
+
+    expect(resolveTradeHistoryLabelPlacement({
+      anchorX: 840,
+      labelWidth: 180,
+      plotWidth: 900,
+    })).toEqual({ left: 646, anchor: 'left' });
+
+    expect(resolveTradeHistoryLabelPlacement({
+      anchorX: 5,
+      labelWidth: 100,
+      plotWidth: 120,
+    })).toEqual({ left: 6, anchor: 'left' });
+  });
+
+  it('shrinks an edge badge before allowing it to cover the arrow', () => {
+    const leftEdgeWidth = getTradeHistoryLabelMaxWidth({
+      anchorX: 5,
+      plotWidth: 120,
+    });
+    const rightEdgeWidth = getTradeHistoryLabelMaxWidth({
+      anchorX: 115,
+      plotWidth: 120,
+    });
+
+    expect(leftEdgeWidth).toBe(95);
+    expect(resolveTradeHistoryLabelPlacement({
+      anchorX: 5,
+      labelWidth: leftEdgeWidth,
+      plotWidth: 120,
+    })).toEqual({ left: 19, anchor: 'right' });
+
+    expect(rightEdgeWidth).toBe(95);
+    expect(resolveTradeHistoryLabelPlacement({
+      anchorX: 115,
+      labelWidth: rightEdgeWidth,
+      plotWidth: 120,
+    })).toEqual({ left: 6, anchor: 'left' });
+  });
+
+  it('moves colliding open and close badges into separate vertical lanes', () => {
+    const open = resolveTradeHistoryLabelVerticalPlacement({
+      preferredCenterY: 100,
+      labelHeight: 22,
+      chartHeight: 300,
+      left: 94,
+      width: 190,
+      occupied: [],
+    });
+    const close = resolveTradeHistoryLabelVerticalPlacement({
+      preferredCenterY: 100,
+      labelHeight: 22,
+      chartHeight: 300,
+      left: 94,
+      width: 190,
+      occupied: [open.rect],
+    });
+
+    expect(open).toMatchObject({ centerY: 100, lane: 0 });
+    expect(close).toMatchObject({ centerY: 74, lane: -1 });
+    expect(close.rect.top + close.rect.height).toBeLessThanOrEqual(open.rect.top - 4);
+  });
+
+  it('uses the available lane when a collision occurs against the chart edge', () => {
+    const first = resolveTradeHistoryLabelVerticalPlacement({
+      preferredCenterY: 8,
+      labelHeight: 22,
+      chartHeight: 100,
+      left: 10,
+      width: 80,
+      occupied: [],
+    });
+    const second = resolveTradeHistoryLabelVerticalPlacement({
+      preferredCenterY: 8,
+      labelHeight: 22,
+      chartHeight: 100,
+      left: 10,
+      width: 80,
+      occupied: [first.rect],
+    });
+
+    expect(first.rect.top).toBe(4);
+    expect(second.lane).toBe(1);
+    expect(second.rect.top).toBeGreaterThanOrEqual(first.rect.top + first.rect.height + 4);
+  });
+});

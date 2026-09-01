@@ -196,11 +196,17 @@ const normalizeSideForApi = (side: unknown): 'buy' | 'sell' => {
 
 const isRetryableTradeSocketFailure = (error: unknown): boolean => {
   if (error instanceof TradeSocketOrderRejectedError) return false;
-  if (error instanceof TradeSocketTransportError) return true;
+  if (error instanceof TradeSocketTransportError) return error.retryable;
   if (!error || typeof error !== 'object') return false;
 
-  const candidate = error as { name?: unknown; retryable?: unknown };
-  return candidate.name !== 'TradeSocketOrderRejectedError' && candidate.retryable === true;
+  const candidate = error as {
+    name?: unknown;
+    retryable?: unknown;
+    orderWasSent?: unknown;
+  };
+  return candidate.name !== 'TradeSocketOrderRejectedError'
+    && candidate.retryable === true
+    && candidate.orderWasSent === false;
 };
 
 const mapFilledOrderToPosition = (

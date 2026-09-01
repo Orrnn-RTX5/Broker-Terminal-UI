@@ -1853,6 +1853,47 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-mt5-divider {
   visibility: hidden !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action, .rtx-toolbar-icon-button) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: #344054 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-action--primary {
+  background: #ffffff !important;
+  border-color: #d0d5dd !important;
+  color: #101828 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action, .rtx-toolbar-icon-button):hover,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action, .rtx-toolbar-icon-button):focus-visible {
+  background: #f9f5ff !important;
+  border-color: #d6bbfb !important;
+  color: #6941c6 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-action[aria-pressed="true"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[aria-pressed="true"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[aria-checked="true"] {
+  background: #f3e5f5 !important;
+  border-color: #7e57c2 !important;
+  box-shadow: inset 0 -2px 0 #7e57c2 !important;
+  color: #6941c6 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-symbol-badge {
+  background: #f9fafb !important;
+  border-color: #eaecf0 !important;
+  color: #475467 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-action[aria-pressed="true"] .rtx-toolbar-symbol-badge {
+  background: #ffffff !important;
+  border-color: #d6bbfb !important;
+  color: #6941c6 !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-history-overlay-button[aria-expanded="false"],
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-history-overlay-button[aria-expanded="false"]:hover,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-history-overlay-button[aria-expanded="false"]:focus,
@@ -2192,17 +2233,13 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-box {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-inner {
-  background: var(--rtx-cp-preview-bg, #ffffff) !important;
+  background-color: var(--rtx-cp-preview-bg, #ffffff) !important;
   border-color: #eaecf0 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-text {
   color: var(--rtx-cp-preview-text, #667085) !important;
   background: var(--rtx-cp-preview-label-bg, rgba(255, 255, 255, 0.8)) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-preview-grid {
-  border-color: var(--rtx-cp-preview-grid, #f2f4f7) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-tab {

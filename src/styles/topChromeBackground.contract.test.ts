@@ -7,6 +7,7 @@ const readSource = (path: string): string => readFileSync(resolve(process.cwd(),
 const themeCss = readSource('src/styles/theme.css');
 const advancedCss = readSource('src/styles/advanced-untitled-light.css');
 const topToolbarSource = readSource('src/components/layout/TopToolbar.tsx');
+const desktopQuickActionsSource = readSource('src/components/layout/DesktopQuickActions.tsx');
 const menuBarSource = readSource('src/components/layout/MenuBar.tsx');
 const dockPanelSource = readSource('src/components/dock/DockPanel.tsx');
 const dockContainerSource = readSource('src/components/dock/DockContainer.tsx');
@@ -27,14 +28,12 @@ describe('terminal top chrome background contract', () => {
     expect(topToolbarSource).toContain('<WindowControls />');
     expect(menuBarSource).toContain('rtx-menu-launcher');
     expect(menuBarSource).toContain('rtx-application-menu');
-    expect(menuBarSource).toContain('[.rtx-advanced-view_&]:bg-white');
+    expect(themeCss).toMatch(/\.rtx-application-menu,\s*\n\.rtx-menu-surface\s*\{[^}]*background: var\(--bg-secondary\);/);
     expect(advancedCss).toContain('.rtx-window-controls');
     expect(advancedCss).not.toContain('.rtx-header-bar');
   });
 
-  it('keeps the former far-right controls inside the sectioned application menu', () => {
-    expect(topToolbarSource).not.toContain('Group 10: Far right controls');
-    expect(topToolbarSource).not.toContain('title="Clear All Drawings"');
+  it('keeps web actions in the application menu while Electron owns the fixed right quick-actions cluster', () => {
     expect(menuBarSource).toContain("label: 'Theme'");
     expect(menuBarSource).toContain("label: 'Search Symbols'");
     expect(menuBarSource).toContain("label: 'Crosshair'");
@@ -42,15 +41,35 @@ describe('terminal top chrome background contract', () => {
     expect(menuBarSource).toContain("label: 'Stamps'");
     expect(menuBarSource).toContain("label: 'Delete All'");
     expect(menuBarSource).toContain('accountId={accountId}');
+
+    const desktopScrollIndex = topToolbarSource.indexOf('rtx-desktop-command-scroll');
+    const desktopActionsIndex = topToolbarSource.indexOf('<DesktopQuickActions');
+    expect(desktopScrollIndex).toBeGreaterThan(-1);
+    expect(desktopActionsIndex).toBeGreaterThan(desktopScrollIndex);
+    expect(desktopQuickActionsSource).toContain('rtx-desktop-command-actions');
+    expect(desktopQuickActionsSource).toContain('data-rtx-desktop-toolbar-cluster="right"');
+    expect(desktopQuickActionsSource).toContain('role="toolbar"');
+    expect(desktopQuickActionsSource).toContain('aria-label="Desktop quick actions"');
   });
 
   it('keeps the hamburger fixed and preserves an Electron drag surface', () => {
     const menuIndex = topToolbarSource.indexOf('<MenuBar');
     const scrollingStripIndex = topToolbarSource.indexOf('overflow-x-auto px-1.5 no-scrollbar');
+    const desktopScrollingStripIndex = topToolbarSource.indexOf('rtx-desktop-command-scroll');
+    const desktopQuickActionsIndex = topToolbarSource.indexOf('<DesktopQuickActions');
     expect(menuIndex).toBeGreaterThan(-1);
     expect(scrollingStripIndex).toBeGreaterThan(menuIndex);
+    expect(desktopScrollingStripIndex).toBeGreaterThan(menuIndex);
+    expect(desktopQuickActionsIndex).toBeGreaterThan(desktopScrollingStripIndex);
     expect(topToolbarSource).toContain('className="min-w-[24px] flex-1 self-stretch"');
     expect(menuBarSource).toContain("WebkitAppRegion: 'no-drag'");
+  });
+
+  it('keeps Electron action sheets theme-aware instead of forcing a light surface', () => {
+    expect(themeCss).toMatch(/html\.rtx-desktop-shell-active :is\(\.trend-tools-menu, \.rtx-drawing-operations__menu\) \{[\s\S]*background: var\(--bg-elevated\) !important;/);
+    expect(themeCss).toMatch(/\.rtx-drawing-operations__menu--desktop \{[\s\S]*background: var\(--bg-elevated\) !important;/);
+    expect(themeCss).toMatch(/html\.rtx-desktop-shell-active \.trend-tools-menu__item\[data-selected='true'\] \{[\s\S]*background: var\(--color-info-dim\) !important;/);
+    expect(themeCss).not.toMatch(/html\.rtx-desktop-shell-active :is\([^}]*\.trend-tools-menu[^}]*\) \{[^}]*background: #ffffff !important;/);
   });
 
   it('keeps toolbar group spacing without rendering pipe symbols', () => {

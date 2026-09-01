@@ -243,6 +243,7 @@ describe('TradingChart interaction-priority contract', () => {
     const flush = source.slice(flushStart, flushEnd);
     const setData = flush.indexOf('series.setData(seriesData);');
     const finishLoading = flush.indexOf('if (pending.finishLoadingAfterRender && seriesData.length > 0)', setData);
+    const releaseLivePaint = flush.indexOf('releaseChartSelectionLivePaint(', finishLoading);
     const markReady = flush.indexOf('markCandlesReady();', finishLoading);
     const requestStart = source.indexOf('const requestChartDataRender = useCallback');
     const requestEnd = source.indexOf('const consumeDeferredVisibleRangeHistory = useCallback', requestStart);
@@ -252,7 +253,8 @@ describe('TradingChart interaction-priority contract', () => {
     expect(flushEnd).toBeGreaterThan(flushStart);
     expect(setData).toBeGreaterThan(-1);
     expect(finishLoading).toBeGreaterThan(setData);
-    expect(markReady).toBeGreaterThan(finishLoading);
+    expect(releaseLivePaint).toBeGreaterThan(finishLoading);
+    expect(markReady).toBeGreaterThan(releaseLivePaint);
     expect(flush).toContain('markCandlesReady, rememberVisibleLogicalRange');
     expect(source).toContain('finishLoadingAfterRender?: boolean;');
     expect(request).toContain('finishLoadingAfterRender: request.finishLoadingAfterRender === true || existing?.finishLoadingAfterRender === true');
@@ -266,21 +268,58 @@ describe('TradingChart interaction-priority contract', () => {
     const snapshotEnd = source.indexOf('onCandle: (candle) =>', snapshotStart);
     const resetStart = source.indexOf('const renderResetCandles = (candles: Candle[], reason: string): boolean => {');
     const resetEnd = source.indexOf('if (activeSymbol) {', resetStart);
-    const loaderOwnedSections = [
+    const authoritativeLoaderSections = [
       source.slice(cacheStart, cacheEnd),
       source.slice(cacheEnd, restoreEnd),
       source.slice(initialStart, initialEnd),
-      source.slice(snapshotStart, snapshotEnd),
       source.slice(resetStart, resetEnd),
     ];
 
-    for (const section of loaderOwnedSections) {
+    for (const section of authoritativeLoaderSections) {
       expect(section).toContain('finishLoadingAfterRender: true');
       expect(section).not.toContain("setLoadingPhase('ready')");
       expect(section).not.toContain("setLoadingPhase('hidden')");
     }
-    expect(source.slice(snapshotStart, snapshotEnd)).toContain('immediate: true');
+    const snapshotSection = source.slice(snapshotStart, snapshotEnd);
+    expect(snapshotSection).toContain('immediate: true');
+    expect(snapshotSection).toContain('releaseLivePaintAfterRender: true');
+    expect(snapshotSection).toContain('finishLoadingAfterRender: !initialHistoryLoadPendingRef.current');
+    expect(snapshotSection).not.toContain("setLoadingPhase('ready')");
+    expect(snapshotSection).not.toContain("setLoadingPhase('hidden')");
     expect(source).not.toContain("setLoadingPhase('ready')");
+  });
+
+  it('buffers live candles per selection while allowing a first-live baseline setData commit', () => {
+    const flushStart = source.indexOf('const flushQueuedChartRender = useCallback');
+    const flushEnd = source.indexOf('const scheduleQueuedChartRenderFlush = useCallback', flushStart);
+    const flush = source.slice(flushStart, flushEnd);
+    const liveStart = source.indexOf('const canPaintLiveChart =');
+    const liveEnd = source.indexOf('// The primary tick aggregation interval', liveStart);
+    const liveEffect = source.slice(liveStart, liveEnd);
+    const correctionStart = liveEffect.indexOf("reason: 'server-candle-history-correction'");
+    const correctionRequestStart = liveEffect.lastIndexOf('updateChartData(', correctionStart);
+    const correctionRequestEnd = liveEffect.indexOf('});', correctionStart);
+    const correctionRequest = liveEffect.slice(correctionRequestStart, correctionRequestEnd);
+
+    expect(flush).toContain('pending.selectionKey !== chartSelectionPresentationRef.current.selectionKey');
+    expect(flush.indexOf('series.setData(seriesData);')).toBeLessThan(
+      flush.indexOf('releaseChartSelectionLivePaint('),
+    );
+    expect(liveEffect).toContain('isChartSelectionLivePaintAllowed(');
+    expect(liveEffect).not.toContain('markCandlesReady();');
+    expect(liveEffect).toContain('shouldCommitFirstLiveSelectionBaseline({');
+    expect(liveEffect).not.toContain('isDesktopShell');
+    expect(liveEffect).toContain("reason: 'first-live-selection-baseline'");
+    expect(liveEffect).toContain('immediate: true');
+    expect(liveEffect).toContain('releaseLivePaintAfterRender: true');
+    expect(liveEffect).toContain('finishLoadingAfterRender: !initialHistoryLoadPendingRef.current');
+    expect(liveEffect).toContain('pendingLiveChartPaint && currentCandleRef.current && canPaintLiveChart()');
+    expect(liveEffect).toContain('repaintLivePriceOverlayOrDefer(currentCandleRef.current);');
+    expect(correctionStart).toBeGreaterThan(-1);
+    expect(correctionRequest).not.toContain('finishLoadingAfterRender: true');
+    expect(liveEffect).toContain("reason: 'stream-snapshot'");
+    expect(liveEffect.match(/releaseLivePaintAfterRender: true/g)).toHaveLength(2);
+    expect(liveEffect.match(/finishLoadingAfterRender: !initialHistoryLoadPendingRef\.current/g)).toHaveLength(2);
   });
 
   it('defers server-candle and snapshot overlay paints through the interaction policy', () => {
@@ -310,6 +349,9 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('protects the active candle envelope from narrower same-time server updates', () => {
+    const quoteTickStart = source.indexOf('const aggregationUpdates = candleAggregationService.processTick');
+    const quoteTickEnd = source.indexOf('const applyServerCandle =', quoteTickStart);
+    const quoteTickPath = source.slice(quoteTickStart, quoteTickEnd);
     const serverCandleStart = source.indexOf('const applyServerCandle =');
     const serverCandleEnd = source.indexOf('const streamTimeframe:', serverCandleStart);
     const serverCandle = source.slice(serverCandleStart, serverCandleEnd);
@@ -317,6 +359,14 @@ describe('TradingChart interaction-priority contract', () => {
     const snapshotEnd = source.indexOf('onCandle: (candle) =>', snapshotStart);
     const snapshot = source.slice(snapshotStart, snapshotEnd);
 
+    expect(quoteTickStart).toBeGreaterThan(-1);
+    expect(quoteTickEnd).toBeGreaterThan(quoteTickStart);
+    expect(
+      quoteTickPath.match(
+        /currentCandleRef\.current = mergeFormingCandleEnvelope\(\s*currentCandleRef\.current,\s*derivedCurrentCandle,\s*\)/g,
+      ),
+    ).toHaveLength(2);
+    expect(quoteTickPath).not.toContain('currentCandleRef.current = derivedCurrentCandle;');
     expect(serverCandle).toContain(
       'currentCandleRef.current = mergeFormingCandleEnvelope(currentCandleRef.current, c)',
     );

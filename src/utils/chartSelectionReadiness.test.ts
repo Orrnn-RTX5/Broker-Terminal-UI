@@ -144,7 +144,12 @@ describe('chart selection benchmark readiness', () => {
       activePanelSymbol: 'BTCUSD',
       renderedChartSymbol: 'BTCUSD',
     });
-    expect(snapshot({ selectedSymbol: 'BTCUSD', layout: tabLayout('xau-chart') }).ready).toBe(false);
+    expect(snapshot({ selectedSymbol: 'BTCUSD', layout: tabLayout('xau-chart') })).toEqual({
+      ready: false,
+      selectedSymbol: 'BTCUSD',
+      activePanelSymbol: 'XAUUSD',
+      renderedChartSymbol: 'XAUUSD',
+    });
   });
 
   it.each([false, true])('rejects ambiguous %s multi-visible chart layouts', (floating) => {

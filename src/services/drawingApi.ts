@@ -28,7 +28,12 @@ export interface ServerDrawing {
 
 export interface ServerDrawingProperties {
   id?: string;           // Client-generated ID (optional)
-  points: Array<{ time: number; price: number }>;
+  points: Array<{
+    time: number;
+    price: number;
+    logicalIndex?: number;
+    pixelXOffset?: number;
+  }>;
   color?: string;
   lineWidth?: number;
   lineStyle?: 'solid' | 'dashed' | 'dotted';
@@ -36,6 +41,13 @@ export interface ServerDrawingProperties {
   subtype?: string;
   locked?: boolean;
   selected?: boolean;
+  channelOffset?: number;
+  channelMidpointRatio?: number;
+  regressionSource?: 'open' | 'high' | 'low' | 'close' | 'hl2';
+  regressionUpperDeviation?: number;
+  regressionLowerDeviation?: number;
+  showRegressionPearson?: boolean;
+  pitchforkLevels?: number[];
 }
 
 export interface LoadDrawingsResponse {
@@ -53,7 +65,12 @@ export interface SaveDrawingResponse {
 export interface ClientDrawing {
   id: string;
   type: string;
-  points: Array<{ time: number; price: number }>;
+  points: Array<{
+    time: number;
+    price: number;
+    logicalIndex?: number;
+    pixelXOffset?: number;
+  }>;
   text?: string;
   color?: string;
   lineWidth?: number;
@@ -62,6 +79,13 @@ export interface ClientDrawing {
   locked?: boolean;
   subtype?: string;
   serverId?: string;     // Server-generated ID for updates/deletes
+  channelOffset?: number;
+  channelMidpointRatio?: number;
+  regressionSource?: 'open' | 'high' | 'low' | 'close' | 'hl2';
+  regressionUpperDeviation?: number;
+  regressionLowerDeviation?: number;
+  showRegressionPearson?: boolean;
+  pitchforkLevels?: number[];
 }
 
 class DrawingApiService {
@@ -122,6 +146,13 @@ class DrawingApiService {
       selected: false,     // Always false on load
       locked: props.locked || false,
       subtype: props.subtype,
+      channelOffset: props.channelOffset,
+      channelMidpointRatio: props.channelMidpointRatio,
+      regressionSource: props.regressionSource,
+      regressionUpperDeviation: props.regressionUpperDeviation,
+      regressionLowerDeviation: props.regressionLowerDeviation,
+      showRegressionPearson: props.showRegressionPearson,
+      pitchforkLevels: props.pitchforkLevels,
       serverId: serverDrawing.id,  // Store server ID for deletes/updates
     };
   }
@@ -142,6 +173,13 @@ class DrawingApiService {
         lineStyle: drawing.lineStyle,
         text: drawing.text,
         subtype: drawing.subtype,
+        channelOffset: drawing.channelOffset,
+        channelMidpointRatio: drawing.channelMidpointRatio,
+        regressionSource: drawing.regressionSource,
+        regressionUpperDeviation: drawing.regressionUpperDeviation,
+        regressionLowerDeviation: drawing.regressionLowerDeviation,
+        showRegressionPearson: drawing.showRegressionPearson,
+        pitchforkLevels: drawing.pitchforkLevels,
         locked: drawing.locked,
         // Exclude 'selected' - it's transient UI state
       },

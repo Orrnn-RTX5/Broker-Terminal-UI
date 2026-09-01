@@ -395,6 +395,14 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   
   const isSelectedSymbolShown = selectedSymbol ? watchlistSymbols.includes(selectedSymbol.symbol || selectedSymbol.name) : false;
 
+  const openChartForSymbol = useCallback((instrument: SymbolSpec | null) => {
+    const brokerSymbol = instrument?.symbol?.trim();
+    if (!brokerSymbol || !onOpenChart) return;
+
+    onOpenChart(brokerSymbol);
+    onClose();
+  }, [onClose, onOpenChart]);
+
   // Drag state — centered on screen when first rendered
   const [pos, setPos] = useState(() => ({
     x: Math.max(20, Math.round((window.innerWidth - 620) / 2)) + 120,
@@ -1022,20 +1030,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                     <tr
                       key={sym.id || sym.name}
                       onClick={() => setSelectedSymbol(sym)}
-                      onDoubleClick={() => {
-                        if (!activeWatchlist) return;
-                        const symName = sym.symbol || sym.name;
-                        if (watchlistSymbols.includes(symName)) {
-                          removeSymbolFromWatchlist(activeWatchlist.id, symName);
-                        } else {
-                          addSymbolToWatchlist(activeWatchlist.id, symName);
-                          try {
-                            const wsService = getEnhancedWebSocketService(MARKET_WS_URL);
-                            wsService.sendMessage({ action: 'subscribe', channel: `ticks.${symName}` });
-                            useMarketDataStore.getState().subscribeSymbol(symName);
-                          } catch (err) {}
-                        }
-                      }}
+                      onDoubleClick={() => openChartForSymbol(sym)}
                       className={`cursor-pointer transition-colors ${
                         selectedSymbol?.name === sym.name
                           ? 'bg-[#1a3a6b] text-white'
@@ -1162,6 +1157,17 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                   }}
                 >
                   Hide Symbol
+                </button>
+                <button
+                  className={`rounded-sm border px-4 py-1 text-[14px] font-normal transition-colors ${
+                    !selectedSymbol || !onOpenChart
+                      ? 'bg-[#1a1d27] text-zinc-600 border-[#3a3e52] cursor-not-allowed'
+                      : 'border-[#4a6aff] bg-[#2a4aad] text-white hover:bg-[#3a5abf]'
+                  }`}
+                  disabled={!selectedSymbol || !onOpenChart}
+                  onClick={() => openChartForSymbol(selectedSymbol)}
+                >
+                  Open Chart
                 </button>
                 <button
                   className="cursor-not-allowed rounded-sm border border-[#3a3e52] bg-[#1e2235] px-4 py-1 text-[14px] font-normal text-zinc-400 transition-colors hover:bg-[#2a2e45]"

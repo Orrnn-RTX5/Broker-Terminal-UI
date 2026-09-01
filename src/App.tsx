@@ -8,16 +8,16 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { AlertsContainer } from './components/AlertsContainer';
 import { resolveTickFromLookup, useAppStore } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
-import { useWatchlistStore } from './store/useWatchlistStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
 import { enqueueLiveTick } from './services/liveTickDispatcher';
 import { isEnhancedStoreHandledTickFrame } from './services/websocket-enhanced';
 import { getTradeEntryPriceFromQuote } from './services/chartPriceGuards';
+import { getQuoteSocketManager } from './services/quoteSocketManager';
 import { captureTradeOrderIntent } from './services/orderLatencyTelemetry';
 import { resolveOptionalPositionTime, resolvePositionOpenTime } from './services/tradePositionTime';
 import { API_BASE_URL, WS_ENDPOINTS, updateDynamicUrls } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
-import { useActiveMarketSymbols } from './hooks/useLiveMarketData';
+import { useActiveMarketSymbols, useMarketInstruments } from './hooks/useLiveMarketData';
 import { getCachedSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useSymbolMarketStatus';
 import {
   buildChartEligibleSymbolNames,
@@ -67,6 +67,11 @@ import type { IndicatorInfo } from './components/IndicatorNavigator';
 
 // Layout Components
 import { TopToolbar } from './components/layout/TopToolbar';
+import {
+  WebDrawingSelectionToolbar,
+  WebDrawingToolsRail,
+  isWebDrawingToolsRuntime,
+} from './drawing-tools';
 import { StatusBar } from './components/layout/StatusBar';
 import { UpdateBanner } from './components/layout/UpdateBanner';
 import { OrderPanelDialog } from './components/OrderPanelDialog';
@@ -800,6 +805,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [hasLoadedSymbols, setHasLoadedSymbols] = useState(false);
   const [allSymbols, setAllSymbols] = useState<unknown[]>([]);
   const activeMarketSnapshot = useActiveMarketSymbols();
+  const marketInstrumentsSnapshot = useMarketInstruments();
   const {
     symbols: activeMarketSymbols,
     settled: activeMarketSymbolsSettled,
@@ -1420,11 +1426,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   }, []);
 
   const allowedSymbolNames = useMemo(() => getAllowedSymbolNames(allSymbols), [allSymbols]);
+  const publicMarketSymbolNames = useMemo(
+    () => getAllowedSymbolNames(marketInstrumentsSnapshot.symbols),
+    [marketInstrumentsSnapshot.symbols],
+  );
   const chartEligibleSymbolNames = useMemo(() => {
-    const authorized = buildChartEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols);
-    if (authorized.length > 0) return authorized;
+    const chartCatalog = buildChartEligibleSymbolNames(
+      [...allowedSymbolNames, ...publicMarketSymbolNames],
+      activeMarketSymbols,
+    );
+    if (chartCatalog.length > 0) return chartCatalog;
     return getAllowedSymbolNames(activeMarketSymbols);
-  }, [activeMarketSymbols, allowedSymbolNames]);
+  }, [activeMarketSymbols, allowedSymbolNames, publicMarketSymbolNames]);
   const tradeEligibleSymbolNames = useMemo(() => {
     if (!activeMarketSymbolsCurrent) return [];
     const fromCatalog = buildTradeEligibleSymbolNames(allowedSymbolNames, activeMarketSymbols);
@@ -1435,6 +1448,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const chartEligibleSymbolSet = useMemo(() => new Set(chartEligibleSymbolNames), [chartEligibleSymbolNames]);
   const tradeEligibleSymbolSet = useMemo(() => new Set(tradeEligibleSymbolNames), [tradeEligibleSymbolNames]);
   const hasLoadedChartSymbols = hasLoadedSymbols
+    || publicMarketSymbolNames.length > 0
     || (activeMarketSymbolsCurrent && activeMarketSymbols.length > 0);
   const hasLoadedTradeSymbols = activeMarketSymbolsSettled
     && activeMarketSymbolsCurrent
@@ -2115,6 +2129,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     url: WS_ENDPOINTS.general,
     autoConnect: isAuthenticated,
   });
+  const refreshDesktopConnection = useCallback(() => {
+    reconnect();
+    getQuoteSocketManager().reconnect();
+    void activeMarketSnapshot.reload();
+  }, [activeMarketSnapshot.reload, reconnect]);
   const accountStreamConnectedRef = useRef(isConnected);
   accountStreamConnectedRef.current = isConnected;
 
@@ -2269,7 +2288,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     console.log(`[App] WebSocket connection state: ${connectionState}, isConnected: ${isConnected}`);
   }, [connectionState, isConnected]);
 
-  // Subscribe to market data through swagger v2 action/channel websocket messages.
+  // Keep only the selected chart's singular v2 channels here. Market Watch owns
+  // visible-row quote demand through QuoteSocketManager batch subscriptions.
   useEffect(() => {
     console.log(`[WS Subscription Effect] isAuthenticated=${isAuthenticated}, isConnected=${isConnected}`);
     if (!isAuthenticated || !isConnected) {
@@ -2280,28 +2300,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const unsubscribers: Array<() => void> = [];
 
     const subscribeTimeout = setTimeout(() => {
-      const activeWatchlist = useWatchlistStore.getState().getActiveWatchlist();
-      const watchlistSymbols = activeWatchlist?.symbols || [];
+      const selected = normalizeSymbolName(selectedSymbol);
+      if (!selected || !chartEligibleSymbolSet.has(selected)) return;
 
-      const symbolsToSubscribe = [...new Set([...watchlistSymbols, selectedSymbol].filter(Boolean))]
-        .map(symbol => String(symbol).trim().toUpperCase())
-        .filter(symbol => Boolean(symbol) && chartEligibleSymbolSet.has(symbol));
-
-      console.log(`[WS] Connected! Subscribing to ${symbolsToSubscribe.length} v2 market channels from watchlist: ${activeWatchlist?.name || 'default'}`);
+      console.log(`[WS] Connected! Subscribing to selected chart channels for ${selected}`);
 
       try {
-        symbolsToSubscribe.forEach(symbol => {
-          unsubscribers.push(subscribe(`ticks.${symbol}`, () => undefined));
-          useMarketDataStore.getState().subscribeSymbol(symbol);
-        });
+        unsubscribers.push(subscribe(`ticks.${selected}`, () => undefined));
+        useMarketDataStore.getState().subscribeSymbol(selected);
+        unsubscribers.push(subscribe(`candles.${selected}.${toV2Timeframe(timeframe as string)}`, () => undefined));
+        unsubscribers.push(subscribe(`depth.${selected}`, () => undefined));
 
-        const selected = normalizeSymbolName(selectedSymbol);
-        if (selected && chartEligibleSymbolSet.has(selected)) {
-          unsubscribers.push(subscribe(`candles.${selected}.${toV2Timeframe(timeframe as string)}`, () => undefined));
-          unsubscribers.push(subscribe(`depth.${selected}`, () => undefined));
-        }
-
-        console.log(`[WS] <<< v2 subscriptions active for ${symbolsToSubscribe.length} symbols`);
+        console.log(`[WS] <<< selected chart v2 subscriptions active for ${selected}`);
       } catch (e) {
         console.error("[WS] Failed to subscribe to v2 market channels:", e);
       }
@@ -2319,8 +2329,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     timeframe,
     chartEligibleSymbolsKey,
     chartEligibleSymbolSet,
-    useWatchlistStore.getState().activeWatchlistId,
-    useWatchlistStore.getState().getActiveWatchlist()?.symbols.join(',')
   ]);
 
   useEffect(() => {
@@ -2951,6 +2959,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     restoredLayoutAccountId,
     selectedSymbol,
   ]);
+  const desktopToolbarSymbol = chartSelectionReadiness.renderedChartSymbol || selectedSymbol;
   const chartSelectionDiagnosticAttributes = getChartSelectionDiagnosticAttributes(chartSelectionReadiness);
   const chartRuntimeReady = shouldMountChartRuntime({
     authenticated: isAuthenticated,
@@ -3533,8 +3542,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             timeframe={timeframe}
             onChartTypeChange={setChartType}
             onTimeframeChange={setTimeframe}
-            symbol={selectedSymbol}
+            symbol={desktopToolbarSymbol}
             marketStatus={selectedMarketStatus}
+            feedStatus={activeMarketSnapshot}
+            onRefreshConnection={refreshDesktopConnection}
             onLoadTemplate={(template) => {
               // Apply chart settings from template
               if (template.chartType) setChartType(template.chartType);
@@ -3548,6 +3559,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
           {/* 2. Main Workspace (Full Area Managed by DockManager) */}
           <div className="flex-1 flex overflow-hidden relative">
+            {isWebDrawingToolsRuntime() && (
+              <>
+                <WebDrawingToolsRail selectedSymbol={selectedSymbol} />
+                <WebDrawingSelectionToolbar />
+              </>
+            )}
             {/* Center Content: Chart + DOM + Account Panel */}
             <div className="flex-1 flex bg-[#0d0d11] relative min-w-0 overflow-hidden">
               {/* Chart Area */}
@@ -3562,6 +3579,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                       chartSymbols={chartEligibleSymbolNames}
                       tradeSymbols={tradeEligibleSymbolNames}
                       activeMarketSnapshot={activeMarketSnapshot}
+                      marketInstrumentsSnapshot={marketInstrumentsSnapshot}
                       selectedSymbol={selectedSymbol}
                       chartRuntimeEnabled={chartRuntimeReady}
                       onSymbolSelect={handleSymbolSelect}

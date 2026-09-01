@@ -422,6 +422,17 @@ export function BottomDock({
         localStorage.setItem('bottomdock-active-tab', activeTab);
     }, [activeTab]);
 
+    useEffect(() => {
+        const handleOpenBottomDockTab = (event: Event) => {
+            const requestedTab = (event as CustomEvent<{ tab?: TabType }>).detail?.tab;
+            if (!requestedTab || !TABS.some(tab => tab.id === requestedTab)) return;
+            setActiveTab(requestedTab);
+        };
+
+        window.addEventListener('rtx:open-bottom-dock-tab', handleOpenBottomDockTab);
+        return () => window.removeEventListener('rtx:open-bottom-dock-tab', handleOpenBottomDockTab);
+    }, []);
+
     // Auto-switch to Trade tab when a trade is executed
     useEffect(() => {
         const handleTradeExecution = () => {

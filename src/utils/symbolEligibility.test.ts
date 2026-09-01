@@ -25,7 +25,7 @@ describe('symbol eligibility helpers', () => {
     ]);
   });
 
-  it('uses the authorized catalog for chart navigation and freshness for trading', () => {
+  it('uses the account and live-feed catalogs for charts but their intersection for trading', () => {
     const instrumentSymbols = ['BTCUSD', 'GBPUSD', 'XAUUSD'];
     const activeFeedSymbols = ['USDJPY', 'NZDJPY', 'BTCUSD'];
 
@@ -33,6 +33,8 @@ describe('symbol eligibility helpers', () => {
       'BTCUSD',
       'GBPUSD',
       'XAUUSD',
+      'USDJPY',
+      'NZDJPY',
     ]);
     expect(buildTradeEligibleSymbolNames(instrumentSymbols, activeFeedSymbols)).toEqual(['BTCUSD']);
   });

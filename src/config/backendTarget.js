@@ -62,6 +62,14 @@ const isWebTargetValue = (value) => {
 
 const isDesktopRuntime = () => {
   if (typeof window === 'undefined') return false;
+  const physicalDesktop = Boolean(
+    window.electron?.window
+    || window.electronAPI
+    || window.location?.protocol === 'file:'
+    || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron'))
+  );
+  if (physicalDesktop) return true;
+
   const config = runtimeConfig();
   const target = String(first(
     config.backendTarget,
@@ -85,9 +93,7 @@ const isDesktopRuntime = () => {
   )).toLowerCase();
   if (isDesktopTargetValue(target) || isDesktopTargetValue(mode)) return true;
   if (isWebTargetValue(target) || isWebTargetValue(mode)) return false;
-  return Boolean(window.electronAPI)
-    || window.location?.protocol === 'file:'
-    || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron'));
+  return false;
 };
 
 const normalizeHttpUrl = (value, fallbackProtocol = 'https') => {
@@ -371,7 +377,11 @@ export const getBackendTarget = () => {
       config.API_HOST,
       config.API_HOST_EXT,
       envValue('VITE_DESKTOP_BACKEND_URL'),
-      envValue('VITE_DIRECT_BACKEND_URL')
+      envValue('VITE_DIRECT_BACKEND_URL'),
+      envValue('VITE_API_HOST'),
+      envValue('VITE_API_HOST_EXT'),
+      envValue('VITE_API_URL'),
+      envValue('VITE_BACKEND_URL')
     )
     : '';
 

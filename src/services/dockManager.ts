@@ -52,6 +52,59 @@ const MIN_PANEL_SIZE = 100;
 const DEFAULT_RATIO = 0.5;
 const DEFAULT_CHART_TIMEFRAME = 'M5';
 const DOCK_LAYOUT_M5_MIGRATION_PREFIX = 'dock-layout-m5-timeframe-v1:';
+const DOCK_LAYOUT_PREVIOUS_DESKTOP_DEFAULT_MIGRATION_PREFIX = 'dock-layout-desktop-mt5-v2:';
+const DOCK_LAYOUT_DESKTOP_WEB_PARITY_MIGRATION_PREFIX = 'dock-layout-desktop-web-parity-v3:';
+const DESKTOP_WEB_PARITY_RATIOS = { sidebar: 0.20, chart: 0.75 } as const;
+const PREVIOUS_DESKTOP_DEFAULT_RATIOS = {
+  topMain: 0.657,
+  toolbox: 0.343,
+  sidebar: 0.184,
+  chart: 0.816,
+} as const;
+
+const ratioMatches = (value: unknown, expected: number): boolean => (
+  typeof value === 'number' && Math.abs(value - expected) < 0.0001
+);
+
+const getPreviousDesktopDefaultParts = (root: any): {
+  leftSidebar: any;
+  chartArea: any;
+  toolbox: any;
+} | null => {
+  const rootChildren = Array.isArray(root?.children) ? root.children : [];
+  const topMain = rootChildren[0];
+  const toolbox = rootChildren[1];
+  const topMainChildren = Array.isArray(topMain?.children) ? topMain.children : [];
+  const leftSidebar = topMainChildren[0];
+  const chartArea = topMainChildren[1];
+  const sidebarChildren = Array.isArray(leftSidebar?.children) ? leftSidebar.children : [];
+
+  const matchesPreviousDefault = (
+    root?.direction === 'vertical'
+    && rootChildren.length === 2
+    && topMain?.id === 'desktop-top-main'
+    && topMain?.direction === 'horizontal'
+    && ratioMatches(topMain?.ratio, PREVIOUS_DESKTOP_DEFAULT_RATIOS.topMain)
+    && topMainChildren.length === 2
+    && leftSidebar?.id === 'left-sidebar'
+    && leftSidebar?.direction === 'vertical'
+    && ratioMatches(leftSidebar?.ratio, PREVIOUS_DESKTOP_DEFAULT_RATIOS.sidebar)
+    && sidebarChildren.length === 2
+    && sidebarChildren[0]?.id === 'market-watch'
+    && sidebarChildren[0]?.component === 'MarketWatch'
+    && ratioMatches(sidebarChildren[0]?.ratio, 0.5)
+    && sidebarChildren[1]?.id === 'navigator'
+    && sidebarChildren[1]?.component === 'Navigator'
+    && ratioMatches(sidebarChildren[1]?.ratio, 0.5)
+    && chartArea?.component === 'Chart'
+    && ratioMatches(chartArea?.ratio, PREVIOUS_DESKTOP_DEFAULT_RATIOS.chart)
+    && toolbox?.id === 'toolbox'
+    && toolbox?.component === 'Terminal'
+    && ratioMatches(toolbox?.ratio, PREVIOUS_DESKTOP_DEFAULT_RATIOS.toolbox)
+  );
+
+  return matchesPreviousDefault ? { leftSidebar, chartArea, toolbox } : null;
+};
 
 export class DockManager {
   private layout: DockLayout;
@@ -810,6 +863,41 @@ export class DockManager {
           }
 
           localStorage.setItem(migrationKey, '1');
+        }
+
+        const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
+        const desktopMigrationKey = `${DOCK_LAYOUT_DESKTOP_WEB_PARITY_MIGRATION_PREFIX}${key}`;
+        if (isDesktopShell && localStorage.getItem(desktopMigrationKey) !== '1') {
+          const root = this.layout.root as any;
+          const previousDesktopMigrationKey = `${DOCK_LAYOUT_PREVIOUS_DESKTOP_DEFAULT_MIGRATION_PREFIX}${key}`;
+          const previousDefaultParts = localStorage.getItem(previousDesktopMigrationKey) === '1'
+            ? getPreviousDesktopDefaultParts(root)
+            : null;
+
+          // Migrate only the exact v2 Electron default. Custom user layouts are
+          // left untouched, while existing panels/props/floating state are
+          // reused so the change is purely structural.
+          if (previousDefaultParts) {
+            const { leftSidebar, chartArea, toolbox } = previousDefaultParts;
+            leftSidebar.ratio = DESKTOP_WEB_PARITY_RATIOS.sidebar;
+            chartArea.ratio = DESKTOP_WEB_PARITY_RATIOS.chart;
+            toolbox.ratio = 1 - DESKTOP_WEB_PARITY_RATIOS.chart;
+            root.direction = 'horizontal';
+            root.children = [
+              leftSidebar,
+              {
+                id: 'center-main',
+                type: 'split',
+                direction: 'vertical',
+                ratio: 1 - DESKTOP_WEB_PARITY_RATIOS.sidebar,
+                children: [chartArea, toolbox],
+              },
+            ];
+
+            localStorage.setItem(key, JSON.stringify(this.layout));
+          }
+
+          localStorage.setItem(desktopMigrationKey, '1');
         }
 
         this.notify();

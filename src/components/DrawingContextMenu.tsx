@@ -104,7 +104,12 @@ interface DrawingContextMenuProps {
 type SubPanel = null | 'color' | 'style';
 
 export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose }) => {
-    const [menuState, setMenuState] = useState<{ x: number; y: number; drawingId: string } | null>(null);
+    const [menuState, setMenuState] = useState<{
+        x: number;
+        y: number;
+        drawingId: string;
+        contextId?: string;
+    } | null>(null);
     const [subPanel, setSubPanel] = useState<SubPanel>(null);
 
     // Local copies of drawing properties for the style sub-panel
@@ -128,6 +133,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                 x: e.detail.x,
                 y: e.detail.y,
                 drawingId: e.detail.drawingId,
+                contextId: e.detail.contextId,
             });
         };
 
@@ -179,6 +185,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
             currentDrawing.lineWidth = opts.lineWidth;
             setLocalWidth(opts.lineWidth);
         }
+        drawingManager.persistCurrentContext(menuState.contextId);
         drawingManager.saveToBackend(currentDrawing);
         drawingManager.renderAllDrawings();
     };

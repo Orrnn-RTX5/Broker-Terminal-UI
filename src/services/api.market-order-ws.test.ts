@@ -291,10 +291,12 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
   });
 
-  it('falls back after a retryable transport failure with the exact same client_order_id', async () => {
-    const transportError = Object.assign(new Error('Trade socket closed before the order completed'), {
+  it('falls back only when the WebSocket order was definitely not sent, preserving client_order_id', async () => {
+    const transportError = Object.assign(new Error('Trade socket changed before the order could be sent'), {
       name: 'TradeSocketTransportError',
+      code: 'WS_NOT_READY',
       retryable: true,
+      orderWasSent: false,
       clientOrderId: CLIENT_ORDER_ID,
     });
     mocks.wsPlaceOrder.mockRejectedValue(transportError);
@@ -319,9 +321,32 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     const sessionScope = mocks.wsPlaceOrder.mock.calls[0][2]?.sessionScope;
     expect(sessionScope).toEqual(expect.any(String));
     expect(getTradeOrderLatencySamples()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ phase: 'rest_started', reason: 'ws_transport_failure', sessionScope }),
-      expect.objectContaining({ phase: 'rest_completed', reason: 'ws_transport_failure', sessionScope, restRttMs: expect.any(Number) }),
+      expect.objectContaining({ phase: 'rest_started', reason: 'ws_not_ready', sessionScope }),
+      expect.objectContaining({ phase: 'rest_completed', reason: 'ws_not_ready', sessionScope, restRttMs: expect.any(Number) }),
     ]));
+  });
+
+  it('never creates again through REST after the WebSocket order was sent but status is unknown', async () => {
+    const uncertainError = Object.assign(new Error(
+      'The order was sent, but its final status could not be confirmed.',
+    ), {
+      name: 'TradeSocketTransportError',
+      code: 'ORDER_STATUS_TIMEOUT',
+      retryable: false,
+      orderWasSent: true,
+      clientOrderId: CLIENT_ORDER_ID,
+    });
+    mocks.wsPlaceOrder.mockRejectedValue(uncertainError);
+
+    await expect(api.orders.placeMarketOrder(inputOrder)).rejects.toBe(uncertainError);
+
+    expect(extractWsClientOrderId()).toBe(CLIENT_ORDER_ID);
+    expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
+    expect(onNewTrade).not.toHaveBeenCalled();
+    expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
+      'pending',
+      'failed',
+    ]);
   });
 
   it('uses REST immediately when the trade socket is closed', async () => {

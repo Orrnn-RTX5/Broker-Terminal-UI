@@ -35,6 +35,7 @@
   --color-warning-dim:    #c9963a30;
   --color-info:           #7aacca;
   --color-info-dim:       #7aacca30;
+  --drawing-tool-accent:  #2962ff;
 
   /* === Text (pure grays — no blue tint) === */
   --text-primary:    #e2e2e8;   /* Near-white, neutral */
@@ -218,6 +219,128 @@ body {
 
 .rtx-top-chrome {
   background: var(--bg-secondary);
+}
+
+/* === Primary chart command strip === */
+.rtx-toolbar-command-cluster,
+.rtx-toolbar-group {
+  gap: 2px;
+}
+
+.rtx-toolbar-action,
+.rtx-toolbar-icon-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  color: var(--color-zinc-400, #a1a1aa);
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.rtx-toolbar-action {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  gap: 6px;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.rtx-toolbar-action__icon {
+  align-items: center;
+  color: currentColor;
+  display: inline-flex;
+  flex: 0 0 20px;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.rtx-toolbar-action--primary {
+  background: var(--bg-tertiary);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.rtx-toolbar-action--primary .rtx-toolbar-action__icon {
+  color: var(--color-blue-300, #93c5fd);
+}
+
+.rtx-toolbar-icon-button {
+  flex: 0 0 32px;
+  padding: 0;
+  width: 32px;
+}
+
+.rtx-toolbar-action:hover,
+.rtx-toolbar-action:focus-visible,
+.rtx-toolbar-icon-button:hover,
+.rtx-toolbar-icon-button:focus-visible {
+  background: var(--bg-quaternary);
+  border-color: var(--border-secondary);
+  color: var(--color-zinc-100, #f4f4f5);
+}
+
+.rtx-toolbar-action--primary:hover,
+.rtx-toolbar-action--primary:focus-visible {
+  border-color: var(--border-tertiary);
+}
+
+.rtx-toolbar-action:focus-visible,
+.rtx-toolbar-icon-button:focus-visible {
+  outline: 2px solid var(--color-info);
+  outline-offset: -2px;
+}
+
+.rtx-toolbar-action[aria-pressed='true'],
+.rtx-toolbar-icon-button[aria-pressed='true'],
+.rtx-toolbar-icon-button[aria-checked='true'] {
+  background: var(--color-info-dim);
+  border-color: var(--border-tertiary);
+  box-shadow: inset 0 -2px 0 var(--color-info);
+  color: var(--color-blue-300, #93c5fd);
+}
+
+.rtx-toolbar-symbol-badge {
+  align-items: center;
+  background: var(--bg-quaternary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+  height: 18px;
+  justify-content: center;
+  letter-spacing: 0.025em;
+  line-height: 16px;
+  min-width: 38px;
+  padding: 0 5px;
+}
+
+.rtx-toolbar-action[aria-pressed='true'] .rtx-toolbar-action__icon,
+.rtx-toolbar-action[aria-pressed='true'] .rtx-toolbar-symbol-badge {
+  color: var(--color-blue-300, #93c5fd);
+}
+
+.rtx-toolbar-action[aria-pressed='true'] .rtx-toolbar-symbol-badge {
+  background: var(--bg-secondary);
+  border-color: var(--border-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtx-toolbar-action,
+  .rtx-toolbar-icon-button {
+    transition: none;
+  }
 }
 
 button,
@@ -525,6 +648,242 @@ textarea {
   height: 1px;
   background: var(--border-primary);
   margin: var(--space-1) 0;
+}
+
+/* === Application launcher and shared menu surfaces === */
+.rtx-application-menu-trigger {
+  color: var(--text-secondary);
+  border-radius: 2px;
+}
+
+.rtx-application-menu-trigger:hover,
+.rtx-application-menu-trigger:focus-visible,
+.rtx-application-menu-trigger.is-open {
+  background: var(--bg-quaternary);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
+}
+
+.rtx-application-menu-trigger:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.rtx-application-menu,
+.rtx-menu-surface {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  box-shadow: var(--shadow-xl);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.rtx-application-menu {
+  animation: rtx-application-menu-enter 120ms ease-out;
+  transform-origin: top left;
+}
+
+.rtx-application-menu__account {
+  align-items: center;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  min-height: 62px;
+  padding: 10px 13px;
+  position: relative;
+}
+
+.rtx-application-menu__account-title {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 20px;
+  padding-right: 62px;
+}
+
+.rtx-application-menu__account-meta {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: var(--font-weight-normal);
+  line-height: 18px;
+}
+
+.rtx-application-menu__status {
+  align-items: center;
+  border: 1px solid var(--color-profit-dim);
+  border-radius: 999px;
+  color: var(--color-profit);
+  display: inline-flex;
+  flex: none;
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  gap: 4px;
+  line-height: 18px;
+  padding: 0 6px;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+}
+
+.rtx-application-menu__status.is-live {
+  border-color: var(--color-warning-dim);
+  color: var(--color-warning);
+}
+
+.rtx-application-menu__items {
+  padding: 4px 0;
+}
+
+.rtx-application-menu__root-item {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--text-primary);
+  display: flex;
+  font-size: 14px;
+  font-weight: var(--font-weight-normal);
+  gap: 10px;
+  min-height: 38px;
+  outline: none;
+  padding: 7px 10px;
+  text-align: left;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  width: 100%;
+}
+
+.rtx-application-menu__root-item:hover,
+.rtx-application-menu__root-item:focus-visible,
+.rtx-application-menu__root-item.is-active {
+  background: var(--bg-quaternary);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.rtx-application-menu__root-item:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.rtx-application-menu__root-icon {
+  align-items: center;
+  color: var(--text-secondary);
+  display: inline-flex;
+  flex: 0 0 20px;
+  justify-content: center;
+}
+
+.rtx-application-menu__root-item:hover .rtx-application-menu__root-icon,
+.rtx-application-menu__root-item:focus-visible .rtx-application-menu__root-icon,
+.rtx-application-menu__root-item.is-active .rtx-application-menu__root-icon {
+  color: var(--text-primary);
+}
+
+.rtx-application-menu__chevron,
+.rtx-menu-row__chevron {
+  color: var(--text-secondary);
+}
+
+.rtx-application-menu__divider,
+.rtx-menu-divider {
+  background: var(--border-primary);
+  height: 1px;
+  margin: 2px 12px;
+}
+
+.rtx-menu-row {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--text-primary);
+  display: flex;
+  font-size: 14px;
+  font-weight: var(--font-weight-normal);
+  gap: 10px;
+  min-height: 32px;
+  outline: none;
+  padding: 5px 8px;
+  text-align: left;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  width: 100%;
+}
+
+.rtx-menu-row:not(.is-disabled):hover,
+.rtx-menu-row:not(.is-disabled):focus-visible,
+.rtx-menu-row.is-open {
+  background: var(--bg-quaternary);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.rtx-menu-row:not(.is-disabled):focus-visible {
+  border-color: var(--color-primary);
+}
+
+.rtx-menu-row.is-disabled {
+  color: var(--text-quaternary);
+}
+
+.rtx-menu-row__icon {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  flex: 0 0 16px;
+  height: 16px;
+  justify-content: center;
+  line-height: 1;
+}
+
+.rtx-menu-row__shortcut {
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--font-weight-normal);
+}
+
+.rtx-menu-row__check {
+  color: var(--color-info);
+}
+
+.rtx-file-menu button:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.rtx-file-menu button:not(:disabled):hover,
+.rtx-file-menu button:not(:disabled):focus-visible {
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
+}
+
+.rtx-file-menu button:disabled {
+  color: var(--text-quaternary);
+}
+
+.rtx-file-menu button.text-rose-400 {
+  color: var(--color-loss);
+}
+
+.rtx-application-menu button:active,
+.rtx-menu-surface button:active {
+  transform: none;
+}
+
+@keyframes rtx-application-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtx-application-menu {
+    animation: none;
+  }
 }
 
 /* === Tooltip === */
@@ -853,4 +1212,469 @@ html.rtx-advanced-view .price-display[data-size="sm"] .price-big {
 
 html.rtx-advanced-view .price-display[data-size="lg"] .price-big {
     font-size: 14px;
+}
+
+/* === Electron-only MetaTrader desktop chrome === */
+html.rtx-desktop-shell-active .rtx-top-chrome {
+  background: #f2f2f2;
+  border-bottom: 1px solid #aeb3b8;
+  box-shadow: none;
+  color: #202124;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-main-toolbar {
+  width: 100%;
+  background: #f2f2f2;
+  color: #202124;
+  border: 0;
+  box-shadow: none;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-menu-row {
+  background: #f8f8f8;
+  border-bottom: 1px solid #c7c9cc;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-menu-bar {
+  color: #202124;
+  font-family: "Segoe UI", var(--font-sans);
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-menu-bar .rtx-application-menu-trigger {
+  height: 20px;
+  background: transparent;
+  color: #202124;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-menu-bar .rtx-application-menu-trigger:hover,
+html.rtx-desktop-shell-active .rtx-desktop-menu-bar .rtx-application-menu-trigger:focus-visible,
+html.rtx-desktop-shell-active .rtx-desktop-menu-bar .rtx-application-menu-trigger.is-open {
+  background: #dce9f8;
+  border-color: #8fb4df;
+  color: #0b4f91;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-menu-items > div > [role='menu'] {
+  max-height: calc(100vh - 104px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) {
+  background: #f0f0f0;
+  color: #202124;
+  border-bottom: 1px solid #c7c9cc;
+}
+
+html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) button {
+  color: #374151 !important;
+  border-color: transparent;
+  border-radius: 1px;
+  box-shadow: none;
+}
+
+html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) button:hover,
+html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) button:focus-visible {
+  background: #dce9f8 !important;
+  border-color: #8fb4df !important;
+  color: #0b4f91 !important;
+}
+
+html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) button[aria-pressed='true'],
+html.rtx-desktop-shell-active .rtx-timeframe-option[aria-checked='true'] {
+  background: #c9def5 !important;
+  border-color: #6e9fd4 !important;
+  color: #064b8e !important;
+}
+
+html.rtx-desktop-shell-active .rtx-toolbar-action,
+html.rtx-desktop-shell-active .rtx-toolbar-icon-button {
+  background: transparent !important;
+  color: #30343a !important;
+  font-family: "Segoe UI", var(--font-sans);
+}
+
+html.rtx-desktop-shell-active .rtx-toolbar-action--primary {
+  background: #ffffff !important;
+  border-color: #c1c4c8 !important;
+  color: #202124 !important;
+}
+
+html.rtx-desktop-shell-active .rtx-toolbar-icon-button[aria-checked='true'] {
+  background: #c9def5 !important;
+  border-color: #6e9fd4 !important;
+  box-shadow: inset 0 -2px 0 #0b4f91;
+  color: #064b8e !important;
+}
+
+html.rtx-desktop-shell-active .rtx-toolbar-symbol-badge {
+  background: #ffffff;
+  border-color: #c7c9cc;
+  color: #4b5563;
+}
+
+html.rtx-desktop-shell-active .rtx-toolbar-action[aria-pressed='true'] .rtx-toolbar-symbol-badge {
+  background: #ffffff;
+  border-color: #6e9fd4;
+  color: #064b8e;
+}
+
+html.rtx-desktop-shell-active .rtx-timeframe-option {
+  height: 30px;
+  min-width: 34px;
+  padding-inline: 7px;
+  background: transparent !important;
+  color: #30343a !important;
+  font-size: 12px;
+}
+
+html.rtx-desktop-shell-active .rtx-mt5-divider {
+  width: 1px;
+  height: 24px;
+  margin-inline: 4px;
+  background: #c1c4c8;
+  visibility: visible;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-command-scroll {
+  scrollbar-width: none;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-command-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-command-actions {
+  gap: 1px;
+  padding: 0 5px 0 4px;
+  border-left: 1px solid #c1c4c8;
+  background: #f0f0f0;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-button {
+  position: relative;
+  display: inline-flex;
+  width: 27px;
+  height: 30px;
+  flex: 0 0 27px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #374151 !important;
+  line-height: 1;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-button--split-main {
+  width: 25px;
+  flex-basis: 25px;
+  border-right: 0;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-button--split-arrow {
+  width: 11px;
+  flex-basis: 11px;
+  border-left: 0;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-divider {
+  width: 1px;
+  height: 20px;
+  flex: 0 0 1px;
+  margin: 0 4px;
+  background: #c1c4c8;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-account-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  min-width: 11px;
+  height: 11px;
+  padding: 0 2px;
+  place-items: center;
+  border-radius: 999px;
+  background: #ef3340;
+  color: #ffffff;
+  font-family: "Segoe UI", var(--font-sans);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-security-indicator {
+  display: inline-flex;
+  width: 20px;
+  height: 30px;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  color: #828991;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-security-indicator.is-secure {
+  color: #059669;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-security-indicator.is-insecure {
+  color: #dc2626;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-security-indicator.is-pending {
+  color: #b7791f;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-security-indicator.is-offline {
+  color: #828991;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-connection-button {
+  display: inline-flex;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 1px;
+  padding: 0 1px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-ping-indicator {
+  display: flex;
+  width: 42px;
+  height: 13px;
+  flex: 0 0 42px;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid #6b7280;
+  background: #16181d;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-ping-indicator__fill {
+  width: var(--rtx-desktop-feed-level, 0%);
+  background: #7b8490;
+  transition: width 160ms ease-out, background-color 160ms ease-out;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-live .rtx-desktop-ping-indicator__fill {
+  background: #10b981;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-checking {
+  border-color: #b7791f;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-checking .rtx-desktop-ping-indicator__fill {
+  background: #d69e2e;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-silent {
+  border-color: #c05621;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-silent .rtx-desktop-ping-indicator__fill {
+  background: #dd6b20;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-unverified {
+  border-color: #828991;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-offline {
+  border-color: #dc2626;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu {
+  overflow: hidden;
+  border: 1px solid #9da3aa;
+  border-radius: 1px;
+  background: #ffffff;
+  color: #202124;
+  box-shadow: 2px 3px 8px rgb(0 0 0 / 24%);
+  font-family: "Segoe UI", var(--font-sans);
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__heading {
+  padding: 4px 10px 3px;
+  color: #626871;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item {
+  display: flex;
+  width: 100%;
+  min-height: 29px;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #202124;
+  font-size: 13px;
+  text-align: left;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item:hover,
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item:focus-visible {
+  background: #dce9f8;
+  color: #0b4f91;
+  outline: none;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item--danger {
+  color: #c0262d;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__separator {
+  height: 1px;
+  margin: 4px 7px;
+  background: #d5d7da;
+}
+
+html.rtx-desktop-shell-active :is(.rtx-desktop-quick-menu__account, .rtx-desktop-quick-menu__connection) {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px 6px;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__connection .rtx-desktop-security-indicator {
+  height: 24px;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__detail {
+  display: flex;
+  min-height: 25px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 10px;
+  color: #626871;
+  font-size: 12px;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__detail strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #202124;
+  font-family: Consolas, monospace;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.rtx-desktop-shell-active .left-drawing-toolbar--horizontal {
+  background: transparent;
+  color: #374151;
+}
+
+html.rtx-desktop-shell-active .left-drawing-toolbar--horizontal .left-drawing-toolbar__button[data-active='true'] {
+  background: #c9def5;
+  color: #064b8e;
+}
+
+html.rtx-desktop-shell-active :is(.rtx-menu-surface, .rtx-file-menu) {
+  background: #ffffff !important;
+  border-color: #9da3aa !important;
+  border-radius: 1px !important;
+  color: #202124 !important;
+  box-shadow: 2px 3px 8px rgb(0 0 0 / 24%) !important;
+}
+
+html.rtx-desktop-shell-active :is(.trend-tools-menu, .rtx-drawing-operations__menu) {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-secondary) !important;
+  border-radius: 1px !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+/* Portaled action sheets sit outside the toolbar tree. The explicit Electron
+   class keeps their solid native surface independent of portal placement. */
+.rtx-drawing-operations__menu--desktop {
+  background: var(--bg-elevated) !important;
+  border-color: var(--border-secondary) !important;
+  border-radius: 1px !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+.rtx-drawing-operations__menu--desktop .rtx-drawing-operations__item {
+  color: var(--text-primary) !important;
+}
+
+.rtx-drawing-operations__menu--desktop .rtx-drawing-operations__item:hover,
+.rtx-drawing-operations__menu--desktop .rtx-drawing-operations__item:focus-visible {
+  background: var(--bg-quaternary) !important;
+  color: var(--text-primary) !important;
+}
+
+html.rtx-desktop-shell-active .rtx-menu-row {
+  color: #202124 !important;
+}
+
+html.rtx-desktop-shell-active :is(.trend-tools-menu__item, .rtx-drawing-operations__item) {
+  color: var(--text-primary) !important;
+}
+
+html.rtx-desktop-shell-active .rtx-menu-row:hover,
+html.rtx-desktop-shell-active .rtx-menu-row:focus-visible {
+  background: #dce9f8 !important;
+  border-color: transparent !important;
+  color: #0b4f91 !important;
+}
+
+html.rtx-desktop-shell-active :is(.trend-tools-menu__item, .rtx-drawing-operations__item):hover,
+html.rtx-desktop-shell-active :is(.trend-tools-menu__item, .rtx-drawing-operations__item):focus-visible {
+  background: var(--bg-quaternary) !important;
+  border-color: transparent !important;
+  color: var(--text-primary) !important;
+}
+
+html.rtx-desktop-shell-active .rtx-menu-divider {
+  background: #d5d7da !important;
+}
+
+html.rtx-desktop-shell-active .trend-tools-menu__separator {
+  background: var(--border-primary) !important;
+}
+
+html.rtx-desktop-shell-active .trend-tools-menu__heading {
+  color: var(--text-tertiary);
+}
+
+html.rtx-desktop-shell-active .trend-tools-menu__item[data-selected='true'] {
+  background: var(--color-info-dim) !important;
+  color: var(--color-info) !important;
+}
+
+html.rtx-desktop-shell-active .trend-tools-menu__item[data-selected='true'] svg {
+  color: var(--color-info) !important;
+}
+
+html.rtx-desktop-shell-active .rtx-dock-workspace {
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+html.rtx-desktop-shell-active .rtx-status-bar {
+  background: #f4f4f4 !important;
+  border-top-color: #aeb3b8 !important;
+  color: #202124 !important;
+}
+
+html.rtx-desktop-shell-active .rtx-status-bar :is(span, button) {
+  color: #202124 !important;
+}
+
+@media (max-width: 1200px) {
+  html.rtx-desktop-shell-active .rtx-desktop-command-scroll {
+    overflow-x: auto;
+  }
 }

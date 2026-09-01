@@ -1,12 +1,9 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Icon } from '../ui/Icon';
+import { Icon, type IconName } from '../ui/Icon';
 import type { ChartType, Timeframe } from '../TradingChart';
 import {
-    FileText, TrendingUp, BarChart2, CandlestickChart, LineChart, AreaChart,
-    ZoomIn, ZoomOut, Camera,
-    GitCommitHorizontal, RefreshCw,
-    LayoutPanelTop, SlidersHorizontal,
+    Camera, GitCommitHorizontal, SlidersHorizontal,
     Minus, Square, Copy, X
 } from 'lucide-react';
 import { useToolbarState } from '../../hooks/useToolbarState';
@@ -15,6 +12,7 @@ import { SHORTCUT_CATEGORIES } from '../../services/keyboardShortcutManager';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { Command } from '../../types/commands';
 import { useAppStore } from '../../store/useAppStore';
+import { useWebSocketStore } from '../../store/useWebSocketStore';
 import { useLastSymbolStore } from '../../store/useLastSymbolStore';
 import {
     defaultChartProperties,
@@ -23,6 +21,8 @@ import {
 } from '../../store/useChartSettingsStore';
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
 import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
+import { buildBrokerWsFeedUri } from '../../services/brokerSession';
+import type { DesktopFeedSnapshot, DesktopTransportSecurity } from './desktopToolbarStatus';
 
 interface TopToolbarProps {
     chartType: ChartType;
@@ -30,13 +30,16 @@ interface TopToolbarProps {
     onChartTypeChange: (type: ChartType) => void;
     onTimeframeChange: (tf: Timeframe) => void;
     onToggleDOM?: () => void;
-    symbol?: string;
+    symbol: string;
     marketStatus?: NormalizedMarketStatus & { loading?: boolean };
+    feedStatus: DesktopFeedSnapshot;
+    onRefreshConnection: () => void;
     onLoadTemplate?: (template: any) => void;
 }
 
 import { MenuBar } from './MenuBar';
 import { TimeframePicker } from './TimeframePicker';
+import { DesktopQuickActions } from './DesktopQuickActions';
 import { ChartTemplateManager } from '../ChartTemplateManager';
 import { indicatorManager } from '../../services/indicatorManager';
 import { drawingManager } from '../../services/drawingManager';
@@ -69,7 +72,9 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     onChartTypeChange,
     onTimeframeChange,
     onToggleDOM,
-    symbol = 'BTCUSD',
+    symbol,
+    feedStatus,
+    onRefreshConnection,
     onLoadTemplate
 }) => {
     const { state: toolbarState, dispatch: dispatchToolbar } = useToolbarState();
@@ -205,6 +210,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 dispatchCommand={dispatchCommand}
                 dispatchToolbar={dispatchToolbar}
                 symbol={symbol}
+                feedStatus={feedStatus}
+                onRefreshConnection={onRefreshConnection}
                 onLoadTemplate={onLoadTemplate}
             />
 
@@ -360,8 +367,12 @@ const MainToolbar = ({
     dispatchCommand,
     dispatchToolbar,
     symbol,
+    feedStatus,
+    onRefreshConnection,
     onLoadTemplate
 }: MainToolbarProps) => {
+
+    const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
 
     const [showHistoryOverlayMenu, setShowHistoryOverlayMenu] = useState(false);
     const [advancedViewEnabled, setAdvancedViewEnabled] = useState(() => {
@@ -374,7 +385,20 @@ const MainToolbar = ({
     const [advancedOptions, setAdvancedOptions] = useState<AdvancedViewOptions>(loadAdvancedOptions);
     const historyOverlayRef = useRef<HTMLDivElement>(null);
     const historyOverlayDropdownRef = useRef<HTMLDivElement>(null);
-    const accountId = useAppStore((s) => s.accountId) || '---';
+    const accountId = useAppStore((s) => s.accountId) || '';
+    const savedAccounts = useAppStore((s) => s.savedAccounts);
+    const connectionState = useWebSocketStore((s) => s.fixConnectionState);
+    const lastSymbol = useLastSymbolStore((state) => state.lastSymbol);
+    const lastSymbolPanelVisible = useLastSymbolStore((state) => state.panelVisible);
+    const toggleLastSymbolPanel = useLastSymbolStore((state) => state.togglePanel);
+    const activeSavedAccount = savedAccounts.find((account) => String(account.login) === accountId);
+    const savedAccountCount = new Set(savedAccounts.map((account) => account.login)).size;
+    const feedSocketUrl = buildBrokerWsFeedUri();
+    const transportSecurity: DesktopTransportSecurity = !feedSocketUrl
+        ? 'unknown'
+        : /^wss:/i.test(feedSocketUrl)
+            ? 'secure'
+            : 'insecure';
     const tradeHistorySettings = useChartSettingsStore((state) => state.symbolProperties[symbol] || state.globalProperties);
 
     const themeSuppressionCleanupRef = useRef<(() => void) | null>(null);
@@ -480,62 +504,89 @@ const MainToolbar = ({
         window.dispatchEvent(new CustomEvent('rtx:logout'));
     };
 
+    const menuBar = (
+        <MenuBar
+            advancedViewEnabled={advancedViewEnabled}
+            advancedFontSize={advancedOptions.fontSize}
+            focusChart={advancedOptions.focusChart}
+            activeDrawingTool={toolbarState.activeTool}
+            crosshairEnabled={toolbarState.crosshairEnabled}
+            accountId={accountId}
+            onSetAdvancedViewEnabled={setAdvancedViewEnabled}
+            onSetAdvancedFontSize={(fontSize) => updateAdvancedOptions({ fontSize })}
+            onSetFocusChart={(focusChart) => updateAdvancedOptions({ focusChart })}
+            onLogout={handleLogout}
+        />
+    );
+
     return (
         <div
-            className="rtx-main-toolbar flex h-[40px] items-center bg-[#131316] border-b border-white/10 shadow-sm select-none"
-            style={window.electron?.window ? ({ WebkitAppRegion: 'drag' } as React.CSSProperties) : undefined}
+            className={isDesktopShell
+                ? 'rtx-main-toolbar rtx-desktop-main-toolbar flex shrink-0 flex-col select-none'
+                : 'rtx-main-toolbar flex h-[40px] items-center bg-[#131316] border-b border-white/10 shadow-sm select-none'}
+            style={undefined}
         >
-            <MenuBar
-                advancedViewEnabled={advancedViewEnabled}
-                advancedFontSize={advancedOptions.fontSize}
-                focusChart={advancedOptions.focusChart}
-                activeDrawingTool={toolbarState.activeTool}
-                crosshairEnabled={toolbarState.crosshairEnabled}
-                accountId={accountId}
-                onSetAdvancedViewEnabled={setAdvancedViewEnabled}
-                onSetAdvancedFontSize={(fontSize) => updateAdvancedOptions({ fontSize })}
-                onSetFocusChart={(focusChart) => updateAdvancedOptions({ focusChart })}
-                onLogout={handleLogout}
-            />
-            <MT5Divider />
+            {isDesktopShell && (
+                <div
+                    className="rtx-desktop-menu-row flex h-[21px] w-full shrink-0 items-center"
+                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                >
+                    {menuBar}
+                </div>
+            )}
+            {!isDesktopShell && menuBar}
+            {!isDesktopShell && <MT5Divider />}
             <div
-                className="flex min-w-0 flex-1 self-stretch items-center overflow-x-auto px-1.5 no-scrollbar"
+                className={isDesktopShell
+                    ? 'rtx-desktop-command-row flex h-[32px] min-w-0 w-full shrink-0 items-center overflow-hidden'
+                    : 'flex min-w-0 flex-1 self-stretch items-center overflow-x-auto px-1.5 no-scrollbar'}
+                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
+            <div className={isDesktopShell
+                ? 'rtx-desktop-command-scroll flex min-w-0 flex-1 self-stretch items-center overflow-x-auto px-1 no-scrollbar'
+                : 'contents'}>
             <div
-                className="flex shrink-0 items-center gap-[2px]"
+                className="rtx-toolbar-command-cluster flex shrink-0 items-center"
+                role="toolbar"
+                aria-label="Chart commands"
                 style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
             {/* New Order & Last Symbol */}
-            <MT5Group>
+            <MT5Group label="Trading shortcuts">
 
                 <button
-                    className="flex items-center gap-1.5 px-2.5 h-[32px] rounded-[3px] bg-transparent border border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-[14px] font-normal text-zinc-300 hover:text-blue-300 transition-all font-segoe"
+                    type="button"
+                    className="rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-semibold font-segoe"
                     title="New Order (F9)"
+                    aria-label="New Order (F9)"
                     onClick={() => {
                         window.dispatchEvent(new CustomEvent('openNewOrder'));
                     }}
                 >
-                    <FileText size={16} strokeWidth={1.5} className="text-blue-400" />
-                    <span>New Order</span>
+                    <span className="rtx-toolbar-action__icon" aria-hidden="true">
+                        <Icon name="new-order" size={20} />
+                    </span>
+                    <span className="rtx-toolbar-action__label">New Order</span>
                 </button>
 
                 {/* Last Symbol Trader Toggle */}
                 <button
-                    className={`flex items-center gap-1.5 px-2.5 h-[32px] rounded-[3px] border text-[14px] font-normal transition-all font-segoe ${useLastSymbolStore.getState().panelVisible
-                        ? 'bg-blue-500/15 border-blue-500/30 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
-                        : 'bg-transparent border-transparent hover:border-blue-500/20 hover:bg-blue-500/10 text-zinc-300 hover:text-blue-300'
-                        }`}
+                    type="button"
+                    className="rtx-toolbar-action rtx-toolbar-action--last-symbol text-[13px] font-semibold font-segoe"
                     title="Last Symbol Trader Panel (Shift+B/S/X)"
-                    onClick={() => useLastSymbolStore.getState().togglePanel()}
+                    aria-label={lastSymbol
+                        ? `Last Symbol Trader Panel: ${lastSymbol} (Shift+B/S/X)`
+                        : 'Last Symbol Trader Panel (Shift+B/S/X)'}
+                    aria-pressed={lastSymbolPanelVisible}
+                    onClick={toggleLastSymbolPanel}
                 >
-                    <TrendingUp size={16} strokeWidth={1.5} />
-                    <span>Last Symbol</span>
-                    {useLastSymbolStore.getState().lastSymbol && (
-                        <span className={`px-1 py-0.5 rounded text-[9px] font-mono font-bold ${useLastSymbolStore.getState().panelVisible
-                            ? 'bg-blue-500/25 text-blue-300'
-                            : 'bg-zinc-800 text-zinc-400 group-hover:bg-blue-500/20 group-hover:text-blue-300'
-                            }`}>
-                            {useLastSymbolStore.getState().lastSymbol}
+                    <span className="rtx-toolbar-action__icon" aria-hidden="true">
+                        <Icon name="activity" size={20} />
+                    </span>
+                    <span className="rtx-toolbar-action__label">Last Symbol</span>
+                    {lastSymbol && (
+                        <span className="rtx-toolbar-symbol-badge" aria-hidden="true">
+                            {lastSymbol}
                         </span>
                     )}
                 </button>
@@ -544,35 +595,35 @@ const MainToolbar = ({
             <MT5Divider />
 
             {/* Group 3: Chart Types */}
-            <MT5Group>
-                <MT5Btn icon={<BarChart2 size={16} strokeWidth={1.5} />} title="Bar Chart" active={toolbarState.chartType === 'bar'} onClick={() => { onChartTypeChange('bar'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'bar' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar' } }); }} />
-                <MT5Btn icon={<CandlestickChart size={16} strokeWidth={1.5} />} title="Candlesticks" active={toolbarState.chartType === 'candlestick'} onClick={() => { onChartTypeChange('candlestick'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'candlestick' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick' } }); }} />
-                <MT5Btn icon={<LineChart size={16} strokeWidth={1.5} />} title="Line Chart" active={toolbarState.chartType === 'line'} onClick={() => { onChartTypeChange('line'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'line' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'line' } }); }} />
-                <MT5Btn icon={<AreaChart size={16} strokeWidth={1.5} />} title="Area Chart" active={toolbarState.chartType === 'area'} onClick={() => { onChartTypeChange('area'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'area' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'area' } }); }} />
+            <MT5Group label="Chart type" role="radiogroup">
+                <CommandIconButton icon="bar-chart" title="Bar Chart" active={toolbarState.chartType === 'bar'} selectionRole="radio" onClick={() => { onChartTypeChange('bar'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'bar' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar' } }); }} />
+                <CommandIconButton icon="candlestick" title="Candlesticks" active={toolbarState.chartType === 'candlestick'} selectionRole="radio" onClick={() => { onChartTypeChange('candlestick'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'candlestick' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick' } }); }} />
+                <CommandIconButton icon="line-chart" title="Line Chart" active={toolbarState.chartType === 'line'} selectionRole="radio" onClick={() => { onChartTypeChange('line'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'line' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'line' } }); }} />
+                <CommandIconButton icon="area-chart" title="Area Chart" active={toolbarState.chartType === 'area'} selectionRole="radio" onClick={() => { onChartTypeChange('area'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'area' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'area' } }); }} />
             </MT5Group>
 
             <MT5Divider />
 
             {/* Group 4: Zoom */}
-            <MT5Group>
-                <MT5Btn icon={<ZoomIn size={16} strokeWidth={1.5} />} title="Zoom In" onClick={() => dispatchCommand({ type: 'ZOOM_IN', payload: {} })} />
-                <MT5Btn icon={<ZoomOut size={16} strokeWidth={1.5} />} title="Zoom Out" onClick={() => dispatchCommand({ type: 'ZOOM_OUT', payload: {} })} />
+            <MT5Group label="Chart zoom">
+                <CommandIconButton icon="zoom-in" title="Zoom In" onClick={() => dispatchCommand({ type: 'ZOOM_IN', payload: {} })} />
+                <CommandIconButton icon="zoom-out" title="Zoom Out" onClick={() => dispatchCommand({ type: 'ZOOM_OUT', payload: {} })} />
             </MT5Group>
 
             <MT5Divider />
 
             {/* Group 5: Tile Windows */}
-            <MT5Group>
-                <MT5Btn icon={<LayoutPanelTop size={16} strokeWidth={1.5} />} title="Arrange Windows" onClick={() => dispatchCommand({ type: 'TILE_WINDOWS', payload: { mode: 'grid' } })} />
-                <MT5Btn icon={<RefreshCw size={16} strokeWidth={1.5} />} title="Reset Layout" onClick={() => window.dispatchEvent(new CustomEvent('resetLayout'))} />
+            <MT5Group label="Workspace layout">
+                <CommandIconButton icon="grid" title="Arrange Windows" onClick={() => dispatchCommand({ type: 'TILE_WINDOWS', payload: { mode: 'grid' } })} />
+                <CommandIconButton icon="refresh" title="Reset Layout" onClick={() => window.dispatchEvent(new CustomEvent('resetLayout'))} />
             </MT5Group>
 
             <MT5Divider />
 
             {/* Group 6: Latest candle */}
-            <MT5Group>
-                <MT5Btn
-                    icon={<Icon name="chart-shift" state="default" />}
+            <MT5Group label="Chart navigation">
+                <CommandIconButton
+                    icon="chart-shift"
                     title="Jump to Latest Candle"
                     onClick={() => dispatchCommand({ type: 'JUMP_TO_LATEST_CANDLE', payload: {} })}
                 />
@@ -580,9 +631,13 @@ const MainToolbar = ({
 
             <MT5Divider />
 
-            {/* Group 7: Indicators */}
-            <MT5Group>
-                <MT5Btn icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="2" width="13" height="12" rx="1" /><polyline points="3 11 5 7.5 7.5 9.5 10 5.5 13 7" strokeWidth="1.3" /><circle cx="12.5" cy="3.5" r="1" fill="#fbbf24" stroke="none" /></svg>} title="Indicators List" onClick={() => dispatchCommand({ type: 'OPEN_INDICATOR_LIST', payload: {} })} />
+            {/* Indicators remain a first-class desktop/web toolbar action. */}
+            <MT5Group label="Indicators">
+                <CommandIconButton
+                    icon="indicator-list"
+                    title="Indicators List"
+                    onClick={() => dispatchCommand({ type: 'OPEN_INDICATOR_LIST', payload: {} })}
+                />
             </MT5Group>
 
             <MT5Divider />
@@ -751,12 +806,36 @@ const MainToolbar = ({
             </div>
             </div>
 
-            {/* Keep a usable Electron drag surface without moving the fixed hamburger. */}
+            {/* Keep a usable row end without hiding any toolbar actions. */}
             <div className="min-w-[24px] flex-1 self-stretch" aria-hidden="true" />
 
             {/* Search, appearance, drawing, stamps, and account controls now live in the application menu. */}
             </div>
-            <WindowControls />
+            {isDesktopShell && (
+                <DesktopQuickActions
+                    advancedViewEnabled={advancedViewEnabled}
+                    advancedFontSize={advancedOptions.fontSize}
+                    focusChart={advancedOptions.focusChart}
+                    activeDrawingTool={toolbarState.activeTool}
+                    crosshairEnabled={toolbarState.crosshairEnabled}
+                    accountId={accountId}
+                    accountName={activeSavedAccount?.name}
+                    accountServer={activeSavedAccount?.server}
+                    savedAccountCount={savedAccountCount}
+                    symbol={symbol}
+                    connectionState={connectionState}
+                    transportSecurity={transportSecurity}
+                    feedStatus={feedStatus}
+                    dispatchCommand={dispatchCommand}
+                    onSetAdvancedViewEnabled={setAdvancedViewEnabled}
+                    onSetAdvancedFontSize={(fontSize) => updateAdvancedOptions({ fontSize })}
+                    onSetFocusChart={(focusChart) => updateAdvancedOptions({ focusChart })}
+                    onRefreshConnection={onRefreshConnection}
+                    onLogout={handleLogout}
+                />
+            )}
+        </div>
+            {!isDesktopShell && <WindowControls />}
         </div>
     );
 };
@@ -765,8 +844,8 @@ const MainToolbar = ({
 
 
 
-const MT5Group = ({ children }: { children: React.ReactNode }) => (
-    <div className="flex items-center gap-[2px]">
+const MT5Group = ({ children, label, role }: { children: React.ReactNode; label?: string; role?: 'group' | 'radiogroup' }) => (
+    <div className="rtx-toolbar-group flex items-center" role={role || (label ? 'group' : undefined)} aria-label={label}>
         {children}
     </div>
 );
@@ -783,10 +862,33 @@ interface MT5BtnProps {
     onClick?: () => void;
 }
 
-const MT5Btn = ({ icon, title, active, onClick }: MT5BtnProps) => (
+interface CommandIconButtonProps extends Omit<MT5BtnProps, 'icon'> {
+    icon: IconName;
+    selectionRole?: 'radio';
+}
+
+const CommandIconButton = ({ icon, title, active, selectionRole, onClick }: CommandIconButtonProps) => (
     <button
+        type="button"
         onClick={onClick}
         title={title}
+        role={selectionRole}
+        aria-label={title}
+        aria-checked={selectionRole === 'radio' ? active : undefined}
+        aria-pressed={selectionRole ? undefined : active === undefined ? undefined : active}
+        className="rtx-toolbar-icon-button"
+    >
+        <Icon name={icon} size={20} />
+    </button>
+);
+
+const MT5Btn = ({ icon, title, active, onClick }: MT5BtnProps) => (
+    <button
+        type="button"
+        onClick={onClick}
+        title={title}
+        aria-label={title}
+        aria-pressed={active === undefined ? undefined : active}
         className={`flex items-center justify-center w-[32px] h-[32px] rounded-[3px] transition-all border group
             ${active
                 ? 'bg-blue-500/15 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.15)] text-blue-400'

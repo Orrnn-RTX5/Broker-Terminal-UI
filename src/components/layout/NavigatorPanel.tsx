@@ -264,9 +264,6 @@ export const NavigatorPanel: React.FC = () => {
 
     return (
         <div className="navigator-panel flex flex-col h-full bg-[#131316] text-zinc-300 select-none border-r border-zinc-700">
-            <div className="navigator-panel__header flex h-[30px] items-center px-2 bg-[#191a1e] border-b border-zinc-700 text-[12px] font-normal text-zinc-400 uppercase tracking-wider">
-                Navigator
-            </div>
             <div className="navigator-panel__body flex-1 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-zinc-700">
                 {/* Accounts */}
                 <ContextMenu items={getGeneralAccountContextMenuItems()}>
@@ -456,12 +453,12 @@ function TreeItem({
 
     return (
         <div className="navigator-tree-item relative" style={{ paddingLeft: 12 }}>
-            {/* Vertical dashed line connecting siblings - hidden for last item */}
+            {/* Vertical solid line connecting siblings - hidden for last item */}
             {!isLast && (
                 <div
                     className="navigator-tree-item__line absolute top-0 left-[5px] w-px"
                     style={{
-                        borderLeft: '1px dashed var(--navigator-tree-line, #555)',
+                        borderLeft: '1px solid var(--navigator-tree-line, #555)',
                         height: '100%',
                     }}
                 />
@@ -471,7 +468,7 @@ function TreeItem({
                 <div
                     className="navigator-tree-item__line absolute top-0 left-[5px] w-px"
                     style={{
-                        borderLeft: '1px dashed var(--navigator-tree-line, #555)',
+                        borderLeft: '1px solid var(--navigator-tree-line, #555)',
                         height: '15px',
                     }}
                 />
@@ -483,7 +480,7 @@ function TreeItem({
                 style={{
                     top: '15px',
                     width: '8px',
-                    borderTop: '1px dashed var(--navigator-tree-line, #555)',
+                    borderTop: '1px solid var(--navigator-tree-line, #555)',
                 }}
             />
 

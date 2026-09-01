@@ -51,7 +51,8 @@ const getLocalStorageItem = (key: string): string | null => {
 
 const isElectronRuntime = (): boolean => {
   if (typeof window === 'undefined') return false;
-  return Boolean((window as Window & { electronAPI?: unknown }).electronAPI)
+  return Boolean(window.electron?.window)
+    || Boolean((window as Window & { electronAPI?: unknown }).electronAPI)
     || window.location?.protocol === 'file:'
     || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron'));
 };
@@ -422,7 +423,7 @@ export let API_ENDPOINTS = buildApiEndpoints();
 export const WS_ENDPOINTS = {
   get market() { return MARKET_WS_URL; },
   admin: ADMIN_WS_URL,
-  general: WS_URL,
+  get general() { return WS_URL; },
   get rtx5() { return RTX5_WS_URL; },
   get v2() { return RTX5_WS_URL; },
 };

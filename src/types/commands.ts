@@ -60,6 +60,8 @@ export type Command =
     payload: {
       tool: 'cursor' | 'trendline' | 'hline' | 'vline' | 'text' | 'channel' | 'fibonacci' | 'fib_extension' | 'measure' | 'freehand' | 'callout' | 'shapes' | 'rectangle' | 'ellipse' | 'stamp';
       subtype?: string;
+      /** Explicit chart owner for commands coming from the web drawing rail. */
+      targetContextId?: string;
     };
   }
   // Timeframe Commands

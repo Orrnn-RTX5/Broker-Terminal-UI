@@ -119,9 +119,9 @@ describe('DrawingManager.setChart', () => {
     const containerB = document.createElement('div');
     document.body.append(containerA, containerB);
 
-    manager.setChart(chart, series, 'A', 1, containerA, 'M1');
+    manager.setChart(chart, series, 'A', 1, containerA, 'M1', 'chart-a', 'account-1');
     await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(1));
-    manager.setChart(chart, series, 'B', 1, containerB, 'M1');
+    manager.setChart(chart, series, 'B', 1, containerB, 'M1', 'chart-b', 'account-1');
     await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(2));
 
     manager.startDrawing('trendline');
@@ -129,9 +129,11 @@ describe('DrawingManager.setChart', () => {
     expect(manager.hasRenderableContent(containerA)).toBe(false);
     expect(manager.hasRenderableContent(containerB)).toBe(true);
 
-    manager.setChart(chart, series, 'A', 1, containerA, 'M1');
-    expect(manager.hasRenderableContent(containerA)).toBe(true);
-    expect(manager.hasRenderableContent(containerB)).toBe(false);
+    manager.setChart(chart, series, 'A', 1, containerA, 'M1', 'chart-a', 'account-1');
+    expect(manager.hasRenderableContent(containerA)).toBe(false);
+    expect(manager.hasRenderableContent(containerB)).toBe(true);
+    expect(manager.getActiveDrawing('chart-a')).toBeNull();
+    expect(manager.getActiveDrawing('chart-b')).not.toBeNull();
 
     const svgA = containerA.querySelector('svg')!;
     const svgB = containerB.querySelector('svg')!;
@@ -142,11 +144,11 @@ describe('DrawingManager.setChart', () => {
     svgA.appendChild(markerA);
     svgB.appendChild(markerB);
 
-    manager.renderContext(containerA);
-    expect(svgA.querySelector('[data-test-marker="a"]')).toBeNull();
-    expect(svgB.querySelector('[data-test-marker="b"]')).toBe(markerB);
+    manager.renderContext(containerB);
+    expect(svgA.querySelector('[data-test-marker="a"]')).toBe(markerA);
+    expect(svgB.querySelector('[data-test-marker="b"]')).toBeNull();
 
-    manager.cancelDrawing();
+    manager.cancelDrawing('chart-b');
     const emptyMarker = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     emptyMarker.setAttribute('data-test-marker', 'empty');
     svgB.appendChild(emptyMarker);

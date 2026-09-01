@@ -90,6 +90,7 @@ interface TradeSocketErrorDetails {
   code?: string;
   requestId?: string;
   clientOrderId?: string;
+  orderWasSent?: boolean;
 }
 
 export class TradeSocketOrderRejectedError extends Error {
@@ -111,7 +112,8 @@ export class TradeSocketTransportError extends Error {
   readonly code?: string;
   readonly requestId?: string;
   readonly clientOrderId?: string;
-  readonly retryable = true;
+  readonly orderWasSent: boolean;
+  readonly retryable: boolean;
 
   constructor(message: string, details: TradeSocketErrorDetails = {}) {
     super(message);
@@ -119,6 +121,11 @@ export class TradeSocketTransportError extends Error {
     this.code = details.code;
     this.requestId = details.requestId;
     this.clientOrderId = details.clientOrderId;
+    this.orderWasSent = details.orderWasSent === true;
+    // A create request is safe to move to REST only when the WebSocket frame
+    // was definitely never enqueued. Once send() succeeds, an error or timeout
+    // means execution is uncertain and creating again could duplicate a trade.
+    this.retryable = !this.orderWasSent;
   }
 }
 
@@ -690,10 +697,12 @@ export class TradeWebSocketClient {
       }
 
       this.recordPendingOrderLatency(pending, 'ws_transport_error', 'status_timeout');
-      this.rejectPendingOrder(requestId, new TradeSocketTransportError('Timed out while confirming the order status', {
+      this.rejectPendingOrder(requestId, new TradeSocketTransportError(
+        'The order was sent, but its final status could not be confirmed. Do not place it again; check open positions and order history.', {
         code: 'ORDER_STATUS_TIMEOUT',
         requestId,
         clientOrderId: pending.clientOrderId,
+        orderWasSent: true,
       }));
     }, this.options.orderTimeoutMs);
   }
@@ -709,11 +718,14 @@ export class TradeWebSocketClient {
       this.recordPendingOrderLatency(pending, 'status_recovery_sent', 'status_reconciliation');
       this.armPendingOrderTimer(requestId, pending);
     } catch (error) {
-      const transportError = error instanceof TradeSocketTransportError
-        ? error
-        : new TradeSocketTransportError('Unable to recover the order status over the trade socket', {
+      const transportError = new TradeSocketTransportError(
+        'The order was sent, but its final status could not be confirmed. Do not place it again; check open positions and order history.', {
+          code: error instanceof TradeSocketTransportError
+            ? error.code || 'ORDER_STATUS_RECOVERY_FAILED'
+            : 'ORDER_STATUS_RECOVERY_FAILED',
           requestId,
           clientOrderId: pending.clientOrderId,
+          orderWasSent: true,
         });
       this.recordPendingOrderLatency(pending, 'ws_transport_error', 'status_recovery_send_failed');
       this.rejectPendingOrder(requestId, transportError);
@@ -751,7 +763,8 @@ export class TradeWebSocketClient {
 
     // Only order_rejected is a terminal business decision. A correlated generic
     // error is a transport/execution uncertainty, so reconcile the durable
-    // client_order_id before allowing the caller to fall back to REST.
+    // client_order_id. The original create frame was already sent and must never
+    // be recreated through REST merely because reconciliation times out.
     if (type === 'error') {
       this.recoverPendingOrder(requestId, pending);
       return;
@@ -799,6 +812,7 @@ export class TradeWebSocketClient {
       this.rejectPendingOrder(requestId, new TradeSocketTransportError(message, {
         requestId,
         clientOrderId: pending.clientOrderId,
+        orderWasSent: true,
       }));
     }
   }

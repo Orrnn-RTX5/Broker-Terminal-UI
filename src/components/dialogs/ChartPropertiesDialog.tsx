@@ -6,6 +6,8 @@ import {
   type ChartProperties,
   type ColorScheme,
 } from '../../store/useChartSettingsStore';
+import { getChartGridLineColors } from '../../utils/chartGridStyle';
+import { SQUARE_CHART_GRID_CELL_SIZE_PX } from '../../utils/squareChartGridPrimitive';
 import type { ChartType } from '../TradingChart';
 
 interface ChartPropertiesDialogProps {
@@ -109,13 +111,19 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
   const showState = symbolProperties[symbol] || globalProperties;
   const effectiveColors = getEffectiveChartColors(state, { isAdvancedUntitledLight });
   const previewBackground = effectiveColors.background || '#000000';
+  const previewGridColors = getChartGridLineColors({
+    background: previewBackground,
+    grid: effectiveColors.grid,
+    showGrid: showState.showGrid,
+  });
   const previewLabelBackground = previewBackground.toLowerCase() === '#ffffff'
     ? 'rgba(255, 255, 255, 0.82)'
     : 'rgba(0, 0, 0, 0.72)';
   const previewStyle = {
     backgroundColor: previewBackground,
+    backgroundImage: `linear-gradient(to right, ${previewGridColors.vertical} 1px, transparent 1px), linear-gradient(to bottom, ${previewGridColors.horizontal} 1px, transparent 1px)`,
+    backgroundSize: `${SQUARE_CHART_GRID_CELL_SIZE_PX}px ${SQUARE_CHART_GRID_CELL_SIZE_PX}px`,
     '--rtx-cp-preview-bg': previewBackground,
-    '--rtx-cp-preview-grid': effectiveColors.grid,
     '--rtx-cp-preview-text': effectiveColors.foreground,
     '--rtx-cp-preview-label-bg': previewLabelBackground,
   } as React.CSSProperties;
@@ -216,12 +224,6 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
               <span className="rtx-cp-preview-text absolute top-1 left-1 text-[10px] text-zinc-400 font-mono z-10 bg-black/60 px-1">
                 {symbol},{timeframe}: Demo Asset
               </span>
-              <div className="absolute inset-0 flex items-end opacity-40 mix-blend-screen pointer-events-none">
-                {/* Mock chart grid and candles to make it look like the preview in the screenshot */}
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="rtx-cp-preview-grid flex-1 h-full border-r border-[#333] border-dashed"></div>
-                ))}
-              </div>
             </div>
           </div>
 

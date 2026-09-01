@@ -8,6 +8,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcut';
 import { ShortcutFeedback } from './ShortcutFeedback';
 import { ShortcutHelpDialog } from './ShortcutHelpDialog';
 import { SHORTCUT_CATEGORIES } from '../services/keyboardShortcutManager';
+import { getActiveChartSource } from '../services/activeChartSource';
 import { useAppStore } from '../store/useAppStore';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
 
@@ -63,6 +64,13 @@ export function GlobalShortcuts({
   const getCurrentTick = () => {
     const ticks = useAppStore.getState().ticks;
     return ticks[selectedSymbol] || { bid: 0, ask: 0 };
+  };
+
+  const dispatchDrawingShortcut = (eventName: string) => {
+    const targetContextId = getActiveChartSource()?.id;
+    window.dispatchEvent(new CustomEvent(eventName, {
+      detail: targetContextId ? { targetContextId } : {},
+    }));
   };
 
   useKeyboardShortcuts([
@@ -444,7 +452,7 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Undo Drawing / Layout (Ctrl+Z)');
-        window.dispatchEvent(new CustomEvent('chart-undo-drawing'));
+        dispatchDrawingShortcut('chart-undo-drawing');
         window.dispatchEvent(new CustomEvent('layout-undo'));
       }
     },
@@ -457,7 +465,7 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Redo Drawing / Layout (Ctrl+Y)');
-        window.dispatchEvent(new CustomEvent('chart-redo-drawing'));
+        dispatchDrawingShortcut('chart-redo-drawing');
         window.dispatchEvent(new CustomEvent('layout-redo'));
       }
     },
@@ -469,7 +477,7 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Delete Drawing (Delete)');
-        window.dispatchEvent(new CustomEvent('chart-delete-drawing'));
+        dispatchDrawingShortcut('chart-delete-drawing');
       }
     },
 

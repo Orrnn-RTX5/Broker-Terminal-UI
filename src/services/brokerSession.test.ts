@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApiV2WsUrl, normalizeWsUrl } from '../config/api';
 import {
   buildBrokerApiV2,
@@ -15,6 +15,10 @@ describe('broker websocket URL builder', () => {
   beforeEach(() => {
     localStorage.clear();
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = { backendTarget: 'desktop' };
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('preserves saved HTTPS broker server_url in desktop runtime', () => {
@@ -147,6 +151,28 @@ describe('broker websocket URL builder', () => {
     );
   });
 
+  it('uses build-time feed auth for the matching packaged broker', () => {
+    vi.stubEnv('VITE_FEED_BROKER_ID', 'TEST');
+    vi.stubEnv('VITE_BROKER_ID', 'TEST');
+    vi.stubEnv('VITE_FEED_BROKER_TOKEN', 'feed-secret');
+    localStorage.setItem('broker_id', 'TEST');
+    localStorage.setItem('server_url', 'https://fxtrustbrokerbackend.orrnn.com');
+
+    expect(buildBrokerWsFeedUri()).toBe(
+      'wss://fxtrustbrokerbackend.orrnn.com/ws/feed?broker_id=TEST&token=feed-secret'
+    );
+  });
+
+  it('does not attach a build-time broker credential to a different selected broker', () => {
+    vi.stubEnv('VITE_FEED_BROKER_ID', 'TEST');
+    vi.stubEnv('VITE_BROKER_ID', 'TEST');
+    vi.stubEnv('VITE_FEED_BROKER_TOKEN', 'feed-secret');
+    localStorage.setItem('broker_id', 'achiever-financials');
+    localStorage.setItem('server_url', 'https://service.achieverfinancials.com');
+
+    expect(buildBrokerWsFeedUri()).toBe('wss://service.achieverfinancials.com/ws/feed');
+  });
+
   it('uses FX Trust public broker hosts in web mode', () => {
     (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
@@ -203,9 +229,28 @@ describe('broker websocket URL builder', () => {
     });
 
     expect(localStorage.getItem('feed_broker_token')).toBe('feed-secret');
+    expect(localStorage.getItem('feed_broker_id')).toBe('gta_broker');
     expect(buildBrokerWsFeedUri()).toBe(
       'wss://services.growtradingacademy.com/ws/feed?broker_id=gta_broker&token=feed-secret'
     );
+  });
+
+  it('clears a previous broker feed credential when login switches brokers without issuing a replacement', () => {
+    localStorage.setItem('broker_id', 'TEST');
+    localStorage.setItem('server_url', 'https://fxtrustbrokerbackend.orrnn.com');
+    localStorage.setItem('feed_broker_id', 'TEST');
+    localStorage.setItem('feed_broker_token', 'old-feed-secret');
+
+    persistBrokerSessionDiscovery({
+      access_token: 'new-account-token',
+      broker_id: 'achiever-financials',
+      backend_url: 'https://service.achieverfinancials.com',
+      server_url: 'https://service.achieverfinancials.com',
+    });
+
+    expect(localStorage.getItem('feed_broker_token')).toBeNull();
+    expect(localStorage.getItem('feed_broker_id')).toBeNull();
+    expect(buildBrokerWsFeedUri()).toBe('wss://service.achieverfinancials.com/ws/feed');
   });
 
   it('uses broker-provided ws_url when feed_url is absent', () => {

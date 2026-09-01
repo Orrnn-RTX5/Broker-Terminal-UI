@@ -18,7 +18,6 @@ import type {
 } from '../types/workspace';
 
 import { workspaceApi } from './workspaceApi';
-import { DEFAULT_MARKET_WATCH_SYMBOLS } from '../utils/marketWatchSource';
 
 class WorkspaceManager {
   private currentWorkspace: Workspace | null = null;
@@ -281,7 +280,7 @@ class WorkspaceManager {
     const marketWatchData = (window as any).__marketWatchConfig || {};
 
     return {
-      symbols: marketWatchData.symbols || [...DEFAULT_MARKET_WATCH_SYMBOLS],
+      symbols: Array.isArray(marketWatchData.symbols) ? marketWatchData.symbols : [],
       columns: marketWatchData.columns || [],
       sortBy: marketWatchData.sortBy || 'symbol',
       sortDirection: marketWatchData.sortDirection || 'asc',

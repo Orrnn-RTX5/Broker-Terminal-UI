@@ -113,10 +113,10 @@ describe('useQuoteSubscription', () => {
     unmount();
   });
 
-  it('registers quote demand after a broker session change makes storage ready', () => {
+  it('keeps public quote demand active across a broker session change', () => {
     const { unmount } = renderHook(() => useQuoteSubscription(['xauusd'], 'chart:2'));
 
-    expect(managerMock.removeDemand).toHaveBeenCalledWith('chart:2');
+    expect(managerMock.setDemand).toHaveBeenCalledWith('chart:2', ['XAUUSD']);
     managerMock.setDemand.mockClear();
     managerMock.removeDemand.mockClear();
 

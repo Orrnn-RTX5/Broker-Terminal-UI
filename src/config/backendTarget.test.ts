@@ -16,6 +16,7 @@ import {
 } from './backendTarget.js';
 
 type RuntimeWindow = Window & {
+  electron?: { window?: unknown };
   electronAPI?: unknown;
   RUNTIME_CONFIG?: Record<string, unknown>;
   __RTX_RUNTIME_CONFIG__?: Record<string, unknown>;
@@ -26,6 +27,7 @@ const backendTargetSourcePath = resolve(process.cwd(), 'src/config/backendTarget
 
 describe('backend target resolver', () => {
   beforeEach(() => {
+    delete runtimeWindow.electron;
     delete runtimeWindow.electronAPI;
     delete runtimeWindow.RUNTIME_CONFIG;
     delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
@@ -72,6 +74,30 @@ describe('backend target resolver', () => {
     expect(getBackendTarget()).toBe('https://services.growtradingacademy.com');
     expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://services.growtradingacademy.com/ws/v2');
     expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://services.growtradingacademy.com/ws/feed');
+  });
+
+  it('keeps the selected broker authoritative in Electron even when the web runtime script is present', () => {
+    runtimeWindow.electron = { window: {} };
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://services.growtradingacademy.com',
+      WS_HOST: 'wss://services.growtradingacademy.com',
+    };
+
+    expect(isDesktopBackendTarget()).toBe(true);
+    expect(resolveBrokerBackendUrl({
+      broker_id: 'achiever-financials',
+      server_url: 'https://service.achieverfinancials.com',
+      feed_url: 'wss://service.achieverfinancials.com/ws/feed',
+    })).toBe('https://service.achieverfinancials.com');
+  });
+
+  it('uses the Electron mode API host when no selected broker has been persisted yet', () => {
+    runtimeWindow.electron = { window: {} };
+    vi.stubEnv('VITE_API_URL', 'https://fxtrustbrokerbackend.orrnn.com');
+    vi.stubEnv('VITE_BACKEND_URL', 'https://fxtrustbrokerbackend.orrnn.com');
+
+    expect(getBackendTarget()).toBe('https://fxtrustbrokerbackend.orrnn.com');
   });
 
   it('keeps branded web broker discovery on the shared discovery backend by default', () => {

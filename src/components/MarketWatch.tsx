@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { resolveTickFromLookup, useAppStore } from '../store/useAppStore';
 import { useWatchlistStore } from '../store/useWatchlistStore';
 import { MarketWatchContextMenu } from './MarketWatchContextMenu';
@@ -7,8 +7,9 @@ import { PriceDisplay } from './ui/PriceDisplay';
 import { formatPrice as formatPriceUtil } from '../utils/symbolUtils';
 import { formatSpreadDisplay } from '../utils/spread';
 import { useActiveMarketSymbols, useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../hooks/useLiveMarketData';
+import { useVisibleSymbolRows } from '../hooks/useVisibleSymbolRows';
+import { selectDefaultMarketWatchSymbols } from '../utils/marketWatchGroups';
 import {
-    getDefaultMarketWatchSymbols,
     getMarketWatchDisplayErrors,
     getMarketWatchSymbolLabel,
     resolveMarketWatchSymbolInput,
@@ -72,6 +73,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
 
     const {
         symbols: marketInstruments,
+        authorizedSymbols: authenticatedMarketSymbols = [],
         disabledSymbols,
         loading: symbolsLoading,
         error: symbolsError,
@@ -100,22 +102,16 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
     });
 
     const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols(disabledSymbols)), [disabledSymbols]);
-    const authorizedSymbols = useMemo(() => {
-        return uniqueSymbols(marketInstruments.map((instrument) => instrument.symbol))
+    const catalogSymbols = useMemo(
+        () => uniqueSymbols(marketInstruments.map((instrument) => instrument.symbol)),
+        [marketInstruments],
+    );
+    const authorizedSymbols = useMemo(() => isAuthenticated
+        ? uniqueSymbols(authenticatedMarketSymbols)
             .filter((symbol) => !disabledSymbolSet.has(symbol))
-            .sort((a, b) => a.localeCompare(b));
-    }, [disabledSymbolSet, marketInstruments]);
-    const authorizedSymbolSet = useMemo(() => new Set(authorizedSymbols), [authorizedSymbols]);
-    const publicQuoteSymbols = useMemo(
-        () => !isAuthenticated && activeSymbolsCurrent
-            ? uniqueSymbols(activeMarketSymbols)
-            : [],
-        [activeMarketSymbols, activeSymbolsCurrent, isAuthenticated],
-    );
-    const quoteEligibleSymbols = useMemo(
-        () => authorizedSymbols.length > 0 ? authorizedSymbols : publicQuoteSymbols,
-        [authorizedSymbols, publicQuoteSymbols],
-    );
+            .sort((a, b) => a.localeCompare(b))
+        : [], [authenticatedMarketSymbols, disabledSymbolSet, isAuthenticated]);
+    const quoteEligibleSymbols = catalogSymbols;
     const quoteEligibleSymbolSet = useMemo(
         () => new Set(quoteEligibleSymbols),
         [quoteEligibleSymbols],
@@ -126,10 +122,10 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
             ? authorizedSymbols.filter((symbol) => activeSymbolSet.has(symbol))
             : [],
     ), [activeSymbolSet, activeSymbolsCurrent, authorizedSymbols]);
-    const searchUniverse = authorizedSymbols;
+    const searchUniverse = quoteEligibleSymbols;
     const defaultSymbols = useMemo(
-        () => getDefaultMarketWatchSymbols(quoteEligibleSymbols),
-        [quoteEligibleSymbols],
+        () => selectDefaultMarketWatchSymbols(marketInstruments),
+        [marketInstruments],
     );
     const shouldMergePersistedSymbols = shouldUseWatchlistAsMarketWatchSource({
         activeWatchlistId: activeWatchlist?.id,
@@ -143,9 +139,12 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         quoteEligibleSymbols,
         shouldMergePersistedSymbols,
     ]);
-    const activeManualSymbols = manualSymbols.watchlistId === (activeWatchlist?.id ?? '')
-        ? manualSymbols.symbols
-        : [];
+    const activeManualSymbols = useMemo(
+        () => manualSymbols.watchlistId === (activeWatchlist?.id ?? '')
+            ? manualSymbols.symbols
+            : [],
+        [activeWatchlist?.id, manualSymbols.symbols, manualSymbols.watchlistId],
+    );
     const symbols = useMemo(
         () => uniqueSymbols([
             ...(shouldMergePersistedSymbols ? persistedSymbols : defaultSymbols),
@@ -153,9 +152,24 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         ]),
         [activeManualSymbols, defaultSymbols, persistedSymbols, shouldMergePersistedSymbols],
     );
-    const subscriptionSymbols = useMemo(() => symbols.filter(
+    const {
+        visibleSymbols: visibleRowSymbols,
+        setViewportRef: setMarketWatchViewportRef,
+        setRowRef: setVisibleMarketWatchRowRef,
+    } = useVisibleSymbolRows(symbols);
+    const marketWatchRowsKey = symbols.join('\u0000');
+    const marketWatchRowRefCallbacks = useMemo(
+        () => new Map(
+            (marketWatchRowsKey ? marketWatchRowsKey.split('\u0000') : []).map((symbol) => [
+                symbol,
+                (node: HTMLTableRowElement | null) => setVisibleMarketWatchRowRef(symbol, node),
+            ] as const),
+        ),
+        [marketWatchRowsKey, setVisibleMarketWatchRowRef],
+    );
+    const subscriptionSymbols = useMemo(() => visibleRowSymbols.filter(
         (symbol) => quoteEligibleSymbolSet.has(symbol),
-    ), [quoteEligibleSymbolSet, symbols]);
+    ), [quoteEligibleSymbolSet, visibleRowSymbols]);
     const searchResults = useMemo(() => {
         return searchMarketWatchSymbols(searchUniverse, addSymbolInput);
     }, [addSymbolInput, searchUniverse]);
@@ -275,9 +289,8 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
         return `${percent}%`;
     };
 
-    // The product defaults remain first. User-selected symbols are appended;
-    // custom watchlists persist them, while built-in watchlists reset to the
-    // canonical defaults on the next app session.
+    // Built-in Market Watch rows use the curated core plus one representative
+    // per remaining public-catalog group. Custom watchlists persist their subset.
     const handleAddSymbol = () => {
         setAddingSymbol(true);
         setAddSymbolInput('');
@@ -286,7 +299,7 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
 
     const handleSearchResultSelect = (value: string) => {
         const resolvedSymbol = resolveMarketWatchSymbolInput(searchUniverse, value);
-        if (!resolvedSymbol || !authorizedSymbolSet.has(resolvedSymbol)) return;
+        if (!resolvedSymbol || !quoteEligibleSymbolSet.has(resolvedSymbol)) return;
 
         if (!symbols.includes(resolvedSymbol)) {
             setManualSymbols((current) => {
@@ -322,7 +335,10 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                     <span className="text-gray-600">{symbols.length} symbols</span>
                 </div>
 
-                <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white min-w-0">
+                <div
+                    ref={setMarketWatchViewportRef}
+                    className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar bg-white min-w-0"
+                >
                     {marketWatchErrors.length > 0 && (
                         <div role="alert" aria-label="Market Watch errors" className="px-2 py-1 text-[11px] text-red-700 bg-red-50 border-b border-red-200">
                             <ul className="m-0 pl-4">
@@ -413,9 +429,10 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
                                     return (
                                         <tr
                                             key={symbol}
+                                            ref={marketWatchRowRefCallbacks.get(symbol)}
                                             data-market-watch-symbol={symbol}
                                             onClick={() => {
-                                                if (isActionable) onSelectSymbol(symbol);
+                                                if (quoteEligibleSymbolSet.has(symbol)) onSelectSymbol(symbol);
                                             }}
                                             onDoubleClick={() => {
                                                 if (isActionable) handleNewOrder(symbol);

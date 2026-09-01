@@ -3,18 +3,6 @@ export interface MarketWatchSourceOptions {
   activeWatchlistIsDefault?: boolean;
 }
 
-/**
- * The intentionally small, product-defined Market Watch shown before a user
- * searches. The broker's full instrument universe remains available to search.
- */
-export const DEFAULT_MARKET_WATCH_SYMBOLS = [
-  'XAUUSD',
-  'BTCUSD',
-  'EURUSD',
-  'GBPUSD',
-  'USDJPY',
-] as const;
-
 const normalizeSearchValue = (value: unknown): string =>
   String(value ?? '').trim().toUpperCase();
 
@@ -26,8 +14,9 @@ const CANONICAL_EURUSD_SYMBOL = 'EURUSD';
  */
 export const getMarketWatchSymbolLabel = (
   symbol: string,
-  _symbolUniverse: readonly string[] = [],
+  symbolUniverse: readonly string[] = [],
 ): string => {
+  void symbolUniverse;
   const normalizedSymbol = normalizeSearchValue(symbol);
   return normalizedSymbol === LEGACY_EUROUSD_SYMBOL
     ? CANONICAL_EURUSD_SYMBOL
@@ -63,20 +52,6 @@ export const resolveMarketWatchSymbolInput = (
 
   return uniqueUniverse.find(
     (symbol) => getMarketWatchSymbolLabel(symbol, uniqueUniverse) === normalizedInput,
-  );
-};
-
-/**
- * Keeps product defaults as broker identifiers, then resolves aliases against
- * the connected broker's actual universe before subscriptions and actions.
- */
-export const getDefaultMarketWatchSymbols = (
-  symbolUniverse: readonly string[] = [],
-): string[] => {
-  if (symbolUniverse.length === 0) return [...DEFAULT_MARKET_WATCH_SYMBOLS];
-
-  return DEFAULT_MARKET_WATCH_SYMBOLS.map(
-    (symbol) => resolveMarketWatchSymbolInput(symbolUniverse, symbol) ?? symbol,
   );
 };
 

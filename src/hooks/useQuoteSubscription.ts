@@ -1,5 +1,5 @@
 /**
- * useQuoteSubscription - React hook for Section 2 (Quotes /ws/feed)
+ * useQuoteSubscription - React hook for Section 2 (public Quotes /ws/v2)
  *
  * Registers demand with QuoteSocketManager. On mount, symbols are added to the
  * merged demand set. On unmount, they're removed when no other consumer needs them.
@@ -11,8 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getQuoteSocketManager } from '../services/quoteSocketManager';
-import { useAppStore } from '../store/useAppStore';
-import { getAccessToken, getServerUrl, hasFeedBrokerToken, onSessionChange } from '../services/brokerSession';
+import { onSessionChange } from '../services/brokerSession';
 import { debugLog } from '../utils/debugLogging';
 
 const normalizeSymbol = (v: unknown): string =>
@@ -26,17 +25,12 @@ export interface UseQuoteSubscriptionOptions {
   enabled?: boolean;
 }
 
-const hasReadyStoredBrokerSession = (): boolean =>
-  Boolean(getServerUrl() && (getAccessToken() || hasFeedBrokerToken()));
-
 export function useQuoteSubscription(
   symbols: string[],
   sourceId: string,
   options: UseQuoteSubscriptionOptions = {},
 ): UseQuoteSubscriptionReturn {
   const enabled = options.enabled !== false;
-  const isAuthenticated = useAppStore((s) => s.isAuthenticated);
-  const storeAuthToken = useAppStore((s) => s.authToken);
   const [sessionRevision, setSessionRevision] = useState(0);
 
   useEffect(() => {
@@ -51,16 +45,14 @@ export function useQuoteSubscription(
   );
 
   const managerRef = useRef(getQuoteSocketManager());
-  const storedBrokerSessionReady = hasReadyStoredBrokerSession();
-  const canSubscribe = isAuthenticated || storedBrokerSessionReady;
 
   useEffect(() => {
     if (!enabled) return undefined;
 
     const manager = managerRef.current;
-    debugLog(`[useQuoteSubscription] effect - isAuthenticated=${isAuthenticated}, storedSession=${storedBrokerSessionReady}, symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
+    debugLog(`[useQuoteSubscription] public v2 demand - symbols=${normalizedSymbols.length}, sourceId=${sourceId}`);
 
-    if (!canSubscribe || normalizedSymbols.length === 0) {
+    if (normalizedSymbols.length === 0) {
       manager.removeDemand(sourceId);
       return;
     }
@@ -71,7 +63,7 @@ export function useQuoteSubscription(
       manager.removeDemand(sourceId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, normalizedSymbols.join('|'), sourceId, canSubscribe, storeAuthToken, sessionRevision]);
+  }, [enabled, normalizedSymbols.join('|'), sourceId, sessionRevision]);
 
   return {
     isConnected: managerRef.current.isConnected(),

@@ -7,6 +7,7 @@ import type { DockPanelConfig } from '../../services/dockManager';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { DockContainer as IDockContainer } from '../../services/dockManager';
 import { MarketWatchPanel, type ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';
+import type { MarketInstrumentsSnapshot } from '../../hooks/useLiveMarketData';
 import { NavigatorPanel } from '../layout/NavigatorPanel';
 import { BottomDock } from '../BottomDock';
 import { getInstrumentSymbolName, getUniqueSymbolNames, resolveAuthorizedChartSymbol } from '../../utils/symbolEligibility';
@@ -31,6 +32,7 @@ interface DockWorkspaceProps {
     chartSymbols?: unknown[];
     tradeSymbols?: unknown[];
     activeMarketSnapshot: ActiveMarketSymbolsSnapshot;
+    marketInstrumentsSnapshot: MarketInstrumentsSnapshot;
     selectedSymbol: string;
     chartRuntimeEnabled?: boolean;
     onSymbolSelect: (symbol: string) => void;
@@ -47,6 +49,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     chartSymbols,
     tradeSymbols,
     activeMarketSnapshot,
+    marketInstrumentsSnapshot,
     selectedSymbol,
     chartRuntimeEnabled = true,
     onSymbolSelect,
@@ -145,7 +148,9 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                         <MarketWatchPanel
                             className="flex-1 min-h-0 min-w-0 w-full h-full"
                             allSymbols={allSymbols}
+                            chartSymbols={authorizedChartSymbols}
                             activeMarketSnapshot={activeMarketSnapshot}
+                            marketInstrumentsSnapshot={marketInstrumentsSnapshot}
                             selectedSymbol={selectedSymbol}
                             onSymbolSelect={onSymbolSelect}
                         />
@@ -197,7 +202,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     }, [
         authorizedChartSymbols,
         globalChartType, globalTimeframe,
-        activeMarketSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, priceDigitsBySymbol, resolveChartSymbol, tradeSymbolSet,
+        activeMarketSnapshot, marketInstrumentsSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, priceDigitsBySymbol, resolveChartSymbol, tradeSymbolSet,
         onClosePosition, onModifyPosition, onCancelOrder, onCloseBulk
     ]);
 
@@ -251,7 +256,7 @@ const DockWorkspaceClean: React.FC<{
         <div
             className="rtx-dock-workspace flex-1 w-full h-full relative overflow-hidden flex flex-col"
             data-rtx-authenticated-viewport="true"
-            style={{ background: '#0d0d11', padding: '0 6px', gap: '6px' }}
+            style={{ background: '#0d0d11', padding: '0 6px 0 0', gap: '6px' }}
         >
             {/* Reset Layout Button */}
             {isLayoutEmpty && (

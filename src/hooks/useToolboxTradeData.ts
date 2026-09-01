@@ -401,7 +401,7 @@ export const applyMarketOrderPlacementState = (
     return removedProvisional ? withoutProvisional : current;
   }
 
-  const rawPosition = {
+  const rawPosition: Record<string, unknown> = {
     ...(detail.position as Record<string, unknown>),
     client_order_id: detail.clientOrderId,
     placement_state: detail.status,

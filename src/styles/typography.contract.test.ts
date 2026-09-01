@@ -111,7 +111,9 @@ describe('enterprise typography contract', () => {
   });
 
   it('locks the physically measured terminal chrome and chart HUD typography', () => {
-    expect(topToolbarSource).toContain('text-[14px] font-normal');
+    expect(topToolbarSource).toContain('rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-semibold');
+    expect(topToolbarSource).toContain('rtx-toolbar-action rtx-toolbar-action--last-symbol text-[13px] font-semibold');
+    expect(themeCss).toMatch(/\.rtx-toolbar-action \{[\s\S]*font-size: 13px;[\s\S]*font-weight: var\(--font-weight-semibold\);/);
     expect(timeframePickerSource).toMatch(/text-\[14px\] font-normal font-segoe[\s\S]*\{option\.value\}/);
     expect(advancedCss).toContain('.rtx-timeframe-strip');
     expect(advancedCss).toContain('.rtx-timeframe-option[aria-checked="true"]');

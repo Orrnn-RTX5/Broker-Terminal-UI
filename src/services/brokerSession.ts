@@ -207,7 +207,8 @@ const normalizeWsUrl = (value: string): string => {
 
 const isElectronRuntime = (): boolean => {
   if (typeof window === 'undefined') return false;
-  return Boolean((window as Window & { electronAPI?: unknown }).electronAPI)
+  return Boolean(window.electron?.window)
+    || Boolean((window as Window & { electronAPI?: unknown }).electronAPI)
     || window.location?.protocol === 'file:'
     || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron'));
 };
@@ -520,6 +521,12 @@ const mapFeedBrokerAlias = (brokerId: string): string => {
   return FEED_BROKER_ID_ALIASES[trimmed] || FEED_BROKER_ID_ALIASES[trimmed.toLowerCase()] || trimmed;
 };
 
+const getBuildTimeFeedBrokerId = (): string => mapFeedBrokerAlias(String(
+  import.meta.env.VITE_FEED_BROKER_ID
+  || import.meta.env.VITE_BROKER_ID
+  || ''
+).trim());
+
 const isDeployOnlyBrokerAlias = (brokerId: string): boolean => {
   const trimmed = String(brokerId || '').trim();
   if (!trimmed) return false;
@@ -564,12 +571,17 @@ const getFeedBrokerId = (): string => {
   const viteBrokerId = getRuntimeConfigValue(['VITE_BROKER_ID']);
   if (viteBrokerId) return mapFeedBrokerAlias(viteBrokerId);
 
+  // g) Build-time broker identity. Packaged Electron has no server-side
+  // runtime injection before a broker is selected.
+  const buildTimeFeedBrokerId = getBuildTimeFeedBrokerId();
+  if (buildTimeFeedBrokerId) return buildTimeFeedBrokerId;
+
   return '';
 };
 
 const getFeedBrokerToken = (): string => {
   if (typeof window === 'undefined') return '';
-  return String(
+  const sessionToken = String(
     getLocalStorageItem('feed_broker_token')
     || getLocalStorageItem('broker_feed_token')
     || getLocalStorageItem('feed_token')
@@ -584,6 +596,18 @@ const getFeedBrokerToken = (): string => {
     ])
     || ''
   ).trim();
+  if (sessionToken) return sessionToken;
+
+  // Vite injects a deployment feed credential into broker-specific builds.
+  // Never attach that credential after the user selects a different broker.
+  const buildTimeToken = String(import.meta.env.VITE_FEED_BROKER_TOKEN || '').trim();
+  if (!buildTimeToken) return '';
+
+  const activeBrokerId = getFeedBrokerId();
+  const buildTimeBrokerId = getBuildTimeFeedBrokerId();
+  return !activeBrokerId || !buildTimeBrokerId || activeBrokerId === buildTimeBrokerId
+    ? buildTimeToken
+    : '';
 };
 
 export const hasFeedBrokerToken = (): boolean => Boolean(getFeedBrokerToken());
@@ -686,7 +710,8 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   const feedUrl = pickPersistedFeedUrl(normalizeOptionalWsUrl(normalizedInput.feed_url || normalizedInput.feed_ws_url), wsUrl, Boolean(token));
   const feedStatusUrl = normalizeOptionalHttpUrl(normalizedInput.feed_status_url);
   const logoUrl = String(normalizedInput.logo_url || '').trim();
-  const brokerChangedWithoutToken = !token && hasBrokerServerChanged(serverUrl);
+  const brokerChanged = !sameBroker || hasBrokerServerChanged(serverUrl);
+  const brokerChangedWithoutToken = !token && brokerChanged;
 
   if (token) {
     setLocalStorageItem('auth_token', token);
@@ -701,6 +726,7 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
       'rtx_last_login',
       'rtx_saved_username',
       'feed_broker_token',
+      'feed_broker_id',
     ].forEach((key) => {
       removeLocalStorageItem(key);
       removeSessionStorageItem(key);
@@ -721,6 +747,19 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   setOrRemove('feed_status_url', feedStatusUrl);
   if (feedToken) {
     setLocalStorageItem('feed_broker_token', feedToken);
+    const feedBrokerId = mapFeedBrokerAlias(brokerId || getFeedBrokerId());
+    if (feedBrokerId) setLocalStorageItem('feed_broker_id', feedBrokerId);
+  } else if (brokerChanged) {
+    [
+      'feed_broker_token',
+      'broker_feed_token',
+      'feed_token',
+      'ws_feed_token',
+      'feed_broker_id',
+    ].forEach((key) => {
+      removeLocalStorageItem(key);
+      removeSessionStorageItem(key);
+    });
   }
   if (logoUrl) setLocalStorageItem('logo_url', logoUrl);
 

@@ -283,6 +283,7 @@ describe('TradeWebSocketClient market orders', () => {
       name: 'TradeSocketTransportError',
       code: 'WS_BACKPRESSURE',
       retryable: true,
+      orderWasSent: false,
     });
     expect(sentMessages(socket).filter((message) => message.action === 'place_order')).toHaveLength(0);
     expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
@@ -301,6 +302,7 @@ describe('TradeWebSocketClient market orders', () => {
       name: 'TradeSocketTransportError',
       code: 'WS_SEND_FAILED',
       retryable: true,
+      orderWasSent: false,
     });
     expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
       phase: 'ws_transport_error',
@@ -538,6 +540,7 @@ describe('TradeWebSocketClient market orders', () => {
       code?: string;
       retryable?: boolean;
       clientOrderId?: string;
+      orderWasSent?: boolean;
     }>;
     const request = findSentAction(socket, 'place_order');
 
@@ -564,7 +567,8 @@ describe('TradeWebSocketClient market orders', () => {
     await expect(rejectionPromise).resolves.toMatchObject({
       name: 'TradeSocketTransportError',
       code: 'ORDER_STATUS_TIMEOUT',
-      retryable: true,
+      retryable: false,
+      orderWasSent: true,
       clientOrderId: request.client_order_id,
     });
     expect(sentMessages(socket).filter((message) => message.action === 'get_order_status')).toHaveLength(1);
@@ -633,7 +637,7 @@ describe('TradeWebSocketClient market orders', () => {
     client.disconnect();
   });
 
-  it('rejects as retryable only after the one-shot status recovery also times out', async () => {
+  it('reports an uncertain sent order without allowing another create after status recovery times out', async () => {
     vi.useFakeTimers();
     const { client, socket } = createOpenClient();
 
@@ -642,6 +646,7 @@ describe('TradeWebSocketClient market orders', () => {
       code?: string;
       retryable?: boolean;
       clientOrderId?: string;
+      orderWasSent?: boolean;
     }>;
     const request = findSentAction(socket, 'place_order');
 
@@ -650,7 +655,8 @@ describe('TradeWebSocketClient market orders', () => {
     await expect(rejectionPromise).resolves.toMatchObject({
       name: 'TradeSocketTransportError',
       code: 'ORDER_STATUS_TIMEOUT',
-      retryable: true,
+      retryable: false,
+      orderWasSent: true,
       clientOrderId: request.client_order_id,
     });
     expect(sentMessages(socket).filter((message) => message.action === 'get_order_status')).toHaveLength(1);

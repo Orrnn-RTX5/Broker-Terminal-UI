@@ -325,7 +325,10 @@ describe('useLiveQuotes REST fallback batching', () => {
     const { unmount } = renderHook(() => useLiveQuotes(symbols));
     await flushPromises();
 
-    expect(useQuoteSubscriptionMock).toHaveBeenCalledWith(symbols, 'live-quotes');
+    expect(useQuoteSubscriptionMock).toHaveBeenCalledWith(
+      symbols,
+      expect.stringMatching(/^live-quotes:/),
+    );
     expect(apiGet).toHaveBeenCalledTimes(1);
     expect(apiGet.mock.calls[0][1]?.params?.symbols.split(',')).toEqual(
       symbols.slice(0, LIVE_QUOTES_REST_BATCH_SIZE)
@@ -341,6 +344,22 @@ describe('useLiveQuotes REST fallback batching', () => {
     expect(apiGet.mock.calls[1][1]?.params?.symbols.split(',')).toEqual(
       symbols.slice(LIVE_QUOTES_REST_BATCH_SIZE)
     );
+
+    unmount();
+  });
+
+  it('gives concurrent quote consumers independent demand source ids', () => {
+    const { unmount } = renderHook(() => {
+      useLiveQuotes(['EURUSD']);
+      useLiveQuotes(['XAUUSD']);
+    });
+
+    const recentCalls = useQuoteSubscriptionMock.mock.calls.slice(-2);
+    expect(recentCalls[0][0]).toEqual(['EURUSD']);
+    expect(recentCalls[1][0]).toEqual(['XAUUSD']);
+    expect(recentCalls[0][1]).toMatch(/^live-quotes:/);
+    expect(recentCalls[1][1]).toMatch(/^live-quotes:/);
+    expect(recentCalls[0][1]).not.toBe(recentCalls[1][1]);
 
     unmount();
   });
@@ -386,27 +405,39 @@ describe('useMarketInstruments normalization', () => {
     expect(normalizeInstrumentEnabled({ symbol: 'EURUSD' })).toBeUndefined();
   });
 
-  it('filters explicitly disabled instruments and enqueues REST bid/ask snapshots', async () => {
+  it('loads the public priced catalog while keeping authenticated trade authorization separate', async () => {
     apiGet.mockResolvedValueOnce({
       symbols: [
-        { symbol: 'EURUSD', bid: '1.10101', ask: '1.10123', trading_enabled: true, digits: 5 },
+        { symbol: 'EURUSD', bid: '1.10101', ask: '1.10123', digits: 5, time: 1_700_000_000 },
         { symbol: 'GBPUSD', bid: 1.26789, ask: 1.26801 },
-        { symbol: 'XAUUSD', bid: 2345.1, ask: 2345.6, status: 'disabled' },
+        { symbol: 'XAUUSD', bid: 2345.1, ask: 2345.6 },
+      ],
+    }).mockResolvedValueOnce({
+      symbols: [
+        { symbol: 'EURUSD', trading_enabled: true },
+        { symbol: 'GBPUSD' },
+        { symbol: 'XAUUSD', status: 'disabled' },
       ],
     });
 
     const { result, unmount } = renderHook(() => useMarketInstruments());
     await flushPromises();
 
-    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['EURUSD', 'GBPUSD']);
+    expect(apiGet.mock.calls[0]).toEqual([
+      '/api/v1/market/symbols',
+      expect.objectContaining({ skipAuth: true, skipDynamicUrl: true }),
+    ]);
+    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['EURUSD', 'GBPUSD', 'XAUUSD']);
+    expect(result.current.authorizedSymbols).toEqual(['EURUSD', 'GBPUSD']);
     expect(result.current.disabledSymbols).toEqual(['XAUUSD']);
-    expect(enqueueLiveTick).toHaveBeenCalledTimes(2);
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(3);
     expect(enqueueLiveTick).toHaveBeenCalledWith('EURUSD', expect.objectContaining({
       symbol: 'EURUSD',
       bid: 1.10101,
       ask: 1.10123,
       spread: expect.any(Number),
       digits: 5,
+      timestamp: 1_700_000_000_000,
     }));
     expect(enqueueLiveTick).toHaveBeenCalledWith('GBPUSD', expect.objectContaining({
       symbol: 'GBPUSD',
@@ -417,7 +448,39 @@ describe('useMarketInstruments normalization', () => {
     unmount();
   });
 
-  it('captures the switched account session and ignores the previous account response', async () => {
+  it('loads and seeds the public priced catalog without an authenticated account', async () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('refresh_token');
+    useAppStore.setState({
+      isAuthenticated: false,
+      accountId: null,
+      authToken: null,
+      refreshToken: null,
+    });
+    apiGet.mockResolvedValueOnce({
+      symbols: [
+        { symbol: 'EURUSD', bid: 1.10101, ask: 1.10123 },
+        { symbol: 'BTCUSD', bid: 108000, ask: 108010 },
+      ],
+    });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    expect(apiGet).toHaveBeenCalledTimes(1);
+    expect(apiGet).toHaveBeenCalledWith(
+      '/api/v1/market/symbols',
+      expect.objectContaining({ skipAuth: true, skipDynamicUrl: true }),
+    );
+    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['EURUSD', 'BTCUSD']);
+    expect(result.current.authorizedSymbols).toEqual([]);
+    expect(result.current.disabledSymbols).toEqual([]);
+    expect(enqueueLiveTick).toHaveBeenCalledTimes(2);
+
+    unmount();
+  });
+
+  it('keeps public requests unauthenticated and ignores the previous account response after a switch', async () => {
     let resolveFirstAccount: ((value: unknown) => void) | undefined;
     apiGet
       .mockImplementationOnce(() => new Promise((resolve) => {
@@ -425,6 +488,9 @@ describe('useMarketInstruments normalization', () => {
       }))
       .mockResolvedValueOnce({
         symbols: [{ symbol: 'USDJPY', bid: 163.05, ask: 163.051 }],
+      })
+      .mockResolvedValueOnce({
+        symbols: [{ symbol: 'USDJPY', trading_enabled: true }],
       });
     localStorage.setItem('auth_token', 'instrument-account-a-token');
     localStorage.setItem('refresh_token', 'instrument-account-a-refresh');
@@ -437,12 +503,13 @@ describe('useMarketInstruments normalization', () => {
     const { result, unmount } = renderHook(() => useMarketInstruments());
     await flushPromises();
 
-    expect(apiGet.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
-      authToken: 'instrument-account-a-token',
-      requestContext: expect.objectContaining({
-        refreshToken: 'instrument-account-a-refresh',
+    expect(apiGet.mock.calls[0]).toEqual([
+      '/api/v1/market/symbols',
+      expect.objectContaining({
+        skipAuth: true,
+        skipDynamicUrl: true,
       }),
-    }));
+    ]);
 
     localStorage.setItem('auth_token', 'instrument-account-b-token');
     localStorage.setItem('refresh_token', 'instrument-account-b-refresh');
@@ -455,7 +522,11 @@ describe('useMarketInstruments normalization', () => {
     });
     await flushPromises();
 
-    expect(apiGet.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
+    expect(apiGet.mock.calls[1]).toEqual([
+      '/api/v1/market/symbols',
+      expect.objectContaining({ skipAuth: true, skipDynamicUrl: true }),
+    ]);
+    expect(apiGet.mock.calls[2]?.[1]).toEqual(expect.objectContaining({
       authToken: 'instrument-account-b-token',
       requestContext: expect.objectContaining({
         refreshToken: 'instrument-account-b-refresh',

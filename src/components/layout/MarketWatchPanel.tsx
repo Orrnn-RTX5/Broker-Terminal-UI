@@ -1,14 +1,21 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { resolveTickFromLookup, selectTickCount, useAppStore, useTick } from '../../store/useAppStore';
 import { useWatchlistStore } from '../../store/useWatchlistStore';
 import { ContextMenu, type ContextMenuItemConfig } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { PriceDisplay } from '../ui/PriceDisplay';
-import { useActiveMarketSymbols, useLiveQuotes, useMarketInstruments, useRemoteWatchlistSync } from '../../hooks/useLiveMarketData';
+import {
+  useActiveMarketSymbols,
+  useLiveQuotes,
+  useMarketInstruments,
+  useRemoteWatchlistSync,
+  type MarketInstrumentsSnapshot,
+} from '../../hooks/useLiveMarketData';
+import { useVisibleSymbolRows } from '../../hooks/useVisibleSymbolRows';
 import { formatSpreadDisplay } from '../../utils/spread';
 import { getUniqueSymbolNames } from '../../utils/symbolEligibility';
+import { buildMarketWatchSymbolGroups, selectDefaultMarketWatchSymbols } from '../../utils/marketWatchGroups';
 import {
-  getDefaultMarketWatchSymbols,
   getMarketWatchDisplayErrors,
   getMarketWatchSymbolLabel,
   resolveMarketWatchSymbolInput,
@@ -27,6 +34,7 @@ export interface ActiveMarketSymbolsSnapshot {
 
 interface MarketWatchPanelBaseProps {
   allSymbols: unknown[];
+  chartSymbols?: unknown[];
   selectedSymbol: string;
   onSymbolSelect: (symbol: string) => void;
   className?: string;
@@ -34,6 +42,7 @@ interface MarketWatchPanelBaseProps {
 
 interface MarketWatchPanelProps extends MarketWatchPanelBaseProps {
   activeMarketSnapshot?: ActiveMarketSymbolsSnapshot;
+  marketInstrumentsSnapshot?: MarketInstrumentsSnapshot;
 }
 
 interface ScopedManualSymbols {
@@ -43,8 +52,23 @@ interface ScopedManualSymbols {
 
 const normalizeSymbol = (value: unknown): string => String(value ?? '').trim().toUpperCase();
 
+const TWO_DECIMAL_MARKET_WATCH_SYMBOLS = new Set([
+  'JPN225-F',
+  'WHEAT',
+  'GOLD-PERP',
+  'NICKEL',
+]);
+
+const getMarketWatchPriceDigits = (symbol: string): number | undefined => (
+  TWO_DECIMAL_MARKET_WATCH_SYMBOLS.has(normalizeSymbol(symbol)) ? 2 : undefined
+);
+
 const uniqueSymbols = (symbols: unknown[]): string[] =>
   Array.from(new Set(symbols.map(normalizeSymbol).filter(Boolean)));
+
+const SYMBOL_EXPLORER_ROW_HEIGHT = 36;
+const SYMBOL_EXPLORER_OVERSCAN = 6;
+const SYMBOL_EXPLORER_FALLBACK_HEIGHT = 288;
 
 // Price flash hook — returns 'up' | 'down' | null briefly when price changes
 function usePriceFlash(value: number): 'up' | 'down' | null {
@@ -63,19 +87,6 @@ function usePriceFlash(value: number): 'up' | 'down' | null {
 
   return flash;
 }
-
-// Category helper
-const getCategory = (sym: string): { label: string; color: string } => {
-  if (['BTCUSD','ETHUSD','LTCUSD','XRPUSD','BCHUSD','ADAUSD','SOLUSD','DOTUSD','LINKUSD','MATICUSD','UNIUSD','AAVEUSD','SUSHIUSD'].includes(sym))
-    return { label: 'Crypto', color: '#f59e0b' };
-  if (['XAUUSD','XAGUSD','XPTUSD','XPDUSD'].includes(sym))
-    return { label: 'Metal', color: '#eab308' };
-  if (['US30','US500','USTEC','GER40','UK100','FRA40','ESP35','ITA40','AUS200','JPN225','HK50','CHN50','EUSTX50'].includes(sym))
-    return { label: 'Index', color: '#9fa0b0' };
-  if (['USOIL','UKOIL','NATGAS','COPPER','CORN','WHEAT','SOYBEAN','COCOA','COFFEE','SUGAR'].includes(sym))
-    return { label: 'Comm', color: '#34d399' };
-  return { label: 'Forex', color: '#7aacca' };
-};
 
 const getTickSnapshot = (symbol: string) => {
   const state = useAppStore.getState();
@@ -102,7 +113,7 @@ const MarketWatchRow: React.FC<{
   isStatusSettled: boolean;
   isStatusCurrent: boolean;
   isCatalogLoading: boolean;
-  isActionable: boolean;
+  isChartOpenable: boolean;
   now: number;
   onClick: () => void;
   contextMenuItems: ContextMenuItemConfig[];
@@ -111,10 +122,11 @@ const MarketWatchRow: React.FC<{
   showDailyChange: boolean;
   symbolUniverse: readonly string[];
   rowRef?: (node: HTMLTableRowElement | null) => void;
-}> = ({ symbol, isSelected, isLive, isAvailable, isStatusLoading, isStatusSettled, isStatusCurrent, isCatalogLoading, isActionable, now, onClick, contextMenuItems, showAsk, showSpread, showDailyChange, symbolUniverse, rowRef }) => {
+}> = ({ symbol, isSelected, isLive, isAvailable, isStatusLoading, isStatusSettled, isStatusCurrent, isCatalogLoading, isChartOpenable, now, onClick, contextMenuItems, showAsk, showSpread, showDailyChange, symbolUniverse, rowRef }) => {
   const displaySymbol = getMarketWatchSymbolLabel(symbol, symbolUniverse);
   const cachedTick = useTick(symbol);
   const tick = cachedTick;
+  const priceDigits = getMarketWatchPriceDigits(symbol);
   const bidDirection = tick?.bidDirection ?? 'none';
   const askDirection = tick?.askDirection ?? 'none';
   const bid = tick?.bid ?? 0;
@@ -155,9 +167,9 @@ const MarketWatchRow: React.FC<{
     <ContextMenu items={contextMenuItems}>
       <tr
         ref={rowRef}
-        draggable={isActionable}
+        draggable={isChartOpenable}
         onDragStart={(e) => {
-          if (!isActionable) {
+          if (!isChartOpenable) {
             e.preventDefault();
             return;
           }
@@ -178,8 +190,8 @@ const MarketWatchRow: React.FC<{
         }}
         className={`${!isSelected ? 'mw-row ' : ''}rtx-market-watch__row${isSelected ? ' rtx-market-watch__row--selected' : ''}${!isLive ? ' rtx-market-watch__row--stale' : ''}`}
         aria-selected={isSelected}
-        aria-disabled={!isActionable}
-        title={!isActionable ? `${displaySymbol} trading is currently unavailable` : undefined}
+        aria-disabled={!isChartOpenable}
+        title={!isChartOpenable ? `${displaySymbol} chart is currently unavailable` : undefined}
       >
         {/* Symbol */}
         <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', maxWidth: 0 }}>
@@ -246,7 +258,7 @@ const MarketWatchRow: React.FC<{
             fontVariantNumeric: 'tabular-nums',
             tabularNums: true,
           } as React.CSSProperties}>
-            {hasData ? <PriceDisplay price={bid} symbol={symbol} /> : '—'}
+            {hasData ? <PriceDisplay price={bid} symbol={symbol} digits={priceDigits} /> : '—'}
           </span>
         </td>
 
@@ -269,7 +281,7 @@ const MarketWatchRow: React.FC<{
               letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',
             }}>
-              {hasData ? <PriceDisplay price={ask} symbol={symbol} /> : '—'}
+              {hasData ? <PriceDisplay price={ask} symbol={symbol} digits={priceDigits} /> : '—'}
             </span>
           </td>
         )}
@@ -319,12 +331,15 @@ const MarketWatchRow: React.FC<{
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
   activeMarketSnapshot: ActiveMarketSymbolsSnapshot;
+  marketInstrumentsSnapshot: MarketInstrumentsSnapshot;
 }> = ({
   allSymbols,
+  chartSymbols,
   selectedSymbol,
   onSymbolSelect,
   className,
   activeMarketSnapshot,
+  marketInstrumentsSnapshot,
 }) => {
   // This panel only needs to know whether any quote exists. Subscribing to the
   // complete tick map redrew the entire panel for every freshness timestamp.
@@ -332,10 +347,11 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
   const {
     symbols: marketInstruments,
+    authorizedSymbols: authenticatedMarketSymbols = [],
     disabledSymbols,
     loading: isLoadingSymbols,
     error: symbolsError,
-  } = useMarketInstruments();
+  } = marketInstrumentsSnapshot;
   const {
     symbols: activeMarketSymbols,
     loading: activeSymbolsLoading,
@@ -353,28 +369,25 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     error: watchlistError,
   } = useRemoteWatchlistSync(activeWatchlist?.id);
   const [search, setSearch] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const [showGrid, setShowGrid] = useState(true);
   const [showSymbolsPanel, setShowSymbolsPanel] = useState(false);
+  const [selectedSymbolGroupKey, setSelectedSymbolGroupKey] = useState<string | null>(null);
+  const [symbolExplorerViewport, setSymbolExplorerViewport] = useState({
+    scrollTop: 0,
+    height: SYMBOL_EXPLORER_FALLBACK_HEIGHT,
+  });
   const [manualSymbols, setManualSymbols] = useState<ScopedManualSymbols>({
     watchlistId: activeWatchlist?.id ?? '',
     symbols: [],
   });
   const [pendingStatusRefreshSymbol, setPendingStatusRefreshSymbol] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const symbolExplorerScrollRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLTableRowElement>>(new Map());
   const [panelWidth, setPanelWidth] = useState(999);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const searchListboxId = useId();
-  const dockedSearchListboxId = useId();
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -395,33 +408,31 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
 
   const disabledSymbolSet = useMemo(() => new Set(uniqueSymbols(disabledSymbols)), [disabledSymbols]);
 
-  const authorizedSymbols = useMemo(() => {
-    return uniqueSymbols([
+  const catalogSymbols = useMemo(
+    () => getUniqueSymbolNames(marketInstruments),
+    [marketInstruments],
+  );
+
+  const authorizedSymbols = useMemo(() => isAuthenticated
+    ? uniqueSymbols([
       ...getUniqueSymbolNames(allSymbols),
-      ...getUniqueSymbolNames(marketInstruments),
+      ...authenticatedMarketSymbols,
     ])
       .filter((symbol) => !disabledSymbolSet.has(symbol))
-      .sort((a, b) => a.localeCompare(b));
-  }, [allSymbols, disabledSymbolSet, marketInstruments]);
+      .sort((a, b) => a.localeCompare(b))
+    : [], [allSymbols, authenticatedMarketSymbols, disabledSymbolSet, isAuthenticated]);
 
-  const authorizedSymbolSet = useMemo(() => new Set(authorizedSymbols), [authorizedSymbols]);
-  const publicQuoteSymbols = useMemo(
-    () => !isAuthenticated && activeSymbolsCurrent
-      ? uniqueSymbols(activeMarketSymbols)
-      : [],
-    [activeMarketSymbols, activeSymbolsCurrent, isAuthenticated],
-  );
-  const quoteEligibleSymbols = useMemo(
-    () => authorizedSymbols.length > 0 ? authorizedSymbols : publicQuoteSymbols,
-    [authorizedSymbols, publicQuoteSymbols],
-  );
+  const quoteEligibleSymbols = catalogSymbols;
   const quoteEligibleSymbolSet = useMemo(
     () => new Set(quoteEligibleSymbols),
     [quoteEligibleSymbols],
   );
   const defaultSymbols = useMemo(
-    () => getDefaultMarketWatchSymbols(quoteEligibleSymbols),
-    [quoteEligibleSymbols],
+    () => selectDefaultMarketWatchSymbols(
+      marketInstruments,
+      [...allSymbols, ...marketInstruments],
+    ),
+    [allSymbols, marketInstruments],
   );
   const shouldMergePersistedSymbols = shouldUseWatchlistAsMarketWatchSource({
     activeWatchlistId: activeWatchlist?.id,
@@ -435,9 +446,12 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       quoteEligibleSymbols,
       shouldMergePersistedSymbols,
     ]);
-  const activeManualSymbols = manualSymbols.watchlistId === (activeWatchlist?.id ?? '')
-    ? manualSymbols.symbols
-    : [];
+  const activeManualSymbols = useMemo(
+    () => manualSymbols.watchlistId === (activeWatchlist?.id ?? '')
+      ? manualSymbols.symbols
+      : [],
+    [activeWatchlist?.id, manualSymbols.symbols, manualSymbols.watchlistId],
+  );
   const rows = useMemo(() => uniqueSymbols([
     ...(shouldMergePersistedSymbols ? persistedSymbols : defaultSymbols),
     ...activeManualSymbols,
@@ -447,25 +461,150 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     persistedSymbols,
     shouldMergePersistedSymbols,
   ]);
+  const {
+    visibleSymbols: visibleRowSymbols,
+    setViewportRef: setMarketWatchViewportRef,
+    setRowRef: setVisibleMarketWatchRowRef,
+  } = useVisibleSymbolRows(rows);
+  const marketWatchRowsKey = rows.join('\u0000');
+  const marketWatchSymbolOrder = useMemo(
+    () => new Map(rows.map((symbol, index) => [symbol, index] as const)),
+    [rows],
+  );
+  const marketWatchSymbolSet = useMemo(
+    () => new Set(rows),
+    [rows],
+  );
+  const marketWatchRowRefCallbacks = useMemo(
+    () => new Map(
+      (marketWatchRowsKey ? marketWatchRowsKey.split('\u0000') : []).map((symbol) => [
+        symbol,
+        (node: HTMLTableRowElement | null) => {
+          setVisibleMarketWatchRowRef(symbol, node);
+          if (node) {
+            rowRefs.current.set(symbol, node);
+          } else {
+            rowRefs.current.delete(symbol);
+          }
+        },
+      ] as const),
+    ),
+    [marketWatchRowsKey, setVisibleMarketWatchRowRef],
+  );
   const activeSymbolSet = useMemo(() => new Set(uniqueSymbols(activeMarketSymbols)), [activeMarketSymbols]);
   const actionableSymbolSet = useMemo(() => new Set(
     activeSymbolsCurrent
       ? authorizedSymbols.filter((symbol) => activeSymbolSet.has(symbol))
       : [],
   ), [activeSymbolSet, activeSymbolsCurrent, authorizedSymbols]);
+  const chartOpenableSymbolSet = useMemo(() => (
+    chartSymbols === undefined
+      ? actionableSymbolSet
+      : new Set(getUniqueSymbolNames(chartSymbols))
+  ), [actionableSymbolSet, chartSymbols]);
   const liveQuoteSymbolSet = useMemo(() => new Set(
     activeSymbolsCurrent
       ? quoteEligibleSymbols.filter((symbol) => activeSymbolSet.has(symbol))
       : [],
   ), [activeSymbolSet, activeSymbolsCurrent, quoteEligibleSymbols]);
-  const searchUniverse = authorizedSymbols;
-  const subscriptionSymbols = useMemo(() => rows.filter(
+  const searchUniverse = quoteEligibleSymbols;
+  const symbolGroups = useMemo(() => buildMarketWatchSymbolGroups(
+    searchUniverse,
+    [...allSymbols, ...marketInstruments],
+    rows,
+  ), [allSymbols, marketInstruments, rows, searchUniverse]);
+  const selectedSymbolGroup = useMemo(
+    () => symbolGroups.find((group) => group.key === selectedSymbolGroupKey) ?? null,
+    [selectedSymbolGroupKey, symbolGroups],
+  );
+  const selectedGroupSymbols = useMemo(() => {
+    const groupSymbols = selectedSymbolGroup?.symbols ?? [];
+    return [...groupSymbols].sort((left, right) => {
+      const leftOrder = marketWatchSymbolOrder.get(left);
+      const rightOrder = marketWatchSymbolOrder.get(right);
+      if (leftOrder !== undefined && rightOrder !== undefined) return leftOrder - rightOrder;
+      if (leftOrder !== undefined) return -1;
+      if (rightOrder !== undefined) return 1;
+      return 0;
+    });
+  }, [marketWatchSymbolOrder, selectedSymbolGroup]);
+  const subscriptionSymbols = useMemo(() => visibleRowSymbols.filter(
     (symbol) => quoteEligibleSymbolSet.has(symbol),
-  ), [quoteEligibleSymbolSet, rows]);
+  ), [quoteEligibleSymbolSet, visibleRowSymbols]);
 
   const filteredSymbols = useMemo(() => {
-    return searchMarketWatchSymbols(searchUniverse, search);
-  }, [search, searchUniverse]);
+    if (search.trim()) {
+      return searchMarketWatchSymbols(searchUniverse, search, Math.max(1, searchUniverse.length));
+    }
+    return selectedGroupSymbols;
+  }, [search, searchUniverse, selectedGroupSymbols]);
+  const showingSymbolGroups = showSymbolsPanel && !search.trim() && !selectedSymbolGroup;
+  const explorerOptionCount = showingSymbolGroups ? symbolGroups.length : filteredSymbols.length;
+  const symbolExplorerWindow = useMemo(() => {
+    const maxScrollTop = Math.max(
+      0,
+      filteredSymbols.length * SYMBOL_EXPLORER_ROW_HEIGHT - symbolExplorerViewport.height,
+    );
+    const effectiveScrollTop = Math.min(symbolExplorerViewport.scrollTop, maxScrollTop);
+    const startIndex = Math.max(
+      0,
+      Math.floor(effectiveScrollTop / SYMBOL_EXPLORER_ROW_HEIGHT) - SYMBOL_EXPLORER_OVERSCAN,
+    );
+    const endIndex = Math.min(
+      filteredSymbols.length,
+      Math.ceil((effectiveScrollTop + symbolExplorerViewport.height) / SYMBOL_EXPLORER_ROW_HEIGHT)
+        + SYMBOL_EXPLORER_OVERSCAN,
+    );
+
+    return {
+      startIndex,
+      endIndex,
+      topSpacerHeight: startIndex * SYMBOL_EXPLORER_ROW_HEIGHT,
+      bottomSpacerHeight: (filteredSymbols.length - endIndex) * SYMBOL_EXPLORER_ROW_HEIGHT,
+    };
+  }, [filteredSymbols.length, symbolExplorerViewport]);
+  const renderedExplorerSymbols = filteredSymbols.slice(
+    symbolExplorerWindow.startIndex,
+    symbolExplorerWindow.endIndex,
+  );
+
+  useLayoutEffect(() => {
+    const element = symbolExplorerScrollRef.current;
+    if (!element || showingSymbolGroups) return;
+
+    const measure = () => {
+      const height = element.clientHeight || SYMBOL_EXPLORER_FALLBACK_HEIGHT;
+      setSymbolExplorerViewport((current) => (
+        current.height === height ? current : { ...current, height }
+      ));
+    };
+
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [showSymbolsPanel, showingSymbolGroups]);
+
+  useEffect(() => {
+    const element = symbolExplorerScrollRef.current;
+    if (element) element.scrollTop = 0;
+    setSymbolExplorerViewport((current) => (
+      current.scrollTop === 0 ? current : { ...current, scrollTop: 0 }
+    ));
+  }, [search, selectedSymbolGroupKey]);
+
+  const handleSymbolExplorerScroll = useCallback(() => {
+    const element = symbolExplorerScrollRef.current;
+    if (!element) return;
+    const scrollTop = element.scrollTop;
+    const height = element.clientHeight || SYMBOL_EXPLORER_FALLBACK_HEIGHT;
+    setSymbolExplorerViewport((current) => (
+      current.scrollTop === scrollTop && current.height === height
+        ? current
+        : { scrollTop, height }
+    ));
+  }, []);
 
   const scrollSymbolIntoView = useCallback((symbol: string) => {
     window.requestAnimationFrame(() => {
@@ -475,7 +614,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
 
   const handleSelectSymbol = useCallback((symbol: string) => {
     const next = resolveMarketWatchSymbolInput(searchUniverse, symbol);
-    if (!next || !authorizedSymbolSet.has(next)) return;
+    if (!next || !quoteEligibleSymbolSet.has(next)) return;
     const isNewRow = !rows.includes(next);
     if (isNewRow) {
       setManualSymbols((current) => {
@@ -496,8 +635,10 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       useWatchlistStore.getState().addSymbolToWatchlist(activeWatchlist.id, next);
     }
     setSearch('');
-    setShowDropdown(false);
+    setShowSymbolsPanel(false);
+    setSelectedSymbolGroupKey(null);
     setHighlightIndex(-1);
+    inputRef.current?.blur();
     onSymbolSelect(next);
     scrollSymbolIntoView(next);
     
@@ -505,7 +646,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: next, newTab: true } }));
   }, [
     activeWatchlist,
-    authorizedSymbolSet,
+    quoteEligibleSymbolSet,
     onSymbolSelect,
     persistedSymbols,
     rows,
@@ -518,7 +659,8 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     const next = normalizeSymbol(symbol);
     if (!next) return;
 
-    // Product defaults are fixed only in the built-in/default Market Watch.
+    // The built-in Market Watch keeps its curated core/group representatives.
+    // Only custom watchlists can hide individual rows persistently.
     if (!shouldMergePersistedSymbols && defaultSymbols.includes(next)) return;
 
     const watchlistId = activeWatchlist?.id ?? '';
@@ -552,11 +694,11 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
 
   const handleShowAll = useCallback(() => {
     const watchlistId = activeWatchlist?.id ?? '';
-    setManualSymbols({ watchlistId, symbols: [...authorizedSymbols] });
+    setManualSymbols({ watchlistId, symbols: [...quoteEligibleSymbols] });
     if (shouldMergePersistedSymbols && activeWatchlist) {
-      useWatchlistStore.getState().reorderSymbols(activeWatchlist.id, authorizedSymbols);
+      useWatchlistStore.getState().reorderSymbols(activeWatchlist.id, quoteEligibleSymbols);
     }
-  }, [activeWatchlist, authorizedSymbols, shouldMergePersistedSymbols]);
+  }, [activeWatchlist, quoteEligibleSymbols, shouldMergePersistedSymbols]);
 
   const handleExport = useCallback(() => {
     const data = rows.map(sym => {
@@ -572,13 +714,14 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
   }, [rows]);
 
   const getContextMenuItems = useCallback((symbol: string): ContextMenuItemConfig[] => {
-    const disabled = !actionableSymbolSet.has(symbol);
+    const tradeDisabled = !actionableSymbolSet.has(symbol);
+    const chartDisabled = !chartOpenableSymbolSet.has(symbol);
     return [
       {
         label: 'New Order',
         icon: <Icon name="plus" size="xs" />,
         shortcut: 'F9',
-        disabled,
+        disabled: tradeDisabled,
         action: () => {
           window.dispatchEvent(new CustomEvent('openOrderDialog', { detail: { symbol } }));
         },
@@ -586,6 +729,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       {
         label: 'Chart Window',
         icon: <Icon name="bar-chart" size="xs" />,
+        disabled: chartDisabled,
         action: () => {
           window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol } }));
         },
@@ -594,7 +738,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
         label: 'Depth Of Market',
         icon: <Icon name="layers" size="xs" />,
         shortcut: 'Alt+B',
-        disabled,
+        disabled: tradeDisabled,
         action: () => {
           window.dispatchEvent(new CustomEvent('openDepthOfMarket', { detail: { symbol } }));
         },
@@ -635,6 +779,9 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
         icon: <Icon name="search" size="xs" />,
         shortcut: 'Ctrl+U',
         action: () => {
+          setSearch('');
+          setSelectedSymbolGroupKey(null);
+          setHighlightIndex(-1);
           setShowSymbolsPanel(true);
           inputRef.current?.focus();
         },
@@ -654,6 +801,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     ];
   }, [
     actionableSymbolSet,
+    chartOpenableSymbolSet,
     defaultSymbols,
     handleExport,
     handleHideAll,
@@ -676,6 +824,9 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       }
       if (e.ctrlKey && e.key === 'u') {
         e.preventDefault();
+        setSearch('');
+        setSelectedSymbolGroupKey(null);
+        setHighlightIndex(-1);
         inputRef.current?.focus();
         setShowSymbolsPanel(true);
       }
@@ -696,42 +847,92 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [actionableSymbolSet, handleHideSymbol, selectedSymbol]);
 
+  const closeSymbolExplorer = useCallback(() => {
+    setSearch('');
+    setSelectedSymbolGroupKey(null);
+    setShowSymbolsPanel(false);
+    setHighlightIndex(-1);
+  }, []);
+
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlightIndex((prev) => Math.min(prev + 1, filteredSymbols.length - 1));
+      setShowSymbolsPanel(true);
+      setHighlightIndex((prev) => Math.min(prev + 1, explorerOptionCount - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlightIndex((prev) => Math.max(prev - 1, 0));
+      setHighlightIndex((prev) => explorerOptionCount > 0 ? Math.max(prev - 1, 0) : -1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (highlightIndex >= 0 && highlightIndex < filteredSymbols.length) {
+      if (showingSymbolGroups && highlightIndex >= 0 && highlightIndex < symbolGroups.length) {
+        setSelectedSymbolGroupKey(symbolGroups[highlightIndex].key);
+        setHighlightIndex(0);
+      } else if (highlightIndex >= 0 && highlightIndex < filteredSymbols.length) {
         handleSelectSymbol(filteredSymbols[highlightIndex]);
       } else if (search.trim()) {
         handleSelectSymbol(search);
       }
     } else if (e.key === 'Escape') {
-      setShowDropdown(false);
-      setSearch('');
-      setHighlightIndex(-1);
+      if (search.trim()) {
+        setSearch('');
+        setHighlightIndex(-1);
+      } else if (selectedSymbolGroup) {
+        setSelectedSymbolGroupKey(null);
+        setHighlightIndex(-1);
+      } else {
+        closeSymbolExplorer();
+        inputRef.current?.blur();
+      }
     }
-  }, [filteredSymbols, highlightIndex, search, handleSelectSymbol]);
+  }, [
+    closeSymbolExplorer,
+    explorerOptionCount,
+    filteredSymbols,
+    handleSelectSymbol,
+    highlightIndex,
+    search,
+    selectedSymbolGroup,
+    showingSymbolGroups,
+    symbolGroups,
+  ]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
-    setShowDropdown(Boolean(value.trim()));
+    setShowSymbolsPanel(true);
     setHighlightIndex(-1);
   }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
+      if (
+        showSymbolsPanel
+        && containerRef.current
+        && !containerRef.current.contains(e.target as Node)
+      ) {
+        closeSymbolExplorer();
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [closeSymbolExplorer, showSymbolsPanel]);
+
+  useEffect(() => {
+    if (highlightIndex < 0 || showingSymbolGroups) return;
+    const option = document.getElementById(`${searchListboxId}-option-${highlightIndex}`);
+    if (option && typeof option.scrollIntoView === 'function') {
+      option.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    const element = symbolExplorerScrollRef.current;
+    if (!element) return;
+    element.scrollTop = highlightIndex * SYMBOL_EXPLORER_ROW_HEIGHT;
+    handleSymbolExplorerScroll();
+  }, [
+    searchListboxId,
+    handleSymbolExplorerScroll,
+    highlightIndex,
+    showingSymbolGroups,
+  ]);
 
   const { loading: quotesLoading, error: quotesError } = useLiveQuotes(subscriptionSymbols);
   useEffect(() => {
@@ -745,26 +946,25 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     quotesError,
     searchUniverse.length === 0 ? activeSymbolsError : null,
   );
-  const activeSearchListboxId = showSymbolsPanel ? dockedSearchListboxId : searchListboxId;
-  const activeSearchOptionId = highlightIndex >= 0 && highlightIndex < filteredSymbols.length
-    ? `${activeSearchListboxId}-option-${highlightIndex}`
+  const activeSearchOptionId = highlightIndex >= 0 && highlightIndex < explorerOptionCount
+    ? `${searchListboxId}-option-${highlightIndex}`
     : undefined;
-
-  const timeStr = currentTime.toLocaleTimeString('en-US', { hour12: false });
 
   return (
     <>
-      {/* Inline style for hover row and flash animation */}
-      {/* Inline style for hover row and flash animation */}
+      {/* Shared Market Watch interaction styles for browser and Electron. */}
       <style>{`
         .rtx-market-watch .mw-row { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-        .rtx-market-watch .mw-input { transition: all 0.3s ease; }
-        .rtx-market-watch .mw-input::placeholder { color: #64748b; }
-        .rtx-market-watch .mw-input:focus { border-color: rgba(59,130,246,0.5) !important; box-shadow: 0 0 15px rgba(59,130,246,0.25), inset 0 0 0 1px rgba(59,130,246,0.5) !important; background: rgba(15,23,42,0.6) !important; }
+        .rtx-market-watch .mw-input::placeholder { color: var(--text-secondary); }
+        .rtx-market-watch .mw-input:focus { border-color: transparent !important; box-shadow: none !important; background: transparent !important; }
+        .rtx-market-watch .rtx-market-watch__search-bar:focus-within { box-shadow: inset 0 -1px 0 var(--border-secondary); }
+        .rtx-market-watch .rtx-market-watch__explorer-option:hover { background: var(--bg-quaternary) !important; }
         .rtx-market-watch .mw-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
         .rtx-market-watch .mw-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .rtx-market-watch .mw-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
         .rtx-market-watch .mw-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+        .rtx-market-watch .rtx-market-watch__symbol-explorer .mw-scrollbar::-webkit-scrollbar-thumb { background: var(--border-tertiary); }
+        .rtx-market-watch .rtx-market-watch__symbol-explorer .mw-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
       `}</style>
 
       <div
@@ -782,60 +982,34 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
           overflow: 'hidden',
         }}
       >
-        {/* ── Header ──────────────────────────────────────────── */}
-        <div className="rtx-market-watch__header" style={{
-          height: 30,
-          padding: '0 12px',
-          boxSizing: 'border-box',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'linear-gradient(180deg, rgba(25,26,30,0.95) 0%, rgba(19,19,22,0) 100%)',
-          flexShrink: 0,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            {/* Subtle accent dot */}
-            <span className="rtx-market-watch__title" style={{ fontSize: 12, fontWeight: 400, color: '#808088', letterSpacing: 'normal' }}>
-              MARKET WATCH
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="rtx-market-watch__time" style={{
-              fontSize: 12,
-              fontWeight: 400,
-              color: '#8a8a8f',
-              letterSpacing: '0.04em',
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {timeStr}
-            </span>
-            <span className="rtx-market-watch__count" style={{
-              fontSize: 11,
-              fontWeight: 400,
-              color: '#50505a',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 10,
-              padding: '1px 6px',
-              letterSpacing: '0.03em',
-            }}>
-              {rows.length}
-            </span>
-          </div>
-        </div>
-
         {/* ── Search / Add Symbol ──────────────────────────────── */}
-        <div className="rtx-market-watch__search" style={{ padding: '7px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)', position: 'relative', flexShrink: 0 }} ref={dropdownRef}>
-          <div style={{ position: 'relative' }}>
-            {/* Search icon */}
-            <svg
-              width="12" height="12" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: '#50505a', pointerEvents: 'none' }}
-            >
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+        <div
+          className="rtx-market-watch__search"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            flex: showSymbolsPanel ? '1 1 auto' : '0 0 auto',
+            minHeight: 0,
+            borderBottom: '1px solid var(--border-primary)',
+            background: showSymbolsPanel ? 'var(--bg-secondary)' : 'transparent',
+          }}
+        >
+          <div
+            className="rtx-market-watch__search-bar"
+            style={{ position: 'relative', height: 48, flexShrink: 0 }}
+          >
+            <Icon
+              name="search"
+              size={20}
+              style={{
+                position: 'absolute',
+                left: 13,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-secondary)',
+                pointerEvents: 'none',
+              }}
+            />
             <input
               id="rtxMarketWatchSymbolSearch"
               name="marketWatchSymbolSearch"
@@ -843,172 +1017,279 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               className="mw-input"
               style={{
                 width: '100%',
+                height: '100%',
                 boxSizing: 'border-box',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 6,
-                padding: '5px 8px 5px 26px',
+                background: 'transparent',
+                border: '1px solid transparent',
+                borderRadius: 0,
+                padding: showSymbolsPanel ? '0 42px' : '0 12px 0 42px',
                 fontSize: 14,
                 fontWeight: 400,
-                color: '#e2e2e8',
+                color: 'var(--text-primary)',
                 outline: 'none',
                 fontFamily: 'inherit',
-                transition: 'border-color 0.15s, box-shadow 0.15s',
               }}
               aria-label="Add symbol"
               role="combobox"
               aria-autocomplete="list"
-              aria-expanded={showSymbolsPanel || showDropdown}
-              aria-controls={activeSearchListboxId}
+              aria-expanded={showSymbolsPanel}
+              aria-controls={showSymbolsPanel ? searchListboxId : undefined}
               aria-activedescendant={activeSearchOptionId}
               autoComplete="off"
-              placeholder="Add symbol..."
+              placeholder="Search symbol"
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              onFocus={() => search.trim() && setShowDropdown(true)}
+              onFocus={() => setShowSymbolsPanel(true)}
             />
+            {showSymbolsPanel && (
+              <button
+                type="button"
+                aria-label="Close symbol search"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  closeSymbolExplorer();
+                  inputRef.current?.blur();
+                }}
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 30,
+                  height: 30,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 0,
+                  background: 'transparent',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                }}
+              >
+                <Icon name="x-close" size={18} />
+              </button>
+            )}
           </div>
 
-          {/* Dropdown */}
-          {showDropdown && !showSymbolsPanel && (
+          {showSymbolsPanel && (
             <div
-              id={searchListboxId}
-              role="listbox"
-              aria-label="Symbol search results"
-              className="rtx-market-watch__dropdown mw-scrollbar"
+              className="rtx-market-watch__symbol-explorer"
               style={{
-              position: 'absolute',
-              left: 10, right: 10,
-              top: '100%',
-              marginTop: 2,
-              background: '#191a1e',
-              border: '1px solid rgba(255,255,255,0.09)',
-              borderRadius: 7,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-              zIndex: 50,
-              maxHeight: 220,
-              overflowY: 'auto',
+                display: 'flex',
+                flex: '1 1 auto',
+                flexDirection: 'column',
+                minHeight: 0,
+                background: 'var(--bg-secondary)',
               }}
             >
-              {isSymbolListLoading ? (
-                <div style={{ padding: '10px 12px', fontSize: 11, color: '#50505a' }}>Loading…</div>
-              ) : filteredSymbols.length === 0 ? (
-                <div style={{ padding: '10px 12px', fontSize: 11, color: '#50505a' }}>
-                  {search.trim() ? 'No matches found' : 'Type to search…'}
+              {isSymbolListLoading && symbolGroups.length === 0 ? (
+                <div style={{ padding: '12px 13px', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                  Loading symbols…
                 </div>
-              ) : filteredSymbols.map((sym, idx) => {
-                const cat = getCategory(sym);
-                const displaySymbol = getMarketWatchSymbolLabel(sym, searchUniverse);
-                return (
+              ) : showingSymbolGroups ? (
+                <div
+                  id={searchListboxId}
+                  role="listbox"
+                  aria-label="Symbol groups"
+                  className="rtx-market-watch__group-list mw-scrollbar"
+                  style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}
+                >
+                  {symbolGroups.length === 0 ? (
+                    <div style={{ padding: '12px 13px', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                      No symbols available
+                    </div>
+                  ) : symbolGroups.map((group, index) => (
+                    <button
+                      key={group.key}
+                      id={`${searchListboxId}-option-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={index === highlightIndex}
+                      aria-label={`${group.label} ${group.visibleCount} of ${group.symbols.length}`}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setHighlightIndex(index)}
+                      onClick={() => {
+                        setSelectedSymbolGroupKey(group.key);
+                        setHighlightIndex(0);
+                      }}
+                      className="rtx-market-watch__explorer-option rtx-market-watch__group-option"
+                      style={{
+                        width: '100%',
+                        height: SYMBOL_EXPLORER_ROW_HEIGHT,
+                        padding: '0 13px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        border: 0,
+                        background: index === highlightIndex ? 'var(--bg-quaternary)' : 'transparent',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {group.label}
+                      </span>
+                      <span style={{ flexShrink: 0, color: 'var(--text-secondary)', fontWeight: 400, fontVariantNumeric: 'tabular-nums' }}>
+                        {group.visibleCount}/{group.symbols.length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  {selectedSymbolGroup && !search.trim() && (
+                    <button
+                      type="button"
+                      aria-label="Back to symbol groups"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setSelectedSymbolGroupKey(null);
+                        setHighlightIndex(-1);
+                      }}
+                      style={{
+                        height: SYMBOL_EXPLORER_ROW_HEIGHT,
+                        padding: '0 12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 7,
+                        flexShrink: 0,
+                        border: 0,
+                        borderBottom: '1px solid var(--border-primary)',
+                        background: 'var(--bg-tertiary)',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        textAlign: 'left',
+                      }}
+                    >
+                      <Icon name="chevron-left" size="sm" />
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {selectedSymbolGroup.label}
+                      </span>
+                      <span style={{ flexShrink: 0, color: 'var(--text-secondary)', fontWeight: 400 }}>
+                        {selectedSymbolGroup.symbols.length}
+                      </span>
+                    </button>
+                  )}
                   <div
-                    key={sym}
-                    id={`${searchListboxId}-option-${idx}`}
-                    role="option"
-                    aria-selected={idx === highlightIndex}
-                    aria-disabled={false}
-                    aria-label={displaySymbol}
-                    onClick={() => handleSelectSymbol(sym)}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => setHighlightIndex(idx)}
-                    style={{
-                      padding: '6px 12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    fontSize: 14,
-                    fontWeight: 400,
-                    background: idx === highlightIndex ? 'rgba(255,255,255,0.06)' : 'transparent',
-                    opacity: 1,
-                      transition: 'background 0.1s',
-                    }}
+                    ref={symbolExplorerScrollRef}
+                    id={searchListboxId}
+                    role="listbox"
+                    aria-label={search.trim() ? 'Symbol search results' : `${selectedSymbolGroup?.label ?? ''} symbols`}
+                    data-testid="market-watch-symbol-scroll"
+                    onScroll={handleSymbolExplorerScroll}
+                    className="rtx-market-watch__symbol-list mw-scrollbar"
+                    style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain' }}
                   >
-                    <span className="rtx-market-watch__dropdown-symbol" style={{ color: idx === highlightIndex ? '#e2e2e8' : '#808088', fontWeight: 400 }}>{displaySymbol}</span>
-                    <span className="rtx-market-watch__category" style={{
-                      fontSize: 10,
-                      color: cat.color,
-                      background: `${cat.color}18`,
-                      border: `1px solid ${cat.color}30`,
-                      borderRadius: 4,
-                      padding: '1px 5px',
-                      letterSpacing: '0.03em',
-                    }}>
-                      {cat.label}
-                    </span>
+                    {filteredSymbols.length === 0 ? (
+                      <div style={{ padding: '12px 13px', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                        {search.trim() ? 'No matches found' : 'No symbols in this group'}
+                      </div>
+                    ) : (
+                      <>
+                        {symbolExplorerWindow.topSpacerHeight > 0 && (
+                          <div aria-hidden="true" style={{ height: symbolExplorerWindow.topSpacerHeight }} />
+                        )}
+                        {renderedExplorerSymbols.map((symbol, visibleIndex) => {
+                          const absoluteIndex = symbolExplorerWindow.startIndex + visibleIndex;
+                          const displaySymbol = getMarketWatchSymbolLabel(symbol, searchUniverse);
+                          const isSubscribed = marketWatchSymbolSet.has(symbol);
+                          return (
+                            <button
+                              key={symbol}
+                              id={`${searchListboxId}-option-${absoluteIndex}`}
+                              type="button"
+                              role="option"
+                              aria-selected={absoluteIndex === highlightIndex}
+                              aria-disabled={false}
+                              aria-label={displaySymbol}
+                              aria-posinset={absoluteIndex + 1}
+                              aria-setsize={filteredSymbols.length}
+                              data-subscribed={isSubscribed ? 'true' : 'false'}
+                              tabIndex={-1}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onMouseEnter={() => setHighlightIndex(absoluteIndex)}
+                              onClick={() => handleSelectSymbol(symbol)}
+                              className="rtx-market-watch__explorer-option rtx-market-watch__symbol-option"
+                              style={{
+                                width: '100%',
+                                height: SYMBOL_EXPLORER_ROW_HEIGHT,
+                                padding: isSubscribed ? '0 11px 0 10px' : '0 13px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8,
+                                borderTop: 0,
+                                borderRight: 0,
+                                borderBottom: '1px solid var(--bg-tertiary)',
+                                borderLeft: isSubscribed ? '3px solid var(--status-connected)' : 0,
+                                background: absoluteIndex === highlightIndex
+                                  ? 'var(--bg-quaternary)'
+                                  : isSubscribed
+                                    ? 'var(--color-profit-dimmer)'
+                                    : 'transparent',
+                                color: 'var(--text-primary)',
+                                cursor: 'pointer',
+                                fontFamily: 'inherit',
+                                fontSize: 14,
+                                fontWeight: 500,
+                                textAlign: 'left',
+                              }}
+                            >
+                              <span
+                                className="rtx-market-watch__symbol"
+                                style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              >
+                                {displaySymbol}
+                              </span>
+                              {isSubscribed && (
+                                <span
+                                  aria-hidden="true"
+                                  className="rtx-market-watch__subscribed-badge"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    flexShrink: 0,
+                                    color: 'var(--status-connected)',
+                                    fontSize: 10,
+                                    fontWeight: 600,
+                                    letterSpacing: '0.02em',
+                                  }}
+                                >
+                                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor' }} />
+                                  Subscribed
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                        {symbolExplorerWindow.bottomSpacerHeight > 0 && (
+                          <div aria-hidden="true" style={{ height: symbolExplorerWindow.bottomSpacerHeight }} />
+                        )}
+                      </>
+                    )}
                   </div>
-                );
-              })}
+                </>
+              )}
             </div>
           )}
         </div>
 
-        {/* ── Symbols Panel (Ctrl+U) ───────────────────────────── */}
-        {showSymbolsPanel && (
-          <div className="rtx-market-watch__symbols-panel mw-scrollbar" style={{
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
-            background: '#0d0f18',
-            maxHeight: 140,
-            overflowY: 'auto',
-            flexShrink: 0,
-          }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '4px 10px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.05)',
-            }}>
-              <span id={`${dockedSearchListboxId}-label`} className="rtx-market-watch__symbols-title" style={{ fontSize: 12, fontWeight: 400, color: '#50505a', letterSpacing: 'normal' }}>SEARCH RESULTS ({filteredSymbols.length})</span>
-              <button
-                type="button"
-                aria-label="Close symbol search results"
-                onClick={() => {
-                  setShowSymbolsPanel(false);
-                  setShowDropdown(false);
-                }}
-                style={{ background: 'none', border: 'none', color: '#50505a', cursor: 'pointer', fontSize: 11, padding: '0 2px', lineHeight: 1 }}
-              >✕</button>
-            </div>
-            <div
-              id={dockedSearchListboxId}
-              role="listbox"
-              aria-labelledby={`${dockedSearchListboxId}-label`}
-            >
-            {!search.trim() ? (
-              <div style={{ padding: '10px 12px', fontSize: 11, color: '#50505a' }}>Type to search…</div>
-            ) : filteredSymbols.length === 0 ? (
-              <div style={{ padding: '10px 12px', fontSize: 11, color: '#50505a' }}>No matches found</div>
-            ) : filteredSymbols.map((sym, idx) => {
-              const cat = getCategory(sym);
-              const displaySymbol = getMarketWatchSymbolLabel(sym, searchUniverse);
-              return (
-                <div
-                  key={sym}
-                  id={`${dockedSearchListboxId}-option-${idx}`}
-                  role="option"
-                  aria-selected={idx === highlightIndex}
-                  aria-disabled={false}
-                  aria-label={displaySymbol}
-                  onClick={() => handleSelectSymbol(sym)}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseEnter={() => setHighlightIndex(idx)}
-                  style={{
-                  minHeight: 30, padding: '4px 10px', display: 'flex', alignItems: 'center',
-                  justifyContent: 'space-between', cursor: 'pointer', fontSize: 14, fontWeight: 400, lineHeight: '21px', color: '#606068',
-                  background: idx === highlightIndex ? 'rgba(255,255,255,0.06)' : 'transparent',
-                  opacity: 1,
-                  }}
-                  className="mw-row"
-                >
-                  <span className="rtx-market-watch__symbol">{displaySymbol}</span>
-                  <span className="rtx-market-watch__category" style={{ fontSize: 12, fontWeight: 400, color: cat.color }}>{cat.label}</span>
-                </div>
-              );
-            })}
-            </div>
-          </div>
-        )}
-
         {/* ── Table & Column Headers ───────────────────────────── */}
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }} className="rtx-market-watch__table mw-scrollbar">
+        {!showSymbolsPanel && (
+          <div
+            ref={setMarketWatchViewportRef}
+            style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }}
+            className="rtx-market-watch__table mw-scrollbar"
+          >
           {rows.length === 0 ? (
             <div style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -1020,7 +1301,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               <span className="rtx-market-watch__empty-text" style={{ fontSize: 11, color: '#50505a' }}>
                 {isSymbolListLoading ? 'Loading symbols...' : 'No live symbols'}
               </span>
-              {!isSymbolListLoading && authorizedSymbols.length > 0 && (
+              {!isSymbolListLoading && quoteEligibleSymbols.length > 0 && (
                 <button
                   type="button"
                   onClick={handleShowAll}
@@ -1041,7 +1322,6 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
             </div>
           ) : (
             <table className="rtx-market-watch__grid" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-              {/* Column sizing */}
               <colgroup>
                 <col />
                 <col style={{ width: panelWidth < 300 ? '45%' : showSpread ? '20%' : '22%' }} />
@@ -1049,8 +1329,6 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                 {showSpread && <col style={{ width: '14%' }} />}
                 {showDailyChange && <col style={{ width: 90 }} />}
               </colgroup>
-
-              {/* Sticky header */}
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                   <th className="rtx-market-watch__column-heading" style={{ textAlign: 'left',  padding: '4px 8px', fontSize: 12, fontWeight: 400, color: '#606068', letterSpacing: 'normal', background: '#131316', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const }}>Symbol</th>
@@ -1060,7 +1338,6 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                   {showDailyChange && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'right', padding: '4px 8px', fontSize: 12, fontWeight: 400, color: '#606068', letterSpacing: 'normal', background: '#131316', position: 'sticky', top: 0, zIndex: 10 }}>Daily Change</th>}
                 </tr>
               </thead>
-
               <tbody>
                 {rows.map((symbol) => {
                   return (
@@ -1074,31 +1351,28 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                       isStatusSettled={activeSymbolsSettled}
                       isStatusCurrent={activeSymbolsCurrent}
                       isCatalogLoading={isLoadingSymbols}
-                      isActionable={actionableSymbolSet.has(symbol)}
-                      now={currentTime.getTime()}
+                      isChartOpenable={chartOpenableSymbolSet.has(symbol)}
+                      now={Date.now()}
                       onClick={() => onSymbolSelect(symbol)}
                       contextMenuItems={getContextMenuItems(symbol)}
                       showAsk={showAsk}
                       showSpread={showSpread}
                       showDailyChange={showDailyChange}
                       symbolUniverse={quoteEligibleSymbols}
-                      rowRef={(node) => {
-                        if (node) {
-                          rowRefs.current.set(symbol, node);
-                        } else {
-                          rowRefs.current.delete(symbol);
-                        }
-                      }}
+                      rowRef={marketWatchRowRefCallbacks.get(symbol)}
                     />
                   );
                 })}
               </tbody>
             </table>
           )}
-        </div>
+          </div>
+        )}
 
         {/* ── Footer: add symbol hint ──────────────────────────── */}
-        <div className="rtx-market-watch__footer" style={{
+        {!showSymbolsPanel && (
+          <>
+          <div className="rtx-market-watch__footer" style={{
           padding: '5px 10px',
           borderTop: '1px solid rgba(255,255,255,0.04)',
           display: 'flex',
@@ -1135,26 +1409,77 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
             </ul>
           </div>
         )}
-        {(quotesLoading || watchlistLoading) && rows.length > 0 && liveTickCount === 0 && (
-          <div style={{ padding: '4px 10px', color: '#606068', fontSize: 10 }}>
-            Loading quotes...
-          </div>
+          {(quotesLoading || watchlistLoading) && rows.length > 0 && liveTickCount === 0 && (
+            <div style={{ padding: '4px 10px', color: '#606068', fontSize: 10 }}>
+              Loading quotes...
+            </div>
+          )}
+          </>
         )}
       </div>
     </>
   );
 };
 
-const MarketWatchPanelWithLocalFreshnessOwner: React.FC<MarketWatchPanelBaseProps> = (props) => {
+const MarketWatchPanelWithLocalDataOwners: React.FC<MarketWatchPanelBaseProps> = (props) => {
   const activeMarketSnapshot = useActiveMarketSymbols();
-  return <MarketWatchPanelContent {...props} activeMarketSnapshot={activeMarketSnapshot} />;
+  const marketInstrumentsSnapshot = useMarketInstruments();
+  return (
+    <MarketWatchPanelContent
+      {...props}
+      activeMarketSnapshot={activeMarketSnapshot}
+      marketInstrumentsSnapshot={marketInstrumentsSnapshot}
+    />
+  );
+};
+
+const MarketWatchPanelWithLocalFreshnessOwner: React.FC<MarketWatchPanelBaseProps & {
+  marketInstrumentsSnapshot: MarketInstrumentsSnapshot;
+}> = ({ marketInstrumentsSnapshot, ...props }) => {
+  const activeMarketSnapshot = useActiveMarketSymbols();
+  return (
+    <MarketWatchPanelContent
+      {...props}
+      activeMarketSnapshot={activeMarketSnapshot}
+      marketInstrumentsSnapshot={marketInstrumentsSnapshot}
+    />
+  );
+};
+
+const MarketWatchPanelWithLocalMarketInstrumentsOwner: React.FC<MarketWatchPanelBaseProps & {
+  activeMarketSnapshot: ActiveMarketSymbolsSnapshot;
+}> = ({ activeMarketSnapshot, ...props }) => {
+  const marketInstrumentsSnapshot = useMarketInstruments();
+  return (
+    <MarketWatchPanelContent
+      {...props}
+      activeMarketSnapshot={activeMarketSnapshot}
+      marketInstrumentsSnapshot={marketInstrumentsSnapshot}
+    />
+  );
 };
 
 export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
   activeMarketSnapshot,
+  marketInstrumentsSnapshot,
   ...props
-}) => activeMarketSnapshot
-  ? <MarketWatchPanelContent {...props} activeMarketSnapshot={activeMarketSnapshot} />
-  : <MarketWatchPanelWithLocalFreshnessOwner {...props} />;
+}) => {
+  if (activeMarketSnapshot && marketInstrumentsSnapshot) {
+    return (
+    <MarketWatchPanelContent
+      {...props}
+      activeMarketSnapshot={activeMarketSnapshot}
+      marketInstrumentsSnapshot={marketInstrumentsSnapshot}
+    />
+    );
+  }
+  if (activeMarketSnapshot) {
+    return <MarketWatchPanelWithLocalMarketInstrumentsOwner {...props} activeMarketSnapshot={activeMarketSnapshot} />;
+  }
+  if (marketInstrumentsSnapshot) {
+    return <MarketWatchPanelWithLocalFreshnessOwner {...props} marketInstrumentsSnapshot={marketInstrumentsSnapshot} />;
+  }
+  return <MarketWatchPanelWithLocalDataOwners {...props} />;
+};
 
 export default MarketWatchPanel;

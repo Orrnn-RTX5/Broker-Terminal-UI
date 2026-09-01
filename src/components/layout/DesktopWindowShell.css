@@ -1,0 +1,157 @@
+.rtx-desktop-shell {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0d0d11;
+  color: #d7d9df;
+}
+
+.rtx-desktop-titlebar {
+  position: relative;
+  z-index: 100000;
+  flex: 0 0 31px;
+  height: 31px;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid #bfc2c6;
+  background: #f5f5f5;
+  box-shadow: inset 0 1px 0 #ffffff;
+  color: #25282c;
+  font-family: "Segoe UI", var(--font-sans, sans-serif);
+  user-select: none;
+}
+
+.rtx-desktop-titlebar__drag-region {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  -webkit-app-region: drag;
+}
+
+.rtx-desktop-titlebar__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.rtx-desktop-titlebar__title {
+  min-width: 0;
+  overflow: hidden;
+  color: #25282c;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtx-desktop-titlebar__controls {
+  height: 30px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  -webkit-app-region: no-drag;
+}
+
+.rtx-desktop-titlebar__control {
+  width: 46px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #292c31;
+  cursor: default;
+  transition: background-color 100ms ease, color 100ms ease;
+  -webkit-app-region: no-drag;
+}
+
+.rtx-desktop-titlebar__control svg {
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.rtx-desktop-titlebar__control:hover {
+  background: #dfe1e3;
+  color: #111317;
+}
+
+.rtx-desktop-titlebar__control--close:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+.rtx-desktop-titlebar__control:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 1px solid #2876b8;
+  outline-offset: -2px;
+}
+
+.rtx-desktop-titlebar__control:active {
+  transform: none;
+  background: #ced1d4;
+}
+
+.rtx-desktop-titlebar__control--close:active {
+  background: #9f2016;
+}
+
+.rtx-desktop-shell__content {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The desktop shell is the single owner of native window controls. */
+.rtx-desktop-shell .rtx-login-window-controls,
+.rtx-desktop-shell .rtx-window-controls {
+  display: none !important;
+}
+
+/* Remove the former toolbar drag surface now that the title bar owns it. */
+.rtx-desktop-shell .rtx-main-toolbar {
+  -webkit-app-region: no-drag !important;
+}
+
+/* Keep viewport-sized login/authenticated shells within the title-bar content. */
+.rtx-desktop-shell .rtx-app-shell,
+.rtx-desktop-shell .rtx-instant-terminal {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.rtx-desktop-shell .rtx-login-overlay {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100%;
+  height: 100%;
+  min-height: 0 !important;
+}
+
+.rtx-desktop-shell .rtx-login-stage,
+.rtx-desktop-shell .rtx-login-panel-wrap {
+  height: 100%;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtx-desktop-titlebar__control {
+    transition: none;
+  }
+}

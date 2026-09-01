@@ -4,6 +4,8 @@ import {
   buildOlderHistoryRangeFallbackWindows,
   formatHistoryForOhlcv,
   getVisibleLogicalRangeForDataRender,
+  mergeHistoricalCandlesWithBufferedLive,
+  mergeHistoricalCandleWithBufferedLive,
   mergeFormingCandleEnvelope,
   mergeBackendCandlePage,
   normalizeCandlePageAscending,
@@ -29,6 +31,54 @@ const candle = (
 });
 
 describe('candle history helpers', () => {
+  it('atomically joins delayed history with a buffered live candle in the same bucket', () => {
+    const historical = candle(300, 105, {
+      open: 100,
+      high: 110,
+      low: 95,
+      volume: 18,
+      tickVolume: 18,
+    });
+    const bufferedLive = candle(300, 112, {
+      open: 108,
+      high: 113,
+      low: 104,
+      volume: 3,
+      tickVolume: 3,
+    });
+
+    expect(mergeHistoricalCandleWithBufferedLive(historical, bufferedLive)).toMatchObject({
+      time: 300,
+      open: 100,
+      high: 113,
+      low: 95,
+      close: 112,
+      volume: 18,
+      tickVolume: 18,
+    });
+  });
+
+  it('produces one sorted history-plus-live snapshot without a duplicate forming bucket', () => {
+    const result = mergeHistoricalCandlesWithBufferedLive(
+      [
+        candle(60, 101),
+        candle(120, 105, { open: 100, high: 108, low: 98 }),
+      ],
+      [
+        candle(120, 110, { open: 106, high: 111, low: 104 }),
+        candle(180, 112, { open: 110, high: 113, low: 109 }),
+      ],
+    );
+
+    expect(result.map(item => item.time)).toEqual([60, 120, 180]);
+    expect(result[1]).toMatchObject({
+      open: 100,
+      high: 111,
+      low: 98,
+      close: 110,
+    });
+  });
+
   it('keeps the observed forming-candle envelope when a partial server update narrows it', () => {
     const previous = candle(60, 105, {
       open: 100,
@@ -49,7 +99,7 @@ describe('candle history helpers', () => {
 
     expect(mergeFormingCandleEnvelope(previous, incoming)).toEqual({
       time: 60,
-      open: 101,
+      open: 100,
       high: 110,
       low: 90,
       close: 99,
@@ -69,6 +119,34 @@ describe('candle history helpers', () => {
       low: 88,
       close: 96,
       volume: 20,
+    });
+  });
+
+  it('keeps the live candle range monotonic across repeated same-bucket updates', () => {
+    const updates = [
+      candle(60, 101, { open: 100, high: 106, low: 97, volume: 19 }),
+      candle(60, 111, { open: 100, high: 112, low: 96, volume: 20 }),
+      candle(60, 102, { open: 100, high: 107, low: 95, volume: 21 }),
+      candle(60, 89, { open: 100, high: 108, low: 88, volume: 22 }),
+      candle(60, 103, { open: 100, high: 105, low: 94, volume: 23 }),
+    ];
+
+    const observed = updates.reduce<Array<ReturnType<typeof candle>>>((candles, incoming) => {
+      const previous = candles[candles.length - 1];
+      return [...candles, mergeFormingCandleEnvelope(previous, incoming)];
+    }, [candle(60, 105, { open: 100, high: 110, low: 90, volume: 18 })]);
+
+    expect(observed.map(({ open, high, low }) => ({ open, high, low }))).toEqual([
+      { open: 100, high: 110, low: 90 },
+      { open: 100, high: 110, low: 90 },
+      { open: 100, high: 112, low: 90 },
+      { open: 100, high: 112, low: 90 },
+      { open: 100, high: 112, low: 88 },
+      { open: 100, high: 112, low: 88 },
+    ]);
+    expect(observed[observed.length - 1]).toMatchObject({
+      close: 103,
+      volume: 23,
     });
   });
 

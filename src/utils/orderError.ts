@@ -78,6 +78,10 @@ const mapKnownTradingCode = (code: string): string => {
 };
 
 export const formatOrderError = (err: unknown): string => {
+  if (isRecord(err) && err.orderWasSent === true) {
+    return 'Order status unknown: the request was sent, but the server did not confirm the final result. Do not place it again; check open positions and order history.';
+  }
+
   if (err instanceof ApiError || (isRecord(err) && typeof err.status === 'number')) {
     const status = Number((err as { status: number }).status);
     const code = extractErrorCode(err);

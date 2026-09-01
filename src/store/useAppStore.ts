@@ -509,10 +509,12 @@ export const useAppStore = create<AppState>()(
             localStorage.removeItem('broker_feed_token');
             localStorage.removeItem('feed_token');
             localStorage.removeItem('ws_feed_token');
+            localStorage.removeItem('feed_broker_id');
             sessionStorage.removeItem('feed_broker_token');
             sessionStorage.removeItem('broker_feed_token');
             sessionStorage.removeItem('feed_token');
             sessionStorage.removeItem('ws_feed_token');
+            sessionStorage.removeItem('feed_broker_id');
             // NOTE: Do NOT remove 'trading-app-storage' — it holds savedAccounts
           }
           // Reset auth state but KEEP savedAccounts for multi-account switching

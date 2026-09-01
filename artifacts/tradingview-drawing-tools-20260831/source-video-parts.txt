@@ -1,0 +1,3 @@
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/tradingview-drawing-tools-20260831/tradingview-source-lines-01-09-trimmed.mp4'
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/tradingview-drawing-tools-20260831/tradingview-source-channels-10-14-trimmed.mp4'
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/tradingview-drawing-tools-20260831/tradingview-source-pitchforks-15-17.mp4'

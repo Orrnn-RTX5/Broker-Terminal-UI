@@ -1,4 +1,4 @@
-import { DEFAULT_MARKET_WATCH_SYMBOLS, resolveMarketWatchSymbolInput } from './marketWatchSource';
+import { resolveMarketWatchSymbolInput } from './marketWatchSource';
 
 export const normalizeSymbolName = (value: unknown): string => String(value ?? '').trim().toUpperCase();
 
@@ -16,13 +16,12 @@ export const getUniqueSymbolNames = (symbols: unknown[]): string[] => {
 
 export const buildChartEligibleSymbolNames = (
   instrumentSymbols: unknown[],
-  _activeFeedSymbols: unknown[],
+  activeFeedSymbols: unknown[],
 ): string[] => {
-  void _activeFeedSymbols;
-  // An authorized chart is allowed to create its own quote demand. Requiring an
-  // already-active feed here would prevent a stale/evicted symbol from ever
-  // recovering after the user opens it.
-  return getUniqueSymbolNames(instrumentSymbols);
+  // Charts are read-only navigation and may be opened from either the account
+  // catalog or the broker's current public feed. Trading remains protected by
+  // the stricter intersection in buildTradeEligibleSymbolNames below.
+  return getUniqueSymbolNames([...instrumentSymbols, ...activeFeedSymbols]);
 };
 
 export const buildTradeEligibleSymbolNames = (
@@ -54,8 +53,7 @@ export const resolveAuthorizedChartSymbol = (
 /**
  * Pick the chart symbol that can actually render right now.
  * A saved/requested symbol wins only when it is currently live. Otherwise
- * prefer the product default watchlist order among live feed symbols so a
- * weekend session opens BTCUSD instead of a blank EURUSD/XAUUSD chart.
+ * use the first live broker-catalog symbol rather than a hardcoded product pair.
  */
 export const pickPreferredChartSymbol = (
   authorizedSymbols: unknown[],
@@ -70,10 +68,6 @@ export const pickPreferredChartSymbol = (
 
   if (requested && (live.length === 0 || live.includes(requested))) {
     return requested;
-  }
-
-  for (const symbol of DEFAULT_MARKET_WATCH_SYMBOLS) {
-    if (live.includes(symbol)) return symbol;
   }
 
   if (live[0]) return live[0];

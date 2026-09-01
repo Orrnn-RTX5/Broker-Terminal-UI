@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import AppShell from './AppShell';
+import { DesktopWindowShell } from './components/layout/DesktopWindowShell';
 import { ThemeProvider } from './contexts/ThemeContext';
 
 export const mountApp = () => {
@@ -13,7 +14,9 @@ export const mountApp = () => {
   root.render(
     <StrictMode>
       <ThemeProvider>
-        <AppShell />
+        <DesktopWindowShell>
+          <AppShell />
+        </DesktopWindowShell>
       </ThemeProvider>
     </StrictMode>,
   );

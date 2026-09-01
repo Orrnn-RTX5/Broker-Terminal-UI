@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Menu as MenuIcon } from 'lucide-react';
-import { Icon } from '../ui/Icon';
+import { Icon, type IconName } from '../ui/Icon';
 import { OptionsDialog } from '../settings/OptionsDialog';
 import { FileMenu } from './FileMenu';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +11,7 @@ import { useChartSettingsStore } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
 import { useAppStore } from '../../store/useAppStore';
 import type { PayloadFor } from '../../types/commands';
+import { STAMP_OPTIONS } from './stampOptions';
 
 // Local interface definition to avoid export issues
 interface MenuItem {
@@ -32,6 +33,18 @@ interface MenuSymbol {
     category?: string;
 }
 
+interface ApplicationLauncherItem {
+    id: string;
+    label: string;
+    icon: IconName;
+    children?: MenuItem[];
+    opensFileMenu?: boolean;
+    action?: () => void;
+    dividerBefore?: boolean;
+}
+
+const DESKTOP_MENU_KEYS = ['File', 'View', 'Insert', 'Charts', 'Tools', 'Window', 'Help'] as const;
+
 export interface MenuBarProps {
     advancedViewEnabled?: boolean;
     advancedFontSize?: 'small' | 'normal' | 'large';
@@ -45,19 +58,18 @@ export interface MenuBarProps {
     onLogout?: () => void;
 }
 
-const STAMP_OPTIONS = [
-    { subtype: 'thumbsUp', label: 'Thumbs Up', icon: 'thumbs-up' },
-    { subtype: 'thumbsDown', label: 'Thumbs Down', icon: 'thumbs-down' },
-    { subtype: 'arrowUp', label: 'Arrow Up', icon: 'arrow-up' },
-    { subtype: 'arrowDown', label: 'Arrow Down', icon: 'arrow-down' },
-    { subtype: 'stopSign', label: 'Stop Sign', icon: 'stop' },
-    { subtype: 'checkSign', label: 'Check Sign', icon: 'check-circle' },
-    { subtype: 'leftPriceLabel', label: 'Left Price Label', icon: 'label' },
-    { subtype: 'rightPriceLabel', label: 'Right Price Label', icon: 'label' },
-    { subtype: 'buy', label: 'Buy', icon: 'arrow-up' },
-    { subtype: 'sell', label: 'Sell', icon: 'arrow-down' },
-    { subtype: 'arrow', label: 'Arrow', icon: 'arrow-right' },
-] as const;
+const readApplicationMenuBrokerName = (): string => {
+    if (typeof window === 'undefined') return 'RTX Terminal';
+
+    try {
+        return localStorage.getItem('broker_name')
+            || localStorage.getItem('rtx_broker_id')
+            || localStorage.getItem('broker_id')
+            || 'RTX Terminal';
+    } catch {
+        return 'RTX Terminal';
+    }
+};
 
 const setVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
     const store = useChartSettingsStore.getState();
@@ -86,6 +98,7 @@ export const MenuBar = ({
     onLogout,
 }: MenuBarProps = {}) => {
     const { t, i18n } = useTranslation();
+    const isElectronDesktop = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [isOptionsOpen, setIsOptionsOpen] = useState(false);
@@ -94,6 +107,8 @@ export const MenuBar = ({
     const menuRef = useRef<HTMLDivElement>(null);
     const menuButtonRef = useRef<HTMLButtonElement>(null);
     const menuPopupRef = useRef<HTMLDivElement>(null);
+    const desktopMenuButtonRef = useRef<HTMLButtonElement>(null);
+    const desktopMenuButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
     const [menuPosition, setMenuPosition] = useState({ top: 40, left: 4 });
 
     const closeMenu = useCallback(() => {
@@ -101,16 +116,21 @@ export const MenuBar = ({
         setActiveMenu(null);
     }, []);
 
-    // Open Symbols dialog via Alt+U
+    // Open the canonical Symbols dialog from either Alt+U or the desktop quick action.
     useEffect(() => {
-        const handler = (e: KeyboardEvent) => {
+        const handleKeyDown = (e: KeyboardEvent) => {
             if (e.altKey && (e.key.toLowerCase() === 'u' || e.code === 'KeyU')) {
                 e.preventDefault();
                 setIsSymbolsOpen(v => !v);
             }
         };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
+        const handleOpenSymbolsDialog = () => setIsSymbolsOpen(true);
+        window.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('openSymbolsDialog', handleOpenSymbolsDialog);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('openSymbolsDialog', handleOpenSymbolsDialog);
+        };
     }, []);
 
     // Close the launcher when clicking outside either the trigger or its portal.
@@ -134,7 +154,7 @@ export const MenuBar = ({
             if (!rect) return;
             setMenuPosition({
                 top: Math.min(rect.bottom + 2, Math.max(4, window.innerHeight - 250)),
-                left: Math.max(4, Math.min(rect.left, window.innerWidth - 204)),
+                left: Math.max(4, Math.min(rect.left, window.innerWidth - 264)),
             });
         };
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -142,7 +162,7 @@ export const MenuBar = ({
             if (isFileDialogOpen) return;
             event.preventDefault();
             closeMenu();
-            menuButtonRef.current?.focus();
+            (menuButtonRef.current || desktopMenuButtonRef.current)?.focus();
         };
 
         updateMenuPosition();
@@ -161,6 +181,9 @@ export const MenuBar = ({
     const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
     const isAuthenticated = useAppStore(state => state.isAuthenticated);
     const selectedSymbol = useAppStore(state => state.selectedSymbol);
+    const savedAccounts = useAppStore(state => state.savedAccounts) || [];
+    const activeSavedAccount = savedAccounts.find(account => String(account.login) === String(accountId || ''));
+    const brokerDisplayName = readApplicationMenuBrokerName();
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -226,6 +249,18 @@ export const MenuBar = ({
             type: 'SELECT_TOOL',
             payload: subtype ? { tool, subtype } : { tool },
         });
+    };
+
+    const toggleOneClickTrading = () => {
+        window.dispatchEvent(new CustomEvent('toggle-one-click-trading'));
+    };
+
+    const openEconomicCalendar = () => {
+        window.dispatchEvent(new CustomEvent('rtx:open-bottom-dock-tab', { detail: { tab: 'Calendar' } }));
+    };
+
+    const openShortcutHelp = () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', code: 'F1', bubbles: true }));
     };
 
     const menuItems: { [key: string]: MenuItem[] } = {
@@ -598,17 +633,299 @@ export const MenuBar = ({
         ]
     };
 
+    const desktopMenuItems: Record<(typeof DESKTOP_MENU_KEYS)[number], MenuItem[]> = {
+        File: menuItems.File,
+        View: [
+            ...menuItems.View.slice(0, -2),
+            {
+                label: 'Economic Calendar',
+                icon: <Icon name="calendar" size="sm" />,
+                action: openEconomicCalendar,
+            },
+            ...menuItems.View.slice(-2),
+        ],
+        Insert: menuItems.Insert,
+        Charts: menuItems.Charts,
+        Tools: [
+            menuItems.Tools[0],
+            {
+                label: 'One Click Trading',
+                shortcut: 'Alt+T',
+                icon: <Icon name="cursor" size="sm" />,
+                action: toggleOneClickTrading,
+            },
+            ...menuItems.Tools.slice(1),
+        ],
+        Window: menuItems.Window,
+        Help: [
+            {
+                label: 'Shortcuts',
+                shortcut: 'F1',
+                icon: <Icon name="help-circle" size="sm" />,
+                action: openShortcutHelp,
+            },
+            { divider: true, label: '' },
+            ...menuItems.Help,
+        ],
+    };
+
+    const fileMenu = (
+        <FileMenu
+            accountId={accountId}
+            onDialogOpenChange={setIsFileDialogOpen}
+            onLogout={!isElectronDesktop && onLogout ? () => {
+                onLogout();
+                closeMenu();
+            } : undefined}
+            onSave={() => {
+                console.log('[MenuBar] Save workspace triggered');
+                window.dispatchEvent(new CustomEvent('saveWorkspace'));
+                closeMenu();
+            }}
+            onSaveAsPicture={() => {
+                console.log('Save as picture');
+            }}
+            onOpenDataFolder={() => {
+                console.log('[MenuBar] Open data folder triggered');
+                window.dispatchEvent(new CustomEvent('openDataFolder'));
+                closeMenu();
+            }}
+            onPrint={() => {
+                console.log('[MenuBar] Print triggered');
+                window.dispatchEvent(new CustomEvent('printChart'));
+                closeMenu();
+            }}
+            onPrintPreview={() => {
+                console.log('Print preview');
+            }}
+            onPrintSetup={() => {
+                console.log('Print setup');
+            }}
+            onExit={() => {
+                console.log('Exit');
+                closeMenu();
+            }}
+            hasUnsavedChanges={false}
+        />
+    );
+
+    const applicationLauncherItems: ApplicationLauncherItem[] = [
+        {
+            id: 'trading-accounts',
+            label: 'Trading accounts',
+            icon: 'user',
+            opensFileMenu: true,
+        },
+        {
+            id: 'chart-settings',
+            label: 'Chart settings',
+            icon: 'settings',
+            children: [
+                { label: 'Chart controls', icon: <Icon name="candlestick" size="sm" />, children: menuItems.Charts },
+                { label: 'Insert & drawing tools', icon: <Icon name="paintbrush" size="sm" />, children: menuItems.Insert },
+            ],
+        },
+        {
+            id: 'one-click-trading',
+            label: 'One Click Trading',
+            icon: 'cursor',
+            action: () => {
+                toggleOneClickTrading();
+                closeMenu();
+            },
+        },
+        {
+            id: 'theme',
+            label: advancedViewEnabled ? 'Dark Theme' : 'Light Theme',
+            icon: 'eye',
+            dividerBefore: true,
+            action: () => {
+                onSetAdvancedViewEnabled?.(!advancedViewEnabled);
+                closeMenu();
+            },
+        },
+        {
+            id: 'color-templates',
+            label: 'Color Templates',
+            icon: 'palette',
+            children: menuItems.View,
+        },
+        {
+            id: 'algo-trading',
+            label: 'MQL5 Algo Trading',
+            icon: 'code',
+            dividerBefore: true,
+            children: menuItems.Tools,
+        },
+        {
+            id: 'terminal',
+            label: 'RTX5 Terminal',
+            icon: 'monitor',
+            children: [
+                { label: 'Window layout', icon: <Icon name="layout" size="sm" />, children: menuItems.Window },
+                { label: 'Help & resources', icon: <Icon name="help-circle" size="sm" />, children: menuItems.Help },
+            ],
+        },
+        {
+            id: 'economic-calendar',
+            label: 'Economic Calendar',
+            icon: 'calendar',
+            dividerBefore: true,
+            action: () => {
+                openEconomicCalendar();
+                closeMenu();
+            },
+        },
+        {
+            id: 'language',
+            label: 'Language',
+            icon: 'globe',
+            dividerBefore: true,
+            children: languageList,
+        },
+        {
+            id: 'shortcuts',
+            label: 'Shortcuts',
+            icon: 'help-circle',
+            action: () => {
+                openShortcutHelp();
+                closeMenu();
+            },
+        },
+        {
+            id: 'contact',
+            label: 'Contact us',
+            icon: 'mail',
+            dividerBefore: true,
+            children: menuItems.Help,
+        },
+        {
+            id: 'about',
+            label: 'About program',
+            icon: 'info',
+            children: menuItems.Help,
+        },
+    ];
+
     useEffect(() => {
-        if (!isMenuOpen) return;
+        if (!isMenuOpen || isElectronDesktop) return;
         const frame = window.requestAnimationFrame(() => {
             menuPopupRef.current?.querySelector<HTMLButtonElement>('[data-root-menu-item="true"]')?.focus();
         });
         return () => window.cancelAnimationFrame(frame);
-    }, [isMenuOpen]);
+    }, [isElectronDesktop, isMenuOpen]);
 
     return (
         <>
-            <div
+            {isElectronDesktop && (
+                <div
+                    ref={menuRef}
+                    className="rtx-desktop-menu-bar flex h-full w-full min-w-0 items-center gap-px px-1 text-[13px] font-normal"
+                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                >
+                    <div
+                        role="menubar"
+                        aria-label="Desktop application menu"
+                        className="rtx-desktop-menu-items flex h-full shrink-0 items-center gap-px"
+                        onKeyDown={(event) => {
+                            const target = event.target as HTMLButtonElement;
+                            if (target.dataset.desktopMenuButton !== 'true') return;
+
+                            const currentIndex = desktopMenuButtonRefs.current.indexOf(target);
+                            if (currentIndex < 0) return;
+
+                            let nextIndex: number | null = null;
+                            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % DESKTOP_MENU_KEYS.length;
+                            if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + DESKTOP_MENU_KEYS.length) % DESKTOP_MENU_KEYS.length;
+                            if (event.key === 'Home') nextIndex = 0;
+                            if (event.key === 'End') nextIndex = DESKTOP_MENU_KEYS.length - 1;
+
+                            if (nextIndex !== null) {
+                                event.preventDefault();
+                                desktopMenuButtonRefs.current[nextIndex]?.focus();
+                                if (isMenuOpen) setActiveMenu(DESKTOP_MENU_KEYS[nextIndex]);
+                                return;
+                            }
+
+                            if (!['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) return;
+
+                            event.preventDefault();
+                            const menuKey = DESKTOP_MENU_KEYS[currentIndex];
+                            setActiveMenu(menuKey);
+                            setIsMenuOpen(true);
+                            window.requestAnimationFrame(() => {
+                                const menuItemsForKey = Array.from(
+                                    target.parentElement
+                                        ?.querySelector<HTMLDivElement>('[role="menu"]')
+                                        ?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [],
+                                );
+                                const itemToFocus = event.key === 'ArrowUp'
+                                    ? menuItemsForKey[menuItemsForKey.length - 1]
+                                    : menuItemsForKey[0];
+                                itemToFocus?.focus();
+                            });
+                        }}
+                    >
+                        {DESKTOP_MENU_KEYS.map((menuKey, index) => {
+                            const isActive = isMenuOpen && activeMenu === menuKey;
+
+                            return (
+                                <div key={menuKey} className="relative flex h-full items-center">
+                                    <button
+                                        ref={(button) => {
+                                            desktopMenuButtonRefs.current[index] = button;
+                                        }}
+                                        type="button"
+                                        role="menuitem"
+                                        data-desktop-menu-button="true"
+                                        aria-haspopup="menu"
+                                        aria-expanded={isActive}
+                                        onFocus={(event) => {
+                                            desktopMenuButtonRef.current = event.currentTarget;
+                                        }}
+                                        onMouseEnter={(event) => {
+                                            if (!isMenuOpen) return;
+                                            desktopMenuButtonRef.current = event.currentTarget;
+                                            setActiveMenu(menuKey);
+                                        }}
+                                        onClick={(event) => {
+                                            desktopMenuButtonRef.current = event.currentTarget;
+                                            if (isActive) {
+                                                closeMenu();
+                                            } else {
+                                                setActiveMenu(menuKey);
+                                                setIsMenuOpen(true);
+                                            }
+                                        }}
+                                        className={`rtx-application-menu-trigger flex h-[23px] items-center border border-transparent px-2.5 leading-none outline-none transition-colors ${isActive ? 'is-open' : ''}`}
+                                    >
+                                        {menuKey}
+                                    </button>
+
+                                    {isActive && (
+                                        <div
+                                            className="absolute left-0 top-full z-[10000] mt-px"
+                                            role="menu"
+                                            aria-label={`${menuKey} menu`}
+                                        >
+                                            {menuKey === 'File' ? (
+                                                fileMenu
+                                            ) : (
+                                                <div className="rtx-menu-surface min-w-[260px] py-1">
+                                                    <MenuList items={desktopMenuItems[menuKey]} onClose={closeMenu} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                </div>
+            )}
+
+            {!isElectronDesktop && <div
                 ref={menuRef}
                 className="rtx-menu-launcher flex h-[40px] shrink-0 items-center"
                 style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
@@ -628,16 +945,16 @@ export const MenuBar = ({
                             setIsMenuOpen(true);
                         }
                     }}
-                    className={`flex h-[36px] w-[40px] items-center justify-center border border-transparent text-zinc-300 transition-colors outline-none hover:bg-[#252932] hover:text-white focus-visible:border-blue-400 [.rtx-advanced-view_&]:text-[#344054] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] [.rtx-advanced-view_&]:hover:text-[#101828] ${isMenuOpen ? 'bg-[#252932] text-white [.rtx-advanced-view_&]:bg-[#f3f4f6] [.rtx-advanced-view_&]:text-[#101828]' : ''}`}
+                    className={`rtx-application-menu-trigger flex h-[36px] w-[40px] items-center justify-center border border-transparent transition-colors outline-none ${isMenuOpen ? 'is-open' : ''}`}
                 >
                     <MenuIcon size={23} strokeWidth={1.8} aria-hidden="true" />
                 </button>
-            </div>
+            </div>}
 
-            {isMenuOpen && ReactDOM.createPortal(
+            {!isElectronDesktop && isMenuOpen && ReactDOM.createPortal(
                 <div
                     ref={menuPopupRef}
-                    className="rtx-application-menu fixed z-[9999] w-[200px] border border-[#3a414f] bg-[#202733] py-1 font-segoe text-[14px] font-normal text-zinc-200 shadow-2xl [.rtx-advanced-view_&]:border-[#d0d5dd] [.rtx-advanced-view_&]:bg-white [.rtx-advanced-view_&]:text-[#344054]"
+                    className="rtx-application-menu fixed z-[9999] w-[256px] text-[14px] font-normal"
                     style={{ top: menuPosition.top, left: menuPosition.left }}
                     role="menu"
                     aria-label="Application menu"
@@ -661,12 +978,12 @@ export const MenuBar = ({
 
                         if (event.key === 'ArrowRight') {
                             const key = target.dataset.menuKey;
-                            if (!key) return;
+                            if (!key || target.getAttribute('aria-haspopup') !== 'menu') return;
                             event.preventDefault();
                             setActiveMenu(key);
                             window.requestAnimationFrame(() => {
-                                menuPopupRef.current
-                                    ?.querySelector<HTMLDivElement>(`[aria-label="${key} menu"]`)
+                                target.parentElement
+                                    ?.querySelector<HTMLDivElement>('[role="menu"]')
                                     ?.querySelector<HTMLButtonElement>('button:not(:disabled)')
                                     ?.focus();
                             });
@@ -677,78 +994,88 @@ export const MenuBar = ({
                         }
                     }}
                 >
-                    {Object.keys(menuItems).map((key, rootIndex) => (
-                        <div key={key} className="relative px-1">
-                            <button
-                                type="button"
-                                role="menuitem"
-                                data-root-menu-item="true"
-                                data-menu-key={key}
-                                aria-haspopup="menu"
-                                aria-expanded={activeMenu === key}
-                                onClick={() => setActiveMenu(activeMenu === key ? null : key)}
-                                className={`flex min-h-[34px] w-full items-center gap-3 px-3 py-1.5 text-left transition-colors outline-none ${activeMenu === key
-                                    ? 'bg-[#344154] text-white [.rtx-advanced-view_&]:bg-[#f3f4f6] [.rtx-advanced-view_&]:text-[#101828]'
-                                    : 'text-zinc-200 hover:bg-[#2c3544] hover:text-white focus-visible:bg-[#2c3544] [.rtx-advanced-view_&]:text-[#344054] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] [.rtx-advanced-view_&]:hover:text-[#101828] [.rtx-advanced-view_&]:focus-visible:bg-[#f3f4f6]'}`}
-                            >
-                                <span className="flex-1">{key}</span>
-                                <Icon name="chevron-right" size="xs" className="text-zinc-400 [.rtx-advanced-view_&]:text-[#667085]" />
-                            </button>
-
-                            {activeMenu === key && (
-                                <div
-                                    className="absolute left-full ml-px z-[10000]"
-                                    style={{ top: -rootIndex * 34 }}
-                                    role="menu"
-                                    aria-label={`${key} menu`}
-                                >
-                                    {key === 'File' ? (
-                                        <FileMenu
-                                            accountId={accountId}
-                                            onDialogOpenChange={setIsFileDialogOpen}
-                                            onLogout={onLogout ? () => {
-                                                onLogout();
-                                                closeMenu();
-                                            } : undefined}
-                                            onSave={() => {
-                                                console.log('[MenuBar] Save workspace triggered');
-                                                window.dispatchEvent(new CustomEvent('saveWorkspace'));
-                                                closeMenu();
-                                            }}
-                                            onSaveAsPicture={() => {
-                                                console.log('Save as picture');
-                                            }}
-                                            onOpenDataFolder={() => {
-                                                console.log('[MenuBar] Open data folder triggered');
-                                                window.dispatchEvent(new CustomEvent('openDataFolder'));
-                                                closeMenu();
-                                            }}
-                                            onPrint={() => {
-                                                console.log('[MenuBar] Print triggered');
-                                                window.dispatchEvent(new CustomEvent('printChart'));
-                                                closeMenu();
-                                            }}
-                                            onPrintPreview={() => {
-                                                console.log('Print preview');
-                                            }}
-                                            onPrintSetup={() => {
-                                                console.log('Print setup');
-                                            }}
-                                            onExit={() => {
-                                                console.log('Exit');
-                                                closeMenu();
-                                            }}
-                                            hasUnsavedChanges={false}
-                                        />
-                                    ) : (
-                                        <div className="min-w-[240px] border border-[#3a414f] bg-[#18181b] py-1 shadow-2xl [.rtx-advanced-view_&]:border-[#e5e7eb] [.rtx-advanced-view_&]:bg-white">
-                                            <MenuList items={menuItems[key]} onClose={closeMenu} />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                    <div className="rtx-application-menu__account">
+                        <div className="min-w-0 flex-1">
+                            <div className="rtx-application-menu__account-title truncate">
+                                {activeSavedAccount?.name || brokerDisplayName}
+                            </div>
+                            <div className="rtx-application-menu__account-meta truncate">
+                                {accountId
+                                    ? `${accountId} - ${activeSavedAccount?.server || brokerDisplayName}`
+                                    : 'Professional trading workspace'}
+                            </div>
                         </div>
-                    ))}
+                        {activeSavedAccount && (
+                            <span
+                                className={`rtx-application-menu__status ${activeSavedAccount.isLive ? 'is-live' : 'is-demo'}`}
+                                aria-label={`${activeSavedAccount.isLive ? 'Real' : 'Demo'} account`}
+                            >
+                                <Icon name="check-circle" size="xs" />
+                                {activeSavedAccount.isLive ? 'Real' : 'Demo'}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="rtx-application-menu__items">
+                        {applicationLauncherItems.map((item, rootIndex) => {
+                            const hasSubmenu = Boolean(item.opensFileMenu || item.children);
+                            const dividerCount = applicationLauncherItems
+                                .slice(0, rootIndex + 1)
+                                .filter(candidate => candidate.dividerBefore)
+                                .length;
+
+                            return (
+                                <React.Fragment key={item.id}>
+                                    {item.dividerBefore && (
+                                        <div className="rtx-application-menu__divider" role="separator" />
+                                    )}
+                                    <div className="relative px-1.5">
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            data-root-menu-item="true"
+                                            data-menu-key={item.id}
+                                            aria-haspopup={hasSubmenu ? 'menu' : undefined}
+                                            aria-expanded={hasSubmenu ? activeMenu === item.id : undefined}
+                                            onClick={() => {
+                                                if (hasSubmenu) {
+                                                    setActiveMenu(activeMenu === item.id ? null : item.id);
+                                                    return;
+                                                }
+                                                item.action?.();
+                                            }}
+                                            className={`rtx-application-menu__root-item ${activeMenu === item.id ? 'is-active' : ''}`}
+                                        >
+                                            <span className="rtx-application-menu__root-icon" aria-hidden="true">
+                                                <Icon name={item.icon} size={18} />
+                                            </span>
+                                            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                                            {hasSubmenu && (
+                                                <Icon name="chevron-right" size="xs" className="rtx-application-menu__chevron" />
+                                            )}
+                                        </button>
+
+                                        {activeMenu === item.id && hasSubmenu && (
+                                            <div
+                                                className="absolute left-full ml-px z-[10000]"
+                                                style={{ top: -(rootIndex * 38 + dividerCount * 5) }}
+                                                role="menu"
+                                                aria-label={`${item.label} menu`}
+                                            >
+                                                {item.opensFileMenu ? (
+                                                    fileMenu
+                                                ) : (
+                                                    <div className="rtx-menu-surface min-w-[260px] py-1">
+                                                        <MenuList items={item.children || []} onClose={closeMenu} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
                 </div>,
                 document.body,
             )}
@@ -803,7 +1130,7 @@ const MenuItem = ({
     const submenuRef = useRef<HTMLDivElement>(null);
 
     if (item.divider) {
-        return <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>;
+        return <div className="rtx-menu-divider" role="separator" />;
     }
 
     return (
@@ -826,11 +1153,10 @@ const MenuItem = ({
                         onClose?.();
                     }
                 }}
-                className={`w-full flex items-center gap-3 px-2 py-1.5 text-[14px] font-normal text-left border border-transparent rounded-[2px] transition-colors
-                    ${item.disabled ? 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group'}`}
+                className={`rtx-menu-row group ${item.disabled ? 'is-disabled cursor-not-allowed' : 'cursor-default'} ${isSubmenuOpen ? 'is-open' : ''}`}
             >
                 {/* Icon Area */}
-                <div className="flex h-4 w-4 shrink-0 items-center justify-center leading-none text-zinc-400 [.rtx-advanced-view_&]:text-gray-500 group-hover:text-zinc-200 [.rtx-advanced-view_&]:group-hover:text-gray-700 [&_svg]:block [&_svg]:shrink-0">
+                <div className="rtx-menu-row__icon">
                     {item.icon}
                 </div>
 
@@ -839,13 +1165,13 @@ const MenuItem = ({
 
                 {/* Shortcut or Submenu Arrow */}
                 {item.children ? (
-                    <Icon name="chevron-right" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-gray-700" />
+                    <Icon name="chevron-right" size="xs" className="rtx-menu-row__chevron" />
                 ) : (
                     <span className="flex items-center gap-2">
-                        {item.shortcut && <span className="text-[12px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 font-segoe pl-4">{item.shortcut}</span>}
+                        {item.shortcut && <span className="rtx-menu-row__shortcut pl-4">{item.shortcut}</span>}
                         {item.checkRole && (
                             item.checked
-                                ? <Icon name="check-circle" size="xs" className="text-blue-400 [.rtx-advanced-view_&]:text-[#6941C6]" />
+                                ? <Icon name="check-circle" size="xs" className="rtx-menu-row__check" />
                                 : <span className="h-3.5 w-3.5" aria-hidden="true" />
                         )}
                     </span>
@@ -854,7 +1180,7 @@ const MenuItem = ({
 
             {/* Nested sections are click-driven and sibling-exclusive. */}
             {item.children && isSubmenuOpen && (
-                <div ref={submenuRef} role="menu" aria-label={`${item.label} menu`} className={`absolute left-full top-0 ml-[-2px] mt-0 min-w-[180px] bg-[#18181b] [.rtx-advanced-view_&]:bg-white border border-[#2a2e39] [.rtx-advanced-view_&]:border-[#e5e7eb] shadow-2xl py-1 z-[101]
+                <div ref={submenuRef} role="menu" aria-label={`${item.label} menu`} className={`rtx-menu-surface absolute left-full top-0 ml-[-2px] mt-0 min-w-[200px] py-1 z-[101]
                     ${item.scrollableChildren ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}
                  `}>
                     <MenuList items={item.children} onClose={onClose} />

@@ -4,10 +4,11 @@ if (!process.env.GH_TOKEN) {
   console.warn('[OTA] GH_TOKEN missing. OTA token-protected endpoints may fail.');
 }
 
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, session, shell } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { exec } = require('child_process');
+const { registerBrokerWebSocketOriginPolicy } = require('./electron-network.cjs');
 
 // ─── GPU & Performance Optimization Switches ──────────────────────────────────
 app.commandLine.appendSwitch('enable-gpu-rasterization');
@@ -395,7 +396,13 @@ function createWindow() {
 }
 
 // ─── App Lifecycle ───────────────────────────────────────────────────────────
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    // Broker feeds accept authenticated desktop sockets but reject Chromium's
+    // opaque file:// Origin. Match the webterminal proxy policy only for the
+    // two broker WebSocket endpoints; all other request headers stay intact.
+    registerBrokerWebSocketOriginPolicy(session.defaultSession.webRequest);
+    createWindow();
+});
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {

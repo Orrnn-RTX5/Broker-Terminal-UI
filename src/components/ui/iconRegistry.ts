@@ -863,9 +863,9 @@ export const iconRegistry = {
 
     // Indicator list - clean panel with signal wave
     'indicator-list': () => h(React.Fragment, null,
-        h('rect', { x: 1.5, y: 2, width: 13, height: 12, rx: 1.2, fill: 'none', stroke: '#60a5fa', strokeWidth: 1.3 }),
-        h('polyline', { points: '3 11.5 5.5 7 8 9.5 10.5 5 13 6.5', stroke: '#34d399', strokeWidth: 1.5, fill: 'none' }),
-        h('circle', { cx: 12.5, cy: 4, r: 1.3, fill: '#fbbf24', stroke: 'none' })
+        h('rect', { x: 1.5, y: 2, width: 13, height: 12, rx: 1.2, fill: 'none', strokeWidth: 1.3 }),
+        h('polyline', { points: '3 11.5 5.5 7 8 9.5 10.5 5 13 6.5', strokeWidth: 1.5, fill: 'none' }),
+        h('circle', { cx: 12.5, cy: 4, r: 1.3, fill: 'currentColor', stroke: 'none' })
     ),
 
     'symbol-box': () => h(React.Fragment, null,

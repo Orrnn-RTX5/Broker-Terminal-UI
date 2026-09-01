@@ -103,7 +103,7 @@ const YoForexPanel: React.FC<{
     })).filter(grp => grp.pairs.length > 0);
 
     return (
-        <div className="flex flex-col bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-2xl overflow-hidden" style={{ width: 160, maxHeight: 420 }}>
+        <div className="rtx-menu-surface flex flex-col overflow-hidden" style={{ width: 180, maxHeight: 420 }}>
             {/* Search */}
             <div className="px-2 pt-2 pb-1 flex-none">
                 <div className="flex items-center gap-1.5 bg-[#111] [.rtx-advanced-view_&]:bg-gray-100 border border-zinc-700/60 [.rtx-advanced-view_&]:border-gray-200 rounded px-2 py-1">
@@ -175,7 +175,7 @@ const NewChartMenuItemRenderer: React.FC<{ item: NewChartMenuItem; activePair?: 
                 {hasChildren && <Icon name="chevron-right" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-gray-700" />}
             </button>
             {hasChildren && (
-                <div className="submenu absolute left-full top-0 -ml-1 hidden min-w-[180px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-xl py-1 z-[102] max-h-[400px] overflow-y-auto no-scrollbar">
+                <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[200px] py-1 z-[102] max-h-[400px] overflow-y-auto no-scrollbar">
                     {item.children!.map((child, idx) => (
                         <NewChartMenuItemRenderer key={idx} item={child} activePair={activePair} onClose={onClose} />
                     ))}
@@ -477,7 +477,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
     return (
         <>
-            <div className="min-w-[240px] bg-[#18181b] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-xl py-1">
+            <div className="rtx-file-menu rtx-menu-surface min-w-[268px] py-1">
                 {/* New Chart - Click to open pairs panel directly */}
                 <div className="relative px-1">
                     <button
@@ -497,12 +497,12 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     {newChartOpen && (
                         <div className="absolute left-full top-0 -ml-0.5 z-[101]">
                             {isLoadingSymbols ? (
-                                <div className="w-[200px] bg-[#0f1117] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-2xl px-3 py-3 text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 text-[12px] font-normal flex items-center gap-2">
+                                <div className="rtx-menu-surface w-[220px] px-3 py-3 text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 text-[12px] font-normal flex items-center gap-2">
                                     <Icon name="refresh" size="sm" className="animate-spin" />
                                     Connecting to broker...
                                 </div>
                             ) : newChartMenuItems.length > 0 ? (
-                                <div className="min-w-[180px] bg-[#131316] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 rounded-md shadow-2xl py-1 max-h-[420px] overflow-y-auto no-scrollbar">
+                                <div className="rtx-menu-surface min-w-[200px] py-1 max-h-[420px] overflow-y-auto no-scrollbar">
                                     {newChartMenuItems.map((item, idx) => (
                                         <NewChartMenuItemRenderer
                                             key={idx}
@@ -547,7 +547,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <span className="flex-1">{t('menu.file.profiles')}</span>
                         <Icon name="chevron-right" size="xs" className="text-zinc-500" />
                     </button>
-                    <div className="submenu absolute left-full top-0 -ml-1 hidden min-w-[140px] bg-[#131316] border border-zinc-700 rounded-md shadow-xl py-1 z-[101]">
+                    <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[160px] py-1 z-[101]">
                         {['Default', 'Euro', 'Market'].map(profile => (
                             <button
                                 key={profile}
@@ -570,7 +570,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">Ctrl+F4</span>
                 </button>
 
-                <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
+                <div className="rtx-menu-divider" role="separator"></div>
 
                 {/* Save */}
                 <button
@@ -597,7 +597,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="flex-1">{t('menu.file.saveAsPicture')}</span>
                 </button>
 
-                <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
+                <div className="rtx-menu-divider" role="separator"></div>
 
                 {/* Open Data Folder */}
                 <button
@@ -628,7 +628,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     </button>
                 )}
 
-                <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
+                <div className="rtx-menu-divider" role="separator"></div>
 
                 {/* Print */}
                 <button
@@ -667,7 +667,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="flex-1">{t('menu.file.printSetup')}</span>
                 </button>
 
-                <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
+                <div className="rtx-menu-divider" role="separator"></div>
 
                 {(accountId || onLogout) && (
                     <>
@@ -699,7 +699,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                             </button>
                         )}
 
-                        <div className="h-[1px] bg-zinc-700/50 [.rtx-advanced-view_&]:bg-gray-200 my-1 mx-2"></div>
+                        <div className="rtx-menu-divider" role="separator"></div>
                     </>
                 )}
 
@@ -751,7 +751,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="flex-1">{t('menu.file.loginMql5')}</span>
                 </button>
 
-                <div className="h-[1px] bg-zinc-700/50 my-1 mx-2"></div>
+                <div className="rtx-menu-divider" role="separator"></div>
 
                 {/* Exit */}
                 <button

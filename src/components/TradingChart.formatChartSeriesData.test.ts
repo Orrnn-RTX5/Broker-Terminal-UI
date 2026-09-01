@@ -13,6 +13,7 @@ import {
   isPotentialMarketClosedPlaceholderCandle,
   shouldRecomputeMarketGapSeparatorsForCandle,
   shouldApplyVisibleRangeResetForRender,
+  shouldResetInitialHistoryVisibleRange,
   shouldRestoreProtectedHistoryForFullRender,
   TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
 } from './TradingChart.helpers';
@@ -24,7 +25,8 @@ const theme = {
   background: '#0e0e12',
   text: '#ffffff',
   axisText: '#ffffff',
-  grid: 'rgba(255,255,255,0.15)',
+  gridVertical: 'rgba(255,255,255,0.102)',
+  gridHorizontal: 'rgba(255,255,255,0.135)',
   scaleBorder: 'rgba(255,255,255,0.24)',
   crosshair: 'rgba(255,255,255,0.58)',
   candleUp: '#10B981',
@@ -212,6 +214,23 @@ describe('formatChartSeriesData market gap separators', () => {
       resetVisibleRange: false,
       resetVisibleRangeOnNextData: true,
       suppressGlobalVisibleRangeReset: false,
+    })).toBe(true);
+  });
+
+  it('re-applies the latest-candle viewport when uncached history follows a sparse live paint', () => {
+    expect(shouldResetInitialHistoryVisibleRange({
+      resetVisibleRangeOnNextData: false,
+      hydratedFromCache: false,
+    })).toBe(true);
+
+    expect(shouldResetInitialHistoryVisibleRange({
+      resetVisibleRangeOnNextData: false,
+      hydratedFromCache: true,
+    })).toBe(false);
+
+    expect(shouldResetInitialHistoryVisibleRange({
+      resetVisibleRangeOnNextData: true,
+      hydratedFromCache: true,
     })).toBe(true);
   });
 
