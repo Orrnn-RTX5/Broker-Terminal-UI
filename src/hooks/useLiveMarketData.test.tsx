@@ -13,7 +13,6 @@ import {
   getStaleQuoteFailure,
   hasAuthoritativeMarketSymbolStatus,
   LIVE_QUOTES_REST_BATCH_SIZE,
-  LIVE_QUOTES_REST_POLL_INTERVAL_MS,
   normalizeInstrumentEnabled,
   readCachedActiveMarketSymbols,
   useActiveMarketSymbols,
@@ -274,10 +273,12 @@ describe('useLiveQuotes REST fallback batching', () => {
     apiGet.mockResolvedValue({ quotes: [] });
     useQuoteSubscriptionMock.mockReturnValue({ isConnected: true });
     useAppStore.setState({ isAuthenticated: true, ticks: {}, tickLookup: {} });
+    useMarketDataStore.getState().clearAllData();
   });
 
   afterEach(() => {
     useAppStore.setState({ isAuthenticated: false, ticks: {}, tickLookup: {} });
+    useMarketDataStore.getState().clearAllData();
     vi.useRealTimers();
   });
 
@@ -319,8 +320,40 @@ describe('useLiveQuotes REST fallback batching', () => {
     unmount();
   });
 
-  it('polls one REST batch per interval while leaving websocket demand on all symbols', async () => {
-    const symbols = Array.from({ length: LIVE_QUOTES_REST_BATCH_SIZE + 3 }, (_, index) => `S${index}`);
+  it('preserves detailed REST quote aliases without inventing volume', async () => {
+    apiGet.mockResolvedValueOnce({
+      quotes: [{
+        symbol: 'XAUUSD',
+        bid: 4411.09,
+        ask: 4411.2,
+        last_price: 4411.15,
+        liquidity_provider: 'FXTrust',
+        high_24h: 4420.5,
+        low_24h: 4398.25,
+        daily_open: 4400,
+        previous_close: 4399,
+        timestamp: 1_788_250_045,
+      }],
+    });
+
+    const { unmount } = renderHook(() => useLiveQuotes(['XAUUSD']));
+    await flushPromises();
+
+    expect(enqueueLiveTick).toHaveBeenCalledWith('XAUUSD', expect.objectContaining({
+      last: 4411.15,
+      lp: 'FXTrust',
+      high24h: 4420.5,
+      low24h: 4398.25,
+      open: 4400,
+      close: 4399,
+      volume: undefined,
+    }));
+
+    unmount();
+  });
+
+  it('loads all initial REST batches once without polling while leaving websocket demand on all symbols', async () => {
+    const symbols = Array.from({ length: LIVE_QUOTES_REST_BATCH_SIZE * 2 + 1 }, (_, index) => `S${index}`);
 
     const { unmount } = renderHook(() => useLiveQuotes(symbols));
     await flushPromises();
@@ -329,21 +362,58 @@ describe('useLiveQuotes REST fallback batching', () => {
       symbols,
       expect.stringMatching(/^live-quotes:/),
     );
-    expect(apiGet).toHaveBeenCalledTimes(1);
-    expect(apiGet.mock.calls[0][1]?.params?.symbols.split(',')).toEqual(
-      symbols.slice(0, LIVE_QUOTES_REST_BATCH_SIZE)
-    );
+    expect(apiGet).toHaveBeenCalledTimes(3);
+    expect(apiGet.mock.calls.map(([, options]) => options?.params?.symbols.split(','))).toEqual([
+      symbols.slice(0, LIVE_QUOTES_REST_BATCH_SIZE),
+      symbols.slice(LIVE_QUOTES_REST_BATCH_SIZE, LIVE_QUOTES_REST_BATCH_SIZE * 2),
+      symbols.slice(LIVE_QUOTES_REST_BATCH_SIZE * 2),
+    ]);
 
     await act(async () => {
-      vi.advanceTimersByTime(LIVE_QUOTES_REST_POLL_INTERVAL_MS);
+      vi.advanceTimersByTime(60_000);
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(apiGet).toHaveBeenCalledTimes(2);
-    expect(apiGet.mock.calls[1][1]?.params?.symbols.split(',')).toEqual(
-      symbols.slice(LIVE_QUOTES_REST_BATCH_SIZE)
-    );
+    expect(apiGet).toHaveBeenCalledTimes(3);
+
+    unmount();
+  });
+
+  it('does not dispatch a timestamp-less REST snapshot over an existing websocket source tick', async () => {
+    const websocketTick = {
+      symbol: 'EURUSD',
+      bid: 1.105,
+      ask: 1.1052,
+      spread: 0.0002,
+      timestamp: 1_788_250_050_000,
+      sourceTimestamp: 1_788_250_045_000,
+    };
+    useAppStore.getState().setTick('EURUSD', websocketTick);
+    useMarketDataStore.setState((state) => ({
+      symbolData: {
+        ...state.symbolData,
+        EURUSD: {
+          ...state.symbolData.EURUSD,
+          currentTick: websocketTick,
+        },
+      },
+    }));
+    apiGet.mockResolvedValueOnce({
+      quotes: [{
+        symbol: 'EURUSD',
+        bid: 1.09,
+        ask: 1.0902,
+      }],
+    });
+
+    const { unmount } = renderHook(() => useLiveQuotes(['EURUSD']));
+    await flushPromises();
+
+    expect(apiGet).toHaveBeenCalledTimes(1);
+    expect(enqueueLiveTick).not.toHaveBeenCalled();
+    expect(useMarketDataStore.getState().symbolData.EURUSD?.currentTick).toEqual(websocketTick);
+    expect(useAppStore.getState().ticks.EURUSD).toMatchObject(websocketTick);
 
     unmount();
   });
@@ -405,6 +475,152 @@ describe('useMarketInstruments normalization', () => {
     expect(normalizeInstrumentEnabled({ symbol: 'EURUSD' })).toBeUndefined();
   });
 
+  it('preserves broker specification fields in the public fallback instrument', async () => {
+    apiGet.mockResolvedValueOnce({
+      symbols: [{
+        symbol: 'XAUUSD',
+        bid: '4425.90',
+        ask: '4426.05',
+        spread: '0.15',
+        digits: '2',
+        contract_size: '100',
+        tick_size: '0.01',
+        min_volume: '0.01',
+        max_volume: '50',
+        volume_step: '0.01',
+        margin_rate: '0.02',
+        swap_long: '-2.5',
+        swap_short: '1.25',
+        commission: '3',
+      }],
+    }).mockResolvedValueOnce({
+      symbols: [{ symbol: 'XAUUSD', trading_enabled: true }],
+    });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    expect(result.current.symbols).toEqual([
+      expect.objectContaining({
+        symbol: 'XAUUSD',
+        bid: 4425.9,
+        ask: 4426.05,
+        spread: 0.15,
+        digits: 2,
+        contractSize: 100,
+        tickSize: 0.01,
+        minVolume: 0.01,
+        maxVolume: 50,
+        volumeStep: 0.01,
+        marginRate: 0.02,
+        swapLong: -2.5,
+        swapShort: 1.25,
+        commission: 3,
+      }),
+    ]);
+
+    unmount();
+  });
+
+  it('retains authenticated broker volume constraints for order controls', async () => {
+    apiGet.mockResolvedValueOnce({
+      symbols: [{ symbol: 'BTCUSD', bid: 108000, ask: 108010 }],
+    }).mockResolvedValueOnce({
+      symbols: [{
+        symbol: 'BTCUSD',
+        trading_enabled: true,
+        volume_min: '0.001',
+        volume_max: '25',
+        volume_step: '0.001',
+      }],
+    });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    // FIX regression: authenticated min/max/step metadata must survive the
+    // authorization request instead of being reduced to a symbol-name list.
+    expect(result.current.authorizedInstruments).toEqual([
+      expect.objectContaining({
+        symbol: 'BTCUSD',
+        minVolume: 0.001,
+        maxVolume: 25,
+        volumeStep: 0.001,
+      }),
+    ]);
+
+    unmount();
+  });
+
+  it('does not invent specification values when the broker omits them', async () => {
+    apiGet.mockResolvedValueOnce({
+      symbols: [{
+        symbol: 'EURUSD',
+        bid: 1.10101,
+        ask: 1.10123,
+        contract_size: '',
+        min_volume: null,
+      }],
+    }).mockResolvedValueOnce({
+      symbols: [{ symbol: 'EURUSD', trading_enabled: true }],
+    });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    expect(result.current.symbols[0]).toMatchObject({
+      symbol: 'EURUSD',
+      contractSize: undefined,
+      minVolume: undefined,
+      maxVolume: undefined,
+      volumeStep: undefined,
+      marginRate: undefined,
+      swapLong: undefined,
+      swapShort: undefined,
+      commission: undefined,
+    });
+
+    unmount();
+  });
+
+  it('accepts the broker specification aliases used by terminal data sources', async () => {
+    apiGet.mockResolvedValueOnce({
+      symbols: [{
+        symbol: 'BTCUSD',
+        bid: 108000,
+        ask: 108010,
+        contractSize: '1',
+        pointSize: '0.01',
+        volume_min: '0.001',
+        volume_max: '25',
+        lotStep: '0.001',
+        initialMargin: '0.1',
+        swapLong: '0',
+        swapShort: '-1.5',
+        commissionPerLot: '2.25',
+      }],
+    }).mockResolvedValueOnce({
+      symbols: [{ symbol: 'BTCUSD', tradingEnabled: true }],
+    });
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    expect(result.current.symbols[0]).toMatchObject({
+      contractSize: 1,
+      tickSize: 0.01,
+      minVolume: 0.001,
+      maxVolume: 25,
+      volumeStep: 0.001,
+      marginRate: 0.1,
+      swapLong: 0,
+      swapShort: -1.5,
+      commission: 2.25,
+    });
+
+    unmount();
+  });
+
   it('loads the public priced catalog while keeping authenticated trade authorization separate', async () => {
     apiGet.mockResolvedValueOnce({
       symbols: [
@@ -430,6 +646,7 @@ describe('useMarketInstruments normalization', () => {
     expect(result.current.symbols.map((item) => item.symbol)).toEqual(['EURUSD', 'GBPUSD', 'XAUUSD']);
     expect(result.current.authorizedSymbols).toEqual(['EURUSD', 'GBPUSD']);
     expect(result.current.disabledSymbols).toEqual(['XAUUSD']);
+    expect(result.current.authorizationSettled).toBe(true);
     expect(enqueueLiveTick).toHaveBeenCalledTimes(3);
     expect(enqueueLiveTick).toHaveBeenCalledWith('EURUSD', expect.objectContaining({
       symbol: 'EURUSD',
@@ -445,6 +662,37 @@ describe('useMarketInstruments normalization', () => {
       ask: 1.26801,
     }));
 
+    unmount();
+  });
+
+  it('reveals the public catalog without waiting for authenticated authorization', async () => {
+    let resolveAuthorization!: (value: unknown) => void;
+    apiGet
+      .mockResolvedValueOnce({
+        symbols: [{ symbol: 'XAUUSD', bid: 4425.9, ask: 4426.05 }],
+      })
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveAuthorization = resolve;
+      }));
+
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+
+    expect(result.current.symbols.map((item) => item.symbol)).toEqual(['XAUUSD']);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.authorizedSymbols).toEqual([]);
+    expect(result.current.authorizationSettled).toBe(false);
+
+    await act(async () => {
+      resolveAuthorization({
+        symbols: [{ symbol: 'XAUUSD', trading_enabled: true }],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.authorizedSymbols).toEqual(['XAUUSD']);
+    expect(result.current.authorizationSettled).toBe(true);
     unmount();
   });
 
@@ -475,6 +723,7 @@ describe('useMarketInstruments normalization', () => {
     expect(result.current.symbols.map((item) => item.symbol)).toEqual(['EURUSD', 'BTCUSD']);
     expect(result.current.authorizedSymbols).toEqual([]);
     expect(result.current.disabledSymbols).toEqual([]);
+    expect(result.current.authorizationSettled).toBe(true);
     expect(enqueueLiveTick).toHaveBeenCalledTimes(2);
 
     unmount();

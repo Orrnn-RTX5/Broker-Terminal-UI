@@ -3,14 +3,17 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { IChartApi } from 'lightweight-charts';
 import { chartPrinter, DEFAULT_PRINT_PREFERENCES, type ChartPrintData } from './chartPrinter';
 
 // Mock fetch
 global.fetch = vi.fn();
+const fetchMock = vi.mocked(global.fetch);
 
 describe('ChartPrinterService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
   });
 
   describe('Preferences Management', () => {
@@ -25,13 +28,15 @@ describe('ChartPrinterService', () => {
         pageSize: 'Letter' as const,
       };
 
-      (global.fetch as any).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockPrefs,
-      });
+      } as Response);
 
       const prefs = await chartPrinter.loadPreferences('test-account');
       expect(prefs.pageSize).toBe('Letter');
+      expect(global.fetch).toHaveBeenCalledWith('/api/accounts/test-account/print-preferences');
+      expect(chartPrinter.getPreferences('test-account').pageSize).toBe('Letter');
     });
 
     it('should save preferences to backend', async () => {
@@ -40,14 +45,71 @@ describe('ChartPrinterService', () => {
         pageSize: 'A3' as const,
       };
 
-      (global.fetch as any).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ status: 'success' }),
+      } as Response);
+
+      await expect(chartPrinter.savePreferences('test-account', mockPrefs)).resolves.toEqual({
+        local: true,
+        remote: true,
+      });
+      expect(chartPrinter.getPreferences('test-account').pageSize).toBe('A3');
+    });
+
+    it('uses account-scoped local preferences when the backend endpoint is unavailable', async () => {
+      const accountId = 'local-only/account';
+      const mockPrefs = {
+        ...DEFAULT_PRINT_PREFERENCES,
+        orientation: 'portrait' as const,
+      };
+
+      fetchMock
+        .mockResolvedValueOnce({ ok: false, status: 404 } as Response)
+        .mockResolvedValueOnce({ ok: false, status: 404 } as Response);
+
+      await expect(chartPrinter.savePreferences(accountId, mockPrefs)).resolves.toEqual({
+        local: true,
+        remote: false,
+      });
+      const loaded = await chartPrinter.loadPreferences(accountId);
+
+      expect(loaded.orientation).toBe('portrait');
+      expect(global.fetch).toHaveBeenLastCalledWith(
+        '/api/accounts/local-only%2Faccount/print-preferences',
+      );
+    });
+
+    it('keeps local preferences when a remote save fails at the network layer', async () => {
+      const mockPrefs = {
+        ...DEFAULT_PRINT_PREFERENCES,
+        colorMode: 'grayscale' as const,
+      };
+      fetchMock.mockRejectedValueOnce(new Error('offline'));
+
+      const result = await chartPrinter.savePreferences('offline-account', mockPrefs);
+
+      expect(result).toEqual({ local: true, remote: false });
+      expect(chartPrinter.getPreferences('offline-account').colorMode).toBe('grayscale');
+    });
+
+    it('does not leak preferences between accounts', async () => {
+      fetchMock.mockResolvedValue({ ok: false, status: 404 } as Response);
+
+      await chartPrinter.savePreferences('account-a', {
+        ...DEFAULT_PRINT_PREFERENCES,
+        pageSize: 'A3',
       });
 
+      expect(chartPrinter.getPreferences('account-a').pageSize).toBe('A3');
+      expect(chartPrinter.getPreferences('account-b').pageSize).toBe('A4');
+    });
+
+    it('rejects an empty account scope', async () => {
+      await expect(chartPrinter.loadPreferences('   ')).rejects.toThrow('account ID');
       await expect(
-        chartPrinter.savePreferences('test-account', mockPrefs)
-      ).resolves.not.toThrow();
+        chartPrinter.savePreferences('', DEFAULT_PRINT_PREFERENCES),
+      ).rejects.toThrow('account ID');
     });
   });
 
@@ -220,7 +282,7 @@ describe('ChartPrinterService', () => {
 
   describe('Chart Canvas Capture', () => {
     it('should return null if chart API is invalid', () => {
-      const result = chartPrinter.captureChartCanvas(null as any);
+      const result = chartPrinter.captureChartCanvas(null as unknown as IChartApi);
       expect(result).toBeNull();
     });
 
@@ -229,24 +291,13 @@ describe('ChartPrinterService', () => {
         chartElement: () => document.createElement('div'),
       };
 
-      const result = chartPrinter.captureChartCanvas(mockChartApi as any);
+      const result = chartPrinter.captureChartCanvas(mockChartApi as unknown as IChartApi);
       expect(result).toBeNull();
     });
   });
 
   describe('Print Functionality', () => {
     it('should create iframe for printing', async () => {
-      const mockChartData: ChartPrintData = {
-        symbol: 'EURUSD',
-        timeframe: '1H',
-        dateRange: {
-          from: new Date('2024-01-01'),
-          to: new Date('2024-01-31'),
-        },
-        indicators: [],
-        drawings: [],
-      };
-
       // Mock window.print
       const originalPrint = window.print;
       window.print = vi.fn();

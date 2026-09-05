@@ -1,87 +1,188 @@
 /**
- * History Downloader Component
- * UI for downloading and managing historical tick data
+ * Historical Data Manager
+ * Downloads, monitors, and clears locally cached tick history.
  */
 
-import { Icon } from './ui/Icon';
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { historyDataManager } from '../services/historyDataManager';
-import type { SymbolDataInfo, DownloadTask, StorageStats } from '../types/history';
+import { useConfirmStore } from '../store/useConfirmStore';
+import type { DownloadTask, StorageStats, SymbolDataInfo } from '../types/history';
+import { Icon } from './ui/Icon';
+
+const toLocalDateInputValue = (date: Date) => {
+  const timezoneOffset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().split('T')[0];
+};
+
+const createDefaultDateRange = () => {
+  const today = new Date();
+  return {
+    from: toLocalDateInputValue(new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)),
+    to: toLocalDateInputValue(today),
+  };
+};
+
+const STATUS_LABELS: Record<DownloadTask['status'], string> = {
+  pending: 'Queued',
+  downloading: 'Downloading',
+  paused: 'Paused',
+  completed: 'Completed',
+  failed: 'Failed',
+};
+
+const DATE_PRESETS = [
+  { id: '7d', label: '7 Days', days: 7 },
+  { id: '14d', label: '14 Days', days: 14 },
+  { id: '30d', label: '30 Days', days: 30 },
+  { id: '90d', label: '3 Months', days: 90 },
+  { id: '1y', label: '1 Year', days: 365 },
+  { id: 'ytd', label: 'YTD', isYtd: true },
+  { id: 'all', label: 'All', isAll: true },
+] as const;
+
+const clampProgress = (progress: number) => Math.max(0, Math.min(100, progress || 0));
+const isActiveTask = (task: DownloadTask) => (
+  task.status === 'pending' || task.status === 'downloading' || task.status === 'paused'
+);
 
 export const HistoryDownloader: React.FC = () => {
   const [symbols, setSymbols] = useState<SymbolDataInfo[]>([]);
   const [downloadTasks, setDownloadTasks] = useState<DownloadTask[]>([]);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('');
-  const [dateRange, setDateRange] = useState({
-    from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    to: new Date().toISOString().split('T')[0]
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [backgroundDownload, setBackgroundDownload] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState('');
+  const [dateRange, setDateRange] = useState(createDefaultDateRange);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [clearingSymbol, setClearingSymbol] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadSymbols();
-    loadStorageStats();
-
-    // Poll for task updates
-    const interval = setInterval(() => {
-      setDownloadTasks(historyDataManager.getDownloadTasks());
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadSymbols = async () => {
+  const loadSymbols = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await historyDataManager.getAvailableSymbols();
       setSymbols(data);
-      if (data.length > 0 && !selectedSymbol) {
-        setSelectedSymbol(data[0].symbol);
-      }
+      setSelectedSymbol((current) => (
+        current && data.some((item) => item.symbol === current)
+          ? current
+          : data[0]?.symbol ?? ''
+      ));
     } catch (error) {
       console.error('Failed to load symbols:', error);
+      setOperationError('Historical instruments could not be loaded. Try refreshing the manager.');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const loadStorageStats = async () => {
+  const loadStorageStats = useCallback(async () => {
     try {
-      const stats = await historyDataManager.getStorageStats();
-      setStorageStats(stats);
+      setStorageStats(await historyDataManager.getStorageStats());
     } catch (error) {
       console.error('Failed to load storage stats:', error);
+      setOperationError('Local cache statistics are temporarily unavailable.');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSymbols();
+    void loadStorageStats();
+    setDownloadTasks(historyDataManager.getDownloadTasks());
+
+    const interval = window.setInterval(() => {
+      setDownloadTasks(historyDataManager.getDownloadTasks());
+    }, 500);
+
+    return () => window.clearInterval(interval);
+  }, [loadStorageStats, loadSymbols]);
+
+  const selectedSymbolInfo = useMemo(
+    () => symbols.find((item) => item.symbol === selectedSymbol),
+    [selectedSymbol, symbols],
+  );
+
+  const dateRangeError = useMemo(() => {
+    if (!dateRange.from || !dateRange.to) return 'Choose both a start date and an end date.';
+    if (dateRange.from > dateRange.to) return 'The start date must be before the end date.';
+    return null;
+  }, [dateRange]);
+
+  const [activePreset, setActivePreset] = useState<string | null>('7d');
+
+  const selectedDayCount = useMemo(() => {
+    if (!dateRange.from || !dateRange.to) return 0;
+    const fromMs = new Date(dateRange.from).getTime();
+    const toMs = new Date(dateRange.to).getTime();
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs) || fromMs > toMs) return 0;
+    return Math.round((toMs - fromMs) / (24 * 60 * 60 * 1000)) + 1;
+  }, [dateRange]);
+
+  const handleApplyPreset = (preset: (typeof DATE_PRESETS)[number]) => {
+    const today = new Date();
+    setActivePreset(preset.id);
+    if ('days' in preset && preset.days) {
+      setDateRange({
+        from: toLocalDateInputValue(new Date(today.getTime() - preset.days * 24 * 60 * 60 * 1000)),
+        to: toLocalDateInputValue(today),
+      });
+    } else if ('isYtd' in preset && preset.isYtd) {
+      setDateRange({
+        from: `${today.getFullYear()}-01-01`,
+        to: toLocalDateInputValue(today),
+      });
+    } else if ('isAll' in preset && preset.isAll) {
+      if (selectedSymbolInfo?.firstDate && selectedSymbolInfo?.lastDate) {
+        setDateRange({
+          from: selectedSymbolInfo.firstDate,
+          to: selectedSymbolInfo.lastDate,
+        });
+      } else {
+        setDateRange({
+          from: toLocalDateInputValue(new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000)),
+          to: toLocalDateInputValue(today),
+        });
+      }
+    }
+  };
+
+  const activeTaskCount = downloadTasks.filter(isActiveTask).length;
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setOperationError(null);
+    try {
+      await Promise.all([loadSymbols(), loadStorageStats()]);
+      setDownloadTasks(historyDataManager.getDownloadTasks());
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
   const handleDownload = async () => {
-    if (!selectedSymbol) return;
+    if (!selectedSymbol || dateRangeError) return;
 
+    setOperationError(null);
     try {
-      await historyDataManager.downloadData(
-        selectedSymbol,
-        dateRange,
-        (task) => {
-          setDownloadTasks(historyDataManager.getDownloadTasks());
-          if (task.status === 'completed') {
-            loadStorageStats();
-            loadSymbols();
-          }
+      await historyDataManager.downloadData(selectedSymbol, dateRange, (task) => {
+        setDownloadTasks(historyDataManager.getDownloadTasks());
+        if (task.status === 'completed') {
+          void loadStorageStats();
+          void loadSymbols();
         }
-      );
+      });
+      setDownloadTasks(historyDataManager.getDownloadTasks());
     } catch (error) {
       console.error('Download failed:', error);
+      setOperationError(error instanceof Error ? error.message : 'The history download could not be started.');
     }
   };
 
-  const handlePauseResume = (taskId: string, status: string) => {
-    if (status === 'downloading' || status === 'pending') {
-      historyDataManager.pauseDownload(taskId);
-    } else if (status === 'paused') {
-      historyDataManager.resumeDownload(taskId);
+  const handlePauseResume = (task: DownloadTask) => {
+    if (task.status === 'downloading') {
+      historyDataManager.pauseDownload(task.id);
+    } else if (task.status === 'paused') {
+      historyDataManager.resumeDownload(task.id);
     }
+    setDownloadTasks(historyDataManager.getDownloadTasks());
   };
 
   const handleCancel = (taskId: string) => {
@@ -90,293 +191,366 @@ export const HistoryDownloader: React.FC = () => {
   };
 
   const handleClearSymbol = async (symbol: string) => {
-    if (confirm(`Clear all cached data for ${symbol}?`)) {
+    const confirmed = await useConfirmStore.getState().showConfirm(
+      'Clear symbol history',
+      `Remove all locally cached historical data for ${symbol}?`,
+    );
+    if (!confirmed) return;
+
+    setClearingSymbol(symbol);
+    setOperationError(null);
+    try {
       await historyDataManager.clearSymbol(symbol);
-      loadSymbols();
-      loadStorageStats();
+      await Promise.all([loadSymbols(), loadStorageStats()]);
+    } catch (error) {
+      console.error('Failed to clear symbol history:', error);
+      setOperationError(`Cached data for ${symbol} could not be cleared.`);
+    } finally {
+      setClearingSymbol(null);
     }
   };
 
   const handleClearAll = async () => {
-    if (confirm('Clear all cached historical data? This cannot be undone.')) {
+    const confirmed = await useConfirmStore.getState().showConfirm(
+      'Clear historical cache',
+      'Remove all locally cached historical data? Download tasks are not affected.',
+    );
+    if (!confirmed) return;
+
+    setClearingSymbol('*');
+    setOperationError(null);
+    try {
       await historyDataManager.clearAll();
-      loadSymbols();
-      loadStorageStats();
+      await Promise.all([loadSymbols(), loadStorageStats()]);
+    } catch (error) {
+      console.error('Failed to clear historical cache:', error);
+      setOperationError('The historical data cache could not be cleared.');
+    } finally {
+      setClearingSymbol(null);
     }
   };
 
   const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / 1024 ** unitIndex;
+    return `${value >= 100 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
   };
 
+  const formatNumber = (value: number) => new Intl.NumberFormat(undefined, {
+    notation: value >= 1_000_000 ? 'compact' : 'standard',
+    maximumFractionDigits: 1,
+  }).format(value);
+
   const formatDuration = (ms: number): string => {
-    const seconds = Math.floor(ms / 1000);
+    const seconds = Math.max(0, Math.floor(ms / 1000));
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
-
     if (hours > 0) return `${hours}h ${minutes % 60}m`;
     if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
     return `${seconds}s`;
   };
 
-  const selectedSymbolInfo = symbols.find(s => s.symbol === selectedSymbol);
-  const selectedDateRangeLabel = selectedSymbolInfo?.firstDate && selectedSymbolInfo.lastDate
-    ? `Cached: ${selectedSymbolInfo.firstDate} to ${selectedSymbolInfo.lastDate}`
-    : 'Date range is user selected';
+  const formatLastUpdate = (timestamp?: number) => {
+    if (!timestamp) return 'Not yet updated';
+    return new Intl.DateTimeFormat(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(timestamp);
+  };
 
   return (
-    <div className="rtx-history-downloader flex flex-col h-full bg-gray-900 text-[14px] font-normal text-gray-100">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700">
-        <div className="flex items-center gap-2">
-          <Icon name="database" size="sm" className="w-5 h-5 text-blue-400" />
-          <h2 className="text-[14px] font-normal">Historical Data Manager</h2>
+    <section className="rtx-history-downloader text-[14px] font-normal" aria-label="Historical Data Manager">
+      <header className="rtx-history-downloader__header">
+        <div className="rtx-history-downloader__identity">
+          <span className="rtx-history-downloader__identity-icon" aria-hidden="true">
+            <Icon name="database" size="md" />
+          </span>
+          <div>
+            <h2>Historical Data Manager</h2>
+            <p>Download and maintain local tick history</p>
+          </div>
         </div>
 
-        {storageStats && (
-          <div className="flex items-center gap-4 text-[12px] font-normal">
-            <div className="flex items-center gap-2">
-              <Icon name="hard-drive" size="sm" className="w-4 h-4 text-gray-400" />
-              <span>{formatBytes(storageStats.totalSize)}</span>
-            </div>
-            <div className="text-gray-400">
-              {storageStats.tickCount.toLocaleString()} ticks
-            </div>
-            <div className="text-gray-400">
-              {storageStats.symbolCount} symbols
-            </div>
+        <dl className="rtx-history-downloader__metrics" aria-label="Historical cache statistics">
+          <div>
+            <dt>Local storage</dt>
+            <dd>{storageStats ? formatBytes(storageStats.totalSize) : '—'}</dd>
           </div>
-        )}
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Symbol Selection */}
-        <div className="w-80 border-r border-gray-700 flex flex-col">
-          <div className="p-4 border-b border-gray-700">
-            <h3 className="text-[12px] font-normal mb-2">Available Symbols</h3>
-            <input
-              type="text"
-              placeholder="Search symbols..."
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-[14px] font-normal focus:outline-none focus:border-zinc-600"
-            />
+          <div>
+            <dt>Cached ticks</dt>
+            <dd>{storageStats ? formatNumber(storageStats.tickCount) : '—'}</dd>
           </div>
+          <div>
+            <dt>Symbols</dt>
+            <dd>{storageStats ? storageStats.symbolCount.toLocaleString() : '—'}</dd>
+          </div>
+          <div className="rtx-history-downloader__metric-wide">
+            <dt>Last update</dt>
+            <dd>{formatLastUpdate(storageStats?.lastUpdate)}</dd>
+          </div>
+        </dl>
 
-          <div className="flex-1 overflow-y-auto">
-            {isLoading ? (
-              <div className="p-4 text-center text-[13px] font-normal text-gray-400">Loading...</div>
-            ) : (
-              <div className="divide-y divide-gray-700">
-                {symbols.map((symbolInfo) => (
-                  <div
-                    key={symbolInfo.symbol}
-                    className={`p-3 cursor-pointer hover:bg-gray-800 transition-colors ${
-                      selectedSymbol === symbolInfo.symbol ? 'bg-gray-800' : ''
-                    }`}
-                    onClick={() => setSelectedSymbol(symbolInfo.symbol)}
+        <button
+          type="button"
+          className="rtx-history-icon-button"
+          onClick={() => void handleRefresh()}
+          disabled={isRefreshing}
+          data-loading={isRefreshing || undefined}
+          aria-busy={isRefreshing}
+          aria-label="Refresh historical data statistics"
+          title="Refresh data and statistics"
+        >
+          <Icon name="refresh" size="sm" />
+        </button>
+      </header>
+
+      {operationError && (
+        <div className="rtx-history-downloader__error" role="alert">
+          <Icon name="warning" size="sm" />
+          <span>{operationError}</span>
+          <button type="button" onClick={() => setOperationError(null)} aria-label="Dismiss error">
+            <Icon name="x-close" size="xs" />
+          </button>
+        </div>
+      )}
+
+      <div className="rtx-history-downloader__workspace">
+        <main className="rtx-history-main">
+          <div className="rtx-history-download-panel">
+            {/* Row 1: Symbol Dropdown, Status & Clear Action */}
+            <div className="rtx-history-panel-row1">
+              <div className="rtx-history-symbol-picker-group">
+                <label htmlFor="history-symbol-select" className="rtx-history-symbol-label">
+                  Symbol:
+                </label>
+                <div className="rtx-history-symbol-dropdown-wrapper">
+                  <select
+                    id="history-symbol-select"
+                    className="rtx-history-symbol-select"
+                    value={selectedSymbol}
+                    onChange={(event) => setSelectedSymbol(event.target.value)}
+                    aria-label="Select instrument"
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[13px] font-normal">{symbolInfo.symbol}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleClearSymbol(symbolInfo.symbol);
-                        }}
-                        className="p-1 hover:bg-gray-700 rounded"
-                        title="Clear cached data"
-                      >
-                        <Icon name="trash" size="sm" className="w-3 h-3 text-gray-400" />
-                      </button>
-                    </div>
+                    {symbols.map((item) => (
+                      <option key={item.symbol} value={item.symbol}>
+                        {item.symbol}
+                      </option>
+                    ))}
+                  </select>
+                  <Icon name="chevron-down" size="xs" className="rtx-history-dropdown-chevron" />
+                </div>
+              </div>
 
-                    <div className="text-[12px] font-normal text-gray-400 space-y-1">
-                      <div>
-                        {symbolInfo.availableDates.length > 0
-                          ? `${symbolInfo.downloadedDates.length} / ${symbolInfo.availableDates.length} days`
-                          : `${symbolInfo.downloadedDates.length} cached days`}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-zinc-8000"
-                            style={{ width: `${symbolInfo.downloadProgress || 0}%` }}
-                          />
-                        </div>
-                        <span>{Math.round(symbolInfo.downloadProgress || 0)}%</span>
-                      </div>
-                    </div>
-                  </div>
+              <div className="rtx-history-panel-row1-actions">
+                <button
+                  type="button"
+                  className="rtx-history-clear-btn"
+                  onClick={() => selectedSymbol && void handleClearSymbol(selectedSymbol)}
+                  disabled={clearingSymbol !== null || !selectedSymbolInfo?.downloadedDates?.length || downloadTasks.some((t) => t.symbol === selectedSymbol && isActiveTask(t))}
+                  aria-label={`Clear cached data for ${selectedSymbol}`}
+                  title={`Clear cached data for ${selectedSymbol}`}
+                >
+                  <Icon name="trash" size="sm" />
+                  <span>Clear Symbol Cache</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Presets + Dual Date Field + Download Button */}
+            <div className="rtx-history-controls-row">
+              <div className="rtx-history-segmented-presets" role="group" aria-label="Quick date range selection">
+                {DATE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`rtx-history-seg-btn ${activePreset === preset.id ? 'is-active' : ''}`}
+                    onClick={() => handleApplyPreset(preset)}
+                  >
+                    {preset.label}
+                  </button>
                 ))}
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* Center Panel - Download Controls */}
-        <div className="flex-1 flex flex-col">
-          <div className="p-4 border-b border-gray-700 space-y-4">
-            <div>
-              <h3 className="text-[12px] font-normal mb-2">Download Settings</h3>
-              {selectedSymbolInfo && (
-                <div className="text-[12px] font-normal text-gray-400 mb-3">
-                  {selectedDateRangeLabel}
+              <div className="rtx-history-date-inputs">
+                <label className="rtx-history-field">
+                  <span className="rtx-history-field-label">From</span>
+                  <input
+                    type="date"
+                    className="rtx-history-date-input"
+                    aria-label="From date"
+                    value={dateRange.from}
+                    max={dateRange.to || undefined}
+                    onChange={(event) => {
+                      setActivePreset(null);
+                      setDateRange((current) => ({ ...current, from: event.target.value }));
+                    }}
+                  />
+                </label>
+
+                <span className="rtx-history-arrow">→</span>
+
+                <label className="rtx-history-field">
+                  <span className="rtx-history-field-label">To</span>
+                  <input
+                    type="date"
+                    className="rtx-history-date-input"
+                    aria-label="To date"
+                    value={dateRange.to}
+                    min={dateRange.from || undefined}
+                    onChange={(event) => {
+                      setActivePreset(null);
+                      setDateRange((current) => ({ ...current, to: event.target.value }));
+                    }}
+                  />
+                </label>
+
+                {selectedDayCount > 0 && (
+                  <span className="rtx-history-duration-badge">
+                    {selectedDayCount} {selectedDayCount === 1 ? 'Day' : 'Days'}
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="rtx-history-primary-button"
+                aria-label="Download history"
+                onClick={() => void handleDownload()}
+                disabled={!selectedSymbol || isLoading || Boolean(dateRangeError)}
+              >
+                <Icon name="download" size="sm" />
+                <span>Download History</span>
+              </button>
+            </div>
+
+            {/* Row 3: Coverage Status Banner (Without server range) */}
+            <div className="rtx-history-coverage-banner" data-error={Boolean(dateRangeError) || undefined}>
+              <div className="rtx-history-coverage-left">
+                {dateRangeError ? (
+                  <>
+                    <Icon name="warning" size="xs" />
+                    <span style={{ color: 'var(--color-loss)' }}>{dateRangeError}</span>
+                  </>
+                ) : selectedSymbolInfo?.firstDate && selectedSymbolInfo.lastDate ? (
+                  <>
+                    <Icon name="check" size="xs" />
+                    <div className="rtx-history-coverage-details">
+                      <span className="rtx-history-coverage-title">Cached Coverage:</span>
+                      <strong className="rtx-history-coverage-date">{selectedSymbolInfo.firstDate}</strong>
+                      <span className="rtx-history-coverage-sep">to</span>
+                      <strong className="rtx-history-coverage-date">{selectedSymbolInfo.lastDate}</strong>
+                      <span className="rtx-history-coverage-recorded">
+                        ({selectedSymbolInfo.downloadedDates?.length || 0} {selectedSymbolInfo.downloadedDates?.length === 1 ? 'day' : 'days'} recorded)
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Icon name="info" size="xs" />
+                    <span>Select an instrument and date range to download tick history to local cache.</span>
+                  </>
+                )}
+              </div>
+
+              {selectedSymbolInfo && (selectedSymbolInfo.downloadProgress ?? 0) > 0 && !dateRangeError && (
+                <div className="rtx-history-coverage-bar">
+                  <span>Local sync: {selectedSymbolInfo.downloadProgress}%</span>
+                  <div className="rtx-history-bar-track">
+                    <div className="rtx-history-bar-fill" style={{ width: `${selectedSymbolInfo.downloadProgress}%` }} />
+                  </div>
                 </div>
               )}
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[12px] font-normal mb-1">From Date</label>
-                <input
-                  type="date"
-                  value={dateRange.from}
-                  onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-[14px] font-normal focus:outline-none focus:border-zinc-600"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[12px] font-normal mb-1">To Date</label>
-                <input
-                  type="date"
-                  value={dateRange.to}
-                  onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded text-[14px] font-normal focus:outline-none focus:border-zinc-600"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-[14px] font-normal">
-                <input
-                  type="checkbox"
-                  checked={backgroundDownload}
-                  onChange={(e) => setBackgroundDownload(e.target.checked)}
-                  className="rounded"
-                />
-                Background download
-              </label>
-            </div>
-
-            <button
-              onClick={handleDownload}
-              disabled={!selectedSymbol || isLoading}
-              className="w-full px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-[14px] font-normal flex items-center justify-center gap-2 transition-colors"
-            >
-              <Icon name="download" size="sm" className="w-4 h-4" />
-              Download Historical Data
-            </button>
           </div>
 
-          {/* Download Tasks */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="p-4">
-              <h3 className="text-[12px] font-normal mb-3">Download Tasks</h3>
+          <section className="rtx-history-tasks" aria-labelledby="history-download-queue-heading">
+            <div className="rtx-history-tasks__header">
+              <div>
+                <h3 id="history-download-queue-heading">Download queue</h3>
+                <span>{activeTaskCount ? `${activeTaskCount} active` : 'No active downloads'}</span>
+              </div>
+              <span className="rtx-history-task-count">{downloadTasks.length} total</span>
+            </div>
 
+            <div className="rtx-history-tasks__list">
               {downloadTasks.length === 0 ? (
-                <div className="text-center text-[13px] font-normal text-gray-400 py-8">
-                  No download tasks
+                <div className="rtx-history-empty">
+                  <span className="rtx-history-empty__icon" aria-hidden="true">
+                    <Icon name="history" size="lg" />
+                  </span>
+                  <strong>Your download queue is clear</strong>
+                  <span>Choose an instrument and date range to cache historical ticks.</span>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {downloadTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="p-3 bg-gray-800 rounded border border-gray-700"
-                    >
-                      <div className="flex items-center justify-between mb-2">
+                downloadTasks.map((task) => {
+                  const progress = clampProgress(task.progress);
+                  const canPauseOrResume = task.status === 'downloading' || task.status === 'paused';
+                  const isFinished = task.status === 'completed' || task.status === 'failed';
+
+                  return (
+                    <article className="rtx-history-task" data-status={task.status} key={task.id}>
+                      <div className="rtx-history-task__identity">
+                        <span className="rtx-history-task__status-dot" aria-hidden="true" />
                         <div>
-                          <div className="text-[13px] font-normal">{task.symbol}</div>
-                          <div className="text-[12px] font-normal text-gray-400">
-                            {task.dateRange.from} to {task.dateRange.to}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handlePauseResume(task.id, task.status)}
-                            className="p-1.5 hover:bg-gray-700 rounded"
-                            disabled={task.status === 'completed' || task.status === 'failed'}
-                          >
-                            {task.status === 'paused' ? (
-                              <Icon name="play" size="sm" className="w-4 h-4" />
-                            ) : (
-                              <Icon name="stop" size="sm" className="w-4 h-4" />
-                            )}
-                          </button>
-
-                          <button
-                            onClick={() => handleCancel(task.id)}
-                            className="p-1.5 hover:bg-gray-700 rounded"
-                          >
-                            <Icon name="x-close" size="sm" className="w-4 h-4" />
-                          </button>
+                          <strong>{task.symbol}</strong>
+                          <span>{task.dateRange.from} — {task.dateRange.to}</span>
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-[12px] font-normal">
-                          <span className="text-gray-400">
-                            {task.status.toUpperCase()}
-                          </span>
-                          <span>
-                            {Math.round(task.progress)}% ({task.downloadedTicks.toLocaleString()} ticks)
-                          </span>
+                      <div className="rtx-history-task__progress-area">
+                        <div className="rtx-history-task__progress-label">
+                          <span>{STATUS_LABELS[task.status]}</span>
+                          <span>{Math.round(progress)}% · {task.downloadedTicks.toLocaleString()} ticks</span>
                         </div>
-
-                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all ${
-                              task.status === 'failed'
-                                ? 'bg-red-500'
-                                : task.status === 'completed'
-                                ? 'bg-green-500'
-                                : 'bg-zinc-600'
-                            }`}
-                            style={{ width: `${task.progress}%` }}
-                          />
+                        <div
+                          className="rtx-history-progress rtx-history-progress--task"
+                          role="progressbar"
+                          aria-label={`${task.symbol} ${STATUS_LABELS[task.status]}`}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(progress)}
+                        >
+                          <span style={{ width: `${progress}%` }} />
                         </div>
-
-                        {task.endTime && (
-                          <div className="text-[12px] font-normal text-gray-400">
-                            Duration: {formatDuration(task.endTime - task.startTime)}
-                          </div>
-                        )}
-
-                        {task.error && (
-                          <div className="text-[12px] font-normal text-red-400">
-                            Error: {task.error}
+                        {(task.endTime || task.error) && (
+                          <div className="rtx-history-task__detail" data-error={Boolean(task.error) || undefined}>
+                            {task.error || `Completed in ${formatDuration(task.endTime! - task.startTime)}`}
                           </div>
                         )}
                       </div>
-                    </div>
-                  ))}
-                </div>
+
+                      <div className="rtx-history-task__actions">
+                        <button
+                          type="button"
+                          className="rtx-history-icon-button"
+                          onClick={() => handlePauseResume(task)}
+                          disabled={!canPauseOrResume}
+                          aria-label={task.status === 'paused' ? `Resume ${task.symbol} download` : `Pause ${task.symbol} download`}
+                          title={task.status === 'paused' ? 'Resume download' : canPauseOrResume ? 'Pause download' : STATUS_LABELS[task.status]}
+                        >
+                          <Icon name={task.status === 'paused' ? 'play' : isFinished ? 'check' : 'stop'} size="sm" />
+                        </button>
+                        <button
+                          type="button"
+                          className="rtx-history-icon-button"
+                          onClick={() => handleCancel(task.id)}
+                          aria-label={`${isFinished ? 'Dismiss' : 'Cancel'} ${task.symbol} download`}
+                          title={isFinished ? 'Dismiss task' : 'Cancel download'}
+                        >
+                          <Icon name="x-close" size="sm" />
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })
               )}
             </div>
-          </div>
-        </div>
+          </section>
+        </main>
       </div>
-
-      {/* Footer */}
-      <div className="p-4 border-t border-gray-700 flex justify-between items-center">
-        <button
-          onClick={handleClearAll}
-          className="px-4 py-2 text-[14px] font-normal text-red-400 hover:bg-red-900/20 rounded transition-colors"
-        >
-          Clear All Cached Data
-        </button>
-
-        <button
-          onClick={loadStorageStats}
-          className="px-4 py-2 text-[14px] font-normal text-gray-400 hover:bg-gray-800 rounded transition-colors"
-        >
-          Refresh Stats
-        </button>
-      </div>
-    </div>
+    </section>
   );
 };

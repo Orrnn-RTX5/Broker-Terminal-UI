@@ -1,8 +1,8 @@
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { DockContainer, FloatingPanelsLayer, GlobalEdgeIndicators } from './DockContainer';
 import { ErrorBoundary } from '../ErrorBoundary';
-import { TradingChart, type Timeframe, type ChartType } from '../TradingChart';
+import type { Timeframe, ChartType } from '../TradingChart';
 import type { DockPanelConfig } from '../../services/dockManager';
 import { useCommandBus } from '../../hooks/useCommandBus';
 import type { DockContainer as IDockContainer } from '../../services/dockManager';
@@ -17,13 +17,71 @@ import {
     getChartPanelDiagnosticId,
     resolveRenderedChartSymbol,
 } from '../../utils/chartSelectionReadiness';
+import {
+    getResolvedTradingChartRuntime,
+    preloadTradingChartRuntime,
+} from '../../startup/tradingChartRuntime';
+import type { TradeVolumeMetadata } from '../../utils/tradeVolume';
 
 /**
- * Importing this module now evaluates every first-viewport component. AppShell
- * calls this through its authenticated dynamic boundary during the broker
- * request, so React's first authenticated commit has no nested lazy fallback.
+ * Warm the chart beside the authenticated shell without making the complete
+ * chart graph part of the shell's critical rendering gate.
  */
-export const preloadDockWorkspaceViewport = async (): Promise<void> => undefined;
+export const preloadDockWorkspaceViewport = async (): Promise<void> => {
+    await preloadTradingChartRuntime();
+};
+
+type TradingChartModule = typeof import('../TradingChart');
+type DeferredTradingChartProps = React.ComponentProps<TradingChartModule['TradingChart']>;
+
+const readVolumeMetadata = (instrument: unknown): TradeVolumeMetadata => {
+    if (!instrument || typeof instrument !== 'object') return {};
+    const record = instrument as Record<string, unknown>;
+    const readPositive = (key: keyof TradeVolumeMetadata): number | undefined => {
+        const value = Number(record[key]);
+        return Number.isFinite(value) && value > 0 ? value : undefined;
+    };
+    return {
+        minVolume: readPositive('minVolume'),
+        maxVolume: readPositive('maxVolume'),
+        volumeStep: readPositive('volumeStep'),
+    };
+};
+
+const DeferredTradingChart: React.FC<DeferredTradingChartProps> = (props) => {
+    const [ChartComponent, setChartComponent] = useState<TradingChartModule['TradingChart'] | null>(() => (
+        getResolvedTradingChartRuntime()?.TradingChart ?? null
+    ));
+    const [loadAttempt, setLoadAttempt] = useState(0);
+
+    useEffect(() => {
+        if (ChartComponent) return undefined;
+
+        let active = true;
+        let retryTimer: number | undefined;
+        void preloadTradingChartRuntime().then(
+            (module) => {
+                if (active) setChartComponent(() => module.TradingChart);
+            },
+            () => {
+                if (active && loadAttempt < 2) {
+                    retryTimer = window.setTimeout(() => setLoadAttempt((attempt) => attempt + 1), 500);
+                }
+            },
+        );
+
+        return () => {
+            active = false;
+            if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+        };
+    }, [ChartComponent, loadAttempt]);
+
+    if (!ChartComponent) {
+        return <div className="h-full w-full bg-[#0e0e12]" data-rtx-chart-runtime-loading="true" />;
+    }
+
+    return <ChartComponent {...props} />;
+};
 
 interface DockWorkspaceProps {
     globalChartType: ChartType;
@@ -73,6 +131,26 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         });
         return digitsBySymbol;
     }, [allSymbols]);
+    const volumeMetadataBySymbol = useMemo(() => {
+        const metadataBySymbol = new Map<string, TradeVolumeMetadata>();
+        const mergeCatalog = (catalog: unknown[]) => catalog.forEach((instrument) => {
+            const instrumentSymbol = getInstrumentSymbolName(instrument);
+            if (!instrumentSymbol) return;
+            const previous = metadataBySymbol.get(instrumentSymbol) ?? {};
+            const next = readVolumeMetadata(instrument);
+            metadataBySymbol.set(instrumentSymbol, {
+                minVolume: next.minVolume ?? previous.minVolume,
+                maxVolume: next.maxVolume ?? previous.maxVolume,
+                volumeStep: next.volumeStep ?? previous.volumeStep,
+            });
+        });
+
+        mergeCatalog(allSymbols);
+        // FIX: Authenticated broker specifications override public fallbacks for
+        // the exact execution symbol, matching MT-style per-instrument lot grids.
+        mergeCatalog(marketInstrumentsSnapshot.authorizedInstruments);
+        return metadataBySymbol;
+    }, [allSymbols, marketInstrumentsSnapshot.authorizedInstruments]);
 
     const resolveChartSymbol = useCallback((value: unknown): string => {
         return resolveAuthorizedChartSymbol(value, authorizedChartSymbols);
@@ -92,6 +170,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
             );
             const diagnosticPanelId = getChartPanelDiagnosticId(panel.id);
             const tradeAllowed = chartSymbol ? tradeSymbolSet.has(chartSymbol) : false;
+            const volumeMetadata = volumeMetadataBySymbol.get(chartSymbol);
             return (
                 <div className="rtx-chart-panel flex-1 w-full h-full min-h-0 min-w-0 relative flex flex-col group/chartpanel"
                     data-chart-panel-id={diagnosticPanelId}
@@ -123,15 +202,18 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                     {chartSymbol && chartRuntimeEnabled ? (
                         <div className="rtx-chart-panel__canvas flex-1 w-full h-full relative" style={{ pointerEvents: 'auto' }}>
                             <ErrorBoundary>
-                                <TradingChart
+                                <DeferredTradingChart
                                     key={`chart-${panel.id}`}
                                     symbol={chartSymbol}
                                     timeframe={panel.props?.timeframe || globalTimeframe}
-                                    chartType={globalChartType}
+                                    chartType={panel.props?.chartType || globalChartType}
                                     panelId={panel.id}
                                     tradeAllowed={tradeAllowed}
                                     isActive={isActive}
                                     priceDigits={priceDigitsBySymbol.get(chartSymbol)}
+                                    minVolume={volumeMetadata?.minVolume}
+                                    maxVolume={volumeMetadata?.maxVolume}
+                                    volumeStep={volumeMetadata?.volumeStep}
                                 />
                             </ErrorBoundary>
                         </div>
@@ -202,7 +284,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     }, [
         authorizedChartSymbols,
         globalChartType, globalTimeframe,
-        activeMarketSnapshot, marketInstrumentsSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, priceDigitsBySymbol, resolveChartSymbol, tradeSymbolSet,
+        activeMarketSnapshot, marketInstrumentsSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, priceDigitsBySymbol, resolveChartSymbol, tradeSymbolSet, volumeMetadataBySymbol,
         onClosePosition, onModifyPosition, onCancelOrder, onCloseBulk
     ]);
 
@@ -213,7 +295,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
 
 // Clean workspace - just renders the dock layout
 const DockWorkspaceClean: React.FC<{
-    renderPanel: (panel: DockPanelConfig, isActive: boolean) => React.ReactNode;
+    renderPanel: (panel: DockPanelConfig, isActive: boolean, isFloating?: boolean) => React.ReactNode;
 }> = ({ renderPanel }) => {
     const { layout, resetToDefaultLayout, tileWindows } = useDockLayoutStore();
     const { subscribe } = useCommandBus();
@@ -256,7 +338,7 @@ const DockWorkspaceClean: React.FC<{
         <div
             className="rtx-dock-workspace flex-1 w-full h-full relative overflow-hidden flex flex-col"
             data-rtx-authenticated-viewport="true"
-            style={{ background: '#0d0d11', padding: '0 6px 0 0', gap: '6px' }}
+            style={{ background: '#0d0d11', padding: 0, gap: '6px' }}
         >
             {/* Reset Layout Button */}
             {isLayoutEmpty && (

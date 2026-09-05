@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
+import { getEffectiveChartColors, useChartSettingsStore } from '../store/useChartSettingsStore';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
 import {
   getMarketStatusTradeBlockMessage,
@@ -9,6 +10,8 @@ import {
 } from '../utils/marketStatus';
 import { formatPriceParts } from './ui/PriceDisplay';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
+import { RTX_ADVANCED_VIEW_CHANGE_EVENT } from '../utils/advancedViewRootClasses';
+import '../styles/order-panel-dialog.css';
 
 // Symbol display names
 const SYMBOL_NAMES: Record<string, string> = {
@@ -72,241 +75,333 @@ function formatMargin(val: number): string {
   return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
-// ─── Mini Tick Chart (MT5 style) ──────────────────────────────────
-function MiniTickChart({ symbol, bid, ask }: { symbol: string; bid: number; ask: number }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const tickHistoryRef = useRef<{ time: number; bid: number; ask: number }[]>([]);
-  const animFrameRef = useRef<number | undefined>(undefined);
-  const cfg = getInstrumentConfig(symbol);
+type TickChartColors = {
+  background: string;
+  foreground: string;
+  grid: string;
+};
 
-  // Clear when symbol changes
+type TickPoint = { time: number; bid: number; ask: number };
+
+const formatTickTime = (time: number): string => {
+  const date = new Date(time);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+};
+
+// ─── Enterprise tick chart ───────────────────────────────────────
+function MiniTickChart({
+  symbol,
+  bid,
+  ask,
+  digits,
+  chartColors,
+}: {
+  symbol: string;
+  bid: number;
+  ask: number;
+  digits: number;
+  chartColors: TickChartColors;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const tickHistoryRef = useRef<TickPoint[]>([]);
+  const frameRef = useRef<number | null>(null);
+
   useEffect(() => {
     tickHistoryRef.current = [];
   }, [symbol]);
 
-  // Accumulate ticks
   useEffect(() => {
-    if (!bid || !ask) return;
+    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) return;
+
     const now = Date.now();
-    tickHistoryRef.current.push({ time: now, bid, ask });
-    // Keep last 5 minutes
-    const cutoff = now - 300000;
-    tickHistoryRef.current = tickHistoryRef.current.filter(t => t.time >= cutoff);
+    const nextTick = { time: now, bid, ask };
+    const cutoff = now - 300_000;
+    const retained = tickHistoryRef.current.filter((tick) => tick.time >= cutoff);
+    const lastTick = retained[retained.length - 1];
+
+    if (lastTick && lastTick.bid === bid && lastTick.ask === ask) {
+      retained[retained.length - 1] = nextTick;
+    } else {
+      retained.push(nextTick);
+    }
+
+    tickHistoryRef.current = retained.slice(-180);
   }, [bid, ask]);
 
-  // Render
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const readCssValue = (name: string, fallback: string): string => {
+      const value = window.getComputedStyle(canvas).getPropertyValue(name).trim();
+      return value || fallback;
+    };
+
     const draw = () => {
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const w = canvas.width;
-      const h = canvas.height;
-      const history = tickHistoryRef.current;
-      const digits = cfg.digits;
+      const cssWidth = Math.max(320, Math.round(canvas.clientWidth || 420));
+      const cssHeight = Math.max(240, Math.round(canvas.clientHeight || 314));
+      const pixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+      const backingWidth = Math.round(cssWidth * pixelRatio);
+      const backingHeight = Math.round(cssHeight * pixelRatio);
 
-      // Margins for labels
-      const LEFT = 0;
-      const RIGHT = 70;
-      const TOP = 22;
-      const BOTTOM = 18;
-      const chartW = w - LEFT - RIGHT;
-      const chartH = h - TOP - BOTTOM;
-
-      const isLight = document.documentElement.classList.contains('rtx-skin-untitled-light');
-      
-      // Clear
-      ctx.fillStyle = isLight ? '#f8fafc' : '#0d0d11';
-      ctx.fillRect(0, 0, w, h);
-
-      // Header: bid / ask at top
-      ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = isLight ? '#64748b' : '#999';
-      ctx.fillText(symbol, 4, 14);
-
-      if (bid && ask) {
-        ctx.font = '10px monospace';
-        ctx.textAlign = 'left';
-        const bidStr = bid.toFixed(digits);
-        const askStr = ask.toFixed(digits);
-        const headerText = `${bidStr} / ${askStr}`;
-        ctx.font = 'bold 11px sans-serif';
-        const symbolW = ctx.measureText(symbol + ' ').width;
-        ctx.font = '10px monospace';
-        ctx.fillStyle = '#4fc3f7';
-        ctx.fillText(headerText, symbolW + 8, 14);
+      if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+        canvas.width = backingWidth;
+        canvas.height = backingHeight;
       }
 
-      if (history.length < 2) {
-        ctx.fillStyle = '#555';
-        ctx.font = '11px monospace';
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+      const palette = {
+        background: chartColors.background || readCssValue('--bg-primary', '#0d0d11'),
+        foreground: chartColors.foreground || readCssValue('--text-secondary', '#808088'),
+        grid: chartColors.grid || readCssValue('--border-primary', '#28282e'),
+        axisSurface: readCssValue('--order-chart-axis-surface', '#131316'),
+        axis: readCssValue('color', '#a1a1aa'),
+        bid: readCssValue('--order-bid', '#ff4d4f'),
+        ask: readCssValue('--order-ask', '#7aacca'),
+        tagText: readCssValue('--order-tag-text', '#fff'),
+        monoFont: readCssValue('--font-mono', 'ui-monospace, Consolas, monospace'),
+      };
+
+      const width = cssWidth;
+      const height = cssHeight;
+      const left = 12;
+      const right = 72;
+      const top = 12;
+      const bottom = 27;
+      const plotWidth = width - left - right;
+      const plotHeight = height - top - bottom;
+      const plotRight = left + plotWidth;
+      const plotBottom = top + plotHeight;
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = palette.background;
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = palette.axisSurface;
+      ctx.fillRect(plotRight, 0, right, height);
+
+      ctx.strokeStyle = palette.grid;
+      ctx.globalAlpha = 0.68;
+      ctx.lineWidth = 0.75;
+      for (let index = 0; index <= 4; index += 1) {
+        const x = left + (index / 4) * plotWidth;
+        const y = top + (index / 4) * plotHeight;
+
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, plotBottom);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(plotRight, y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.strokeStyle = palette.grid;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(plotRight, 0);
+      ctx.lineTo(plotRight, height);
+      ctx.stroke();
+
+      const history = tickHistoryRef.current;
+      if (history.length === 0) {
+        ctx.fillStyle = palette.axis;
+        ctx.font = `11px ${palette.monoFont}`;
         ctx.textAlign = 'center';
-        ctx.fillText('Waiting for ticks...', w / 2, h / 2);
-        animFrameRef.current = requestAnimationFrame(draw);
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Waiting for live tick data', left + plotWidth / 2, top + plotHeight / 2);
         return;
       }
 
-      // Price range
-      let minP = Infinity, maxP = -Infinity;
-      for (const t of history) {
-        minP = Math.min(minP, t.bid, t.ask);
-        maxP = Math.max(maxP, t.bid, t.ask);
-      }
-      const range = maxP - minP || Math.pow(10, -digits);
-      const pad = range * 0.12;
-      minP -= pad;
-      maxP += pad;
-      const totalRange = maxP - minP;
+      const plotHistory = history.length === 1
+        ? [{ ...history[0], time: history[0].time - 1_000 }, history[0]]
+        : history;
 
-      // Time range
-      const now = Date.now();
-      const timeStart = history[0].time;
-      const timeEnd = now;
-      const timeRange = Math.max(timeEnd - timeStart, 1000);
-
-      // Y mapping
-      const yOf = (price: number) => TOP + chartH - ((price - minP) / totalRange) * chartH;
-      const xOf = (time: number) => LEFT + ((time - timeStart) / timeRange) * chartW;
-
-      // Grid lines (horizontal)
-      ctx.strokeStyle = '#2a2e39';
-      ctx.lineWidth = 0.5;
-      for (let i = 0; i <= 5; i++) {
-        const y = TOP + (i / 5) * chartH;
-        ctx.beginPath();
-        ctx.moveTo(LEFT, y);
-        ctx.lineTo(LEFT + chartW, y);
-        ctx.stroke();
+      let minPrice = Number.POSITIVE_INFINITY;
+      let maxPrice = Number.NEGATIVE_INFINITY;
+      for (const tick of plotHistory) {
+        minPrice = Math.min(minPrice, tick.bid, tick.ask);
+        maxPrice = Math.max(maxPrice, tick.bid, tick.ask);
       }
 
-      // Price labels on right
-      ctx.fillStyle = '#555';
-      ctx.font = '9px monospace';
+      const priceStep = Math.pow(10, -digits);
+      const observedRange = maxPrice - minPrice;
+      const minimumRange = Math.max(priceStep * 8, Math.abs(ask - bid) * 5);
+      if (observedRange < minimumRange) {
+        const midpoint = (maxPrice + minPrice) / 2;
+        minPrice = midpoint - minimumRange / 2;
+        maxPrice = midpoint + minimumRange / 2;
+      }
+      const padding = Math.max((maxPrice - minPrice) * 0.1, priceStep * 2);
+      minPrice -= padding;
+      maxPrice += padding;
+      const totalRange = Math.max(maxPrice - minPrice, priceStep);
+
+      const timeStart = plotHistory[0].time;
+      const timeEnd = plotHistory[plotHistory.length - 1].time;
+      const timeRange = Math.max(timeEnd - timeStart, 1_000);
+      const xOf = (time: number) => left + ((time - timeStart) / timeRange) * plotWidth;
+      const yOf = (price: number) => top + plotHeight - ((price - minPrice) / totalRange) * plotHeight;
+
+      ctx.fillStyle = palette.axis;
+      ctx.font = `10px ${palette.monoFont}`;
+      ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
-      for (let i = 0; i <= 5; i++) {
-        const price = maxP - (i / 5) * totalRange;
-        const y = TOP + (i / 5) * chartH;
-        ctx.fillText(price.toFixed(digits), LEFT + chartW + 4, y + 3);
+      for (let index = 0; index <= 4; index += 1) {
+        const price = maxPrice - (index / 4) * totalRange;
+        const y = top + (index / 4) * plotHeight;
+        ctx.fillText(price.toFixed(digits), plotRight + 6, y);
       }
 
-      // Draw bid line (red/sell)
-      ctx.strokeStyle = '#f44336';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      let first = true;
-      for (const t of history) {
-        const x = xOf(t.time);
-        const y = yOf(t.bid);
-        if (first) { ctx.moveTo(x, y); first = false; }
-        else ctx.lineTo(x, y);
+      ctx.textBaseline = 'alphabetic';
+      for (let index = 0; index <= 2; index += 1) {
+        const time = timeStart + (index / 2) * timeRange;
+        const x = xOf(time);
+        ctx.textAlign = index === 0 ? 'left' : index === 2 ? 'right' : 'center';
+        ctx.fillText(formatTickTime(time), x, height - 7);
       }
-      ctx.stroke();
 
-      // Draw ask line (blue/buy)
-      ctx.strokeStyle = '#2196F3';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      first = true;
-      for (const t of history) {
-        const x = xOf(t.time);
-        const y = yOf(t.ask);
-        if (first) { ctx.moveTo(x, y); first = false; }
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // Current price tags on right edge
-      const lastTick = history[history.length - 1];
-      if (lastTick) {
-        let bidTagY = yOf(lastTick.bid);
-        let askTagY = yOf(lastTick.ask);
-
-        // Anti-overlap
-        const minGap = 16;
-        const gap = Math.abs(bidTagY - askTagY);
-        if (gap < minGap) {
-          const mid = (bidTagY + askTagY) / 2;
-          if (bidTagY >= askTagY) {
-            bidTagY = mid + minGap / 2;
-            askTagY = mid - minGap / 2;
-          } else {
-            bidTagY = mid - minGap / 2;
-            askTagY = mid + minGap / 2;
-          }
-        }
-        bidTagY = Math.max(TOP + 8, Math.min(TOP + chartH - 8, bidTagY));
-        askTagY = Math.max(TOP + 8, Math.min(TOP + chartH - 8, askTagY));
-
-        const tagW = RIGHT - 2;
-        const tagX = LEFT + chartW;
-        ctx.font = '9px monospace';
-        ctx.textAlign = 'left';
-
-        // Bid tag
-        ctx.fillStyle = '#f44336';
-        ctx.fillRect(tagX, bidTagY - 7, tagW, 14);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(lastTick.bid.toFixed(digits), tagX + 3, bidTagY + 3);
-
-        // Ask tag
-        ctx.fillStyle = '#2196F3';
-        ctx.fillRect(tagX, askTagY - 7, tagW, 14);
-        ctx.fillStyle = '#fff';
-        ctx.fillText(lastTick.ask.toFixed(digits), tagX + 3, askTagY + 3);
-
-        // Horizontal dashed lines from last price
-        ctx.setLineDash([2, 2]);
-        ctx.lineWidth = 0.5;
-
-        ctx.strokeStyle = '#f4433666';
+      const traceLine = (key: 'bid' | 'ask', color: string) => {
         ctx.beginPath();
-        ctx.moveTo(LEFT, yOf(lastTick.bid));
-        ctx.lineTo(LEFT + chartW, yOf(lastTick.bid));
+        plotHistory.forEach((tick, index) => {
+          const x = xOf(tick.time);
+          const y = yOf(tick[key]);
+          if (index === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = color;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
+      };
 
-        ctx.strokeStyle = '#2196F366';
+      // A restrained spread band gives the two live traces visual structure
+      // without smoothing or inventing any market data.
+      ctx.beginPath();
+      plotHistory.forEach((tick, index) => {
+        const x = xOf(tick.time);
+        const y = yOf(tick.ask);
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      [...plotHistory].reverse().forEach((tick) => ctx.lineTo(xOf(tick.time), yOf(tick.bid)));
+      ctx.closePath();
+      ctx.fillStyle = palette.ask;
+      ctx.globalAlpha = 0.08;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      const lastTick = plotHistory[plotHistory.length - 1];
+      if (typeof ctx.setLineDash === 'function') ctx.setLineDash([3, 4]);
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = 1;
+      ([['bid', palette.bid], ['ask', palette.ask]] as const).forEach(([key, color]) => {
         ctx.beginPath();
-        ctx.moveTo(LEFT, yOf(lastTick.ask));
-        ctx.lineTo(LEFT + chartW, yOf(lastTick.ask));
+        ctx.moveTo(left, yOf(lastTick[key]));
+        ctx.lineTo(plotRight, yOf(lastTick[key]));
+        ctx.strokeStyle = color;
         ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+      if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
 
-        ctx.setLineDash([]);
+      traceLine('bid', palette.bid);
+      traceLine('ask', palette.ask);
+
+      ([['bid', palette.bid], ['ask', palette.ask]] as const).forEach(([key, color]) => {
+        ctx.beginPath();
+        ctx.arc(xOf(lastTick.time), yOf(lastTick[key]), 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      });
+
+      let bidTagY = yOf(lastTick.bid);
+      let askTagY = yOf(lastTick.ask);
+      const minimumTagGap = 19;
+      if (Math.abs(bidTagY - askTagY) < minimumTagGap) {
+        const midpoint = (bidTagY + askTagY) / 2;
+        bidTagY = midpoint + minimumTagGap / 2;
+        askTagY = midpoint - minimumTagGap / 2;
       }
+      bidTagY = Math.max(top + 9, Math.min(plotBottom - 9, bidTagY));
+      askTagY = Math.max(top + 9, Math.min(plotBottom - 9, askTagY));
 
-      // Time labels at bottom
-      ctx.fillStyle = '#555';
-      ctx.font = '9px monospace';
-      ctx.textAlign = 'center';
-      const labelCount = 3;
-      for (let i = 0; i <= labelCount; i++) {
-        const t = new Date(timeStart + (i / labelCount) * timeRange);
-        const x = xOf(t.getTime());
-        const dateStr = `${t.getFullYear()}.${String(t.getMonth() + 1).padStart(2, '0')}.${String(t.getDate()).padStart(2, '0')}`;
-        const timeStr = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}:${String(t.getSeconds()).padStart(2, '0')}`;
-        ctx.fillText(`${dateStr}`, x, h - 8);
-        ctx.fillText(`${timeStr}`, x, h - 0);
-      }
-
-      animFrameRef.current = requestAnimationFrame(draw);
+      ctx.font = `600 10px ${palette.monoFont}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ([
+        [lastTick.bid, bidTagY, palette.bid],
+        [lastTick.ask, askTagY, palette.ask],
+      ] as const).forEach(([price, y, color]) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(plotRight, y - 8, right, 16);
+        ctx.fillStyle = palette.tagText;
+        ctx.fillText(price.toFixed(digits), plotRight + 6, y);
+      });
     };
 
-    draw();
+    const scheduleDraw = () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
+        draw();
+      });
+    };
+
+    scheduleDraw();
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(scheduleDraw);
+    resizeObserver?.observe(canvas);
+
+    const themeObserver = new MutationObserver(scheduleDraw);
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
+    if (document.body) {
+      themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+    }
+
     return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      resizeObserver?.disconnect();
+      themeObserver.disconnect();
     };
-  }, [symbol, bid, ask, cfg.digits]);
+  }, [ask, bid, chartColors, digits, symbol]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={380}
-      height={300}
-      className="block"
-      style={{ imageRendering: 'auto' }}
-    />
+    <div className="rtx-order-dialog__chart-shell">
+      <div className="rtx-order-dialog__chart-header">
+        <div className="rtx-order-dialog__chart-identity">
+          <span className="rtx-order-dialog__chart-symbol">{symbol}</span>
+          <span className="rtx-order-dialog__chart-meta">
+            <span className="rtx-order-dialog__live-dot" aria-hidden="true" />
+            Tick chart · 5 min
+          </span>
+        </div>
+        <div className="rtx-order-dialog__chart-quotes" aria-label={`${symbol} live bid and ask`}>
+          <span className="rtx-order-dialog__chart-quote rtx-order-dialog__chart-quote--bid">
+            Bid <strong>{bid > 0 ? bid.toFixed(digits) : '—'}</strong>
+          </span>
+          <span className="rtx-order-dialog__chart-quote rtx-order-dialog__chart-quote--ask">
+            Ask <strong>{ask > 0 ? ask.toFixed(digits) : '—'}</strong>
+          </span>
+        </div>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={420}
+        height={314}
+        className="rtx-order-dialog__chart-canvas"
+        data-testid="order-mini-tick-chart"
+        role="img"
+        aria-label={`Live ${symbol} bid and ask tick chart`}
+      />
+    </div>
   );
 }
 
@@ -333,15 +428,54 @@ export function OrderPanelDialog({
   const tick = useAppStore((s) => s.ticks[symbol]);
   const account = useAppStore((s) => s.account);
   const ticks = useAppStore((s) => s.ticks);
+  const chartSettings = useChartSettingsStore((state) => (
+    state.symbolProperties[symbol] || state.globalProperties
+  ));
+  const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
+    if (typeof document === 'undefined') return false;
+    const root = document.documentElement;
+    return root.classList.contains('rtx-advanced-view')
+      && root.classList.contains('rtx-skin-untitled-light');
+  });
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const syncSkinState = () => {
+      setIsAdvancedUntitledLight(
+        root.classList.contains('rtx-advanced-view')
+        && root.classList.contains('rtx-skin-untitled-light'),
+      );
+    };
+    const handleAdvancedViewChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ isAdvancedUntitledLight?: boolean }>).detail;
+      if (typeof detail?.isAdvancedUntitledLight === 'boolean') {
+        setIsAdvancedUntitledLight(detail.isAdvancedUntitledLight);
+      } else {
+        syncSkinState();
+      }
+    };
+
+    syncSkinState();
+    const observer = new MutationObserver(syncSkinState);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener(RTX_ADVANCED_VIEW_CHANGE_EVENT, handleAdvancedViewChange);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener(RTX_ADVANCED_VIEW_CHANGE_EVENT, handleAdvancedViewChange);
+    };
+  }, []);
 
   const availableSymbols = Object.keys(ticks).length > 0 ? Object.keys(ticks) : [initialSymbol];
 
   const config = getInstrumentConfig(symbol, tick?.digits);
   const { digits, contractSize: instContractSize } = config;
+  const chartColors = useMemo(
+    () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
+    [chartSettings, isAdvancedUntitledLight],
+  );
 
   const bid = tick?.bid || currentPrice.bid || 0;
   const ask = tick?.ask || currentPrice.ask || 0;
-  const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
@@ -431,15 +565,15 @@ export function OrderPanelDialog({
   const bidF = formatPrice(bid);
   const askF = formatPrice(ask);
 
-  // Form row styles
-  const labelCls = "text-[14px] font-normal text-zinc-400 w-[75px] text-right flex-shrink-0 pr-1";
-  const inputCls = "flex-1 bg-[#0d0d11] border border-zinc-600 rounded px-2 py-1.5 text-[14px] font-normal text-zinc-200 font-mono focus:outline-none focus:border-zinc-600";
-  const spinnerInputCls = "w-full bg-transparent px-2 py-1.5 text-[14px] font-normal text-zinc-200 font-mono focus:outline-none";
-  const spinBtnCls = "px-1.5 py-0 text-[9px] text-zinc-400 hover:bg-zinc-600 hover:text-white leading-tight";
+  const dialogTitleId = `new-order-${symbol}-title`;
+  const symbolFieldId = `new-order-${symbol}-symbol`;
+  const volumeFieldId = `new-order-${symbol}-volume`;
+  const fillPolicyFieldId = `new-order-${symbol}-fill-policy`;
+  const commentFieldId = `new-order-${symbol}-comment`;
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" 
+    <div
+      className="rtx-order-dialog-backdrop"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       onContextMenuCapture={(e) => {
         e.stopPropagation();
@@ -447,61 +581,72 @@ export function OrderPanelDialog({
       }}
       onContextMenu={(e) => e.stopPropagation()}
     >
-      <div 
-        className="rtx-order-dialog bg-[#1e222d] border border-zinc-600 rounded-sm shadow-2xl select-none flex flex-col" 
-        style={{ 
-          maxWidth: '90vw',
+      <div
+        className="rtx-order-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={dialogTitleId}
+        style={{
           transform: `translate(${pos.x}px, ${pos.y}px)`,
           transition: dragRef.current ? 'none' : 'transform 0.1s ease-out'
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Title Bar - Drag Handle */}
-        <div 
-          className="flex items-center justify-between px-3 py-1.5 bg-[#252a37] border-b border-zinc-600 relative z-10 cursor-move active:cursor-grabbing"
+        <div
+          className="rtx-order-dialog__header"
           onMouseDown={handleHeaderMouseDown}
         >
-          <span className="text-[14px] text-zinc-300 font-semibold">Order</span>
-          <div className="flex items-center gap-0.5">
-            <button className="px-2 py-0.5 hover:bg-zinc-600 rounded text-zinc-400 text-xs">—</button>
-            <button className="px-2 py-0.5 hover:bg-zinc-600 rounded text-zinc-400 text-xs">□</button>
-            <button onClick={onClose} className="px-2 py-0.5 hover:bg-red-500 hover:text-white rounded text-zinc-400 text-xs transition-colors">✕</button>
-          </div>
+          <span id={dialogTitleId} className="rtx-order-dialog__title">New Order · {symbol}</span>
+          <button
+            type="button"
+            aria-label="Close New Order dialog"
+            className="rtx-order-dialog__close"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={onClose}
+          >
+            ×
+          </button>
         </div>
 
-        {/* Main Content */}
-        <div className="flex">
+        <div className="rtx-order-dialog__content">
 
-          {/* Left: Chart Panel */}
-          <div className="flex-shrink-0 border-r border-zinc-600 bg-[#0d0d11]">
-            <MiniTickChart symbol={symbol} bid={bid} ask={ask} />
+          <div className="rtx-order-dialog__chart">
+            <MiniTickChart
+              symbol={symbol}
+              bid={bid}
+              ask={ask}
+              digits={digits}
+              chartColors={chartColors}
+            />
           </div>
 
-          {/* Right: Order Form */}
-          <div className="flex flex-col p-3" style={{ width: 350 }}>
+          <div className="rtx-order-dialog__form">
 
-            {/* Symbol */}
-            <div className="flex items-center mb-2">
-              <label className={labelCls}>Symbol:</label>
-              <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className={inputCls} style={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div className="rtx-order-dialog__field">
+              <label className="rtx-order-dialog__label" htmlFor={symbolFieldId}>Symbol</label>
+              <select
+                id={symbolFieldId}
+                value={symbol}
+                onChange={(e) => setSymbol(e.target.value)}
+                className="rtx-order-dialog__control"
+              >
                 {availableSymbols.map(s => (
                   <option key={s} value={s}>{SYMBOL_NAMES[s] || s}</option>
                 ))}
               </select>
             </div>
 
-            {/* Type */}
-            <div className="flex items-center mb-2">
-              <label className={labelCls}>Type:</label>
-              <div className={inputCls} style={{ cursor: 'default' }}>Market Execution</div>
+            <div className="rtx-order-dialog__field">
+              <span className="rtx-order-dialog__label">Type</span>
+              <div className="rtx-order-dialog__control rtx-order-dialog__control--static">Market Execution</div>
             </div>
 
-            {/* Volume */}
-            <div className="flex items-center mb-2">
-              <label className={labelCls}>Volume:</label>
-              <div className="flex items-center gap-2 flex-1">
-                <div className="flex items-center bg-[#0d0d11] border border-zinc-600 rounded overflow-hidden" style={{ width: 100 }}>
+            <div className="rtx-order-dialog__field">
+              <label className="rtx-order-dialog__label" htmlFor={volumeFieldId}>Volume</label>
+              <div className="rtx-order-dialog__volume-row">
+                <div className="rtx-order-dialog__volume-control">
                   <input
+                    id={volumeFieldId}
                     type="text"
                     inputMode="decimal"
                     value={volumeStr}
@@ -520,106 +665,120 @@ export function OrderPanelDialog({
                         setVolumeStr(parsed.toString());
                       }
                     }}
-                    className={spinnerInputCls}
-                    style={{ width: 70 }}
+                    className="rtx-order-dialog__volume-input"
                   />
-                  <div className="flex flex-col border-l border-zinc-600">
-                    <button onClick={() => adjustVolume(0.01)} className={spinBtnCls}>▲</button>
-                    <button onClick={() => adjustVolume(-0.01)} className={spinBtnCls}>▼</button>
+                  <div className="rtx-order-dialog__spinner">
+                    <button
+                      type="button"
+                      aria-label="Increase volume"
+                      onClick={() => adjustVolume(0.01)}
+                      className="rtx-order-dialog__spinner-button"
+                    >▲</button>
+                    <button
+                      type="button"
+                      aria-label="Decrease volume"
+                      onClick={() => adjustVolume(-0.01)}
+                      className="rtx-order-dialog__spinner-button"
+                    >▼</button>
                   </div>
                 </div>
-                <span className="text-[12px] font-normal text-zinc-400">{formatMargin(marginRequired)} {baseCurrency}</span>
+                <span className="rtx-order-dialog__margin">{formatMargin(marginRequired)} {baseCurrency}</span>
               </div>
             </div>
 
-            {/* Fill Policy */}
-            <div className="flex items-center mb-2">
-              <label className={labelCls}>Fill policy:</label>
-              <select value={fillPolicy} onChange={(e) => setFillPolicy(e.target.value as FillPolicy)} className={inputCls}>
+            <div className="rtx-order-dialog__field">
+              <label className="rtx-order-dialog__label" htmlFor={fillPolicyFieldId}>Fill policy</label>
+              <select
+                id={fillPolicyFieldId}
+                value={fillPolicy}
+                onChange={(e) => setFillPolicy(e.target.value as FillPolicy)}
+                className="rtx-order-dialog__control"
+              >
                 <option>Fill or Kill</option>
                 <option>Immediate or Cancel</option>
                 <option>Return</option>
               </select>
             </div>
 
-            {/* Comment */}
-            <div className="flex items-center mb-2">
-              <label className={labelCls}>Comment:</label>
-              <input type="text" maxLength={64} value={comment} onChange={(e) => setComment(e.target.value)} className={inputCls} />
+            <div className="rtx-order-dialog__field">
+              <label className="rtx-order-dialog__label" htmlFor={commentFieldId}>Comment</label>
+              <input
+                id={commentFieldId}
+                type="text"
+                maxLength={64}
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="rtx-order-dialog__control"
+              />
             </div>
 
-            {/* Error */}
             {error && (
-              <div className="text-[12px] font-normal text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 mb-2">{error}</div>
+              <div className="rtx-order-dialog__message rtx-order-dialog__message--error" role="alert">{error}</div>
             )}
             {isMarketExecutionBlocked && !error && (
-              <div className="text-[12px] font-normal text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded px-2 py-1 mb-2">
+              <div className="rtx-order-dialog__message rtx-order-dialog__message--warning" role="status">
                 {marketBlockedMessage || `Market is closed for ${symbol}.`}
               </div>
             )}
 
-            {/* Spacer */}
-            <div className="flex-1 min-h-[8px]" />
-
-            {/* Large Price Display (MT5 style) */}
-            <div className="flex items-baseline justify-center gap-3 mb-0.5">
-              <span className="text-zinc-300 font-mono tracking-tight" style={{ fontSize: 28, fontWeight: 300 }}>
-                {bidF.small}
-                <span style={{ fontSize: 34, fontWeight: 700 }}>{bidF.big}</span>
-              </span>
-              <span className="text-zinc-500" style={{ fontSize: 22 }}>/</span>
-              <span className="text-zinc-300 font-mono tracking-tight" style={{ fontSize: 28, fontWeight: 300 }}>
-                {askF.small}
-                <span style={{ fontSize: 34, fontWeight: 700 }}>{askF.big}</span>
-              </span>
+            <div className="rtx-order-dialog__price-summary" aria-label={`Bid ${bid.toFixed(digits)}, Ask ${ask.toFixed(digits)}`}>
+              <div className="rtx-order-dialog__price-side">
+                <span className="rtx-order-dialog__price-label">BID</span>
+                <span className="rtx-order-dialog__price">
+                  {bidF.small}<strong>{bidF.big}</strong>
+                </span>
+              </div>
+              <span className="rtx-order-dialog__price-divider" aria-hidden="true" />
+              <div className="rtx-order-dialog__price-side rtx-order-dialog__price-side--ask">
+                <span className="rtx-order-dialog__price-label">ASK</span>
+                <span className="rtx-order-dialog__price">
+                  {askF.small}<strong>{askF.big}</strong>
+                </span>
+              </div>
             </div>
 
-            {/* Spread */}
-            <div className="text-center text-[12px] font-normal text-zinc-500 mb-2">
+            <div className="rtx-order-dialog__spread">
               Spread: {spreadDisplay}
             </div>
 
-            {/* Buttons */}
             {orderType === 'Market Execution' ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="rtx-order-dialog__actions">
                 <button
+                  type="button"
                   onClick={() => handleSubmit('sell')}
                   disabled={isPlacing || bid <= 0 || isMarketExecutionBlocked}
-                  className="py-3 rounded text-white font-bold text-[14px] transition-all disabled:opacity-40 disabled:cursor-not-allowed
-                    bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 active:from-red-600 active:to-red-800
-                    border border-red-400/30 shadow-lg flex items-center justify-center gap-2"
+                  className="rtx-order-dialog__action rtx-order-dialog__action--sell"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
                   {isPlacing ? 'Placing...' : 'Sell by Market'}
                 </button>
                 <button
+                  type="button"
                   onClick={() => handleSubmit('buy')}
                   disabled={isPlacing || ask <= 0 || isMarketExecutionBlocked}
-                  className="py-3 rounded text-white font-bold text-[14px] transition-all disabled:opacity-40 disabled:cursor-not-allowed
-                    bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 active:from-blue-600 active:to-blue-800
-                    border border-blue-400/30 shadow-lg flex items-center justify-center gap-2"
+                  className="rtx-order-dialog__action rtx-order-dialog__action--buy"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
                   {isPlacing ? 'Placing...' : 'Buy by Market'}
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => handleSubmit(orderType.includes('Buy') ? 'buy' : 'sell')}
-                disabled={isPlacing}
-                className={`w-full py-3 rounded text-white font-bold text-[14px] transition-all disabled:opacity-40
-                  ${orderType.includes('Buy')
-                    ? 'bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 border border-blue-400/30'
-                    : 'bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 border border-red-400/30'
-                  } shadow-lg`}
-              >
-                {isPlacing ? 'Placing...' : `Place ${orderType}`}
-              </button>
+              <div className="rtx-order-dialog__actions rtx-order-dialog__actions--single">
+                <button
+                  type="button"
+                  onClick={() => handleSubmit(orderType.includes('Buy') ? 'buy' : 'sell')}
+                  disabled={isPlacing}
+                  className={`rtx-order-dialog__action ${orderType.includes('Buy')
+                    ? 'rtx-order-dialog__action--buy'
+                    : 'rtx-order-dialog__action--sell'}`}
+                >
+                  {isPlacing ? 'Placing...' : `Place ${orderType}`}
+                </button>
+              </div>
             )}
 
-            {/* Progress bar placeholder (like MT5) */}
-            <div className="h-1 bg-zinc-700 rounded-full mt-2 overflow-hidden">
-              {isPlacing && <div className="h-full bg-zinc-8000 animate-pulse w-full" />}
+            <div className="rtx-order-dialog__progress" aria-hidden="true">
+              {isPlacing && <div className="rtx-order-dialog__progress-bar" />}
             </div>
 
           </div>

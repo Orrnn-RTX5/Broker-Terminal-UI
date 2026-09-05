@@ -4,7 +4,7 @@
  * Toggled by Alt+T, sits on top-left of chart
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useAppStore, type Position } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
@@ -19,6 +19,14 @@ import {
 } from '../utils/marketStatus';
 import { getSymbolDigits } from '../utils/symbolUtils';
 import { formatOrderError } from '../utils/orderError';
+import {
+    formatTradeVolume,
+    isTradeVolumeDraftSyntax,
+    isTradeVolumeValid,
+    normalizeTradeVolume,
+    parseTradeVolumeDraft,
+    resolveTradeVolumeConstraints,
+} from '../utils/tradeVolume';
 import { formatPriceParts } from './ui/PriceDisplay';
 
 interface OneClickTradingProps {
@@ -27,6 +35,9 @@ interface OneClickTradingProps {
     timeframe: string;
     tradeAllowed?: boolean;
     marketStatus?: NormalizedMarketStatus;
+    minVolume?: number;
+    maxVolume?: number;
+    volumeStep?: number;
 }
 
 type LooseRecord = Record<string, unknown>;
@@ -82,22 +93,38 @@ const upsertImmediatePosition = (position: Position) => {
     store.setPositions(nextPositions);
 };
 
-export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visible, timeframe, tradeAllowed = false, marketStatus }) => {
-    const [volume, setVolume] = useState(0.01);
+export const OneClickTrading: React.FC<OneClickTradingProps> = ({
+    symbol,
+    visible,
+    timeframe,
+    tradeAllowed = false,
+    marketStatus,
+    minVolume,
+    maxVolume,
+    volumeStep,
+}) => {
+    const volumeConstraints = useMemo(() => resolveTradeVolumeConstraints({
+        minVolume,
+        maxVolume,
+        volumeStep,
+    }), [maxVolume, minVolume, volumeStep]);
+    // FIX: Keep the user's editable text separate from the executable number.
+    // A numeric-only controlled state rejected the temporary empty value needed
+    // to replace 0.01, so the leading zero was restored before typing 1 or more.
+    const [volumeDraft, setVolumeDraft] = useState(() => (
+        formatTradeVolume(volumeConstraints.min, volumeConstraints)
+    ));
     const [flashSide, setFlashSide] = useState<'buy' | 'sell' | null>(null);
     const [error, setError] = useState<string | null>(null);
     const prevBidRef = useRef<number>(0);
     const prevAskRef = useRef<number>(0);
 
-    // Subscribe to live tick data for this symbol (with robust fallback matching)
+    // FIX: Broker symbols are opaque execution identities. Exact lookup avoids
+    // trading EURUSD.r/XAUUSD.raw with a similarly named instrument's quote.
     const tick = useAppStore((s) => {
         if (s.ticks[symbol]) return s.ticks[symbol];
         if (s.ticks[symbol.toUpperCase()]) return s.ticks[symbol.toUpperCase()];
-        const normalized = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-        const match = Object.keys(s.ticks).find(k =>
-            k.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalized
-        );
-        return match ? s.ticks[match] : null;
+        return null;
     });
     const bid = tick?.bid || 0;
     const ask = tick?.ask || 0;
@@ -162,7 +189,36 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
         return Number.isFinite(savedLogin) && savedLogin > 0 ? savedLogin : 0;
     }, [accountId]);
 
-    const isVolumeValid = Number.isFinite(volume) && volume > 0;
+    useEffect(() => {
+        // FIX: A chart symbol change may bring a different broker lot grid.
+        // Re-commit the visible draft to that exact min/max/step contract.
+        setVolumeDraft((currentDraft) => formatTradeVolume(
+            parseTradeVolumeDraft(currentDraft) ?? volumeConstraints.min,
+            volumeConstraints,
+        ));
+    }, [volumeConstraints]);
+
+    const parsedVolumeDraft = parseTradeVolumeDraft(volumeDraft);
+    const isVolumeValid = parsedVolumeDraft !== null
+        && isTradeVolumeValid(parsedVolumeDraft, volumeConstraints);
+    const volume = isVolumeValid
+        ? normalizeTradeVolume(parsedVolumeDraft, volumeConstraints)
+        : Number.NaN;
+    const commitVolumeDraft = () => {
+        setVolumeDraft(formatTradeVolume(
+            parsedVolumeDraft ?? volumeConstraints.min,
+            volumeConstraints,
+        ));
+    };
+    const adjustVolume = (direction: -1 | 1) => {
+        const baseVolume = parsedVolumeDraft === null
+            ? volumeConstraints.min
+            : normalizeTradeVolume(parsedVolumeDraft, volumeConstraints);
+        setVolumeDraft(formatTradeVolume(
+            baseVolume + direction * volumeConstraints.step,
+            volumeConstraints,
+        ));
+    };
     const hasExecutablePrice = bid > 0 && ask > 0;
     const effectiveMarketStatus = marketStatus ?? createUnavailableMarketStatus(symbol);
     const marketBlockedMessage = 'Market Closed';
@@ -413,8 +469,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         type="button"
                         aria-label="Decrease lot size"
                         title="Decrease lot size"
-                        data-at-min={volume <= 0.01}
-                        onClick={() => setVolume(v => Math.max(0.01, Math.round((v - 0.01) * 100) / 100))}
+                        data-at-min={!isVolumeValid || volume <= volumeConstraints.min}
+                        onClick={() => adjustVolume(-1)}
                         style={{
                             background: 'none', border: 'none', color: '#b8c1d1', cursor: 'pointer',
                             width: 24, height: 28, minWidth: 24,
@@ -428,14 +484,34 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     <input
                         className="rtx-oct-lot-input"
                         aria-label="Lot size"
-                        type="number"
+                        type="text"
+                        role="spinbutton"
                         inputMode="decimal"
-                        step={0.01}
-                        min={0.01}
-                        value={volume}
+                        autoComplete="off"
+                        spellCheck={false}
+                        aria-valuemin={volumeConstraints.min}
+                        aria-valuemax={volumeConstraints.max}
+                        aria-valuenow={isVolumeValid ? volume : undefined}
+                        aria-invalid={!isVolumeValid}
+                        value={volumeDraft}
+                        onFocus={(event) => event.currentTarget.select()}
                         onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val) && val >= 0) setVolume(Math.round(val * 100) / 100);
+                            // FIX: Preserve empty and partial decimal drafts while
+                            // the trader edits; validation happens on commit.
+                            const nextDraft = e.currentTarget.value.replace(',', '.');
+                            if (isTradeVolumeDraftSyntax(nextDraft)) {
+                                setVolumeDraft(nextDraft);
+                            }
+                        }}
+                        onBlur={commitVolumeDraft}
+                        onKeyDown={(event) => {
+                            if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                                event.preventDefault();
+                                adjustVolume(event.key === 'ArrowUp' ? 1 : -1);
+                            } else if (event.key === 'Enter') {
+                                event.preventDefault();
+                                event.currentTarget.blur();
+                            }
                         }}
                         style={{
                             width: 48, height: 24,
@@ -458,7 +534,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                         type="button"
                         aria-label="Increase lot size"
                         title="Increase lot size"
-                        onClick={() => setVolume(v => Math.round((v + 0.01) * 100) / 100)}
+                        onClick={() => adjustVolume(1)}
                         style={{
                             background: 'none', border: 'none', color: '#b8c1d1', cursor: 'pointer',
                             width: 24, height: 28, minWidth: 24,
@@ -486,21 +562,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({ symbol, visibl
                     border: '1px solid #7f1d1d',
                     borderTop: 'none',
                 }}>
-                    ⚠ Invalid volume (min 0.01)
-                </div>
-            )}
-            {!tradeAllowed && !error && (
-                <div style={{
-                    fontSize: 10,
-                    color: '#fbbf24',
-                    textAlign: 'center',
-                    padding: '3px 8px',
-                    background: '#78350f',
-                    borderRadius: 0,
-                    border: '1px solid rgba(245, 158, 11, 0.45)',
-                    borderTop: 'none',
-                }}>
-                    Live tradable quote unavailable - order not sent
+                    ⚠ Invalid volume (min {formatTradeVolume(volumeConstraints.min, volumeConstraints)})
                 </div>
             )}
             {tradeAllowed && marketOpenForTrading && !hasExecutablePrice && !error && (

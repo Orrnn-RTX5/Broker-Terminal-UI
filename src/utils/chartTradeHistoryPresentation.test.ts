@@ -13,6 +13,7 @@ describe('chart trade-history presentation', () => {
     const timestamp = Date.UTC(2026, 7, 31, 16, 30, 45) / 1000;
 
     expect(formatTradeHistoryGmtTime(timestamp)).toBe('16:30 GMT');
+    expect(formatTradeHistoryGmtTime(timestamp, { includeSeconds: true })).toBe('16:30:45 GMT');
   });
 
   it('builds explicit open and close labels with one GMT timestamp', () => {
@@ -35,6 +36,15 @@ describe('chart trade-history presentation', () => {
       digits: 2,
       time,
     })).toBe('SELL CLOSE · #8 · 4601.10 · 17:15 GMT');
+
+    expect(buildTradeHistoryBadgeText({
+      positionSide: 'BUY',
+      lifecycle: 'CLOSE',
+      price: 4601.1,
+      digits: 2,
+      time: time + 9,
+      includeSeconds: true,
+    })).toBe('BUY CLOSE · 4601.10 · 17:15:09 GMT');
   });
 
   it('keeps the position side in the label while reversing only close execution', () => {

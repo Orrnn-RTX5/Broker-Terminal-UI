@@ -144,7 +144,7 @@ describe('live tick store pressure guards', () => {
     expect(workerMocks.aggregateMultipleTimeframes).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps an equal-time base alias stable until a fresher variant arrives', () => {
+  it('keeps opaque suffix lookups exact while each contract retains its freshest tick', () => {
     useAppStore.getState().setTicksBatch([
       ['XAUUSD.raw', appTick(100, { symbol: 'XAUUSD.raw' })],
       ['XAUUSD.pro', appTick(100, { symbol: 'XAUUSD.pro' })],
@@ -153,14 +153,35 @@ describe('live tick store pressure guards', () => {
       useAppStore.getState().ticks,
       useAppStore.getState().tickLookup,
       'XAUUSD',
-    )?.symbol).toBe('XAUUSD.raw');
+    )).toBeUndefined();
+    expect(resolveTickFromLookup(
+      useAppStore.getState().ticks,
+      useAppStore.getState().tickLookup,
+      'XAUUSD.raw',
+    )?.timestamp).toBe(100);
+    expect(resolveTickFromLookup(
+      useAppStore.getState().ticks,
+      useAppStore.getState().tickLookup,
+      'XAUUSD.pro',
+    )?.timestamp).toBe(100);
 
     useAppStore.getState().setTick('XAUUSD.pro', appTick(101, { symbol: 'XAUUSD.pro' }));
+    useAppStore.getState().setTick('XAUUSD.raw', appTick(102, { symbol: 'XAUUSD.raw' }));
     expect(resolveTickFromLookup(
       useAppStore.getState().ticks,
       useAppStore.getState().tickLookup,
       'XAUUSD',
-    )?.symbol).toBe('XAUUSD.pro');
+    )).toBeUndefined();
+    expect(resolveTickFromLookup(
+      useAppStore.getState().ticks,
+      useAppStore.getState().tickLookup,
+      'XAUUSD.raw',
+    )?.timestamp).toBe(102);
+    expect(resolveTickFromLookup(
+      useAppStore.getState().ticks,
+      useAppStore.getState().tickLookup,
+      'XAUUSD.pro',
+    )?.timestamp).toBe(101);
   });
 
   it('keeps the alias lookup reference stable on ordinary freshness updates', () => {
@@ -173,6 +194,35 @@ describe('live tick store pressure guards', () => {
     expect(useAppStore.getState().tickLookup).toBe(lookup);
     expect(useAppStore.getState().ticks.XAUUSD.timestamp).toBe(1_001);
     expect(selectTickCount(useAppStore.getState())).toBe(count);
+  });
+
+  it('retains optional quote metadata when a fresher price-only tick omits it', () => {
+    useAppStore.getState().setTick('XAUUSD', appTick(1_000, {
+      sourceTimestamp: 1_000,
+      lp: 'Prime LP',
+      volume: 321,
+      last: 2_500.1,
+      open: 2_480,
+      close: 2_490,
+      digits: 2,
+    }));
+
+    useAppStore.getState().setTick('XAUUSD', appTick(2_000, {
+      bid: 2_501,
+      ask: 2_501.2,
+    }));
+
+    expect(useAppStore.getState().ticks.XAUUSD).toMatchObject({
+      bid: 2_501,
+      ask: 2_501.2,
+      lp: 'Prime LP',
+      volume: 321,
+      last: 2_500.1,
+      open: 2_480,
+      close: 2_490,
+      digits: 2,
+    });
+    expect(useAppStore.getState().ticks.XAUUSD.sourceTimestamp).toBeUndefined();
   });
 
   it('publishes five full-buffer live ticks once per store in one animation frame', () => {
@@ -271,6 +321,11 @@ describe('live tick store pressure guards', () => {
       useAppStore.getState().ticks,
       useAppStore.getState().tickLookup,
       'XAUUSD',
+    )).toBeUndefined();
+    expect(resolveTickFromLookup(
+      useAppStore.getState().ticks,
+      useAppStore.getState().tickLookup,
+      'XAUUSD.raw',
     )?.timestamp).toBe(MARKET_TICK_BUFFER_LIMIT + 2);
 
     unsubscribeMarket();

@@ -1,0 +1,857 @@
+/* Last Symbol Trader -------------------------------------------------------
+   A compact execution surface with its own semantic tokens. Keeping these
+   styles scoped avoids coupling theme support to generated utility classes. */
+.rtx-last-symbol-panel {
+  --lst-shell: #131316;
+  --lst-header: #191a1e;
+  --lst-section: #131316;
+  --lst-raised: #191a1e;
+  --lst-field: #0d0d11;
+  --lst-border: #28282e;
+  --lst-border-strong: #333338;
+  --lst-text: #e2e2e8;
+  --lst-text-secondary: #c8c8d0;
+  --lst-text-muted: #808088;
+  --lst-accent: #60a5fa;
+  --lst-accent-soft: #1e293b;
+  --lst-buy: #4597ff;
+  --lst-buy-soft: #122033;
+  --lst-sell: #ff5858;
+  --lst-sell-soft: #2a1518;
+  --lst-profit: #22c55e;
+  --lst-warning: #eab308;
+  --lst-warning-soft: #2a2410;
+  --lst-danger-soft: #2a1518;
+  --lst-focus: rgba(96, 165, 250, 0.28);
+
+  color: var(--lst-text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  max-width: calc(100vw - 24px);
+  position: fixed;
+  user-select: none;
+  width: 320px;
+  z-index: 9999;
+}
+
+html.theme-light .rtx-last-symbol-panel,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel {
+  --lst-shell: #ffffff;
+  --lst-header: #f7f8fa;
+  --lst-section: #ffffff;
+  --lst-raised: #f4f6f8;
+  --lst-field: #ffffff;
+  --lst-border: #d9dee7;
+  --lst-border-strong: #b8c1ce;
+  --lst-text: #172033;
+  --lst-text-secondary: #526075;
+  --lst-text-muted: #7a8699;
+  --lst-accent: #2563c9;
+  --lst-accent-soft: #eaf1fc;
+  --lst-buy: #1669b2;
+  --lst-buy-soft: #edf6ff;
+  --lst-sell: #c43245;
+  --lst-sell-soft: #fff1f3;
+  --lst-profit: #087f5b;
+  --lst-warning: #9a6700;
+  --lst-warning-soft: #fff8e5;
+  --lst-danger-soft: #fff1f3;
+  --lst-focus: rgba(37, 99, 201, 0.24);
+}
+
+.rtx-last-symbol-panel,
+.rtx-last-symbol-panel * {
+  box-sizing: border-box;
+}
+
+.rtx-last-symbol-panel > .last-symbol-card {
+  background: var(--lst-shell) !important;
+  border: 1px solid var(--lst-border) !important;
+  border-radius: 2px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+  color: var(--lst-text) !important;
+  max-height: calc(100vh - 24px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+html.theme-light .rtx-last-symbol-panel > .last-symbol-card,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel > .last-symbol-card {
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.16),
+    0 4px 14px rgba(15, 23, 42, 0.08) !important;
+}
+
+.rtx-last-symbol-panel.is-dragging > .last-symbol-card {
+  border-color: var(--lst-border-strong) !important;
+  box-shadow:
+    0 28px 68px rgba(0, 0, 0, 0.48),
+    0 0 0 1px var(--lst-focus) !important;
+}
+
+.rtx-last-symbol-panel button,
+.rtx-last-symbol-panel input {
+  font: inherit;
+}
+
+.rtx-last-symbol-panel button:active {
+  transform: none;
+}
+
+.rtx-last-symbol-panel button:focus-visible,
+.rtx-last-symbol-panel input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--lst-focus);
+}
+
+.last-symbol-header {
+  align-items: center;
+  background: var(--lst-header);
+  border-bottom: 1px solid var(--lst-border);
+  cursor: grab;
+  display: flex;
+  height: 36px;
+  justify-content: space-between;
+  padding: 0 8px 0 12px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.is-dragging .last-symbol-header {
+  cursor: grabbing;
+}
+
+.last-symbol-brand {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.last-symbol-brand > span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.last-symbol-brand strong {
+  color: var(--lst-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.last-symbol-brand__icon {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--lst-text-secondary);
+  display: inline-flex;
+  height: 18px;
+  justify-content: center;
+  width: 18px;
+}
+
+.last-symbol-header__actions {
+  align-items: center;
+  display: flex;
+  gap: 3px;
+}
+
+.last-symbol-icon-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--lst-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 26px;
+  justify-content: center;
+  padding: 0;
+  width: 26px;
+}
+
+.last-symbol-icon-button:hover,
+.last-symbol-icon-button.is-active {
+  background: var(--lst-raised);
+  border-color: var(--lst-border);
+  color: var(--lst-text);
+}
+
+.last-symbol-icon-button--close:hover {
+  background: var(--lst-danger-soft);
+  border-color: color-mix(in srgb, var(--lst-sell) 42%, transparent);
+  color: var(--lst-sell);
+}
+
+.last-symbol-summary,
+.last-symbol-volume,
+.last-symbol-execution {
+  background: var(--lst-shell);
+  border-bottom: 1px solid var(--lst-border);
+  padding: 10px 12px;
+}
+
+.last-symbol-section-heading {
+  align-items: center;
+  color: var(--lst-text-muted);
+  display: flex;
+  font-size: 11px;
+  font-weight: 500;
+  justify-content: space-between;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.last-symbol-status {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--lst-text-secondary);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 500;
+  gap: 5px;
+  letter-spacing: 0.02em;
+  line-height: 14px;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.last-symbol-status__dot {
+  background: currentColor;
+  border-radius: 50%;
+  height: 5px;
+  width: 5px;
+}
+
+.last-symbol-status[data-tone='live'] {
+  background: transparent;
+  color: var(--lst-profit);
+}
+
+.last-symbol-status[data-tone='waiting'] {
+  background: transparent;
+  color: var(--lst-warning);
+}
+
+.last-symbol-status[data-tone='blocked'] {
+  background: transparent;
+  color: var(--lst-sell);
+}
+
+.last-symbol-summary__row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.last-symbol-summary__row > div:first-child {
+  min-width: 0;
+}
+
+.last-symbol-value {
+  color: var(--lst-text);
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.last-symbol-value[data-empty='true'] {
+  color: var(--lst-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+}
+
+.last-symbol-history {
+  align-items: flex-end;
+  color: var(--lst-text-muted);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  font-size: 9px;
+  gap: 4px;
+}
+
+.last-symbol-side {
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 17px;
+  padding: 0 6px;
+}
+
+.last-symbol-side[data-side='buy'] {
+  background: var(--lst-buy-soft);
+  color: var(--lst-buy);
+}
+
+.last-symbol-side[data-side='sell'] {
+  background: var(--lst-sell-soft);
+  color: var(--lst-sell);
+}
+
+.last-symbol-volume {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+
+.last-symbol-volume > .last-symbol-section-heading {
+  align-items: center;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.last-symbol-unit {
+  color: var(--lst-text-secondary);
+  font-weight: 550;
+  letter-spacing: 0.035em;
+}
+
+.last-symbol-stepper {
+  background: var(--lst-field);
+  border: 1px solid var(--lst-border);
+  border-radius: 3px;
+  display: grid;
+  gap: 0;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  margin-top: 0;
+  overflow: hidden;
+}
+
+.last-symbol-stepper button,
+.last-symbol-stepper input {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--lst-text);
+  height: 32px;
+}
+
+.last-symbol-stepper button {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  padding: 0;
+}
+
+.last-symbol-stepper button:hover:not(:disabled) {
+  background: var(--lst-raised);
+  color: var(--lst-accent);
+}
+
+.last-symbol-stepper button:disabled {
+  color: var(--lst-text-muted);
+  cursor: not-allowed;
+}
+
+.last-symbol-stepper button:first-child {
+  border-right: 1px solid var(--lst-border);
+}
+
+.last-symbol-stepper button:last-child {
+  border-left: 1px solid var(--lst-border);
+}
+
+.last-symbol-stepper input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: center;
+  width: 100%;
+}
+
+.last-symbol-stepper input:disabled {
+  color: var(--lst-text-secondary);
+  cursor: not-allowed;
+}
+
+.last-symbol-presets {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 0;
+  overflow: visible;
+}
+
+.last-symbol-presets button {
+  background: var(--lst-field);
+  border: 1px solid var(--lst-border);
+  border-radius: 2px;
+  color: var(--lst-text-secondary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  height: 26px;
+  padding: 0 2px;
+}
+
+.last-symbol-presets button + button {
+  border-left: 1px solid var(--lst-border);
+}
+
+.last-symbol-presets button:hover:not(:disabled) {
+  background: var(--lst-raised);
+  color: var(--lst-text);
+  border-color: var(--lst-border-strong);
+}
+
+.last-symbol-presets button.is-selected {
+  background: var(--lst-raised);
+  border-color: var(--lst-accent);
+  color: var(--lst-text);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.last-symbol-presets button:disabled {
+  color: var(--lst-text-muted);
+  cursor: not-allowed;
+}
+
+.last-symbol-protection-summary {
+  align-items: center;
+  background: var(--lst-raised);
+  border-bottom: 1px solid var(--lst-border);
+  color: var(--lst-text-secondary);
+  display: flex;
+  font-size: 10px;
+  gap: 10px;
+  min-height: 30px;
+  padding: 5px 13px;
+}
+
+.last-symbol-protection-summary > span:first-child {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+  margin-right: auto;
+}
+
+.last-symbol-protection-summary__sl {
+  color: var(--lst-sell);
+}
+
+.last-symbol-protection-summary__tp {
+  color: var(--lst-profit);
+}
+
+.last-symbol-notice,
+.last-symbol-alert {
+  border-bottom: 1px solid var(--lst-border);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 7px 13px;
+}
+
+.last-symbol-notice {
+  background: var(--lst-warning-soft);
+  color: var(--lst-warning);
+}
+
+.last-symbol-alert {
+  text-align: center;
+}
+
+.last-symbol-alert[data-tone='success'] {
+  background: color-mix(in srgb, var(--lst-profit) 12%, var(--lst-section));
+  color: var(--lst-profit);
+}
+
+.last-symbol-alert[data-tone='error'] {
+  background: var(--lst-danger-soft);
+  color: var(--lst-sell);
+}
+
+.last-symbol-alert[data-tone='info'] {
+  background: var(--lst-accent-soft);
+  color: var(--lst-accent);
+}
+
+.last-symbol-execution {
+  padding-bottom: 10px;
+}
+
+.last-symbol-actions {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 8px;
+}
+
+.last-symbol-trade-button {
+  align-items: flex-start;
+  background: var(--lst-raised);
+  border: 1px solid var(--lst-border);
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  height: 52px;
+  justify-content: center;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.last-symbol-trade-button--sell {
+  background: #8f1d1d;
+  border-color: #8f1d1d;
+  color: #ffffff;
+}
+
+.last-symbol-trade-button--buy {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+.last-symbol-trade-button:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: none;
+}
+
+.last-symbol-trade-button:disabled {
+  background: var(--lst-raised);
+  border-color: var(--lst-border);
+  color: var(--lst-text-muted);
+  cursor: not-allowed;
+  filter: none;
+}
+
+.last-symbol-trade-button--sell:disabled .last-symbol-trade-button__top strong,
+.last-symbol-trade-button--buy:disabled .last-symbol-trade-button__top strong {
+  color: var(--lst-text-muted);
+}
+
+.last-symbol-trade-button__top {
+  align-items: center;
+  display: flex;
+  justify-content: flex-start;
+  width: auto;
+}
+
+.last-symbol-trade-button__top strong {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.last-symbol-trade-button__price {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.last-symbol-close-row {
+  background: var(--lst-shell);
+  padding: 8px 12px 10px;
+}
+
+.last-symbol-close-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--lst-text-secondary);
+  cursor: pointer;
+  display: flex;
+  height: 28px;
+  justify-content: space-between;
+  padding: 0;
+  width: 100%;
+}
+
+.last-symbol-close-button:hover:not(:disabled) {
+  background: var(--lst-danger-soft);
+  border-color: color-mix(in srgb, var(--lst-sell) 52%, var(--lst-border));
+  color: var(--lst-sell);
+}
+
+.last-symbol-close-button:disabled {
+  border-color: var(--lst-border);
+  color: var(--lst-text-muted);
+  cursor: not-allowed;
+}
+
+.last-symbol-close-button__label,
+.last-symbol-close-button__value {
+  align-items: center;
+  display: inline-flex;
+}
+
+.last-symbol-close-button__label {
+  font-size: 12px;
+  font-weight: 500;
+  gap: 6px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.last-symbol-close-button__value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  gap: 7px;
+}
+
+.last-symbol-close-button__value strong[data-tone='profit'] {
+  color: var(--lst-profit);
+}
+
+.last-symbol-close-button__value strong[data-tone='loss'] {
+  color: var(--lst-sell);
+}
+
+.last-symbol-account-summary {
+  background: var(--lst-header);
+  border-top: 1px solid var(--lst-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 8px 12px;
+}
+
+.last-symbol-account-summary > div {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.last-symbol-account-summary > div + div {
+  border-left: none;
+  padding-left: 0;
+}
+
+.last-symbol-account-summary dt {
+  color: var(--lst-text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.last-symbol-account-summary dt::after {
+  content: ':';
+}
+
+.last-symbol-account-summary dd {
+  color: var(--lst-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.last-symbol-settings {
+  background: var(--lst-header);
+  border-top: 1px solid var(--lst-border);
+  padding: 11px 13px 12px;
+}
+
+.last-symbol-settings__heading {
+  align-items: baseline;
+  color: var(--lst-text-secondary);
+  display: flex;
+  font-size: 10px;
+  font-weight: 650;
+  justify-content: space-between;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.last-symbol-settings__heading small {
+  color: var(--lst-text-muted);
+  font-size: 9px;
+  font-weight: 450;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.last-symbol-setting-row {
+  align-items: center;
+  border-top: 1px solid var(--lst-border);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 7px 0;
+}
+
+.last-symbol-setting-row > span:first-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.last-symbol-setting-row strong {
+  color: var(--lst-text);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.last-symbol-setting-row small {
+  color: var(--lst-text-muted);
+  font-size: 9px;
+  margin-top: 2px;
+}
+
+.last-symbol-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 20px;
+  margin-left: 10px;
+  position: relative;
+  width: 34px;
+}
+
+.last-symbol-toggle input {
+  height: 100%;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  position: absolute;
+  width: 100%;
+  z-index: 1;
+}
+
+.last-symbol-toggle > span {
+  background: var(--lst-border-strong);
+  border-radius: 999px;
+  inset: 0;
+  position: absolute;
+  transition: background-color var(--transition-fast);
+}
+
+.last-symbol-toggle > span::after {
+  background: #ffffff;
+  border-radius: 50%;
+  content: '';
+  height: 14px;
+  left: 3px;
+  position: absolute;
+  top: 3px;
+  transition: transform var(--transition-fast);
+  width: 14px;
+}
+
+.last-symbol-toggle input:checked + span {
+  background: var(--lst-accent);
+}
+
+.last-symbol-toggle input:checked + span::after {
+  transform: translateX(14px);
+}
+
+.last-symbol-toggle input:focus-visible + span {
+  box-shadow: 0 0 0 3px var(--lst-focus);
+}
+
+.last-symbol-field {
+  align-items: center;
+  color: var(--lst-text-secondary);
+  display: flex;
+  font-size: 10px;
+  gap: 8px;
+  justify-content: space-between;
+  margin: 2px 0 7px;
+}
+
+.last-symbol-field span {
+  white-space: nowrap;
+}
+
+.last-symbol-field small {
+  color: var(--lst-text-muted);
+}
+
+.last-symbol-field input {
+  background: var(--lst-field) !important;
+  border: 1px solid var(--lst-border-strong) !important;
+  border-radius: 4px;
+  color: var(--lst-text) !important;
+  font-family: var(--font-mono);
+  height: 29px;
+  padding: 0 7px;
+  text-align: right;
+  width: 78px;
+}
+
+.last-symbol-protection-fields {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 2px;
+}
+
+.last-symbol-protection-fields .last-symbol-field {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+}
+
+.last-symbol-protection-fields .last-symbol-field input {
+  text-align: left;
+  width: 100%;
+}
+
+.last-symbol-field--loss input:focus-visible {
+  border-color: var(--lst-sell) !important;
+}
+
+.last-symbol-field--profit input:focus-visible {
+  border-color: var(--lst-profit) !important;
+}
+
+@media (max-width: 340px) {
+  .rtx-last-symbol-panel {
+    width: calc(100vw - 24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rtx-last-symbol-panel *,
+  .rtx-last-symbol-panel *::before,
+  .rtx-last-symbol-panel *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import type { ChartType, Timeframe } from './TradingChart';
-import { indicatorManager } from '../services/indicatorManager';
+import type { IndicatorConfig } from '../services/indicatorManager';
 import { commandBus } from '../services/commandBus';
 import { useTemplates, useTemplateStore } from '../store/useTemplateStore';
 import type { ChartTemplate } from '../store/useTemplateStore';
@@ -24,6 +24,7 @@ interface ChartContextMenuProps {
     x: number;
     y: number;
     symbol: string;
+    targetContextId: string;
     currentChartType: ChartType;
     currentTimeframe: Timeframe;
     oneClickTrading?: boolean;
@@ -48,13 +49,18 @@ interface ChartContextMenuProps {
     onRefresh: () => void;
     onZoomIn: () => void;
     onZoomOut: () => void;
+    onAddIndicator: (indicator: {
+        name: string;
+        indicatorType: string;
+        params: Record<string, any>;
+    }) => void;
     onDeleteIndicators: () => void;
     onOpenNewOrder: () => void;
     onOpenDOM: () => void;
     onOpenTemplateDialog: (mode: 'save' | 'load') => void;
     onClose: () => void;
     onLoadTemplate?: (template: ChartTemplate) => void;
-    currentIndicators?: any[];
+    currentIndicators?: IndicatorConfig[];
     currentDrawingTools?: any[];
 }
 
@@ -287,6 +293,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     x,
     y,
     symbol,
+    targetContextId,
     currentChartType,
     currentTimeframe,
     oneClickTrading = false,
@@ -311,6 +318,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     onRefresh,
     onZoomIn,
     onZoomOut,
+    onAddIndicator,
     onDeleteIndicators,
     onOpenNewOrder,
     onOpenDOM,
@@ -379,16 +387,11 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     const timeframes: Timeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
 
     const indicators = [
-        { name: 'Moving Average (SMA)', type: 'sma' },
-        { name: 'Exponential MA (EMA)', type: 'ema' },
-        { name: 'Bollinger Bands', type: 'bb' },
-        { name: 'RSI', type: 'rsi' },
-        { name: 'MACD', type: 'macd' },
-        { name: 'Stochastic', type: 'stochastic' },
-        { name: 'CCI', type: 'cci' },
-        { name: 'Momentum', type: 'momentum' },
-        { name: 'ATR', type: 'atr' },
-        { name: 'Williams %R', type: 'williams' },
+        { name: 'Moving Average (SMA)', type: 'sma', params: { period: 20 } },
+        { name: 'Exponential MA (EMA)', type: 'ema', params: { period: 12 } },
+        { name: 'Bollinger Bands', type: 'bb', params: { period: 20, stdDev: 2 } },
+        { name: 'RSI', type: 'rsi', params: { period: 14 } },
+        { name: 'MACD', type: 'macd', params: { fast: 12, slow: 26, signal: 9 } },
     ];
 
     const drawingTools = [
@@ -401,14 +404,17 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
         { name: 'Rectangle', tool: 'rectangle', icon: <Shapes size={12} /> },
     ];
 
-    const handleAddIndicator = (type: string) => {
-        const id = `${type}-${Date.now()}`;
-        indicatorManager.addIndicator({ id, name: type.toUpperCase(), type, parameters: {}, visible: true });
+    const handleAddIndicator = (indicator: typeof indicators[number]) => {
+        onAddIndicator({
+            name: indicator.name,
+            indicatorType: indicator.type,
+            params: indicator.params,
+        });
         onClose();
     };
 
     const handleSelectDrawingTool = (tool: any) => {
-        commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool } });
+        commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool, targetContextId } });
         onClose();
     };
 
@@ -560,7 +566,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                     <MenuItem
                         key={ind.type}
                         label={ind.name}
-                        onClick={() => handleAddIndicator(ind.type)}
+                        onClick={() => handleAddIndicator(ind)}
                     />
                 ))}
             </Submenu>

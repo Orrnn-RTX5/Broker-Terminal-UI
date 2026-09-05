@@ -2,6 +2,7 @@ import { RTX5_WS_URL, buildApiV2WsUrl } from '../config/api';
 import {
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
+  onCommittedBrokerAccountSessionScopeChange,
   onSessionChange,
 } from '../services/brokerSession';
 import {
@@ -11,7 +12,7 @@ import {
   type TradeOrderLatencyPhase,
 } from '../services/orderLatencyTelemetry';
 import type { Timeframe, TradeSocketChannel, TradeSocketMessage } from '../types/api';
-import { getAuthToken } from './client';
+import { getAuthToken, isStoredTokenExpired } from './client';
 
 export type TradeSocketState = 'idle' | 'connecting' | 'open' | 'closed' | 'error';
 export type TradeSocketHandler<T = unknown> = (message: TradeSocketMessage<T>) => void;
@@ -131,6 +132,8 @@ export class TradeSocketTransportError extends Error {
 
 const DEFAULT_RECONNECT_DELAY = 1_000;
 const DEFAULT_MAX_RECONNECT_DELAY = 15_000;
+export const TRADE_WS_STABLE_OPEN_MS = 10_000;
+const RECONNECT_JITTER_RATIO = 0.2;
 const DEFAULT_ORDER_TIMEOUT = 10_000;
 // The order socket is dedicated and normally has no queued bytes. If it is
 // already carrying 16 KiB, REST with the same idempotency key is safer than
@@ -138,6 +141,11 @@ const DEFAULT_ORDER_TIMEOUT = 10_000;
 const DEFAULT_MAX_ORDER_BUFFERED_AMOUNT = 16 * 1024;
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
+
+const addReconnectJitter = (delay: number, maximum: number): number => {
+  const jitter = Math.floor(delay * RECONNECT_JITTER_RATIO * Math.random());
+  return Math.min(maximum, delay + jitter);
+};
 
 const RETRYABLE_ORDER_ERROR_CODES = new Set([
   'SERVICE_UNAVAILABLE',
@@ -228,7 +236,9 @@ export class TradeWebSocketClient {
   private ws: WebSocket | null = null;
   private state: TradeSocketState = 'idle';
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private stableOpenTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
+  private reconnectPendingWhileHidden = false;
   private activeToken: string | undefined;
   private activeUrl: string | undefined;
   private authFrameSent = false;
@@ -251,6 +261,9 @@ export class TradeWebSocketClient {
       maxOrderBufferedAmount: DEFAULT_MAX_ORDER_BUFFERED_AMOUNT,
       ...options,
     };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
   }
 
   get readyState(): number | undefined {
@@ -300,7 +313,6 @@ export class TradeWebSocketClient {
 
     socket.onopen = () => {
       if (this.ws !== socket) return;
-      this.reconnectAttempts = 0;
 
       if (token) {
         this.authFrameSent = this.send({ action: 'auth', token });
@@ -313,6 +325,7 @@ export class TradeWebSocketClient {
 
       this.setState('open');
       this.channels.forEach(channel => this.send({ action: 'subscribe', channel, channels: [channel] }));
+      this.scheduleStableOpenReset(socket);
     };
 
     socket.onmessage = event => {
@@ -330,6 +343,7 @@ export class TradeWebSocketClient {
 
     socket.onclose = () => {
       if (this.ws !== socket) return;
+      this.clearStableOpenTimer();
       this.ws = null;
       this.authFrameSent = false;
       this.setState('closed');
@@ -340,7 +354,12 @@ export class TradeWebSocketClient {
 
   disconnect(): void {
     this.clearReconnectTimer();
+    this.clearStableOpenTimer();
+    this.reconnectPendingWhileHidden = false;
     this.options.reconnect = false;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
     this.rejectAllPendingOrders('Trade socket disconnected before the order completed');
     const socket = this.ws;
     this.ws = null;
@@ -869,16 +888,62 @@ export class TradeWebSocketClient {
   }
 
   private scheduleReconnect(): void {
-    if (!this.options.reconnect) return;
+    if (!this.options.reconnect || this.reconnectTimer || this.reconnectPendingWhileHidden) return;
 
-    const delay = Math.min(
+    if (this.isDocumentHidden()) {
+      this.reconnectPendingWhileHidden = true;
+      return;
+    }
+
+    const exponentialDelay = Math.min(
       this.options.reconnectDelayMs * 2 ** this.reconnectAttempts,
       this.options.maxReconnectDelayMs
     );
+    const delay = addReconnectJitter(exponentialDelay, this.options.maxReconnectDelayMs);
     this.reconnectAttempts += 1;
-    this.clearReconnectTimer();
-    this.reconnectTimer = setTimeout(() => this.connect(), delay);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.isDocumentHidden()) {
+        this.reconnectPendingWhileHidden = true;
+        return;
+      }
+      this.connect();
+    }, delay);
   }
+
+  private clearStableOpenTimer(): void {
+    if (!this.stableOpenTimer) return;
+    clearTimeout(this.stableOpenTimer);
+    this.stableOpenTimer = null;
+  }
+
+  private scheduleStableOpenReset(socket: WebSocket): void {
+    this.clearStableOpenTimer();
+    this.stableOpenTimer = setTimeout(() => {
+      this.stableOpenTimer = null;
+      if (this.ws === socket && socket.readyState === WS_OPEN && this.state === 'open') {
+        this.reconnectAttempts = 0;
+      }
+    }, TRADE_WS_STABLE_OPEN_MS);
+  }
+
+  private isDocumentHidden(): boolean {
+    return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  }
+
+  private handleVisibilityChange = (): void => {
+    if (this.isDocumentHidden()) {
+      if (this.reconnectTimer) {
+        this.clearReconnectTimer();
+        this.reconnectPendingWhileHidden = true;
+      }
+      return;
+    }
+
+    if (!this.reconnectPendingWhileHidden || !this.options.reconnect) return;
+    this.reconnectPendingWhileHidden = false;
+    this.connect();
+  };
 
   private clearReconnectTimer(): void {
     if (this.reconnectTimer) {
@@ -901,8 +966,9 @@ const reconcileSharedTradeSocket = (): void => {
   sharedLifecycleQueued = false;
   if (typeof WebSocket === 'undefined') return;
 
+  const sessionScope = getCommittedBrokerAccountSessionScope();
   const token = getAuthToken() || undefined;
-  if (!token) {
+  if (!sessionScope.authenticated || !sessionScope.accountId || !token || isStoredTokenExpired()) {
     destroyTradeWebSocketClient();
     return;
   }
@@ -938,6 +1004,10 @@ export const initializeTradeWebSocketClient = (): void => {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') queueSharedTradeSocketReconcile();
   });
+  // App may be evaluated speculatively while the anonymous login form is
+  // visible. A stored token alone is not an authenticated runtime session;
+  // connect as soon as the validated account scope is committed instead.
+  onCommittedBrokerAccountSessionScopeChange(queueSharedTradeSocketReconcile);
   onSessionChange(queueSharedTradeSocketReconcile);
   queueSharedTradeSocketReconcile();
 };

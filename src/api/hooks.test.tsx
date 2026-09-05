@@ -49,7 +49,7 @@ describe('useLogin', () => {
     const request = lastFetchCall();
     expect(request.url).toBe(expectedLoginUrl('https://testbroker.example'));
     expect(request.body).toEqual({
-      username: '100001',
+      login: 100001,
       password: 'FixturePassword123',
       broker_id: 'testorrnn',
     });

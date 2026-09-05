@@ -116,7 +116,7 @@ describe('trade v2 API contract calls', () => {
     expect(request.init.method).toBe('POST');
     expect(request.headers.Authorization).toBeUndefined();
     expect(request.body).toEqual({
-      username: 123456,
+      login: 123456,
       broker_id: 'test_broker',
       password: runtimePassword,
     });
@@ -141,11 +141,64 @@ describe('trade v2 API contract calls', () => {
 
     expect(vi.mocked(fetch)).toHaveBeenCalledOnce();
     expect(lastFetchCall().body).toEqual({
-      username: '100001',
+      login: 100001,
       password: 'FixturePassword123',
       broker_id: 'gta_broker',
     });
     expect(localStorage.getItem('auth_token')).toBeNull();
+  });
+
+  it('retries one completed 502 login response and persists the recovered session', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ message: 'Bad gateway' }, { status: 502 }))
+      .mockResolvedValueOnce(jsonResponse({
+        access_token: 'recovered-access-token',
+        refresh_token: 'recovered-refresh-token',
+      }));
+
+    const response = await authV2Api.login({
+      username: '200001',
+      password: 'FixturePassword123',
+      broker_id: 'TEST',
+    });
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    expect(response.access_token).toBe('recovered-access-token');
+    expect(localStorage.getItem('auth_token')).toBe('recovered-access-token');
+    expect(localStorage.getItem('refresh_token')).toBe('recovered-refresh-token');
+  });
+
+  it('stops after one retry when login returns 502 twice', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ message: 'Bad gateway' }, { status: 502 }))
+      .mockResolvedValueOnce(jsonResponse({ message: 'Bad gateway' }, { status: 502 }));
+
+    await expect(authV2Api.login({
+      username: '200001',
+      password: 'FixturePassword123',
+      broker_id: 'TEST',
+    })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 502,
+    } satisfies Partial<ApiError>);
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem('auth_token')).toBeNull();
+  });
+
+  it.each([401, 403, 500])('does not retry a %s login response', async (status) => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ message: 'Login failed' }, { status }));
+
+    await expect(authV2Api.login({
+      username: '200001',
+      password: 'FixturePassword123',
+      broker_id: 'TEST',
+    })).rejects.toMatchObject({
+      name: 'ApiError',
+      status,
+    } satisfies Partial<ApiError>);
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledOnce();
   });
 
   it('does not clear a newer token when an older protected request returns 401 late', async () => {
@@ -212,6 +265,97 @@ describe('trade v2 API contract calls', () => {
       expect(vi.mocked(fetch)).toHaveBeenCalledOnce();
     },
   );
+
+  it('reports the internal request deadline as a timeout instead of an unexplained abort', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetch).mockImplementationOnce((_input, init) => new Promise((_resolve, reject) => {
+        const signal = init?.signal;
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }));
+
+      const request = apiClient.get('/slow-request', {
+        baseUrl: 'https://broker.example',
+        skipDynamicUrl: true,
+        skipAuth: true,
+      });
+      const observedResult = request.catch(error => error);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(observedResult).resolves.toMatchObject({
+        status: 0,
+        message: 'Request timed out after 30 seconds',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets authentication finish after the default 30-second API deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      let authSignal: AbortSignal | undefined;
+      vi.mocked(fetch).mockImplementationOnce((_input, init) => new Promise((resolve, reject) => {
+        authSignal = init?.signal ?? undefined;
+        const responseTimer = setTimeout(() => resolve(jsonResponse({
+          access_token: 'delayed-access-token',
+          refresh_token: 'delayed-refresh-token',
+          account_login: 200001,
+        })), 31_000);
+        authSignal?.addEventListener('abort', () => {
+          clearTimeout(responseTimer);
+          reject(authSignal?.reason);
+        }, { once: true });
+      }));
+
+      const request = authV2Api.login({
+        username: '200001',
+        password: crypto.randomUUID(),
+        broker_id: 'TEST',
+      });
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(authSignal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(request).resolves.toMatchObject({
+        access_token: 'delayed-access-token',
+        account_login: 200001,
+      });
+      expect(authSignal?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses the dedicated 90-second authentication deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      let authSignal: AbortSignal | undefined;
+      vi.mocked(fetch).mockImplementationOnce((_input, init) => new Promise((_resolve, reject) => {
+        authSignal = init?.signal ?? undefined;
+        authSignal?.addEventListener('abort', () => reject(authSignal?.reason), { once: true });
+      }));
+
+      const request = authV2Api.login({
+        username: '200001',
+        password: crypto.randomUUID(),
+        broker_id: 'TEST',
+      });
+      const observedResult = request.catch(error => error);
+
+      await vi.advanceTimersByTimeAsync(89_999);
+      expect(authSignal?.aborted).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(observedResult).resolves.toMatchObject({
+        status: 0,
+        message: 'Request timed out after 90 seconds',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it.each(abortLifecycleCalls)(
     'aborts the $method 401 refresh body and does not retry with refreshed credentials',
@@ -429,14 +573,14 @@ describe('trade v2 API contract calls', () => {
     });
 
     expect(lastFetchCall().body).toMatchObject({
-      username: 123456,
+      login: 123456,
     });
     expect(response.token).toBe('access-jwt-token');
     expect(response.access_token).toBe('access-jwt-token');
     expect(localStorage.getItem('auth_token')).toBe('access-jwt-token');
   });
 
-  it('does not add legacy login aliases to direct broker login payloads', async () => {
+  it('serializes numeric account usernames with the backend login field', async () => {
     const runtimePassword = crypto.randomUUID();
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       access_token: 'access-jwt-token',
@@ -449,7 +593,7 @@ describe('trade v2 API contract calls', () => {
     });
 
     expect(lastFetchCall().body).toEqual({
-      username: '100001',
+      login: 100001,
       broker_id: 'testorrnn',
       password: runtimePassword,
     });
@@ -472,11 +616,11 @@ describe('trade v2 API contract calls', () => {
     const request = lastFetchCall();
     expect(request.url).toBe('https://selected-broker.example/api/v2/auth/login');
     expect(request.body).toEqual({
-      username: 100001,
+      login: 100001,
       password: 'FixturePassword123',
       broker_id: 'testorrnn',
     });
-    expect(request.body).not.toHaveProperty('login');
+    expect(request.body).not.toHaveProperty('username');
     expect(request.body).not.toHaveProperty('email');
   });
 

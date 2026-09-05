@@ -2,8 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, ChevronRight, ExternalLink, Building2, Shield, Globe, CheckCircle2, Copy, Loader2 } from 'lucide-react';
 import { tradeApi } from '../../api/trade';
-import { BROKER_DISCOVERY_URL } from '../../config/api';
+import { parseTokenExpiresAt } from '../../api/client';
+import { BROKER_DISCOVERY_URL, normalizeBrokerServerUrl, updateDynamicUrls } from '../../config/api';
+import {
+    normalizeBrokerInfoForTarget,
+    resolveBrokerBackendUrl,
+    resolveBrokerExtApiUrl,
+} from '../../config/backendTarget.js';
 import { extractBrokerDiscoveryList } from '../../services/brokerDiscovery';
+import { persistBrokerSessionDiscovery } from '../../services/brokerSession';
+import { useAppStore } from '../../store/useAppStore';
 import type { BrokerServer } from '../../types/api';
 
 // Palette cycling for broker avatar gradients
@@ -73,7 +81,7 @@ const BrokerAvatar: React.FC<{ broker: BrokerServer; index: number; isSelected: 
 const DropdownBrokerLogo: React.FC<{ broker: BrokerServer; index: number }> = ({ broker, index }) => {
     const [hasError, setHasError] = useState(false);
     const grad = GRADIENTS[index % GRADIENTS.length];
-    
+
     if (broker.logo_url && !hasError) {
         return (
             <div className="w-5 h-5 rounded bg-white flex items-center justify-center overflow-hidden flex-shrink-0 border border-white/10">
@@ -86,13 +94,11 @@ const DropdownBrokerLogo: React.FC<{ broker: BrokerServer; index: number }> = ({
             </div>
         );
     }
-    
+
     return (
         <div
             className="w-5 h-5 rounded flex items-center justify-center text-white font-bold text-[8px] flex-shrink-0"
-            style={{
-                background: `linear-gradient(135deg, ${grad.from} 0%, ${grad.to} 100%)`,
-            }}
+            style={{ background: `linear-gradient(135deg, ${grad.from} 0%, ${grad.to} 100%)` }}
         >
             {initials(broker.broker_name)}
         </div>
@@ -112,6 +118,31 @@ type CreatedAccount = {
     balance?: number | string;
     currency?: string;
     leverage?: number | string;
+    master_password?: string;
+    investor_password?: string;
+    server?: string;
+};
+
+type AccountType = 'demo' | 'real' | 'existing';
+
+type AccountFormData = {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    country: string;
+    currency: string;
+    leverage: string;
+};
+
+const EMPTY_ACCOUNT_FORM: AccountFormData = {
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    country: 'US',
+    currency: 'USD',
+    leverage: '100',
 };
 
 type CreatedAccountSummaryRow = {
@@ -124,12 +155,42 @@ type CreatedAccountSummaryRow = {
 };
 
 const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
+const buildBrokerApiV2BaseUrl = (value: string): string =>
+    `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
 
 const getErrorMessage = (err: unknown, fallback: string): string =>
     err instanceof Error ? err.message : fallback;
 
 const isSummaryRow = (row: CreatedAccountSummaryRow | false | null | undefined): row is CreatedAccountSummaryRow =>
     Boolean(row);
+
+const isAbortError = (error: unknown): boolean =>
+    error instanceof DOMException
+        ? error.name === 'AbortError'
+        : Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+
+const isValidEmail = (value: string): boolean =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+const mapDiscoveryBroker = (broker: ReturnType<typeof extractBrokerDiscoveryList>[number], index: number): BrokerServer => ({
+    ...broker,
+    id: broker.id ?? broker.broker_id ?? index,
+    broker_id: String(broker.broker_id || broker.id || '').trim(),
+    broker_name: String(broker.broker_name || broker.name || broker.broker_id || broker.id || '').trim(),
+    server: String(broker.server || broker.server_url || broker.backend_url || broker.broker_id || '').trim(),
+    server_url: typeof broker.server_url === 'string' ? broker.server_url : undefined,
+    backend_url: typeof broker.backend_url === 'string' ? broker.backend_url : undefined,
+    market_api_url: typeof broker.market_api_url === 'string' ? broker.market_api_url : undefined,
+    server_ip: typeof broker.server_ip === 'string' ? broker.server_ip : undefined,
+    server_port: typeof broker.server_port === 'number' ? broker.server_port : undefined,
+    ws_url: typeof broker.ws_url === 'string' ? broker.ws_url : undefined,
+    feed_url: typeof broker.feed_url === 'string' ? broker.feed_url : undefined,
+    feed_ws_url: typeof broker.feed_ws_url === 'string' ? broker.feed_ws_url : undefined,
+    feed_status_url: typeof broker.feed_status_url === 'string' ? broker.feed_status_url : undefined,
+    region: typeof broker.region === 'string' ? broker.region : undefined,
+    logo_url: typeof broker.logo_url === 'string' ? broker.logo_url : undefined,
+    enabled: broker.enabled !== false,
+});
 
 export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [step, setStep] = useState(0);
@@ -138,7 +199,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [selected, setSelected] = useState<string>('');
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredId, setHoveredId] = useState<string | null>(null);
-    const [accountType, setAccountType] = useState<'demo' | 'real' | 'existing'>('demo');
+    const [accountType, setAccountType] = useState<AccountType>('demo');
 
     // "Connect existing" sub-form state
     const [existingLogin, setExistingLogin] = useState('');
@@ -146,47 +207,62 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [existingServerSearch, setExistingServerSearch] = useState('');
     const [existingServerDropOpen, setExistingServerDropOpen] = useState(false);
     const [existingBroker, setExistingBroker] = useState<BrokerServer | null>(null);
-
-    const [formData, setFormData] = useState({
-        firstName: 'Jane',
-        lastName: 'Doe',
-        email: 'trader@example.com',
-        phone: '+1-555-0100',
-        country: 'US',
-        group: 'orrnn/demo-std',
-        currency: 'USD',
-        leverage: '100',
-        deposit: '10000',
-        masterPass: 'Strong-Pass-123',
-        investorPass: 'Read-Only-Pass',
-        comment: 'Public demo account',
-    });
+    const [formData, setFormData] = useState<AccountFormData>(EMPTY_ACCOUNT_FORM);
+    const [termsAccepted, setTermsAccepted] = useState(false);
     const [createdAccount, setCreatedAccount] = useState<CreatedAccount | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [createError, setCreateError] = useState('');
+    const [validationError, setValidationError] = useState('');
 
     // Fetch brokers on open — use discovery endpoint (same as LoginDialog) so logos resolve properly
     useEffect(() => {
         if (!isOpen) return;
+
+        const controller = new AbortController();
+        let active = true;
+        setStep(0);
+        setSelected('');
+        setSearchQuery('');
+        setHoveredId(null);
+        setAccountType('demo');
+        setExistingLogin('');
+        setExistingPassword('');
+        setExistingServerSearch('');
+        setExistingServerDropOpen(false);
+        setExistingBroker(null);
+        setFormData(EMPTY_ACCOUNT_FORM);
+        setTermsAccepted(false);
+        setCreatedAccount(null);
+        setCreateError('');
+        setValidationError('');
         setLoadingBrokers(true);
-        fetch(brokerServersDiscoveryUrl)
-            .then(res => res.json())
+        fetch(brokerServersDiscoveryUrl, { signal: controller.signal })
+            .then(res => {
+                if (!res.ok) throw new Error(`Broker directory returned ${res.status}`);
+                return res.json();
+            })
             .then((payload: unknown) => {
                 const list = extractBrokerDiscoveryList(payload);
-                const mapped: BrokerServer[] = list.map((b, idx) => ({
-                    id: b.broker_id || b.id || idx,
-                    broker_id: String(b.broker_id || b.id || ''),
-                    broker_name: String(b.broker_name || b.name || b.broker_id || b.id || ''),
-                    server: String(b.server || b.server_url || b.backend_url || b.broker_id || ''),
-                    region: typeof b.region === 'string' ? b.region : undefined,
-                    logo_url: typeof b.logo_url === 'string' ? b.logo_url : undefined,
-                    enabled: true,
-                })).filter((broker) => Boolean(broker.broker_id && broker.broker_name));
+                const mapped = list
+                    .map(mapDiscoveryBroker)
+                    .filter((broker) => Boolean(broker.broker_id && broker.broker_name && broker.enabled !== false));
+                if (!active) return;
                 setBrokers(mapped);
-                setSelected((current) => current || (mapped.length > 0 ? String(mapped[0].id) : current));
+                setSelected(mapped.length > 0 ? String(mapped[0].id) : '');
             })
-            .catch(err => console.warn('[OpenAccountDialog] Could not load brokers:', err))
-            .finally(() => setLoadingBrokers(false));
+            .catch(err => {
+                if (isAbortError(err)) return;
+                console.warn('[OpenAccountDialog] Could not load brokers:', err);
+                if (active) setValidationError('Broker servers are unavailable. Please try again.');
+            })
+            .finally(() => {
+                if (active) setLoadingBrokers(false);
+            });
+
+        return () => {
+            active = false;
+            controller.abort();
+        };
     }, [isOpen]);
 
     if (!isOpen) return null;
@@ -198,44 +274,194 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             String(b.broker_id || '').toLowerCase().includes(searchQuery.toLowerCase())
         )
         : brokers;
-
     const existingFilteredBrokers = existingServerSearch.trim()
-        ? brokers.filter(b =>
-            String(b.broker_name || '').toLowerCase().includes(existingServerSearch.toLowerCase()) ||
-            String(b.broker_id || '').toLowerCase().includes(existingServerSearch.toLowerCase())
+        ? brokers.filter(broker =>
+            String(broker.broker_name || '').toLowerCase().includes(existingServerSearch.toLowerCase()) ||
+            String(broker.server || '').toLowerCase().includes(existingServerSearch.toLowerCase()) ||
+            String(broker.broker_id || '').toLowerCase().includes(existingServerSearch.toLowerCase())
         )
         : brokers;
 
     const selectedBroker = brokers.find(b => String(b.id) === selected);
 
+    const resolveSelectedBrokerRouting = (broker: BrokerServer | undefined = selectedBroker) => {
+        if (!broker) throw new Error('Please select a broker server.');
+        const normalizedBroker = normalizeBrokerInfoForTarget(broker);
+        const submitBroker: BrokerServer = {
+            ...broker,
+            ...normalizedBroker,
+            id: broker.id,
+            broker_id: String(normalizedBroker.broker_id || broker.broker_id),
+            broker_name: broker.broker_name,
+            server: String(normalizedBroker.broker_server || normalizedBroker.server_url || broker.server),
+        };
+        const brokerServerUrl = resolveBrokerBackendUrl(submitBroker);
+        const brokerExtApiUrl = resolveBrokerExtApiUrl(submitBroker);
+        if (!brokerExtApiUrl) throw new Error('The selected broker does not provide an API endpoint.');
+        return { submitBroker, brokerServerUrl, brokerExtApiUrl };
+    };
+
+    const closeDialog = () => {
+        setExistingPassword('');
+        setCreateError('');
+        setValidationError('');
+        onClose();
+    };
+
+    const connectExistingAccount = async () => {
+        const normalizedLogin = existingLogin.trim();
+        if (!/^\d+$/.test(normalizedLogin) || Number(normalizedLogin) <= 0) {
+            throw new Error('Enter a valid positive account ID.');
+        }
+        if (!existingPassword) throw new Error('Password is required.');
+
+        const { submitBroker, brokerServerUrl, brokerExtApiUrl } = resolveSelectedBrokerRouting(existingBroker || selectedBroker);
+        const data = await tradeApi.auth.login({
+            username: normalizedLogin,
+            password: existingPassword,
+            broker_id: submitBroker.broker_id,
+        }, {
+            baseUrl: buildBrokerApiV2BaseUrl(brokerExtApiUrl),
+            skipDynamicUrl: true,
+        });
+
+        const token = data.access_token || data.token;
+        if (!token) throw new Error('No authentication token received.');
+        const accountId = String(data.account_login ?? normalizedLogin);
+        const loginNumber = Number.parseInt(accountId, 10);
+        if (!Number.isFinite(loginNumber) || loginNumber <= 0) {
+            throw new Error('The broker did not return a valid account login.');
+        }
+
+        persistBrokerSessionDiscovery({
+            ...submitBroker,
+            ...data,
+            access_token: token,
+            broker_id: data.broker_id || submitBroker.broker_id,
+            backend_url: data.backend_url || brokerServerUrl,
+            market_api_url: data.market_api_url || brokerExtApiUrl,
+            server_url: data.server_url || data.broker_server || brokerServerUrl,
+            ws_url: data.ws_url || submitBroker.ws_url,
+            feed_url: data.feed_url || submitBroker.feed_url || submitBroker.feed_ws_url,
+            feed_ws_url: data.feed_ws_url || submitBroker.feed_ws_url,
+            feed_status_url: data.feed_status_url || submitBroker.feed_status_url,
+            logo_url: submitBroker.logo_url,
+        });
+        updateDynamicUrls();
+
+        const expiresAt = parseTokenExpiresAt(data.expires_at) ?? undefined;
+        const store = useAppStore.getState();
+        store.setAuthTokens(token, data.refresh_token, expiresAt);
+        store.setAuthenticated(true, accountId, token, data.refresh_token, expiresAt, {
+            login: loginNumber,
+            name: data.user?.username || data.username || '',
+            server: submitBroker.broker_name || submitBroker.broker_id,
+            isLive: true,
+            lastUsed: Date.now(),
+        });
+        localStorage.setItem('rtx_last_login', accountId);
+        localStorage.setItem('rtx_saved_username', accountId);
+        localStorage.removeItem('rtx_saved_password');
+        closeDialog();
+    };
+
+    const createDemoAccount = async () => {
+        const { submitBroker, brokerExtApiUrl } = resolveSelectedBrokerRouting();
+        const request = {
+            name: `${formData.firstName.trim()} ${formData.lastName.trim()}`,
+            email: formData.email.trim(),
+            phone: formData.phone.trim() || undefined,
+            country: formData.country,
+            currency: formData.currency,
+            leverage: Number.parseInt(formData.leverage, 10),
+        };
+        const response = await tradeApi.account.create(request, {
+            baseUrl: buildBrokerApiV2BaseUrl(brokerExtApiUrl),
+            skipDynamicUrl: true,
+        });
+        const responseRecord = response as unknown as Record<string, unknown>;
+        const accountRecord = responseRecord?.account && typeof responseRecord.account === 'object'
+            ? responseRecord.account as CreatedAccount
+            : response as CreatedAccount;
+        if (!accountRecord?.login) {
+            throw new Error('The broker did not return the new demo account login.');
+        }
+        setCreatedAccount({
+            ...accountRecord,
+            broker_id: accountRecord.broker_id || submitBroker.broker_id,
+        });
+        setStep(4);
+    };
+
     const handleNext = async () => {
-        if (step < 3) {
-            setStep(step + 1);
-        } else if (step === 3) {
+        setValidationError('');
+        setCreateError('');
+
+        if (step === 0) {
+            if (!selectedBroker) {
+                setValidationError('Please select a broker server.');
+                return;
+            }
+            setStep(1);
+            return;
+        }
+
+        if (step === 1 && accountType === 'existing') {
             try {
                 setIsCreating(true);
-                setCreateError('');
-                const request = {
-                    name: `${formData.firstName} ${formData.lastName}`.trim(),
-                    currency: formData.currency,
-                    leverage: parseInt(formData.leverage, 10),
-                    group: formData.group,
-                    balance: parseFloat(formData.deposit),
-                    master_pass: formData.masterPass,
-                    investor_pass: formData.investorPass,
-                };
-                const response = await tradeApi.account.create(request);
-                setCreatedAccount(response);
-                setStep(4);
+                await connectExistingAccount();
             } catch (err: unknown) {
-                setCreateError(getErrorMessage(err, 'Failed to create account'));
+                setValidationError(getErrorMessage(err, 'Authentication failed'));
             } finally {
                 setIsCreating(false);
             }
-        } else {
-            onClose();
-            setTimeout(() => { setStep(0); setCreatedAccount(null); }, 300);
+            return;
         }
+
+        if (step === 1) {
+            setStep(2);
+            return;
+        }
+
+        if (step === 2 && accountType === 'real') {
+            closeDialog();
+            return;
+        }
+
+        if (step === 2) {
+            if (!formData.firstName.trim() || !formData.lastName.trim()) {
+                setValidationError('First name and last name are required.');
+                return;
+            }
+            if (!isValidEmail(formData.email)) {
+                setValidationError('Enter a valid email address.');
+                return;
+            }
+            setStep(3);
+            return;
+        }
+
+        if (step === 3) {
+            if (!Number.isFinite(Number(formData.leverage)) || Number(formData.leverage) <= 0) {
+                setValidationError('Select a valid leverage.');
+                return;
+            }
+            if (!termsAccepted) {
+                setValidationError('Accept the terms and data protection policy to continue.');
+                return;
+            }
+            try {
+                setIsCreating(true);
+                await createDemoAccount();
+            } catch (err: unknown) {
+                setCreateError(getErrorMessage(err, 'Failed to create demo account'));
+            } finally {
+                setIsCreating(false);
+            }
+            return;
+        }
+
+        closeDialog();
     };
 
     const handleBack = () => { if (step > 0) setStep(step - 1); };
@@ -363,7 +589,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="flex flex-col gap-6 pt-2">
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
-                        <input type="radio" checked={accountType === 'demo'} onChange={() => setAccountType('demo')} className="w-4 h-4 accent-indigo-500" />
+                        <input aria-label="Demo account" type="radio" checked={accountType === 'demo'} onChange={() => { setAccountType('demo'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div>
                         <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">Open a demo account to trade virtual money without risk</div>
@@ -373,7 +599,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
-                        <input type="radio" checked={accountType === 'real'} onChange={() => setAccountType('real')} className="w-4 h-4 accent-indigo-500" />
+                        <input aria-label="Real account" type="radio" checked={accountType === 'real'} onChange={() => { setAccountType('real'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div>
                         <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">Open a real account for live trading</div>
@@ -383,7 +609,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
-                        <input type="radio" checked={accountType === 'existing'} onChange={() => setAccountType('existing')} className="w-4 h-4 accent-indigo-500" />
+                        <input aria-label="Existing account" type="radio" checked={accountType === 'existing'} onChange={() => { setAccountType('existing'); setExistingBroker(selectedBroker || null); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div className="w-full">
                         <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">Connect with an existing trade account</div>
@@ -392,6 +618,9 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 <div className="flex items-center gap-3">
                                     <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Login:</span>
                                     <input
+                                        aria-label="Existing account ID"
+                                        inputMode="numeric"
+                                        autoComplete="username"
                                         type="text"
                                         value={existingLogin}
                                         onChange={e => setExistingLogin(e.target.value)}
@@ -402,6 +631,8 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 <div className="flex items-center gap-3">
                                     <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Password:</span>
                                     <input
+                                        aria-label="Existing account password"
+                                        autoComplete="current-password"
                                         type="password"
                                         value={existingPassword}
                                         onChange={e => setExistingPassword(e.target.value)}
@@ -474,38 +705,47 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     );
 
     // ─── Step 2: Personal Details ───────────────────────────────────────────────
-    const renderStep2 = () => (
+    const renderStep2 = () => accountType === 'real' ? (
+        <div className="flex-1 overflow-hidden flex flex-col p-6">
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-5">
+                <div className="mb-3 flex items-center gap-2 text-[14px] font-semibold text-amber-300">
+                    <Shield className="h-4 w-4" />
+                    Identity verification is required
+                </div>
+                <p className="text-[13px] leading-relaxed text-zinc-300">
+                    {selectedBroker?.broker_name || 'The selected broker'} must complete identity checks and approve a live trading agreement before opening a real account.
+                </p>
+                <p className="mt-3 text-[12px] leading-relaxed text-zinc-500">
+                    This terminal will not create or fund a real account automatically. Contact the broker through its verified customer-support or onboarding channel.
+                </p>
+            </div>
+        </div>
+    ) : (
         <div className="flex-1 overflow-hidden flex flex-col p-5">
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                     <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">First name:</span>
-                    <input type="text" value={formData.firstName} onChange={e => setFormData(s => ({ ...s, firstName: e.target.value }))} className="flex-1 rounded border border-indigo-500 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none" />
+                    <input aria-label="First name" autoComplete="given-name" type="text" value={formData.firstName} onChange={e => setFormData(s => ({ ...s, firstName: e.target.value }))} className="flex-1 rounded border border-indigo-500 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none" />
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Last name:</span>
-                    <input type="text" value={formData.lastName} onChange={e => setFormData(s => ({ ...s, lastName: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
+                    <input aria-label="Last name" autoComplete="family-name" type="text" value={formData.lastName} onChange={e => setFormData(s => ({ ...s, lastName: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="h-2" />
                 <div className="flex items-center gap-2">
                     <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Email:</span>
-                    <input type="email" value={formData.email} onChange={e => setFormData(s => ({ ...s, email: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
+                    <input aria-label="Email" autoComplete="email" type="email" value={formData.email} onChange={e => setFormData(s => ({ ...s, email: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Mobile Phone:</span>
-                    <input type="text" value={formData.phone} onChange={e => setFormData(s => ({ ...s, phone: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
+                    <input aria-label="Mobile phone" autoComplete="tel" type="tel" value={formData.phone} onChange={e => setFormData(s => ({ ...s, phone: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="h-2" />
                 <div className="flex items-center gap-2 w-1/2 pr-2 mt-2">
                     <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Country:</span>
-                    <select value={formData.country} onChange={e => setFormData(s => ({ ...s, country: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
+                    <select aria-label="Country" value={formData.country} onChange={e => setFormData(s => ({ ...s, country: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
                         <option value="US">United States (US)</option>
                         <option value="IN">India (IN)</option>
-                    </select>
-                </div>
-                <div className="flex items-center gap-2 w-1/2 pr-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Account group:</span>
-                    <select value={formData.group} onChange={e => setFormData(s => ({ ...s, group: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
-                        <option value="orrnn/demo-std">orrnn/demo-std</option>
                     </select>
                 </div>
                 <div className="pl-[104px] pt-4">
@@ -525,48 +765,30 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 flex-1">
                         <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Currency:</span>
-                        <select value={formData.currency} onChange={e => setFormData(s => ({ ...s, currency: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
+                        <select aria-label="Currency" value={formData.currency} onChange={e => setFormData(s => ({ ...s, currency: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
                             <option value="USD">USD</option>
                             <option value="EUR">EUR</option>
                         </select>
                     </div>
                     <div className="flex items-center gap-2 flex-1">
                         <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Leverage:</span>
-                        <select value={formData.leverage} onChange={e => setFormData(s => ({ ...s, leverage: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
+                        <select aria-label="Leverage" value={formData.leverage} onChange={e => setFormData(s => ({ ...s, leverage: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
                             <option value="100">1:100</option>
                             <option value="200">1:200</option>
                             <option value="500">1:500</option>
                         </select>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 w-1/2 pr-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Deposit:</span>
-                    <input type="number" value={formData.deposit} onChange={e => setFormData(s => ({ ...s, deposit: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
-                </div>
-                <div className="h-2" />
-                <div className="flex items-center gap-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Master password:</span>
-                    <input type="text" value={formData.masterPass} onChange={e => setFormData(s => ({ ...s, masterPass: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Investor password:</span>
-                    <input type="text" value={formData.investorPass} onChange={e => setFormData(s => ({ ...s, investorPass: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
-                </div>
-                <div className="h-2" />
-                <div className="flex items-center gap-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Comment:</span>
-                    <input type="text" value={formData.comment} onChange={e => setFormData(s => ({ ...s, comment: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
-                </div>
                 <div className="h-4" />
                 <div className="flex items-start gap-2 pl-[104px]">
-                    <input type="checkbox" className="mt-0.5 accent-indigo-500 w-3 h-3" defaultChecked />
+                    <input aria-label="Accept account terms" type="checkbox" className="mt-0.5 accent-indigo-500 w-3 h-3" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} />
                     <div>
                         <span className="block text-[14px] font-normal text-zinc-300">I agree with the terms and conditions for opening an account and the data protection policy</span>
                         <a href="https://rtx5.orrnn.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="mt-1 block text-[14px] font-normal text-indigo-400 hover:text-indigo-300">www.rtx5.orrnn.com</a>
                     </div>
                 </div>
                 {createError && (
-                    <div className="mt-2 rounded border border-red-500/20 bg-red-500/10 p-2 pl-[104px] text-[12px] font-normal text-red-400">
+                    <div role="alert" className="mt-2 rounded border border-red-500/20 bg-red-500/10 p-2 pl-[104px] text-[12px] font-normal text-red-400">
                         {createError}
                     </div>
                 )}
@@ -583,16 +805,16 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                 </div>
                 <h3 className="text-white font-semibold text-[16px] mb-1">Registration Complete</h3>
-                <p className="mb-6 text-center text-[12px] font-normal text-zinc-400">Your new account has been successfully created.<br />Please save these credentials.</p>
+                <p className="mb-6 text-center text-[12px] font-normal text-zinc-400">Your demo account has been successfully created.<br />Save any credentials returned by the broker.</p>
                 <div className="w-full bg-[#1a1c23] border border-zinc-700/50 rounded-xl p-5 flex flex-col gap-3">
                     {[
                         { label: 'Login (Account)', value: createdAccount.login, mono: true, color: 'text-emerald-400', size: 'text-[16px]' },
-                        { label: 'Master Password', value: formData.masterPass, mono: true },
-                        { label: 'Investor Password', value: formData.investorPass, mono: true },
+                        createdAccount.master_password && { label: 'Master Password', value: createdAccount.master_password, mono: true },
+                        createdAccount.investor_password && { label: 'Investor Password', value: createdAccount.investor_password, mono: true },
                         createdAccount.api_key && { label: 'API Key', value: createdAccount.api_key, mono: true, small: true },
                         { label: 'Broker / Server', value: selectedBroker?.broker_name || createdAccount.broker_id || 'Broker' },
-                        { label: 'Group', value: createdAccount.group },
-                        { label: 'Balance', value: `${createdAccount.balance || formData.deposit} ${createdAccount.currency || formData.currency}`, color: 'text-emerald-400' },
+                        createdAccount.group && { label: 'Group', value: createdAccount.group },
+                        createdAccount.balance !== undefined && { label: 'Balance', value: `${createdAccount.balance} ${createdAccount.currency || formData.currency}`, color: 'text-emerald-400' },
                         { label: 'Leverage', value: `1:${createdAccount.leverage || formData.leverage}` },
                     ].filter(isSummaryRow).map((row) => (
                         <div key={row.label} className="flex justify-between items-center pb-3 border-b border-zinc-800/80 last:border-0 last:pb-0">
@@ -610,7 +832,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 </div>
                 <div className="mt-5 flex w-full items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-center text-[12px] font-normal leading-relaxed text-yellow-500/90">
                     <Shield className="w-4 h-4 flex-shrink-0 mt-0.5 opacity-80" />
-                    <span className="text-left">Your password is securely hashed on the server. Please copy and save these credentials now.</span>
+                    <span className="text-left">The terminal does not store account passwords. Copy any credentials returned by the broker and keep them private.</span>
                 </div>
             </div>
         );
@@ -619,19 +841,27 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const getHeader = () => {
         if (step === 0) return { title: 'Open an Account', sub: 'Select a broker to get started' };
         if (step === 1) return { title: 'Open an account', sub: 'Trade real or virtual money and gain experience' };
-        if (step === 2) return { title: 'Opening a real account', sub: 'A real account is required for live trading on financial markets' };
-        if (step === 3) return { title: 'Account Settings', sub: 'Configure currency, leverage and deposit for your new account' };
+        if (step === 2 && accountType === 'real') return { title: 'Real Account Application', sub: 'Complete identity verification with your broker' };
+        if (step === 2) return { title: 'Demo Account Details', sub: 'Enter the account holder information' };
+        if (step === 3) return { title: 'Demo Account Settings', sub: 'Configure currency and leverage for your new account' };
         return { title: 'Registration Successful', sub: 'Your new account details' };
     };
 
     const header = getHeader();
-    const isStepValid = step === 0 ? !!selected : true;
+    const isStepValid = step === 0 ? Boolean(selectedBroker) && !loadingBrokers : true;
+    const actionLabel = isCreating
+        ? accountType === 'existing' ? 'Connecting...' : 'Creating...'
+        : step === 1 && accountType === 'existing' ? 'Connect'
+            : step === 2 && accountType === 'real' ? 'Done'
+                : step < 3 ? 'Next >'
+                    : step === 3 ? 'Create Demo Account'
+                        : 'Finish';
 
     return createPortal(
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center"
             style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
-            onClick={e => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
+            onClick={e => { e.stopPropagation(); if (e.target === e.currentTarget) closeDialog(); }}
             onMouseDown={e => e.stopPropagation()}
             onTouchStart={e => e.stopPropagation()}
             onPointerDown={e => e.stopPropagation()}
@@ -667,7 +897,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     </div>
                     <div className="flex items-center gap-1">
                         <button className="flex h-7 w-7 items-center justify-center rounded-md text-[14px] font-normal text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300" title="Help">?</button>
-                        <button onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-red-500/20 transition-all" title="Close">
+                        <button onClick={closeDialog} className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-red-500/20 transition-all" title="Close">
                             <X className="w-3.5 h-3.5" />
                         </button>
                     </div>
@@ -681,11 +911,13 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
                 {/* Footer */}
                 <div className="flex items-center justify-between px-5 py-4 mt-auto" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <div className="text-[12px] font-normal text-zinc-600">
-                        {step === 0 ? 'Double-click to proceed immediately' : ''}
+                    <div className="max-w-[280px] text-[12px] font-normal">
+                        {validationError ? <span role="alert" className="text-red-400">{validationError}</span> : (
+                            <span className="text-zinc-600">{step === 0 ? 'Double-click to proceed immediately' : ''}</span>
+                        )}
                     </div>
                     <div className="flex items-center gap-2">
-                        {step > 0 && (
+                        {step > 0 && step < 4 && (
                             <button
                                 onClick={handleBack}
                                 className="rounded-lg px-5 py-2 text-[14px] font-normal text-zinc-400 transition-all hover:text-zinc-200"
@@ -700,10 +932,10 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                             className="flex items-center gap-2 rounded-lg px-5 py-2 text-[14px] font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-40"
                             style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', boxShadow: '0 4px 20px rgba(180,180,190,0.4), inset 0 1px 0 rgba(255,255,255,0.15)' }}
                         >
-                            {isCreating ? 'Creating…' : step < 3 ? 'Next >' : step === 3 ? 'Register' : 'Finish'}
+                            {actionLabel}
                         </button>
                         <button
-                            onClick={onClose}
+                            onClick={closeDialog}
                             className="ml-1 rounded-lg px-5 py-2 text-[14px] font-normal text-zinc-400 transition-all hover:text-zinc-200"
                             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
                         >

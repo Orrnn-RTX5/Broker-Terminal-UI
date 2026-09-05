@@ -12,6 +12,7 @@ export interface Tick {
   bid: number;
   ask: number;
   timestamp: number;
+  sourceTimestamp?: number;
   volume?: number;
 }
 
@@ -57,25 +58,37 @@ function aggregateOHLCV(ticks: Tick[], timeframeMs: number): OHLCV[] {
 
   const ohlcvMap = new Map<number, OHLCV>();
 
-  ticks.forEach((tick) => {
-    const bucketTime = Math.floor(tick.timestamp / timeframeMs) * timeframeMs;
-    const midPrice = (tick.bid + tick.ask) / 2;
+  // FIX: Aggregate in broker event-time order; UI receipt order may be delayed
+  // or reordered during reconnect and must not own candle Close.
+  [...ticks].sort((left, right) => (
+    (left.sourceTimestamp ?? left.timestamp) - (right.sourceTimestamp ?? right.timestamp)
+  )).forEach((tick) => {
+    const eventTime = tick.sourceTimestamp ?? tick.timestamp;
+    const bucketTime = Math.floor(eventTime / timeframeMs) * timeframeMs;
+    const bid = Number.isFinite(tick.bid) && tick.bid > 0 ? tick.bid : null;
+    const ask = Number.isFinite(tick.ask) && tick.ask > 0 ? tick.ask : null;
+    // FIX: Keep worker output identical to the main candle engine: Bid owns
+    // OHLC and Ask is fallback-only, never an artificial spread-sized High.
+    const chartPrice = bid ?? ask;
+    if (!Number.isFinite(chartPrice) || chartPrice === null || chartPrice <= 0) return;
+    const tickHigh = chartPrice;
+    const tickLow = chartPrice;
     const volume = tick.volume || 1;
 
     if (!ohlcvMap.has(bucketTime)) {
       ohlcvMap.set(bucketTime, {
         timestamp: bucketTime,
-        open: midPrice,
-        high: midPrice,
-        low: midPrice,
-        close: midPrice,
+        open: chartPrice,
+        high: tickHigh,
+        low: tickLow,
+        close: chartPrice,
         volume: volume,
       });
     } else {
       const ohlcv = ohlcvMap.get(bucketTime)!;
-      ohlcv.high = Math.max(ohlcv.high, midPrice);
-      ohlcv.low = Math.min(ohlcv.low, midPrice);
-      ohlcv.close = midPrice;
+      ohlcv.high = Math.max(ohlcv.high, tickHigh, ohlcv.open, chartPrice);
+      ohlcv.low = Math.min(ohlcv.low, tickLow, ohlcv.open, chartPrice);
+      ohlcv.close = chartPrice;
       ohlcv.volume += volume;
     }
   });

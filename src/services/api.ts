@@ -127,11 +127,18 @@ import {
   recordTradeOrderLatency,
   toTradeOrderTraceId,
   tradeOrderNow,
+  type TradeOrderLatencyTransport,
+  type TradeOrderTerminalStatus,
 } from './orderLatencyTelemetry';
 import {
   MARKET_ORDER_PLACEMENT_STATE_EVENT,
   type MarketOrderPlacementState,
 } from './marketOrderPlacementEvents';
+import {
+  OrderCommandTerminalError,
+  pollOrderCommandUntilTerminal,
+  type NormalizedOrderCommand,
+} from './orderCommandLifecycle';
 import { getStoredBrokerServer, resolveLoginBrokerTarget } from './brokerServers';
 import {
   getCommittedBrokerAccountSessionScope,
@@ -253,6 +260,56 @@ const mapFilledOrderToPosition = (
     tp: toFiniteNumber(fill.tp ?? fill.price_tp, fallback.tp),
     commission: toFiniteNumber(fill.commission, 0),
   } as endpoints.Position;
+};
+
+const readOrderPositionTicket = (value: unknown): number => {
+  if (!value || typeof value !== 'object') return 0;
+  const record = value as Record<string, unknown>;
+  return toFiniteNumber(
+    record.position_ticket ?? record.position_id ?? record.ticket ?? record.order_ticket ?? record.id,
+    0,
+  );
+};
+
+const readLegacyRestPosition = (response: unknown): endpoints.Position | null => {
+  if (!response || typeof response !== 'object') return null;
+  const record = response as Record<string, unknown>;
+  const data = record.data && typeof record.data === 'object' && !Array.isArray(record.data)
+    ? record.data as Record<string, unknown>
+    : undefined;
+  const status = String(record.status ?? record.state ?? data?.status ?? data?.state ?? '').trim().toLowerCase();
+  if (['accepted', 'processing', 'queued', 'executing', 'rejected', 'expired'].includes(status)) return null;
+  const candidate = data?.position && typeof data.position === 'object'
+    ? data.position
+    : record.position && typeof record.position === 'object'
+      ? record.position
+      : response;
+  return readOrderPositionTicket(candidate) > 0 ? candidate as endpoints.Position : null;
+};
+
+const mapRestCommandToPosition = (
+  command: NormalizedOrderCommand,
+  fallback: {
+    accountLogin: number;
+    symbol: string;
+    side: 'buy' | 'sell';
+    volume: number;
+    sl: number;
+    tp: number;
+  },
+): endpoints.Position => {
+  const fill = command.position;
+  if (!fill || readOrderPositionTicket(fill) <= 0) {
+    throw new Error('Order command reported filled without a position ticket');
+  }
+  return mapFilledOrderToPosition({
+    type: 'order_filled',
+    status: 'filled',
+    success: true,
+    request_id: command.clientOrderId || '',
+    client_order_id: command.clientOrderId || '',
+    data: fill as TradeSocketOrderFilled['data'],
+  }, fallback);
 };
 
 const timestampToIso = (value: unknown): string => {
@@ -564,10 +621,35 @@ export const ordersApi = {
     const clientOrderId = suppliedClientOrderId || createTradeOrderUuid();
     const provisionalTicket = createProvisionalMarketOrderTicket();
     let pendingPlacementDispatched = false;
+    let terminalTransport: TradeOrderLatencyTransport = 'rest';
+
+    const recordPlacementTerminal = (
+      terminalStatus: TradeOrderTerminalStatus,
+      error?: { code?: string; message?: string },
+    ): void => {
+      const terminalAtMs = tradeOrderNow();
+      recordTradeOrderLatency({
+        phase: 'placement_terminal',
+        transport: terminalTransport,
+        traceId: toTradeOrderTraceId(clientOrderId),
+        clientOrderId,
+        sessionScope,
+        symbol,
+        side,
+        volume,
+        terminalStatus,
+        ...(error?.code ? { errorCode: error.code } : {}),
+        ...(error?.message ? { errorMessage: error.message } : {}),
+        // This is the user-visible click-to-result duration. If a caller did
+        // not provide an intent timestamp, intentAtMs safely equals API entry.
+        totalMs: Math.max(0, terminalAtMs - intentAtMs),
+      });
+    };
 
     const dispatchPlacementState = (
       status: MarketOrderPlacementState,
       position?: unknown,
+      backendError?: { code?: string; message?: string },
     ) => {
       if (typeof window === 'undefined') return;
       window.dispatchEvent(new CustomEvent(MARKET_ORDER_PLACEMENT_STATE_EVENT, {
@@ -578,6 +660,8 @@ export const ordersApi = {
           sessionScope,
           provisionalTicket,
           ...(position !== undefined ? { position } : {}),
+          ...(backendError?.code ? { errorCode: backendError.code } : {}),
+          ...(backendError?.message ? { errorMessage: backendError.message } : {}),
         },
       }));
     };
@@ -610,7 +694,44 @@ export const ordersApi = {
       });
     };
 
+    const settleOrderCommand = async (
+      initialResponse: unknown,
+      submittedAtMs: number,
+    ): Promise<endpoints.Position> => {
+      let lastVisibleStatus: string | null = null;
+      const command = await pollOrderCommandUntilTerminal({
+        clientOrderId,
+        initialResponse,
+        readStatus: (id) => endpoints.tradingApi.getOrderCommand(id),
+        startedAtMs: submittedAtMs,
+        onStatus: (next) => {
+          if (
+            (next.status === 'accepted' || next.status === 'processing')
+            && next.status !== lastVisibleStatus
+          ) {
+            lastVisibleStatus = next.status;
+            dispatchPlacementState(next.status);
+          }
+        },
+        onPollError: (pollError) => {
+          console.warn('[Trade] Order command status read failed; retrying until execute_before:', pollError);
+        },
+      });
+      if (command.status !== 'filled') {
+        throw new OrderCommandTerminalError(command, clientOrderId);
+      }
+      return mapRestCommandToPosition(command, {
+        accountLogin,
+        symbol,
+        side,
+        volume,
+        sl,
+        tp,
+      });
+    };
+
     const placeViaRest = async (reason: string): Promise<endpoints.Position> => {
+      terminalTransport = 'rest';
       // Keep fallback-only allocations off the successful WebSocket path. The
       // durable UUID was created once above and is reused here verbatim, so a
       // transport-uncertain WS attempt still cannot become a duplicate order.
@@ -640,7 +761,15 @@ export const ordersApi = {
         totalMs: restStartedAtMs - apiStartedAtMs,
       });
       try {
+        const submittedAtMs = Date.now();
         const response = await endpoints.tradingApi.placeOrder(restOrder);
+        const legacyPosition = readLegacyRestPosition(response);
+        let terminalPosition: endpoints.Position;
+        if (legacyPosition) {
+          terminalPosition = legacyPosition;
+        } else {
+          terminalPosition = await settleOrderCommand(response, submittedAtMs);
+        }
         const restCompletedAtMs = tradeOrderNow();
         recordTradeOrderLatency({
           phase: 'rest_completed',
@@ -652,7 +781,7 @@ export const ordersApi = {
           restRttMs: restCompletedAtMs - restStartedAtMs,
           totalMs: restCompletedAtMs - apiStartedAtMs,
         });
-        return response;
+        return terminalPosition;
       } catch (error) {
         const restFailedAtMs = tradeOrderNow();
         recordTradeOrderLatency({
@@ -682,6 +811,8 @@ export const ordersApi = {
 
     let executionPromise: Promise<endpoints.Position>;
     if (socketIsReady && !hasRestOnlyFields) {
+      terminalTransport = 'websocket';
+      const wsSubmittedAtMs = Date.now();
       executionPromise = tradeSocket.placeOrder({
           account_login: accountLogin,
           symbol,
@@ -700,6 +831,38 @@ export const ordersApi = {
           tp,
         }))
         .catch((error) => {
+          const socketError = error && typeof error === 'object'
+            ? error as {
+                name?: unknown;
+                code?: unknown;
+                message?: unknown;
+                orderWasSent?: unknown;
+              }
+            : undefined;
+          if (
+            error instanceof TradeSocketOrderRejectedError
+            || socketError?.name === 'TradeSocketOrderRejectedError'
+          ) {
+            throw new OrderCommandTerminalError({
+              status: 'rejected',
+              terminal: true,
+              clientOrderId,
+              error: {
+                code: typeof socketError?.code === 'string' ? socketError.code : undefined,
+                message: typeof socketError?.message === 'string' ? socketError.message : undefined,
+              },
+              raw: error,
+            }, clientOrderId);
+          }
+          if (socketError?.orderWasSent === true) {
+            // The create frame may already have executed. Reconcile the same
+            // idempotency key via GET for the remainder of the original
+            // command window; never submit a second create request.
+            return settleOrderCommand({
+              status: 'processing',
+              client_order_id: clientOrderId,
+            }, wsSubmittedAtMs);
+          }
           if (!isRetryableTradeSocketFailure(error)) throw error;
           const fallbackCode = error && typeof error === 'object' && 'code' in error
             ? String((error as { code?: unknown }).code || '').trim().toLowerCase()
@@ -719,11 +882,41 @@ export const ordersApi = {
     try {
       result = await executionPromise;
     } catch (error) {
-      if (pendingPlacementDispatched) dispatchPlacementState('failed');
+      const errorRecord = error && typeof error === 'object'
+        ? error as { code?: unknown; message?: unknown }
+        : undefined;
+      const terminalStatus: TradeOrderTerminalStatus = error instanceof OrderCommandTerminalError
+        ? error.status
+        : 'failed';
+      const errorCode = error instanceof OrderCommandTerminalError
+        ? error.code
+        : typeof errorRecord?.code === 'string'
+          ? errorRecord.code
+          : undefined;
+      const errorMessage = error instanceof OrderCommandTerminalError
+        ? error.backendMessage || error.message
+        : typeof errorRecord?.message === 'string'
+          ? errorRecord.message
+          : undefined;
+      recordPlacementTerminal(terminalStatus, {
+        code: errorCode,
+        message: errorMessage,
+      });
+      if (pendingPlacementDispatched) {
+        if (error instanceof OrderCommandTerminalError) {
+          dispatchPlacementState(error.status, undefined, {
+            code: error.code,
+            message: error.backendMessage,
+          });
+        } else {
+          dispatchPlacementState('failed');
+        }
+      }
       throw error;
     }
 
-    dispatchPlacementState('confirmed', result);
+    recordPlacementTerminal('filled');
+    dispatchPlacementState('filled', result);
 
     if (typeof window !== 'undefined') {
       // Publish the confirmed fill itself so Toolbox can render the new row in
@@ -1255,7 +1448,7 @@ const normalizeTradeJournalTiming = (
   // terminal trade formats so unrelated durations (for example quote age in a
   // QUOTE_STALE rejection) can never be mislabeled as order latency.
   const timedTerminal = message.match(
-    /^(Order\s+(?:buy|sell)\s+\S+\s+\S+\s+filled|Close\s+(?:buy|sell)\s+\S+\s+ticket\s+\S+\s+profit\s+\S+)\s+in\s+(\d+(?:\.\d+)?)ms$/i,
+    /^(Order\s+(?:buy|sell)\s+\S+\s+\S+\s+filled|Close\s+(?:buy|sell)\s+\S+\s+ticket\s+\S+\s+profit\s+\S+|Modify\s+\S+\s+ticket\s+\S+)\s+in\s+(\d+(?:\.\d+)?)ms$/i,
   );
   if (timedTerminal) {
     return { message: timedTerminal[1], latencyMs: Number(timedTerminal[2]) };

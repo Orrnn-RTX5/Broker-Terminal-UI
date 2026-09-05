@@ -24,7 +24,7 @@ const baseStructure = {
             "openAccount": "Open an Account",
             "loginTrade": "Login to Trade Account",
             "loginWeb": "Login to Web Trader",
-            "loginMql5": "Login to MQL5.community",
+            "loginMql5": "Login to RTX5.community",
             "exit": "Exit"
         },
         "view": {

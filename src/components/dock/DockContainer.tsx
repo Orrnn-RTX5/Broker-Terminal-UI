@@ -23,7 +23,7 @@ export interface DockContainerProps {
   isRoot?: boolean;
   className?: string;
   style?: React.CSSProperties;
-  renderPanel?: (panel: DockPanelConfig, isActive: boolean) => React.ReactNode;
+  renderPanel?: (panel: DockPanelConfig, isActive: boolean, isFloating?: boolean) => React.ReactNode;
 }
 
 // ─── Shared Dock State (synchronous, no React state batching issues) ──
@@ -35,6 +35,9 @@ const dockIntent = {
 };
 
 const CHART_FOCUS_COMPONENTS = new Set(['Chart', 'EmptyChartArea']);
+const HEADERLESS_DOCK_COMPONENTS = new Set(['EmptyChartArea', 'Chart', 'MarketWatch']);
+
+const showsDockPanelHeader = (component: string): boolean => !HEADERLESS_DOCK_COMPONENTS.has(component);
 
 const isDockContainerNode = (
   node: DockContainerType | DockPanelConfig
@@ -225,6 +228,69 @@ export const DockContainer: React.FC<DockContainerProps> = ({
   } = useDockLayoutStore();
 
   const currentContainer = container || layout.root;
+  const activeTabIdForMount = currentContainer.type === 'tabs'
+    ? currentContainer.activeTab || (currentContainer.children[0] as DockPanelConfig | undefined)?.id
+    : undefined;
+  const tabsHaveChartFocusPanel = currentContainer.type === 'tabs'
+    ? containerHasChartFocusPanel(currentContainer)
+    : false;
+  const focusChartTabIdForMount = currentContainer.type === 'tabs'
+    ? getFocusChartTabId(currentContainer.children, activeTabIdForMount)
+    : null;
+  const visibleTabIdForMount = currentContainer.type === 'tabs'
+    ? (focusChartEnabled && tabsHaveChartFocusPanel
+      ? focusChartTabIdForMount
+      : activeTabIdForMount)
+    : undefined;
+  const tabPanelIdsKey = currentContainer.type === 'tabs'
+    ? currentContainer.children.map((child) => child.id).join('\u0000')
+    : '';
+  const [mountedTabState, setMountedTabState] = useState<{
+    containerId: string;
+    containerType: DockContainerType['type'];
+    panelIdsKey: string;
+    visiblePanelId: string | null;
+    panelIds: Set<string>;
+  }>(() => ({
+    containerId: currentContainer.id,
+    containerType: currentContainer.type,
+    panelIdsKey: tabPanelIdsKey,
+    visiblePanelId: visibleTabIdForMount ?? null,
+    panelIds: new Set(
+      visibleTabIdForMount && tabPanelIdsKey.split('\u0000').includes(visibleTabIdForMount)
+        ? [visibleTabIdForMount]
+        : [],
+    ),
+  }));
+
+  // Cold restored layouts initialize only the visible tab. Once a tab has
+  // been shown, keep it mounted so switching preserves its chart state.
+  const mountedTabStateIsCurrent = mountedTabState.containerId === currentContainer.id
+    && mountedTabState.containerType === currentContainer.type
+    && mountedTabState.panelIdsKey === tabPanelIdsKey
+    && mountedTabState.visiblePanelId === (visibleTabIdForMount ?? null);
+  let mountedTabIds = mountedTabState.panelIds;
+  if (!mountedTabStateIsCurrent) {
+    const validPanelIds = currentContainer.type === 'tabs'
+      ? new Set(currentContainer.children.map((child) => child.id))
+      : new Set<string>();
+    const nextPanelIds = new Set(
+      mountedTabState.containerId === currentContainer.id
+        ? [...mountedTabState.panelIds].filter((panelId) => validPanelIds.has(panelId))
+        : [],
+    );
+    if (visibleTabIdForMount && validPanelIds.has(visibleTabIdForMount)) {
+      nextPanelIds.add(visibleTabIdForMount);
+    }
+    mountedTabIds = nextPanelIds;
+    setMountedTabState({
+      containerId: currentContainer.id,
+      containerType: currentContainer.type,
+      panelIdsKey: tabPanelIdsKey,
+      visiblePanelId: visibleTabIdForMount ?? null,
+      panelIds: nextPanelIds,
+    });
+  }
 
   // Handle panel drag start
   const handlePanelDragStart = useCallback((panel: DockPanelConfig, isFloating: boolean) => (e: React.MouseEvent | React.TouchEvent) => {
@@ -434,7 +500,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
                 ) : childPanel !== null ? (
                   <PanelSlot
                     panel={childPanel}
-                    showHeader={childPanel.component !== 'EmptyChartArea' && childPanel.component !== 'Chart'}
+                    showHeader={showsDockPanelHeader(childPanel.component)}
                     isDragging={isDragging}
                     dropTargetId={dropTargetId}
                     compassDir={compassDir}
@@ -482,9 +548,9 @@ export const DockContainer: React.FC<DockContainerProps> = ({
 
   // ─── Render tabs container ──────────────────────────────────────
   if (currentContainer.type === 'tabs') {
-    const activeTabId = currentContainer.activeTab || (currentContainer.children[0] as DockPanelConfig)?.id;
-    const hasChartFocusPanel = containerHasChartFocusPanel(currentContainer);
-    const focusChartTabId = getFocusChartTabId(currentContainer.children, activeTabId);
+    const activeTabId = activeTabIdForMount;
+    const hasChartFocusPanel = tabsHaveChartFocusPanel;
+    const focusChartTabId = focusChartTabIdForMount;
 
     return (
       <div
@@ -568,6 +634,8 @@ export const DockContainer: React.FC<DockContainerProps> = ({
               ? isFocusChartTarget
               : isActive;
 
+            if (!isContentVisible && !mountedTabIds.has(panel.id)) return null;
+
             return (
               <div
                 key={panel.id}
@@ -586,7 +654,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
                 <PanelSlot
                   panel={panel}
                   isActive={isContentVisible}
-                  showHeader={panel.component !== 'EmptyChartArea' && panel.component !== 'Chart'}
+                  showHeader={showsDockPanelHeader(panel.component)}
                   isDragging={false}
                   dropTargetId={dropTargetId}
                   compassDir={compassDir}
@@ -620,6 +688,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
       ) : currentContainer.children.length === 1 && !isDockContainerNode(currentContainer.children[0]) ? (
         <PanelSlot
           panel={currentContainer.children[0] as DockPanelConfig}
+          showHeader={showsDockPanelHeader((currentContainer.children[0] as DockPanelConfig).component)}
           isDragging={isDragging}
           dropTargetId={dropTargetId}
           compassDir={compassDir}
@@ -646,7 +715,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
             <PanelSlot
               key={p.id}
               panel={p}
-              showHeader={p.component !== 'EmptyChartArea' && p.component !== 'Chart'}
+              showHeader={showsDockPanelHeader(p.component)}
               isDragging={isDragging}
               dropTargetId={dropTargetId}
               compassDir={compassDir}
@@ -674,7 +743,7 @@ interface PanelSlotProps {
   onDragStart: (e: React.MouseEvent | React.TouchEvent) => void;
   onClose: () => void;
   onFloat: () => void;
-  renderPanel?: (panel: DockPanelConfig, isActive: boolean) => React.ReactNode;
+  renderPanel?: (panel: DockPanelConfig, isActive: boolean, isFloating?: boolean) => React.ReactNode;
   className?: string;
 }
 
@@ -712,7 +781,7 @@ const PanelSlot: React.FC<PanelSlotProps> = ({
         onFloat={onFloat}
         onDragStart={onDragStart}
       >
-        {renderPanel ? renderPanel(panel, isActive) : null}
+        {renderPanel ? renderPanel(panel, isActive, false) : null}
       </DockPanel>
 
       {/* Blue preview highlight */}
@@ -733,7 +802,7 @@ const PanelSlot: React.FC<PanelSlotProps> = ({
 
 // ─── Floating Panels Layer ───────────────────────────────────────────
 export const FloatingPanelsLayer: React.FC<{
-  renderPanel?: (panel: DockPanelConfig, isActive: boolean) => React.ReactNode;
+  renderPanel?: (panel: DockPanelConfig, isActive: boolean, isFloating?: boolean) => React.ReactNode;
 }> = ({ renderPanel }) => {
   const {
     layout,
@@ -840,11 +909,12 @@ export const FloatingPanelsLayer: React.FC<{
               panel={panel}
               isActive={true}
               isFloating={true}
+              showHeader={showsDockPanelHeader(panel.component)}
               onClose={() => removePanel(panel.id)}
               onFloat={() => dockPanel(panel.id, 'root', 'center')}
               onDragStart={handleFloatingDrag(floating, panel)}
             >
-              {renderPanel?.(panel, true)}
+              {renderPanel?.(panel, true, true)}
             </DockPanel>
 
             {/* 8 resize handles */}

@@ -5,6 +5,7 @@ if (!process.env.GH_TOKEN) {
 }
 
 const { app, BrowserWindow, ipcMain, session, shell } = require('electron');
+const fs = require('fs/promises');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { exec } = require('child_process');
@@ -310,6 +311,20 @@ ipcMain.handle('shell-open-path', async (_event, filePath) => {
     }
 
     return shell.openPath(resolved);
+});
+
+// Open the terminal's own data directory without accepting a renderer-provided
+// filesystem path. This keeps the bridge scoped to app-owned storage and also
+// guarantees the folder exists on first use.
+ipcMain.handle('shell-open-data-folder', async () => {
+    try {
+        const dataFolder = path.join(app.getPath('userData'), 'data');
+        await fs.mkdir(dataFolder, { recursive: true });
+        return await shell.openPath(dataFolder);
+    } catch (error) {
+        console.error('[Electron] Failed to open app data folder', error);
+        return 'Unable to open app data folder';
+    }
 });
 
 const isAllowedExternalUrl = (value) => {

@@ -75,6 +75,19 @@ describe('OrderPanelDialog market status', () => {
     expect(screen.getByRole('button', { name: /buy by market/i }).disabled).toBe(false);
   });
 
+  it('exposes the themed order surface and live chart accessibly', () => {
+    renderDialog();
+
+    const dialog = screen.getByRole('dialog', { name: 'New Order · EURUSD' });
+    const chart = screen.getByRole('img', { name: 'Live EURUSD bid and ask tick chart' });
+
+    expect(dialog.className).toContain('rtx-order-dialog');
+    expect(dialog.querySelector('.rtx-order-dialog__header')).not.toBeNull();
+    expect(dialog.querySelector('.rtx-order-dialog__price-summary')).not.toBeNull();
+    expect(chart.getAttribute('data-testid')).toBe('order-mini-tick-chart');
+    expect(screen.getByLabelText('EURUSD live bid and ask')).not.toBeNull();
+  });
+
   it.each([
     ['closed', 'Market is closed for EURUSD.'],
     ['pre_market', 'EURUSD is in pre-market. Trading is currently disabled.'],

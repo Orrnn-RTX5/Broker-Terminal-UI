@@ -20,6 +20,7 @@ import {
     beginLoginPerformanceMeasurement,
     markAuthenticationAccepted,
     markAuthenticationRequestStarted,
+    markPostAuthenticationPhase,
     scheduleAuthenticatedShellPaintMeasurement,
     waitForLoginFeedbackPaint,
 } from '../startup/performanceBudget';
@@ -399,6 +400,23 @@ const isAbortError = (err: unknown): boolean =>
 const getErrorMessage = (err: unknown, fallback: string): string =>
     err instanceof Error ? err.message : fallback;
 
+const schedulePostLoginBookkeeping = (task: () => void): void => {
+    const run = () => {
+        try {
+            task();
+        } catch (error) {
+            console.warn('[WelcomeTerminal] Deferred login bookkeeping failed:', error);
+        }
+    };
+
+    if (typeof window.requestAnimationFrame === 'function' && document.visibilityState === 'visible') {
+        window.requestAnimationFrame(() => window.setTimeout(run, 0));
+        return;
+    }
+
+    window.setTimeout(run, 0);
+};
+
 export function WelcomeTerminal({
     onLogin,
     onPrepareTerminal,
@@ -453,9 +471,19 @@ export function WelcomeTerminal({
             cancelIdleCallback?: (handle: number) => void;
         };
 
-        const warmTransport = () => {
+        const warmLoginPath = () => {
             if (cancelled) return;
             void preloadLoginTransportRuntime().catch(() => undefined);
+            // Fetch and evaluate the authenticated viewport only after the real
+            // login form has painted and the browser reports idle time. This
+            // keeps first paint light while removing the large App-module wait
+            // from the eventual successful-login critical path.
+            try {
+                void Promise.resolve(onPrepareTerminal?.()).catch(() => undefined);
+                void Promise.resolve(onPreloadTerminalPresentation?.()).catch(() => undefined);
+            } catch {
+                // Warmup is best-effort; submit retains the retryable load path.
+            }
         };
 
         // Present the real React form for a full frame before submit-only code
@@ -465,10 +493,10 @@ export function WelcomeTerminal({
             paintedFrameId = window.requestAnimationFrame(() => {
                 if (cancelled) return;
                 if (typeof idleWindow.requestIdleCallback === 'function') {
-                    idleId = idleWindow.requestIdleCallback(warmTransport, { timeout: 1_500 });
+                    idleId = idleWindow.requestIdleCallback(warmLoginPath, { timeout: 1_500 });
                     return;
                 }
-                timeoutId = window.setTimeout(warmTransport, 0);
+                timeoutId = window.setTimeout(warmLoginPath, 0);
             });
         });
 
@@ -479,7 +507,7 @@ export function WelcomeTerminal({
             if (timeoutId !== undefined) window.clearTimeout(timeoutId);
             if (idleId !== undefined) idleWindow.cancelIdleCallback?.(idleId);
         };
-    }, []);
+    }, [onPrepareTerminal, onPreloadTerminalPresentation]);
 
     useEffect(() => () => {
         healthAbortRef.current?.abort();
@@ -488,6 +516,16 @@ export function WelcomeTerminal({
     const warmLoginTransport = useCallback(() => {
         void preloadLoginTransportRuntime().catch(() => undefined);
     }, []);
+
+    const warmLoginPath = useCallback(() => {
+        warmLoginTransport();
+        try {
+            void Promise.resolve(onPrepareTerminal?.()).catch(() => undefined);
+            void Promise.resolve(onPreloadTerminalPresentation?.()).catch(() => undefined);
+        } catch {
+            // Submit retries any warmup that did not complete.
+        }
+    }, [onPrepareTerminal, onPreloadTerminalPresentation, warmLoginTransport]);
 
     const runHealthCheck = useCallback(async (serverUrl: string, broker: BrokerServerItem) => {
         healthAbortRef.current?.abort();
@@ -601,14 +639,6 @@ export function WelcomeTerminal({
                 authV2Api,
                 persistBrokerSessionDiscovery,
             } = await preloadLoginTransportRuntime();
-            persistBrokerSessionDiscovery({
-                ...submitBroker,
-                broker_id: submitBroker.broker_id,
-                backend_url: brokerServerUrl,
-                market_api_url: brokerExtApiUrl,
-                server_url: brokerServerUrl,
-            });
-            updateDynamicUrls();
 
             markAuthenticationRequestStarted();
             const authenticationPromise = authV2Api.login({
@@ -619,6 +649,24 @@ export function WelcomeTerminal({
                 baseUrl: buildBrokerApiV2BaseUrl(brokerExtApiUrl),
                 skipDynamicUrl: true,
             });
+
+            // The request has an explicit base URL, so persist routing only
+            // after fetch dispatch. This keeps synchronous storage/session
+            // listeners out of the request-start critical path while ensuring
+            // the App graph evaluates against the selected broker.
+            persistBrokerSessionDiscovery({
+                ...submitBroker,
+                broker_id: submitBroker.broker_id,
+                backend_url: brokerServerUrl,
+                market_api_url: brokerExtApiUrl,
+                server_url: brokerServerUrl,
+            });
+            updateDynamicUrls();
+
+            // Dispatch the small, critical authentication request before a
+            // cold App/CSS preload can compete for bandwidth and main-thread
+            // evaluation. The large terminal graph still loads concurrently
+            // while the broker processes the login request.
             const terminalReadyPromise = feedbackPaintPromise
                 .then(() => onPrepareTerminal?.());
             void terminalReadyPromise.catch(() => undefined);
@@ -647,6 +695,7 @@ export function WelcomeTerminal({
                 logo_url: submitBroker.logo_url,
             });
             updateDynamicUrls();
+            markPostAuthenticationPhase('auth-session-persist');
 
             const accountId = data.account_login ?? username;
             const sessionHandoff = createAuthenticatedSessionHandoff({
@@ -656,38 +705,49 @@ export function WelcomeTerminal({
             });
             if (!sessionHandoff) throw new Error('Authentication session handoff is invalid');
 
-            localStorage.setItem('rtx_last_login', String(accountId));
-            if (rememberMe) {
-                localStorage.setItem('rtx_saved_username', String(accountId));
-            } else {
-                localStorage.removeItem('rtx_saved_username');
-            }
-            localStorage.removeItem('rtx_saved_password');
-
             if (data.expires_at) localStorage.setItem('token_expires_at', String(data.expires_at));
 
             const { useAppStore } = await loginStoreRuntimePromise;
+            markPostAuthenticationPhase('auth-store-runtime');
             const appStore = useAppStore.getState();
-            appStore.setAuthenticated(true, String(accountId), token, data.refresh_token);
-
             const loginNum = parseInt(String(accountId), 10);
-            if (!isNaN(loginNum)) {
-                appStore.addSavedAccount({
+            appStore.setAuthenticated(
+                true,
+                String(accountId),
+                token,
+                data.refresh_token,
+                sessionHandoff.expiresAt ?? undefined,
+                !isNaN(loginNum) ? {
                     login: loginNum,
                     name: data.user?.username || data.username || '',
                     server: submitBroker.broker_name || '',
                     isLive: true,
                     lastUsed: Date.now(),
-                });
-                appStore.setActiveAccount(loginNum);
-            }
+                } : undefined,
+            );
+            markPostAuthenticationPhase('auth-store-commit');
 
             // The terminal module was prepared while the broker request was in
             // flight. Keep the real login UI mounted until both authentication
             // and preparation finish, then cross to a complete viewport.
             await terminalReadyPromise;
+            markPostAuthenticationPhase('auth-terminal-ready');
             onLogin(String(accountId), sessionHandoff);
+            markPostAuthenticationPhase('auth-handoff');
             scheduleAuthenticatedShellPaintMeasurement();
+
+            // These values are useful on the next visit but are not required
+            // to render or connect the authenticated viewport. Keep their
+            // synchronous storage writes out of the first terminal paint.
+            schedulePostLoginBookkeeping(() => {
+                localStorage.setItem('rtx_last_login', String(accountId));
+                if (rememberMe) {
+                    localStorage.setItem('rtx_saved_username', String(accountId));
+                } else {
+                    localStorage.removeItem('rtx_saved_username');
+                }
+                localStorage.removeItem('rtx_saved_password');
+            });
 
         } catch (err: unknown) {
             const errorMessage = getErrorMessage(err, 'Authentication failed');
@@ -868,7 +928,9 @@ export function WelcomeTerminal({
 
                             <form
                                 onSubmit={handleSubmit}
-                                onPointerEnter={warmLoginTransport}
+                                onPointerEnter={warmLoginPath}
+                                onPointerDownCapture={warmLoginPath}
+                                onInputCapture={warmLoginPath}
                                 onFocusCapture={warmLoginTransport}
                                 className="rtx-login-form"
                                 aria-busy={loading}

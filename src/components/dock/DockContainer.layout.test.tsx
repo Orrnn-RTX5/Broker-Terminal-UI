@@ -67,6 +67,28 @@ afterAll(() => {
 });
 
 describe('DockContainer split sizing', () => {
+  it('keeps Navigator and docked Toolbox chrome while Market Watch stays headerless', () => {
+    useDockLayoutStore.getState().setLayout(layoutWithToolbox());
+
+    const { container } = render(
+      <DockContainer
+        isRoot
+        renderPanel={(panel) => <div>{panel.component}</div>}
+      />,
+    );
+
+    const marketWatch = container.querySelector('[data-dock-panel-component="marketwatch"]');
+    const navigator = container.querySelector('[data-dock-panel-component="navigator"]');
+    const toolbox = container.querySelector('[data-dock-panel-component="terminal"]');
+
+    expect(marketWatch?.querySelector('.dock-panel__header')).toBeNull();
+    expect(toolbox?.querySelector('.dock-panel__header')).not.toBeNull();
+    expect(toolbox?.querySelector('.dock-panel__title')?.textContent).toBe('Toolbox');
+    expect(toolbox?.querySelector('button[title="Close"]')).not.toBeNull();
+    expect(navigator?.querySelector('.dock-panel__header')).not.toBeNull();
+    expect(navigator?.querySelector('.dock-panel__title')?.textContent).toBe('Navigator');
+  });
+
   it('fills the chart column after Toolbox closes without changing the left sidebar split', async () => {
     useDockLayoutStore.getState().setLayout(layoutWithToolbox());
 
@@ -94,9 +116,10 @@ describe('DockContainer split sizing', () => {
     expect(verticalHandles[0].querySelector('[data-dock-resize-hit-target="vertical"]')).not.toBeNull();
     expect(horizontalHandles[0].querySelector('[data-dock-resize-hit-target="horizontal"]')).not.toBeNull();
 
-    const closeButton = toolbox?.querySelector<HTMLButtonElement>('button[title="Close"]');
-    expect(closeButton).not.toBeNull();
-    fireEvent.click(closeButton as HTMLButtonElement);
+    expect(toolbox?.querySelector('.dock-panel__header')).not.toBeNull();
+    const toolboxCloseButton = toolbox?.querySelector<HTMLButtonElement>('button[title="Close"]');
+    expect(toolboxCloseButton).not.toBeNull();
+    fireEvent.click(toolboxCloseButton!);
 
     await waitFor(() => {
       expect(container.querySelector('[data-dock-panel="toolbox"]')).toBeNull();

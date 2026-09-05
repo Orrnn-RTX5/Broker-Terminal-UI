@@ -5,6 +5,7 @@ import {
   compareCanonicalTickFreshness,
   upsertFreshestTick,
 } from '../utils/liveTickSemantics';
+import { onSessionChange } from './brokerSession';
 
 export type LiveTick = MarketTick & Partial<AppTick>;
 
@@ -45,11 +46,22 @@ const createTargetRetryState = (): TargetRetryState => ({
 const marketRetry = createTargetRetryState();
 const appRetry = createTargetRetryState();
 
+const clearDispatcherRuntime = (): void => {
+  pendingTicks.clear();
+  frozenMarketDataSources.clear();
+  if (typeof window !== 'undefined' && rafId !== null && typeof window.cancelAnimationFrame === 'function') {
+    window.cancelAnimationFrame(rafId);
+  }
+  if (timeoutId !== null) clearTimeout(timeoutId);
+  rafId = null;
+  timeoutId = null;
+  resetRetry(marketRetry);
+  resetRetry(appRetry);
+};
+
 const normalizeFreezeKey = (symbol: unknown): string => (
   String(symbol ?? '')
     .trim()
-    .split('.')[0]
-    .replace(/[^a-zA-Z0-9]/g, '')
     .toUpperCase()
 );
 
@@ -188,9 +200,8 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
   
   if (typeof window !== 'undefined' && window.rtxTickCache) {
     window.rtxTickCache.set(symbol, fullTick);
-    // Cache by uppercase and normalized keys for robust fuzzy lookup matching
-    const normKey = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    window.rtxTickCache.set(normKey, fullTick);
+    // FIX: Keep only exact broker identities. A punctuation-stripped alias can
+    // collide (`0001.HK`/`0001HK`) and let a late tick overwrite another chart.
     window.rtxTickCache.set(symbol.toUpperCase(), fullTick);
   }
   
@@ -240,17 +251,22 @@ export const flushLiveTicks = (): void => {
   scheduleRetry(appRetry);
 };
 
+/** Clear every quote owner at a broker/account/token boundary. */
+export const resetLiveMarketDataSession = (): void => {
+  // FIX: Source timestamps are comparable only within one broker session. Old
+  // queues/caches would otherwise reject or briefly repaint the new session.
+  clearDispatcherRuntime();
+  if (typeof window !== 'undefined') window.rtxTickCache?.clear();
+  useMarketDataStore.getState().clearAllData();
+  useAppStore.getState().setTicks({});
+};
+
 /** Test-only reset for module-level frame and retry ownership. */
 export const resetLiveTickDispatcherForTests = (): void => {
-  pendingTicks.clear();
-  frozenMarketDataSources.clear();
-  if (typeof window !== 'undefined' && rafId !== null && typeof window.cancelAnimationFrame === 'function') {
-    window.cancelAnimationFrame(rafId);
-  }
-  if (timeoutId !== null) clearTimeout(timeoutId);
-  rafId = null;
-  timeoutId = null;
-  resetRetry(marketRetry);
-  resetRetry(appRetry);
+  clearDispatcherRuntime();
 };
+
+// FIX: Central registration makes login, logout, account switch, broker switch,
+// and token rotation share one atomic stale-market-data invalidation path.
+onSessionChange(() => resetLiveMarketDataSession());
 

@@ -686,6 +686,7 @@ html:is(.rtx-advanced-font-small, .rtx-advanced-font-normal, .rtx-advanced-font-
 html:is(.rtx-advanced-font-small, .rtx-advanced-font-normal, .rtx-advanced-font-large)
   .rtx-app-shell :where(
     .text-\[13px\],
+    .rtx-market-watch__column-heading,
     .rtx-status-bar,
     .rtx-history-row td,
     .rtx-journal-table tbody td,
@@ -698,7 +699,6 @@ html:is(.rtx-advanced-font-small, .rtx-advanced-font-normal, .rtx-advanced-font-
   .rtx-app-shell :where(
     .text-\[12px\],
     .text-xs,
-    .rtx-market-watch__column-heading,
     .rtx-market-watch__title,
     .rtx-market-watch__time,
     .navigator-panel__header,
@@ -1102,6 +1102,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-time-btn:hover {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-time-btn.bg-zinc-600 {
+  background: #7E57C2 !important;
+  color: #ffffff !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-journal-time-btn[aria-pressed="true"] {
   background: #7E57C2 !important;
   color: #ffffff !important;
 }
@@ -1861,8 +1866,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action, .rtx-too
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-action--primary {
-  background: #ffffff !important;
-  border-color: #d0d5dd !important;
+  background: transparent !important;
+  border-color: transparent !important;
   color: #101828 !important;
 }
 
@@ -1880,6 +1885,11 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[aria-che
   border-color: #7e57c2 !important;
   box-shadow: inset 0 -2px 0 #7e57c2 !important;
   color: #6941c6 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[role="radio"][aria-checked="true"] {
+  border-radius: 3px;
+  box-shadow: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-symbol-badge {

@@ -1,5 +1,6 @@
 import type { ApiTimeframe, FetchCandlesOptions, OHLCData } from './chartDataService';
 import { chartDataService } from './chartDataService';
+import { repairPriceCandle } from './chartPriceGuards';
 import { normalizeCandlePageAscending } from '../utils/candleHistory';
 import {
   normalizeBackendCandleTimeframeOrNull,
@@ -388,14 +389,16 @@ export const aggregateM1CandlesToTimeframe = (
     const volume = finiteVolume(candle.volume);
 
     if (!existing) {
-      const next: OHLCData = {
+      const repaired = repairPriceCandle({
         time: bucketTime,
         open: candle.open,
         high: candle.high,
         low: candle.low,
         close: candle.close,
         volume,
-      };
+      });
+      if (!repaired) continue;
+      const next: OHLCData = repaired;
       if (isFiniteNumber(candle.tickVolume)) next.tickVolume = candle.tickVolume;
       if (isFiniteNumber(candle.realVolume)) next.realVolume = candle.realVolume;
       buckets.set(bucketTime, next);
@@ -406,6 +409,13 @@ export const aggregateM1CandlesToTimeframe = (
     existing.low = Math.min(existing.low, candle.low);
     existing.close = candle.close;
     existing.volume += volume;
+    const repairedExisting = repairPriceCandle(existing);
+    if (repairedExisting) {
+      existing.high = repairedExisting.high;
+      existing.low = repairedExisting.low;
+      existing.open = repairedExisting.open;
+      existing.close = repairedExisting.close;
+    }
 
     const nextTickVolume = sumOptionalVolume(existing.tickVolume, candle.tickVolume);
     if (nextTickVolume !== undefined) existing.tickVolume = nextTickVolume;

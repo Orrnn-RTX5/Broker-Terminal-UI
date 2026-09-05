@@ -5,6 +5,7 @@ import {
   isWithinInstantResponseBudget,
   markAuthenticationAccepted,
   markAuthenticationRequestStarted,
+  markPostAuthenticationPhase,
   nearestRankPercentile,
   scheduleAuthenticatedShellPaintMeasurement,
   waitForLoginFeedbackPaint,
@@ -17,6 +18,7 @@ afterEach(() => {
   document.documentElement.removeAttribute('data-rtx-perf-login-auth-ms');
   document.documentElement.removeAttribute('data-rtx-perf-login-feedback-ms');
   document.documentElement.removeAttribute('data-rtx-perf-auth-shell-ms');
+  document.documentElement.removeAttribute('data-rtx-perf-auth-store-commit-ms');
   document.body.replaceChildren();
 });
 
@@ -49,6 +51,18 @@ describe('100 ms startup performance budget', () => {
 
     expect(document.documentElement.getAttribute('data-rtx-perf-login-auth-ms')).toBe('150.0');
     expect(document.documentElement.getAttribute('data-rtx-perf-auth-network-ms')).toBe('80.0');
+  });
+
+  it('publishes cumulative post-authentication phase timing', () => {
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValueOnce(100).mockReturnValueOnce(120).mockReturnValueOnce(200).mockReturnValueOnce(235);
+
+    beginLoginPerformanceMeasurement();
+    markAuthenticationRequestStarted();
+    markAuthenticationAccepted();
+    markPostAuthenticationPhase('auth-store-commit');
+
+    expect(document.documentElement.getAttribute('data-rtx-perf-auth-store-commit-ms')).toBe('35.0');
   });
 
   it('records feedback only after the disabled submit state and feedback marker exist', async () => {

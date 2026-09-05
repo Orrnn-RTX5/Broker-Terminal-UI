@@ -1,8 +1,10 @@
 import { apiClient } from './client';
+import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
 import { API_V2_BASE_URL, isLocalViteDevServer, normalizeBrokerServerUrl } from '../config/api';
 import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
 import { requirePositionCloseTicket } from './positionClose';
+import { createTradeOrderUuid, isTradeOrderUuidV4 } from './tradeSocket';
 
 const resolveV2BaseUrl = (baseUrl?: string): string => {
   if (!baseUrl) return API_V2_BASE_URL;
@@ -59,6 +61,7 @@ type EquityPointRow = {
 
 type TradingPositionsResponse = Position[] | { positions?: Position[]; count?: number };
 type TradingOrdersResponse = Order[] | { orders?: Order[]; count?: number };
+export type OrderCommandResponse = Record<string, unknown>;
 type TickRow = Record<string, unknown>;
 
 const extractInstrumentRows = (payload: unknown): InstrumentRow[] => {
@@ -95,6 +98,10 @@ const normalizeOrderPayload = (order: CreateOrderRequest): CreateOrderRequest & 
   }
 
   const rest = { ...order };
+  const suppliedClientOrderId = String(order.client_order_id ?? '').trim();
+  if (suppliedClientOrderId && !isTradeOrderUuidV4(suppliedClientOrderId)) {
+    throw new Error('client_order_id must be a UUID v4');
+  }
   delete rest.account_login;
   delete rest.quantity;
   delete rest.sl;
@@ -104,6 +111,7 @@ const normalizeOrderPayload = (order: CreateOrderRequest): CreateOrderRequest & 
   return {
     ...rest,
     login,
+    client_order_id: suppliedClientOrderId || createTradeOrderUuid(),
     side: normalizeSide(order.side),
     volume,
     price_sl: order.price_sl ?? order.sl,
@@ -397,20 +405,14 @@ export interface EconomicEvent {
 // ====================
 
 type LoginPayload = {
-  username?: string | number;
+  username?: string;
+  login?: number;
   password: string;
   broker_id?: string;
 };
 
-const normalizeLoginCredentials = (credentials: LoginCredentials): LoginPayload => {
-  const username = credentials.username ?? credentials.login ?? credentials.email;
-
-  return {
-    ...(username !== undefined ? { username } : {}),
-    password: credentials.password,
-    ...(credentials.broker_id ? { broker_id: credentials.broker_id } : {}),
-  };
-};
+const normalizeLoginCredentials = (credentials: LoginCredentials): LoginPayload =>
+  normalizeBrokerAuthLoginPayload(credentials);
 
 export const authApi = {
   login: (credentials: LoginCredentials, options?: { baseUrl?: string }) =>
@@ -517,8 +519,14 @@ export const tradingApi = {
   getPendingOrders: (login: number): Promise<TradingOrdersResponse> =>
     apiClient.get<Order[]>(`/orders/pending/${requireLogin(login, '/api/v2/orders/pending/{login}')}`, { baseUrl: API_V2_BASE_URL }),
 
-  placeOrder: (order: CreateOrderRequest): Promise<Position> =>
-    apiClient.post<Position>('/orders', normalizeOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
+  placeOrder: (order: CreateOrderRequest): Promise<Position | OrderCommandResponse> =>
+    apiClient.post<Position | OrderCommandResponse>('/orders', normalizeOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
+
+  getOrderCommand: (clientOrderId: string): Promise<OrderCommandResponse> =>
+    apiClient.get<OrderCommandResponse>(
+      `/order-commands/${encodeURIComponent(clientOrderId)}`,
+      { baseUrl: API_V2_BASE_URL },
+    ),
 
   placePendingOrder: (order: PendingOrderRequest): Promise<Order> =>
     apiClient.post<Order>('/orders/pending', normalizePendingOrderPayload(order), { baseUrl: API_V2_BASE_URL }),

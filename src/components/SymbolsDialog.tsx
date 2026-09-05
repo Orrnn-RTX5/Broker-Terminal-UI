@@ -682,7 +682,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
       {/* Dialog Window */}
       <div
         ref={dialogRef}
-        className="absolute pointer-events-auto flex flex-col bg-[#1a1d27] border border-[#3a3e52] shadow-2xl select-none"
+        className="rtx-symbols-dialog absolute pointer-events-auto flex flex-col bg-[#1a1d27] border border-[#3a3e52] shadow-2xl select-none"
         style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, minWidth: 500, minHeight: 360 }}
         onClick={e => e.stopPropagation()}
       >

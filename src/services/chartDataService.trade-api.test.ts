@@ -1,5 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CandleAuthBrokerMismatchError, ChartDataService } from './chartDataService';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  CANDLE_STREAM_BASE_RECONNECT_DELAY_MS,
+  CANDLE_STREAM_HEARTBEAT_INTERVAL_MS,
+  CANDLE_STREAM_MAX_SUBSCRIPTION_RETRIES,
+  CANDLE_STREAM_OPEN_TIMEOUT_MS,
+  CANDLE_STREAM_PONG_TIMEOUT_MS,
+  CANDLE_STREAM_SUBSCRIPTION_ACK_TIMEOUT_MS,
+  CandleAuthBrokerMismatchError,
+  ChartDataService,
+} from './chartDataService';
 import {
   buildBrokerApiV2,
   buildBrokerWsV2Uri,
@@ -18,7 +27,7 @@ class FakeWebSocket {
   closedWith: { code?: number; reason?: string } | null = null;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: { code: number; reason: string }) => void) | null = null;
   onerror: (() => void) | null = null;
 
   constructor(public url: string) {
@@ -41,7 +50,12 @@ class FakeWebSocket {
   close(code?: number, reason?: string) {
     this.readyState = FakeWebSocket.CLOSED;
     this.closedWith = { code, reason };
-    this.onclose?.();
+    this.onclose?.({ code: code ?? 1000, reason: reason ?? '' });
+  }
+
+  emitClose(code = 1006, reason = '') {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.onclose?.({ code, reason });
   }
 }
 
@@ -64,8 +78,8 @@ const setDesktopRuntime = () => {
 const expectedCandleUrl = () =>
   `${(buildBrokerApiV2() || API_V2_BASE_URL).replace(/\/$/, '')}/candles/EUR%2FUSD?timeframe=M15&limit=50`;
 
-const expectedPublicCandleUrl = (symbol = 'EURUSD', tf = '15m', limit = 50) =>
-  `${(buildBrokerApiV2() || API_V2_BASE_URL).replace(/\/api\/v2\/?$/, '')}/api/v1/candles?symbol=${symbol}&tf=${tf}&limit=${limit}`;
+const expectedPublicCandleUrl = (symbol = 'EUR/USD', tf = '15m', limit = 50) =>
+  `${(buildBrokerApiV2() || API_V2_BASE_URL).replace(/\/api\/v2\/?$/, '')}/api/v1/candles?symbol=${encodeURIComponent(symbol)}&tf=${tf}&limit=${limit}`;
 
 const utcSeconds = (year: number, month: number, day: number, hour = 0, minute = 0) =>
   Date.UTC(year, month - 1, day, hour, minute) / 1000;
@@ -134,6 +148,11 @@ describe('trade candle normalization and websocket cleanup', () => {
     setDesktopRuntime();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it('normalizes candle arrays from contract response wrappers, de-dupes by bucket, and sorts', () => {
     const service = new ChartDataService();
 
@@ -165,6 +184,35 @@ describe('trade candle normalization and websocket cleanup', () => {
     }, 'M1')).toEqual([
       { time: 1760005200, open: 1.2, high: 1.25, low: 1.18, close: 1.22, volume: 12, tickVolume: 12 },
       { time: 1760005260, open: 1.22, high: 1.3, low: 1.21, close: 1.28, volume: 9, tickVolume: 9 },
+    ]);
+  });
+
+  it('preserves backend forming and finalized candle metadata', () => {
+    const service = new ChartDataService();
+
+    expect(service.normalizeCandles({
+      candles: [
+        { time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5, closed: false },
+        { time: 1760000460, open: 1.5, high: 2.1, low: 1.4, close: 2, volume: 6, is_complete: true },
+      ],
+    }, 'M1')).toEqual([
+      { time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5, closed: false },
+      { time: 1760000460, open: 1.5, high: 2.1, low: 1.4, close: 2, volume: 6, closed: true },
+    ]);
+  });
+
+  it('rejects malformed backend OHLC instead of repairing or inventing its wick values', () => {
+    const service = new ChartDataService();
+
+    expect(service.normalizeCandles({
+      candles: [
+        { time: 1760000400, open: 4379, high: 4382, low: 4378, close: 4381, volume: 10 },
+        { time: 1760000460, open: 0, high: 0, low: 0, close: 0, volume: 1 },
+        { time: 1760000520, open: 4381, high: 280000, low: 4380, close: 4382, volume: 1 },
+        { time: 1760000580, open: 4382, high: 4381, low: 4380, close: 4381, volume: 1 },
+      ],
+    }, 'M1')).toEqual([
+      { time: 1760000400, open: 4379, high: 4382, low: 4378, close: 4381, volume: 10 },
     ]);
   });
 
@@ -237,9 +285,34 @@ describe('trade candle normalization and websocket cleanup', () => {
 
     expect(service.shouldRepaintForCandle(candles, { time: 100, open: 1.1, high: 2.1, low: 1, close: 2, volume: 12 })).toBe(true);
     expect(service.mergeCandle(candles, { time: 100, open: 1.1, high: 2.1, low: 1, close: 2, volume: 12 })).toEqual([
-      { time: 100, open: 1.1, high: 2.1, low: 1, close: 2, volume: 12 },
+      { time: 100, open: 1.1, high: 2.1, low: 0.9, close: 2, volume: 12 },
       { time: 160, open: 1.5, high: 1.8, low: 1.4, close: 1.7, volume: 8 },
     ]);
+  });
+
+  it('lets a finalized server correction replace an earlier bad wick exactly', () => {
+    const service = new ChartDataService();
+    const candles = [
+      { time: 100, open: 1, high: 9, low: 0.1, close: 1.5, volume: 40 },
+    ];
+
+    expect(service.mergeCandle(candles, {
+      time: 100,
+      open: 1.1,
+      high: 2,
+      low: 1,
+      close: 1.8,
+      volume: 12,
+      closed: true,
+    })).toEqual([{
+      time: 100,
+      open: 1.1,
+      high: 2,
+      low: 1,
+      close: 1.8,
+      volume: 12,
+      closed: true,
+    }]);
   });
 
   it('loads REST candles from the configured v2 base, ignoring legacy API base overrides', async () => {
@@ -255,7 +328,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expectedPublicCandleUrl(),
+      expectedCandleUrl(),
       expect.any(Object),
     );
   });
@@ -272,7 +345,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15' })).resolves.toHaveLength(1);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expectedPublicCandleUrl('EURUSD', '15m').replace(/&limit=50$/, ''),
+      expectedCandleUrl().replace(/&limit=50$/, ''),
       expect.any(Object),
     );
   });
@@ -289,7 +362,7 @@ describe('trade candle normalization and websocket cleanup', () => {
     await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expectedPublicCandleUrl(),
+      expectedCandleUrl(),
       expect.any(Object),
     );
   });
@@ -320,7 +393,133 @@ describe('trade candle normalization and websocket cleanup', () => {
 
     const service = new ChartDataService();
     await expect(service.fetchCandles({ symbol: 'BTCUSD', timeframe: 'M5', count: 50 })).resolves.toHaveLength(1);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v1/candles?symbol=BTCUSD&tf=5m');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/v2/candles/BTCUSD?timeframe=M5');
+  });
+
+  it('prefers authenticated TEST v2 OHLC and does not query the public bridge when v2 is valid', async () => {
+    localStorage.setItem('broker_id', 'TEST');
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
+    const authenticatedCandles = [
+      { time: 1788508800, open: 4474.2, high: 4474.8, low: 4473.9, close: 4474.6, volume: 18 },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { candles: authenticatedCandles } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new ChartDataService();
+    await expect(service.fetchCandles({ symbol: 'XAUUSD', timeframe: 'M1', count: 5000 }))
+      .resolves.toEqual(authenticatedCandles);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${(buildBrokerApiV2() || API_V2_BASE_URL).replace(/\/$/, '')}/candles/XAUUSD?timeframe=M1&limit=5000`,
+      expect.objectContaining({
+        headers: { Authorization: expect.stringMatching(/^Bearer /) },
+      }),
+    );
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/v1/candles'))).toBe(false);
+  });
+
+  it('refreshes from the broker instead of reusing a stale in-memory snapshot', async () => {
+    localStorage.setItem('broker_id', 'TEST');
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candles: [{ time: 1788508800, open: 4474.2, high: 4474.8, low: 4473.9, close: 4474.6, volume: 18 }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candles: [{ time: 1788508800, open: 4474.2, high: 4475.1, low: 4473.9, close: 4475, volume: 22 }],
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new ChartDataService();
+    const first = await service.fetchCandles({ symbol: 'XAUUSD', timeframe: 'M1', count: 5000 });
+    first[0].time -= 3600;
+    first[0].close = 1;
+
+    const second = service.fetchCandles({ symbol: 'XAUUSD', timeframe: 'M1', count: 5000 });
+
+    await expect(second)
+      .resolves.toEqual([
+        { time: 1788508800, open: 4474.2, high: 4475.1, low: 4473.9, close: 4475, volume: 22 },
+      ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps same-key requests independent when an older request is aborted', async () => {
+    localStorage.setItem('broker_id', 'TEST');
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const abortError = new Error('Aborted');
+    abortError.name = 'AbortError';
+    const fetchMock = vi.fn()
+      .mockImplementationOnce((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(abortError), { once: true });
+      }))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candles: [{ time: 1788508800, open: 4474.2, high: 4475.1, low: 4473.9, close: 4475, volume: 22 }],
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new ChartDataService();
+    const first = service.fetchCandles({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      count: 5000,
+      signal: firstController.signal,
+    });
+    const second = service.fetchCandles({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      count: 5000,
+      signal: secondController.signal,
+    });
+    firstController.abort();
+
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(second).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not reuse an in-memory candle snapshot across account sessions', async () => {
+    localStorage.setItem('broker_id', 'TEST');
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1001 }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candles: [{ time: 1788508800, open: 4474.2, high: 4474.8, low: 4473.9, close: 4474.6, volume: 18 }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          candles: [{ time: 1788508800, open: 4480, high: 4481, low: 4479, close: 4480.5, volume: 22 }],
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const service = new ChartDataService();
+    await service.fetchCandles({ symbol: 'XAUUSD', timeframe: 'M1', count: 5000 });
+    localStorage.setItem('auth_token', makeJwt({ broker_id: 'fxtrust', account_login: 1002 }));
+
+    await expect(service.fetchCandles({ symbol: 'XAUUSD', timeframe: 'M1', count: 5000 }))
+      .resolves.toEqual([
+        { time: 1788508800, open: 4480, high: 4481, low: 4479, close: 4480.5, volume: 22 },
+      ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('allows candle requests when the auth token broker matches the active broker', async () => {
@@ -433,7 +632,7 @@ describe('trade candle normalization and websocket cleanup', () => {
       await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://broker.example.com/api/v1/candles?symbol=EURUSD&tf=15m&limit=50',
+        'https://broker.example.com/api/v2/candles/EUR%2FUSD?timeframe=M15&limit=50',
         expect.any(Object),
       );
     });
@@ -453,7 +652,7 @@ describe('trade candle normalization and websocket cleanup', () => {
       await expect(service.fetchCandles({ symbol: 'EUR/USD', timeframe: 'M15', count: 50 })).resolves.toHaveLength(1);
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://broker.example.com/api/v1/candles?symbol=EURUSD&tf=15m&limit=50',
+        'https://broker.example.com/api/v2/candles/EUR%2FUSD?timeframe=M15&limit=50',
         expect.any(Object),
       );
     });
@@ -546,8 +745,8 @@ describe('trade candle normalization and websocket cleanup', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      expectedPublicCandleUrl(),
       expectedCandleUrl(),
+      expectedPublicCandleUrl(),
     ]);
   });
 
@@ -571,8 +770,8 @@ describe('trade candle normalization and websocket cleanup', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      expectedPublicCandleUrl(),
       expectedCandleUrl(),
+      expectedPublicCandleUrl(),
     ]);
     expect(String(fetchMock.mock.calls[0][0])).not.toContain('/history/candles');
   });
@@ -593,8 +792,8 @@ describe('trade candle normalization and websocket cleanup', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      expectedPublicCandleUrl(),
       expectedCandleUrl(),
+      expectedPublicCandleUrl(),
     ]);
   });
 
@@ -640,13 +839,13 @@ describe('trade candle normalization and websocket cleanup', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ candles: [] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
         json: async () => {
           throw new Error('Malformed core candle response');
         },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ candles: [] }),
       });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -656,8 +855,8 @@ describe('trade candle normalization and websocket cleanup', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      expectedPublicCandleUrl(),
       expectedCandleUrl(),
+      expectedPublicCandleUrl(),
     ]);
   });
 
@@ -722,6 +921,182 @@ describe('trade candle normalization and websocket cleanup', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(expectedPublicCandleUrl());
   });
 
+  it('times out a socket stuck in CONNECTING and reconnects after backoff', () => {
+    vi.useFakeTimers();
+    localStorage.setItem('auth_token', 'jwt-token');
+    const service = new ChartDataService();
+
+    const subscription = service.subscribeCandles({
+      symbol: 'EURUSD',
+      timeframe: 'M15',
+    });
+    const stalledSocket = FakeWebSocket.instances[0];
+
+    vi.advanceTimersByTime(CANDLE_STREAM_OPEN_TIMEOUT_MS);
+    expect(stalledSocket.closedWith).toEqual({
+      code: 4000,
+      reason: 'Candle stream open timeout',
+    });
+
+    vi.advanceTimersByTime(CANDLE_STREAM_BASE_RECONNECT_DELAY_MS - 1);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    subscription.close();
+  });
+
+  it('reports stream readiness only after the exact subscription acknowledgement', () => {
+    localStorage.setItem('auth_token', 'jwt-token');
+    const service = new ChartDataService();
+    const onConnected = vi.fn();
+    const onCandle = vi.fn();
+    const candle = { time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 };
+
+    const subscription = service.subscribeCandles({
+      symbol: 'EURUSD.r',
+      timeframe: 'M15',
+      onConnected,
+      onCandle,
+    });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+
+    expect(onConnected).not.toHaveBeenCalled();
+    socket.emit({ type: 'subscribed', channel: 'candles.EURUSD.M15' });
+    expect(onConnected).not.toHaveBeenCalled();
+
+    socket.emit({ type: 'subscribed', channel: 'candles.EURUSD.R.M15' });
+    expect(onConnected).toHaveBeenCalledOnce();
+
+    socket.emit({ channel: 'candles.EURUSD.R.M15', data: candle });
+    expect(onConnected).toHaveBeenCalledOnce();
+    expect(onCandle).toHaveBeenCalledWith(candle);
+
+    subscription.close();
+  });
+
+  it('treats exact candle data as readiness when the acknowledgement is absent', () => {
+    localStorage.setItem('auth_token', 'jwt-token');
+    const service = new ChartDataService();
+    const onConnected = vi.fn();
+    const onCandle = vi.fn();
+    const candle = { time: 1760000400, open: 1, high: 2, low: 0.5, close: 1.5, volume: 5 };
+
+    const subscription = service.subscribeCandles({
+      symbol: 'EURUSD',
+      timeframe: 'M15',
+      onConnected,
+      onCandle,
+    });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+
+    expect(onConnected).not.toHaveBeenCalled();
+    socket.emit({ channel: 'candles.EURUSD.M15', data: candle });
+
+    expect(onConnected).toHaveBeenCalledOnce();
+    expect(onCandle).toHaveBeenCalledWith(candle);
+
+    subscription.close();
+  });
+
+  it('retries a missing acknowledgement three times on the same socket before reconnecting', () => {
+    vi.useFakeTimers();
+    localStorage.setItem('auth_token', 'jwt-token');
+    const service = new ChartDataService();
+
+    const subscription = service.subscribeCandles({
+      symbol: 'EURUSD',
+      timeframe: 'M15',
+    });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    const subscriptionFrames = () => parseSent(socket)
+      .filter((message) => message.action === 'subscribe');
+
+    expect(subscriptionFrames()).toHaveLength(1);
+    for (let retry = 1; retry <= CANDLE_STREAM_MAX_SUBSCRIPTION_RETRIES; retry += 1) {
+      vi.advanceTimersByTime(CANDLE_STREAM_SUBSCRIPTION_ACK_TIMEOUT_MS);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(subscriptionFrames()).toHaveLength(retry + 1);
+    }
+
+    vi.advanceTimersByTime(CANDLE_STREAM_SUBSCRIPTION_ACK_TIMEOUT_MS);
+    expect(subscriptionFrames()).toHaveLength(CANDLE_STREAM_MAX_SUBSCRIPTION_RETRIES + 1);
+    expect(socket.closedWith).toEqual({
+      code: 4000,
+      reason: 'Candle subscription acknowledgement timeout',
+    });
+
+    vi.advanceTimersByTime(CANDLE_STREAM_BASE_RECONNECT_DELAY_MS - 1);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    subscription.close();
+  });
+
+  it('reconnects an open candle stream after heartbeat activity times out', () => {
+    vi.useFakeTimers();
+    localStorage.setItem('auth_token', 'jwt-token');
+    const service = new ChartDataService();
+
+    const subscription = service.subscribeCandles({
+      symbol: 'EURUSD',
+      timeframe: 'M15',
+    });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.emit({ type: 'subscribed', channel: 'candles.EURUSD.M15' });
+    socket.sent.length = 0;
+
+    vi.advanceTimersByTime(CANDLE_STREAM_HEARTBEAT_INTERVAL_MS);
+    expect(parseSent(socket)).toEqual([
+      { type: 'ping', timestamp: expect.any(Number) },
+    ]);
+
+    vi.advanceTimersByTime(CANDLE_STREAM_PONG_TIMEOUT_MS);
+    expect(socket.closedWith).toEqual({
+      code: 4000,
+      reason: 'Candle stream heartbeat timeout',
+    });
+
+    vi.advanceTimersByTime(CANDLE_STREAM_BASE_RECONNECT_DELAY_MS - 1);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    subscription.close();
+  });
+
+  it('never reconnects after an intentional candle stream close', () => {
+    vi.useFakeTimers();
+    localStorage.setItem('auth_token', 'jwt-token');
+    const service = new ChartDataService();
+
+    const subscription = service.subscribeCandles({
+      symbol: 'EURUSD',
+      timeframe: 'M15',
+    });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.emit({ type: 'subscribed', channel: 'candles.EURUSD.M15' });
+
+    subscription.close();
+    expect(socket.closedWith).toEqual({
+      code: 1000,
+      reason: 'Chart candle subscription closed',
+    });
+
+    vi.advanceTimersByTime(
+      CANDLE_STREAM_OPEN_TIMEOUT_MS
+      + CANDLE_STREAM_HEARTBEAT_INTERVAL_MS
+      + CANDLE_STREAM_PONG_TIMEOUT_MS,
+    );
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
   it('unsubscribes and closes candle streams without leaking the channel', () => {
     localStorage.setItem('auth_token', 'jwt-token');
     localStorage.setItem('server_url', 'https://broker.example.com');
@@ -739,12 +1114,12 @@ describe('trade candle normalization and websocket cleanup', () => {
     ws.open();
     expect(parseSent(ws)).toEqual([
       { action: 'auth', token: 'jwt-token' },
-      { action: 'subscribe', channel: 'candles.EURUSD.M15', channels: ['candles.EURUSD.M15'] },
+      { action: 'subscribe', channel: 'candles.EUR/USD.M15', channels: ['candles.EUR/USD.M15'] },
     ]);
 
     subscription.close();
 
-    expect(parseSent(ws).at(-1)).toEqual({ action: 'unsubscribe', channel: 'candles.EURUSD.M15', channels: ['candles.EURUSD.M15'] });
+    expect(parseSent(ws).at(-1)).toEqual({ action: 'unsubscribe', channel: 'candles.EUR/USD.M15', channels: ['candles.EUR/USD.M15'] });
     expect(ws.closedWith).toEqual({ code: 1000, reason: 'Chart candle subscription closed' });
   });
 
@@ -775,15 +1150,52 @@ describe('trade candle normalization and websocket cleanup', () => {
 
     ws.emit({ type: 'snapshot', symbol: 'EUR/USD', period: '15m', data: { candles: [candle] } });
     ws.emit({ type: 'candle', symbol: 'EUR/USD', timeframe: 'M15', data: candle });
+    // Punctuation is part of broker identity: the stripped channel must not
+    // leak into an exact EUR/USD subscription.
     ws.emit({ channel: 'candles.EURUSD.M15', data: { ...candle, close: 1.6 } });
+    ws.emit({ channel: 'candles.EUR/USD.M15', data: { ...candle, close: 1.7 } });
 
     expect(onSnapshot).toHaveBeenCalledTimes(1);
     expect(onSnapshot).toHaveBeenCalledWith([candle]);
     expect(onCandle).toHaveBeenCalledTimes(2);
     expect(onCandle).toHaveBeenNthCalledWith(1, candle);
-    expect(onCandle).toHaveBeenNthCalledWith(2, { ...candle, close: 1.6 });
+    expect(onCandle).toHaveBeenNthCalledWith(2, { ...candle, close: 1.7 });
 
     subscription.close();
+  });
+
+  it('preserves a dot-suffixed broker symbol in subscribe, routing, and unsubscribe channels', () => {
+    localStorage.setItem('auth_token', 'jwt-token');
+    const service = new ChartDataService();
+    const onCandle = vi.fn();
+    const candle = { time: 1760000400, open: 100, high: 101, low: 99, close: 100.5, volume: 5 };
+
+    const subscription = service.subscribeCandles({
+      symbol: 'eurusd.r',
+      timeframe: 'M1',
+      onCandle,
+    });
+
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    expect(parseSent(ws).at(-1)).toEqual({
+      action: 'subscribe',
+      channel: 'candles.EURUSD.R.M1',
+      channels: ['candles.EURUSD.R.M1'],
+    });
+
+    ws.emit({ channel: 'candles.EURUSD.M1', data: candle });
+    expect(onCandle).not.toHaveBeenCalled();
+    ws.emit({ channel: 'candles.EURUSD.R.M1', data: candle });
+    expect(onCandle).toHaveBeenCalledOnce();
+    expect(onCandle).toHaveBeenCalledWith(candle);
+
+    subscription.close();
+    expect(parseSent(ws).at(-1)).toEqual({
+      action: 'unsubscribe',
+      channel: 'candles.EURUSD.R.M1',
+      channels: ['candles.EURUSD.R.M1'],
+    });
   });
 
   it('subscribes once per trade socket channel and removes the websocket subscription after the last handler', () => {

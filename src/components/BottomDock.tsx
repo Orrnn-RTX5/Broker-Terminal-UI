@@ -1,8 +1,7 @@
 import { Icon } from './ui/Icon';
-import { PriceDisplay } from './ui/PriceDisplay';
 import { ContextMenu, type ContextMenuItemConfig } from './ui/ContextMenu';
 import { ModifyPositionDialog } from './ModifyPositionDialog';
-import { lazy, Suspense, useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { lazy, memo, Suspense, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { CalendarTab } from './layout/CalendarTab';
 import { CodeBaseTab, ArticlesTab, ExpertsTab } from './layout/ResearchTabs';
 import { JournalTab } from './layout/JournalTab';
@@ -16,7 +15,6 @@ import {
     buildExposureSummary,
     formatExposureVolume,
     type ExposureAccountInput,
-    type ExposurePieSegment,
     type ExposurePositionInput,
 } from './BottomDock.exposure';
 import { resolveTradeAccountMetrics, resolveTradeProfit } from './BottomDock.trade';
@@ -26,6 +24,21 @@ const LazyHistoryDownloader = lazy(async () => {
     const module = await import('./HistoryDownloader');
     return { default: module.HistoryDownloader };
 });
+
+// Memoized tab surfaces: hidden tabs must not re-render on live tick bursts,
+// otherwise every tab switch waits behind re-painting invisible tables.
+const MemoToolboxTab = memo(ToolboxTab);
+const MemoExposureTab = memo(ExposureTab);
+const MemoHistoryTab = memo(HistoryTab);
+const MemoCalendarTab = memo(CalendarTab);
+const MemoCodeBaseTab = memo(CodeBaseTab);
+const MemoArticlesTab = memo(ArticlesTab);
+const MemoExpertsTab = memo(ExpertsTab);
+const MemoJournalTab = memo(JournalTab);
+
+// Stable empty reference handed to hidden live tabs so memo() can skip them
+// during tick bursts; live data resumes the render that makes them visible.
+const HIDDEN_TAB_ROWS: never[] = [];
 
 // Rendered wherever the backend did not report an account metric. Never show "0.00" for a
 // value the backend never sent — a false zero reads as a real (and alarming) account state.
@@ -135,8 +148,8 @@ const TRADE_FOOTER_METRIC_DEFS: TradeFooterMetricDef[] = [
     { key: 'balance', label: 'Balance' },
     { key: 'equity', label: 'Equity' },
     { key: 'margin', label: 'Margin' },
-    { key: 'freeMargin', label: 'Free Margin' },
-    { key: 'marginLevel', label: 'Margin Level' },
+    { key: 'freeMargin', label: 'Free margin' },
+    { key: 'marginLevel', label: 'Level' },
     { key: 'swap', label: 'Swap' },
     { key: 'commission', label: 'Commission' },
 ];
@@ -307,7 +320,6 @@ export function BottomDock({
     // This prevents DockWorkspace.renderPanel from needing to re-create when positions change
     const [account, setAccount] = useState<any>(useAppStore.getState().account);
     const [positions, setPositions] = useState<any[]>(useAppStore.getState().positions);
-    const history = useAppStore(s => s.trades);
     const toolboxTrade = useToolboxTradeData();
 
     // Value-level caches — prevent setState when broker sends new objects with same field values
@@ -356,20 +368,22 @@ export function BottomDock({
             unsub();
             if (pending) clearTimeout(pending);
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const [activeTab, setActiveTab] = useState<TabType>('Trade');
-    
+    const isTradeSurfaceLive = activeTab === 'Trade';
+    const isExposureSurfaceLive = activeTab === 'Exposure';
+
     const [isResizing, setIsResizing] = useState(false);
 
-    const refreshTradeSoon = () => {
+    const refreshTradeSoon = useCallback(() => {
         window.setTimeout(() => {
             void toolboxTrade.refresh();
         }, 1500);
-    };
+    }, [toolboxTrade.refresh]);
 
-    const handleTradeClosePosition = (id: number, volume?: number) => {
+    const handleTradeClosePosition = useCallback((id: number, volume?: number) => {
         try {
             const result = onClosePosition(id, volume) as unknown;
             if (result && typeof (result as any).finally === 'function') {
@@ -381,9 +395,9 @@ export function BottomDock({
             refreshTradeSoon();
             throw error;
         }
-    };
+    }, [onClosePosition, refreshTradeSoon]);
 
-    const handleTradeCloseBulk = (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => {
+    const handleTradeCloseBulk = useCallback((type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => {
         try {
             const result = onCloseBulk?.(type, symbol) as unknown;
             if (result && typeof (result as any).finally === 'function') {
@@ -395,19 +409,19 @@ export function BottomDock({
             refreshTradeSoon();
             throw error;
         }
-    };
+    }, [onCloseBulk, refreshTradeSoon]);
 
     // Helpers
-    const formatMoney = (val: number | undefined | null) => {
+    const formatMoney = useCallback((val: number | undefined | null) => {
         const v = val ?? 0;
         if (isNaN(v)) return '0.00';
         // MT5 style uses spaces instead of commas for large numbers
         const parts = v.toFixed(2).split('.');
         parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
         return parts.join('.');
-    };
+    }, []);
 
-    const formatDate = (dateStr: string) => {
+    const formatDate = useCallback((dateStr: string) => {
         try {
             return new Date(dateStr).toLocaleString('en-US', {
                 year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
@@ -415,7 +429,7 @@ export function BottomDock({
         } catch {
             return dateStr;
         }
-    };
+    }, []);
 
     // Persist active tab selection
     useEffect(() => {
@@ -460,12 +474,12 @@ export function BottomDock({
 
         if (!account) return;
         const eq = account.equity;
-        
+
         // If equity drops to 0 or below from a previously positive state, switch instantly
         if (eq <= 0 && prevEquityRef.current !== null && prevEquityRef.current > 0) {
             setActiveTab('Journal');
         }
-        
+
         prevEquityRef.current = eq;
     }, [account?.equity]);
 
@@ -504,52 +518,92 @@ export function BottomDock({
 
             {/* Content Area */}
             <div className="rtx-bottom-dock__content flex-1 overflow-hidden relative bg-[#131316] tabular-nums flex flex-col">
-                {activeTab === 'Toolbox' && (
-                    <ToolboxTab />
-                )}
-                {activeTab === 'Trade' && (
+                <div
+                    className="h-full min-h-0"
+                    hidden={activeTab !== 'Toolbox'}
+                    aria-hidden={activeTab !== 'Toolbox'}
+                >
+                    <MemoToolboxTab />
+                </div>
+                <div
+                    className="h-full min-h-0"
+                    hidden={activeTab !== 'Trade'}
+                    aria-hidden={activeTab !== 'Trade'}
+                >
                     <TradeTab
-                        positions={toolboxTrade.positions ?? []}
-                        pendingPositions={toolboxTrade.pendingPositions ?? []}
-                        account={toolboxTrade.account}
+                        positions={isTradeSurfaceLive ? toolboxTrade.positions ?? [] : HIDDEN_TAB_ROWS}
+                        pendingPositions={isTradeSurfaceLive ? toolboxTrade.pendingPositions ?? [] : HIDDEN_TAB_ROWS}
+                        account={isTradeSurfaceLive ? toolboxTrade.account : null}
                         onClosePosition={handleTradeClosePosition}
                         onModifyPosition={onModifyPosition}
                         onCloseBulk={handleTradeCloseBulk}
                         formatMoney={formatMoney}
                         formatDate={formatDate}
-                        loading={toolboxTrade.loading}
-                        error={toolboxTrade.error}
-                        wsState={toolboxTrade.wsState}
+                        loading={isTradeSurfaceLive ? toolboxTrade.loading : false}
+                        error={isTradeSurfaceLive ? toolboxTrade.error : null}
+                        wsState={isTradeSurfaceLive ? toolboxTrade.wsState : 'connected'}
                         restBaseUrl={toolboxTrade.restBaseUrl}
                         wsUrl={toolboxTrade.wsUrl}
-                        lastRestAt={toolboxTrade.lastRestAt}
-                        lastWsAt={toolboxTrade.lastWsAt}
+                        lastRestAt={isTradeSurfaceLive ? toolboxTrade.lastRestAt : 0}
+                        lastWsAt={isTradeSurfaceLive ? toolboxTrade.lastWsAt : 0}
                         onRefresh={toolboxTrade.refresh}
                     />
-                )}
-                {activeTab === 'Exposure' && (
-                    <ExposureTab positions={positions ?? []} formatMoney={formatMoney} account={account} />
-                )}
-                {activeTab === 'History' && (
-                    <HistoryTab formatMoney={formatMoney} />
-                )}
+                </div>
+                <div
+                    className="h-full min-h-0"
+                    hidden={activeTab !== 'Exposure'}
+                    aria-hidden={activeTab !== 'Exposure'}
+                >
+                    <MemoExposureTab
+                        positions={isExposureSurfaceLive ? positions ?? [] : HIDDEN_TAB_ROWS}
+                        formatMoney={formatMoney}
+                        account={isExposureSurfaceLive ? account : null}
+                    />
+                </div>
+                <div
+                    className="h-full min-h-0"
+                    hidden={activeTab !== 'History'}
+                    aria-hidden={activeTab !== 'History'}
+                >
+                    {activeTab === 'History' && <MemoHistoryTab formatMoney={formatMoney} />}
+                </div>
 
                 {/* Implemented Tabs from Phase 13 & 14 */}
-                {activeTab === 'Calendar' && (
-                    <CalendarTab />
-                )}
-                {activeTab === 'Code Base' && (
-                    <CodeBaseTab />
-                )}
-                {activeTab === 'Articles' && (
-                    <ArticlesTab />
-                )}
-                {activeTab === 'Experts' && (
-                    <ExpertsTab />
-                )}
-                {activeTab === 'Journal' && (
-                    <JournalTab />
-                )}
+                <div
+                    className="h-full min-h-0"
+                    hidden={activeTab !== 'Calendar'}
+                    aria-hidden={activeTab !== 'Calendar'}
+                >
+                    <MemoCalendarTab />
+                </div>
+                <div
+                    className="h-full min-h-0"
+                    hidden={activeTab !== 'Code Base'}
+                    aria-hidden={activeTab !== 'Code Base'}
+                >
+                    <MemoCodeBaseTab />
+                </div>
+                <div
+                    className="h-full min-h-0"
+                    hidden={activeTab !== 'Articles'}
+                    aria-hidden={activeTab !== 'Articles'}
+                >
+                    <MemoArticlesTab />
+                </div>
+                <div
+                    className="h-full min-h-0"
+                    hidden={activeTab !== 'Experts'}
+                    aria-hidden={activeTab !== 'Experts'}
+                >
+                    <MemoExpertsTab />
+                </div>
+                <div
+                    className="h-full min-h-0"
+                    hidden={activeTab !== 'Journal'}
+                    aria-hidden={activeTab !== 'Journal'}
+                >
+                    {activeTab === 'Journal' && <MemoJournalTab />}
+                </div>
                 {activeTab === 'Historical Data' && (
                     <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-zinc-500">Opening historical data…</div>}>
                         <LazyHistoryDownloader />
@@ -563,21 +617,52 @@ export function BottomDock({
             </div>
 
             {/* Bottom Tabs */}
-            <div className="rtx-bottom-dock__tabs flex items-end bg-[#080c18] border-t border-zinc-700/80 select-none overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-700 px-1 py-0 gap-0">
-                {TABS.map((tab) => (
-                    <button
-                        key={tab.id}
-                        title={TAB_HOVER_COMMENTS[tab.id]}
-                        aria-label={TAB_HOVER_COMMENTS[tab.id]}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`rtx-dock-tab h-[30px] px-4 text-[12px] font-normal whitespace-nowrap rounded-none border-r border-zinc-800 border-t transition-colors duration-75 relative
+            <div className="rtx-bottom-dock__tabs relative flex h-[30px] min-h-[30px] max-h-[30px] flex-nowrap items-stretch overflow-hidden bg-[#080c18] border-t border-zinc-700/80 select-none p-0">
+                <div className="rtx-dock-tab-scroller flex h-full min-w-0 flex-nowrap items-stretch overflow-x-auto overflow-y-hidden">
+                    {TABS.map((tab) => (
+                        <button
+                            key={tab.id}
+                            title={TAB_HOVER_COMMENTS[tab.id]}
+                            aria-label={TAB_HOVER_COMMENTS[tab.id]}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`rtx-dock-tab inline-flex h-full items-center justify-center px-4 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t transition-colors duration-75 relative
                         ${activeTab === tab.id
-                                ? 'text-white bg-[#131316] border-t-[#8b8f98] border-l border-l-zinc-700 active-tab'
-                                : 'text-slate-400 bg-[#090d19] border-t-transparent hover:text-zinc-100 hover:bg-[#111827]'}`}
+                                    ? 'active-tab'
+                                    : 'border-t-transparent'}`}
+                        >
+                            {tab.id}
+                        </button>
+                    ))}
+                </div>
+                <div className="rtx-dock-tab-actions flex h-full shrink-0 flex-nowrap items-stretch">
+                    <button
+                        type="button"
+                        title="Close all profitable positions"
+                        onClick={() => handleTradeCloseBulk('WINNERS')}
+                        disabled={!onCloseBulk || (toolboxTrade.positions ?? []).length === 0}
+                        className="rtx-dock-tab rtx-trade-bulk-close inline-flex h-full items-center justify-center px-2.5 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent text-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                        {tab.id}
+                        Close Winners
                     </button>
-                ))}
+                    <button
+                        type="button"
+                        title="Close all losing positions"
+                        onClick={() => handleTradeCloseBulk('LOSERS')}
+                        disabled={!onCloseBulk || (toolboxTrade.positions ?? []).length === 0}
+                        className="rtx-dock-tab inline-flex h-full items-center justify-center px-2.5 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent text-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        Close Losers
+                    </button>
+                    <button
+                        type="button"
+                        title="Close all open positions"
+                        onClick={() => handleTradeCloseBulk('ALL')}
+                        disabled={!onCloseBulk || (toolboxTrade.positions ?? []).length === 0}
+                        className="rtx-dock-tab rtx-dock-tab--danger inline-flex h-full items-center justify-center px-2.5 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        Close All
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -735,7 +820,7 @@ function UnavailableMetric({ title = 'Not reported by the trading server' }: { t
     );
 }
 
-function TradeTab({
+const TradeTab = memo(function TradeTab({
     positions,
     pendingPositions = [],
     account,
@@ -763,10 +848,7 @@ function TradeTab({
     const [showOnChartsAutoUpdate, setShowOnChartsAutoUpdate] = useState<boolean>(() => safeReadBoolean(TRADE_SHOW_ON_CHARTS_AUTO_UPDATE_STORAGE_KEY, true));
     const [selectedPositionKey, setSelectedPositionKey] = useState<string | null>(null);
     const [resizingColumn, setResizingColumn] = useState<TradeColumnWidthKey | null>(null);
-    const tableScrollRef = useRef<HTMLDivElement | null>(null);
-    const footerScrollRef = useRef<HTMLDivElement | null>(null);
     const footerMetricButtonRef = useRef<HTMLButtonElement | null>(null);
-    const syncingScrollRef = useRef<'table' | 'footer' | null>(null);
     const columnResizeRef = useRef<{ key: TradeColumnWidthKey; startX: number; startWidth: number } | null>(null);
 
     // Local trade overrides: track modified fields since the Gateway API can lag after modification.
@@ -926,7 +1008,7 @@ function TradeTab({
     const formatMarginLevel = (value: number | null) => {
         if (value === null) return METRIC_UNAVAILABLE;
         if (value <= 0 && livePositions.length === 0) return '\u221e';
-        return `${formatMoney(value)} %`;
+        return `${value.toFixed(2)}%`;
     };
 
     const formatTradeTime = (value?: number | string | null) => {
@@ -1036,7 +1118,7 @@ function TradeTab({
             case 'positions':
                 return <BlinkingText value={livePositions.length} />;
             case 'balance':
-                return <BlinkingText value={accountBalance} formatFn={formatMoney} suffix={` ${account?.currency || 'USD'}`} />;
+                return <BlinkingText value={accountBalance} formatFn={formatMoney} />;
             case 'equity':
                 return liveEquity === null
                     ? <UnavailableMetric />
@@ -1150,18 +1232,6 @@ function TradeTab({
             window.removeEventListener('mouseup', handleMouseUp);
         };
     }, [resizingColumn]);
-
-    const syncHorizontalScroll = useCallback((source: 'table' | 'footer') => {
-        if (syncingScrollRef.current) return;
-        const sourceElement = source === 'table' ? tableScrollRef.current : footerScrollRef.current;
-        const targetElement = source === 'table' ? footerScrollRef.current : tableScrollRef.current;
-        if (!sourceElement || !targetElement) return;
-        syncingScrollRef.current = source;
-        targetElement.scrollLeft = sourceElement.scrollLeft;
-        window.requestAnimationFrame(() => {
-            syncingScrollRef.current = null;
-        });
-    }, []);
 
     const getPositionKey = useCallback((pos: ToolboxTradePosition) => (
         String(pos.id ?? pos.ticket ?? `${pos.symbol ?? ''}-${pos.time_create ?? ''}`)
@@ -1506,7 +1576,7 @@ ${rows}
             aria-label={`Resize ${getTradeColumnDef(key).label} column`}
             title={`Resize ${getTradeColumnDef(key).label} column`}
             tabIndex={-1}
-            className={`absolute right-0 top-0 z-20 h-full w-[5px] translate-x-1/2 cursor-col-resize border-0 bg-transparent p-0 ${resizingColumn === key ? 'bg-sky-400/70' : 'hover:bg-sky-400/50'}`}
+            className={`absolute right-0 top-0 z-20 h-full w-[5px] translate-x-1/2 cursor-default border-0 bg-transparent p-0 ${resizingColumn === key ? 'bg-sky-400/70' : 'hover:bg-sky-400/50'}`}
             onMouseDown={(event) => startColumnResize(event, key)}
             onDoubleClick={(event) => {
                 event.preventDefault();
@@ -1534,7 +1604,7 @@ ${rows}
                 type="button"
                 title={`Sort by ${label}`}
                 onClick={() => toggleSort(sortColumn)}
-                className="relative flex w-full items-center justify-center px-2 text-center hover:text-white"
+                className="relative flex w-full cursor-default items-center justify-center px-2 text-center hover:text-white"
             >
                 <span>{label}</span>
                 <span className="absolute right-0 inline-block w-[8px] text-center text-zinc-500">
@@ -1560,12 +1630,8 @@ ${rows}
     };
 
     return (
-        <div className="rtx-trade-tab h-full flex flex-col relative bg-[#131316] overflow-hidden">
-            <div
-                ref={tableScrollRef}
-                onScroll={() => syncHorizontalScroll('table')}
-                className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700"
-            >
+        <div className="rtx-trade-tab h-full cursor-default flex flex-col relative bg-[#131316] overflow-hidden">
+            <div className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
                 <table
                     className="rtx-trade-table w-full text-center border-collapse table-fixed"
                     style={{ minWidth: visibleTradeTableWidth, fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif', fontVariantNumeric: 'tabular-nums' }}
@@ -1590,15 +1656,20 @@ ${rows}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[13px] leading-[19.5px] font-normal">
-                        {displayedLivePositions.length === 0 && (
+                        {displayedLivePositions.length === 0 && (loading || error) && (
                             <tr>
                                 <td colSpan={visibleOptionalColumnCount + 2} className="h-16 text-center text-zinc-600 text-xs italic">
-                                    {loading ? 'Loading open positions...' : error ? error : 'No open positions'}
+                                    {loading ? 'Loading open positions...' : error}
                                 </td>
                             </tr>
                         )}
                         {displayedLivePositions.map((pos: ToolboxTradePosition, i: number) => {
-                            const isPendingPlacement = pos.placementState === 'pending';
+                            const placementState = pos.placementState;
+                            const isPendingPlacement = Boolean(
+                                placementState
+                                && !['filled', 'confirmed'].includes(placementState),
+                            );
+                            const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
                             const isBuy = String(pos.side).toUpperCase() === 'BUY';
                             const pnl = pos.profit ?? pos.unrealizedPnL;
                             const pnlValue = Number(pnl ?? 0);
@@ -1607,7 +1678,7 @@ ${rows}
                             const positionKey = getPositionKey(pos);
                             const isSelected = selectedPositionKey === positionKey;
                             const symbolLabel = pos.symbol ?? '-';
-                            const ticketLabel = isPendingPlacement ? 'pending' : String(pos.ticket ?? pos.id ?? '-');
+                            const ticketLabel = isPendingPlacement ? placementState : String(pos.ticket ?? pos.id ?? '-');
                             const timeLabel = formatTradeTime(pos.time_create);
                             const sideLabel = String(pos.side ?? '').toLowerCase() || '-';
                             const volumeLabel = String(formatTradeVolume(pos));
@@ -1624,239 +1695,242 @@ ${rows}
                             const swapLabel = formatMoney(pos.swap);
                             const accountLoginLabel = String(pos.account_login ?? '-');
                             const timeUpdateLabel = formatTradeTime(pos.time_update);
-                            const commentLabel = String(pos.comment || '-');
+                            const placementError = [pos.placementErrorCode, pos.placementErrorMessage].filter(Boolean).join(': ');
+                            const commentLabel = String(placementError || pos.comment || '-');
                             const profitLabel = isPendingPlacement
                                 ? '…'
                                 : profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue);
                             const rowComment = isPendingPlacement
-                                ? `${symbolLabel} ${sideLabel} ${volumeLabel} lots is being sent.`
+                                ? isTerminalPlacementFailure
+                                    ? `${placementState}: ${placementError || 'The order did not fill.'}`
+                                    : `${symbolLabel} ${sideLabel} ${volumeLabel} lots is ${placementState}.`
                                 : `${symbolLabel} ${sideLabel} ${volumeLabel} lots, ticket ${ticketLabel}. Double-click to modify, right-click for more options.`;
                             return (
-                            <tr
-                                key={pos.id ?? i}
-                                title={rowComment}
-                                aria-selected={isSelected}
-                                className={`rtx-trade-row h-[30px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-pointer`}
-                                onClick={() => {
-                                    if (!isPendingPlacement) setSelectedPositionKey(positionKey);
-                                }}
-                                onDoubleClick={() => {
-                                    if (isPendingPlacement) return;
-                                    setSelectedPositionKey(positionKey);
-                                    setModifyPosition(pos);
-                                }}
-                                onContextMenu={(event) => {
-                                    if (isPendingPlacement) return;
-                                    handleTradeContextMenu(event, pos);
-                                }}
-                            >
-                                {/* symbol */}
-                                <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={`Symbol: ${symbolLabel}`}>
-                                    <span>{symbolLabel}</span>
-                                </td>
-
-                                {/* ticket */}
-                                {isColumnVisible('ticket') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#d8dde8] font-normal tabular-nums whitespace-nowrap" title={`Ticket: ${ticketLabel}`}>{ticketLabel}</td>
-                                )}
-
-                                {/* time_create */}
-                                {isColumnVisible('time') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] whitespace-nowrap" title={`Open time: ${timeLabel}`}>
-                                        {timeLabel}
+                                <tr
+                                    key={pos.id ?? i}
+                                    title={rowComment}
+                                    aria-selected={isSelected}
+                                    className={`rtx-trade-row h-[30px] ${isSelected ? 'rtx-trade-row--selected' : ''} transition-colors group cursor-default`}
+                                    onClick={() => {
+                                        if (!isPendingPlacement) setSelectedPositionKey(positionKey);
+                                    }}
+                                    onDoubleClick={() => {
+                                        if (isPendingPlacement) return;
+                                        setSelectedPositionKey(positionKey);
+                                        setModifyPosition(pos);
+                                    }}
+                                    onContextMenu={(event) => {
+                                        if (isPendingPlacement) return;
+                                        handleTradeContextMenu(event, pos);
+                                    }}
+                                >
+                                    {/* symbol */}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={`Symbol: ${symbolLabel}`}>
+                                        <span>{symbolLabel}</span>
                                     </td>
-                                )}
 
-                                {/* side */}
-                                {isColumnVisible('side') && (
-                                    <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={`Type: ${sideLabel}`}>
-                                        <div className="flex items-center justify-center">
-                                            <span>{sideLabel}</span>
-                                        </div>
+                                    {/* ticket */}
+                                    {isColumnVisible('ticket') && (
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums whitespace-nowrap" title={`Ticket: ${ticketLabel}`}>{ticketLabel}</td>
+                                    )}
+
+                                    {/* time_create */}
+                                    {isColumnVisible('time') && (
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap" title={`Open time: ${timeLabel}`}>
+                                            {timeLabel}
+                                        </td>
+                                    )}
+
+                                    {/* side */}
+                                    {isColumnVisible('side') && (
+                                        <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={`Type: ${sideLabel}`}>
+                                            <div className="flex items-center justify-center">
+                                                <span>{sideLabel}</span>
+                                            </div>
+                                        </td>
+                                    )}
+
+                                    {/* volume */}
+                                    {isColumnVisible('volume') && (
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={`Volume: ${volumeLabel} lots`}>
+                                            {volumeLabel}
+                                        </td>
+                                    )}
+
+                                    {/* price_open */}
+                                    {isColumnVisible('priceOpen') && (
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={`Open price: ${openPriceLabel}`}>
+                                            {openPriceLabel}
+                                        </td>
+                                    )}
+
+                                    {/* price_sl */}
+                                    {isColumnVisible('sl') && (
+                                        <td className="rtx-trade-sl-cell cursor-pointer px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Stop Loss: ${slLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
+                                            {editingId === pos.id ? (
+                                                <input
+                                                    className="rtx-trade-sl-editor h-[21px] w-full cursor-pointer bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
+                                                    value={editSL}
+                                                    onChange={e => setEditSL(e.target.value)}
+                                                    onBlur={() => saveEdit(pos)}
+                                                    onKeyDown={e => e.key === 'Enter' && saveEdit(pos)}
+                                                    onDoubleClick={e => e.stopPropagation()}
+                                                />
+                                            ) : (
+                                                <span className={(pos.price_sl ?? pos.sl) > 0 ? "rtx-trade-sl-value text-[#ff7676] bg-red-950/20 px-1 rounded-sm cursor-pointer font-normal" : "rtx-trade-sl-value text-zinc-100 cursor-pointer"}>
+                                                    {slLabel}
+                                                </span>
+                                            )}
+                                        </td>
+                                    )}
+
+                                    {/* price_tp */}
+                                    {isColumnVisible('tp') && (
+                                        <td className="rtx-trade-tp-cell cursor-pointer px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Take Profit: ${tpLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
+                                            {editingId === pos.id ? (
+                                                <input
+                                                    className="rtx-trade-tp-editor h-[21px] w-full cursor-pointer bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
+                                                    value={editTP}
+                                                    onChange={e => setEditTP(e.target.value)}
+                                                    onBlur={() => saveEdit(pos)}
+                                                    onKeyDown={e => e.key === 'Enter' && saveEdit(pos)}
+                                                    onDoubleClick={e => e.stopPropagation()}
+                                                />
+                                            ) : (
+                                                <span className={(pos.price_tp ?? pos.tp) > 0 ? "rtx-trade-tp-value text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm cursor-pointer font-normal" : "rtx-trade-tp-value text-zinc-100 cursor-pointer"}>
+                                                    {tpLabel}
+                                                </span>
+                                            )}
+                                        </td>
+                                    )}
+
+                                    {/* price_current */}
+                                    {isColumnVisible('priceCurrent') && (
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums" title={`Current price: ${currentPriceLabel}`}>
+                                            {currentPriceLabel}
+                                        </td>
+                                    )}
+
+                                    {/* swap */}
+                                    {isColumnVisible('swap') && (
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={`Swap: ${swapLabel}`}>{swapLabel}</td>
+                                    )}
+
+                                    {/* account_login */}
+                                    {isColumnVisible('accountLogin') && (
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={`Account login: ${accountLoginLabel}`}>
+                                            {accountLoginLabel}
+                                        </td>
+                                    )}
+
+                                    {/* time_update */}
+                                    {isColumnVisible('timeUpdate') && (
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
+                                            {timeUpdateLabel}
+                                        </td>
+                                    )}
+
+                                    {/* comment */}
+                                    {isColumnVisible('comment') && (
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 truncate" title={`Comment: ${commentLabel}`}>
+                                            {commentLabel}
+                                        </td>
+                                    )}
+
+                                    {/* profit */}
+                                    {isColumnVisible('profit') && (
+                                        <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${profitMode === 'points' ? 'Profit points' : 'Profit'}: ${profitLabel}`}>
+                                            {profitLabel}
+                                        </td>
+                                    )}
+
+                                    {/* Close Button */}
+                                    <td className="px-0.5 py-[2px] text-center">
+                                        <button
+                                            type="button"
+                                            aria-label={isPendingPlacement ? `Order is ${placementState}` : `Close position ${pos.ticket ?? pos.id}`}
+                                            title={isPendingPlacement ? rowComment : `Close position ${ticketLabel}`}
+                                            disabled={isPendingPlacement}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                if (isPendingPlacement) return;
+                                                onClosePosition(pos.id);
+                                            }}
+                                            className="rtx-trade-close-button mx-auto flex h-[17px] w-[17px] cursor-default items-center justify-center rounded-sm border border-transparent text-[12px] font-normal leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:cursor-default disabled:text-zinc-600 disabled:hover:border-transparent disabled:hover:bg-transparent"
+                                        >
+                                            {isPendingPlacement ? (isTerminalPlacementFailure ? '!' : '…') : 'x'}
+                                        </button>
                                     </td>
-                                )}
-
-                                {/* volume */}
-                                {isColumnVisible('volume') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={`Volume: ${volumeLabel} lots`}>
-                                        {volumeLabel}
-                                    </td>
-                                )}
-
-                                {/* price_open */}
-                                {isColumnVisible('priceOpen') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] tabular-nums" title={`Open price: ${openPriceLabel}`}>
-                                        {openPriceLabel}
-                                    </td>
-                                )}
-
-                                {/* price_sl */}
-                                {isColumnVisible('sl') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Stop Loss: ${slLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
-                                        {editingId === pos.id ? (
-                                            <input
-                                                className="h-[21px] w-full bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
-                                                value={editSL}
-                                                onChange={e => setEditSL(e.target.value)}
-                                                onBlur={() => saveEdit(pos)}
-                                                onKeyDown={e => e.key === 'Enter' && saveEdit(pos)}
-                                                onDoubleClick={e => e.stopPropagation()}
-                                            />
-                                        ) : (
-                                            <span className={(pos.price_sl ?? pos.sl) > 0 ? "rtx-trade-sl-value text-[#ff7676] bg-red-950/20 px-1 rounded-sm cursor-pointer font-normal" : "text-zinc-600 cursor-pointer"}>
-                                                {slLabel}
-                                            </span>
-                                        )}
-                                    </td>
-                                )}
-
-                                {/* price_tp */}
-                                {isColumnVisible('tp') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Take Profit: ${tpLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
-                                        {editingId === pos.id ? (
-                                            <input
-                                                className="h-[21px] w-full bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
-                                                value={editTP}
-                                                onChange={e => setEditTP(e.target.value)}
-                                                onBlur={() => saveEdit(pos)}
-                                                onKeyDown={e => e.key === 'Enter' && saveEdit(pos)}
-                                                onDoubleClick={e => e.stopPropagation()}
-                                            />
-                                        ) : (
-                                            <span className={(pos.price_tp ?? pos.tp) > 0 ? "rtx-trade-tp-value text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm cursor-pointer font-normal" : "text-zinc-600 cursor-pointer"}>
-                                                {tpLabel}
-                                            </span>
-                                        )}
-                                    </td>
-                                )}
-
-                                {/* price_current */}
-                                {isColumnVisible('priceCurrent') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums" title={`Current price: ${currentPriceLabel}`}>
-                                        {currentPriceLabel}
-                                    </td>
-                                )}
-
-                                {/* swap */}
-                                {isColumnVisible('swap') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#8d95a3] tabular-nums" title={`Swap: ${swapLabel}`}>{swapLabel}</td>
-                                )}
-
-                                {/* account_login */}
-                                {isColumnVisible('accountLogin') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] whitespace-nowrap tabular-nums" title={`Account login: ${accountLoginLabel}`}>
-                                        {accountLoginLabel}
-                                    </td>
-                                )}
-
-                                {/* time_update */}
-                                {isColumnVisible('timeUpdate') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] whitespace-nowrap tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
-                                        {timeUpdateLabel}
-                                    </td>
-                                )}
-
-                                {/* comment */}
-                                {isColumnVisible('comment') && (
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-[#aeb5c3] truncate" title={`Comment: ${commentLabel}`}>
-                                        {commentLabel}
-                                    </td>
-                                )}
-
-                                {/* profit */}
-                                {isColumnVisible('profit') && (
-                                    <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${profitMode === 'points' ? 'Profit points' : 'Profit'}: ${profitLabel}`}>
-                                        {profitLabel}
-                                    </td>
-                                )}
-
-                                {/* Close Button */}
-                                <td className="px-0.5 py-[2px] text-center">
-                                    <button
-                                        type="button"
-                                        aria-label={isPendingPlacement ? 'Order is being sent' : `Close position ${pos.ticket ?? pos.id}`}
-                                        title={isPendingPlacement ? 'Order is being sent' : `Close position ${ticketLabel}`}
-                                        disabled={isPendingPlacement}
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            if (isPendingPlacement) return;
-                                            onClosePosition(pos.id);
-                                        }}
-                                        className="rtx-trade-close-button mx-auto flex h-[17px] w-[17px] items-center justify-center rounded-sm border border-transparent text-[12px] font-normal leading-none text-zinc-400 hover:border-red-500/50 hover:bg-red-950/50 hover:text-red-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400 disabled:cursor-wait disabled:text-zinc-600 disabled:hover:border-transparent disabled:hover:bg-transparent"
-                                    >
-                                        {isPendingPlacement ? '…' : 'x'}
-                                    </button>
-                                </td>
-                            </tr>
+                                </tr>
                             );
                         })}
                     </tbody>
                 </table>
-            </div>
 
-            {/* Footer Summary Row (Full Account Info) */}
-            <div
-                ref={footerScrollRef}
-                onScroll={() => syncHorizontalScroll('footer')}
-                className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full overflow-x-auto overflow-y-hidden text-[13px] font-normal text-zinc-300 tabular-nums shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] scrollbar-thin scrollbar-thumb-zinc-700"
-            >
-                <div className="rtx-trade-footer-inner flex w-max min-w-full items-center gap-1 px-1.5 py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
-                    <button
-                        ref={footerMetricButtonRef}
-                        type="button"
-                        className="rtx-trade-footer-status inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-0 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
-                        title="Select footer metrics"
-                        aria-label="Footer metrics"
-                        aria-haspopup="menu"
-                        aria-expanded={footerMetricMenu !== null}
-                        onClick={(event) => {
-                            event.stopPropagation();
-                            toggleFooterMetricMenu(event.currentTarget);
-                        }}
-                    >
-                        <Icon name="plus-circle" size="xs" className="text-current shrink-0" />
-                    </button>
-                    {visibleFooterMetrics.map(metric => (
-                        <span key={metric.key} className="rtx-trade-footer-metric" title={getFooterMetricComment(metric.key)}>
-                            <span className="rtx-trade-metric-label text-zinc-500">{metric.label}</span>
-                            {renderFooterMetricValue(metric.key)}
-                        </span>
-                    ))}
-                    <div className="flex-1 min-w-2"></div>
-                    <div className="rtx-trade-footer-actions flex shrink-0 items-center gap-1 pl-0.5">
-                    <button
-                        type="button"
-                        title="Close all profitable positions"
-                        onClick={() => onCloseBulk?.('WINNERS')}
-                        disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-bulk-close rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[12px] font-normal leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                        Close Winners
-                    </button>
-                    <button
-                        type="button"
-                        title="Close all losing positions"
-                        onClick={() => onCloseBulk?.('LOSERS')}
-                        disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-footer-action rtx-trade-footer-action--neutral inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-zinc-700 px-1.5 text-[12px] font-normal leading-none text-zinc-300 hover:bg-zinc-700/60 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                        Close Losers
-                    </button>
-                    <button
-                        type="button"
-                        title="Close all open positions"
-                        onClick={() => onCloseBulk?.('ALL')}
-                        disabled={!onCloseBulk || livePositions.length === 0}
-                        className="rtx-trade-footer-action rtx-trade-footer-action--danger inline-flex h-5 shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border border-red-800/70 px-1.5 text-[12px] font-normal leading-none text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                        Close All
-                    </button>
+                {/* Account summary follows the last trade and scrolls with the list. */}
+                <div
+                    className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full text-[13px] font-normal text-zinc-300 tabular-nums"
+                >
+                    <div className="rtx-trade-footer-inner flex w-max min-w-full items-center gap-3 px-1.5 py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
+                        <button
+                            ref={footerMetricButtonRef}
+                            type="button"
+                            className="rtx-trade-footer-status inline-flex h-5 w-5 shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-0 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
+                            title="Select footer metrics"
+                            aria-label="Footer metrics"
+                            aria-haspopup="menu"
+                            aria-expanded={footerMetricMenu !== null}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                toggleFooterMetricMenu(event.currentTarget);
+                            }}
+                        >
+                            <Icon name="plus-circle" size="xs" className="text-current shrink-0" />
+                        </button>
+                        {visibleFooterMetrics.map(metric => (
+                            <span key={metric.key} className="rtx-trade-footer-metric" title={getFooterMetricComment(metric.key)}>
+                                <span className="rtx-trade-metric-label text-zinc-500">{metric.label}</span>
+                                {renderFooterMetricValue(metric.key)}
+                            </span>
+                        ))}
+                        <div className="min-w-2 flex-1" />
+                        {isColumnVisible('profit') ? (
+                            <span
+                                className={`rtx-trade-footer-floating inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap text-center font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
+                                style={{ width: columnWidths.profit, flex: `0 0 ${columnWidths.profit}px` }}
+                                title={`Floating P/L: ${formatMoney(totalLivePnL)} ${account?.currency || 'USD'}`}
+                            >
+                                <BlinkingText
+                                    value={totalLivePnL}
+                                    formatFn={formatMoney}
+                                    defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-zinc-100"}
+                                />
+                                <span className="rtx-trade-footer-currency">{account?.currency || 'USD'}</span>
+                            </span>
+                        ) : (
+                            <span
+                                className={`rtx-trade-footer-floating inline-flex shrink-0 items-center justify-end gap-1 whitespace-nowrap text-right font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
+                                title={`Floating P/L: ${formatMoney(totalLivePnL)} ${account?.currency || 'USD'}`}
+                            >
+                                <BlinkingText
+                                    value={totalLivePnL}
+                                    formatFn={formatMoney}
+                                    defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-zinc-100"}
+                                />
+                                <span className="rtx-trade-footer-currency">{account?.currency || 'USD'}</span>
+                            </span>
+                        )}
+                        <span className="rtx-trade-footer-close-spacer shrink-0" style={{ width: columnWidths.close, flex: `0 0 ${columnWidths.close}px` }} aria-hidden="true" />
                     </div>
-                    <span className="rtx-trade-footer-floating inline-flex h-5 min-w-[112px] shrink-0 items-center justify-end gap-1 whitespace-nowrap rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-1.5 text-right font-normal leading-none" title={`Floating P/L: ${formatMoney(totalLivePnL)}`}>
-                        <span className="text-zinc-100">Floating P/L</span>
-                        <BlinkingText value={totalLivePnL} formatFn={formatMoney} defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-[#2563eb]"} />
-                    </span>
                 </div>
+                {displayedLivePositions.length === 0 && !loading && !error && (
+                    <div
+                        className="rtx-trade-empty-state flex h-16 w-max min-w-full items-center justify-center text-center text-xs italic text-zinc-600"
+                        style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}
+                    >
+                        No open positions
+                    </div>
+                )}
             </div>
             {footerMetricMenu && (
                 <ContextMenu
@@ -1892,7 +1966,7 @@ ${rows}
             />
         </div>
     );
-}
+});
 
 type ExposureTabProps = {
     positions: ExposurePositionInput[];
@@ -1900,31 +1974,17 @@ type ExposureTabProps = {
     account: ExposureAccountInput | null;
 };
 
-const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
-    const angleInRadians = (angleInDegrees - 90) * Math.PI / 180;
-    return {
-        x: centerX + radius * Math.cos(angleInRadians),
-        y: centerY + radius * Math.sin(angleInRadians),
-    };
-};
-
-const describePieSlice = (
-    centerX: number,
-    centerY: number,
-    radius: number,
-    startAngle: number,
-    endAngle: number
-) => {
-    const start = polarToCartesian(centerX, centerY, radius, endAngle);
-    const end = polarToCartesian(centerX, centerY, radius, startAngle);
-    const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
-
-    return [
-        `M ${centerX} ${centerY}`,
-        `L ${start.x} ${start.y}`,
-        `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
-        'Z',
-    ].join(' ');
+const getAssetBadgeStyle = (asset: string) => {
+    const code = asset.toUpperCase();
+    if (code === 'USD') return { icon: '$', badgeClass: 'bg-amber-500/15 border-amber-500/40 text-amber-400', textClass: 'text-amber-400' };
+    if (code === 'EUR') return { icon: '€', badgeClass: 'bg-sky-500/15 border-sky-500/40 text-sky-400', textClass: 'text-sky-400' };
+    if (code === 'GBP') return { icon: '£', badgeClass: 'bg-purple-500/15 border-purple-500/40 text-purple-400', textClass: 'text-purple-400' };
+    if (code === 'JPY') return { icon: '¥', badgeClass: 'bg-rose-500/15 border-rose-500/40 text-rose-400', textClass: 'text-rose-400' };
+    if (code === 'XAU') return { icon: '🪙', badgeClass: 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300', textClass: 'text-yellow-300' };
+    if (code === 'XAG') return { icon: '🥈', badgeClass: 'bg-slate-400/20 border-slate-400/50 text-slate-300', textClass: 'text-slate-300' };
+    if (code === 'BTC') return { icon: '₿', badgeClass: 'bg-orange-500/20 border-orange-500/50 text-orange-400', textClass: 'text-orange-400' };
+    if (code === 'ETH') return { icon: 'Ξ', badgeClass: 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400', textClass: 'text-indigo-400' };
+    return { icon: '$', badgeClass: 'bg-amber-500/15 border-amber-500/40 text-amber-400', textClass: 'text-amber-400' };
 };
 
 function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
@@ -1938,120 +1998,63 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
     const accountFreeMargin = Number(account?.freeMargin ?? account?.free_margin ?? 0);
     const accountMarginLevel = Number(account?.marginLevel ?? account?.margin_level ?? 0);
 
-    const renderLongPositionChart = (segments: ExposurePieSegment[]) => {
-        const visibleSegments = segments.filter(segment => segment.percent > 0);
-        const centerX = 96;
-        const centerY = 76;
-        const radius = 58;
-        const labelRadius = 74;
-
-        if (visibleSegments.length === 0) {
-            return (
-                <div className="flex h-[165px] items-center justify-center text-[12px] font-normal text-zinc-500">
-                    No long exposure
-                </div>
-            );
-        }
-
-        return (
-            <svg viewBox="0 0 192 165" className="h-[165px] w-full" role="img" aria-label="Long positions exposure chart">
-                <filter id="exposureGlow" x="-30%" y="-30%" width="160%" height="160%">
-                    <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#4a73ff" floodOpacity="0.5" />
-                </filter>
-                {visibleSegments.map((segment) => {
-                    if (segment.percent >= 0.999) {
-                        return (
-                            <circle
-                                key={segment.asset}
-                                cx={centerX}
-                                cy={centerY}
-                                r={radius}
-                                fill={segment.color}
-                                filter="url(#exposureGlow)"
-                                stroke="#1a1d2a"
-                                strokeWidth="1"
-                            />
-                        );
-                    }
-
-                    return (
-                        <path
-                            key={segment.asset}
-                            d={describePieSlice(centerX, centerY, radius, segment.startAngle, segment.endAngle)}
-                            fill={segment.color}
-                            filter="url(#exposureGlow)"
-                            stroke="#111827"
-                            strokeWidth="1"
-                        />
-                    );
-                })}
-                {visibleSegments.slice(0, 6).map((segment) => {
-                    const midAngle = (segment.startAngle + segment.endAngle) / 2;
-                    const edge = polarToCartesian(centerX, centerY, radius, midAngle);
-                    const label = polarToCartesian(centerX, centerY, labelRadius, midAngle);
-                    const textAnchor = label.x >= centerX ? 'start' : 'end';
-                    return (
-                        <g key={`${segment.asset}-label`}>
-                            <line x1={edge.x} y1={edge.y} x2={label.x} y2={label.y} stroke="#6b7280" strokeWidth="0.8" />
-                            <text
-                                x={label.x + (label.x >= centerX ? 4 : -4)}
-                                y={label.y + 3}
-                                fill="#d8deea"
-                                fontSize="9"
-                                fontFamily="Consolas, monospace"
-                                textAnchor={textAnchor}
-                            >
-                                {segment.asset}
-                            </text>
-                        </g>
-                    );
-                })}
-            </svg>
-        );
-    };
-
     return (
-        <div className="rtx-exposure-tab h-full flex bg-[#131316] text-[14px] font-normal">
-            {/* Table */}
-            <div className="flex min-w-0 flex-1 flex-col border-r border-zinc-700">
+        <div className="rtx-exposure-tab flex h-full bg-[#0a0b0e] text-[13px] font-normal">
+            {/* Table Area */}
+            <div className="flex min-w-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-auto">
                     <table className="w-full min-w-[720px] table-fixed border-collapse text-left">
-                        <thead className="sticky top-0 z-10 border-b border-zinc-700/70 bg-[#090d19] text-[12px] font-normal leading-[18px] uppercase tracking-wider text-[#c9d1df]">
-                            <tr className="h-[30px]">
-                                <th className="w-[120px] border-r border-zinc-800 p-1 pl-2">Assets</th>
-                                <th className="w-[130px] border-r border-zinc-800 p-1 text-right">Volume</th>
-                                <th className="w-[130px] border-r border-zinc-800 p-1 text-right">Rate</th>
-                                <th className="w-[130px] border-r border-zinc-800 p-1 text-right">{exposure.accountCurrency}</th>
-                                <th className="p-1 text-center">Graph</th>
+                        <thead className="sticky top-0 z-10 border-b border-[#20222a] bg-[#0d0f14] text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                            <tr className="h-[32px]">
+                                <th className="w-[140px] border-r border-zinc-800/80 p-1.5 pl-3">Assets</th>
+                                <th className="w-[130px] border-r border-zinc-800/80 p-1.5 text-right">Volume</th>
+                                <th className="w-[130px] border-r border-zinc-800/80 p-1.5 text-right">Rate</th>
+                                <th className="w-[140px] border-r border-zinc-800/80 p-1.5 text-right">{exposure.accountCurrency}</th>
+                                <th className="p-1.5 text-center">Graph</th>
                             </tr>
                         </thead>
-                        <tbody className="font-mono text-[13px] font-normal leading-[19.5px] text-zinc-200">
+                        <tbody className="font-mono text-[12.5px] leading-[20px] text-zinc-200">
                             {exposure.rows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="h-16 text-center text-zinc-500">
-                                        No exposure
+                                    <td colSpan={5} className="h-20 text-center font-sans text-[12px] text-zinc-500">
+                                        No active asset exposure
                                     </td>
                                 </tr>
                             ) : exposure.rows.map((exp, i) => {
                                 const isLong = exp.value >= 0;
+                                const badge = getAssetBadgeStyle(exp.asset);
                                 return (
-                                    <tr key={exp.asset} className={`h-[30px] font-normal ${i % 2 === 0 ? 'bg-[#15161b]' : 'bg-[#101116]'}`}>
-                                        <td className="border-r border-zinc-800 p-1 pl-2 font-normal text-[#f4c542]">
-                                            <span className="mr-1 inline-flex h-[13px] w-[13px] items-center justify-center rounded-[2px] border border-[#ad8a11] bg-[#ffd735] text-[9px] font-black leading-none text-[#574800]">
-                                                $
-                                            </span>
-                                            {exp.asset}
+                                    <tr
+                                        key={exp.asset}
+                                        className={`h-[34px] border-b border-white/[0.02] transition-colors hover:bg-white/[0.03] ${i % 2 === 0 ? 'bg-[#111318]' : 'bg-[#0e0f14]'
+                                            }`}
+                                    >
+                                        <td className="border-r border-zinc-800/80 p-1.5 pl-3 font-sans font-semibold">
+                                            <div className="inline-flex items-center gap-1.5">
+                                                <span className={`inline-flex h-[17px] w-[17px] items-center justify-center rounded-[3px] border text-[9.5px] font-bold ${badge.badgeClass}`}>
+                                                    {badge.icon}
+                                                </span>
+                                                <span className={badge.textClass}>{exp.asset}</span>
+                                            </div>
                                         </td>
-                                        <td className="border-r border-zinc-800 p-1 text-right">{formatExposureVolume(exp.asset, exp.volume)}</td>
-                                        <td className="border-r border-zinc-800 p-1 text-right">{exp.rate.toFixed(5)}</td>
-                                        <td className={`border-r border-zinc-800 p-1 text-right ${isLong ? 'text-zinc-100' : 'text-[#ff6670]'}`}>
+                                        <td className="border-r border-zinc-800/80 p-1.5 text-right font-medium text-zinc-300">
+                                            {formatExposureVolume(exp.asset, exp.volume)}
+                                        </td>
+                                        <td className="border-r border-zinc-800/80 p-1.5 text-right text-zinc-400">
+                                            {exp.rate.toFixed(5)}
+                                        </td>
+                                        <td className={`border-r border-zinc-800/80 p-1.5 text-right font-semibold ${isLong ? 'text-white' : 'text-rose-400'
+                                            }`}>
                                             {formatMoney(exp.value)}
                                         </td>
-                                        <td className="p-1 px-4 align-middle">
-                                            <div className="relative h-[13px] w-full overflow-hidden rounded-[2px] bg-[#292b31]">
+                                        <td className="p-1.5 px-4 align-middle">
+                                            <div className="relative h-[13px] w-full min-w-[120px] overflow-hidden rounded-[3px] border border-white/[0.04] bg-[#161820]">
                                                 <div
-                                                    className={`absolute top-0 h-full ${isLong ? 'left-0 bg-[#3b45ff]' : 'right-0 bg-[#ff3344]'}`}
-                                                    style={{ width: `${exp.graphPercent}%` }}
+                                                    className={`absolute top-0 h-full rounded-[2px] transition-all duration-300 ${isLong
+                                                        ? 'left-0 bg-gradient-to-r from-[#0284c7] to-[#38bdf8] shadow-[0_0_8px_rgba(56,189,248,0.3)]'
+                                                        : 'right-0 bg-gradient-to-r from-[#e11d48] to-[#f43f5e] shadow-[0_0_8px_rgba(244,63,94,0.3)]'
+                                                        }`}
+                                                    style={{ width: `${Math.max(1.5, Math.min(100, exp.graphPercent))}%` }}
                                                 />
                                             </div>
                                         </td>
@@ -2061,60 +2064,94 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
                         </tbody>
                     </table>
                 </div>
-                <div className="flex h-[30px] shrink-0 items-center gap-2 overflow-hidden border-t border-[#3a3d45] bg-[#2a2d34] px-2 font-mono text-[13px] font-bold leading-[19.5px] text-[#f6f7fb]">
-                    <span>Balance: {formatMoney(accountBalance)} {exposure.accountCurrency}</span>
-                    <span>Equity: {formatMoney(accountEquity)}</span>
-                    <span>Margin: {formatMoney(accountMargin)}</span>
-                    <span>Free Margin: {formatMoney(accountFreeMargin)}</span>
-                    <span>Margin Level: {Number.isFinite(accountMarginLevel) ? accountMarginLevel.toFixed(2) : '0.00'} %</span>
-                </div>
-            </div>
 
-            {/* Pie Chart Area */}
-            <div className="flex w-[270px] shrink-0 flex-col bg-[#0d0e12] p-3">
-                <div className="mb-2 text-center text-[12px] font-normal uppercase tracking-wider text-zinc-400">Long Positions</div>
-                <div className="min-h-0 flex-1">
-                    {renderLongPositionChart(exposure.longSegments)}
-                </div>
-                <div className="mt-1 grid grid-cols-1 gap-1 text-[12px] font-normal text-zinc-400">
-                    {exposure.longSegments.slice(0, 4).map(segment => (
-                        <div key={segment.asset} className="flex items-center justify-between gap-2">
-                            <span className="flex min-w-0 items-center gap-1">
-                                <span className="h-2 w-2 shrink-0" style={{ backgroundColor: segment.color }} />
-                                <span className="truncate">{segment.asset}</span>
-                            </span>
-                            <span className="font-mono text-zinc-300">{(segment.percent * 100).toFixed(1)}%</span>
-                        </div>
-                    ))}
+                <div className="rtx-exposure-account-bar">
+                    <span className="rtx-exposure-account-metric">
+                        <span className="rtx-exposure-account-label">Balance:</span>
+                        <span className="rtx-exposure-account-value">{formatMoney(accountBalance)}</span>
+                    </span>
+                    <span className="rtx-exposure-account-metric">
+                        <span className="rtx-exposure-account-label">Equity:</span>
+                        <span className="rtx-exposure-account-value">{formatMoney(accountEquity)}</span>
+                    </span>
+                    <span className="rtx-exposure-account-metric">
+                        <span className="rtx-exposure-account-label">Margin:</span>
+                        <span className="rtx-exposure-account-value">{formatMoney(accountMargin)}</span>
+                    </span>
+                    <span className="rtx-exposure-account-metric">
+                        <span className="rtx-exposure-account-label">Free margin:</span>
+                        <span className="rtx-exposure-account-value">{formatMoney(accountFreeMargin)}</span>
+                    </span>
+                    <span className="rtx-exposure-account-metric">
+                        <span className="rtx-exposure-account-label">Level:</span>
+                        <span className="rtx-exposure-account-value">
+                            {Number.isFinite(accountMarginLevel) ? `${accountMarginLevel.toFixed(2)}%` : '0.00%'}
+                        </span>
+                    </span>
                 </div>
             </div>
         </div>
     );
 }
 
+type HistoryCacheEntry = { login: number; orders: Trade[] };
+let historyCache: HistoryCacheEntry | null = null;
+const historyFetchPromises = new Map<number, Promise<Trade[]>>();
+
+// Coalesces concurrent history requests and caches the last result so the
+// tab renders instantly on revisit instead of re-fetching both gateways.
+const loadOrderHistory = (login: number, force = false): Promise<Trade[]> => {
+    const inFlight = historyFetchPromises.get(login);
+    if (!force && inFlight) return inFlight;
+    const request = tradeGatewayApi.getOrderHistory(login)
+        .then((data) => {
+            historyCache = { login, orders: data };
+            return data;
+        })
+        .finally(() => {
+            if (historyFetchPromises.get(login) === request) historyFetchPromises.delete(login);
+        });
+    historyFetchPromises.set(login, request);
+    return request;
+};
+
 function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined | null) => string }) {
-    const [orders, setOrders] = useState<Trade[]>([]);
-    const [loading, setLoading] = useState(false);
+    const accountId = useAppStore((state) => state.accountId);
+    const activeLogin = Number.parseInt(String(accountId ?? getStoredAccountLogin() ?? ''), 10);
+    const [orders, setOrders] = useState<Trade[]>(() => (
+        historyCache && historyCache.login === activeLogin ? historyCache.orders : []
+    ));
+    const [loading, setLoading] = useState(() => !(historyCache && historyCache.login === activeLogin));
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'today' | 'week' | 'month' | 'all'>('all');
 
-    const fetchHistory = async () => {
-        const login = getStoredAccountLogin();
+    const fetchHistory = useCallback(async (opts?: { force?: boolean; background?: boolean }) => {
+        const login = Number.isFinite(activeLogin) && activeLogin > 0 ? activeLogin : null;
         if (!login) { setError('No account login found'); return; }
-        setLoading(true);
+        if (!opts?.background) setLoading(true);
         setError(null);
         try {
-            const data = await tradeGatewayApi.getOrderHistory(login);
+            const data = await loadOrderHistory(login, opts?.force);
+            const currentLogin = Number.parseInt(String(useAppStore.getState().accountId ?? getStoredAccountLogin() ?? ''), 10);
+            if (currentLogin !== login) return;
             setOrders(data);
         } catch (err: unknown) {
             console.warn('[History] Failed to load:', err);
-            setError(err instanceof Error ? err.message : 'Failed to load history');
+            if (!opts?.background) setError(err instanceof Error ? err.message : 'Failed to load history');
         } finally {
-            setLoading(false);
+            if (!opts?.background) setLoading(false);
         }
-    };
+    }, [activeLogin]);
 
-    useEffect(() => { fetchHistory(); }, []);
+    useEffect(() => {
+        if (historyCache && historyCache.login === activeLogin) {
+            setOrders(historyCache.orders);
+            void fetchHistory({ background: true });
+        } else {
+            setOrders([]);
+            void fetchHistory();
+        }
+    }, [activeLogin, fetchHistory]);
 
     const filteredOrders = useMemo(() => {
         if (filter === 'all') return orders;
@@ -2130,9 +2167,15 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
         }).replace(',', '');
     };
 
-    const formatPriceCell = (value: number | undefined, symbol: string) => (
-        Number.isFinite(value) && value !== 0 ? <PriceDisplay price={value} symbol={symbol} /> : '-'
-    );
+    const formatPriceCell = (value: number | undefined, symbol: string) => {
+        const price = Number(value);
+        return Number.isFinite(price) && price > 0 ? formatPrice(price, symbol) : '-';
+    };
+
+    const formatLevelCell = (value: number | undefined, symbol: string) => {
+        const price = Number(value);
+        return Number.isFinite(price) && price > 0 ? formatPrice(price, symbol) : '0.00';
+    };
 
     const formatTradeStatus = (trade: Trade) => {
         if (trade.status) return trade.status;
@@ -2142,104 +2185,112 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
 
     const moneyColor = (value: number | undefined) => {
         const numeric = Number(value ?? 0);
-        if (numeric > 0) return 'text-[#48d37f]';
-        if (numeric < 0) return 'text-[#ff4d5b]';
-        return 'text-zinc-400';
+        if (numeric > 0) return 'text-[#22c55e]';
+        if (numeric < 0) return 'text-[#ff2d2d]';
+        return 'text-zinc-100';
     };
 
     const typeColor = (type: string) => {
         const t = (type || '').toLowerCase();
-        return t.includes('buy') ? 'text-blue-400' : t.includes('sell') ? 'text-red-400' : 'text-zinc-400';
+        return t.includes('buy') ? 'text-[#45bff7]' : t.includes('sell') ? 'text-[#ff2d2d]' : 'text-zinc-100';
     };
 
     return (
-        <div className="h-full flex flex-col bg-[#131316]">
+        <div className="rtx-history-tab h-full flex flex-col relative bg-[#131316] overflow-hidden">
             {/* Toolbar */}
-            <div className="flex items-center gap-2 px-2 py-1 border-b border-zinc-700 bg-[#1a1a1a] shrink-0">
-                <div className="flex gap-1">
+            <div className="rtx-history-toolbar flex items-center gap-2 px-1.5 py-1 border-b border-zinc-700 bg-[#191a1e] shrink-0 text-[12px] font-normal text-zinc-300 tabular-nums">
+                <div className="flex items-center gap-1">
                     {(['today', 'week', 'month', 'all'] as const).map(f => (
                         <button key={f} onClick={() => setFilter(f)}
-                            className={`rtx-journal-time-btn px-2 py-0.5 text-[12px] font-normal rounded capitalize transition-colors ${filter === f ? 'bg-zinc-600 text-white' : 'text-zinc-400'}`}>
+                            className={`rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm capitalize transition-colors ${filter === f ? 'bg-zinc-700/70 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}>
                             {f}
                         </button>
                     ))}
                 </div>
                 <div className="flex-1" />
                 <span className="text-[12px] font-normal text-zinc-500">{filteredOrders.length} records</span>
-                <button onClick={fetchHistory} disabled={loading}
-                    className="text-[12px] font-normal px-2 py-0.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300 flex items-center gap-1">
+                <button onClick={() => fetchHistory({ force: true })} disabled={loading}
+                    className="rtx-history-refresh-btn text-[12px] font-normal px-2 py-0.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 disabled:cursor-wait disabled:opacity-50">
                     <Icon name="refresh" size="xs" className={loading ? 'animate-spin' : ''} />
                     {loading ? 'Loading…' : 'Refresh'}
                 </button>
             </div>
 
-            {/* States */}
-            {loading && <div className="flex-1 flex items-center justify-center text-zinc-500 text-xs">Loading closed trade history…</div>}
-            {!loading && error && (
-                <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                    <button onClick={fetchHistory} className="text-[12px] font-normal px-3 py-1 bg-zinc-700 rounded hover:bg-zinc-600 text-zinc-300">Retry</button>
-                </div>
-            )}
-            {!loading && !error && filteredOrders.length === 0 && (
-                <div className="flex-1 flex items-center justify-center text-zinc-600 text-xs italic">No closed trades for this period</div>
-            )}
-
             {/* Table */}
-            {!loading && !error && filteredOrders.length > 0 && (
-                <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="sticky top-0 bg-[#131316] text-[#a0a0a0] z-10 font-normal text-[12px] uppercase tracking-normal border-b border-zinc-700/50">
-                            <tr className="h-[30px]">
-                                <th className="p-1 pl-2 w-20">Ticket</th>
-                                <th className="p-1 w-28">Open Time</th>
-                                <th className="p-1 w-14">Type</th>
-                                <th className="p-1 w-16 text-right">Volume</th>
-                                <th className="p-1 w-20 pl-3">Symbol</th>
-                                <th className="p-1 w-22 text-right">Open Price</th>
-                                <th className="p-1 w-20 text-right">S/L</th>
-                                <th className="p-1 w-20 text-right">T/P</th>
-                                <th className="p-1 w-28 text-right">Close Time</th>
-                                <th className="p-1 w-22 text-right">Close Price</th>
-                                <th className="p-1 w-20 text-right">Commission</th>
-                                <th className="p-1 w-20 text-right">Swap</th>
-                                <th className="p-1 w-20 text-right">Profit</th>
-                                <th className="p-1 w-20 text-right">Status</th>
+            <div className="rtx-trade-scroll flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
+                <table
+                    className="rtx-trade-table w-full text-center border-collapse"
+                    style={{ fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif', fontVariantNumeric: 'tabular-nums' }}
+                >
+                    <thead className="rtx-trade-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-normal text-[12px] leading-[18px] uppercase border-y border-zinc-700/70 select-none shadow-[0_1px_0_0_rgba(255,255,255,0.04)]">
+                        <tr className="h-[30px]">
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Ticket</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28">Open Time</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-14">Type</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-16">Volume</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Symbol</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22">Open Price</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">S/L</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">T/P</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28">Close Time</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22">Close Price</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Commission</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Swap</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Profit</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[13px] leading-[19.5px] font-normal">
+                        {filteredOrders.length === 0 && (
+                            <tr>
+                                <td colSpan={14} className="h-16 text-center text-zinc-600 text-xs italic">
+                                    {loading ? 'Loading closed trade history…' : error ? error : 'No closed trades for this period'}
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-800 text-zinc-300 font-mono text-[13px] leading-[19.5px] font-normal">
-                            {filteredOrders.map((o, i) => (
+                        )}
+                        {filteredOrders.map((o, i) => {
+                            const sideLabel = String(o.side || o.type || '-').toLowerCase();
+                            return (
                                 <tr key={`${o.type}-${o.id}-${i}`}
-                                    className="rtx-history-row h-[30px] group transition-all duration-300 ease-in-out">
-                                    <td className="p-1 pl-2 border-r border-zinc-800 text-zinc-500">{o.id ?? '-'}</td>
-                                    <td className="p-1 border-r border-zinc-800 text-zinc-400 whitespace-nowrap">{formatTs(o.openTime)}</td>
-                                    <td className={`p-1 border-r border-zinc-800 font-normal ${typeColor(o.side)}`}>{(o.side || o.type || '-').toUpperCase()}</td>
-                                    <td className="p-1 border-r border-zinc-800 text-right font-normal text-zinc-200">
+                                    className="rtx-trade-row h-[30px] transition-colors">
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={`Ticket: ${o.id ?? '-'}`}>{o.id ?? '-'}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={`Open time: ${formatTs(o.openTime)}`}>{formatTs(o.openTime)}</td>
+                                    <td className={`${typeColor(o.side)} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={`Type: ${sideLabel}`}>
+                                        <div className="flex items-center justify-center">
+                                            <span>{sideLabel}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={`Volume: ${o.volume != null ? Number(o.volume).toFixed(2) : '-'}`}>
                                         {o.volume != null ? Number(o.volume).toFixed(2) : '-'}
                                     </td>
-                                    <td className="p-1 border-r border-zinc-800 font-normal text-zinc-100 pl-3">{o.symbol ?? '-'}</td>
-                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={`Symbol: ${o.symbol ?? '-'}`}>{o.symbol ?? '-'}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={`Open price: ${formatPriceCell(o.openPrice, o.symbol)}`}>
                                         {formatPriceCell(o.openPrice, o.symbol)}
                                     </td>
-                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-500">
-                                        {formatPriceCell(o.sl, o.symbol)}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Stop Loss: ${formatLevelCell(o.sl, o.symbol)}`}>
+                                        <span className={(o.sl ?? 0) > 0 ? "text-[#ff7676] bg-red-950/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>
+                                            {formatLevelCell(o.sl, o.symbol)}
+                                        </span>
                                     </td>
-                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-500">
-                                        {formatPriceCell(o.tp, o.symbol)}
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Take Profit: ${formatLevelCell(o.tp, o.symbol)}`}>
+                                        <span className={(o.tp ?? 0) > 0 ? "text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>
+                                            {formatLevelCell(o.tp, o.symbol)}
+                                        </span>
                                     </td>
-                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">{formatTs(o.closeTime)}</td>
-                                    <td className="p-1 border-r border-zinc-800 text-right text-zinc-400">
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={`Close time: ${formatTs(o.closeTime)}`}>{formatTs(o.closeTime)}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={`Close price: ${formatPriceCell(o.closePrice, o.symbol)}`}>
                                         {formatPriceCell(o.closePrice, o.symbol)}
                                     </td>
-                                    <td className={`p-1 border-r border-zinc-800 text-right ${moneyColor(o.commission)}`}>{formatMoney(o.commission)}</td>
-                                    <td className={`p-1 border-r border-zinc-800 text-right ${moneyColor(o.swap)}`}>{formatMoney(o.swap)}</td>
-                                    <td className={`p-1 border-r border-zinc-800 text-right font-normal ${moneyColor(o.profit)}`}>{formatMoney(o.profit)}</td>
-                                    <td className="p-1 pr-2 text-right text-zinc-500 capitalize">{formatTradeStatus(o)}</td>
+                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums ${moneyColor(o.commission)}`} title={`Commission: ${formatMoney(o.commission)}`}>{formatMoney(o.commission)}</td>
+                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums ${moneyColor(o.swap)}`} title={`Swap: ${formatMoney(o.swap)}`}>{formatMoney(o.swap)}</td>
+                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal tabular-nums ${moneyColor(o.profit)}`} title={`Profit: ${formatMoney(o.profit)}`}>{formatMoney(o.profit)}</td>
+                                    <td className="px-1.5 py-[2px] text-center text-zinc-100 capitalize whitespace-nowrap" title={`Status: ${formatTradeStatus(o)}`}>{formatTradeStatus(o)}</td>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

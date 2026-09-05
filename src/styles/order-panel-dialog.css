@@ -1,0 +1,479 @@
+.rtx-order-dialog-backdrop {
+  align-items: center;
+  background: color-mix(in srgb, var(--bg-primary) 84%, transparent);
+  backdrop-filter: blur(2px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 16px;
+  position: fixed;
+  z-index: 10000;
+}
+
+.rtx-order-dialog {
+  --order-ask: var(--color-info);
+  --order-bid: var(--color-loss);
+  --order-buy-action: var(--drawing-tool-accent, #2962ff);
+  --order-chart-axis-surface: var(--bg-secondary);
+  --order-control-bg: var(--bg-primary);
+  --order-sell-action: var(--color-loss);
+  --order-supporting-text: color-mix(in srgb, var(--text-primary) 68%, var(--bg-secondary));
+  --order-tag-text: #fff;
+
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  box-shadow: 0 24px 72px rgb(0 0 0 / 62%), 0 0 0 1px rgb(255 255 255 / 2%);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  max-height: calc(100vh - 32px);
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+  user-select: none;
+  width: 790px;
+}
+
+.rtx-order-dialog__header {
+  align-items: center;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  cursor: move;
+  display: flex;
+  flex: 0 0 40px;
+  justify-content: space-between;
+  padding: 0 10px 0 14px;
+}
+
+.rtx-order-dialog__header:active {
+  cursor: grabbing;
+}
+
+.rtx-order-dialog__title {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+}
+
+.rtx-order-dialog__close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--order-supporting-text);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 20px;
+  height: 28px;
+  justify-content: center;
+  line-height: 1;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  width: 28px;
+}
+
+.rtx-order-dialog__close:hover {
+  background: var(--color-loss-dimmer);
+  color: var(--color-loss);
+}
+
+.rtx-order-dialog__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 370px;
+  min-height: 360px;
+}
+
+.rtx-order-dialog__chart {
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  min-width: 0;
+}
+
+.rtx-order-dialog__chart-shell {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.rtx-order-dialog__chart-header {
+  align-items: center;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  flex: 0 0 46px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 7px 10px 7px 12px;
+}
+
+.rtx-order-dialog__chart-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rtx-order-dialog__chart-symbol {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+.rtx-order-dialog__chart-meta {
+  align-items: center;
+  color: var(--order-supporting-text);
+  display: inline-flex;
+  font-size: 11px;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.rtx-order-dialog__live-dot {
+  background: var(--status-connected);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-connected) 18%, transparent);
+  height: 5px;
+  width: 5px;
+}
+
+.rtx-order-dialog__chart-quotes {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__chart-quote {
+  color: var(--order-supporting-text);
+}
+
+.rtx-order-dialog__chart-quote strong {
+  font-weight: var(--font-weight-semibold);
+  margin-left: 5px;
+}
+
+.rtx-order-dialog__chart-quote--bid strong {
+  color: var(--order-bid);
+}
+
+.rtx-order-dialog__chart-quote--ask strong {
+  color: var(--order-ask);
+}
+
+.rtx-order-dialog__chart-canvas {
+  color: var(--order-supporting-text);
+  display: block;
+  flex: 1;
+  height: 314px;
+  min-height: 260px;
+  width: 100%;
+}
+
+.rtx-order-dialog__form {
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px;
+}
+
+.rtx-order-dialog__field {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 78px minmax(0, 1fr);
+  margin-bottom: 10px;
+  min-height: 32px;
+}
+
+.rtx-order-dialog__label {
+  color: var(--order-supporting-text);
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+  text-align: right;
+}
+
+.rtx-order-dialog__control {
+  background: var(--order-control-bg);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  height: 32px;
+  min-width: 0;
+  outline: none;
+  padding: 0 10px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  width: 100%;
+}
+
+.rtx-order-dialog__control:focus {
+  border-color: var(--border-tertiary);
+  box-shadow: 0 0 0 2px var(--color-primary-dimmer);
+}
+
+.rtx-order-dialog__control--static {
+  align-items: center;
+  display: flex;
+}
+
+.rtx-order-dialog__volume-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rtx-order-dialog__volume-control {
+  align-items: stretch;
+  background: var(--order-control-bg);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  display: flex;
+  height: 32px;
+  overflow: hidden;
+  width: 104px;
+}
+
+.rtx-order-dialog__volume-input {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  outline: none;
+  padding: 0 8px;
+  width: 76px;
+}
+
+.rtx-order-dialog__spinner {
+  border-left: 1px solid var(--border-secondary);
+  display: flex;
+  flex: 0 0 20px;
+  flex-direction: column;
+}
+
+.rtx-order-dialog__spinner-button {
+  background: var(--bg-quaternary);
+  border: 0;
+  color: var(--order-supporting-text);
+  cursor: pointer;
+  flex: 1;
+  font-size: 8px;
+  line-height: 1;
+  padding: 0;
+}
+
+.rtx-order-dialog__spinner-button:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.rtx-order-dialog__margin {
+  color: var(--order-supporting-text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+
+.rtx-order-dialog__message {
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-bottom: 10px;
+  padding: 7px 9px;
+}
+
+.rtx-order-dialog__message--error {
+  background: var(--color-loss-dimmer);
+  border-color: var(--color-loss-dim);
+  color: var(--color-loss);
+}
+
+.rtx-order-dialog__message--warning {
+  background: var(--color-warning-dim);
+  border-color: color-mix(in srgb, var(--color-warning) 42%, transparent);
+  color: var(--color-warning);
+}
+
+.rtx-order-dialog__price-summary {
+  border-top: 1px solid var(--border-primary);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr 1px 1fr;
+  margin-top: auto;
+  padding: 13px 0 9px;
+}
+
+.rtx-order-dialog__price-divider {
+  background: var(--border-primary);
+}
+
+.rtx-order-dialog__price-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rtx-order-dialog__price-side--ask {
+  text-align: right;
+}
+
+.rtx-order-dialog__price-label {
+  color: var(--order-supporting-text);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.12em;
+  margin-bottom: 2px;
+}
+
+.rtx-order-dialog__price {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  letter-spacing: -0.045em;
+  white-space: nowrap;
+}
+
+.rtx-order-dialog__price strong {
+  font-size: 29px;
+  font-weight: var(--font-weight-bold);
+}
+
+.rtx-order-dialog__spread {
+  color: var(--order-supporting-text);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.rtx-order-dialog__actions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.rtx-order-dialog__actions--single {
+  grid-template-columns: 1fr;
+}
+
+.rtx-order-dialog__action {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  gap: 7px;
+  height: 44px;
+  justify-content: center;
+  transition: filter var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+.rtx-order-dialog__action--sell {
+  background: color-mix(in srgb, var(--order-sell-action) 82%, #111);
+  border-color: color-mix(in srgb, var(--order-sell-action) 62%, var(--border-primary));
+}
+
+.rtx-order-dialog__action--buy {
+  background: color-mix(in srgb, var(--order-buy-action) 84%, #111);
+  border-color: color-mix(in srgb, var(--order-buy-action) 66%, var(--border-primary));
+}
+
+.rtx-order-dialog__action:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.rtx-order-dialog__action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.rtx-order-dialog__action:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.rtx-order-dialog__progress {
+  background: var(--border-primary);
+  border-radius: 999px;
+  height: 2px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.rtx-order-dialog__progress-bar {
+  animation: rtx-order-progress 1s ease-in-out infinite alternate;
+  background: var(--color-primary);
+  height: 100%;
+  width: 100%;
+}
+
+@keyframes rtx-order-progress {
+  from { opacity: 0.28; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 760px) {
+  .rtx-order-dialog {
+    max-height: calc(100vh - 20px);
+    max-width: calc(100vw - 20px);
+    width: 520px;
+  }
+
+  .rtx-order-dialog-backdrop {
+    padding: 10px;
+  }
+
+  .rtx-order-dialog__content {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .rtx-order-dialog__chart {
+    border-bottom: 1px solid var(--border-primary);
+    border-right: 0;
+    min-height: 248px;
+  }
+
+  .rtx-order-dialog__chart-canvas {
+    height: 210px;
+    min-height: 210px;
+  }
+}
+
+@media (max-width: 420px) {
+  .rtx-order-dialog__form {
+    padding: 12px;
+  }
+
+  .rtx-order-dialog__field {
+    align-items: stretch;
+    gap: 5px;
+    grid-template-columns: 1fr;
+  }
+
+  .rtx-order-dialog__label {
+    text-align: left;
+  }
+}

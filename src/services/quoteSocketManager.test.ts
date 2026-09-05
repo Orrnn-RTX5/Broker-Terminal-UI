@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { QuoteSocketManager } from './quoteSocketManager';
+import {
+  QUOTE_SOCKET_HEARTBEAT_INTERVAL_MS,
+  QUOTE_SOCKET_MAX_SUBSCRIPTION_RETRIES,
+  QUOTE_SOCKET_OPEN_TIMEOUT_MS,
+  QUOTE_SOCKET_PONG_TIMEOUT_MS,
+  QUOTE_SOCKET_STABLE_OPEN_MS,
+  QUOTE_SOCKET_SUBSCRIPTION_ACK_TIMEOUT_MS,
+  QuoteSocketManager,
+} from './quoteSocketManager';
 
 const setConnectionState = vi.fn();
 const enqueueLiveTick = vi.hoisted(() => vi.fn());
@@ -70,6 +78,15 @@ class FakeWebSocket {
   }
 }
 
+const originalVisibilityStateDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+
+const setVisibilityState = (state: DocumentVisibilityState): void => {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: state,
+  });
+};
+
 type QuoteSocketManagerInternals = QuoteSocketManager & {
   ws: WebSocket | null;
   handleMessage: (data: unknown) => void;
@@ -82,7 +99,12 @@ type QuoteSocketManagerInternals = QuoteSocketManager & {
 const internals = (manager: QuoteSocketManager): QuoteSocketManagerInternals =>
   manager as unknown as QuoteSocketManagerInternals;
 
-describe('QuoteSocketManager public v2 batch protocol', () => {
+const v2ChannelFrame = (action: 'subscribe' | 'unsubscribe', symbol: string) => {
+  const channel = `ticks.${symbol}`;
+  return { action, channel, channels: [channel] };
+};
+
+describe('QuoteSocketManager public v2 per-symbol protocol', () => {
   beforeEach(() => {
     FakeWebSocket.instances = [];
     brokerSessionMock.accessToken = 'access-token';
@@ -90,6 +112,8 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     brokerSessionMock.sessionListener = null;
     setConnectionState.mockClear();
     enqueueLiveTick.mockClear();
+    setVisibilityState('visible');
+    vi.spyOn(Math, 'random').mockReturnValue(0);
     vi.stubGlobal('WebSocket', FakeWebSocket);
   });
 
@@ -97,9 +121,14 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    if (originalVisibilityStateDescriptor) {
+      Object.defineProperty(document, 'visibilityState', originalVisibilityStateDescriptor);
+    } else {
+      delete (document as { visibilityState?: DocumentVisibilityState }).visibilityState;
+    }
   });
 
-  it('opens public v2 without a token and batches initial demand', () => {
+  it('opens public v2 without a token and sends one exact channel frame per symbol', () => {
     brokerSessionMock.accessToken = null;
     const manager = new QuoteSocketManager();
 
@@ -112,24 +141,17 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     ws.open();
 
     expect(ws.sent.map((payload) => JSON.parse(payload))).toEqual([
-      {
-        action: 'subscribe',
-        channels: ['ticks.EURUSD', 'ticks.XAUUSD'],
-      },
+      v2ChannelFrame('subscribe', 'EURUSD'),
+      v2ChannelFrame('subscribe', 'XAUUSD'),
     ]);
     expect(manager.getActiveSymbols()).toEqual(['EURUSD', 'XAUUSD']);
 
     manager.setDemand('chart', ['GBPUSD']);
 
     expect(ws.sent.map((payload) => JSON.parse(payload))).toEqual([
-      {
-        action: 'subscribe',
-        channels: ['ticks.EURUSD', 'ticks.XAUUSD'],
-      },
-      {
-        action: 'subscribe',
-        channel: 'ticks.GBPUSD',
-      },
+      v2ChannelFrame('subscribe', 'EURUSD'),
+      v2ChannelFrame('subscribe', 'XAUUSD'),
+      v2ChannelFrame('subscribe', 'GBPUSD'),
     ]);
     expect(manager.getActiveSymbols()).toEqual(['EURUSD', 'XAUUSD', 'GBPUSD']);
 
@@ -150,25 +172,17 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     manager.setDemand('watchlist', ['EURUSD', 'XAUUSD']);
 
     expect(ws.sent.map((payload) => JSON.parse(payload))).toEqual([
-      {
-        action: 'subscribe',
-        channels: ['ticks.EURUSD', 'ticks.XAUUSD'],
-      },
-      {
-        action: 'unsubscribe',
-        channel: 'ticks.EURUSD',
-      },
-      {
-        action: 'subscribe',
-        channel: 'ticks.EURUSD',
-      },
+      v2ChannelFrame('subscribe', 'EURUSD'),
+      v2ChannelFrame('subscribe', 'XAUUSD'),
+      v2ChannelFrame('unsubscribe', 'EURUSD'),
+      v2ChannelFrame('subscribe', 'EURUSD'),
     ]);
     expect(manager.getActiveSymbols()).toEqual(['EURUSD', 'XAUUSD']);
 
     manager.destroy();
   });
 
-  it('sends one batch unsubscribe frame for multiple symbols', () => {
+  it('sends one exact unsubscribe frame per symbol', () => {
     const manager = new QuoteSocketManager();
     const send = vi.fn();
 
@@ -180,11 +194,11 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
 
     internals(manager).sendUnsubscribe(['EURUSD', 'XAUUSD']);
 
-    expect(send).toHaveBeenCalledOnce();
-    expect(JSON.parse(send.mock.calls[0][0])).toEqual({
-      action: 'unsubscribe',
-      channels: ['ticks.EURUSD', 'ticks.XAUUSD'],
-    });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls.map(([payload]) => JSON.parse(payload))).toEqual([
+      v2ChannelFrame('unsubscribe', 'EURUSD'),
+      v2ChannelFrame('unsubscribe', 'XAUUSD'),
+    ]);
 
     manager.destroy();
   });
@@ -201,6 +215,123 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     manager.destroy();
   });
 
+  it('reuses an in-flight socket across a same-turn demand handoff', () => {
+    vi.useFakeTimers();
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('chart:first-pass', ['XAUUSD']);
+    const socket = FakeWebSocket.instances[0];
+
+    manager.removeDemand('chart:first-pass');
+    manager.setDemand('chart:live-pass', ['XAUUSD']);
+    vi.advanceTimersByTime(0);
+
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(socket.readyState).toBe(FakeWebSocket.CONNECTING);
+
+    socket.open();
+    expect(socket.sent.map((payload) => JSON.parse(payload))).toEqual([
+      v2ChannelFrame('subscribe', 'XAUUSD'),
+    ]);
+
+    manager.destroy();
+  });
+
+  it('replaces a socket that remains stuck in CONNECTING', () => {
+    vi.useFakeTimers();
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    const stalledSocket = FakeWebSocket.instances[0];
+
+    vi.advanceTimersByTime(QUOTE_SOCKET_OPEN_TIMEOUT_MS);
+
+    expect(stalledSocket.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(setConnectionState).toHaveBeenCalledWith('disconnected', 'fix_socket');
+    expect(setConnectionState).toHaveBeenCalledWith('reconnecting', 'fix_socket');
+
+    vi.advanceTimersByTime(1000);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    manager.destroy();
+  });
+
+  it('reconnects when an open socket does not answer the heartbeat', () => {
+    vi.useFakeTimers();
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    internals(manager).handleMessage({ type: 'subscribed', channel: 'ticks.EURUSD' });
+    socket.sent.length = 0;
+
+    vi.advanceTimersByTime(QUOTE_SOCKET_HEARTBEAT_INTERVAL_MS);
+    expect(socket.sent.map((payload) => JSON.parse(payload))).toEqual([
+      { type: 'ping', timestamp: expect.any(Number) },
+    ]);
+
+    vi.advanceTimersByTime(QUOTE_SOCKET_PONG_TIMEOUT_MS);
+    expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(setConnectionState).toHaveBeenCalledWith('disconnected', 'fix_socket');
+
+    vi.advanceTimersByTime(999);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    manager.destroy();
+  });
+
+  it('keeps reconnect backoff across short-lived opens and resets it after a stable open', () => {
+    vi.useFakeTimers();
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    FakeWebSocket.instances[0].open();
+    FakeWebSocket.instances[0].emitClose();
+
+    vi.advanceTimersByTime(1000);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    FakeWebSocket.instances[1].open();
+    FakeWebSocket.instances[1].emitClose();
+    vi.advanceTimersByTime(1999);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(3);
+
+    FakeWebSocket.instances[2].open();
+    vi.advanceTimersByTime(QUOTE_SOCKET_STABLE_OPEN_MS);
+    FakeWebSocket.instances[2].emitClose();
+    vi.advanceTimersByTime(999);
+    expect(FakeWebSocket.instances).toHaveLength(3);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(4);
+
+    manager.destroy();
+  });
+
+  it('pauses quote reconnects while hidden and resumes once visible', () => {
+    vi.useFakeTimers();
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    FakeWebSocket.instances[0].open();
+    setVisibilityState('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    FakeWebSocket.instances[0].emitClose();
+
+    vi.advanceTimersByTime(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    setVisibilityState('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    manager.destroy();
+  });
+
   it('never attaches the available account token to the public quote URL', () => {
     const manager = new QuoteSocketManager();
 
@@ -213,7 +344,7 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     manager.destroy();
   });
 
-  it('chunks bulk demand at the backend limit and uses singular form for the remainder', () => {
+  it('keeps bulk v2 demand as one exact channel per frame', () => {
     const manager = new QuoteSocketManager();
     const symbols = Array.from({ length: 501 }, (_, index) => `SYM${index}`);
 
@@ -222,10 +353,14 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     const socket = FakeWebSocket.instances[0];
     socket.open();
     const frames = socket.sent.map((payload) => JSON.parse(payload));
-    expect(frames).toHaveLength(2);
-    expect(frames[0]).toMatchObject({ action: 'subscribe' });
-    expect(frames[0].channels).toHaveLength(500);
-    expect(frames[1]).toEqual({ action: 'subscribe', channel: 'ticks.SYM500' });
+    expect(frames).toHaveLength(501);
+    expect(frames[0]).toEqual(v2ChannelFrame('subscribe', 'SYM0'));
+    expect(frames[500]).toEqual(v2ChannelFrame('subscribe', 'SYM500'));
+    expect(frames.every((frame, index) => (
+      frame.channel === `ticks.SYM${index}`
+      && frame.channels.length === 1
+      && frame.channels[0] === frame.channel
+    ))).toBe(true);
 
     manager.destroy();
   });
@@ -326,6 +461,40 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     expect(enqueueLiveTick.mock.calls[1][1]).toMatchObject({ dailyChange: -0.36 });
     expect(enqueueLiveTick.mock.calls[2][1]).toMatchObject({ dailyChange: 0.45 });
     expect(enqueueLiveTick.mock.calls[3][1].dailyChange).toBeCloseTo(10, 10);
+
+    manager.destroy();
+  });
+
+  it('normalizes optional quote metadata aliases without inventing volume', () => {
+    const manager = new QuoteSocketManager();
+
+    internals(manager).handleMessage([
+      {
+        symbol: 'xauusd',
+        bid: 4_411.09,
+        ask: 4_411.2,
+        high_24h: 4_430.5,
+        low_24h: 4_390.25,
+        last_price: 4_411.15,
+        tick_volume: 321,
+        provider: 'Prime LP',
+        daily_open: 4_400,
+        previous_close: 4_398,
+        timestamp: 1,
+      },
+      { symbol: 'eurusd', bid: 1.1, ask: 1.2, timestamp: 2 },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({
+      high24h: 4_430.5,
+      low24h: 4_390.25,
+      last: 4_411.15,
+      volume: 321,
+      lp: 'Prime LP',
+      open: 4_400,
+      close: 4_398,
+    });
+    expect(enqueueLiveTick.mock.calls[1][1].volume).toBeUndefined();
 
     manager.destroy();
   });
@@ -530,6 +699,39 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
 
   // ─── N3-03 regression: subscribe-state desync on rejected/unconfirmed subscribe ───
 
+  it('retries missing subscription acknowledgements only up to the configured bound', () => {
+    vi.useFakeTimers();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const manager = new QuoteSocketManager();
+
+    manager.setDemand('watchlist', ['EURUSD']);
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+
+    vi.advanceTimersByTime(
+      QUOTE_SOCKET_SUBSCRIPTION_ACK_TIMEOUT_MS * (QUOTE_SOCKET_MAX_SUBSCRIPTION_RETRIES * 2 + 1),
+    );
+
+    const subscribeFrames = () => socket.sent
+      .map((payload) => JSON.parse(payload))
+      .filter((frame) => frame.action === 'subscribe');
+    expect(subscribeFrames()).toEqual(
+      Array.from(
+        { length: QUOTE_SOCKET_MAX_SUBSCRIPTION_RETRIES + 1 },
+        () => v2ChannelFrame('subscribe', 'EURUSD'),
+      ),
+    );
+    expect(internals(manager).pendingSubscriptions.has('EURUSD')).toBe(false);
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining(`after ${QUOTE_SOCKET_MAX_SUBSCRIPTION_RETRIES} retries: EURUSD`),
+    );
+
+    vi.advanceTimersByTime(QUOTE_SOCKET_SUBSCRIPTION_ACK_TIMEOUT_MS);
+    expect(subscribeFrames()).toHaveLength(QUOTE_SOCKET_MAX_SUBSCRIPTION_RETRIES + 1);
+
+    manager.destroy();
+  });
+
   it('does not mark a symbol confirmed until the server confirms it (allows retry)', () => {
     const manager = new QuoteSocketManager();
 
@@ -550,7 +752,7 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     ws.sent.length = 0;
     internals(manager).sendSubscribe(['EURUSD']);
     expect(ws.sent.map((p: string) => JSON.parse(p))).toEqual([
-      { action: 'subscribe', channel: 'ticks.EURUSD' },
+      v2ChannelFrame('subscribe', 'EURUSD'),
     ]);
 
     manager.destroy();
@@ -565,6 +767,72 @@ describe('QuoteSocketManager public v2 batch protocol', () => {
     internals(manager).handleMessage({ type: 'subscribed', symbols: ['ticks.eurusd'] });
     expect(internals(manager).subscribedSymbols.has('EURUSD')).toBe(true);
     expect(internals(manager).pendingSubscriptions.has('EURUSD')).toBe(false);
+
+    manager.destroy();
+  });
+
+  it('treats the subscribed channel as authoritative over an unsuffixed payload symbol', () => {
+    const manager = new QuoteSocketManager();
+
+    internals(manager).handleMessage({
+      channel: 'ticks.EURUSD.r',
+      data: {
+        symbol: 'EURUSD',
+        bid: 1.125,
+        ask: 1.1252,
+        timestamp_ms: 1_788_176_700_123,
+      },
+    });
+
+    expect(enqueueLiveTick).toHaveBeenCalledOnce();
+    expect(enqueueLiveTick.mock.calls[0][0]).toBe('EURUSD.R');
+    expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({
+      symbol: 'EURUSD.R',
+      bid: 1.125,
+      ask: 1.1252,
+    });
+
+    manager.destroy();
+  });
+
+  it('normalizes timestamp_ms and time_msc source-time aliases', () => {
+    const manager = new QuoteSocketManager();
+
+    internals(manager).handleMessage([
+      { symbol: 'eurusd', bid: 1.1, ask: 1.2, timestamp_ms: 1_788_176_700_123 },
+      { symbol: 'gbpusd', bid: 1.3, ask: 1.4, time_msc: 1_788_176_701_456 },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls[0][1]).toMatchObject({
+      symbol: 'EURUSD',
+      timestamp: 1_788_176_700_123,
+      sourceTimestamp: 1_788_176_700_123,
+    });
+    expect(enqueueLiveTick.mock.calls[1][1]).toMatchObject({
+      symbol: 'GBPUSD',
+      timestamp: 1_788_176_701_456,
+      sourceTimestamp: 1_788_176_701_456,
+    });
+
+    manager.destroy();
+  });
+
+  it('normalizes canonical event/server timestamps supplied in seconds, microseconds, and nanoseconds', () => {
+    const manager = new QuoteSocketManager();
+
+    internals(manager).handleMessage([
+      { symbol: 'eurusd', bid: 1.1, ask: 1.2, event_timestamp: 1_788_176_702 },
+      { symbol: 'gbpusd', bid: 1.3, ask: 1.4, timestamp_us: '1788176702123456' },
+      { symbol: 'xauusd', bid: 4_400, ask: 4_400.2, timestamp_ns: '1788176703123456000' },
+      { symbol: 'btcusd', bid: 65_000, ask: 65_001, server_time: '2026-09-04T08:11:44.123Z' },
+    ]);
+
+    expect(enqueueLiveTick.mock.calls.map(([, tick]) => tick.sourceTimestamp)).toEqual([
+      1_788_176_702_000,
+      1_788_176_702_123,
+      1_788_176_703_123,
+      Date.parse('2026-09-04T08:11:44.123Z'),
+    ]);
 
     manager.destroy();
   });

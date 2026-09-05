@@ -506,6 +506,7 @@ declare global {
       isPackaged: boolean;
       shell: {
         openPath: (path: string) => Promise<string>;
+        openDataFolder: () => Promise<string>;
         openExternal: (url: string) => Promise<void>;
       };
       window: {

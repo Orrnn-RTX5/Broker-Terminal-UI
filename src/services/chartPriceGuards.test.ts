@@ -1,18 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  arePriceReferencesCompatible,
   canDropPreloadedCandlesForLiveQuoteMismatch,
   createRenderedPriceReference,
   getChartPriceFromQuote,
   getMedianCandlePrice,
   getRenderedCandleReferencePrice,
-  getReferenceScaleFactor,
   getTradeEntryPriceFromQuote,
   isPriceCompatibleWithCandles,
   isPriceCompatibleWithReference,
+  isStructurallyValidPriceCandle,
+  repairPriceCandle,
   normalizeCandlesToReference,
   normalizeCandlesToRenderedScale,
   resetLiveQuoteGuardState,
-  scaleCandlePrices,
+  sanitizePriceCandles,
   updateLiveQuoteGuardState,
 } from './chartPriceGuards';
 
@@ -51,8 +53,53 @@ describe('chart price guards', () => {
     expect(isPriceCompatibleWithCandles(4700, candles)).toBe(true);
     expect(normalizeCandlesToReference(candles, 4700)).toMatchObject({
       status: 'compatible',
-      factor: 1,
     });
+  });
+
+  it('rejects zero, inverted, and implausible-wick candles', () => {
+    expect(isStructurallyValidPriceCandle(candles[0])).toBe(true);
+    expect(isStructurallyValidPriceCandle({ open: 0, high: 0, low: 0, close: 0 })).toBe(false);
+    expect(isStructurallyValidPriceCandle({ open: 4680, high: 4670, low: 4660, close: 4685 })).toBe(false);
+    expect(isStructurallyValidPriceCandle({ open: 4680, high: 280000, low: 4675, close: 4685 })).toBe(false);
+  });
+
+  it('seals missing high and low values for locally aggregated candles', () => {
+    expect(repairPriceCandle({ open: 4680, high: 4670, low: 4660, close: 4685 })).toEqual({
+      open: 4680,
+      high: 4685,
+      low: 4660,
+      close: 4685,
+    });
+    expect(repairPriceCandle({ open: 4685, high: 4690, low: 4688, close: 4680 })).toEqual({
+      open: 4685,
+      high: 4690,
+      low: 4680,
+      close: 4680,
+    });
+    expect(repairPriceCandle({ open: 4680, high: 0, low: 0, close: 4685 })).toEqual({
+      open: 4680,
+      high: 4685,
+      low: 4680,
+      close: 4685,
+    });
+    expect(repairPriceCandle({ open: 0, high: 0, low: 0, close: 0 })).toBeNull();
+  });
+
+  it('does not invent missing backend high or low values during sanitization', () => {
+    const invertedHigh = { time: 5, open: 4680, high: 4670, low: 4660, close: 4685, volume: 1 };
+    expect(sanitizePriceCandles([candles[0], invertedHigh, candles[1]])).toEqual(candles);
+  });
+
+  it('removes an isolated incompatible price band without dropping valid XAU candles', () => {
+    const corrupted = [
+      candles[0],
+      { time: 3, open: 0, high: 0, low: 0, close: 0, volume: 1 },
+      { time: 4, open: 280000, high: 281000, low: 279000, close: 280500, volume: 1 },
+      candles[1],
+    ];
+
+    expect(sanitizePriceCandles(corrupted)).toEqual(candles);
+    expect(normalizeCandlesToReference(corrupted, 4686).candles).toEqual(candles);
   });
 
   it('keeps the GTA XAUUSD Friday history and Monday live quote on one price scale', () => {
@@ -66,11 +113,10 @@ describe('chart price guards', () => {
 
     expect(normalizeCandlesToReference(fridayHistory, 4438)).toMatchObject({
       status: 'compatible',
-      factor: 1,
     });
   });
 
-  it('normalizes obvious power-of-ten scaled candles', () => {
+  it('rejects power-of-ten mismatches without mutating backend OHLC', () => {
     const scaled = candles.map(candle => ({
       ...candle,
       open: candle.open * 100,
@@ -81,20 +127,91 @@ describe('chart price guards', () => {
 
     const result = normalizeCandlesToReference(scaled, 4686);
 
-    expect(result.status).toBe('scaled');
-    expect(result.factor).toBe(0.01);
-    expect(result.candles[0].close).toBe(4685);
+    expect(result).toEqual({ status: 'incompatible', candles: [] });
+    expect(scaled[0].close).toBe(468500);
   });
 
-  it('detects the same power-of-ten factor needed to normalize existing candles to a delayed quote', () => {
-    const scaledExisting = candles.map(candle => scaleCandlePrices(candle, 100));
-    const factor = getReferenceScaleFactor(getMedianCandlePrice(scaledExisting), 4686);
+  it('fails closed on mixed decimal bands without inventing a scale', () => {
+    const mixedHistory = [
+      { time: 1, open: 44.7, high: 44.8, low: 44.6, close: 44.75, volume: 10 },
+      { time: 2, open: 4474, high: 4475, low: 4473, close: 4474.5, volume: 12 },
+    ];
 
-    expect(factor).toBe(0.01);
-    expect(scaleCandlePrices(scaledExisting[0], factor ?? 1).close).toBe(4685);
+    const result = normalizeCandlesToReference(mixedHistory, null);
+
+    expect(result).toEqual({ status: 'incompatible', candles: [] });
+    expect(mixedHistory[0].close).toBe(44.75);
+    expect(mixedHistory[1].close).toBe(4474.5);
   });
 
-  it('normalizes older history against already rendered candles when no live quote exists', () => {
+  it('preserves structurally valid long-range history spanning more than sixteen times', () => {
+    const longRange = [
+      { time: 1, open: 100, high: 110, low: 90, close: 105, volume: 1 },
+      { time: 2, open: 350, high: 370, low: 330, close: 360, volume: 1 },
+      { time: 3, open: 1100, high: 1200, low: 1000, close: 1150, volume: 1 },
+      { time: 4, open: 3300, high: 3600, low: 3100, close: 3500, volume: 1 },
+    ];
+
+    expect(sanitizePriceCandles(longRange)).toEqual(longRange);
+    expect(normalizeCandlesToReference(longRange, null).candles).toEqual(longRange);
+  });
+
+  it('rejects contaminated rows while preserving exact history in the externally verified price band', () => {
+    const mixedScaleHistory = [
+      {
+        time: 1,
+        open: 44.31405,
+        high: 44.44585,
+        low: 44.31405,
+        close: 44.36435,
+        volume: 10,
+      },
+      {
+        time: 2,
+        open: 4463.8,
+        high: 4465.2,
+        low: 4463.4,
+        close: 4464.7,
+        volume: 12,
+      },
+    ];
+
+    const result = normalizeCandlesToReference(mixedScaleHistory, 4464.7);
+
+    expect(result).toEqual({
+      status: 'partial',
+      discardedCount: 1,
+      candles: [mixedScaleHistory[1]],
+    });
+    expect(mixedScaleHistory[0].close).toBe(44.36435);
+    expect(mixedScaleHistory[1].close).toBe(4464.7);
+  });
+
+  it('filters interleaved wrong-band rows without losing later valid broker candles', () => {
+    const interleaved = [
+      { time: 1, open: 4440, high: 4442, low: 4438, close: 4441, volume: 10 },
+      { time: 2, open: 44.4, high: 44.5, low: 44.3, close: 44.45, volume: 11 },
+      { time: 3, open: 4435, high: 4438, low: 4434, close: 4437, volume: 12 },
+      { time: 4, open: 44.3, high: 44.4, low: 44.2, close: 44.35, volume: 13 },
+      { time: 5, open: 4390, high: 4395, low: 4388, close: 4392, volume: 14 },
+    ];
+
+    const result = normalizeCandlesToReference(interleaved, 4391.81);
+
+    expect(result).toEqual({
+      status: 'partial',
+      discardedCount: 2,
+      candles: [interleaved[0], interleaved[2], interleaved[4]],
+    });
+    expect(result.candles.map(candle => candle.close)).toEqual([4441, 4437, 4392]);
+  });
+
+  it('treats a delayed quote in another decimal band as incompatible', () => {
+    expect(arePriceReferencesCompatible(468500, 4686)).toBe(false);
+    expect(arePriceReferencesCompatible(4685, 4686)).toBe(true);
+  });
+
+  it('rejects older history in another price band against rendered candles', () => {
     const scaledOlderHistory = [
       { time: -1, open: 467000, high: 468000, low: 466500, close: 467500, volume: 8 },
       { time: 0, open: 467500, high: 468500, low: 467200, close: 468000, volume: 9 },
@@ -102,9 +219,8 @@ describe('chart price guards', () => {
 
     const result = normalizeCandlesToRenderedScale(scaledOlderHistory, candles);
 
-    expect(result.status).toBe('scaled');
-    expect(result.factor).toBe(0.01);
-    expect(result.candles[1].close).toBe(4680);
+    expect(result).toEqual({ status: 'incompatible', candles: [] });
+    expect(scaledOlderHistory[1].close).toBe(468000);
   });
 
   it('can use a rendered last close as the scale reference', () => {
@@ -115,8 +231,7 @@ describe('chart price guards', () => {
       [{ open: NaN, high: NaN, low: NaN, close: 4680 }],
     );
 
-    expect(result.status).toBe('scaled');
-    expect(result.candles[0].close).toBe(4680);
+    expect(result).toEqual({ status: 'incompatible', candles: [] });
   });
 
   it('rejects wildly different non-scaled ranges such as BTC-like candles against XAU quotes', () => {
@@ -126,7 +241,7 @@ describe('chart price guards', () => {
     ];
 
     expect(getMedianCandlePrice(btcLikeCandles)).toBeGreaterThan(63000);
-    expect(getReferenceScaleFactor(63980, 4685)).toBeNull();
+    expect(arePriceReferencesCompatible(63980, 4685)).toBe(false);
     expect(isPriceCompatibleWithCandles(4685, btcLikeCandles)).toBe(false);
     expect(normalizeCandlesToReference(btcLikeCandles, 4685)).toMatchObject({
       status: 'incompatible',

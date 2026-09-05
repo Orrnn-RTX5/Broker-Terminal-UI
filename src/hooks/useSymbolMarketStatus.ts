@@ -24,6 +24,7 @@ interface FetchSymbolMarketStatusOptions {
 
 const CACHE_TTL_MS = 15_000;
 const DEFAULT_POLL_MS = 60_000;
+const MIN_VISIBLE_POLL_MS = 1_000;
 
 const statusCache = new Map<string, { status: NormalizedMarketStatus; refreshedAt: number }>();
 const inflightRequests = new Map<string, Promise<NormalizedMarketStatus>>();
@@ -82,6 +83,7 @@ export const useSymbolMarketStatus = (
 ): SymbolMarketStatusState => {
   const enabled = options.enabled ?? true;
   const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
+  const visiblePollMs = pollMs > 0 ? Math.max(MIN_VISIBLE_POLL_MS, pollMs) : 0;
   const normalizedSymbol = useMemo(() => normalizeSymbolKey(symbol), [symbol]);
   const requestSeqRef = useRef(0);
   const [state, setState] = useState<SymbolMarketStatusState>(() => (
@@ -145,33 +147,56 @@ export const useSymbolMarketStatus = (
     }
 
     let disposed = false;
+    let intervalId: number | null = null;
+    let isVisible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+
+    const stopPolling = () => {
+      if (intervalId === null) return;
+      window.clearInterval(intervalId);
+      intervalId = null;
+    };
+
+    const startPolling = () => {
+      if (disposed || !isVisible || visiblePollMs <= 0 || intervalId !== null) return;
+      intervalId = window.setInterval(() => {
+        if (!disposed && isVisible && document.visibilityState !== 'hidden') {
+          void refresh(true);
+        }
+      }, visiblePollMs);
+    };
+
     // Refresh on activation without synchronously cascading a state update from
     // the effect body. Cleanup invalidates both the queued and in-flight work.
-    void Promise.resolve().then(() => {
-      if (!disposed) void refresh(false);
-    });
-    if (pollMs <= 0) {
-      return () => {
-        disposed = true;
-        requestSeqRef.current += 1;
-      };
+    if (isVisible) {
+      void Promise.resolve().then(() => {
+        if (!disposed && isVisible) void refresh(false);
+      });
     }
+    startPolling();
 
-    const intervalId = window.setInterval(() => {
+    const handleVisibilityChange = () => {
+      const nextVisible = document.visibilityState !== 'hidden';
+      if (nextVisible === isVisible) return;
+
+      isVisible = nextVisible;
+      if (!isVisible) {
+        stopPolling();
+        return;
+      }
+
+      // One recovery snapshot per hidden -> visible transition.
       void refresh(true);
-    }, pollMs);
-    const handleFocus = () => {
-      void refresh(true);
+      startPolling();
     };
-    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       disposed = true;
       requestSeqRef.current += 1;
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', handleFocus);
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [enabled, normalizedSymbol, pollMs, refresh]);
+  }, [enabled, normalizedSymbol, refresh, visiblePollMs]);
 
   if (normalizeSymbolKey(state.symbol) !== normalizedSymbol) {
     return getCachedSymbolMarketStatus(normalizedSymbol)

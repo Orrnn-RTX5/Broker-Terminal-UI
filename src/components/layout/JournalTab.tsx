@@ -5,10 +5,10 @@
  * Filters:
  *   - Type  : All / Config / System / Network / History / User / Trade / API / Notify
  *   - Mode  : Full / Standard / Errors only
- *   - Time  : Last 1h / 6h / 24h / 7d / Custom
+ *   - Time  : 1h / 2h / 3h / 6h / 12h / Today / Week / Month / All
  *   - Search: Free text filter (matches against log messages)
  *
- * Auto-refreshes every 15 seconds while the tab is visible.
+ * Loads on activation or filter changes and refreshes on explicit user demand.
  */
 
 import React, {
@@ -28,7 +28,9 @@ import {
     getTradeOrderLatencySamples,
     TRADE_ORDER_LATENCY_EVENT,
     type TradeOrderLatencySample,
+    type TradeOrderTerminalStatus,
 } from '../../services/orderLatencyTelemetry';
+import { copyTextToClipboard } from '../../utils/tradeShareLink';
 
 // ─── Filter Options ──────────────────────────────────────────────────────────
 
@@ -52,9 +54,14 @@ const LOG_MODES = [
 
 const TIME_RANGES: { label: string; hours: number }[] = [
     { label: '1h', hours: 1 },
+    { label: '2h', hours: 2 },
+    { label: '3h', hours: 3 },
     { label: '6h', hours: 6 },
-    { label: '24h', hours: 24 },
-    { label: '7d', hours: 24 * 7 },
+    { label: '12h', hours: 12 },
+    { label: 'Today', hours: 24 },
+    { label: 'Week', hours: 24 * 7 },
+    { label: 'Month', hours: 24 * 30 },
+    { label: 'All', hours: 0 },
 ];
 
 const JOURNAL_HEADER_HEIGHT = 30;
@@ -87,22 +94,6 @@ function getTypeColor(typeText: string): string {
 }
 
 // Subtle row background — neutral gray for all types for a clean terminal look
-const ROW_BG: Record<string, string> = {
-    system:  'bg-zinc-800/20',
-    trade:   'bg-zinc-800/20',
-    network: 'bg-zinc-800/20',
-    api:     'bg-zinc-800/20',
-    config:  'bg-zinc-800/20',
-    notify:  'bg-zinc-800/20',
-    user:    'bg-zinc-800/20',
-};
-
-function getRowBg(typeText: string, evenRow: boolean): string {
-    const specific = ROW_BG[typeText?.toLowerCase()];
-    if (specific) return specific;
-    return evenRow ? 'bg-[#131316]' : 'bg-[#212121]';
-}
-
 const formatDateTime = (unixSec: number): string => {
     if (!unixSec) return '—';
     try {
@@ -133,16 +124,21 @@ const getTerminalTradeLatency = (
 ): ScopedTradeLatency | null => {
     if (sample.sessionScope !== sessionScope) return null;
 
+    const isPlacementTerminal = sample.phase === 'placement_terminal';
     const isWebSocketTerminal = sample.transport === 'websocket'
         && (sample.phase === 'order_filled' || sample.phase === 'order_rejected');
     const isRestTerminal = sample.transport === 'rest'
         && (sample.phase === 'rest_completed' || sample.phase === 'rest_failed');
-    if (!isWebSocketTerminal && !isRestTerminal) return null;
+    if (!isPlacementTerminal && !isWebSocketTerminal && !isRestTerminal) return null;
 
     // The Journal label answers "how long did the order attempt take?". Prefer
     // the complete API-to-terminal duration so a WS recovery followed by REST
     // does not misleadingly show only the final transport leg.
-    const transportLatency = isWebSocketTerminal ? sample.terminalRttMs : sample.restRttMs;
+    const transportLatency = isWebSocketTerminal
+        ? sample.terminalRttMs
+        : isRestTerminal
+            ? sample.restRttMs
+            : undefined;
     const latencyMs = typeof sample.totalMs === 'number' && Number.isFinite(sample.totalMs)
         ? sample.totalMs
         : transportLatency;
@@ -163,6 +159,154 @@ const getLatestTerminalTradeLatency = (
     if (!candidate || (latest && latest.sequence >= candidate.sequence)) return latest;
     return candidate;
 }, null);
+
+type PlacementTerminalSample = TradeOrderLatencySample & {
+    phase: 'placement_terminal';
+    terminalStatus: TradeOrderTerminalStatus;
+    totalMs: number;
+};
+
+const isPlacementTerminalSample = (
+    sample: TradeOrderLatencySample,
+    sessionScope: string,
+): sample is PlacementTerminalSample => (
+    sample.phase === 'placement_terminal'
+    && sample.sessionScope === sessionScope
+    && (
+        sample.terminalStatus === 'filled'
+        || sample.terminalStatus === 'rejected'
+        || sample.terminalStatus === 'expired'
+        || sample.terminalStatus === 'failed'
+    )
+    && typeof sample.totalMs === 'number'
+    && Number.isFinite(sample.totalMs)
+    && sample.totalMs >= 0
+);
+
+const getScopedPlacementTerminalSamples = (
+    samples: readonly TradeOrderLatencySample[],
+    sessionScope: string,
+): PlacementTerminalSample[] => {
+    const seenAttempts = new Set<string>();
+    return samples
+        .filter(sample => isPlacementTerminalSample(sample, sessionScope))
+        .sort((left, right) => right.sequence - left.sequence)
+        .filter(sample => {
+            const attemptKey = sample.clientOrderId
+                ? `${sample.sessionScope}:${sample.clientOrderId}`
+                : `sequence:${sample.sequence}`;
+            if (seenAttempts.has(attemptKey)) return false;
+            seenAttempts.add(attemptKey);
+            return true;
+        });
+};
+
+const formatLocalOrderVolume = (volume: number | undefined): string => (
+    typeof volume === 'number' && Number.isFinite(volume)
+        ? String(Number(volume.toFixed(8)))
+        : ''
+);
+
+const createLocalTerminalJournalEntry = (
+    sample: PlacementTerminalSample,
+): JournalLogEntry => {
+    const subject = [
+        sample.side,
+        sample.symbol,
+        formatLocalOrderVolume(sample.volume),
+    ].filter(Boolean).join(' ');
+    const errorDetails = [sample.errorCode, sample.errorMessage]
+        .filter((value, index, values): value is string => (
+            typeof value === 'string'
+            && value.trim().length > 0
+            && values.indexOf(value) === index
+        ))
+        .join(': ');
+    const prefix = sample.terminalStatus === 'filled'
+        ? 'Order executed'
+        : sample.terminalStatus === 'rejected'
+            ? 'Order rejected'
+            : sample.terminalStatus === 'expired'
+                ? 'Order expired'
+                : 'Order failed';
+    const message = `${prefix}${subject ? ` ${subject}` : ''}${errorDetails ? `: ${errorDetails}` : ''}`;
+    const isFilled = sample.terminalStatus === 'filled';
+
+    return {
+        id: `local-order-${sample.clientOrderId || sample.traceId}-${sample.sequence}`,
+        ...(sample.clientOrderId ? { client_order_id: sample.clientOrderId } : {}),
+        latency_ms: sample.totalMs,
+        code: isFilled ? 0 : 1,
+        code_text: isFilled ? 'OK' : sample.errorCode || sample.terminalStatus.toUpperCase(),
+        type: 6,
+        type_text: 'Trade',
+        datetime: Math.floor(sample.recordedAtEpochMs / 1000),
+        source: 'Terminal',
+        message,
+    };
+};
+
+const getServerTerminalStatus = (
+    log: JournalLogEntry,
+): TradeOrderTerminalStatus | null => {
+    if (log.type !== 6 && log.type_text.trim().toLowerCase() !== 'trade') return null;
+    const terminalText = `${log.code_text} ${log.message}`.toLowerCase();
+    if (/\b(filled|executed|completed)\b/.test(terminalText)) return 'filled';
+    if (/\b(rejected|denied)\b/.test(terminalText)) return 'rejected';
+    if (/\b(expired|timed out|timeout)\b/.test(terminalText)) return 'expired';
+    if (/\b(failed|error)\b/.test(terminalText)) return 'failed';
+    return null;
+};
+
+const hasExactServerAttemptId = (
+    log: JournalLogEntry,
+    sample: PlacementTerminalSample,
+): boolean => (
+    Boolean(sample.clientOrderId)
+    && log.client_order_id !== undefined
+    && String(log.client_order_id).trim() === sample.clientOrderId
+);
+
+const isMatchingServerTerminalRow = (
+    log: JournalLogEntry,
+    sample: PlacementTerminalSample,
+): boolean => {
+    if (!hasExactServerAttemptId(log, sample)) return false;
+    return getServerTerminalStatus(log) !== null;
+};
+
+const mergeTerminalTradeJournalLogs = (
+    serverLogs: readonly JournalLogEntry[],
+    terminalSamples: readonly PlacementTerminalSample[],
+): JournalLogEntry[] => {
+    const mergedServerLogs = serverLogs.map(log => ({ ...log }));
+    const claimedServerRows = new Set<number>();
+    const localRows: JournalLogEntry[] = [];
+
+    for (const sample of terminalSamples) {
+        const matchingIndex = mergedServerLogs.findIndex((log, index) => (
+            !claimedServerRows.has(index) && isMatchingServerTerminalRow(log, sample)
+        ));
+        if (matchingIndex < 0) {
+            localRows.push(createLocalTerminalJournalEntry(sample));
+            continue;
+        }
+
+        claimedServerRows.add(matchingIndex);
+        const serverTerminalStatus = getServerTerminalStatus(mergedServerLogs[matchingIndex]);
+        if (
+            mergedServerLogs[matchingIndex].latency_ms === undefined
+            && serverTerminalStatus === sample.terminalStatus
+        ) {
+            mergedServerLogs[matchingIndex] = {
+                ...mergedServerLogs[matchingIndex],
+                latency_ms: sample.totalMs,
+            };
+        }
+    }
+
+    return [...localRows, ...mergedServerLogs].sort((left, right) => right.datetime - left.datetime);
+};
 
 const sanitizeClipboardCell = (value: unknown): string => String(value ?? '')
     .replace(/[\t\r\n]+/g, ' ')
@@ -287,19 +431,20 @@ const JournalLogTable = React.memo(function JournalLogTable({
         >
             <table
                 aria-rowcount={logs.length + 1}
-                className="rtx-journal-table w-full table-fixed text-left border-collapse font-mono"
+                className="rtx-journal-table w-full table-fixed text-center border-collapse"
+                style={{ fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif', fontVariantNumeric: 'tabular-nums' }}
             >
-                <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] uppercase tracking-normal border-b border-zinc-600">
+                <thead className="rtx-journal-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-normal text-[12px] uppercase tracking-normal border-y border-zinc-700/70 select-none">
                     <tr className="h-[30px]">
-                        <th className="p-1 pl-3 border-r border-zinc-700 w-36 whitespace-nowrap">Time</th>
-                        <th className="p-1 border-r border-zinc-700 w-16">Code</th>
-                        <th className="p-1 border-r border-zinc-700 w-20">Type</th>
-                        <th className="p-1 border-r border-zinc-700 w-28">Source</th>
-                        <th className="p-1 border-r border-zinc-700 w-24 whitespace-nowrap">Latency</th>
-                        <th className="p-1 pl-2">Message</th>
+                        <th className="px-1.5 py-[3px] w-36 whitespace-nowrap">Time</th>
+                        <th className="px-1.5 py-[3px] w-16">Code</th>
+                        <th className="px-1.5 py-[3px] w-20">Type</th>
+                        <th className="px-1.5 py-[3px] w-28">Source</th>
+                        <th className="px-1.5 py-[3px] w-24 whitespace-nowrap">Latency</th>
+                        <th className="px-1.5 py-[3px] text-left">Message</th>
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/30 text-[13px] leading-[19.5px] font-normal">
+                <tbody className="divide-y divide-zinc-800/90 text-zinc-100 text-[13px] leading-[19.5px] font-normal">
                     {virtualWindow.topSpacerHeight > 0 && (
                         <tr aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }}>
                             <td colSpan={6} className="p-0 border-0" />
@@ -312,30 +457,30 @@ const JournalLogTable = React.memo(function JournalLogTable({
                                 key={getJournalLogKey(log, absoluteIndex)}
                                 data-testid="journal-rendered-row"
                                 aria-rowindex={absoluteIndex + 2}
-                                className={`${getRowBg(log.type_text, absoluteIndex % 2 === 0)} h-[30px] hover:brightness-125`}
+                                className="rtx-journal-row h-[30px] bg-[#131316] transition-colors hover:bg-[#202126]"
                             >
-                                <td className="p-1 pl-3 border-r border-zinc-800/50 text-zinc-500 whitespace-nowrap">
+                                <td className="px-1.5 py-[2px] text-center text-zinc-100 whitespace-nowrap">
                                     {formatDateTime(log.datetime)}
                                 </td>
                                 <td
-                                    className={`p-1 truncate whitespace-nowrap border-r border-zinc-800/50 font-normal ${Number(log.code) ? 'text-red-400' : 'text-zinc-500'}`}
+                                    className={`px-1.5 py-[2px] text-center truncate whitespace-nowrap font-normal ${Number(log.code) ? 'text-red-400' : 'text-zinc-100'}`}
                                     title={log.code_text || (log.code === 0 ? 'OK' : String(log.code ?? ''))}
                                 >
                                     {log.code_text || (log.code === 0 ? 'OK' : String(log.code ?? ''))}
                                 </td>
-                                <td className="p-1 truncate whitespace-nowrap border-r border-zinc-800/50" title={log.type_text || 'All'}>
+                                <td className="px-1.5 py-[2px] text-center truncate whitespace-nowrap" title={log.type_text || 'All'}>
                                     <span className={`font-normal uppercase ${getTypeColor(log.type_text)}`}>
                                         {log.type_text || 'All'}
                                     </span>
                                 </td>
-                                <td className="p-1 border-r border-zinc-800/50 text-zinc-400 truncate max-w-[110px]" title={log.source}>
+                                <td className="px-1.5 py-[2px] text-center text-zinc-100 truncate max-w-[110px]" title={log.source}>
                                     {log.source}
                                 </td>
-                                <td className="p-1 border-r border-zinc-800/50 text-zinc-400 whitespace-nowrap">
+                                <td className="px-1.5 py-[2px] text-center text-zinc-100 whitespace-nowrap">
                                     {formatLatencyMs(log.latency_ms)}
                                 </td>
                                 <td
-                                    className={`p-1 pl-2 truncate whitespace-nowrap ${getTypeColor(log.type_text)} leading-snug`}
+                                    className={`px-1.5 py-[2px] text-left truncate whitespace-nowrap ${getTypeColor(log.type_text)} leading-snug`}
                                     title={log.message}
                                 >
                                     {log.message}
@@ -368,6 +513,9 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
         getLatestTerminalTradeLatency(getTradeOrderLatencySamples(), sessionScope)
     ));
     const [serverLogs, setServerLogs] = useState<JournalLogEntry[]>([]);
+    const [terminalTradeSamples, setTerminalTradeSamples] = useState<PlacementTerminalSample[]>(() => (
+        getScopedPlacementTerminalSamples(getTradeOrderLatencySamples(), sessionScope)
+    ));
     const [hasLoaded, setHasLoaded] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -379,9 +527,10 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
     // Filters
     const [logType, setLogType] = useState(0);   // 0 = All
     const [logMode, setLogMode] = useState(2);   // 2 = Full
-    const [timeRange, setTimeRange] = useState(24);  // hours; 24h default
+    const [timeRange, setTimeRange] = useState(0);  // 0 = All, matching the terminal-history default
     const [search, setSearch] = useState('');
     const [autoScroll, setAutoScroll] = useState(true);
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
     const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle');
 
     // Keep the controls urgent. React can apply the heavier table/query update
@@ -407,29 +556,33 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
     useEffect(() => {
         const acceptSample = (sample: TradeOrderLatencySample): void => {
             const candidate = getTerminalTradeLatency(sample, sessionScope);
-            if (!candidate) return;
-            setLastTradeLatency(current => (
-                current?.sessionScope === sessionScope && current.sequence >= candidate.sequence
-                    ? current
-                    : candidate
-            ));
+            if (candidate) {
+                setLastTradeLatency(current => (
+                    current?.sessionScope === sessionScope && current.sequence >= candidate.sequence
+                        ? current
+                        : candidate
+                ));
+            }
+            if (!isPlacementTerminalSample(sample, sessionScope)) return;
+            setTerminalTradeSamples(current => getScopedPlacementTerminalSamples(
+                [...current, sample],
+                sessionScope,
+            ).slice(0, 200));
         };
         const handleLatency = (event: Event): void => {
             acceptSample((event as CustomEvent<TradeOrderLatencySample>).detail);
         };
 
         window.addEventListener(TRADE_ORDER_LATENCY_EVENT, handleLatency);
-        setLastTradeLatency(getLatestTerminalTradeLatency(
-            getTradeOrderLatencySamples(),
-            sessionScope,
-        ));
+        const retainedSamples = getTradeOrderLatencySamples();
+        setLastTradeLatency(getLatestTerminalTradeLatency(retainedSamples, sessionScope));
+        setTerminalTradeSamples(getScopedPlacementTerminalSamples(retainedSamples, sessionScope));
 
         return () => window.removeEventListener(TRADE_ORDER_LATENCY_EVENT, handleLatency);
     }, [sessionScope]);
 
     useEffect(() => {
         let disposed = false;
-        let pollTimer: number | null = null;
         let activeController: AbortController | null = null;
         let requestSequence = 0;
 
@@ -445,23 +598,9 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
             && loadedSessionScopeRef.current === sessionScope;
         let hasSuccessfulResponse = cachedLogs !== undefined || canReuseCurrentResponse;
 
-        const clearPollTimer = () => {
-            if (pollTimer !== null) {
-                window.clearTimeout(pollTimer);
-                pollTimer = null;
-            }
-        };
-
-        const scheduleNextPoll = (load: () => Promise<void>) => {
-            if (disposed) return;
-            clearPollTimer();
-            pollTimer = window.setTimeout(() => { void load(); }, 15000);
-        };
-
         const loadJournal = async (): Promise<void> => {
             if (disposed || !isAuthenticated) return;
 
-            clearPollTimer();
             const sequence = ++requestSequence;
             activeController?.abort();
             const controller = new AbortController();
@@ -500,7 +639,6 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                     if (activeController === controller) activeController = null;
                     setIsLoading(false);
                     setIsRefreshing(false);
-                    scheduleNextPoll(loadJournal);
                 }
             }
         };
@@ -536,7 +674,6 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
         return () => {
             disposed = true;
             requestSequence += 1;
-            clearPollTimer();
             activeController?.abort();
             if (manualRefreshRef.current === requestRefresh) {
                 manualRefreshRef.current = () => undefined;
@@ -558,7 +695,8 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
 
     // Client-side filtering
     const filteredLogs = useMemo(() => {
-        const scopedLogs = loadedSessionScope === sessionScope ? serverLogs : [];
+        const scopedServerLogs = loadedSessionScope === sessionScope ? serverLogs : [];
+        const scopedLogs = mergeTerminalTradeJournalLogs(scopedServerLogs, terminalTradeSamples);
         if (scopedLogs.length === 0) return scopedLogs;
 
         let filtered = scopedLogs;
@@ -574,6 +712,12 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
             filtered = filtered.filter(l => l.type === deferredLogType);
         }
 
+        // The server applies Mode before returning its rows. Mirror Errors mode
+        // for local terminal rows so successful orders do not leak into it.
+        if (loadedRequestKey === requestKey && deferredLogMode === 1) {
+            filtered = filtered.filter(l => l.code !== 0);
+        }
+
         // Search filter
         if (deferredSearch.trim()) {
             const query = deferredSearch.toLowerCase();
@@ -581,7 +725,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
         }
 
         return filtered;
-    }, [loadedRequestKey, requestKey, loadedSessionScope, sessionScope, serverLogs, deferredTimeRange, deferredLogType, deferredSearch]);
+    }, [loadedRequestKey, requestKey, loadedSessionScope, sessionScope, serverLogs, terminalTradeSamples, deferredTimeRange, deferredLogType, deferredLogMode, deferredSearch]);
 
     useEffect(() => () => {
         copySequenceRef.current += 1;
@@ -607,17 +751,9 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
             window.clearTimeout(copyFeedbackTimerRef.current);
         }
 
-        try {
-            if (!navigator.clipboard?.writeText) {
-                throw new Error('Clipboard access is unavailable');
-            }
-            await navigator.clipboard.writeText(serializeJournalLogs(filteredLogs));
-            if (sequence !== copySequenceRef.current) return;
-            setCopyStatus('copied');
-        } catch {
-            if (sequence !== copySequenceRef.current) return;
-            setCopyStatus('error');
-        }
+        const copied = await copyTextToClipboard(serializeJournalLogs(filteredLogs));
+        if (sequence !== copySequenceRef.current) return;
+        setCopyStatus(copied ? 'copied' : 'error');
 
         copyFeedbackTimerRef.current = window.setTimeout(() => {
             if (sequence === copySequenceRef.current) setCopyStatus('idle');
@@ -640,10 +776,10 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
         >
 
             {/* ── Toolbar ─────────────────────────────────────────────────── */}
-            <div className="rtx-journal-toolbar flex min-h-[42px] flex-wrap items-center gap-x-3 gap-y-2 border-b border-zinc-700 bg-[#1a1a1a] px-3 py-1.5 shrink-0 select-none">
+            <div className={`rtx-journal-toolbar ${showAdvancedFilters ? 'rtx-journal-toolbar--expanded' : ''} flex h-[31px] min-h-[31px] items-center gap-2 border-b border-zinc-700 bg-[#191a1e] px-1.5 py-1 shrink-0 select-none text-[12px] font-normal text-zinc-300 tabular-nums`}>
 
                 {/* Type filter */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="rtx-journal-advanced-control flex items-center gap-1.5 shrink-0">
                     <span className="rtx-journal-toolbar__label text-[13px] font-medium text-zinc-400 uppercase tracking-[0.02em]">Type</span>
                     <select
                         aria-label="Journal type"
@@ -658,7 +794,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                 </div>
 
                 {/* Mode filter */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="rtx-journal-advanced-control flex items-center gap-1.5 shrink-0">
                     <span className="rtx-journal-toolbar__label text-[13px] font-medium text-zinc-400 uppercase tracking-[0.02em]">Mode</span>
                     <select
                         aria-label="Journal mode"
@@ -673,16 +809,16 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                 </div>
 
                 {/* Time range pills */}
-                <div className="flex items-center gap-1 border-l border-zinc-700/50 pl-3 shrink-0">
+                <div className="rtx-journal-periods flex items-center gap-1 shrink-0">
                     {TIME_RANGES.map(t => (
                         <button
                             key={t.label}
                             type="button"
                             aria-pressed={timeRange === t.hours}
                             onClick={() => setTimeRange(t.hours)}
-                            className={`rtx-journal-control rtx-journal-time-btn h-7 min-w-[42px] border px-2.5 py-0 text-[13px] font-medium transition-colors ${timeRange === t.hours
-                                ? 'border-zinc-500 bg-zinc-600 text-white'
-                                : 'border-transparent text-zinc-400 hover:border-zinc-700 hover:bg-zinc-800/70 hover:text-zinc-200'
+                            className={`rtx-journal-control rtx-journal-time-btn h-[22px] min-w-[42px] border border-transparent px-2 py-0 text-[12px] font-normal transition-colors ${timeRange === t.hours
+                                ? 'bg-zinc-700/70 text-white'
+                                : 'text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200'
                                 }`}
                         >
                             {t.label}
@@ -690,43 +826,13 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                     ))}
                 </div>
 
-                {/* Text search */}
-                <div className="relative h-7 min-w-[220px] max-w-[400px] flex-[1_1_260px]">
-                    <Icon name="search" size="sm" className="pointer-events-none absolute left-2 top-1/2 z-[1] -translate-y-1/2 text-zinc-500" />
-                    <input
-                        type="text"
-                        aria-label="Filter journal messages"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        placeholder="Filter messages…"
-                        className="rtx-journal-control h-7 w-full border border-zinc-600 bg-zinc-800 py-0 pl-7 pr-2 text-[13px] font-normal text-zinc-200 outline-none placeholder:text-zinc-500 hover:border-zinc-500"
-                    />
-                </div>
-
-                <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
-
-                {/* Log count */}
-                <span className="min-w-[88px] text-right text-[13px] font-normal text-zinc-400 whitespace-nowrap">
-                    {filteredLogs.length} entries
-                </span>
-
-                <span
-                    data-testid="last-trade-latency"
-                    role="status"
-                    aria-live="polite"
-                    className="min-w-[196px] border-l border-zinc-700/50 pl-3 text-[13px] font-normal text-zinc-400 whitespace-nowrap"
-                    title="Latest locally measured total order-attempt time for this broker and account"
-                >
-                    Last trade latency: {formatLatencyMs(scopedLastTradeLatency)}
-                </span>
-
                 <button
                     type="button"
                     onClick={() => { void copyFilteredJournal(); }}
                     disabled={!ownsCurrentRequest || filteredLogs.length === 0}
                     aria-label="Copy filtered journal"
                     title={`Copy ${filteredLogs.length} filtered journal ${filteredLogs.length === 1 ? 'entry' : 'entries'}`}
-                    className={`rtx-journal-control flex h-7 min-w-[78px] items-center justify-center gap-1.5 border px-2.5 py-0 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${copyStatus === 'copied'
+                    className={`rtx-journal-control rtx-journal-primary-action flex h-[22px] min-w-[72px] shrink-0 items-center justify-center gap-1.5 border px-2 py-0 text-[12px] font-normal transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${copyStatus === 'copied'
                         ? 'border-emerald-700 text-emerald-400'
                         : copyStatus === 'error'
                             ? 'border-red-800 text-red-400'
@@ -746,10 +852,49 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
 
                 <button
                     type="button"
+                    aria-expanded={showAdvancedFilters}
+                    onClick={() => setShowAdvancedFilters(current => !current)}
+                    className="rtx-journal-control h-[22px] border border-transparent px-2 text-[12px] font-normal text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200"
+                >
+                    Filters
+                </button>
+
+                {/* Text search */}
+                <div className="rtx-journal-advanced-control relative h-7 min-w-[220px] max-w-[400px] flex-[1_1_260px]">
+                    <Icon name="search" size="sm" className="pointer-events-none absolute left-2 top-1/2 z-[1] -translate-y-1/2 text-zinc-500" />
+                    <input
+                        type="text"
+                        aria-label="Filter journal messages"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Filter messages…"
+                        className="rtx-journal-control h-7 w-full border border-zinc-600 bg-zinc-800 py-0 pl-7 pr-2 text-[13px] font-normal text-zinc-200 outline-none placeholder:text-zinc-500 hover:border-zinc-500"
+                    />
+                </div>
+
+                <div className="ml-auto flex max-w-full shrink-0 flex-nowrap items-center justify-end gap-2">
+
+                {/* Log count */}
+                <span className="min-w-[88px] text-right text-[13px] font-normal text-zinc-400 whitespace-nowrap">
+                    {filteredLogs.length} records
+                </span>
+
+                <span
+                    data-testid="last-trade-latency"
+                    role="status"
+                    aria-live="polite"
+                    className="rtx-journal-advanced-control min-w-[196px] border-l border-zinc-700/50 pl-3 text-[13px] font-normal text-zinc-400 whitespace-nowrap"
+                    title="Latest locally measured total order-attempt time for this broker and account"
+                >
+                    Last trade latency: {formatLatencyMs(scopedLastTradeLatency)}
+                </span>
+
+                <button
+                    type="button"
                     onClick={() => setAutoScroll(current => !current)}
                     aria-pressed={autoScroll}
                     title="Toggle auto-follow newest entries"
-                    className={`rtx-journal-control rtx-journal-auto h-7 min-w-[68px] border px-2.5 py-0 text-[13px] font-medium transition-colors ${autoScroll
+                    className={`rtx-journal-control rtx-journal-advanced-control rtx-journal-auto h-7 min-w-[68px] border px-2.5 py-0 text-[13px] font-medium transition-colors ${autoScroll
                         ? 'border-zinc-600 bg-blue-950/30 text-blue-400'
                         : 'border-zinc-700 text-zinc-500 hover:border-zinc-500'
                         }`}
@@ -762,7 +907,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                     onClick={refreshJournal}
                     disabled={!isAuthenticated || isFilterSettling || isLoading || isRefreshing}
                     aria-label="Refresh journal"
-                    className="rtx-journal-control flex h-7 min-w-[108px] items-center justify-center gap-1.5 border border-zinc-700 px-2.5 py-0 text-[13px] font-medium text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rtx-journal-control rtx-journal-refresh flex h-[22px] items-center justify-center gap-1 border border-transparent bg-zinc-800 px-2 py-0 text-[12px] font-normal text-zinc-300 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     <Icon name="refresh" size="sm" className={isLoading || isRefreshing ? 'animate-spin' : ''} />
                     {isLoading ? 'Loading…' : isRefreshing ? 'Refreshing…' : 'Refresh'}

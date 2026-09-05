@@ -39,7 +39,7 @@ export const iconRegistry = {
     // Zoom In - clean magnifier with sharp handle angle
     'zoom-in': () => h(React.Fragment, null,
         h('circle', { cx: 6.5, cy: 6.5, r: 4.5 }),
-        h('line', { x1: 10, y1: 10, x2: 14.5, y2: 14.5, strokeWidth: 1.8 }),
+        h('line', { x1: 10, y1: 10, x2: 14.5, y2: 14.5 }),
         h('line', { x1: 4.5, y1: 6.5, x2: 8.5, y2: 6.5 }),
         h('line', { x1: 6.5, y1: 4.5, x2: 6.5, y2: 8.5 })
     ),
@@ -47,7 +47,7 @@ export const iconRegistry = {
     // Zoom Out - clean magnifier
     'zoom-out': () => h(React.Fragment, null,
         h('circle', { cx: 6.5, cy: 6.5, r: 4.5 }),
-        h('line', { x1: 10, y1: 10, x2: 14.5, y2: 14.5, strokeWidth: 1.8 }),
+        h('line', { x1: 10, y1: 10, x2: 14.5, y2: 14.5 }),
         h('line', { x1: 4.5, y1: 6.5, x2: 8.5, y2: 6.5 })
     ),
 
@@ -118,11 +118,9 @@ export const iconRegistry = {
 
     // Candlestick - sharper, cleaner candle shapes
     'candlestick': () => h(React.Fragment, null,
-        // Bearish candle (filled, red-ish via currentColor)
-        h('rect', { x: 2.5, y: 5, width: 4, height: 6, rx: 0.5, fill: 'currentColor', strokeWidth: 1 }),
+        h('rect', { x: 2.5, y: 5, width: 4, height: 6, rx: 0.5 }),
         h('line', { x1: 4.5, y1: 2, x2: 4.5, y2: 5 }),
         h('line', { x1: 4.5, y1: 11, x2: 4.5, y2: 14 }),
-        // Bullish candle (hollow)
         h('rect', { x: 9.5, y: 4, width: 4, height: 6, rx: 0.5 }),
         h('line', { x1: 11.5, y1: 1.5, x2: 11.5, y2: 4 }),
         h('line', { x1: 11.5, y1: 10, x2: 11.5, y2: 14 })
@@ -183,16 +181,16 @@ export const iconRegistry = {
         
         return h(React.Fragment, null,
             // 3 Candles
-            h('g', { stroke: candleColor, strokeWidth: 1 },
+            h('g', { stroke: candleColor, fill: 'none' },
                 h('line', { x1: 2, y1: 6, x2: 2, y2: 12 }),
-                h('rect', { x: 1, y: 8, width: 2, height: 3, fill: candleColor, stroke: 'none' }),
+                h('rect', { x: 1, y: 8, width: 2, height: 3 }),
                 h('line', { x1: 4.5, y1: 4, x2: 4.5, y2: 10 }),
-                h('rect', { x: 3.5, y: 6, width: 2, height: 2, fill: candleColor, stroke: 'none' }),
+                h('rect', { x: 3.5, y: 6, width: 2, height: 2 }),
                 h('line', { x1: 7, y1: 7, x2: 7, y2: 13 }),
-                h('rect', { x: 6, y: 9, width: 2, height: 3, fill: candleColor, stroke: 'none' })
+                h('rect', { x: 6, y: 9, width: 2, height: 3 })
             ),
             // Arrow pointing right
-            h('path', { d: 'M10 8h3.5M11.5 6l2 2-2 2', stroke: candleColor, strokeWidth: 1.5, fill: 'none' }),
+            h('path', { d: 'M10 8h3.5M11.5 6l2 2-2 2', stroke: candleColor, fill: 'none' }),
             // Vertical Line on right
             h('line', { x1: 15.5, y1: 2, x2: 15.5, y2: 14, stroke: lineColor, strokeWidth: 1.2 })
         );
@@ -206,18 +204,18 @@ export const iconRegistry = {
 
         return h(React.Fragment, null,
             // 3 Candles
-            h('g', { stroke: candleColor, strokeWidth: 1 },
+            h('g', { stroke: candleColor, fill: 'none' },
                 h('line', { x1: 2, y1: 6, x2: 2, y2: 12 }),
-                h('rect', { x: 1, y: 8, width: 2, height: 3, fill: candleColor, stroke: 'none' }),
+                h('rect', { x: 1, y: 8, width: 2, height: 3 }),
                 h('line', { x1: 4.5, y1: 4, x2: 4.5, y2: 10 }),
-                h('rect', { x: 3.5, y: 6, width: 2, height: 2, fill: candleColor, stroke: 'none' }),
+                h('rect', { x: 3.5, y: 6, width: 2, height: 2 }),
                 h('line', { x1: 7, y1: 7, x2: 7, y2: 13 }),
-                h('rect', { x: 6, y: 9, width: 2, height: 3, fill: candleColor, stroke: 'none' })
+                h('rect', { x: 6, y: 9, width: 2, height: 3 })
             ),
             // Vertical Line
-            h('line', { x1: 10, y1: 2, x2: 10, y2: 14, stroke: lineColor, strokeWidth: 1.2 }),
+            h('line', { x1: 10, y1: 2, x2: 10, y2: 14, stroke: lineColor }),
             // Arrow pointing left
-            h('path', { d: 'M14 8h-4M12 6l-2 2 2 2', stroke: lineColor, strokeWidth: 1.5, fill: 'none' })
+            h('path', { d: 'M14 8h-4M12 6l-2 2 2 2', stroke: lineColor, fill: 'none' })
         );
     },
 
@@ -391,6 +389,24 @@ export const iconRegistry = {
     'screenshot': () => h(React.Fragment, null,
         h('rect', { x: 2, y: 3, width: 12, height: 10, rx: 1, strokeDasharray: '2 2' }),
         h('circle', { cx: 8, cy: 8, r: 2.5 })
+    ),
+
+    'period-separator': () => h(React.Fragment, null,
+        h('line', { x1: 1.5, y1: 8, x2: 5.5, y2: 8 }),
+        h('circle', { cx: 8, cy: 8, r: 2.2 }),
+        h('line', { x1: 10.5, y1: 8, x2: 14.5, y2: 8 })
+    ),
+
+    'sliders-horizontal': () => h(React.Fragment, null,
+        h('line', { x1: 2, y1: 4, x2: 6.5, y2: 4 }),
+        h('circle', { cx: 8.5, cy: 4, r: 1.6 }),
+        h('line', { x1: 10.5, y1: 4, x2: 14, y2: 4 }),
+        h('line', { x1: 2, y1: 8, x2: 5, y2: 8 }),
+        h('circle', { cx: 7, cy: 8, r: 1.6 }),
+        h('line', { x1: 9, y1: 8, x2: 14, y2: 8 }),
+        h('line', { x1: 2, y1: 12, x2: 8, y2: 12 }),
+        h('circle', { cx: 10, cy: 12, r: 1.6 }),
+        h('line', { x1: 12, y1: 12, x2: 14, y2: 12 })
     ),
 
     'export': () => h(React.Fragment, null,
@@ -867,7 +883,6 @@ export const iconRegistry = {
         h('polyline', { points: '3 11.5 5.5 7 8 9.5 10.5 5 13 6.5', strokeWidth: 1.5, fill: 'none' }),
         h('circle', { cx: 12.5, cy: 4, r: 1.3, fill: 'currentColor', stroke: 'none' })
     ),
-
     'symbol-box': () => h(React.Fragment, null,
         h('rect', { x: 3, y: 3, width: 10, height: 10, rx: 1, fill: '#eab308', stroke: '#ca8a04' }),
         h('text', { x: '50%', y: '50%', fontSize: 8, fontWeight: 'bold', fill: 'white', stroke: 'none', textAnchor: 'middle', dominantBaseline: 'central', fontFamily: 'sans-serif' }, '$')

@@ -144,7 +144,11 @@ class KeyboardShortcutManager {
 
       if (shortcut && shortcut.enabled !== false) {
         event.preventDefault();
-        event.stopPropagation();
+        // Escape must keep bubbling so menus and the active chart can run
+        // their own close/cancel semantics after the global handler fires.
+        if (shortcut.key.toLowerCase() !== 'escape') {
+          event.stopPropagation();
+        }
 
         try {
           shortcut.handler(event);

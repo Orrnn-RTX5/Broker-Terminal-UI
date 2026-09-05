@@ -5,6 +5,7 @@ import {
   type AuthenticatedSessionHandoff,
 } from './startup/authenticatedSessionHandoff';
 import { TerminalLoadFallback } from './startup/TerminalLoadFallback';
+import { preloadTradingChartRuntime } from './startup/tradingChartRuntime';
 
 type AppModule = typeof import('./App');
 type AuthenticatedStylesModule = typeof import('./authenticatedStyles');
@@ -32,6 +33,9 @@ export const preloadAuthenticatedPresentation = (): Promise<AuthenticatedStylesM
  */
 export const preloadAuthenticatedTerminal = (): Promise<AppModule> => {
   if (!appModulePromise) {
+    // TradingChart is the largest first-viewport dependency. Warm it beside
+    // the shell, but do not make authentication handoff wait for it.
+    void preloadTradingChartRuntime().catch(() => undefined);
     appModulePromise = Promise.all([
       import('./App'),
       import('./i18n').then((module) => module.i18nReady),

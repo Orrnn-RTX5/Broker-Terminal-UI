@@ -18,6 +18,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(loadHistory).toContain('const deriveInitialHistoryFromM1 = isM1DerivedFallbackTimeframe(activeTf)');
     expect(loadHistory).toContain('fetchDerivedTimeframeCandlesFromM1({');
     expect(loadHistory).toContain("targetTimeframe: activeTf");
+    expect(loadHistory).toContain('maxM1Pages: 1');
     expect(loadHistory.indexOf('fetchDerivedTimeframeCandlesFromM1({'))
       .toBeLessThan(loadHistory.lastIndexOf('chartDataService.fetchCandles(options)'));
     expect(loadHistory).toContain("historySource: CandleCacheSource = deriveInitialHistoryFromM1 ? 'derived-m1' : 'backend'");
@@ -75,6 +76,37 @@ describe('TradingChart interaction-priority contract', () => {
     expect(liveEffect).not.toMatch(/\n\s+activeTimeframe,\n/);
   });
 
+  it('classifies legacy M1 finals and scopes finalized guards by displayed timeframe', () => {
+    const liveEffectStart = source.indexOf('useActiveChartRuntimeEffect(visibleRuntime.candle, () => {');
+    const liveEffectEnd = source.indexOf('// The primary tick aggregation interval', liveEffectStart);
+    const liveEffect = source.slice(liveEffectStart, liveEffectEnd);
+
+    expect(liveEffect).toContain('const finalizedCandleTimeByTimeframe = new Map<string, number>();');
+    expect(liveEffect).toContain('isCandleAtOrBeforeFinalizedTime(finalizedCandleTimeByTimeframe, activeTf, candleTime)');
+    expect(liveEffect).toContain('resolveCandleFinalityFromActivePeriod(candle, activeM1Period?.startTime)');
+    expect(liveEffect).toContain("applyServerCandle(reconcileServerM1Candle(validatedCandle), 'backend', 'M1')");
+    expect(liveEffect).toContain("markFinalizedCandleTime(finalizedCandleTimeByTimeframe, 'M1', snapshotCandle.time)");
+  });
+
+  it('keeps backend timestamps and OHLC exact instead of guessing time or price scale', () => {
+    const historyStart = source.indexOf('const loadHistory = useCallback');
+    const historyEnd = source.indexOf('// Load more historical data', historyStart);
+    const history = source.slice(historyStart, historyEnd);
+    const priceGuardStart = source.indexOf('const validateRenderedCandlesAgainstLivePrice = useCallback');
+    const priceGuardEnd = source.indexOf('// Load historical data', priceGuardStart);
+    const priceGuard = source.slice(priceGuardStart, priceGuardEnd);
+
+    expect(history).not.toContain('Math.round(rawOffset / 1800)');
+    expect(history).not.toContain('Date.now() / 1000');
+    expect(history).not.toContain('detectedBrokerOffsetSecs');
+    expect(priceGuardStart).toBeGreaterThan(-1);
+    expect(priceGuardEnd).toBeGreaterThan(priceGuardStart);
+    expect(priceGuard).toContain('isPriceCompatibleWithReference(price, reference)');
+    expect(priceGuard).not.toContain('scaleCandlePrices');
+    expect(source).not.toContain('live-quote-scale-normalization');
+    expect(source).not.toContain("status === 'scaled'");
+  });
+
   it('labels timeframe history work as receiving instead of reconnecting the feed', () => {
     const commandStart = source.indexOf("const unsubTimeframe = commandBus.subscribe('SET_TIMEFRAME'");
     const commandEnd = source.indexOf('return () => {', commandStart);
@@ -85,6 +117,10 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).toContain('`Loading ${symbol} ${activeTimeframe} history…`');
     expect(timeframeCommand).toContain("setLoadingPhase('receiving')");
     expect(timeframeCommand).not.toContain("setLoadingPhase('connecting')");
+    expect(source.slice(
+      source.indexOf('const loadHistory = useCallback'),
+      source.indexOf('// Load more historical data'),
+    )).toContain("setLoadingPhase('receiving')");
   });
 
   it('keeps tick ingestion running while chart painting is deferred', () => {
@@ -97,9 +133,8 @@ describe('TradingChart interaction-priority contract', () => {
     expect(tickLoop).toContain('Model ingestion must never pause for a pan');
     expect(tickLoop).not.toMatch(/if\s*\([^)]*isChartInteractionActiveRef\.current[^)]*\)\s*return/);
     expect(tickLoop).not.toMatch(/if\s*\([^)]*!isActiveRef\.current[^)]*\)\s*return/);
-    expect(tickLoop).toContain('currentCandleRef.current.high = Math.max');
-    expect(tickLoop).toContain('currentCandleRef.current.low = Math.min');
-    expect(tickLoop).toContain('currentCandleRef.current.tickVolume =');
+    expect(tickLoop).toContain('applyTickToFormingCandle(currentCandleRef.current, price)');
+    expect(tickLoop).not.toContain('currentCandleRef.current.volume === 0');
     expect(tickLoop).toContain("window.dispatchEvent(new Event('rtx:force-refresh-positions'))");
     expect(tickLoop).toContain('candleAggregationService.processTick');
     expect(tickLoop).toContain('const m1DerivedCandle = latestAggregatedCandle');
@@ -123,11 +158,12 @@ describe('TradingChart interaction-priority contract', () => {
     expect(liveEffect).toContain('if (!isActive || !symbol) return;');
     expect(liveEffect).toContain('chartDataService.subscribeCandles({');
     expect(liveEffect).toContain("const streamTimeframe: AggTimeframe = 'M1';");
-    expect(liveEffect).toContain("candleAggregationService.addCompletedCandle(symbol, 'M1', m1)");
+    expect(liveEffect).toContain('candleAggregationService.reconcileServerCandle(');
+    expect(liveEffect).toContain("classifiedCandle.closed === true");
     expect(liveEffect).toContain('clearInterval(interval);');
     expect(liveEffect).toContain('candleStream.close();');
-    expect(liveEffect).toContain('getCandleRolloverStartSeconds(');
     expect(liveEffect).toContain('getTimeframePeriodSeconds(');
+    expect(liveEffect).toContain('return currentPeriod.startTime;');
     expect(liveEffect).toContain('if (!synchronizedMarketClockRef.current || liveMarketDataFrozenRef.current) return null;');
     expect(liveEffect).toContain('scheduleBoundaryTimerRef.current = reconcileSynchronizedCandleBoundary;');
     expect(liveEffect).toContain("document.addEventListener('visibilitychange', handleSynchronizedClockVisibilityChange)");
@@ -139,12 +175,13 @@ describe('TradingChart interaction-priority contract', () => {
     expect(source).toContain('enabled: visibleRuntime.status');
     expect(source).toContain('useQuoteSubscription(symbol ? [symbol] : [], chartQuoteSourceId, { enabled: visibleRuntime.quote })');
     expect(source).toContain('enabled: isActive && crosshairEnabled');
-    expect(source).not.toContain("commandBus.subscribe('TOGGLE_CROSSHAIR'");
+    expect(source).toContain("commandBus.subscribe('TOGGLE_CROSSHAIR'");
+    expect(source).toContain('if (!isChartCommandTarget(payload)) return;');
   });
 
   it('renders the candle countdown only beneath the right-scale live price', () => {
     const hudStart = source.indexOf('{/* Premium MT5 HTML HUD');
-    const hudEnd = source.indexOf('{/* Chart Container', hudStart);
+    const hudEnd = source.indexOf('Chart Container - must have explicit dimensions', hudStart);
     const hudMarkup = source.slice(hudStart, hudEnd);
     const badgeStart = source.indexOf('ref={livePriceBadgeRef}');
     const badgeEnd = source.indexOf('{/* Drawing Context Menu', badgeStart);
@@ -174,6 +211,9 @@ describe('TradingChart interaction-priority contract', () => {
     expect(badgeMarkup).toContain('aria-hidden="true"');
     expect(badgeMarkup).toContain('lineHeight: \'16px\'');
     expect(badgeMarkup).toContain('lineHeight: \'14px\'');
+    expect(badgeMarkup).toContain('fontSize: 11');
+    expect(badgeMarkup).toContain("opacity: 1");
+    expect(badgeMarkup).toContain("textAlign: 'center'");
     expect(badgeMarkup).toContain('transform: `translateY(-${LIVE_PRICE_BADGE_PRICE_ROW_OFFSET_PX}px)`');
 
     expect(paint).toContain('livePriceValueRef.current.textContent = livePrice.toFixed(digits)');
@@ -327,7 +367,7 @@ describe('TradingChart interaction-priority contract', () => {
     const helperEnd = source.indexOf('const refreshMarketGapSeriesForCandle =', helperStart);
     const helper = source.slice(helperStart, helperEnd);
     const serverCandleStart = source.indexOf('const applyServerCandle =');
-    const serverCandleEnd = source.indexOf('const displayedStreamTimeframe =', serverCandleStart);
+    const serverCandleEnd = source.indexOf("const streamTimeframe: AggTimeframe = 'M1';", serverCandleStart);
     const serverCandle = source.slice(serverCandleStart, serverCandleEnd);
     const snapshotStart = source.indexOf('onSnapshot: (snapshot) => {', serverCandleEnd);
     const snapshotEnd = source.indexOf('onCandle: (candle) =>', snapshotStart);
@@ -340,7 +380,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(helper).toContain('repaintLivePriceOverlayFromCurrentPrice(c)');
     expect(serverCandleStart).toBeGreaterThan(-1);
     expect(serverCandleEnd).toBeGreaterThan(serverCandleStart);
-    expect(serverCandle.match(/repaintLivePriceOverlayOrDefer\(/g)).toHaveLength(3);
+    expect(serverCandle.match(/repaintLivePriceOverlayOrDefer\(/g)).toHaveLength(4);
     expect(serverCandle).not.toContain('repaintLivePriceOverlayFromCurrentPrice(');
     expect(snapshotStart).toBeGreaterThan(-1);
     expect(snapshotEnd).toBeGreaterThan(snapshotStart);
@@ -372,7 +412,9 @@ describe('TradingChart interaction-priority contract', () => {
     );
     expect(snapshot).toContain('const activeFormingCandle = currentCandleRef.current');
     expect(snapshot).toContain('mergeFormingCandleEnvelope(activeFormingCandle, snapshotCandle)');
-    expect(snapshot).toContain('mergeBackendCandlePage(candlesRef.current, protectedSnapshot)');
+    expect(snapshot).toContain('mergeAuthoritativeCandleHistory(candlesRef.current, protectedSnapshot');
+    expect(snapshot).toContain('formingLiveCandle: activeFormingCandle');
+    expect(snapshot).toContain('hasNewerLiveMutation: hasNewerLiveSnapshotMutation');
   });
 
   it.each(['pointerup', 'pointercancel'])('ends and cleans up window-captured %s gestures', (eventName) => {
@@ -383,6 +425,40 @@ describe('TradingChart interaction-priority contract', () => {
   it.each(['touchend', 'touchcancel'])('ends and cleans up window-captured %s fallbacks', (eventName) => {
     expect(source).toContain(`window.addEventListener('${eventName}', handleTouchInteractionEnd, true)`);
     expect(source).toContain(`window.removeEventListener('${eventName}', handleTouchInteractionEnd, true)`);
+  });
+
+  it('matches the live price line and badge to the forming candle direction', () => {
+    const directionStart = source.indexOf('const getLivePriceDirectionalColor = useCallback');
+    const directionEnd = source.indexOf('const applyStableLivePriceHorizontalGeometry = useCallback', directionStart);
+    const direction = source.slice(directionStart, directionEnd);
+    const paintStart = source.indexOf('const paintLivePriceOverlay = useCallback');
+    const paintEnd = source.indexOf('const repaintLivePriceOverlayFromCurrentPrice = useCallback', paintStart);
+    const paint = source.slice(paintStart, paintEnd);
+    const themeSyncStart = source.indexOf('useEffect(() => {\n    livePriceColorPaletteRef.current = chartColors;');
+    const themeSyncEnd = source.indexOf('useEffect(() => {\n    chartThemeRef.current = chartTheme;', themeSyncStart);
+    const themeSync = source.slice(themeSyncStart, themeSyncEnd);
+
+    expect(directionStart).toBeGreaterThan(-1);
+    expect(directionEnd).toBeGreaterThan(directionStart);
+    expect(direction).toContain('const fallback = lastLivePriceDirectionalColorRef.current');
+    expect(direction).toContain('const color = getLivePriceSeriesColor(');
+    expect(direction).toContain("close >= currentCandle.open ? 'up' : 'down'");
+    expect(direction).toContain('lastLivePriceDirectionalColorRef.current = color;');
+    expect(paintStart).toBeGreaterThan(-1);
+    expect(paintEnd).toBeGreaterThan(paintStart);
+    expect(paint).toContain('const overlayColors = getLivePriceOverlayColors(');
+    expect(paint).toContain('getLivePriceDirectionalColor(activeCandleTime, directionClose),');
+    expect(paint).toContain('line.style.borderTopColor = overlayColors.lineColor;');
+    expect(paint).toContain('badge.style.background = overlayColors.badgeBackground;');
+    expect(paint).toContain('badge.style.color = overlayColors.badgeTextColor;');
+    expect(paint).not.toContain('lineColor: chartSettingsRef.current.colors.bidPriceLine');
+    expect(themeSyncStart).toBeGreaterThan(-1);
+    expect(themeSyncEnd).toBeGreaterThan(themeSyncStart);
+    expect(themeSync).toContain('getLivePriceOverlayColors(chartColors, getLivePriceDirectionalColor())');
+    expect(themeSync).toContain('livePriceLineRef.current.style.borderTopColor = overlayColors.lineColor;');
+    expect(themeSync).toContain('livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;');
+    expect(themeSync).toContain('livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;');
+    expect(themeSync).not.toContain('lineColor: chartSettingsRef.current.colors.bidPriceLine');
   });
 
   it('keeps live price horizontal geometry stable while candle ticks repaint it', () => {
@@ -397,8 +473,8 @@ describe('TradingChart interaction-priority contract', () => {
     const markupStart = source.indexOf('ref={livePriceLineRef}');
     const markupEnd = source.indexOf('ref={livePriceBadgeRef}', markupStart);
     const markup = source.slice(markupStart, markupEnd);
-    const relayoutStart = source.indexOf('if (livePriceRef.current !== null', source.indexOf('const updateLabelPositions = useCallback'));
-    const relayoutEnd = source.indexOf('}, [applyStableLivePriceHorizontalGeometry]);', relayoutStart);
+    const relayoutStart = source.indexOf('chartSettingsRef.current.showBidPriceLine', source.indexOf('const updateLabelPositions = useCallback'));
+    const relayoutEnd = source.indexOf('}, [applyStableLivePriceHorizontalGeometry, hideLivePriceOverlay]);', relayoutStart);
     const relayout = source.slice(relayoutStart, relayoutEnd);
 
     expect(stableGeometryStart).toBeGreaterThan(-1);
@@ -418,7 +494,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(markupStart).toBeGreaterThan(-1);
     expect(markupEnd).toBeGreaterThan(markupStart);
     expect(markup).toContain('right: LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX');
-    expect(markup).toContain('borderTop: `1px solid ${initialLivePriceOverlayColors.lineColor}`');
+    expect(markup).toContain('borderTop: `0.5px solid ${initialLivePriceOverlayColors.lineColor}`');
     expect(relayoutStart).toBeGreaterThan(-1);
     expect(relayoutEnd).toBeGreaterThan(relayoutStart);
     expect(relayout).toContain('applyStableLivePriceHorizontalGeometry(priceScaleWidth);');
@@ -583,7 +659,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(earlyReturn).toBeLessThan(handler.indexOf('drawingManager.setChart('));
     expect(handler).toContain('drawingManager.updatePreviewPointWithLogical(');
     expect(handler).toContain('drawingManager.updatePreviewPoint(');
-    expect(handler).toContain('drawingManager.addPoint(time, price)');
+    expect(handler).toContain('drawingManager.addPoint(time, price, undefined, activeChartSourceId)');
   });
 
   it('does not relayout the main trade overlay for crosshair-only movement', () => {
@@ -647,13 +723,13 @@ describe('TradingChart interaction-priority contract', () => {
     expect(effect).toContain('cancelQueuedTradeHover();');
   });
 
-  it('deduplicates an exact raw quote before expensive scale reconciliation', () => {
+  it('deduplicates an exact raw quote before price compatibility validation', () => {
     const tickLoopStart = source.indexOf('const interval = setInterval(() => {');
     const tickLoopEnd = source.indexOf('}, LIVE_CHART_UPDATE_INTERVAL_MS);', tickLoopStart);
     const tickLoop = source.slice(tickLoopStart, tickLoopEnd);
     const timestampIndex = tickLoop.indexOf('const rawTickTimestamp = Number(tick.sourceTimestamp ?? tick.timestamp);');
     const keyIndex = tickLoop.indexOf('const tickKey = `${rawTickTimestamp}:${tick.bid}:${tick.ask ?? tick.bid}:${price}`;');
-    const reconciliationIndex = tickLoop.indexOf('normalizeRenderedCandlesToLivePrice(price, activeTf)');
+    const reconciliationIndex = tickLoop.indexOf('validateRenderedCandlesAgainstLivePrice(price, activeTf)');
 
     expect(timestampIndex).toBeGreaterThan(-1);
     expect(keyIndex).toBeGreaterThan(timestampIndex);

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { chartPrinter } from '../../services/chartPrinter';
+import { commandBus } from '../../services/commandBus';
 import { defaultChartProperties, useChartSettingsStore } from '../../store/useChartSettingsStore';
 import { ChartPropertiesDialog } from './ChartPropertiesDialog';
 import { ExitConfirmDialog } from './ExitConfirmDialog';
@@ -49,13 +50,28 @@ describe('dialog components', () => {
     });
   });
 
-  it('renders PrintPreviewDialog and runs the print action', async () => {
+  it('renders PrintPreviewDialog and delegates the print action exactly once', async () => {
     const user = userEvent.setup();
-    const onPrint = vi.fn();
     const onClose = vi.fn();
     const printSpy = vi.spyOn(chartPrinter, 'printChart').mockResolvedValue();
+    const chartData = {
+      symbol: 'BTCUSD',
+      timeframe: '1m',
+      dateRange: { from: new Date('2024-01-01'), to: new Date('2024-01-02') },
+      indicators: [],
+      drawings: [],
+    };
+    const preferences = chartPrinter.getPreferences();
+    const onPrint = vi.fn(() => chartPrinter.printChart(chartData, preferences));
 
-    render(<PrintPreviewDialog onPrint={onPrint} onClose={onClose} />);
+    render(
+      <PrintPreviewDialog
+        onPrint={onPrint}
+        onClose={onClose}
+        chartData={chartData}
+        preferences={preferences}
+      />,
+    );
 
     expect(await screen.findByText('Print Preview')).toBeInTheDocument();
     await user.click(screen.getByTitle('Zoom In'));
@@ -67,6 +83,38 @@ describe('dialog components', () => {
       expect(printSpy).toHaveBeenCalledTimes(1);
       expect(onPrint).toHaveBeenCalledTimes(1);
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('loads and saves PrintSetupDialog preferences for the supplied account', async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    const accountPreferences = {
+      ...chartPrinter.getPreferences(),
+      orientation: 'portrait' as const,
+    };
+    const loadSpy = vi.spyOn(chartPrinter, 'loadPreferences').mockResolvedValue(accountPreferences);
+    const saveSpy = vi.spyOn(chartPrinter, 'savePreferences').mockResolvedValue({
+      local: true,
+      remote: false,
+    });
+
+    render(
+      <PrintSetupDialog
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+        accountId="account-200001"
+      />,
+    );
+
+    expect(await screen.findByDisplayValue('Portrait')).toBeInTheDocument();
+    await user.click(screen.getByText('Save these preferences as default'));
+    await user.click(screen.getByText('OK'));
+
+    await waitFor(() => {
+      expect(loadSpy).toHaveBeenCalledWith('account-200001');
+      expect(saveSpy).toHaveBeenCalledWith('account-200001', accountPreferences);
+      expect(onConfirm).toHaveBeenCalledWith(accountPreferences);
     });
   });
 
@@ -101,34 +149,32 @@ describe('dialog components', () => {
     expect(onConfirm).toHaveBeenCalledWith(true);
   });
 
-  it('dispatches chart shift runtime events from ChartPropertiesDialog', async () => {
+  it('dispatches a targeted chart-shift command without mutating global defaults', async () => {
     const user = userEvent.setup();
-    const chartShiftHandler = vi.fn();
+    const dispatchSpy = vi.spyOn(commandBus, 'dispatch');
 
     useChartSettingsStore.setState({
       globalProperties: { ...defaultChartProperties, chartShift: false },
       symbolProperties: {},
     });
-    window.addEventListener('rtx:chartShift', chartShiftHandler as EventListener);
+    render(
+      <ChartPropertiesDialog
+        isOpen
+        onClose={vi.fn()}
+        symbol="XAUUSD"
+        timeframe="M1"
+        targetContextId="trading-chart:chart-a"
+      />
+    );
 
-    try {
-      render(
-        <ChartPropertiesDialog
-          isOpen
-          onClose={vi.fn()}
-          symbol="XAUUSD"
-          timeframe="M1"
-        />
-      );
+    await user.click(screen.getByLabelText('Chart shift'));
 
-      await user.click(screen.getByLabelText('Chart shift'));
-
-      expect(useChartSettingsStore.getState().globalProperties.chartShift).toBe(true);
-      expect(chartShiftHandler).toHaveBeenCalledTimes(1);
-      expect((chartShiftHandler.mock.calls[0][0] as CustomEvent).detail).toEqual({ enabled: true });
-    } finally {
-      window.removeEventListener('rtx:chartShift', chartShiftHandler as EventListener);
-    }
+    expect(useChartSettingsStore.getState().globalProperties.chartShift).toBe(false);
+    expect(useChartSettingsStore.getState().symbolProperties.XAUUSD.chartShift).toBe(true);
+    expect(dispatchSpy).toHaveBeenCalledWith({
+      type: 'SET_CHART_SHIFT',
+      payload: { enabled: true, targetContextId: 'trading-chart:chart-a' },
+    });
   });
 
   it('offers Area after Line and changes the active chart type', async () => {
@@ -161,7 +207,7 @@ describe('dialog components', () => {
     await user.click(areaLabel);
 
     expect(onChartTypeChange).toHaveBeenCalledWith('area');
-    expect(useChartSettingsStore.getState().globalProperties.chartType).toBe('Area');
+    expect(useChartSettingsStore.getState().globalProperties.chartType).toBe('Line');
     expect(useChartSettingsStore.getState().symbolProperties.XAUUSD.chartType).toBe('Area');
   });
 
@@ -199,12 +245,63 @@ describe('dialog components', () => {
 
     const { globalProperties, symbolProperties } = useChartSettingsStore.getState();
 
-    expect(globalProperties.colorScheme).toBe('Yellow on Black');
+    expect(globalProperties.colorScheme).toBe('Green on Black');
     expect(symbolProperties.XAUUSD.colorScheme).toBe('Yellow on Black');
     expect(symbolProperties.XAUUSD.colors.barUp).toBe('#facc15');
     expect(symbolProperties.XAUUSD.colors.barDown).toBe('#facc15');
     expect(symbolProperties.XAUUSD.colors.bullCandle).toBe('#000000');
     expect(symbolProperties.XAUUSD.colors.bearCandle).toBe('#f8fafc');
+  });
+
+  it('restores chart properties and runtime state when Cancel is pressed', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const onChartTypeChange = vi.fn();
+    const dispatchSpy = vi.spyOn(commandBus, 'dispatch');
+
+    useChartSettingsStore.setState({
+      globalProperties: { ...defaultChartProperties },
+      symbolProperties: {
+        XAUUSD: {
+          ...defaultChartProperties,
+          chartType: 'Candlesticks',
+          chartShift: false,
+          chartAutoScroll: true,
+          showGrid: true,
+        },
+      },
+    });
+
+    render(
+      <ChartPropertiesDialog
+        isOpen
+        onClose={onClose}
+        symbol="XAUUSD"
+        timeframe="M1"
+        currentChartType="candlestick"
+        targetContextId="trading-chart:chart-a"
+        onChartTypeChange={onChartTypeChange}
+      />,
+    );
+
+    await user.click(screen.getByText('Area chart'));
+    await user.click(screen.getByLabelText('Chart shift'));
+    await user.click(screen.getByText('Show'));
+    await user.click(screen.getByLabelText('Show grid'));
+    await user.click(screen.getByText('Cancel'));
+
+    expect(useChartSettingsStore.getState().symbolProperties.XAUUSD).toMatchObject({
+      chartType: 'Candlesticks',
+      chartShift: false,
+      chartAutoScroll: true,
+      showGrid: true,
+    });
+    expect(onChartTypeChange).toHaveBeenLastCalledWith('candlestick');
+    expect(dispatchSpy).toHaveBeenCalledWith({
+      type: 'SET_CHART_SHIFT',
+      payload: { enabled: false, targetContextId: 'trading-chart:chart-a' },
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('keeps chart color scheme options styled for the dark modal', async () => {

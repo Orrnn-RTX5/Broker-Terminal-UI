@@ -3,11 +3,12 @@
  * Registers all MT5-compatible global shortcuts
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcut';
 import { ShortcutFeedback } from './ShortcutFeedback';
 import { ShortcutHelpDialog } from './ShortcutHelpDialog';
 import { SHORTCUT_CATEGORIES } from '../services/keyboardShortcutManager';
+import { commandBus } from '../services/commandBus';
 import { getActiveChartSource } from '../services/activeChartSource';
 import { useAppStore } from '../store/useAppStore';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
@@ -28,16 +29,36 @@ interface GlobalShortcutsProps {
 
 const setVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
   const store = useChartSettingsStore.getState();
-  store.updateGlobalProperty('showTickVolumes', visible);
-  store.updateGlobalProperty('showRealVolumes', false);
   if (activeSymbol) {
     store.updateSymbolProperty(activeSymbol, 'showTickVolumes', visible);
     store.updateSymbolProperty(activeSymbol, 'showRealVolumes', false);
+    return;
   }
-  Object.keys(store.symbolProperties).forEach((symbol) => {
-    store.updateSymbolProperty(symbol, 'showTickVolumes', visible);
-    store.updateSymbolProperty(symbol, 'showRealVolumes', false);
-  });
+
+  store.updateGlobalProperty('showTickVolumes', visible);
+  store.updateGlobalProperty('showRealVolumes', false);
+};
+
+const setGridVisible = (visible: boolean, activeSymbol?: string) => {
+  const store = useChartSettingsStore.getState();
+  if (activeSymbol) {
+    store.updateSymbolProperty(activeSymbol, 'showGrid', visible);
+    return;
+  }
+
+  store.updateGlobalProperty('showGrid', visible);
+};
+
+const resolveActiveChartTarget = (fallbackSymbol: string) => {
+  const source = getActiveChartSource();
+  const sourceSymbol = source?.symbol?.trim();
+  const sourceTimeframe = source?.timeframe?.trim();
+
+  return {
+    symbol: sourceSymbol || fallbackSymbol,
+    timeframe: sourceTimeframe || undefined,
+    targetContextId: source?.id,
+  };
 };
 
 export function GlobalShortcuts({
@@ -60,10 +81,10 @@ export function GlobalShortcuts({
     setFeedbackText(text);
   };
 
-  // Get current tick for selected symbol
-  const getCurrentTick = () => {
+  // Get the tick for the command target, which may differ from Market Watch.
+  const getCurrentTick = (symbol = selectedSymbol) => {
     const ticks = useAppStore.getState().ticks;
-    return ticks[selectedSymbol] || { bid: 0, ask: 0 };
+    return ticks[symbol] || { bid: 0, ask: 0 };
   };
 
   const dispatchDrawingShortcut = (eventName: string) => {
@@ -175,13 +196,14 @@ export function GlobalShortcuts({
       priority: 100,
       allowInInput: true,
       handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
         if (isOrderPanelOpen) {
           showFeedback(null);
         } else {
-          showFeedback(`New Order - ${selectedSymbol} (F9)`);
+          showFeedback(`New Order - ${target.symbol} (F9)`);
         }
-        const tick = getCurrentTick();
-        onOpenOrderPanel(selectedSymbol, { bid: tick.bid, ask: tick.ask });
+        const tick = getCurrentTick(target.symbol);
+        onOpenOrderPanel(target.symbol, { bid: tick.bid, ask: tick.ask });
       }
     },
     {
@@ -192,9 +214,10 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.TOOLS,
       priority: 100,
       handler: () => {
-        const tick = getCurrentTick();
-        showFeedback(`New Order - ${selectedSymbol} (Ctrl+N)`);
-        onOpenOrderPanel(selectedSymbol, { bid: tick.bid, ask: tick.ask });
+        const target = resolveActiveChartTarget(selectedSymbol);
+        const tick = getCurrentTick(target.symbol);
+        showFeedback(`New Order - ${target.symbol} (Ctrl+N)`);
+        onOpenOrderPanel(target.symbol, { bid: tick.bid, ask: tick.ask });
       }
     },
 
@@ -206,8 +229,9 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.VIEW,
       priority: 95,
       handler: () => {
-        showFeedback(`Depth of Market - ${selectedSymbol} (Alt+B)`);
-        window.dispatchEvent(new CustomEvent('openDepthOfMarket', { detail: { symbol: selectedSymbol } }));
+        const target = resolveActiveChartTarget(selectedSymbol);
+        showFeedback(`Depth of Market - ${target.symbol} (Alt+B)`);
+        onOpenDOM(target.symbol);
       }
     },
     {
@@ -237,6 +261,56 @@ export function GlobalShortcuts({
 
     // Chart type shortcuts — matches context menu (Alt+1=Bar, Alt+2=Candlestick, Alt+3=Line)
     {
+      id: 'charts.indicator-list',
+      key: 'i',
+      ctrl: true,
+      description: 'Indicator List',
+      category: SHORTCUT_CATEGORIES.CHARTS,
+      priority: 92,
+      handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
+        showFeedback('Indicator List (Ctrl+I)');
+        commandBus.dispatch({
+          type: 'OPEN_INDICATOR_LIST',
+          payload: { targetContextId: target.targetContextId },
+        });
+      }
+    },
+    {
+      id: 'charts.toggle-crosshair',
+      key: 'c',
+      description: 'Toggle Crosshair',
+      category: SHORTCUT_CATEGORIES.CHARTS,
+      priority: 92,
+      handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
+        showFeedback('Toggle Crosshair (C)');
+        commandBus.dispatch({
+          type: 'TOGGLE_CROSSHAIR',
+          payload: { targetContextId: target.targetContextId },
+        });
+      }
+    },
+    {
+      id: 'charts.object-list',
+      key: 'b',
+      ctrl: true,
+      description: 'Object List',
+      category: SHORTCUT_CATEGORIES.CHARTS,
+      priority: 92,
+      handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
+        showFeedback('Object List (Ctrl+B)');
+        window.dispatchEvent(new CustomEvent('open-object-list', {
+          detail: {
+            symbol: target.symbol,
+            timeframe: target.timeframe,
+            targetContextId: target.targetContextId,
+          },
+        }));
+      }
+    },
+    {
       id: 'charts.bar-chart',
       key: '1',
       alt: true,
@@ -244,8 +318,12 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 92,
       handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
         showFeedback('Bar Chart (Alt+1)');
-        window.dispatchEvent(new CustomEvent('change-chart-type', { detail: { chartType: 'bar' } }));
+        commandBus.dispatch({
+          type: 'SET_CHART_TYPE',
+          payload: { chartType: 'bar', targetContextId: target.targetContextId },
+        });
       }
     },
     {
@@ -256,8 +334,12 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 92,
       handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
         showFeedback('Candlesticks (Alt+2)');
-        window.dispatchEvent(new CustomEvent('change-chart-type', { detail: { chartType: 'candlestick' } }));
+        commandBus.dispatch({
+          type: 'SET_CHART_TYPE',
+          payload: { chartType: 'candlestick', targetContextId: target.targetContextId },
+        });
       }
     },
     {
@@ -268,8 +350,12 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 92,
       handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
         showFeedback('Line Chart (Alt+3)');
-        window.dispatchEvent(new CustomEvent('change-chart-type', { detail: { chartType: 'line' } }));
+        commandBus.dispatch({
+          type: 'SET_CHART_TYPE',
+          payload: { chartType: 'line', targetContextId: target.targetContextId },
+        });
       }
     },
     {
@@ -281,8 +367,10 @@ export function GlobalShortcuts({
       priority: 92,
       handler: () => {
         showFeedback('Toggle Grid (Ctrl+G)');
+        const target = resolveActiveChartTarget(selectedSymbol);
         const store = useChartSettingsStore.getState();
-        store.updateGlobalProperty('showGrid', !store.globalProperties.showGrid);
+        const current = store.symbolProperties[target.symbol] || store.globalProperties;
+        setGridVisible(!current.showGrid, target.symbol);
       }
     },
     {
@@ -294,9 +382,10 @@ export function GlobalShortcuts({
       priority: 92,
       handler: () => {
         showFeedback('Toggle Volumes (Ctrl+K)');
+        const target = resolveActiveChartTarget(selectedSymbol);
         const store = useChartSettingsStore.getState();
-        const current = selectedSymbol ? (store.symbolProperties[selectedSymbol] || store.globalProperties) : store.globalProperties;
-        setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), selectedSymbol);
+        const current = store.symbolProperties[target.symbol] || store.globalProperties;
+        setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), target.symbol);
       }
     },
 
@@ -382,8 +471,12 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 80,
       handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
         showFeedback('Zoom In (+)');
-        window.dispatchEvent(new CustomEvent('chart-zoom', { detail: { direction: 'in' } }));
+        commandBus.dispatch({
+          type: 'ZOOM_IN',
+          payload: { targetContextId: target.targetContextId },
+        });
       }
     },
     {
@@ -393,8 +486,12 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 80,
       handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
         showFeedback('Zoom Out (-)');
-        window.dispatchEvent(new CustomEvent('chart-zoom', { detail: { direction: 'out' } }));
+        commandBus.dispatch({
+          type: 'ZOOM_OUT',
+          payload: { targetContextId: target.targetContextId },
+        });
       }
     },
     {
@@ -406,7 +503,10 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Toggle Grid (Alt+G)');
-        window.dispatchEvent(new CustomEvent('chart-toggle-grid'));
+        const target = resolveActiveChartTarget(selectedSymbol);
+        const store = useChartSettingsStore.getState();
+        const current = store.symbolProperties[target.symbol] || store.globalProperties;
+        setGridVisible(!current.showGrid, target.symbol);
       }
     },
     {
@@ -418,9 +518,10 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Toggle Volume (Ctrl+L)');
+        const target = resolveActiveChartTarget(selectedSymbol);
         const store = useChartSettingsStore.getState();
-        const current = selectedSymbol ? (store.symbolProperties[selectedSymbol] || store.globalProperties) : store.globalProperties;
-        setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), selectedSymbol);
+        const current = store.symbolProperties[target.symbol] || store.globalProperties;
+        setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), target.symbol);
       }
     },
     {
@@ -451,9 +552,8 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 90,
       handler: () => {
-        showFeedback('Undo Drawing / Layout (Ctrl+Z)');
+        showFeedback('Undo Drawing (Ctrl+Z)');
         dispatchDrawingShortcut('chart-undo-drawing');
-        window.dispatchEvent(new CustomEvent('layout-undo'));
       }
     },
     {
@@ -464,9 +564,8 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 90,
       handler: () => {
-        showFeedback('Redo Drawing / Layout (Ctrl+Y)');
+        showFeedback('Redo Drawing (Ctrl+Y)');
         dispatchDrawingShortcut('chart-redo-drawing');
-        window.dispatchEvent(new CustomEvent('layout-redo'));
       }
     },
     {
@@ -478,6 +577,17 @@ export function GlobalShortcuts({
       handler: () => {
         showFeedback('Delete Drawing (Delete)');
         dispatchDrawingShortcut('chart-delete-drawing');
+      }
+    },
+    {
+      id: 'charts.delete-last-drawing',
+      key: 'Backspace',
+      description: 'Delete Last Drawing',
+      category: SHORTCUT_CATEGORIES.CHARTS,
+      priority: 90,
+      handler: () => {
+        showFeedback('Delete Last Drawing (Backspace)');
+        dispatchDrawingShortcut('chart-delete-last-drawing');
       }
     },
 
@@ -493,7 +603,14 @@ export function GlobalShortcuts({
         } else {
           showFeedback('Chart Properties (F8)');
         }
-        window.dispatchEvent(new CustomEvent('openChartProperties'));
+        const target = resolveActiveChartTarget(selectedSymbol);
+        window.dispatchEvent(new CustomEvent('openChartProperties', {
+          detail: {
+            symbol: target.symbol,
+            timeframe: target.timeframe,
+            targetContextId: target.targetContextId,
+          },
+        }));
       }
     },
 
@@ -506,6 +623,14 @@ export function GlobalShortcuts({
       priority: 100,
       allowInInput: true,
       handler: () => {
+        const target = resolveActiveChartTarget(selectedSymbol);
+        commandBus.dispatch({
+          type: 'SELECT_TOOL',
+          payload: {
+            tool: 'cursor',
+            ...(target.targetContextId ? { targetContextId: target.targetContextId } : {}),
+          },
+        });
         if (showHelpDialog) {
           setShowHelpDialog(false);
         } else {

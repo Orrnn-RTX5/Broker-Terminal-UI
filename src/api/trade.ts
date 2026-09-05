@@ -1,7 +1,9 @@
 import { API_V2_BASE_URL, isLocalViteDevServer } from '../config/api';
 import { ApiError, apiClient, removeToken, setRefreshToken, setToken, type ApiRequestOptions } from './client';
+import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
 import { requirePositionCloseTicket } from './positionClose';
+import { createTradeOrderUuid, isTradeOrderUuidV4 } from './tradeSocket';
 import type {
   Account,
   AccountMetrics,
@@ -52,6 +54,10 @@ export type CloseAllPositionsResponse = {
   closed?: number;
   message?: string;
 };
+
+// Authentication may legitimately outlive the generic API deadline while the
+// broker opens the account session. Do not discard a late 200/401 response.
+const AUTH_LOGIN_TIMEOUT_MS = 90_000;
 
 const v2Options = (options?: ApiRequestOptions): ApiRequestOptions => ({
   ...options,
@@ -136,16 +142,6 @@ const persistAuth = (response: AuthTokenResponse): AuthTokenResponse => {
   };
 };
 
-const normalizeLoginRequest = (credentials: AuthLoginRequest): AuthLoginRequest => {
-  const username = credentials.username ?? credentials.login ?? credentials.email;
-
-  return {
-    ...(username !== undefined ? { username } : {}),
-    password: credentials.password,
-    ...(credentials.broker_id ? { broker_id: credentials.broker_id } : {}),
-  };
-};
-
 type PendingOrderPayload = {
   account_login: number;
   symbol: string;
@@ -201,11 +197,33 @@ const normalizeModifyPendingOrderRequest = (changes: ModifyPendingOrderRequest):
 export const authV2Api = {
   login: async (credentials: AuthLoginRequest, options?: ApiRequestOptions) => {
     const shouldSkipDynamicUrl = (Boolean(options?.baseUrl) || Boolean(options?.skipDynamicUrl)) && !isLocalViteDevServer();
-    const response = await apiClient.post<AuthTokenResponse>(
+    const payload = normalizeBrokerAuthLoginPayload(credentials);
+    const requestOptions = v2Options({
+      ...options,
+      skipAuth: true,
+      skipDynamicUrl: shouldSkipDynamicUrl,
+      timeoutMs: options?.timeoutMs ?? AUTH_LOGIN_TIMEOUT_MS,
+    });
+    const requestLogin = () => apiClient.post<AuthTokenResponse>(
       '/auth/login',
-      normalizeLoginRequest(credentials),
-      v2Options({ ...options, skipAuth: true, skipDynamicUrl: shouldSkipDynamicUrl })
+      payload,
+      requestOptions,
     );
+
+    let response: AuthTokenResponse;
+    try {
+      response = await requestLogin();
+    } catch (error) {
+      // A completed 502 is safe to retry once: it means the broker gateway or
+      // local development proxy did not produce an authentication response.
+      // Do not retry ambiguous network failures, timeouts, aborts, or rejected
+      // credentials because those have different recovery semantics.
+      if (!(error instanceof ApiError) || error.status !== 502 || options?.signal?.aborted) {
+        throw error;
+      }
+      response = await requestLogin();
+    }
+
     return persistAuth(response);
   },
 
@@ -359,8 +377,22 @@ export const tradingV2Api = {
   getUserDeals: (params?: DateRangeParams, options?: ApiRequestOptions) =>
     apiClient.get<Deal[]>('/account/deals', v2Options({ ...options, params })),
 
-  placeOrder: (order: PlaceOrderRequest, options?: ApiRequestOptions) =>
-    apiClient.post<Position>('/orders', order, v2Options(options)),
+  placeOrder: (order: PlaceOrderRequest, options?: ApiRequestOptions) => {
+    const suppliedClientOrderId = String(order.client_order_id ?? '').trim();
+    if (suppliedClientOrderId && !isTradeOrderUuidV4(suppliedClientOrderId)) {
+      throw new Error('client_order_id must be a UUID v4');
+    }
+    return apiClient.post<Position | Record<string, unknown>>('/orders', {
+      ...order,
+      client_order_id: suppliedClientOrderId || createTradeOrderUuid(),
+    }, v2Options(options));
+  },
+
+  getOrderCommand: (clientOrderId: string, options?: ApiRequestOptions) =>
+    apiClient.get<Record<string, unknown>>(
+      `/order-commands/${encodeURIComponent(clientOrderId)}`,
+      v2Options(options),
+    ),
 
   closePosition: (id: number | string, options?: ApiRequestOptions) =>
     apiClient.post<Deal>(

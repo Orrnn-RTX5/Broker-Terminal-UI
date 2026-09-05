@@ -25,15 +25,26 @@ export interface MarketInstrument {
   digits?: number;
   bid?: number;
   ask?: number;
+  spread?: number;
   contractSize?: number;
+  tickSize?: number;
+  minVolume?: number;
+  maxVolume?: number;
+  volumeStep?: number;
+  marginRate?: number;
+  swapLong?: number;
+  swapShort?: number;
+  commission?: number;
   tradingEnabled?: boolean;
   timestamp?: number;
 }
 
 export interface MarketInstrumentsSnapshot {
   symbols: MarketInstrument[];
+  authorizedInstruments: MarketInstrument[];
   authorizedSymbols: string[];
   disabledSymbols: string[];
+  authorizationSettled: boolean;
   loading: boolean;
   error: string | null;
   reload: () => Promise<void>;
@@ -85,8 +96,32 @@ const timestampToMs = (value: unknown): number => {
 const sourceTimestampToMs = (value: unknown): number | undefined => {
   if (value === null || value === undefined || value === '') return undefined;
   const raw = Number(value);
-  if (!Number.isFinite(raw) || raw <= 0) return undefined;
-  return raw > 1_000_000_000_000 ? raw : raw * 1000;
+  if (Number.isFinite(raw) && raw > 0) {
+    // FIX: Normalize broker epoch units while keeping receipt-time fallback
+    // separate from authoritative event time.
+    if (raw >= 100_000_000_000_000_000) return raw / 1_000_000;
+    if (raw >= 100_000_000_000_000) return raw / 1_000;
+    return raw >= 100_000_000_000 ? raw : raw * 1_000;
+  }
+  const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
+
+const SOURCE_TIMESTAMP_KEYS = [
+  'sourceTimestamp', 'source_timestamp', 'timestamp', 'timestamp_ms', 'timestampMs',
+  'time', 'time_ms', 'timeMs', 'time_msc', 'timeMsc', 'tick_timestamp',
+  'tickTimestamp', 'event_time', 'eventTime', 'server_time', 'serverTime',
+] as const;
+
+const readSourceTimestamp = (...records: Array<Record<string, unknown> | undefined>): number | undefined => {
+  for (const record of records) {
+    if (!record) continue;
+    for (const key of SOURCE_TIMESTAMP_KEYS) {
+      const normalized = sourceTimestampToMs(record[key]);
+      if (normalized !== undefined) return normalized;
+    }
+  }
+  return undefined;
 };
 
 const getSourceTickTimestamp = (raw: unknown): number | undefined => {
@@ -106,7 +141,9 @@ const getSourceTickTimestamp = (raw: unknown): number | undefined => {
     ? payloadValue as Record<string, unknown>
     : rawRecord;
 
-  return sourceTimestampToMs(payload.timestamp ?? payload.time ?? rawRecord.timestamp);
+  // FIX: Accept the timestamp aliases emitted by MT gateways and retain the
+  // distinction between server event time and local receipt time.
+  return readSourceTimestamp(payload, dataRecord, rawRecord);
 };
 
 const getSymbolDigits = (symbol: string): number => {
@@ -160,6 +197,28 @@ export const normalizeInstrumentEnabled = (raw: any): boolean | undefined => {
   return undefined;
 };
 
+const readOptionalInstrumentNumber = (raw: any, keys: readonly string[]): number | undefined => {
+  for (const key of keys) {
+    if (!hasOwn(raw, key)) continue;
+    const value = raw?.[key];
+    if (value === null || value === undefined || value === '') continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+
+const readOptionalInstrumentString = (raw: any, keys: readonly string[]): string | undefined => {
+  for (const key of keys) {
+    if (!hasOwn(raw, key)) continue;
+    const value = raw?.[key];
+    if (typeof value !== 'string') continue;
+    const normalized = value.trim();
+    if (normalized) return normalized;
+  }
+  return undefined;
+};
+
 const normalizeInstrument = (raw: any): MarketInstrument | null => {
   const symbol = normalizeSymbol(raw?.symbol ?? raw?.name ?? raw?.id ?? raw);
   if (!symbol) return null;
@@ -168,12 +227,22 @@ const normalizeInstrument = (raw: any): MarketInstrument | null => {
     symbol,
     description: raw?.description ?? raw?.display_name ?? raw?.name,
     category: raw?.category ?? raw?.asset_class ?? raw?.type,
-    digits: toOptionalNumber(raw?.digits),
-    bid: toOptionalNumber(raw?.bid),
-    ask: toOptionalNumber(raw?.ask),
-    contractSize: toOptionalNumber(raw?.contract_size ?? raw?.contractSize),
+    digits: readOptionalInstrumentNumber(raw, ['digits']),
+    bid: readOptionalInstrumentNumber(raw, ['bid']),
+    ask: readOptionalInstrumentNumber(raw, ['ask']),
+    spread: readOptionalInstrumentNumber(raw, ['spread']),
+    contractSize: readOptionalInstrumentNumber(raw, ['contract_size', 'contractSize']),
+    tickSize: readOptionalInstrumentNumber(raw, ['tick_size', 'tickSize', 'point_size', 'pointSize', 'point']),
+    minVolume: readOptionalInstrumentNumber(raw, ['min_volume', 'volume_min', 'minVolume', 'min_lot', 'minLot']),
+    maxVolume: readOptionalInstrumentNumber(raw, ['max_volume', 'volume_max', 'maxVolume', 'max_lot', 'maxLot']),
+    volumeStep: readOptionalInstrumentNumber(raw, ['volume_step', 'volumeStep', 'lot_step', 'lotStep']),
+    marginRate: readOptionalInstrumentNumber(raw, ['margin_rate', 'marginRate', 'initial_margin', 'initialMargin']),
+    swapLong: readOptionalInstrumentNumber(raw, ['swap_long', 'swapLong']),
+    swapShort: readOptionalInstrumentNumber(raw, ['swap_short', 'swapShort']),
+    commission: readOptionalInstrumentNumber(raw, ['commission', 'commission_per_lot', 'commissionPerLot']),
     tradingEnabled: normalizeInstrumentEnabled(raw),
-    timestamp: sourceTimestampToMs(raw?.time ?? raw?.timestamp),
+    // FIX: Catalog quote seeds retain source time only when the backend sends it.
+    timestamp: readSourceTimestamp(raw),
   };
 };
 
@@ -187,18 +256,39 @@ const normalizeTick = (raw: any, fallbackSymbol?: string): (Tick & Partial<AppTi
   if (bid <= 0 && ask <= 0) return null;
 
   const spread = toNumber(payload?.spread, ask - bid);
-  const previousClose = toNumber(payload?.previous_close ?? payload?.previousClose);
-  const dailyOpen = toNumber(payload?.daily_open ?? payload?.dailyOpen ?? payload?.open);
+  const previousClose = readOptionalInstrumentNumber(payload, ['previous_close', 'previousClose']);
+  const dailyOpen = readOptionalInstrumentNumber(payload, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']);
+  const close = readOptionalInstrumentNumber(payload, ['close', 'previous_close', 'previousClose', 'close_price', 'closePrice']);
+  const last = readOptionalInstrumentNumber(payload, ['last', 'last_price', 'lastPrice']);
+  const volume = readOptionalInstrumentNumber(payload, [
+    'volume',
+    'volume_24h',
+    'volume24h',
+    'tick_volume',
+    'tickVolume',
+    'real_volume',
+    'realVolume',
+  ]);
+  const lp = readOptionalInstrumentString(payload, [
+    'lp',
+    'provider',
+    'liquidity_provider',
+    'liquidityProvider',
+    'lp_name',
+    'lpName',
+  ]);
   const session = payload?.session ?? {};
+  const high = readOptionalInstrumentNumber(payload, ['high']);
+  const low = readOptionalInstrumentNumber(payload, ['low']);
   const sessionHigh = Math.max(
     toNumber(session?.high_bid),
     toNumber(session?.high_ask),
-    toNumber(payload?.high)
+    high ?? 0
   );
   const sessionLowValues = [
     toNumber(session?.low_bid),
     toNumber(session?.low_ask),
-    toNumber(payload?.low),
+    low ?? 0,
   ].filter((value) => value > 0);
   const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
   const sourceTimestamp = getSourceTickTimestamp(raw);
@@ -210,19 +300,20 @@ const normalizeTick = (raw: any, fallbackSymbol?: string): (Tick & Partial<AppTi
     spread,
     timestamp: sourceTimestamp ?? timestampToMs(undefined),
     sourceTimestamp,
-    lp: payload?.lp,
-    volume: toNumber(payload?.volume, 1),
+    lp,
+    volume,
+    last,
     dailyChange: resolveDailyChangePercent(
       readDailyChangePercent(payload),
       bid,
       previousClose,
     ),
-    high24h: payload?.high24h !== undefined ? toNumber(payload.high24h) : sessionHigh || undefined,
-    low24h: payload?.low24h !== undefined ? toNumber(payload.low24h) : sessionLow,
-    high: payload?.high !== undefined ? toNumber(payload.high) : undefined,
-    low: payload?.low !== undefined ? toNumber(payload.low) : undefined,
-    open: dailyOpen || undefined,
-    close: (previousClose > 0 || payload?.close !== undefined) ? toNumber(payload?.close ?? previousClose) : undefined,
+    high24h: readOptionalInstrumentNumber(payload, ['high24h', 'high_24h']) ?? (sessionHigh || undefined),
+    low24h: readOptionalInstrumentNumber(payload, ['low24h', 'low_24h']) ?? sessionLow,
+    high,
+    low,
+    open: dailyOpen,
+    close,
   };
 };
 
@@ -280,9 +371,8 @@ const upsertInstrumentTickSnapshot = (instrument: MarketInstrument): void => {
     symbol: instrument.symbol,
     bid,
     ask,
-    spread: Math.max(0, ask - bid),
+    spread: instrument.spread ?? Math.max(0, ask - bid),
     timestamp: instrument.timestamp ?? Date.now(),
-    volume: 1,
     digits: instrument.digits,
   });
 };
@@ -596,9 +686,12 @@ const rowHasLiveMarketData = (row: Record<string, unknown>): boolean => {
   if (age !== undefined) return age >= 0 && age <= 90;
 
   // Respect fresh ticks from WS data by checking timestamp age
-  const tickTimestamp = sourceTimestampToMs(
-    row?.timestamp ?? row?.time ?? row?.last_tick_time ?? row?.lastTickTime ?? row?.tick_timestamp,
-  );
+  // FIX: Feed-status freshness uses the same gateway timestamp vocabulary as
+  // quote ingestion, including millisecond and server-time aliases.
+  const tickTimestamp = readSourceTimestamp({
+    ...row,
+    timestamp: row?.timestamp ?? row?.last_tick_time ?? row?.lastTickTime,
+  });
   if (tickTimestamp !== undefined) {
     const tickAge = (Date.now() - tickTimestamp) / 1000;
     if (tickAge > 300 || tickAge < 0) return false;
@@ -687,7 +780,6 @@ const writeCachedActiveMarketSymbols = (cache: ActiveMarketSymbolsCache, scope?:
 };
 
 export const LIVE_QUOTES_REST_BATCH_SIZE = 50;
-export const LIVE_QUOTES_REST_POLL_INTERVAL_MS = 15000;
 export const ACTIVE_MARKET_SYMBOLS_REFRESH_INTERVAL_MS = 30000;
 
 export const getLiveQuoteRestBatches = (
@@ -722,19 +814,29 @@ export function useActiveMarketSymbols() {
   const [current, setCurrent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestGenerationRef = useRef(0);
+  const requestAbortRef = useRef<AbortController | null>(null);
+  const sessionRevision = useBrokerSessionRevision();
+  // FIX: Capture routing/cache ownership per broker session so an old request
+  // cannot commit into a newly selected broker after dynamic URLs change.
+  const apiRootBaseUrl = useMemo(() => getApiRootBaseUrl(), [sessionRevision]);
+  const storageScope = useMemo(() => getActiveMarketSymbolsStorageScope(), [sessionRevision]);
 
   const reload = useCallback(async () => {
     const requestGeneration = ++requestGenerationRef.current;
+    requestAbortRef.current?.abort();
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
     setLoading(true);
     setError(null);
 
     try {
       const response = await apiClient.get<any>('/ws/feed/status', {
-        baseUrl: getApiRootBaseUrl(),
+        baseUrl: apiRootBaseUrl,
         skipAuth: true,
         skipDynamicUrl: true,
+        signal: controller.signal,
       });
-      if (requestGeneration !== requestGenerationRef.current) return;
+      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
       const nextSymbols = extractActiveMarketSymbols(response);
 
       if (nextSymbols.length > 0 || hasAuthoritativeMarketSymbolStatus(response)) {
@@ -743,29 +845,30 @@ export function useActiveMarketSymbols() {
           updatedAt: Date.now(),
           availableCount: toOptionalNumber(response?.available_symbols?.length),
           silentCount: toOptionalNumber(response?.silent_symbols?.length),
-        });
+        }, storageScope);
         setSymbols(nextSymbols);
         setCurrent(true);
         return;
       }
 
-      const cached = readCachedActiveMarketSymbols();
+      const cached = readCachedActiveMarketSymbols(storageScope);
       setSymbols(cached.symbols);
       setCurrent(false);
       setError('No active feed symbols returned');
     } catch (err) {
-      if (requestGeneration !== requestGenerationRef.current) return;
-      const cached = readCachedActiveMarketSymbols();
+      if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
+      const cached = readCachedActiveMarketSymbols(storageScope);
       setSymbols(cached.symbols);
       setCurrent(false);
       setError(err instanceof ApiError ? err.message : 'Failed to load active feed symbols');
     } finally {
-      if (requestGeneration === requestGenerationRef.current) {
+      if (requestGeneration === requestGenerationRef.current && !controller.signal.aborted) {
+        requestAbortRef.current = null;
         setSettled(true);
         setLoading(false);
       }
     }
-  }, []);
+  }, [apiRootBaseUrl, storageScope]);
 
   useEffect(() => {
     let cancelled = false;
@@ -776,12 +879,12 @@ export function useActiveMarketSymbols() {
       if (staleSymbols.length > 0) {
         const staleSet = new Set(staleSymbols);
         setSymbols((current) => current.filter((symbol) => !staleSet.has(symbol)));
-        const cached = readCachedActiveMarketSymbols();
+        const cached = readCachedActiveMarketSymbols(storageScope);
         writeCachedActiveMarketSymbols({
           ...cached,
           symbols: cached.symbols.filter((symbol) => !staleSet.has(symbol)),
           updatedAt: Date.now(),
-        });
+        }, storageScope);
       }
 
       void reload();
@@ -790,23 +893,32 @@ export function useActiveMarketSymbols() {
     window.addEventListener(MARKET_SYMBOLS_STALE_EVENT, handleStaleSymbols);
     void reload();
     const interval = window.setInterval(() => {
-      if (!cancelled) void reload();
+      if (!cancelled && document.visibilityState !== 'hidden') void reload();
     }, ACTIVE_MARKET_SYMBOLS_REFRESH_INTERVAL_MS);
+    const handleVisibilityChange = () => {
+      if (!cancelled && document.visibilityState === 'visible') void reload();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelled = true;
       requestGenerationRef.current += 1;
+      requestAbortRef.current?.abort();
+      requestAbortRef.current = null;
       window.clearInterval(interval);
       window.removeEventListener(MARKET_SYMBOLS_STALE_EVENT, handleStaleSymbols);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [reload]);
+  }, [reload, storageScope]);
 
   return { symbols, loading, settled, current, error, reload };
 }
 
 export function useMarketInstruments(): MarketInstrumentsSnapshot {
   const [symbols, setSymbols] = useState<MarketInstrument[]>([]);
+  const [authorizedInstruments, setAuthorizedInstruments] = useState<MarketInstrument[]>([]);
   const [authorizedSymbols, setAuthorizedSymbols] = useState<string[]>([]);
   const [disabledSymbols, setDisabledSymbols] = useState<string[]>([]);
+  const [authorizationSettled, setAuthorizationSettled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
@@ -842,6 +954,12 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
     requestAbortRef.current = controller;
     setLoading(true);
     setError(null);
+    // Never retain trade authorization from the previous request/session while
+    // the current authenticated catalog is still being verified.
+    setAuthorizedSymbols([]);
+    setDisabledSymbols([]);
+    setAuthorizedInstruments([]);
+    setAuthorizationSettled(false);
 
     try {
       const response = await apiClient.get<unknown>('/api/v1/market/symbols', {
@@ -861,10 +979,13 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
 
       setSymbols(publicCatalog);
       upsertInstrumentTickSnapshots(publicCatalog);
+      // The public catalog is sufficient for Market Watch rows and chart data.
+      // Do not keep those read-only surfaces behind the slower authenticated
+      // authorization request below; Buy/Sell stays gated by authorizedSymbols.
+      setLoading(false);
 
       if (!isAuthenticated || !requestSession) {
-        setAuthorizedSymbols([]);
-        setDisabledSymbols([]);
+        setAuthorizationSettled(true);
         return;
       }
 
@@ -877,6 +998,9 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
         const authorizedCatalog = extractInstrumentRows(authorizedResponse)
           .map(normalizeInstrument)
           .filter(Boolean) as MarketInstrument[];
+        // FIX: Retain authenticated broker specifications, not only their names,
+        // so order controls can enforce each exact symbol's volume grid.
+        setAuthorizedInstruments(authorizedCatalog);
         const disabled = authorizedCatalog
           .filter((instrument) => instrument.tradingEnabled === false)
           .map((instrument) => instrument.symbol);
@@ -897,12 +1021,19 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
         // the authenticated catalog can prove that a symbol is authorized.
         setAuthorizedSymbols([]);
         setDisabledSymbols([]);
+        setAuthorizedInstruments([]);
+      } finally {
+        if (requestGeneration === requestGenerationRef.current && !controller.signal.aborted) {
+          setAuthorizationSettled(true);
+        }
       }
     } catch (err) {
       if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
       setSymbols([]);
+      setAuthorizedInstruments([]);
       setAuthorizedSymbols([]);
       setDisabledSymbols([]);
+      setAuthorizationSettled(true);
       setError(err instanceof ApiError ? err.message : 'Failed to load symbols');
     } finally {
       if (requestGeneration === requestGenerationRef.current && !controller.signal.aborted) {
@@ -921,7 +1052,16 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
     };
   }, [reload]);
 
-  return { symbols, authorizedSymbols, disabledSymbols, loading, error, reload };
+  return {
+    symbols,
+    authorizedInstruments,
+    authorizedSymbols,
+    disabledSymbols,
+    authorizationSettled,
+    loading,
+    error,
+    reload,
+  };
 }
 
 export function useLiveQuotes(symbols: string[]) {
@@ -938,11 +1078,27 @@ export function useLiveQuotes(symbols: string[]) {
     tickTimestampsAtFailure: Record<string, number>;
   } | null>(null);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
+  const accountId = useAppStore((state) => state.accountId);
+  const storeAuthToken = useAppStore((state) => state.authToken);
+  const storeRefreshToken = useAppStore((state) => state.refreshToken);
+  const sessionRevision = useBrokerSessionRevision();
+  const quoteSessionDescriptor = useMemo(
+    () => isAuthenticated ? getApiSessionDescriptor(accountId || 'authenticated') : null,
+    [accountId, isAuthenticated, sessionRevision],
+  );
+  const quoteRequestSession = useMemo(
+    () => quoteSessionDescriptor
+      ? captureApiSession(quoteSessionDescriptor, storeAuthToken, storeRefreshToken)
+      : null,
+    [quoteSessionDescriptor, storeAuthToken, storeRefreshToken],
+  );
+  const quoteApiBaseUrl = quoteSessionDescriptor?.v2BaseUrl ?? API_V2_BASE_URL;
 
   // Section 2: Public /ws/v2 quote demand is owned by QuoteSocketManager.
   useQuoteSubscription(normalizedSymbols, `live-quotes:${quoteDemandId}`);
 
-  // REST polling fallback (still needed for initial quote snapshot)
+  // REST supplies the initial quote snapshot. Live updates are websocket-owned;
+  // repeating this request would duplicate that stream and scale with each hook.
   useEffect(() => {
     if (!isAuthenticated) {
       failureRef.current = null;
@@ -969,24 +1125,27 @@ export function useLiveQuotes(symbols: string[]) {
     }
 
     let cancelled = false;
-    let batchIndex = 0;
-    let inFlight = false;
     const batches = getLiveQuoteRestBatches(normalizedSymbols);
 
-    const loadNextQuoteBatch = async () => {
-      if (cancelled || inFlight || batches.length === 0) return;
-      const batch = batches[batchIndex % batches.length];
-      batchIndex = (batchIndex + 1) % batches.length;
-
-      inFlight = true;
+    const loadInitialQuoteBatch = async () => {
+      if (cancelled || batches.length === 0) return;
       setLoading(true);
       try {
-        const response = await fetchJson<any>('/api/v2/quotes', {
-          symbols: batch.join(','),
-        });
+        // FIX: Load every bounded batch under one captured session; previously
+        // only the first 50 symbols received a deterministic REST seed.
+        const responses = await Promise.all(batches.map((batch) => apiClient.get<any>('/quotes', {
+          // FIX: Quotes can be public during the short login handoff. Pin the
+          // URL either way; attach captured credentials only when available.
+          ...(quoteRequestSession
+            ? getCapturedRequestOptions(quoteRequestSession, quoteRequestSession.v2BaseUrl)
+            : { baseUrl: quoteApiBaseUrl, skipDynamicUrl: true, skipAuth: true }),
+          params: { symbols: batch.join(',') },
+        })));
         if (cancelled) return;
 
-        const quotes = Array.isArray(response) ? response : response?.quotes ?? [];
+        const quotes = responses.flatMap((response) => (
+          Array.isArray(response) ? response : response?.quotes ?? []
+        ));
         const failureAtResponse = failureRef.current;
         const recoveredSymbols = new Set<string>();
         const recoveryTimestamps = new Map<string, number>();
@@ -998,6 +1157,14 @@ export function useLiveQuotes(symbols: string[]) {
             if (sourceTimestamp !== undefined) {
               recoveryTimestamps.set(tick.symbol, sourceTimestamp);
             }
+
+            const marketTick = useMarketDataStore.getState().symbolData[tick.symbol]?.currentTick;
+            const appState = useAppStore.getState();
+            const existingTick = marketTick
+              ?? resolveTickFromLookup(appState.ticks, appState.tickLookup, tick.symbol);
+            // FIX: Timestamp-less REST/catalog data may seed an empty symbol,
+            // but can never supersede an authoritative WebSocket observation.
+            if (sourceTimestamp === undefined && existingTick?.sourceTimestamp !== undefined) return;
 
             // A timestamp-less REST row may still update prices, but it cannot
             // masquerade as a fresh websocket tick after a stale-symbol error.
@@ -1029,10 +1196,10 @@ export function useLiveQuotes(symbols: string[]) {
         }
       } catch (err) {
         if (!cancelled) {
-          const staleFailure = getStaleQuoteFailure(err, batch);
+          const staleFailure = getStaleQuoteFailure(err, normalizedSymbols);
           const failedSymbols = staleFailure.symbols.length > 0
             ? staleFailure.symbols
-            : batch;
+            : normalizedSymbols;
           const symbolData = useMarketDataStore.getState().symbolData;
           failureRef.current = {
             symbols: uniqueSymbols(failedSymbols),
@@ -1050,20 +1217,15 @@ export function useLiveQuotes(symbols: string[]) {
           setError(err instanceof ApiError ? err.message : 'Failed to load quotes');
         }
       } finally {
-        inFlight = false;
         if (!cancelled) setLoading(false);
       }
     };
 
-    void loadNextQuoteBatch();
-    const interval = window.setInterval(() => {
-      void loadNextQuoteBatch();
-    }, LIVE_QUOTES_REST_POLL_INTERVAL_MS);
+    void loadInitialQuoteBatch();
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
     };
-  }, [normalizedSymbols.join('|'), isAuthenticated]);
+  }, [normalizedSymbols.join('|'), isAuthenticated, quoteRequestSession, quoteApiBaseUrl, sessionRevision]);
 
   // Subscribe in MarketDataStore for aggregation tracking
   useEffect(() => {
@@ -1078,7 +1240,7 @@ export function useLiveQuotes(symbols: string[]) {
         useMarketDataStore.getState().unsubscribeSymbol(symbol);
       });
     };
-  }, [normalizedSymbols.join('|'), isAuthenticated]);
+  }, [normalizedSymbols.join('|'), isAuthenticated, sessionRevision]);
 
   // Clear a stale failure only after every failed symbol receives a fresh
   // websocket tick. Healthy ticks for other symbols must not hide the failure.
@@ -1150,9 +1312,7 @@ export function useLiveOrderBook(symbol: string, depth: number) {
   }, [normalizedSymbol, depth, isAuthenticated]);
 
   useEffect(() => {
-    reload();
-    const interval = window.setInterval(reload, 15000);
-    return () => window.clearInterval(interval);
+    void reload();
   }, [reload]);
 
   useEffect(() => {

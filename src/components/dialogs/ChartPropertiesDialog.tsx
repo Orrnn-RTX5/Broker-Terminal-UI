@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   getEffectiveChartColors,
+  getPresetSchemeColors,
   useChartSettingsStore,
   type ChartProperties,
   type ColorScheme,
@@ -9,6 +10,7 @@ import {
 import { getChartGridLineColors } from '../../utils/chartGridStyle';
 import { SQUARE_CHART_GRID_CELL_SIZE_PX } from '../../utils/squareChartGridPrimitive';
 import type { ChartType } from '../TradingChart';
+import { commandBus } from '../../services/commandBus';
 
 interface ChartPropertiesDialogProps {
   isOpen: boolean;
@@ -17,6 +19,7 @@ interface ChartPropertiesDialogProps {
   timeframe: string;
   currentChartType?: ChartType;
   onChartTypeChange?: (chartType: ChartType) => void;
+  targetContextId?: string;
 }
 
 const showOptions = [
@@ -30,11 +33,9 @@ const showOptions = [
   { key: 'showGrid', label: 'Show grid' },
   { key: 'showTickVolumes', label: 'Show tick volumes' },
   { key: 'showRealVolumes', label: 'Show real volumes' },
-  { key: 'showObjectDescriptions', label: 'Show object descriptions' },
   { key: 'showTradeLevels', label: 'Show trade levels' },
-  { key: 'showTradeHistory', label: 'Show trade history lines' },
-  { key: 'showTradeHistoryBoxes', label: 'Show trade history boxes' },
-  { key: 'showTradeHistoryArrows', label: 'Show trade history arrows' },
+  { key: 'showTradeHistory', label: 'Show entry-to-close line' },
+  { key: 'showTradeHistoryArrows', label: 'Show entry/close arrows' },
 ] as const satisfies ReadonlyArray<{
   key: keyof Pick<
     ChartProperties,
@@ -48,10 +49,8 @@ const showOptions = [
     | 'showGrid'
     | 'showTickVolumes'
     | 'showRealVolumes'
-    | 'showObjectDescriptions'
     | 'showTradeLevels'
     | 'showTradeHistory'
-    | 'showTradeHistoryBoxes'
     | 'showTradeHistoryArrows'
   >;
   label: string;
@@ -82,6 +81,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
   timeframe,
   currentChartType,
   onChartTypeChange,
+  targetContextId,
 }) => {
   const [activeTab, setActiveTab] = useState<'Common' | 'Show' | 'Colors'>('Common');
   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(getIsAdvancedUntitledLight);
@@ -89,13 +89,9 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
   const {
     globalProperties,
     symbolProperties,
-    updateGlobalProperty,
-    updateGlobalColor,
     updateSymbolColor,
     updateSymbolProperty,
-    applyPresetScheme,
     applySymbolPresetScheme,
-    resetToDefaults,
     resetSymbolToDefaults,
   } = useChartSettingsStore();
   const state = symbolProperties[symbol] || globalProperties;
@@ -128,6 +124,29 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
     '--rtx-cp-preview-label-bg': previewLabelBackground,
   } as React.CSSProperties;
   const colorSchemeOptionStyle = isAdvancedUntitledLight ? undefined : darkColorSchemeOptionStyle;
+  const initialPropertiesRef = useRef<ChartProperties | null>(null);
+  const initialChartTypeRef = useRef<ChartType | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const current = useChartSettingsStore.getState();
+    const source = symbol
+      ? (current.symbolProperties[symbol] || current.globalProperties)
+      : current.globalProperties;
+    initialPropertiesRef.current = {
+      ...source,
+      colors: { ...source.colors },
+    };
+    initialChartTypeRef.current = currentChartType ?? (
+      source.chartType === 'Bar'
+        ? 'bar'
+        : source.chartType === 'Line'
+          ? 'line'
+          : source.chartType === 'Area'
+            ? 'area'
+            : 'candlestick'
+    );
+  }, [isOpen, symbol]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -143,8 +162,11 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
   }, []);
 
   const updateActiveChartProperty = <K extends keyof ChartProperties>(key: K, value: ChartProperties[K]) => {
-    updateGlobalProperty(key, value);
-    updateSymbolProperty(symbol, key, value);
+    if (symbol) {
+      updateSymbolProperty(symbol, key, value);
+    } else {
+      useChartSettingsStore.getState().updateGlobalProperty(key, value);
+    }
   };
 
   const updateActiveChartType = (settingsType: ChartProperties['chartType'], runtimeType: ChartType) => {
@@ -154,23 +176,96 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
 
   const updateChartShift = (enabled: boolean) => {
     updateActiveChartProperty('chartShift', enabled);
-    window.dispatchEvent(new CustomEvent('rtx:chartShift', { detail: { enabled } }));
+    commandBus.dispatch({
+      type: 'SET_CHART_SHIFT',
+      payload: { enabled, targetContextId },
+    });
+  };
+
+  const updateChartAutoScroll = (enabled: boolean) => {
+    updateActiveChartProperty('chartAutoScroll', enabled);
+    commandBus.dispatch({
+      type: 'SET_AUTO_SCROLL',
+      payload: { enabled, targetContextId },
+    });
   };
 
   const applyActivePresetScheme = (scheme: ColorScheme) => {
-    applyPresetScheme(scheme);
-    applySymbolPresetScheme(symbol, scheme);
+    if (symbol) {
+      applySymbolPresetScheme(symbol, scheme);
+      return;
+    }
+
+    const store = useChartSettingsStore.getState();
+    store.updateGlobalProperty('colorScheme', scheme);
+    store.updateGlobalProperty('colors', getPresetSchemeColors(scheme, store.globalProperties.colors));
   };
 
   const updateActiveChartColor = (key: keyof ChartProperties['colors'], value: string) => {
-    updateGlobalColor(key, value);
-    updateSymbolColor(symbol, key, value);
+    if (symbol) {
+      updateSymbolColor(symbol, key, value);
+    } else {
+      useChartSettingsStore.getState().updateGlobalColor(key, value);
+    }
   };
 
   const resetActiveChartDefaults = () => {
-    resetToDefaults();
-    resetSymbolToDefaults(symbol);
+    if (symbol) {
+      resetSymbolToDefaults(symbol);
+    } else {
+      useChartSettingsStore.getState().resetToDefaults();
+    }
   };
+
+  const restoreInitialProperties = () => {
+    const initialProperties = initialPropertiesRef.current;
+    if (!initialProperties) return;
+
+    useChartSettingsStore.setState((current) => symbol
+      ? {
+          symbolProperties: {
+            ...current.symbolProperties,
+            [symbol]: {
+              ...initialProperties,
+              colors: { ...initialProperties.colors },
+            },
+          },
+        }
+      : {
+          globalProperties: {
+            ...initialProperties,
+            colors: { ...initialProperties.colors },
+          },
+        });
+
+    const originalChartType = initialChartTypeRef.current;
+    if (originalChartType) onChartTypeChange?.(originalChartType);
+    commandBus.dispatch({
+      type: 'SET_CHART_SHIFT',
+      payload: { enabled: initialProperties.chartShift, targetContextId },
+    });
+    commandBus.dispatch({
+      type: 'SET_AUTO_SCROLL',
+      payload: { enabled: initialProperties.chartAutoScroll, targetContextId },
+    });
+  };
+
+  const handleCancel = () => {
+    restoreInitialProperties();
+    onClose();
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      handleCancel();
+    };
+    window.addEventListener('keydown', handleEscape, true);
+    return () => window.removeEventListener('keydown', handleEscape, true);
+  }, [isOpen, symbol, targetContextId, onClose]);
 
   if (!isOpen) return null;
 
@@ -179,7 +274,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
       className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto rtx-cp-backdrop"
       onClick={(e) => {
         e.stopPropagation();
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) handleCancel();
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
@@ -187,22 +282,26 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
     >
       <div 
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={handleCancel}
       />
       
-      <div 
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="chart-properties-title"
         className="rtx-cp-shell relative bg-[#1e1e1e] border border-[#333] rounded shadow-2xl flex flex-col pointer-events-auto select-none animate-in fade-in zoom-in-95 duration-150"
         style={{ width: 680, height: 420 }}
       >
         {/* Header */}
         <div className="rtx-cp-header flex items-center justify-between px-3 py-2 border-b border-[#333]">
-          <span className="rtx-cp-title text-xs font-medium text-[#ccc]">Properties of {symbol},{timeframe}</span>
+          <span id="chart-properties-title" className="rtx-cp-title text-xs font-medium text-[#ccc]">Properties of {symbol},{timeframe}</span>
           <div className="flex items-center gap-1">
             <button className="rtx-cp-btn-icon w-6 h-6 flex items-center justify-center hover:bg-white/10 rounded text-[#999] hover:text-white transition-colors">
               <span className="text-xs font-serif">?</span>
             </button>
             <button 
-              onClick={onClose}
+              onClick={handleCancel}
+              aria-label="Close chart properties"
               className="rtx-cp-btn-icon rtx-cp-btn-close w-6 h-6 flex items-center justify-center hover:bg-rose-500/80 hover:text-white rounded text-[#999] transition-colors"
             >
               <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
@@ -271,22 +370,6 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
                         value={showState.tradeHistoryLineOpacity}
                         disabled={!showState.showTradeHistory}
                         onChange={(e) => updateActiveChartProperty('tradeHistoryLineOpacity', Number(e.target.value))}
-                        className="w-full accent-blue-500"
-                      />
-                    </label>
-                    <label className={`block px-2 ${!showState.showTradeHistoryBoxes ? 'opacity-50' : ''}`}>
-                      <div className="mb-1 flex items-center justify-between text-[12px] text-[#ccc]">
-                        <span>Trade history box opacity</span>
-                        <span className="font-mono">{showState.tradeHistoryBoxOpacity}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        step={5}
-                        value={showState.tradeHistoryBoxOpacity}
-                        disabled={!showState.showTradeHistoryBoxes}
-                        onChange={(e) => updateActiveChartProperty('tradeHistoryBoxOpacity', Number(e.target.value))}
                         className="w-full accent-blue-500"
                       />
                     </label>
@@ -382,7 +465,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
                          <span className="rtx-cp-checkbox-label text-[12px] text-[#ccc]">Chart shift</span>
                       </label>
                       <label className="rtx-cp-checkbox-row flex items-center gap-2 cursor-pointer">
-                         <input type="checkbox" className="rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]" checked={state.chartAutoScroll} onChange={(e) => updateActiveChartProperty('chartAutoScroll', e.target.checked)} />
+                         <input type="checkbox" className="rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]" checked={state.chartAutoScroll} onChange={(e) => updateChartAutoScroll(e.target.checked)} />
                          <span className="rtx-cp-checkbox-label text-[12px] text-[#ccc]">Chart auto scroll</span>
                       </label>
                     </div>
@@ -427,7 +510,7 @@ export const ChartPropertiesDialog: React.FC<ChartPropertiesDialogProps> = ({
           </button>
           <div className="flex gap-2">
             <button 
-              onClick={onClose}
+              onClick={handleCancel}
               className="rtx-cp-btn px-6 py-1 text-xs bg-[#2b2b2b] hover:bg-[#333] bg-opacity-80 border border-[#444] hover:border-[#666] text-[#ccc] hover:text-white rounded-sm transition-colors"
             >
               Cancel

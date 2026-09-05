@@ -143,14 +143,14 @@ describe('login payload normalization', () => {
     const request = lastFetchCall();
     expect(request.url).toBe(expectedLoginUrl('https://testbroker.example'));
     expect(request.body).toEqual({
-      username: '100001',
+      login: 100001,
       password: 'FixturePassword123',
       broker_id: 'testorrnn',
     });
     expect(request.body).not.toHaveProperty('server');
   });
 
-  it('maps lower auth login aliases to username and emits only whitelisted fields', async () => {
+  it('preserves numeric account login and emits only whitelisted fields', async () => {
     await endpointAuthApi.login({
       login: 100001,
       email: 'ignored@example.com',
@@ -161,11 +161,11 @@ describe('login payload normalization', () => {
 
     const request = lastFetchCall();
     expect(request.body).toEqual({
-      username: 100001,
+      login: 100001,
       password: 'FixturePassword123',
       broker_id: 'testorrnn',
     });
-    expect(request.body).not.toHaveProperty('login');
+    expect(request.body).not.toHaveProperty('username');
     expect(request.body).not.toHaveProperty('email');
     expect(request.body).not.toHaveProperty('server');
   });
@@ -183,11 +183,11 @@ describe('login payload normalization', () => {
     expect(request.url).toBe('https://testbroker.example/api/v2/auth/login');
     expect(request.headers.Authorization).toBeUndefined();
     expect(request.body).toEqual({
-      username: '100001',
+      login: 100001,
       password: 'FixturePassword123',
       broker_id: 'testorrnn',
     });
-    expect(request.body).not.toHaveProperty('login');
+    expect(request.body).not.toHaveProperty('username');
     expect(request.body).not.toHaveProperty('server');
     expect(localStorage.getItem('server_url')).toBe('https://testbroker.example');
   });
@@ -561,11 +561,12 @@ describe('normalizeJournalResponse', () => {
       source: 'Gateway',
     };
     const response = normalizeJournalResponse({
-      count: 3,
+      count: 4,
       logs: [
         { ...commonLog, id: 'fill', message: 'Order buy XAUUSD 0.01 filled in 286ms' },
         { ...commonLog, id: 'timing', message: 'Timing buy XAUUSD 0.01: prep 0ns · exec 286ms · total 286ms' },
         { ...commonLog, id: 'close', message: 'Close sell BTCUSD ticket 4318 profit -0.96 in 423ms' },
+        { ...commonLog, id: 'modify', message: 'Modify BTCUSD ticket 24137 in 10ms' },
       ],
     });
 
@@ -573,6 +574,7 @@ describe('normalizeJournalResponse', () => {
       expect.objectContaining({ id: 'fill', latency_ms: 286, message: 'Order buy XAUUSD 0.01 filled' }),
       expect.objectContaining({ id: 'timing', latency_ms: 286, message: 'Timing buy XAUUSD 0.01' }),
       expect.objectContaining({ id: 'close', latency_ms: 423, message: 'Close sell BTCUSD ticket 4318 profit -0.96' }),
+      expect.objectContaining({ id: 'modify', latency_ms: 10, message: 'Modify BTCUSD ticket 24137' }),
     ]);
   });
 

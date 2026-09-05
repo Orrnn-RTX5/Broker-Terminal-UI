@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom';
 import { Icon, type IconName } from '../ui/Icon';
 import type { ChartType, Timeframe } from '../TradingChart';
 import {
-    Camera, GitCommitHorizontal, SlidersHorizontal,
     Minus, Square, Copy, X
 } from 'lucide-react';
 import { useToolbarState } from '../../hooks/useToolbarState';
@@ -22,6 +21,7 @@ import {
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
 import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
 import { buildBrokerWsFeedUri } from '../../services/brokerSession';
+import { getActiveChartCommandTarget } from '../../services/chartCommandTarget';
 import type { DesktopFeedSnapshot, DesktopTransportSecurity } from './desktopToolbarStatus';
 
 interface TopToolbarProps {
@@ -98,61 +98,12 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
     useKeyboardShortcuts([
         {
-            id: 'drawing.cursor',
-            key: 'Escape',
-            description: 'Cancel drawing mode (select cursor tool)',
-            category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'SELECT_TOOL', payload: { tool: 'cursor' } })
-        },
-        {
-            id: 'chart.zoom-in',
-            key: '+',
-            description: 'Zoom In',
-            category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'ZOOM_IN', payload: {} })
-        },
-        {
-            id: 'chart.zoom-in-alt',
-            key: '=',
-            description: 'Zoom In (Alt)',
-            category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'ZOOM_IN', payload: {} })
-        },
-        {
-            id: 'chart.zoom-out',
-            key: '-',
-            description: 'Zoom Out',
-            category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'ZOOM_OUT', payload: {} })
-        },
-        {
-            id: 'chart.zoom-out-alt',
-            key: '_',
-            description: 'Zoom Out (Alt)',
-            category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'ZOOM_OUT', payload: {} })
-        },
-        {
-            id: 'drawing.delete',
-            key: 'Delete',
-            description: 'Delete selected drawing',
-            category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'DELETE_SELECTED_DRAWING', payload: {} })
-        },
-        {
             id: 'drawing.select-all',
             key: 'a',
             ctrl: true,
             description: 'Select all drawings',
             category: SHORTCUT_CATEGORIES.CHARTS,
             handler: () => dispatchCommand({ type: 'SELECT_ALL_DRAWINGS', payload: {} })
-        },
-        {
-            id: 'drawing.crosshair',
-            key: 'c',
-            description: 'Toggle Crosshair',
-            category: SHORTCUT_CATEGORIES.CHARTS,
-            handler: () => dispatchCommand({ type: 'TOGGLE_CROSSHAIR', payload: {} })
         },
         {
             id: 'drawing.trendline',
@@ -184,12 +135,11 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         }
     ]);
 
-    // Sync props with toolbar state
+    // Sync an actual App-level chart type change. Keep toolbar-only commands
+    // from being immediately overwritten by an unchanged global prop.
     useEffect(() => {
-        if (chartType !== toolbarState.chartType) {
-            dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: chartType as any });
-        }
-    }, [chartType, toolbarState.chartType, dispatchToolbar]);
+        dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: chartType as any });
+    }, [chartType, dispatchToolbar]);
 
     useEffect(() => {
         if (timeframe !== toolbarState.timeframe) {
@@ -360,7 +310,6 @@ function loadAdvancedOptions(): AdvancedViewOptions {
 const MainToolbar = ({
     chartType,
     timeframe,
-    onChartTypeChange,
     onTimeframeChange,
     onToggleDOM,
     toolbarState,
@@ -400,6 +349,20 @@ const MainToolbar = ({
             ? 'secure'
             : 'insecure';
     const tradeHistorySettings = useChartSettingsStore((state) => state.symbolProperties[symbol] || state.globalProperties);
+
+    const dispatchTargetedChartType = (nextChartType: ChartType) => {
+        const { targetContextId } = getActiveChartCommandTarget(symbol, timeframe);
+        dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: nextChartType });
+        dispatchCommand({
+            type: 'SET_CHART_TYPE',
+            payload: { chartType: nextChartType, targetContextId },
+        });
+    };
+
+    const dispatchTargetedZoom = (type: 'ZOOM_IN' | 'ZOOM_OUT') => {
+        const { targetContextId } = getActiveChartCommandTarget(symbol, timeframe);
+        dispatchCommand({ type, payload: { targetContextId } });
+    };
 
     const themeSuppressionCleanupRef = useRef<(() => void) | null>(null);
     const previousAdvancedViewEnabledRef = useRef(advancedViewEnabled);
@@ -482,10 +445,8 @@ const MainToolbar = ({
 
     const resetTradeHistorySettings = () => {
         updateTradeHistorySetting('showTradeHistory', defaultChartProperties.showTradeHistory);
-        updateTradeHistorySetting('showTradeHistoryBoxes', defaultChartProperties.showTradeHistoryBoxes);
         updateTradeHistorySetting('showTradeHistoryArrows', defaultChartProperties.showTradeHistoryArrows);
         updateTradeHistorySetting('tradeHistoryLineOpacity', defaultChartProperties.tradeHistoryLineOpacity);
-        updateTradeHistorySetting('tradeHistoryBoxOpacity', defaultChartProperties.tradeHistoryBoxOpacity);
     };
 
     const handleLogout = () => {
@@ -511,6 +472,7 @@ const MainToolbar = ({
             focusChart={advancedOptions.focusChart}
             activeDrawingTool={toolbarState.activeTool}
             crosshairEnabled={toolbarState.crosshairEnabled}
+            chartSymbol={symbol}
             accountId={accountId}
             onSetAdvancedViewEnabled={setAdvancedViewEnabled}
             onSetAdvancedFontSize={(fontSize) => updateAdvancedOptions({ fontSize })}
@@ -560,7 +522,9 @@ const MainToolbar = ({
                     title="New Order (F9)"
                     aria-label="New Order (F9)"
                     onClick={() => {
-                        window.dispatchEvent(new CustomEvent('openNewOrder'));
+                        window.dispatchEvent(new CustomEvent('openNewOrder', {
+                            detail: { symbol },
+                        }));
                     }}
                 >
                     <span className="rtx-toolbar-action__icon" aria-hidden="true">
@@ -596,43 +560,25 @@ const MainToolbar = ({
 
             {/* Group 3: Chart Types */}
             <MT5Group label="Chart type" role="radiogroup">
-                <CommandIconButton icon="bar-chart" title="Bar Chart" active={toolbarState.chartType === 'bar'} selectionRole="radio" onClick={() => { onChartTypeChange('bar'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'bar' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar' } }); }} />
-                <CommandIconButton icon="candlestick" title="Candlesticks" active={toolbarState.chartType === 'candlestick'} selectionRole="radio" onClick={() => { onChartTypeChange('candlestick'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'candlestick' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick' } }); }} />
-                <CommandIconButton icon="line-chart" title="Line Chart" active={toolbarState.chartType === 'line'} selectionRole="radio" onClick={() => { onChartTypeChange('line'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'line' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'line' } }); }} />
-                <CommandIconButton icon="area-chart" title="Area Chart" active={toolbarState.chartType === 'area'} selectionRole="radio" onClick={() => { onChartTypeChange('area'); dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: 'area' }); dispatchCommand({ type: 'SET_CHART_TYPE', payload: { chartType: 'area' } }); }} />
+                <CommandIconButton icon="bar-chart" title="Bar Chart" active={toolbarState.chartType === 'bar'} selectionRole="radio" onClick={() => dispatchTargetedChartType('bar')} />
+                <CommandIconButton icon="candlestick" title="Candlesticks" active={toolbarState.chartType === 'candlestick'} selectionRole="radio" onClick={() => dispatchTargetedChartType('candlestick')} />
+                <CommandIconButton icon="line-chart" title="Line Chart" active={toolbarState.chartType === 'line'} selectionRole="radio" onClick={() => dispatchTargetedChartType('line')} />
+                <CommandIconButton icon="area-chart" title="Area Chart" active={toolbarState.chartType === 'area'} selectionRole="radio" onClick={() => dispatchTargetedChartType('area')} />
             </MT5Group>
 
             <MT5Divider />
 
-            {/* Group 4: Zoom */}
-            <MT5Group label="Chart zoom">
-                <CommandIconButton icon="zoom-in" title="Zoom In" onClick={() => dispatchCommand({ type: 'ZOOM_IN', payload: {} })} />
-                <CommandIconButton icon="zoom-out" title="Zoom Out" onClick={() => dispatchCommand({ type: 'ZOOM_OUT', payload: {} })} />
-            </MT5Group>
-
-            <MT5Divider />
-
-            {/* Group 5: Tile Windows */}
-            <MT5Group label="Workspace layout">
+            {/* Chart tools: zoom, layout, latest candle, indicators */}
+            <MT5Group label="Chart tools">
+                <CommandIconButton icon="zoom-in" title="Zoom In" onClick={() => dispatchTargetedZoom('ZOOM_IN')} />
+                <CommandIconButton icon="zoom-out" title="Zoom Out" onClick={() => dispatchTargetedZoom('ZOOM_OUT')} />
                 <CommandIconButton icon="grid" title="Arrange Windows" onClick={() => dispatchCommand({ type: 'TILE_WINDOWS', payload: { mode: 'grid' } })} />
                 <CommandIconButton icon="refresh" title="Reset Layout" onClick={() => window.dispatchEvent(new CustomEvent('resetLayout'))} />
-            </MT5Group>
-
-            <MT5Divider />
-
-            {/* Group 6: Latest candle */}
-            <MT5Group label="Chart navigation">
                 <CommandIconButton
                     icon="chart-shift"
                     title="Jump to Latest Candle"
                     onClick={() => dispatchCommand({ type: 'JUMP_TO_LATEST_CANDLE', payload: {} })}
                 />
-            </MT5Group>
-
-            <MT5Divider />
-
-            {/* Indicators remain a first-class desktop/web toolbar action. */}
-            <MT5Group label="Indicators">
                 <CommandIconButton
                     icon="indicator-list"
                     title="Indicators List"
@@ -642,73 +588,34 @@ const MainToolbar = ({
 
             <MT5Divider />
 
-            {/* Group 8: Horizontal MT-style timeframe strip */}
-            <TimeframePicker
-                timeframe={timeframe}
-                advancedViewEnabled={advancedViewEnabled}
-                onSelect={(nextTimeframe) => {
-                    onTimeframeChange(nextTimeframe);
-                    dispatchCommand({ type: 'SET_TIMEFRAME', payload: { timeframe: nextTimeframe } });
-                    window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: nextTimeframe } }));
-                }}
-            />
-
-            <MT5Divider />
-
-            {/* Group 9: Drawing Tools — BASIC MODE HIDDEN, ADVANCED MODE ONLY */}
-            {/* Drawing tools are accessible in Advanced Mode via the Draw dropdown in the navbar. */}
-
-            <MT5Divider />
-
-            {/* Group 10: Screenshot */}
-            <MT5Group>
-                <MT5Btn icon={<Camera size={16} strokeWidth={1.5} />} title="Screenshot (Export Chart)" onClick={() => {
-                    captureFullPage();
-                }} />
-            </MT5Group>
-
-            <MT5Divider />
-
-            {/* Group 11: Trade history overlay controls */}
-            <div ref={historyOverlayRef} className="relative flex items-center">
-                <button
-                    type="button"
-                    title={tradeHistorySettings.showPeriodSeparators !== false ? 'Hide Period Separators' : 'Show Period Separators'}
-                    aria-label={tradeHistorySettings.showPeriodSeparators !== false ? 'Hide Period Separators' : 'Show Period Separators'}
-                    aria-pressed={tradeHistorySettings.showPeriodSeparators !== false}
-                    onClick={togglePeriodSeparators}
-                    className={`rtx-period-separator-toggle flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all ${tradeHistorySettings.showPeriodSeparators !== false
-                        ? advancedViewEnabled
-                            ? 'border-[#7E57C2] bg-[#F3E5F5] text-[#7E57C2]'
-                            : 'border-blue-500/30 bg-blue-500/15 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
-                        : advancedViewEnabled
-                            ? 'border-transparent bg-transparent text-[#475467] shadow-none hover:border-transparent hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                            : 'border-transparent bg-transparent text-zinc-400 hover:border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-300'
-                        }`}
-                >
-                    <GitCommitHorizontal size={15} strokeWidth={1.6} />
-                </button>
-
-                <button
-                    type="button"
-                    title="Trade History Overlays"
-                    aria-label="Trade History Overlays"
-                    aria-haspopup="menu"
-                    aria-expanded={showHistoryOverlayMenu}
+            {/* Screenshot, period separators, and trade-history overlays — three equal command buttons */}
+            <MT5Group label="Chart capture and overlays">
+                <CommandIconButton
+                    icon="camera"
+                    title="Screenshot (Export Chart)"
                     onClick={() => {
-                        setShowHistoryOverlayMenu((open) => !open);
+                        captureFullPage();
                     }}
-                    className={`rtx-trade-history-overlay-button flex h-[32px] w-[32px] items-center justify-center rounded-[3px] border transition-all ${showHistoryOverlayMenu
-                        ? advancedViewEnabled
-                            ? 'border-[#7E57C2] bg-[#7E57C2] text-white'
-                            : 'border-blue-500/30 bg-blue-500/15 text-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.15)]'
-                        : advancedViewEnabled
-                            ? 'border-transparent bg-transparent text-[#475467] shadow-none hover:border-transparent hover:bg-[#F3E5F5] hover:text-[#7E57C2]'
-                            : 'border-transparent bg-transparent text-zinc-400 hover:border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-300'
-                        }`}
-                >
-                    <SlidersHorizontal size={15} strokeWidth={1.6} />
-                </button>
+                />
+                <CommandIconButton
+                    icon="period-separator"
+                    className="rtx-period-separator-toggle"
+                    title={tradeHistorySettings.showPeriodSeparators !== false ? 'Hide Period Separators' : 'Show Period Separators'}
+                    active={tradeHistorySettings.showPeriodSeparators !== false}
+                    onClick={togglePeriodSeparators}
+                />
+                <div ref={historyOverlayRef} className="relative flex items-center">
+                    <CommandIconButton
+                        icon="sliders-horizontal"
+                        className="rtx-trade-history-overlay-button"
+                        title="Trade History Overlays"
+                        active={showHistoryOverlayMenu}
+                        ariaHasPopup="menu"
+                        ariaExpanded={showHistoryOverlayMenu}
+                        onClick={() => {
+                            setShowHistoryOverlayMenu((open) => !open);
+                        }}
+                    />
 
                 {showHistoryOverlayMenu && ReactDOM.createPortal(
                     <div
@@ -736,7 +643,7 @@ const MainToolbar = ({
                         </div>
 
                         <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Lines</span>
+                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry-to-close line</span>
                             <input
                                 type="checkbox"
                                 checked={tradeHistorySettings.showTradeHistory !== false}
@@ -745,18 +652,8 @@ const MainToolbar = ({
                             />
                         </label>
 
-                        <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Text boxes</span>
-                            <input
-                                type="checkbox"
-                                checked={tradeHistorySettings.showTradeHistoryBoxes !== false}
-                                onChange={(event) => updateTradeHistorySetting('showTradeHistoryBoxes', event.target.checked)}
-                                className="h-3.5 w-3.5 accent-blue-500"
-                            />
-                        </label>
-
                         <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Arrows</span>
+                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry / close arrows</span>
                             <input
                                 type="checkbox"
                                 checked={tradeHistorySettings.showTradeHistoryArrows !== false}
@@ -768,7 +665,7 @@ const MainToolbar = ({
                         <div className="space-y-2 rounded-[4px] border border-zinc-800/80 bg-zinc-950/35 p-2 [.rtx-advanced-view_&]:border-gray-100 [.rtx-advanced-view_&]:bg-gray-50">
                             <label className="block">
                                 <div className="mb-1 flex items-center justify-between">
-                                    <span className="text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Lines</span>
+                                    <span className="text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Line opacity</span>
                                     <span className="font-mono text-[12px] font-normal text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryLineOpacity}%</span>
                                 </div>
                                 <input
@@ -782,28 +679,26 @@ const MainToolbar = ({
                                     className="w-full accent-blue-500"
                                 />
                             </label>
-
-                            <label className="block">
-                                <div className="mb-1 flex items-center justify-between">
-                                    <span className="text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Boxes</span>
-                                    <span className="font-mono text-[12px] font-normal text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryBoxOpacity}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={100}
-                                    step={5}
-                                    disabled={tradeHistorySettings.showTradeHistoryBoxes === false}
-                                    value={tradeHistorySettings.tradeHistoryBoxOpacity}
-                                    onChange={(event) => updateTradeHistorySetting('tradeHistoryBoxOpacity', Number(event.target.value))}
-                                    className="w-full accent-blue-500"
-                                />
-                            </label>
                         </div>
                     </div>,
                     document.body,
                 )}
-            </div>
+                </div>
+            </MT5Group>
+
+            <MT5Divider />
+
+            {/* Group 8: Horizontal MT-style timeframe strip */}
+            <TimeframePicker
+                timeframe={timeframe}
+                advancedViewEnabled={advancedViewEnabled}
+                onSelect={(nextTimeframe) => {
+                    onTimeframeChange(nextTimeframe);
+                    dispatchCommand({ type: 'SET_TIMEFRAME', payload: { timeframe: nextTimeframe } });
+                    window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: nextTimeframe } }));
+                }}
+            />
+
             </div>
 
             {/* Keep a usable row end without hiding any toolbar actions. */}
@@ -852,7 +747,7 @@ const MT5Group = ({ children, label, role }: { children: React.ReactNode; label?
 
 
 const MT5Divider = () => (
-    <div aria-hidden="true" className="rtx-mt5-divider invisible mx-[4px] h-6 w-[2px] shrink-0" />
+    <div aria-hidden="true" className="rtx-mt5-divider invisible h-6 w-0 shrink-0" />
 );
 
 interface MT5BtnProps {
@@ -865,9 +760,12 @@ interface MT5BtnProps {
 interface CommandIconButtonProps extends Omit<MT5BtnProps, 'icon'> {
     icon: IconName;
     selectionRole?: 'radio';
+    className?: string;
+    ariaHasPopup?: React.AriaAttributes['aria-haspopup'];
+    ariaExpanded?: boolean;
 }
 
-const CommandIconButton = ({ icon, title, active, selectionRole, onClick }: CommandIconButtonProps) => (
+const CommandIconButton = ({ icon, title, active, selectionRole, onClick, className, ariaHasPopup, ariaExpanded }: CommandIconButtonProps) => (
     <button
         type="button"
         onClick={onClick}
@@ -876,7 +774,9 @@ const CommandIconButton = ({ icon, title, active, selectionRole, onClick }: Comm
         aria-label={title}
         aria-checked={selectionRole === 'radio' ? active : undefined}
         aria-pressed={selectionRole ? undefined : active === undefined ? undefined : active}
-        className="rtx-toolbar-icon-button"
+        aria-haspopup={ariaHasPopup}
+        aria-expanded={ariaExpanded}
+        className={['rtx-toolbar-icon-button', className].filter(Boolean).join(' ')}
     >
         <Icon name={icon} size={20} />
     </button>

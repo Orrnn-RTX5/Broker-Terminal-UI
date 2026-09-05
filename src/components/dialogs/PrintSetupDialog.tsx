@@ -4,7 +4,7 @@
  */
 
 import { Icon } from '../ui/Icon';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   chartPrinter,
@@ -28,29 +28,54 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
   onCancel,
   accountId,
 }) => {
-  const [preferences, setPreferences] = useState<PrintPreferences>(DEFAULT_PRINT_PREFERENCES);
+  const accountScope = accountId?.trim() || undefined;
+  const [preferences, setPreferences] = useState<PrintPreferences>(() => (
+    accountScope ? chartPrinter.getPreferences(accountScope) : DEFAULT_PRINT_PREFERENCES
+  ));
   const [isSaving, setIsSaving] = useState(false);
   const [savePreferences, setSavePreferences] = useState(false);
+  const hasEditedPreferences = useRef(false);
 
   // Load preferences on mount
   useEffect(() => {
-    if (accountId) {
-      chartPrinter.loadPreferences(accountId).then(setPreferences);
+    let isCurrentScope = true;
+    hasEditedPreferences.current = false;
+    setSavePreferences(false);
+
+    if (!accountScope) {
+      setPreferences(chartPrinter.getPreferences());
+      return () => {
+        isCurrentScope = false;
+      };
     }
-  }, [accountId]);
+
+    // Apply the account-scoped local value immediately. A remote value may
+    // refresh it in the background, but never overwrite edits made meanwhile.
+    setPreferences(chartPrinter.getPreferences(accountScope));
+    void chartPrinter.loadPreferences(accountScope).then((loadedPreferences) => {
+      if (isCurrentScope && !hasEditedPreferences.current) {
+        setPreferences(loadedPreferences);
+      }
+    });
+
+    return () => {
+      isCurrentScope = false;
+    };
+  }, [accountScope]);
 
   const handleChange = <K extends keyof PrintPreferences>(
     key: K,
     value: PrintPreferences[K]
   ) => {
+    hasEditedPreferences.current = true;
     setPreferences(prev => ({ ...prev, [key]: value }));
   };
 
   const handlePrint = async () => {
-    if (savePreferences && accountId) {
+    if (savePreferences && accountScope) {
       setIsSaving(true);
       try {
-        await chartPrinter.savePreferences(accountId, preferences);
+        await chartPrinter.savePreferences(accountScope, preferences);
       } catch (error) {
         console.error('Failed to save preferences:', error);
       } finally {
@@ -294,7 +319,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                 </div>
 
                 {/* Save Preferences */}
-                {accountId && (
+                {accountScope && (
                   <div className="pt-4 border-t border-zinc-700 [.rtx-advanced-view_&]:border-gray-200">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input

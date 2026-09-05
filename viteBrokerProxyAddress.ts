@@ -19,6 +19,25 @@ export type PinnedConnectionOptions = {
   autoSelectFamilyAttemptTimeout: number
 }
 
+export const normalizeProxyAccessOrigin = (value: string): string | null => {
+  const trimmed = String(value || '').trim().replace(/\/+$/, '')
+  if (!trimmed) return null
+
+  try {
+    const parsed = new URL(
+      /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
+    )
+
+    if (parsed.protocol === 'ws:') parsed.protocol = 'http:'
+    else if (parsed.protocol === 'wss:') parsed.protocol = 'https:'
+    else if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+
+    return parsed.origin
+  } catch {
+    return null
+  }
+}
+
 const isPrivateIPv4 = (address: string): boolean => {
   const parts = address.split('.').map((part) => Number(part))
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true

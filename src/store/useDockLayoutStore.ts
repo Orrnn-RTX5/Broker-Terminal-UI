@@ -25,6 +25,7 @@ export interface DragInfo {
 export interface DockState {
   // Layout
   layout: DockLayout;
+  recentlyClosedCharts: DockPanelConfig[];
 
   // Drag State
   dragState: DragState;
@@ -77,6 +78,8 @@ export interface DockState {
   // Dock Actions
   addPanel: (panel: DockPanelConfig, targetId?: string, direction?: DockDirection) => void;
   removePanel: (panelId: string) => void;
+  closeActiveChart: (symbol?: string) => boolean;
+  restoreClosedChart: (panelId?: string) => boolean;
   dockPanel: (panelId: string, targetId: string, direction: DockDirection) => void;
   floatPanel: (panelId: string, position?: { x: number; y: number }) => void;
   updateFloatingPosition: (panelId: string, position: { x: number; y: number }) => void;
@@ -101,12 +104,101 @@ export interface DockState {
   snapToWorkspaceEdge: (panelId: string, edge: 'top' | 'bottom' | 'left' | 'right' | 'center') => void;
 }
 
+const clonePanel = (panel: DockPanelConfig): DockPanelConfig => ({
+  ...panel,
+  props: panel.props ? { ...panel.props } : undefined,
+});
+
+const findPanel = (layout: DockLayout, panelId: string): DockPanelConfig | null => {
+  const findInContainer = (container: DockLayout['root']): DockPanelConfig | null => {
+    for (const child of container.children) {
+      if ('children' in child) {
+        const nested = findInContainer(child);
+        if (nested) return nested;
+      } else if (child.id === panelId) {
+        return child;
+      }
+    }
+    return null;
+  };
+
+  return findInContainer(layout.root)
+    || layout.floatingPanels.map(findInContainer).find(Boolean)
+    || null;
+};
+
+const listChartPanels = (layout: DockLayout): DockPanelConfig[] => {
+  const charts: DockPanelConfig[] = [];
+  const collect = (container: DockLayout['root']) => {
+    container.children.forEach((child) => {
+      if ('children' in child) collect(child);
+      else if (child.component === 'Chart') charts.push(child);
+    });
+  };
+
+  collect(layout.root);
+  layout.floatingPanels.forEach(collect);
+  return charts;
+};
+
+const findActiveChart = (layout: DockLayout, symbol?: string): DockPanelConfig | null => {
+  const normalizedSymbol = String(symbol || '').trim().toUpperCase();
+  const charts = listChartPanels(layout);
+
+  const findActiveInContainer = (container: DockLayout['root']): DockPanelConfig | null => {
+    if (container.type === 'tabs' && container.activeTab) {
+      const activeChild = container.children.find((child) => child.id === container.activeTab);
+      if (activeChild && !('children' in activeChild) && activeChild.component === 'Chart') {
+        return activeChild;
+      }
+    }
+    for (const child of container.children) {
+      if ('children' in child) {
+        const active = findActiveInContainer(child);
+        if (active) return active;
+      }
+    }
+    return null;
+  };
+
+  const activeChart = layout.floatingPanels.map(findActiveInContainer).find(Boolean)
+    || findActiveInContainer(layout.root);
+  if (activeChart) return activeChart;
+
+  const symbolMatch = normalizedSymbol
+    ? charts.find((panel) =>
+      String(panel.props?.symbol || '').trim().toUpperCase() === normalizedSymbol
+    )
+    : null;
+
+  return symbolMatch
+    || charts[0]
+    || null;
+};
+
+const findChartHostId = (container: DockLayout['root']): string | null => {
+  if (
+    container.type === 'tabs'
+    && container.children.some((child) => !('children' in child) && (child.component === 'Chart' || child.component === 'EmptyChartArea'))
+  ) {
+    return container.id;
+  }
+  for (const child of container.children) {
+    if ('children' in child) {
+      const hostId = findChartHostId(child);
+      if (hostId) return hostId;
+    }
+  }
+  return null;
+};
+
 const useDockLayoutStore = create<DockState>()(
   devtools(
     persist(
       (set, get) => ({
         // Initial State
         layout: dockManager.getLayout(),
+        recentlyClosedCharts: [],
         dragState: 'idle',
         dragInfo: null,
         activeDropZone: null,
@@ -254,8 +346,70 @@ const useDockLayoutStore = create<DockState>()(
         },
 
         removePanel: (panelId) => {
-          dockManager.removePanel(panelId);
-          set({ layout: dockManager.getLayout() });
+          const panel = findPanel(get().layout, panelId);
+          const removed = dockManager.removePanel(panelId);
+          if (!removed) return;
+
+          const nextState: Partial<DockState> = { layout: dockManager.getLayout() };
+          if (panel?.component === 'Chart') {
+            nextState.recentlyClosedCharts = [
+              clonePanel(panel),
+              ...get().recentlyClosedCharts.filter((candidate) => candidate.id !== panel.id),
+            ].slice(0, 10);
+          }
+          set(nextState);
+        },
+
+        closeActiveChart: (symbol) => {
+          const panel = findActiveChart(get().layout, symbol);
+          if (!panel) return false;
+          get().removePanel(panel.id);
+          return true;
+        },
+
+        restoreClosedChart: (panelId) => {
+          const closedCharts = get().recentlyClosedCharts;
+          const panel = panelId
+            ? closedCharts.find((candidate) => candidate.id === panelId)
+            : closedCharts[0];
+          if (!panel) return false;
+
+          const currentLayout = get().layout;
+          const targetId = findChartHostId(currentLayout.root) || 'center-main';
+          const restoredPanel = clonePanel({
+            ...panel,
+            id: `chart-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          });
+          dockManager.addPanel(restoredPanel, targetId, 'tab');
+
+          const layoutWithChart = dockManager.getLayout();
+          const placeholder = (() => {
+            const stack = [layoutWithChart.root, ...layoutWithChart.floatingPanels];
+            while (stack.length > 0) {
+              const container = stack.pop()!;
+              for (const child of container.children) {
+                if ('children' in child) stack.push(child);
+                else if (child.component === 'EmptyChartArea') return child;
+              }
+            }
+            return null;
+          })();
+          if (placeholder) dockManager.removePanel(placeholder.id);
+
+          set({
+            layout: dockManager.getLayout(),
+            recentlyClosedCharts: closedCharts.filter((candidate) => candidate.id !== panel.id),
+          });
+
+          if (typeof window !== 'undefined' && panel.props?.symbol) {
+            window.dispatchEvent(new CustomEvent('chartSymbolChanged', {
+              detail: {
+                symbol: panel.props.symbol,
+                timeframe: panel.props.timeframe,
+              },
+            }));
+          }
+          return true;
         },
 
         dockPanel: (panelId, targetId, direction) => {

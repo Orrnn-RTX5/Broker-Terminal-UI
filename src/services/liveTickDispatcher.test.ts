@@ -62,12 +62,23 @@ describe('liveTickDispatcher market data freeze', () => {
     expect(window.rtxTickCache.get('GBPUSD')?.bid).toBe(1.3349);
   });
 
-  it('freezes suffixed variants of the same symbol', () => {
-    setLiveMarketDataFrozen('test-chart-a', 'GBPUSD', true);
-    enqueueLiveTick('GBPUSD.r', tick('GBPUSD.r', 1.3355));
+  it('freezes only the exact broker symbol identity', () => {
+    setLiveMarketDataFrozen('test-chart-a', 'EURUSD.r', true);
+    enqueueLiveTick('EURUSD.r', tick('EURUSD.r', 1.125));
+    enqueueLiveTick('EURUSD', tick('EURUSD', 1.126));
 
-    expect(isLiveMarketDataFrozen('GBPUSD.r')).toBe(true);
-    expect(window.rtxTickCache.get('GBPUSD.r')).toBeUndefined();
+    expect(isLiveMarketDataFrozen('EURUSD.r')).toBe(true);
+    expect(isLiveMarketDataFrozen('EURUSD')).toBe(false);
+    expect(window.rtxTickCache.get('EURUSD.r')).toBeUndefined();
+    expect(window.rtxTickCache.get('EURUSD')?.bid).toBe(1.126);
+  });
+
+  it('does not write punctuation-stripped aliases into the live tick cache', () => {
+    enqueueLiveTick('EURUSD.r', tick('EURUSD.r', 1.125));
+
+    expect(window.rtxTickCache.get('EURUSD.r')?.bid).toBe(1.125);
+    expect(window.rtxTickCache.get('EURUSD.R')?.bid).toBe(1.125);
+    expect(window.rtxTickCache.has('EURUSDR')).toBe(false);
   });
 
   it('keeps a symbol frozen until every source releases it', () => {

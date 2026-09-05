@@ -7,11 +7,14 @@ import { FileMenu } from './FileMenu';
 import { useTranslation } from 'react-i18next';
 import { SymbolsDialog } from '../SymbolsDialog';
 import { commandBus } from '../../services/commandBus';
-import { useChartSettingsStore } from '../../store/useChartSettingsStore';
+import { useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
 import { useAppStore } from '../../store/useAppStore';
+import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import type { PayloadFor } from '../../types/commands';
 import { STAMP_OPTIONS } from './stampOptions';
+import { openWebTrader } from '../../services/webTrader';
+import { getActiveChartCommandTarget } from '../../services/chartCommandTarget';
 
 // Local interface definition to avoid export issues
 interface MenuItem {
@@ -51,6 +54,7 @@ export interface MenuBarProps {
     focusChart?: boolean;
     activeDrawingTool?: string | null;
     crosshairEnabled?: boolean;
+    chartSymbol?: string;
     accountId?: string;
     onSetAdvancedViewEnabled?: (enabled: boolean) => void;
     onSetAdvancedFontSize?: (fontSize: 'small' | 'normal' | 'large') => void;
@@ -58,39 +62,13 @@ export interface MenuBarProps {
     onLogout?: () => void;
 }
 
-const readApplicationMenuBrokerName = (): string => {
-    if (typeof window === 'undefined') return 'RTX Terminal';
-
-    try {
-        return localStorage.getItem('broker_name')
-            || localStorage.getItem('rtx_broker_id')
-            || localStorage.getItem('broker_id')
-            || 'RTX Terminal';
-    } catch {
-        return 'RTX Terminal';
-    }
-};
-
-const setVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
-    const store = useChartSettingsStore.getState();
-    store.updateGlobalProperty('showTickVolumes', visible);
-    store.updateGlobalProperty('showRealVolumes', false);
-    if (activeSymbol) {
-        store.updateSymbolProperty(activeSymbol, 'showTickVolumes', visible);
-        store.updateSymbolProperty(activeSymbol, 'showRealVolumes', false);
-    }
-    Object.keys(store.symbolProperties).forEach((symbol) => {
-        store.updateSymbolProperty(symbol, 'showTickVolumes', visible);
-        store.updateSymbolProperty(symbol, 'showRealVolumes', false);
-    });
-};
-
 export const MenuBar = ({
     advancedViewEnabled = false,
     advancedFontSize = 'normal',
     focusChart = false,
     activeDrawingTool = null,
     crosshairEnabled = false,
+    chartSymbol,
     accountId,
     onSetAdvancedViewEnabled,
     onSetAdvancedFontSize,
@@ -180,10 +158,8 @@ export const MenuBar = ({
     const [availableSymbols, setAvailableSymbols] = useState<MenuSymbol[]>([]);
     const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
     const isAuthenticated = useAppStore(state => state.isAuthenticated);
-    const selectedSymbol = useAppStore(state => state.selectedSymbol);
-    const savedAccounts = useAppStore(state => state.savedAccounts) || [];
-    const activeSavedAccount = savedAccounts.find(account => String(account.login) === String(accountId || ''));
-    const brokerDisplayName = readApplicationMenuBrokerName();
+    const globalChartProperties = useChartSettingsStore(state => state.globalProperties);
+    const symbolChartProperties = useChartSettingsStore(state => state.symbolProperties);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -244,12 +220,66 @@ export const MenuBar = ({
         { label: 'हिंदी', action: () => i18n.changeLanguage('hi'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'hi' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> }
     ];
 
+    const resolveChartTarget = () => getActiveChartCommandTarget(chartSymbol);
+
+    const updateActiveChartProperty = <K extends keyof ChartProperties>(
+        key: K,
+        value: ChartProperties[K],
+        symbol = resolveChartTarget().symbol,
+    ) => {
+        const store = useChartSettingsStore.getState();
+        if (symbol) {
+            store.updateSymbolProperty(symbol, key, value);
+        } else {
+            store.updateGlobalProperty(key, value);
+        }
+    };
+
     const selectDrawingTool = (tool: PayloadFor<'SELECT_TOOL'>['tool'], subtype?: string) => {
+        const { targetContextId } = resolveChartTarget();
         commandBus.dispatch({
             type: 'SELECT_TOOL',
-            payload: subtype ? { tool, subtype } : { tool },
+            payload: subtype
+                ? { tool, subtype, targetContextId }
+                : { tool, targetContextId },
         });
     };
+
+    const openIndicatorList = (category?: string) => {
+        const target = resolveChartTarget();
+        commandBus.dispatch({
+            type: 'OPEN_INDICATOR_LIST',
+            payload: {
+                ...(category ? { category } : {}),
+                targetContextId: target.targetContextId,
+                symbol: target.symbol,
+            },
+        });
+        setActiveMenu(null);
+    };
+
+    const openDepthOfMarket = () => {
+        const target = resolveChartTarget();
+        window.dispatchEvent(new CustomEvent('openDepthOfMarket', {
+            detail: {
+                symbol: target.symbol,
+                targetContextId: target.targetContextId,
+            },
+        }));
+        setActiveMenu(null);
+    };
+
+    const menuChartTarget = getActiveChartCommandTarget(chartSymbol);
+    const menuChartProperties = menuChartTarget.symbol
+        ? (symbolChartProperties[menuChartTarget.symbol] || globalChartProperties)
+        : globalChartProperties;
+    const menuChartType = menuChartProperties.chartType === 'Bar'
+        ? 'bar'
+        : menuChartProperties.chartType === 'Line'
+            ? 'line'
+            : menuChartProperties.chartType === 'Area'
+                ? 'area'
+                : 'candlestick';
 
     const toggleOneClickTrading = () => {
         window.dispatchEvent(new CustomEvent('toggle-one-click-trading'));
@@ -261,6 +291,23 @@ export const MenuBar = ({
 
     const openShortcutHelp = () => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', code: 'F1', bubbles: true }));
+    };
+
+    const fontSizeMenuItem: MenuItem = {
+        label: 'Font Size',
+        children: (['small', 'normal', 'large'] as const).map((fontSize) => ({
+            label: fontSize.charAt(0).toUpperCase() + fontSize.slice(1),
+            checked: advancedFontSize === fontSize,
+            checkRole: 'radio' as const,
+            action: () => onSetAdvancedFontSize?.(fontSize),
+        })),
+    };
+
+    const focusChartMenuItem: MenuItem = {
+        label: 'Focus Chart',
+        checked: focusChart,
+        checkRole: 'checkbox',
+        action: () => onSetFocusChart?.(!focusChart),
     };
 
     const menuItems: { [key: string]: MenuItem[] } = {
@@ -367,21 +414,8 @@ export const MenuBar = ({
                         action: () => onSetAdvancedViewEnabled?.(true),
                     },
                     { divider: true, label: '' },
-                    {
-                        label: 'Font Size',
-                        children: (['small', 'normal', 'large'] as const).map((fontSize) => ({
-                            label: fontSize.charAt(0).toUpperCase() + fontSize.slice(1),
-                            checked: advancedFontSize === fontSize,
-                            checkRole: 'radio' as const,
-                            action: () => onSetAdvancedFontSize?.(fontSize),
-                        })),
-                    },
-                    {
-                        label: 'Focus Chart',
-                        checked: focusChart,
-                        checkRole: 'checkbox',
-                        action: () => onSetFocusChart?.(!focusChart),
-                    },
+                    fontSizeMenuItem,
+                    focusChartMenuItem,
                 ],
             },
             { divider: true, label: '' },
@@ -393,7 +427,7 @@ export const MenuBar = ({
             { label: t('menu.view.chartsBar'), icon: <Icon name="layers" size="sm" /> },
             { divider: true, label: '' },
             { label: 'Search Symbols', shortcut: 'Alt+U', icon: <Icon name="search" size="sm" />, action: () => { setIsSymbolsOpen(true); setActiveMenu(null); } },
-            { label: t('menu.view.depthOfMarket'), shortcut: 'Alt+B', action: () => { window.dispatchEvent(new CustomEvent('openDepthOfMarket')); setActiveMenu(null); } },
+            { label: t('menu.view.depthOfMarket'), shortcut: 'Alt+B', action: openDepthOfMarket },
             { label: t('menu.view.marketWatch'), shortcut: 'Ctrl+M', icon: <Icon name="monitor" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'MarketWatch' })); setActiveMenu(null); } },
             { label: t('menu.view.dataWindow'), shortcut: 'Ctrl+D', action: () => { window.dispatchEvent(new CustomEvent('openDataWindow')); setActiveMenu(null); } },
             { label: t('menu.view.navigator'), shortcut: 'Ctrl+N', action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
@@ -407,12 +441,12 @@ export const MenuBar = ({
                 label: t('menu.insert.indicators'),
                 icon: <Icon name="line-chart" size="sm" />,
                 children: [
-                    { label: 'All Indicators', icon: <Icon name="activity" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: {} }); setActiveMenu(null); } },
+                    { label: 'All Indicators', icon: <Icon name="activity" size="sm" />, action: () => openIndicatorList() },
                     { divider: true, label: '' },
-                    { label: 'Trend', icon: <Icon name="trending-up" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: { category: 'Trend' } }); setActiveMenu(null); } },
-                    { label: 'Oscillators', icon: <Icon name="activity" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: { category: 'Oscillators' } }); setActiveMenu(null); } },
-                    { label: 'Volumes', icon: <Icon name="bar-chart-3" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: { category: 'Volume' } }); setActiveMenu(null); } },
-                    { label: 'Bill Williams', icon: <Icon name="zap" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: { category: 'Bill Williams' } }); setActiveMenu(null); } },
+                    { label: 'Trend', icon: <Icon name="trending-up" size="sm" />, action: () => openIndicatorList('Trend') },
+                    { label: 'Oscillators', icon: <Icon name="activity" size="sm" />, action: () => openIndicatorList('Oscillators') },
+                    { label: 'Volumes', icon: <Icon name="bar-chart-3" size="sm" />, action: () => openIndicatorList('Volume') },
+                    { label: 'Bill Williams', icon: <Icon name="zap" size="sm" />, action: () => openIndicatorList('Bill Williams') },
                 ]
             },
             {
@@ -471,50 +505,50 @@ export const MenuBar = ({
             { label: t('menu.insert.scripts'), icon: <Icon name="code" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
         ],
         Charts: [
-            { label: t('menu.charts.depthOfMarket'), shortcut: 'Alt+B', icon: <Icon name="box" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('openDepthOfMarket')); setActiveMenu(null); } },
-            { label: t('menu.charts.indicatorList'), shortcut: 'Ctrl+I', icon: <Icon name="line-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'OPEN_INDICATOR_LIST', payload: {} }); setActiveMenu(null); } },
+            { label: t('menu.charts.depthOfMarket'), shortcut: 'Alt+B', icon: <Icon name="box" size="sm" />, action: openDepthOfMarket },
+            { label: t('menu.charts.indicatorList'), shortcut: 'Ctrl+I', icon: <Icon name="line-chart" size="sm" />, action: () => openIndicatorList() },
             {
                 label: 'Crosshair',
                 shortcut: 'C',
                 icon: <Icon name="crosshair" size="sm" />,
                 checked: crosshairEnabled,
                 checkRole: 'checkbox',
-                action: () => { commandBus.dispatch({ type: 'TOGGLE_CROSSHAIR', payload: {} }); setActiveMenu(null); },
+                action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'TOGGLE_CROSSHAIR', payload: { targetContextId } }); setActiveMenu(null); },
             },
             {
                 label: t('menu.charts.objects'),
                 children: [
                     // Management
-                    { label: 'Object List', shortcut: 'Ctrl+B', icon: <Icon name="layout-list" size="sm" /> },
+                    { label: 'Object List', shortcut: 'Ctrl+B', icon: <Icon name="layout-list" size="sm" />, action: () => { const target = resolveChartTarget(); window.dispatchEvent(new CustomEvent('open-object-list', { detail: target })); setActiveMenu(null); } },
                     { divider: true, label: '' },
 
                     // Destructive Actions (Muted Red)
-                    { label: 'Delete Last', shortcut: 'Backspace', icon: <Icon name="x-close" size="sm" className="text-rose-400" />, action: () => { commandBus.dispatch({ type: 'UNDO', payload: {} }); setActiveMenu(null); } },
-                    { label: 'Delete All Selected', shortcut: 'Del', icon: <Icon name="trash" size="sm" className="text-rose-400" />, action: () => { commandBus.dispatch({ type: 'DELETE_SELECTED_DRAWING', payload: {} }); setActiveMenu(null); } },
-                    { label: 'Delete All Arrows', icon: <Icon name="minus" size="sm" className="text-rose-400" /> },
-                    { label: 'Delete All', icon: <Icon name="trash" size="sm" className="text-rose-500" />, action: () => { drawingManager.clearAllDrawings(); selectDrawingTool('cursor'); setActiveMenu(null); } },
+                    { label: 'Delete Last', shortcut: 'Backspace', icon: <Icon name="x-close" size="sm" className="text-rose-400" />, action: () => { drawingManager.deleteLast(resolveChartTarget().targetContextId); setActiveMenu(null); } },
+                    { label: 'Delete All Selected', shortcut: 'Del', icon: <Icon name="trash" size="sm" className="text-rose-400" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'DELETE_SELECTED_DRAWING', payload: { targetContextId } }); setActiveMenu(null); } },
+                    { label: 'Delete All Arrows', icon: <Icon name="minus" size="sm" className="text-rose-400" />, action: () => { drawingManager.deleteArrows(resolveChartTarget().targetContextId); setActiveMenu(null); } },
+                    { label: 'Delete All', icon: <Icon name="trash" size="sm" className="text-rose-500" />, action: () => { drawingManager.clearAllDrawings(true, resolveChartTarget().targetContextId); selectDrawingTool('cursor'); setActiveMenu(null); } },
                     { divider: true, label: '' },
 
                     // Selection / Undo
                     { label: 'Selection Mode', shortcut: 'Esc', icon: <Icon name="cursor" size="sm" />, checked: activeDrawingTool === null || activeDrawingTool === 'cursor', checkRole: 'radio', action: () => { selectDrawingTool('cursor'); setActiveMenu(null); } },
-                    { label: 'Undo Delete', shortcut: 'Ctrl+Z', icon: <Icon name="refresh" size="sm" />, action: () => { commandBus.dispatch({ type: 'UNDO', payload: {} }); setActiveMenu(null); } }
+                    { label: 'Undo Delete', shortcut: 'Ctrl+Z', icon: <Icon name="refresh" size="sm" />, action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'UNDO', payload: { targetContextId } }); setActiveMenu(null); } }
                 ]
             },
             { divider: true, label: '' },
-            { label: t('menu.charts.barChart'), shortcut: 'Alt+1', icon: <Icon name="bar-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar' } }); setActiveMenu(null); } },
-            { label: t('menu.charts.candlesticks'), shortcut: 'Alt+2', icon: <Icon name="candlestick" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick' } }); setActiveMenu(null); } },
-            { label: t('menu.charts.lineChart'), shortcut: 'Alt+3', icon: <Icon name="line-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'line' } }); setActiveMenu(null); } },
-            { label: t('menu.charts.areaChart'), icon: <Icon name="area-chart" size="sm" />, action: () => { commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'area' } }); setActiveMenu(null); } },
+            { label: t('menu.charts.barChart'), shortcut: 'Alt+1', icon: <Icon name="bar-chart" size="sm" />, checked: menuChartType === 'bar', checkRole: 'radio', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar', targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.candlesticks'), shortcut: 'Alt+2', icon: <Icon name="candlestick" size="sm" />, checked: menuChartType === 'candlestick', checkRole: 'radio', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick', targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.lineChart'), shortcut: 'Alt+3', icon: <Icon name="line-chart" size="sm" />, checked: menuChartType === 'line', checkRole: 'radio', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'line', targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.areaChart'), icon: <Icon name="area-chart" size="sm" />, checked: menuChartType === 'area', checkRole: 'radio', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'area', targetContextId } }); setActiveMenu(null); } },
             { divider: true, label: '' },
-            { label: t('menu.charts.grid'), shortcut: 'Ctrl+G', icon: <Icon name="grid-3x3" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('showGrid', !s.globalProperties.showGrid); setActiveMenu(null); } },
-            { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); s.updateGlobalProperty('chartAutoScroll', !s.globalProperties.chartAutoScroll); setActiveMenu(null); } },
-            { label: t('menu.charts.chartShift'), icon: <Icon name="chart-shift" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); const next = !s.globalProperties.chartShift; s.updateGlobalProperty('chartShift', next); window.dispatchEvent(new CustomEvent('rtx:chartShift', { detail: { enabled: next } })); setActiveMenu(null); } },
-            { label: t('menu.charts.volumes'), shortcut: 'Ctrl+K', icon: <Icon name="bar-chart-3" size="sm" />, action: () => { const s = useChartSettingsStore.getState(); const current = selectedSymbol ? (s.symbolProperties[selectedSymbol] || s.globalProperties) : s.globalProperties; setVolumeBarsVisible(!(current.showTickVolumes || current.showRealVolumes), selectedSymbol); setActiveMenu(null); } },
+            { label: t('menu.charts.grid'), shortcut: 'Ctrl+G', icon: <Icon name="grid-3x3" size="sm" />, checked: menuChartProperties.showGrid, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; updateActiveChartProperty('showGrid', !current.showGrid, target.symbol); setActiveMenu(null); } },
+            { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" />, checked: menuChartProperties.chartAutoScroll, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const enabled = !current.chartAutoScroll; updateActiveChartProperty('chartAutoScroll', enabled, target.symbol); commandBus.dispatch({ type: 'SET_AUTO_SCROLL', payload: { enabled, targetContextId: target.targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.chartShift'), icon: <Icon name="chart-shift" size="sm" />, checked: menuChartProperties.chartShift, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const enabled = !current.chartShift; updateActiveChartProperty('chartShift', enabled, target.symbol); commandBus.dispatch({ type: 'SET_CHART_SHIFT', payload: { enabled, targetContextId: target.targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.volumes'), shortcut: 'Ctrl+K', icon: <Icon name="bar-chart-3" size="sm" />, checked: menuChartProperties.showTickVolumes || menuChartProperties.showRealVolumes, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const visible = !(current.showTickVolumes || current.showRealVolumes); updateActiveChartProperty('showTickVolumes', visible, target.symbol); updateActiveChartProperty('showRealVolumes', false, target.symbol); setActiveMenu(null); } },
             { divider: true, label: '' },
-            { label: t('menu.charts.zoomIn'), shortcut: '+', action: () => { commandBus.dispatch({ type: 'ZOOM_IN', payload: {} }); setActiveMenu(null); } },
-            { label: t('menu.charts.zoomOut'), shortcut: '-', action: () => { commandBus.dispatch({ type: 'ZOOM_OUT', payload: {} }); setActiveMenu(null); } },
+            { label: t('menu.charts.zoomIn'), shortcut: '+', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_IN', payload: { targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.zoomOut'), shortcut: '-', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'ZOOM_OUT', payload: { targetContextId } }); setActiveMenu(null); } },
             { divider: true, label: '' },
-            { label: t('menu.charts.properties'), shortcut: 'F8', icon: <Icon name="settings" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('openChartProperties')); setActiveMenu(null); } }
+            { label: t('menu.charts.properties'), shortcut: 'F8', icon: <Icon name="settings" size="sm" />, action: () => { const target = resolveChartTarget(); window.dispatchEvent(new CustomEvent('openChartProperties', { detail: target })); setActiveMenu(null); } }
         ],
         Tools: [
             // Primary Trading
@@ -633,6 +667,31 @@ export const MenuBar = ({
         ]
     };
 
+    const hamburgerViewItems: MenuItem[] = [
+        fontSizeMenuItem,
+        focusChartMenuItem,
+        ...menuItems.View.slice(1),
+    ];
+
+    const applyActiveColorTemplate = (scheme: ColorScheme) => {
+        const { symbol } = resolveChartTarget();
+        const store = useChartSettingsStore.getState();
+        if (symbol) {
+            store.applySymbolPresetScheme(symbol, scheme);
+            return;
+        }
+        store.applyPresetScheme(scheme);
+    };
+
+    const colorTemplateItems: MenuItem[] = (
+        ['Green on Black', 'Black on White', 'Yellow on Black'] as const
+    ).map((scheme) => ({
+        label: scheme,
+        checked: menuChartProperties.colorScheme === scheme,
+        checkRole: 'radio',
+        action: () => applyActiveColorTemplate(scheme),
+    }));
+
     const desktopMenuItems: Record<(typeof DESKTOP_MENU_KEYS)[number], MenuItem[]> = {
         File: menuItems.File,
         View: [
@@ -677,22 +736,50 @@ export const MenuBar = ({
                 onLogout();
                 closeMenu();
             } : undefined}
-            onSave={() => {
-                console.log('[MenuBar] Save workspace triggered');
-                window.dispatchEvent(new CustomEvent('saveWorkspace'));
+            onSave={(workspaceName) => {
+                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                    detail: {
+                        message: `Workspace "${workspaceName || 'Default'}" saved.`,
+                        type: 'success',
+                    },
+                }));
+                closeMenu();
+            }}
+            onCloseActiveChart={() => {
+                const activeTarget = getActiveChartCommandTarget(chartSymbol);
+                const closed = useDockLayoutStore.getState().closeActiveChart(activeTarget.symbol || chartSymbol);
+                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                    detail: closed
+                        ? { message: 'Chart closed. Use Open Deleted to restore it.', type: 'success' }
+                        : { message: 'No chart is available to close.', type: 'error' },
+                }));
+                closeMenu();
+            }}
+            onChartRestored={() => {
+                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                    detail: { message: 'Chart restored.', type: 'success' },
+                }));
+                closeMenu();
+            }}
+            onProfileRestored={(profileName) => {
+                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                    detail: { message: `Workspace "${profileName}" restored.`, type: 'success' },
+                }));
                 closeMenu();
             }}
             onSaveAsPicture={() => {
                 console.log('Save as picture');
             }}
-            onOpenDataFolder={() => {
+            onOpenDataFolder={isElectronDesktop ? () => {
                 console.log('[MenuBar] Open data folder triggered');
                 window.dispatchEvent(new CustomEvent('openDataFolder'));
                 closeMenu();
-            }}
-            onPrint={() => {
+            } : undefined}
+            onPrint={(chartData, preferences) => {
                 console.log('[MenuBar] Print triggered');
-                window.dispatchEvent(new CustomEvent('printChart'));
+                window.dispatchEvent(new CustomEvent('printChart', {
+                    detail: { chartData, preferences },
+                }));
                 closeMenu();
             }}
             onPrintPreview={() => {
@@ -701,8 +788,21 @@ export const MenuBar = ({
             onPrintSetup={() => {
                 console.log('Print setup');
             }}
+            onLoginTrade={() => {
+                window.dispatchEvent(new CustomEvent('rtx:openLoginDialog'));
+                closeMenu();
+            }}
+            onLoginWebTrader={async () => {
+                closeMenu();
+                const result = await openWebTrader();
+                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                    detail: result.status === 'opened'
+                        ? { message: `Opened ${result.brokerName} Web Trader.`, type: 'success' }
+                        : { message: result.message, type: 'error' },
+                }));
+            }}
             onExit={() => {
-                console.log('Exit');
+                if (!isElectronDesktop) onLogout?.();
                 closeMenu();
             }}
             hasUnsavedChanges={false}
@@ -748,11 +848,11 @@ export const MenuBar = ({
             id: 'color-templates',
             label: 'Color Templates',
             icon: 'palette',
-            children: menuItems.View,
+            children: colorTemplateItems,
         },
         {
             id: 'algo-trading',
-            label: 'MQL5 Algo Trading',
+            label: 'RTX5 Algo Trading',
             icon: 'code',
             dividerBefore: true,
             children: menuItems.Tools,
@@ -762,6 +862,7 @@ export const MenuBar = ({
             label: 'RTX5 Terminal',
             icon: 'monitor',
             children: [
+                { label: 'View & interface', icon: <Icon name="eye" size="sm" />, children: hamburgerViewItems },
                 { label: 'Window layout', icon: <Icon name="layout" size="sm" />, children: menuItems.Window },
                 { label: 'Help & resources', icon: <Icon name="help-circle" size="sm" />, children: menuItems.Help },
             ],
@@ -994,28 +1095,6 @@ export const MenuBar = ({
                         }
                     }}
                 >
-                    <div className="rtx-application-menu__account">
-                        <div className="min-w-0 flex-1">
-                            <div className="rtx-application-menu__account-title truncate">
-                                {activeSavedAccount?.name || brokerDisplayName}
-                            </div>
-                            <div className="rtx-application-menu__account-meta truncate">
-                                {accountId
-                                    ? `${accountId} - ${activeSavedAccount?.server || brokerDisplayName}`
-                                    : 'Professional trading workspace'}
-                            </div>
-                        </div>
-                        {activeSavedAccount && (
-                            <span
-                                className={`rtx-application-menu__status ${activeSavedAccount.isLive ? 'is-live' : 'is-demo'}`}
-                                aria-label={`${activeSavedAccount.isLive ? 'Real' : 'Demo'} account`}
-                            >
-                                <Icon name="check-circle" size="xs" />
-                                {activeSavedAccount.isLive ? 'Real' : 'Demo'}
-                            </span>
-                        )}
-                    </div>
-
                     <div className="rtx-application-menu__items">
                         {applicationLauncherItems.map((item, rootIndex) => {
                             const hasSubmenu = Boolean(item.opensFileMenu || item.children);
@@ -1058,7 +1137,12 @@ export const MenuBar = ({
                                         {activeMenu === item.id && hasSubmenu && (
                                             <div
                                                 className="absolute left-full ml-px z-[10000]"
-                                                style={{ top: -(rootIndex * 38 + dividerCount * 5) }}
+                                                style={{
+                                                    top: -(
+                                                        rootIndex * 38
+                                                        + dividerCount * 5
+                                                    ),
+                                                }}
                                                 role="menu"
                                                 aria-label={`${item.label} menu`}
                                             >

@@ -27,6 +27,11 @@ export interface PrintPreferences {
   footerText?: string;
 }
 
+export interface PrintPreferencesSaveResult {
+  local: boolean;
+  remote: boolean;
+}
+
 export interface ChartPrintData {
   symbol: string;
   timeframe: string;
@@ -70,48 +75,192 @@ const PAGE_DIMENSIONS = {
   A3: { width: 1123, height: 1587 },
 };
 
+const PRINT_PREFERENCES_STORAGE_PREFIX = 'rtx5:print-preferences:';
+
+const PAGE_SIZES: PageSize[] = ['A4', 'Letter', 'Legal', 'A3'];
+const PAGE_ORIENTATIONS: PageOrientation[] = ['portrait', 'landscape'];
+const COLOR_MODES: ColorMode[] = ['color', 'grayscale'];
+
 class ChartPrinterService {
-  private preferences: PrintPreferences = DEFAULT_PRINT_PREFERENCES;
+  private preferences: PrintPreferences = { ...DEFAULT_PRINT_PREFERENCES };
+  private readonly accountPreferences = new Map<string, PrintPreferences>();
+
+  private getAccountScope(accountId: string): string {
+    const scope = accountId.trim();
+    if (!scope) {
+      throw new Error('An account ID is required for print preferences');
+    }
+    return scope;
+  }
+
+  private getStorageKey(accountId: string): string {
+    return `${PRINT_PREFERENCES_STORAGE_PREFIX}${encodeURIComponent(accountId)}`;
+  }
+
+  private normalizePreferences(
+    value: unknown,
+    fallback: PrintPreferences = DEFAULT_PRINT_PREFERENCES,
+  ): PrintPreferences {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return { ...fallback };
+    }
+
+    const candidate = value as Partial<PrintPreferences>;
+    const margin = (input: unknown, defaultValue: number) => (
+      typeof input === 'number' && Number.isFinite(input)
+        ? Math.min(50, Math.max(0, input))
+        : defaultValue
+    );
+    const optionalText = (input: unknown, defaultValue?: string) => (
+      typeof input === 'string' ? input : defaultValue
+    );
+
+    return {
+      pageSize: PAGE_SIZES.includes(candidate.pageSize as PageSize)
+        ? candidate.pageSize as PageSize
+        : fallback.pageSize,
+      orientation: PAGE_ORIENTATIONS.includes(candidate.orientation as PageOrientation)
+        ? candidate.orientation as PageOrientation
+        : fallback.orientation,
+      colorMode: COLOR_MODES.includes(candidate.colorMode as ColorMode)
+        ? candidate.colorMode as ColorMode
+        : fallback.colorMode,
+      includeHeader: typeof candidate.includeHeader === 'boolean'
+        ? candidate.includeHeader
+        : fallback.includeHeader,
+      includeFooter: typeof candidate.includeFooter === 'boolean'
+        ? candidate.includeFooter
+        : fallback.includeFooter,
+      includeGrid: typeof candidate.includeGrid === 'boolean'
+        ? candidate.includeGrid
+        : fallback.includeGrid,
+      includeIndicators: typeof candidate.includeIndicators === 'boolean'
+        ? candidate.includeIndicators
+        : fallback.includeIndicators,
+      includeDrawings: typeof candidate.includeDrawings === 'boolean'
+        ? candidate.includeDrawings
+        : fallback.includeDrawings,
+      marginTop: margin(candidate.marginTop, fallback.marginTop),
+      marginBottom: margin(candidate.marginBottom, fallback.marginBottom),
+      marginLeft: margin(candidate.marginLeft, fallback.marginLeft),
+      marginRight: margin(candidate.marginRight, fallback.marginRight),
+      scaleToFit: typeof candidate.scaleToFit === 'boolean'
+        ? candidate.scaleToFit
+        : fallback.scaleToFit,
+      headerText: optionalText(candidate.headerText, fallback.headerText),
+      footerText: optionalText(candidate.footerText, fallback.footerText),
+    };
+  }
+
+  private readLocalPreferences(accountId: string): PrintPreferences | null {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return null;
+      const stored = window.localStorage.getItem(this.getStorageKey(accountId));
+      if (!stored) return null;
+      return this.normalizePreferences(JSON.parse(stored));
+    } catch (error) {
+      console.warn('Failed to read local print preferences:', error);
+      return null;
+    }
+  }
+
+  private writeLocalPreferences(accountId: string, preferences: PrintPreferences): boolean {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return false;
+      window.localStorage.setItem(this.getStorageKey(accountId), JSON.stringify(preferences));
+      return true;
+    } catch (error) {
+      console.warn('Failed to save local print preferences:', error);
+      return false;
+    }
+  }
+
+  private rememberPreferences(accountId: string, preferences: PrintPreferences): void {
+    const snapshot = { ...preferences };
+    this.accountPreferences.set(accountId, snapshot);
+    // Preserve the no-argument API for legacy direct-print callers while new
+    // callers use getPreferences(accountId) for strict account isolation.
+    this.preferences = snapshot;
+  }
 
   /**
    * Load print preferences from backend
    */
   async loadPreferences(accountId: string): Promise<PrintPreferences> {
+    const accountScope = this.getAccountScope(accountId);
+    const localPreferences = this.readLocalPreferences(accountScope)
+      ?? this.accountPreferences.get(accountScope)
+      ?? DEFAULT_PRINT_PREFERENCES;
+    const fallback = this.normalizePreferences(localPreferences);
+    this.rememberPreferences(accountScope, fallback);
+
     try {
-      const response = await fetch(`/api/accounts/${accountId}/print-preferences`);
+      const response = await fetch(
+        `/api/accounts/${encodeURIComponent(accountScope)}/print-preferences`,
+      );
       if (response.ok) {
-        const prefs = await response.json();
-        this.preferences = { ...DEFAULT_PRINT_PREFERENCES, ...prefs };
-        return this.preferences;
+        const prefs = this.normalizePreferences(await response.json(), fallback);
+        this.rememberPreferences(accountScope, prefs);
+        this.writeLocalPreferences(accountScope, prefs);
+        return { ...prefs };
       }
+
+      console.warn(`Print preferences request failed with status ${response.status}`);
     } catch (error) {
-      console.error('Failed to load print preferences:', error);
+      console.warn('Failed to load remote print preferences; using local preferences:', error);
     }
-    return this.preferences;
+
+    return { ...fallback };
   }
 
   /**
    * Save print preferences to backend
    */
-  async savePreferences(accountId: string, preferences: PrintPreferences): Promise<void> {
+  async savePreferences(
+    accountId: string,
+    preferences: PrintPreferences,
+  ): Promise<PrintPreferencesSaveResult> {
+    const accountScope = this.getAccountScope(accountId);
+    const normalizedPreferences = this.normalizePreferences(preferences);
+    this.rememberPreferences(accountScope, normalizedPreferences);
+    const local = this.writeLocalPreferences(accountScope, normalizedPreferences);
+
     try {
-      await fetch(`/api/accounts/${accountId}/print-preferences`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(preferences),
-      });
-      this.preferences = preferences;
+      const response = await fetch(
+        `/api/accounts/${encodeURIComponent(accountScope)}/print-preferences`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(normalizedPreferences),
+        },
+      );
+
+      if (!response.ok) {
+        console.warn(`Print preferences save failed with status ${response.status}; saved locally`);
+        return { local, remote: false };
+      }
+
+      return { local, remote: true };
     } catch (error) {
-      console.error('Failed to save print preferences:', error);
-      throw error;
+      console.warn('Failed to save remote print preferences; saved locally:', error);
+      return { local, remote: false };
     }
   }
 
   /**
    * Get current preferences
    */
-  getPreferences(): PrintPreferences {
-    return { ...this.preferences };
+  getPreferences(accountId?: string): PrintPreferences {
+    if (!accountId?.trim()) {
+      return { ...this.preferences };
+    }
+
+    const accountScope = this.getAccountScope(accountId);
+    const preferences = this.accountPreferences.get(accountScope)
+      ?? this.readLocalPreferences(accountScope)
+      ?? DEFAULT_PRINT_PREFERENCES;
+    this.rememberPreferences(accountScope, preferences);
+    return { ...preferences };
   }
 
   /**

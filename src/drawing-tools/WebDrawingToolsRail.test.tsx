@@ -60,7 +60,10 @@ describe('WebDrawingToolsRail', () => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     const rail = screen.getByLabelText('Drawing tools for XAUUSD');
     expect(rail).toHaveClass('web-drawing-tools-rail');
+    expect(rail).toHaveAttribute('data-expanded', 'true');
     expect(rail).toHaveAttribute('data-symbol', 'XAUUSD');
+    expect(screen.getByRole('button', { name: 'Hide drawing tools' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByRole('button', { name: 'Cursor' })).not.toBeInTheDocument();
 
     const menu = openMenu();
     expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(17);
@@ -84,23 +87,65 @@ describe('WebDrawingToolsRail', () => {
     expect(window.localStorage.getItem('rtx5:web:last-trend-line-tool')).toBe(tool.id);
   });
 
-  it('resolves the target at dispatch time for both drawing and Cursor commands', () => {
+  it('replaces Cursor with the hide toggle, shows the RTX5 mark when collapsed, and restores the tools', () => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     selectMenuTool(TREND_LINE_TOOLS[1]);
+    expect(screen.getByTitle('Ray')).toHaveAttribute('data-active', 'true');
 
-    activeChartSource.id = 'chart-btcusd-m5';
-    fireEvent.click(screen.getByRole('button', { name: 'Cursor' }));
+    openMenu();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide drawing tools' }));
 
-    expect(commandBus.getHistory()).toEqual([
-      {
-        type: 'SELECT_TOOL',
-        payload: { tool: 'trendline', subtype: 'ray', targetContextId: 'chart-xauusd-m1' },
-      },
-      {
-        type: 'SELECT_TOOL',
-        payload: { tool: 'cursor', targetContextId: 'chart-btcusd-m5' },
-      },
-    ]);
+    expect(commandBus.getHistory()).toEqual([{
+      type: 'SELECT_TOOL',
+      payload: { tool: 'trendline', subtype: 'ray', targetContextId: 'chart-xauusd-m1' },
+    }]);
+
+    const rail = screen.getByLabelText('Drawing tools for XAUUSD');
+    const showButton = screen.getByRole('button', { name: 'Show drawing tools' });
+    expect(rail).toHaveAttribute('data-expanded', 'false');
+    expect(showButton).toHaveAttribute('aria-expanded', 'false');
+    expect(showButton.querySelector('img')).toHaveAttribute('src', '/favicon.png');
+    expect(screen.queryByRole('button', { name: /open drawing tools/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menu', { name: 'Lines, channels, and pitchforks' })).not.toBeInTheDocument();
+
+    fireEvent.click(showButton);
+    expect(rail).toHaveAttribute('data-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Hide drawing tools' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open drawing tools/i })).toBeInTheDocument();
+    expect(screen.getByTitle('Ray')).toHaveAttribute('data-active', 'true');
+    expect(commandBus.getHistory()).toHaveLength(1);
+  });
+
+  it('keeps the toggle visually separated from the rail without changing icon geometry', () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const hideButton = screen.getByRole('button', { name: 'Hide drawing tools' });
+    expect(hideButton.querySelector('svg')).toBeVisible();
+
+    fireEvent.click(hideButton);
+    const showButton = screen.getByRole('button', { name: 'Show drawing tools' });
+    expect(showButton.querySelector('img')).toBeVisible();
+
+    const css = readFileSync(resolve(process.cwd(), 'src/drawing-tools/WebDrawingToolsRail.css'), 'utf8');
+    const ruleBody = (selector: string) => {
+      const ruleStart = css.indexOf(`${selector} {`);
+      expect(ruleStart).toBeGreaterThanOrEqual(0);
+      return css.slice(ruleStart, css.indexOf('}', ruleStart));
+    };
+    const baseToggleRule = ruleBody('.web-drawing-tools-rail__toggle');
+    const expandedToggleRule = ruleBody(
+      ".web-drawing-tools-rail[data-expanded='true'] .web-drawing-tools-rail__toggle",
+    );
+
+    expect(baseToggleRule).toContain('border-bottom: 1px solid var(--border-secondary);');
+    expect(baseToggleRule).toContain('background: var(--bg-quaternary);');
+    expect(baseToggleRule).toContain('color: var(--text-primary);');
+    expect(expandedToggleRule).toContain(
+      'background: color-mix(in srgb, var(--web-drawing-accent) 18%, var(--bg-quaternary));',
+    );
+    expect(expandedToggleRule).toContain(
+      'color: color-mix(in srgb, var(--web-drawing-accent) 48%, var(--text-primary));',
+    );
+    expect(expandedToggleRule).toContain('box-shadow: inset 2px 0 0 var(--web-drawing-accent);');
   });
 
   it('ignores Cursor and saved events owned by another chart context', () => {
@@ -124,7 +169,7 @@ describe('WebDrawingToolsRail', () => {
         detail: { contextId: 'chart-xauusd-m1' },
       }));
     });
-    expect(screen.getByRole('button', { name: 'Cursor' })).toHaveAttribute('data-active', 'true');
+    expect(screen.getByTitle('Pitchfork')).toHaveAttribute('data-active', 'false');
   });
 
   it('uses the theme-token surface class in both dark and light document modes', () => {

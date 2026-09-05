@@ -8,6 +8,12 @@ export type ColorScheme =
   | "Yellow on Black"
   | "Custom";
 
+export const CHART_PROFIT_COLOR = "#00C896";
+export const CHART_LOSS_COLOR = "#FF4D4F";
+
+const LEGACY_CHART_PROFIT_COLOR = "#10B981";
+const LEGACY_CHART_LOSS_COLOR = "#EF4444";
+
 export interface ChartProperties {
   // Common
   chartType: ChartTypeEnum;
@@ -82,24 +88,24 @@ export const defaultChartProperties: ChartProperties = {
   showTradeHistory: true,
   showTradeHistoryBoxes: true,
   showTradeHistoryArrows: true,
-  tradeHistoryLineOpacity: 25,
+  tradeHistoryLineOpacity: 70,
   tradeHistoryBoxOpacity: 40,
 
   colorScheme: "Green on Black",
   colors: {
     background: "#000000",
     foreground: "#ffffff",
-    grid: "rgba(255,255,255,0.15)",
-    barUp: "#10B981",
-    barDown: "#EF4444",
-    bullCandle: "#10B981",
-    bearCandle: "#EF4444",
-    lineChart: "#10B981",
-    volumes: "rgba(34, 197, 94, 0.4)",
+    grid: "rgba(255,255,255,0.12)",
+    barUp: CHART_PROFIT_COLOR,
+    barDown: CHART_LOSS_COLOR,
+    bullCandle: CHART_PROFIT_COLOR,
+    bearCandle: CHART_LOSS_COLOR,
+    lineChart: CHART_PROFIT_COLOR,
+    volumes: "rgba(0, 200, 150, 0.32)",
     bidPriceLine: "#778899",
-    askPriceLine: "#EF4444",
-    lastPriceLine: "#00C000",
-    stopLevels: "#EF4444",
+    askPriceLine: CHART_LOSS_COLOR,
+    lastPriceLine: CHART_PROFIT_COLOR,
+    stopLevels: CHART_LOSS_COLOR,
   },
 };
 
@@ -122,9 +128,26 @@ const normalizeSchemeColors = (
   colors: ChartProperties["colors"],
 ): ChartProperties["colors"] => {
   if (colorScheme === "Green on Black") {
+    const migrateLegacyColor = (value: string, legacy: string, replacement: string) => (
+      value.toUpperCase() === legacy ? replacement : value
+    );
+
     return {
       ...colors,
       background: "#000000",
+      barUp: migrateLegacyColor(colors.barUp, LEGACY_CHART_PROFIT_COLOR, CHART_PROFIT_COLOR),
+      barDown: migrateLegacyColor(colors.barDown, LEGACY_CHART_LOSS_COLOR, CHART_LOSS_COLOR),
+      bullCandle: migrateLegacyColor(colors.bullCandle, LEGACY_CHART_PROFIT_COLOR, CHART_PROFIT_COLOR),
+      bearCandle: migrateLegacyColor(colors.bearCandle, LEGACY_CHART_LOSS_COLOR, CHART_LOSS_COLOR),
+      lineChart: migrateLegacyColor(colors.lineChart, LEGACY_CHART_PROFIT_COLOR, CHART_PROFIT_COLOR),
+      volumes: colors.volumes === "rgba(34, 197, 94, 0.4)"
+        ? defaultChartProperties.colors.volumes
+        : colors.volumes,
+      askPriceLine: migrateLegacyColor(colors.askPriceLine, LEGACY_CHART_LOSS_COLOR, CHART_LOSS_COLOR),
+      lastPriceLine: colors.lastPriceLine.toUpperCase() === "#00C000"
+        ? CHART_PROFIT_COLOR
+        : colors.lastPriceLine,
+      stopLevels: migrateLegacyColor(colors.stopLevels, LEGACY_CHART_LOSS_COLOR, CHART_LOSS_COLOR),
     };
   }
 
@@ -329,18 +352,18 @@ export const getEffectiveChartColors = (
   if (properties.colorScheme === "Green on Black") {
     return {
       ...properties.colors,
-      background: "#ffffff",
-      foreground: "#475467",
-      grid: "#e5e7eb",
+      background: "#fafbfc",
+      foreground: "#4b5563",
+      grid: "#e8e8e8",
     };
   }
 
   if (properties.colorScheme === "Black on White") {
     return {
       ...properties.colors,
-      background: "#ffffff",
-      foreground: "#000000",
-      grid: "#d0d5dd",
+      background: "#fafbfc",
+      foreground: "#202124",
+      grid: "#d5d7da",
       barUp: "#000000",
       barDown: "#000000",
       bullCandle: "#ffffff",
@@ -354,8 +377,8 @@ export const getEffectiveChartColors = (
   if (properties.colorScheme === "Yellow on Black") {
     return {
       ...properties.colors,
-      background: "#ffffff",
-      foreground: "#475467",
+      background: "#fafbfc",
+      foreground: "#4b5563",
       grid: "#e0ded7",
       barUp: "#facc15",
       barDown: "#facc15",

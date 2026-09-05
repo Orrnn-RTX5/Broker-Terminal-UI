@@ -16,7 +16,13 @@ describe('deployed runtime configuration', () => {
 
     expect((runtimeWindow as any).RUNTIME_CONFIG).toMatchObject({
       BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      WS_HOST: 'wss://fxtrustbrokerbackend.orrnn.com',
+      DISCOVERY_BASE_URL: 'https://fxtrustsuperbackned.orrnn.com',
       BROKER_ID: 'TEST',
+      VITE_BROKER_ID: 'TEST',
+      FEED_BROKER_ID: 'TEST',
+      DEFAULT_MT5_SERVER: 'TEST',
     });
   });
 

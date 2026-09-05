@@ -9,9 +9,55 @@ import {
   patchPositionsFromTick,
   patchToolboxPositions,
   replaceToolboxPositions,
+  selectWarmToolboxTradeSnapshot,
 } from './useToolboxTradeData';
 
 describe('useToolboxTradeData helpers', () => {
+  const warmPosition = {
+    id: 17,
+    symbol: 'EURUSD',
+    side: 'BUY' as const,
+    volume: 0.1,
+    openPrice: 1.1,
+    currentPrice: 1.101,
+    openTime: '2026-09-02T10:00:00.000Z',
+    sl: 0,
+    tp: 0,
+    swap: 0,
+    commission: 0,
+    unrealizedPnL: 10,
+  };
+
+  it('selects already-loaded positions for the active authenticated session', () => {
+    const snapshot = selectWarmToolboxTradeSnapshot({
+      isAuthenticated: true,
+      accountId: '200001',
+      account: null,
+      positions: [warmPosition],
+    }, 200001, {
+      authenticated: true,
+      accountId: '200001',
+    });
+
+    expect(snapshot?.positions).toEqual([
+      expect.objectContaining({ id: 17, ticket: 17, symbol: 'EURUSD' }),
+    ]);
+  });
+
+  it('never warms Trade with rows from a different account session', () => {
+    const snapshot = selectWarmToolboxTradeSnapshot({
+      isAuthenticated: true,
+      accountId: '200001',
+      account: null,
+      positions: [warmPosition],
+    }, 200002, {
+      authenticated: true,
+      accountId: '200002',
+    });
+
+    expect(snapshot).toBeNull();
+  });
+
   it('shows a provisional market order immediately, then replaces it with the confirmed ticket', () => {
     const pendingDetail = {
       status: 'pending' as const,
@@ -301,6 +347,53 @@ describe('useToolboxTradeData helpers', () => {
       freeMarginSource: 'backend',
       marginLevelSource: 'backend',
     });
+  });
+
+  it('keeps open-trade rows stable when sparse unknown records race a snapshot', () => {
+    const initial = replaceToolboxPositions([], [
+      {
+        ticket: 24_155,
+        symbol: 'BTCUSD',
+        side: 'buy',
+        volume: 0.01,
+        price_open: 79_500,
+        price_current: 79_600,
+        profit: -1.5,
+      },
+      {
+        ticket: 24_151,
+        symbol: 'BTCUSD',
+        side: 'buy',
+        volume: 0.01,
+        price_open: 79_490,
+        price_current: 79_600,
+        profit: -1.6,
+      },
+    ]);
+
+    const racedSnapshot = replaceToolboxPositions(initial, [
+      { ticket: 24_155, price_current: 79_608.32, profit: -1.65 },
+      { id: 1, currentPrice: 0, unrealizedPnL: 0 },
+      { ticket: 24_185, price_current: 79_608.32, profit: -0.22 },
+      {
+        ticket: 24_151,
+        symbol: 'BTCUSD',
+        side: 'buy',
+        volume: 0.01,
+        price_current: 79_608.32,
+        profit: -1.66,
+      },
+    ]);
+
+    expect(racedSnapshot.map((position) => position.id)).toEqual([24_155, 24_151]);
+    expect(racedSnapshot[0]).toMatchObject({
+      symbol: 'BTCUSD',
+      volume: 0.01,
+      openPrice: 79_500,
+      currentPrice: 79_608.32,
+      profit: -1.65,
+    });
+    expect(racedSnapshot).toHaveLength(initial.length);
   });
 
   it('patches live position fields without dropping other rows or static data', () => {

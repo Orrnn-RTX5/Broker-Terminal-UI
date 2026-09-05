@@ -121,12 +121,12 @@ const arrowObjects: MenuItem[] = [
 const expertsList: MenuItem[] = [
     item('Macd Sample', undefined, <Icon name="cpu" size="sm"  className = "text-zinc-500" />),
     item('Moving Average', undefined, <Icon name="cpu" size="sm"  className = "text-zinc-500" />),
-    item('MQL5 \ Experts \ ...', undefined, <Icon name="folder-open" size="sm"  className = "text-zinc-600" />),
+    item('RTX5 \ Experts \ ...', undefined, <Icon name="folder-open" size="sm"  className = "text-zinc-600" />),
 ];
 
 const scriptsList: MenuItem[] = [
     item('PeriodConverter', undefined, <Icon name="terminal" size="sm"  className = "text-zinc-500" />),
-    item('MQL5 \ Scripts \ ...', undefined, <Icon name="folder-open" size="sm"  className = "text-zinc-600" />),
+    item('RTX5 \ Scripts \ ...', undefined, <Icon name="folder-open" size="sm"  className = "text-zinc-600" />),
 ];
 
 
@@ -248,7 +248,7 @@ Charts: [
             Help: [
                 item('Help Topics', 'F1', <Icon name="help-circle" size="sm"  />),
                 item('Web Terminal'),
-                item('MQL5.community'),
+                item('RTX5.community'),
                 divider(),
                 item('About', undefined, <Icon name="box" size="sm"  />)
             ]

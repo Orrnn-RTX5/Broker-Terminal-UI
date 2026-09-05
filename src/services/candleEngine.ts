@@ -7,6 +7,7 @@
 import type { TickData } from '../types/history';
 import { historyDataManager } from './historyDataManager';
 import { chartDataService, type OHLCData, type Timeframe } from './chartDataService';
+import { getChartPriceFromQuote } from './chartPriceGuards';
 
 /**
  * Candle Engine Configuration
@@ -122,14 +123,25 @@ export class CandleEngine {
       throw new Error('Invalid tick data');
     }
 
-    const price = (tick.bid + tick.ask) / 2;
+    // FIX: Build MetaTrader-style OHLC from Bid only, with Ask as a fallback
+    // when Bid is unavailable. Mixing both sides manufactures spread wicks.
+    const price = getChartPriceFromQuote(tick);
+    if (price === null) {
+      return {
+        candles: this.getAllCandles(),
+        isNewCandle: false,
+        candleIndex: this.historical.length,
+      };
+    }
+    const tickHigh = price;
+    const tickLow = price;
     const candleTime = Math.floor(tick.timestamp / this.intervalMs) * this.intervalMs;
 
     let isNewCandle = false;
     let candleIndex = 0;
 
     // Check if this tick belongs to a new candle
-    if (this.forming === null || candleTime !== this.forming.time) {
+    if (this.forming === null || candleTime > this.forming.time) {
       isNewCandle = true;
 
       // If we had a forming candle, add it to historical
@@ -146,27 +158,37 @@ export class CandleEngine {
       this.forming = {
         time: candleTime,
         open: price,
-        high: price,
-        low: price,
+        high: tickHigh,
+        low: tickLow,
         close: price,
         volume: tick.volume || 0
       };
 
       candleIndex = this.historical.length;
 
-    } else {
+    } else if (candleTime === this.forming.time) {
       // Update existing forming candle
       if (this.forming) {
-        this.forming.high = Math.max(this.forming.high, price);
-        this.forming.low = Math.min(this.forming.low, price);
-        this.forming.close = price;
+        this.forming.high = Math.max(this.forming.high, tickHigh, this.forming.open, price);
+        this.forming.low = Math.min(this.forming.low, tickLow, this.forming.open, price);
+        // FIX: An out-of-order same-bucket frame may extend High/Low but cannot
+        // regress Close; event time, not arrival order, owns the latest price.
+        if (tick.timestamp >= this.lastProcessedTickTime) this.forming.close = price;
         this.forming.volume += tick.volume || 0;
       }
 
       candleIndex = this.historical.length;
+    } else {
+      // FIX: Never roll a chart backward or merge a previous-period tick into
+      // the active candle; backend history/corrections own completed buckets.
+      return {
+        candles: this.getAllCandles(),
+        isNewCandle: false,
+        candleIndex: this.historical.length,
+      };
     }
 
-    this.lastProcessedTickTime = tick.timestamp;
+    this.lastProcessedTickTime = Math.max(this.lastProcessedTickTime, tick.timestamp);
 
     return {
       candles: this.getAllCandles(),

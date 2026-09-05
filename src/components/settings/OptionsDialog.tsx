@@ -63,8 +63,8 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose })
     ];
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="w-[800px] h-[600px] bg-[#252528] rounded-lg shadow-2xl border border-zinc-700 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="rtx-options-dialog-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="rtx-options-dialog w-[800px] h-[600px] bg-[#252528] rounded-lg shadow-2xl border border-zinc-700 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="h-10 bg-[#131316] border-b border-zinc-700 flex items-center justify-between px-4 select-none">
                     <span className="text-[14px] font-semibold text-zinc-200">Options</span>

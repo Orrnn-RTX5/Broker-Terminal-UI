@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'fs';
 import path from 'path';
 
 /**
@@ -54,5 +55,25 @@ describe('shell-open-path containment (F07)', () => {
     expect(isValidInput(null)).toBe(false);
     expect(isValidInput(123)).toBe(false);
     expect(isValidInput('./data')).toBe(true);
+  });
+});
+
+describe('dedicated app data-folder bridge', () => {
+  const electronSource = readFileSync(path.resolve(process.cwd(), 'electron.cjs'), 'utf8');
+  const preloadSource = readFileSync(path.resolve(process.cwd(), 'preload.cjs'), 'utf8');
+  const windowTypesSource = readFileSync(path.resolve(process.cwd(), 'src/types/trading.ts'), 'utf8');
+
+  it('derives the folder only from Electron userData and creates it recursively', () => {
+    expect(electronSource).toContain("ipcMain.handle('shell-open-data-folder', async () => {");
+    expect(electronSource).toContain("path.join(app.getPath('userData'), 'data')");
+    expect(electronSource).toContain('await fs.mkdir(dataFolder, { recursive: true })');
+    expect(electronSource).toContain('return await shell.openPath(dataFolder)');
+  });
+
+  it('exposes the no-argument bridge through preload and Window typing', () => {
+    expect(preloadSource).toContain(
+      "openDataFolder: () => ipcRenderer.invoke('shell-open-data-folder')",
+    );
+    expect(windowTypesSource).toContain('openDataFolder: () => Promise<string>');
   });
 });

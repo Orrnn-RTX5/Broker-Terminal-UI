@@ -4,6 +4,7 @@ import {
   BROKER_PROXY_ADDRESS_ATTEMPT_TIMEOUT_MS,
   createPinnedConnectionOptions,
   createPinnedLookup,
+  normalizeProxyAccessOrigin,
   resolveProxyAddresses,
   type ResolvedProxyAddress,
 } from '../../viteBrokerProxyAddress'
@@ -12,6 +13,18 @@ const PUBLIC_ADDRESSES: ResolvedProxyAddress[] = [
   { address: '172.67.162.241', family: 4 },
   { address: '104.21.57.102', family: 4 },
 ]
+
+describe('Vite broker proxy access origins', () => {
+  it('matches WebSocket origins to their HTTP allowlist equivalents', () => {
+    expect(normalizeProxyAccessOrigin('wss://broker.example/ws/v2')).toBe('https://broker.example')
+    expect(normalizeProxyAccessOrigin('ws://broker.example:8080/ws/feed')).toBe('http://broker.example:8080')
+  })
+
+  it('preserves HTTP origins and rejects unsupported protocols', () => {
+    expect(normalizeProxyAccessOrigin('https://broker.example/api/v2')).toBe('https://broker.example')
+    expect(normalizeProxyAccessOrigin('file:///etc/passwd')).toBeNull()
+  })
+})
 
 describe('Vite broker proxy address resolution', () => {
   it('retains every validated DNS answer in resolver order', async () => {

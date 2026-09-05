@@ -38,7 +38,9 @@ export const MAX_CANDLE_CACHE_ENTRIES = 64;
 export const MAX_CANDLES_PER_CACHE_ENTRY = 20_000;
 
 const normalizeScope = (scope: string): string => String(scope || 'default').trim().replace(/\/+$/, '') || 'default';
-const normalizeSymbol = (symbol: string): string => String(symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+// FIX: Cache keys retain broker punctuation so `EURUSD.r` cannot reuse stale
+// history belonging to a distinct `EURUSDr`/`EURUSD` instrument.
+const normalizeSymbol = (symbol: string): string => String(symbol || '').trim().toUpperCase();
 const normalizeTimeframe = (timeframe: string): string => String(timeframe || 'M1').trim().toUpperCase();
 const normalizeVersion = (version: string | undefined): string => (
   String(version || CANDLE_HISTORY_CACHE_VERSION).trim() || CANDLE_HISTORY_CACHE_VERSION

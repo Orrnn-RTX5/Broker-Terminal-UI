@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electron', {
     // Shell utilities
     shell: {
         openPath: (path) => ipcRenderer.invoke('shell-open-path', path),
+        openDataFolder: () => ipcRenderer.invoke('shell-open-data-folder'),
         openExternal: (url) => {
             if (!isAllowedExternalUrl(url)) return Promise.resolve(false);
             return ipcRenderer.invoke('shell-open-external', url);

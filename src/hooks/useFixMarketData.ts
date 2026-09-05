@@ -6,6 +6,13 @@ import {
   Timeframe,
 } from '../services/candleAggregationService';
 import { getCandleSocketManager } from '../services/candleSocketManager';
+import { isStructurallyValidPriceCandle } from '../services/chartPriceGuards';
+import {
+  BROKER_SOURCE_TIMESTAMP_KEYS,
+  asUnknownRecord,
+  readBrokerTimestampMs,
+  readCandleFinality,
+} from '../utils/brokerStreamSemantics';
 
 // Re-export CandleData for components using this hook
 export type { CandleData };
@@ -17,6 +24,13 @@ interface UseFixMarketDataProps {
 }
 
 const VALID_TIMEFRAMES: Timeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
+
+// FIX: Prefer the candle bucket/open time, then fall through to the shared
+// canonical broker aliases so every adapter uses one unit-normalization policy.
+const CANDLE_TIMESTAMP_KEYS = [
+  'time', 'Time', 'open_time', 'openTime', 't',
+  ...BROKER_SOURCE_TIMESTAMP_KEYS,
+] as const;
 
 function isValidTimeframe(tf: string): tf is Timeframe {
   return VALID_TIMEFRAMES.includes(tf as Timeframe);
@@ -89,25 +103,35 @@ export function useFixMarketData({
   }, [getCurrentTimeframe]);
 
   const normalizeCandle = useCallback((candle: any): CandleData | null => {
-    if (!candle) return null;
-    const time = Number(candle.time);
+    const record = asUnknownRecord(candle);
+    if (!record) return null;
+    // FIX: Normalize seconds/ms/us/ns/ISO and the canonical event/server-time
+    // aliases without guessing from only `time` at this legacy chart boundary.
+    const timeMs = readBrokerTimestampMs([record], CANDLE_TIMESTAMP_KEYS);
     const open = Number(candle.open);
     const high = Number(candle.high);
     const low = Number(candle.low);
     const close = Number(candle.close);
 
-    if (![time, open, high, low, close].every(Number.isFinite)) {
+    if (timeMs === undefined) {
       return null;
     }
 
+    const backendPrices = { open, high, low, close };
+    // FIX: Backend OHLC is authoritative. Reject malformed ranges instead of
+    // widening/repairing them and rendering prices the broker never supplied.
+    if (!isStructurallyValidPriceCandle(backendPrices)) return null;
+
+    const isComplete = readCandleFinality([record]);
+
     return {
-      time: time > 1_000_000_000_000 ? Math.floor(time / 1000) : time,
+      time: Math.floor(timeMs / 1000),
       open,
       high,
       low,
       close,
       volume: Number(candle.volume ?? candle.tick_count) || 0,
-      isComplete: true,
+      ...(isComplete !== undefined ? { isComplete } : {}),
     };
   }, []);
 
@@ -131,10 +155,15 @@ export function useFixMarketData({
         normalizedCandles
       );
     } else {
-      candleAggregationService.addCompletedCandle(
+      const candle = normalizedCandles[0];
+      // FIX: Stream snapshots without an explicit finality flag remain
+      // partial. Never route them through addCompletedCandle(), which would
+      // prematurely freeze the active bucket and make later ticks look stale.
+      candleAggregationService.reconcileServerCandle(
         symbolRef.current,
         targetTimeframe,
-        normalizedCandles[0]
+        candle,
+        candle.isComplete === true,
       );
     }
 
@@ -174,16 +203,16 @@ export function useFixMarketData({
 
       console.log(`[useFixMarketData] Loaded ${candles.length} candles for ${sym}`);
 
-      // Normalize and transform candles
-      const normalizedCandles: CandleData[] = candles.map((c: any) => ({
-        time: c.time > 1_000_000_000_000 ? Math.floor(c.time / 1000) : c.time,
-        open: Number(c.open),
-        high: Number(c.high),
-        low: Number(c.low),
-        close: Number(c.close),
-        volume: Number(c.volume ?? c.tick_count) || 0,
-        isComplete: true,
-      }));
+      // FIX: REST history uses the same strict, precision-safe normalizer as
+      // streamed OHLC so this chart never mutates or fabricates backend bars.
+      const normalizedCandles: CandleData[] = candles
+        .map(normalizeCandle)
+        .filter((candle): candle is CandleData => candle !== null);
+
+      if (normalizedCandles.length === 0) {
+        setStatus(`${sym} ${tf} - Invalid OHLC response`);
+        return;
+      }
 
       // Sort chronologically
       normalizedCandles.sort((a, b) => a.time - b.time);
@@ -208,7 +237,7 @@ export function useFixMarketData({
         }, 2000);
       }
     }
-  }, []);
+  }, [normalizeCandle]);
 
   /**
    * Load available symbols
@@ -230,14 +259,22 @@ export function useFixMarketData({
    * Process incoming WebSocket tick
    */
   const processTick = useCallback((tickInfo: any) => {
-    if (!tickInfo.symbol && !tickInfo.bid) return;
+    const record = asUnknownRecord(tickInfo);
+    if (!record) return;
+    const bid = Number(record.bid);
+    const askValue = Number(record.ask);
+    if (!Number.isFinite(bid) || bid <= 0) return;
 
     // Build tick object
     const tick = {
-      symbol: tickInfo.symbol || symbolRef.current,
-      bid: tickInfo.bid,
-      ask: tickInfo.ask || tickInfo.bid,
-      timestamp: tickInfo.timestamp || Date.now(),
+      symbol: typeof record.symbol === 'string' && record.symbol.trim()
+        ? record.symbol.trim().toUpperCase()
+        : symbolRef.current.trim().toUpperCase(),
+      bid,
+      ask: Number.isFinite(askValue) && askValue > 0 ? askValue : bid,
+      // FIX: Preserve canonical broker event/server time and normalize epoch
+      // precision; receipt time is only a fallback when no source time exists.
+      timestamp: readBrokerTimestampMs([record]) ?? Date.now(),
       volume: 1,
     };
 
@@ -247,8 +284,9 @@ export function useFixMarketData({
     // Update tick count
     setTickCount(prev => prev + 1);
 
-    // Update price
-    setLastPrice((tick.bid + tick.ask) / 2);
+    // FIX: Match MetaTrader/TradingView Bid-chart semantics; Ask/spread must
+    // never shift the displayed candle price.
+    setLastPrice(tick.bid);
 
     // Get current timeframe update
     const currentTf = getCurrentTimeframe();

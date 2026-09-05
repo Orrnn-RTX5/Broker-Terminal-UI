@@ -113,8 +113,10 @@ describe('buildClosedTradeHistorySnapshots', () => {
         volume: 0.01,
         entryPrice: 1.34149,
         entryTime: 1760000000,
+        entryExecutionTime: 1760000000,
         exitPrice: 1.34324,
         exitTime: 1760000300,
+        exitExecutionTime: 1760000300,
         profit: 1.75,
         source: 'mt5-history',
       }),
@@ -154,8 +156,10 @@ describe('buildClosedTradeHistorySnapshots', () => {
         volume: 0.01,
         entryPrice: 1.34149,
         entryTime: 1760000000,
+        entryExecutionTime: 1760000000,
         exitPrice: 1.34324,
         exitTime: 1760000300,
+        exitExecutionTime: 1760000300,
         profit: 1.75,
         source: 'mt5-history',
       }),
@@ -186,6 +190,51 @@ describe('buildClosedTradeHistorySnapshots', () => {
         entryPrice: 1.34352,
         exitPrice: 1.34208,
         source: 'app-history',
+      }),
+    ]);
+  });
+
+  it('keeps exact execution timestamps when chart placement is candle-aligned', () => {
+    const entryExecutionTime = 1760000047;
+    const exitExecutionTime = 1760000338;
+    const alignToFiveMinutes = (value: unknown) => {
+      const timestamp = mapTimestamp(value);
+      return Math.floor(timestamp / 300) * 300;
+    };
+
+    const snapshots = buildClosedTradeHistorySnapshots({
+      rows: [
+        {
+          historySource: 'deal',
+          positionId: 272,
+          symbol: 'GBPUSD',
+          type: 'entry_in',
+          side: 'BUY',
+          volume: 0.01,
+          price: 1.34149,
+          time: entryExecutionTime,
+        },
+        {
+          historySource: 'deal',
+          positionId: 272,
+          symbol: 'GBPUSD',
+          type: 'entry_out',
+          side: 'SELL',
+          volume: 0.01,
+          price: 1.34324,
+          time: exitExecutionTime,
+        },
+      ],
+      symbol: 'GBPUSD',
+      mapTimestamp: alignToFiveMinutes,
+    });
+
+    expect(snapshots).toEqual([
+      expect.objectContaining({
+        entryTime: Math.floor(entryExecutionTime / 300) * 300,
+        entryExecutionTime,
+        exitTime: Math.floor(exitExecutionTime / 300) * 300,
+        exitExecutionTime,
       }),
     ]);
   });
@@ -333,7 +382,7 @@ describe('trade overlay close suppression helpers', () => {
     })).toEqual([
       expect.objectContaining({
         key: 'trade:270',
-        symbol: 'GBPUSD',
+        symbol: 'GBP/USD',
         side: 'BUY',
         volume: 0.01,
         entryPrice: 1.34149,
@@ -363,7 +412,9 @@ describe('trade overlay close suppression helpers', () => {
         key: 'trade:271',
         side: 'SELL',
         entryTime: Math.floor(Date.UTC(2026, 5, 22, 14, 35, 34) / 1000),
+        entryExecutionTime: Math.floor(Date.UTC(2026, 5, 22, 14, 35, 34) / 1000),
         exitTime: Math.floor(Date.UTC(2026, 5, 22, 14, 40, 7) / 1000),
+        exitExecutionTime: Math.floor(Date.UTC(2026, 5, 22, 14, 40, 7) / 1000),
       }),
     ]);
   });
@@ -401,7 +452,7 @@ describe('trade overlay close suppression helpers', () => {
         },
         {
           ticketId: 271,
-          symbol: 'GBPUSD',
+          symbol: 'GBP/USD',
           side: 'BUY',
           volume: 0.01,
           entryPrice: 1.32231,
@@ -415,7 +466,7 @@ describe('trade overlay close suppression helpers', () => {
     expect(getTradeOverlayOptimisticClosedSnapshots('GBP/USD', 1_760_000_301_000)).toEqual([
       expect.objectContaining({
         key: 'trade:271',
-        symbol: 'GBPUSD',
+        symbol: 'GBP/USD',
         entryPrice: 1.32231,
         exitPrice: 1.32245,
       }),
@@ -451,11 +502,13 @@ describe('trade overlay close suppression helpers', () => {
       volume: 0.01,
       entryPrice: 1.34149,
       entryTime: 1760000000,
+      entryExecutionTime: 1760000000,
       exitPrice: 1.34324,
       exitTime: 1760000300,
+      exitExecutionTime: 1760000300,
     })).toEqual(expect.objectContaining({
       key: 'trade:270',
-      symbol: 'GBPUSD',
+      symbol: 'GBP/USD',
       side: 'BUY',
       entryPrice: 1.34149,
       entryTime: 1760000000,

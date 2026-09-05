@@ -1,0 +1,473 @@
+/* Research dock tables (Articles / Code Base / Experts) --------------------
+   Same solid terminal surface as Calendar: no glass, no vertical grid,
+   high-contrast type, slim chrome. */
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) {
+  --research-bg: var(--bg-secondary);
+  --research-header: var(--bg-tertiary);
+  --research-hover: var(--bg-quaternary);
+  --research-selected: var(--bg-quaternary);
+  --research-border: var(--border-primary);
+  --research-border-strong: var(--border-secondary);
+  --research-text: var(--text-primary);
+  --research-text-secondary: var(--text-secondary);
+  --research-text-muted: var(--text-tertiary);
+  --research-rating: var(--color-warning);
+  --articles-bg: var(--bg-secondary);
+  --articles-header: var(--bg-tertiary);
+  --articles-text: var(--text-primary);
+
+  background: var(--research-bg);
+  color: var(--research-text);
+  color-scheme: dark;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+html.rtx-skin-untitled-light :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab),
+html.theme-light :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) {
+  color-scheme: light;
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) [class$='__scroll'] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) [class$='__scroll']::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) [class$='__scroll']::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) [class$='__scroll']::-webkit-scrollbar-thumb {
+  background: var(--research-border-strong);
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) table {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  color: var(--research-text);
+  table-layout: fixed;
+  width: 100%;
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) thead th {
+  background: var(--research-header) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-bottom: 1px solid var(--research-border-strong) !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  box-shadow: none !important;
+  color: var(--research-text) !important;
+  font-size: 12px;
+  font-weight: var(--font-weight-normal, 400);
+  height: 32px;
+  letter-spacing: 0;
+  line-height: 18px;
+  padding: 0 20px;
+  text-align: left !important;
+  text-shadow: none;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) tbody td {
+  background: transparent !important;
+  border-bottom: 1px solid var(--research-border) !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  box-shadow: none !important;
+  color: inherit;
+  font-size: 13px;
+  font-weight: var(--font-weight-normal, 400);
+  height: 34px;
+  line-height: 19.5px;
+  overflow: hidden;
+  padding: 0 20px;
+  text-align: left !important;
+  text-overflow: ellipsis;
+  text-shadow: none;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+:is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row) {
+  background: var(--research-bg) !important;
+  color: var(--research-text);
+  cursor: default;
+}
+
+:is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row):hover {
+  background: var(--research-hover) !important;
+}
+
+:is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row)[data-selected='true'],
+:is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row)[data-selected='true']:hover {
+  background: var(--research-selected) !important;
+  box-shadow: inset 2px 0 0 #60a5fa;
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) thead th:first-child,
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) tbody td:first-child {
+  padding-left: 16px;
+}
+
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) thead th:last-child,
+:is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) tbody td:last-child {
+  padding-right: 16px;
+}
+
+.rtx-articles-tab__col--name {
+  color: var(--research-text);
+  font-weight: 500;
+  width: 28%;
+}
+
+.rtx-articles-tab__col--description {
+  color: var(--research-text-secondary);
+  width: 32%;
+}
+
+.rtx-articles-tab__col--author {
+  color: var(--research-text-secondary);
+  width: 14%;
+}
+
+.rtx-articles-tab__col--rating {
+  width: 12%;
+}
+
+.rtx-articles-tab__col--date {
+  color: var(--research-text-secondary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  width: 14%;
+}
+
+.rtx-codebase-tab__col--name {
+  color: var(--research-text);
+  font-weight: 500;
+  width: 28%;
+}
+
+.rtx-codebase-tab__col--description {
+  color: var(--research-text-secondary);
+  width: 32%;
+}
+
+.rtx-codebase-tab__col--category {
+  color: var(--research-text-secondary);
+  width: 15%;
+}
+
+.rtx-codebase-tab__col--author {
+  color: var(--research-text-secondary);
+  width: 13%;
+}
+
+.rtx-codebase-tab__col--date {
+  color: var(--research-text-secondary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  width: 12%;
+}
+
+.rtx-codebase-tab__gap {
+  display: none;
+}
+
+.rtx-experts-tab__col--name {
+  color: var(--research-text);
+  font-weight: 500;
+  width: 28%;
+}
+
+.rtx-experts-tab__col--description {
+  color: var(--research-text-secondary);
+  width: 32%;
+}
+
+.rtx-experts-tab__col--type {
+  color: var(--research-text-secondary);
+  width: 11%;
+}
+
+.rtx-experts-tab__col--rating {
+  width: 10%;
+}
+
+.rtx-experts-tab__col--date {
+  color: var(--research-text-secondary);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  width: 10%;
+}
+
+.rtx-experts-tab__col--price {
+  font-variant-numeric: tabular-nums;
+  width: 9%;
+}
+
+.rtx-research-fill {
+  padding: 0 !important;
+  width: auto;
+}
+
+.rtx-experts-price--free {
+  color: var(--research-text-secondary);
+}
+
+.rtx-experts-price--paid {
+  color: var(--research-text);
+}
+
+.rtx-research-rating,
+.rtx-articles-rating {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+  height: 12px;
+  justify-content: flex-start;
+  width: auto;
+}
+
+.rtx-research-rating span,
+.rtx-articles-rating span {
+  background: var(--research-border-strong);
+  display: block;
+  height: 6px;
+  width: 6px;
+}
+
+.rtx-research-rating span[data-on='true'],
+.rtx-articles-rating span[data-on='true'] {
+  background: var(--research-rating);
+}
+
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab),
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) [class$='__scroll'],
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) table,
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) tbody,
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row) {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab),
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) [class$='__scroll'],
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) table {
+  box-shadow: none !important;
+}
+
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) thead th {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row):hover {
+  background: var(--bg-quaternary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row)[data-selected='true'],
+html:not(.rtx-skin-untitled-light) :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row)[data-selected='true']:hover {
+  background: var(--bg-quaternary) !important;
+  box-shadow: inset 2px 0 0 #60a5fa !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab),
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) [class$='__scroll'],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) tbody,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row) {
+  background: var(--rtx-light-panel, #ffffff) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) thead th {
+  background: var(--rtx-light-panel-header, #f7f8fa) !important;
+  color: var(--rtx-light-text, #172033) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row):hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row):hover>* {
+  background: var(--rtx-light-hover, #f2f4f7) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row)[data-selected='true'],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row)[data-selected='true']>* {
+  background: #f0f5f9 !important;
+}
+
+@container (max-width: 920px) {
+
+  :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) thead th,
+  :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) tbody td {
+    padding: 0 14px;
+  }
+
+  .rtx-articles-tab__col--name,
+  .rtx-codebase-tab__col--name,
+  .rtx-experts-tab__col--name {
+    width: 176px;
+  }
+
+  .rtx-articles-tab__col--description,
+  .rtx-codebase-tab__col--description,
+  .rtx-experts-tab__col--description {
+    width: 260px;
+  }
+
+  .rtx-codebase-tab__col--category {
+    width: 140px;
+  }
+
+  .rtx-experts-tab__col--type {
+    width: 100px;
+  }
+
+  .rtx-articles-tab__col--rating,
+  .rtx-experts-tab__col--rating {
+    width: 88px;
+  }
+
+  .rtx-articles-tab__col--date {
+    width: 136px;
+  }
+
+  .rtx-codebase-tab__col--date,
+  .rtx-experts-tab__col--date {
+    width: 112px;
+  }
+
+  .rtx-experts-tab__col--price {
+    width: 80px;
+  }
+}
+
+@container (max-width: 710px) {
+
+  .rtx-articles-tab__col--author,
+  .rtx-codebase-tab__col--author,
+  .rtx-experts-tab__col--type {
+    display: none;
+  }
+
+  .rtx-articles-tab__col--name {
+    width: 30%;
+  }
+
+  .rtx-articles-tab__col--description {
+    width: 38%;
+  }
+
+  .rtx-articles-tab__col--rating {
+    width: 16%;
+  }
+
+  .rtx-articles-tab__col--date {
+    width: 16%;
+  }
+
+  .rtx-codebase-tab__col--name {
+    width: 30%;
+  }
+
+  .rtx-codebase-tab__col--description {
+    width: 38%;
+  }
+
+  .rtx-codebase-tab__col--category {
+    width: 18%;
+  }
+
+  .rtx-codebase-tab__col--date {
+    width: 14%;
+  }
+
+  .rtx-experts-tab__col--name {
+    width: 30%;
+  }
+
+  .rtx-experts-tab__col--description {
+    width: 38%;
+  }
+
+  .rtx-experts-tab__col--rating {
+    width: 12%;
+  }
+
+  .rtx-experts-tab__col--date {
+    width: 11%;
+  }
+
+  .rtx-experts-tab__col--price {
+    width: 9%;
+  }
+}
+
+@container (max-width: 520px) {
+
+  .rtx-articles-tab__col--description,
+  .rtx-codebase-tab__col--description,
+  .rtx-experts-tab__col--description {
+    display: none;
+  }
+
+  .rtx-articles-tab__col--name {
+    width: 50%;
+  }
+
+  .rtx-articles-tab__col--rating {
+    width: 24%;
+  }
+
+  .rtx-articles-tab__col--date {
+    width: 26%;
+  }
+
+  .rtx-codebase-tab__col--name {
+    width: 50%;
+  }
+
+  .rtx-codebase-tab__col--category {
+    width: 26%;
+  }
+
+  .rtx-codebase-tab__col--date {
+    width: 24%;
+  }
+
+  .rtx-experts-tab__col--name {
+    width: 50%;
+  }
+
+  .rtx-experts-tab__col--rating {
+    width: 18%;
+  }
+
+  .rtx-experts-tab__col--date {
+    width: 18%;
+  }
+
+  .rtx-experts-tab__col--price {
+    width: 14%;
+  }
+}

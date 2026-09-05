@@ -144,32 +144,70 @@ export function openPopupPrices(symbol: string): void {
 /**
  * Hide a symbol from Market Watch
  */
+const HIDDEN_SYMBOLS_STORAGE_KEY = 'rtx5_hidden_symbols';
+
+const normalizeHiddenSymbol = (value: unknown): string => (
+  typeof value === 'string' ? value.trim().toUpperCase() : ''
+);
+
+const sanitizeHiddenSymbols = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(
+    value
+      .map(normalizeHiddenSymbol)
+      .filter((symbol) => symbol.length <= 32 && /^[A-Z0-9._-]+$/.test(symbol)),
+  ));
+};
+
+const persistHiddenSymbols = (symbols: unknown): string[] => {
+  const sanitized = sanitizeHiddenSymbols(symbols);
+  localStorage.setItem(HIDDEN_SYMBOLS_STORAGE_KEY, JSON.stringify(sanitized));
+  return sanitized;
+};
+
 export function hideSymbol(symbol: string): string[] {
-  const stored = localStorage.getItem('rtx5_hidden_symbols');
-  const hidden = stored ? JSON.parse(stored) : [];
+  const normalized = normalizeHiddenSymbol(symbol);
+  const hidden = getHiddenSymbols();
+  if (!normalized || hidden.includes(normalized)) return hidden;
+  return persistHiddenSymbols([...hidden, normalized]);
+}
 
-  if (!hidden.includes(symbol)) {
-    const updated = [...hidden, symbol];
-    localStorage.setItem('rtx5_hidden_symbols', JSON.stringify(updated));
-    return updated;
-  }
+/**
+ * Hide several symbols in one persisted update.
+ */
+export function hideSymbols(symbols: string[]): string[] {
+  return persistHiddenSymbols([...getHiddenSymbols(), ...symbols]);
+}
 
-  return hidden;
+/**
+ * Restore one previously hidden symbol.
+ */
+export function showSymbol(symbol: string): string[] {
+  const normalized = normalizeHiddenSymbol(symbol);
+  return persistHiddenSymbols(
+    getHiddenSymbols().filter((hiddenSymbol) => hiddenSymbol !== normalized),
+  );
 }
 
 /**
  * Show all hidden symbols
  */
 export function showAllSymbols(): void {
-  localStorage.setItem('rtx5_hidden_symbols', '[]');
+  persistHiddenSymbols([]);
 }
 
 /**
  * Get hidden symbols list
  */
 export function getHiddenSymbols(): string[] {
-  const stored = localStorage.getItem('rtx5_hidden_symbols');
-  return stored ? JSON.parse(stored) : [];
+  const stored = localStorage.getItem(HIDDEN_SYMBOLS_STORAGE_KEY);
+  if (!stored) return [];
+  try {
+    return sanitizeHiddenSymbols(JSON.parse(stored));
+  } catch {
+    localStorage.removeItem(HIDDEN_SYMBOLS_STORAGE_KEY);
+    return [];
+  }
 }
 
 /**

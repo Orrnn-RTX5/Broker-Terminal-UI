@@ -1,5 +1,5 @@
 import { Icon } from '../ui/Icon';
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Flag } from 'lucide-react';
 // --- Types ---
 
@@ -38,12 +38,39 @@ const MOCK_EVENTS: CalendarEvent[] = [
     { id: '10', time: '2026-01-19T00:00:00', currency: 'USD', country: 'United States', event: 'Martin Luther King, Jr. Day', priority: 'Holiday', period: '', actual: '', forecast: '', previous: '' },
 ];
 
-const PRIORITIES = ['High', 'Medium', 'Low', 'Holiday'];
+const PRIORITIES = ['High', 'Medium', 'Low', 'Holiday'] as const;
 const CURRENCIES = ['ALL', 'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNY', 'NZD'];
 const COUNTRIES = [
     'All Countries', 'United States', 'European Union', 'United Kingdom', 'Japan',
     'Australia', 'Canada', 'Switzerland', 'China', 'New Zealand', 'Germany', 'France'
 ];
+
+function actualTone(actual: string): string {
+    if (!actual) return '';
+    return actual.includes('-') ? 'rtx-calendar-value--down' : 'rtx-calendar-value--up';
+}
+
+function ImpactMark({ priority }: { priority: CalendarEvent['priority'] }) {
+    if (priority === 'Holiday') {
+        return (
+            <span className="rtx-calendar-impact rtx-calendar-impact--holiday" title="Holiday">
+                <Flag size={11} aria-hidden="true" />
+            </span>
+        );
+    }
+
+    return (
+        <span
+            className={`rtx-calendar-impact rtx-calendar-impact--${priority.toLowerCase()}`}
+            title={priority}
+            aria-label={priority}
+        >
+            <span className="rtx-calendar-impact__bar" />
+            <span className="rtx-calendar-impact__bar" />
+            <span className="rtx-calendar-impact__bar" />
+        </span>
+    );
+}
 
 // --- Components ---
 
@@ -85,27 +112,6 @@ export function CalendarTab() {
         });
     }, [filteredEvents]);
 
-    // Helpers
-    const getPriorityColor = (p: string) => {
-        switch (p) {
-            case 'High': return 'text-[#f87171]'; // Muted Red
-            case 'Medium': return 'text-[#fbbf24]'; // Amber
-            case 'Low': return 'text-[#60a5fa]'; // Soft Blue
-            case 'Holiday': return 'text-zinc-500'; // Grey
-            default: return 'text-zinc-400';
-        }
-    };
-
-    const getPriorityIcon = (p: string) => {
-        switch (p) {
-            case 'High': return <Icon name="trending-up" size="xs" className="mr-1" />;
-            case 'Medium': return <Icon name="trending-up" size="xs" className="mr-1 opacity-70" />; // Reuse or different icon
-            case 'Low': return <Icon name="trending-down" size="xs" className="mr-1 opacity-50" />;
-            case 'Holiday': return <Flag size={12} className="mr-1" />;
-            default: return null;
-        }
-    };
-
     const formatTime = (isoString: string) => {
         return new Date(isoString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     };
@@ -124,15 +130,19 @@ export function CalendarTab() {
         return () => document.removeEventListener('click', handleClick);
     }, []);
 
-    const toggleFilter = (list: string[], setList: Function, item: string, allKey: string = 'ALL') => {
-        // Simple multi-select logic
+    const toggleFilter = (
+        list: string[],
+        setList: React.Dispatch<React.SetStateAction<string[]>>,
+        item: string,
+        allKey: string = 'ALL',
+    ) => {
         if (item === allKey) {
             setList([allKey]);
             return;
         }
 
         let newList = [...list];
-        if (newList.includes(allKey)) newList = []; // Clear ALL if specific selected
+        if (newList.includes(allKey)) newList = [];
 
         if (newList.includes(item)) {
             newList = newList.filter(i => i !== item);
@@ -140,63 +150,67 @@ export function CalendarTab() {
             newList.push(item);
         }
 
-        if (newList.length === 0) newList = [allKey]; // Revert to ALL if empty
+        if (newList.length === 0) newList = allKey ? [allKey] : [...PRIORITIES];
         setList(newList);
     };
 
+    const showAllEvents = () => {
+        setFilterPriority([...PRIORITIES]);
+        setFilterCurrency(['ALL']);
+        setFilterCountry(['All Countries']);
+        closeContextMenu();
+    };
+
+    const refreshEvents = () => {
+        setEvents([...MOCK_EVENTS]);
+        closeContextMenu();
+    };
+
     return (
-        <div className="rtx-calendar-tab h-full flex flex-col bg-[#131316] font-sans text-[14px] font-normal relative" onContextMenu={handleContextMenu}>
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
-                <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] leading-[18px] uppercase tracking-wider border-b border-zinc-600 shadow-sm">
-                        <tr className="h-[30px]">
-                            <th className="p-1 pl-3 border-r border-zinc-700 w-20">Time</th>
-                            <th className="p-1 border-r border-zinc-700 w-16 text-center">Cur.</th>
-                            <th className="p-1 border-r border-zinc-700 w-16 text-center">Imp.</th>
-                            <th className="p-1 border-r border-zinc-700">Event</th>
-                            <th className="p-1 border-r border-zinc-700 w-20 text-center">Period</th>
-                            <th className="p-1 border-r border-zinc-700 w-20 text-right">Actual</th>
-                            <th className="p-1 border-r border-zinc-700 w-20 text-right">Forecast</th>
-                            <th className="p-1 w-20 text-right pr-3">Previous</th>
+        <div className="rtx-calendar-tab h-full flex flex-col font-sans text-[14px] font-normal relative" onContextMenu={handleContextMenu}>
+            <div className="rtx-calendar-tab__scroll">
+                <table className="rtx-calendar-tab__table">
+                    <thead className="rtx-calendar-tab__head font-normal text-[12px] leading-[18px]">
+                        <tr>
+                            <th className="rtx-calendar-tab__col--time">Time</th>
+                            <th className="rtx-calendar-tab__col--currency">Cur.</th>
+                            <th className="rtx-calendar-tab__col--impact">Imp.</th>
+                            <th className="rtx-calendar-tab__col--event">Event</th>
+                            <th className="rtx-calendar-tab__col--period">Period</th>
+                            <th className="rtx-calendar-tab__col--actual">Actual</th>
+                            <th className="rtx-calendar-tab__col--forecast">Forecast</th>
+                            <th className="rtx-calendar-tab__col--previous">Previous</th>
                         </tr>
                     </thead>
-                    <tbody className="text-[13px] font-normal leading-[19.5px] text-zinc-300">
+                    <tbody className="rtx-calendar-tab__body text-[13px] font-normal leading-[19.5px]">
+                        {groupedEvents.length === 0 && (
+                            <tr className="rtx-calendar-empty">
+                                <td colSpan={8}>No events match the current filters.</td>
+                            </tr>
+                        )}
                         {groupedEvents.map(([dateLabel, groupEvents]) => (
                             <React.Fragment key={dateLabel}>
-                                {/* Date Header */}
-                                <tr className="h-[30px] bg-[#262626] border-b border-zinc-800 sticky top-[30px] z-0">
-                                    <td colSpan={8} className="p-1 pl-3 font-normal text-blue-400/90 text-[12px] border-b border-zinc-700/50">
-                                        {dateLabel}
-                                    </td>
+                                <tr className="rtx-calendar-date">
+                                    <td colSpan={8}>{dateLabel}</td>
                                 </tr>
-                                {/* Events */}
-                                {groupEvents.map((e, i) => (
+                                {groupEvents.map((e) => (
                                     <tr
                                         key={e.id}
                                         onClick={() => setSelectedEventId(e.id)}
-                                        className={`
-                                            ${selectedEventId === e.id ? 'bg-[#8a8a8f]/20' : (i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]')}
-                                            hover:bg-[#191a1e] transition-colors cursor-default
-                                            ${e.priority === 'Holiday' ? 'text-zinc-500 italic' : ''}
-                                            h-[30px] border-b border-zinc-800/50 font-normal
-                                        `}
+                                        className="rtx-calendar-row"
+                                        data-selected={selectedEventId === e.id || undefined}
+                                        data-priority={e.priority}
                                     >
-                                        <td className="p-1 pl-3 border-r border-zinc-800/50 text-zinc-400 font-mono font-normal">{formatTime(e.time)}</td>
-                                        <td className="p-1 border-r border-zinc-800/50 text-center font-normal text-zinc-300">{e.currency}</td>
-                                        <td className="p-1 border-r border-zinc-800/50 text-center">
-                                            <div className={`flex items-center justify-center ${getPriorityColor(e.priority)}`}>
-                                                {getPriorityIcon(e.priority)}
-                                            </div>
+                                        <td className="rtx-calendar-tab__col--time">{formatTime(e.time)}</td>
+                                        <td className="rtx-calendar-tab__col--currency">{e.currency}</td>
+                                        <td className="rtx-calendar-tab__col--impact">
+                                            <ImpactMark priority={e.priority} />
                                         </td>
-                                        <td className="p-1 border-r border-zinc-800/50 font-normal">
-                                            {e.event}
-                                        </td>
-                                        <td className="p-1 border-r border-zinc-800/50 text-center text-zinc-500">{e.period}</td>
-                                        <td className={`p-1 border-r border-zinc-800/50 text-right font-mono ${e.actual && e.actual.includes('-') ? 'text-red-400' : 'text-emerald-400'}`}>
-                                            {e.actual}
-                                        </td>
-                                        <td className="p-1 border-r border-zinc-800/50 text-right font-mono text-zinc-400">{e.forecast}</td>
-                                        <td className="p-1 pr-3 text-right font-mono text-zinc-500">{e.previous}</td>
+                                        <td className="rtx-calendar-tab__col--event">{e.event}</td>
+                                        <td className="rtx-calendar-tab__col--period">{e.period}</td>
+                                        <td className={`rtx-calendar-tab__col--actual ${actualTone(e.actual)}`}>{e.actual}</td>
+                                        <td className="rtx-calendar-tab__col--forecast">{e.forecast}</td>
+                                        <td className="rtx-calendar-tab__col--previous">{e.previous}</td>
                                     </tr>
                                 ))}
                             </React.Fragment>
@@ -205,82 +219,86 @@ export function CalendarTab() {
                 </table>
             </div>
 
-            {/* Context Menu */}
             {contextMenu && contextMenu.show && (
                 <div
-                    className="fixed bg-[#131316] border border-zinc-700 shadow-xl z-50 py-1 rounded w-56 text-[14px] font-normal text-zinc-200"
+                    className="rtx-calendar-menu text-[14px] font-normal"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                     onClick={(e) => e.stopPropagation()}
+                    role="menu"
+                    aria-label="Calendar filters"
                 >
-                    <div className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer flex justify-between items-center group relative">
-                        <span>Add All Events</span>
-                    </div>
-                    <div className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer flex justify-between items-center">
+                    <button type="button" className="rtx-calendar-menu__item" role="menuitem" onClick={showAllEvents}>
+                        Add All Events
+                    </button>
+                    <button type="button" className="rtx-calendar-menu__item" role="menuitem" onClick={refreshEvents}>
                         <span>Refresh</span>
-                        <span className="text-zinc-500 group-hover:text-white text-[12px] font-normal">F5</span>
-                    </div>
-                    <div className="h-[1px] bg-zinc-700 my-1"></div>
+                        <span className="rtx-calendar-menu__shortcut text-[12px] font-normal">F5</span>
+                    </button>
+                    <div className="rtx-calendar-menu__divider" role="separator" />
 
-                    {/* Priorities Submenu */}
-                    <div className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer flex justify-between items-center group relative">
+                    <div className="rtx-calendar-menu__item" role="menuitem">
                         <span>Priority</span>
-                        <Icon name="chevron-right" size="xs" />
-
-                        <div className="absolute left-full top-0 ml-1 bg-[#131316] border border-zinc-700 shadow-xl rounded w-40 hidden group-hover:block">
+                        <Icon name="chevron-right" size="xs" className="rtx-calendar-menu__chevron" />
+                        <div className="rtx-calendar-menu__submenu">
                             {PRIORITIES.map(p => (
-                                <div
+                                <button
+                                    type="button"
                                     key={p}
-                                    className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer flex items-center gap-2"
-                                    onClick={() => toggleFilter(filterPriority, setFilterPriority, p, '')} // No 'ALL' for priority in this mock, just toggle
+                                    className="rtx-calendar-menu__item rtx-calendar-menu__option"
+                                    role="menuitem"
+                                    data-checked={filterPriority.includes(p)}
+                                    onClick={() => toggleFilter(filterPriority, setFilterPriority, p, '')}
                                 >
-                                    {filterPriority.includes(p) && <Icon name="check" size="xs" />}
-                                    <span className={!filterPriority.includes(p) ? 'pl-5' : ''}>{p}</span>
-                                </div>
+                                    {filterPriority.includes(p) && <Icon name="check" size="xs" className="rtx-calendar-menu__check" />}
+                                    <span>{p}</span>
+                                </button>
                             ))}
                         </div>
                     </div>
 
-                    {/* Currencies Submenu */}
-                    <div className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer flex justify-between items-center group relative">
+                    <div className="rtx-calendar-menu__item" role="menuitem">
                         <span>Currency</span>
-                        <Icon name="chevron-right" size="xs" />
-
-                        <div className="absolute left-full top-0 ml-1 bg-[#131316] border border-zinc-700 shadow-xl rounded w-40 hidden group-hover:block max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700">
+                        <Icon name="chevron-right" size="xs" className="rtx-calendar-menu__chevron" />
+                        <div className="rtx-calendar-menu__submenu">
                             {CURRENCIES.map(c => (
-                                <div
+                                <button
+                                    type="button"
                                     key={c}
-                                    className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer flex items-center gap-2"
+                                    className="rtx-calendar-menu__item rtx-calendar-menu__option"
+                                    role="menuitem"
+                                    data-checked={filterCurrency.includes(c)}
                                     onClick={() => toggleFilter(filterCurrency, setFilterCurrency, c, 'ALL')}
                                 >
-                                    {filterCurrency.includes(c) && <Icon name="check" size="xs" />}
-                                    <span className={!filterCurrency.includes(c) ? 'pl-5' : ''}>{c}</span>
-                                </div>
+                                    {filterCurrency.includes(c) && <Icon name="check" size="xs" className="rtx-calendar-menu__check" />}
+                                    <span>{c}</span>
+                                </button>
                             ))}
                         </div>
                     </div>
 
-                    {/* Countries Submenu */}
-                    <div className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer flex justify-between items-center group relative">
+                    <div className="rtx-calendar-menu__item" role="menuitem">
                         <span>Country</span>
-                        <Icon name="chevron-right" size="xs" />
-
-                        <div className="absolute left-full top-0 ml-1 bg-[#131316] border border-zinc-700 shadow-xl rounded w-40 hidden group-hover:block max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-700">
+                        <Icon name="chevron-right" size="xs" className="rtx-calendar-menu__chevron" />
+                        <div className="rtx-calendar-menu__submenu">
                             {COUNTRIES.map(c => (
-                                <div
+                                <button
+                                    type="button"
                                     key={c}
-                                    className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer flex items-center gap-2"
+                                    className="rtx-calendar-menu__item rtx-calendar-menu__option"
+                                    role="menuitem"
+                                    data-checked={filterCountry.includes(c)}
                                     onClick={() => toggleFilter(filterCountry, setFilterCountry, c, 'All Countries')}
                                 >
-                                    {filterCountry.includes(c) && <Icon name="check" size="xs" />}
-                                    <span className={!filterCountry.includes(c) ? 'pl-5' : ''}>{c}</span>
-                                </div>
+                                    {filterCountry.includes(c) && <Icon name="check" size="xs" className="rtx-calendar-menu__check" />}
+                                    <span>{c}</span>
+                                </button>
                             ))}
                         </div>
                     </div>
 
-                    <div className="h-[1px] bg-zinc-700 my-1"></div>
-                    <div className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer">Auto Arrange</div>
-                    <div className="px-3 py-1.5 hover:bg-[#8a8a8f] hover:text-white cursor-pointer">Grid</div>
+                    <div className="rtx-calendar-menu__divider" role="separator" />
+                    <button type="button" className="rtx-calendar-menu__item" role="menuitem">Auto Arrange</button>
+                    <button type="button" className="rtx-calendar-menu__item" role="menuitem">Grid</button>
                 </div>
             )}
         </div>

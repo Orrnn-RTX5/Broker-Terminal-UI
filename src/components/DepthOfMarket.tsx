@@ -2,10 +2,48 @@ import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react'
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useLiveOrderBook } from '../hooks/useLiveMarketData';
 
+export type DepthOrderExecution = 'market' | 'limit';
+
+export interface DepthOrderRequest {
+    side: 'BUY' | 'SELL';
+    price: number;
+    volume: number;
+    execution: DepthOrderExecution;
+    priceSl?: number;
+    priceTp?: number;
+}
+
+export const buildDepthOrderRequest = (
+  side: DepthOrderRequest['side'],
+  price: number,
+  volume: number,
+  execution: DepthOrderExecution,
+  digits: number,
+  stopLossPoints = 0,
+  takeProfitPoints = 0,
+): DepthOrderRequest => {
+  const point = 10 ** -Math.max(0, digits);
+  const roundPrice = (value: number) => Number(value.toFixed(Math.max(0, digits)));
+  const request: DepthOrderRequest = { side, price, volume, execution };
+
+  if (price > 0 && stopLossPoints > 0) {
+    request.priceSl = roundPrice(
+      side === 'BUY' ? price - (stopLossPoints * point) : price + (stopLossPoints * point),
+    );
+  }
+  if (price > 0 && takeProfitPoints > 0) {
+    request.priceTp = roundPrice(
+      side === 'BUY' ? price + (takeProfitPoints * point) : price - (takeProfitPoints * point),
+    );
+  }
+
+  return request;
+};
+
 interface DepthOfMarketProps {
     symbol: string;
     onClose?: () => void;
-    onPlaceOrder?: (side: 'BUY' | 'SELL', price: number, volume: number) => void;
+    onPlaceOrder?: (request: DepthOrderRequest) => void;
     onCloseBulk?: (type: 'ALL' | 'WINNERS' | 'LOSERS', symbol?: string) => void;
     onDragHandleMouseDown?: (e: React.MouseEvent) => void;
 }
@@ -811,7 +849,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                     background: isNearSpread ? C.askBgBest : C.askBg,
                     borderBottom: `1px solid ${C.borderPrimary}`,
                   }}
-                  onClick={() => onPlaceOrder?.('SELL', level.price, volume)}
+                  onClick={() => onPlaceOrder?.(buildDepthOrderRequest('SELL', level.price, volume, 'limit', digits, sl, tp))}
                   onMouseDown={e => e.stopPropagation()}
                   onMouseEnter={e => { e.currentTarget.style.background = C.bgElevated; }}
                   onMouseLeave={e => { e.currentTarget.style.background = isNearSpread ? C.askBgBest : C.askBg; }}
@@ -871,7 +909,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                     background: isNearSpread ? C.bidBgBest : C.bidBg,
                     borderBottom: `1px solid ${C.borderPrimary}`,
                   }}
-                  onClick={() => onPlaceOrder?.('BUY', level.price, volume)}
+                  onClick={() => onPlaceOrder?.(buildDepthOrderRequest('BUY', level.price, volume, 'limit', digits, sl, tp))}
                   onMouseDown={e => e.stopPropagation()}
                   onMouseEnter={e => { e.currentTarget.style.background = C.bgElevated; }}
                   onMouseLeave={e => { e.currentTarget.style.background = isNearSpread ? C.bidBgBest : C.bidBg; }}
@@ -966,7 +1004,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
       {/* ── Sell / Close / Buy Buttons ── */}
       <div className="flex shrink-0" style={{ borderTop: `1px solid ${C.borderPrimary}` }}>
         <button
-          onClick={() => onPlaceOrder?.('SELL', bestBid, volume)}
+          onClick={() => onPlaceOrder?.(buildDepthOrderRequest('SELL', bestBid, volume, 'market', digits, sl, tp))}
           onMouseDown={e => e.stopPropagation()}
           className="flex-1 py-[6px] text-[14px] leading-[21px] font-semibold text-white transition-all"
           style={{ background: C.sellBtn, borderRight: `1px solid ${C.bgSecondary}`, borderRadius: '0 0 0 10px' }}
@@ -986,7 +1024,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           Close
         </button>
         <button
-          onClick={() => onPlaceOrder?.('BUY', bestAsk, volume)}
+          onClick={() => onPlaceOrder?.(buildDepthOrderRequest('BUY', bestAsk, volume, 'market', digits, sl, tp))}
           onMouseDown={e => e.stopPropagation()}
           className="flex-1 py-[6px] text-[14px] leading-[21px] font-semibold text-white transition-all"
           style={{ background: C.buyBtn, borderRadius: '0 0 10px 0' }}

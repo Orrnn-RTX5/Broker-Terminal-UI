@@ -279,7 +279,147 @@ describe('trade gateway normalization', () => {
     ]);
   });
 
-  it('skips entry_out-only MT5 deal groups without an opening deal', () => {
+  it('pairs live-shaped unkeyed deals one-to-one with the most recent compatible opening', () => {
+    const deals = [
+      normalizeDeal({
+        ticket: 1304,
+        order_ticket: null,
+        account_login: 200001,
+        symbol: 'GBPUSD',
+        action: 'sell',
+        entry: 'entry_out',
+        volume: 0.01,
+        price: 1.3412,
+        profit: 1.4,
+        time: 1788134580,
+      }),
+      normalizeDeal({
+        ticket: 1303,
+        order_ticket: 9303,
+        account_login: 200001,
+        symbol: 'GBPUSD',
+        action: 'sell',
+        entry: 'entry_out',
+        volume: 0.01,
+        price: 1.341,
+        profit: 1.1,
+        time: 1788134520,
+      }),
+      normalizeDeal({
+        ticket: 1302,
+        order_ticket: 9302,
+        account_login: 200001,
+        symbol: 'GBPUSD',
+        action: 'buy',
+        entry: 'entry_in',
+        volume: 0.01,
+        price: 1.3398,
+        time: 1788134460,
+      }),
+      normalizeDeal({
+        ticket: 1301,
+        order_ticket: 9301,
+        account_login: 200001,
+        symbol: 'GBPUSD',
+        action: 'buy',
+        entry: 'entry_in',
+        volume: 0.01,
+        price: 1.3395,
+        time: 1788134400,
+      }),
+    ];
+
+    expect(collapseDealHistory(deals)).toEqual([
+      expect.objectContaining({
+        id: 1302,
+        type: 'closed',
+        status: 'closed',
+        openPrice: 1.3398,
+        closePrice: 1.341,
+        profit: 1.1,
+      }),
+      expect.objectContaining({
+        id: 1301,
+        type: 'closed',
+        status: 'closed',
+        openPrice: 1.3395,
+        closePrice: 1.3412,
+        profit: 1.4,
+      }),
+    ]);
+  });
+
+  it('requires symbol, opposite action, sufficient volume, and chronology for unkeyed pairing', () => {
+    const deals = [
+      normalizeDeal({
+        ticket: 1316,
+        symbol: 'GBPUSD',
+        action: 'buy',
+        entry: 'entry_in',
+        volume: 0.02,
+        price: 1.3404,
+        time: 1788134700,
+      }),
+      normalizeDeal({
+        ticket: 1315,
+        symbol: 'GBPUSD',
+        action: 'sell',
+        entry: 'entry_out',
+        volume: 0.02,
+        price: 1.3402,
+        profit: 2,
+        time: 1788134640,
+      }),
+      normalizeDeal({
+        ticket: 1314,
+        symbol: 'GBPUSD',
+        action: 'buy',
+        entry: 'entry_in',
+        volume: 0.01,
+        price: 1.3399,
+        time: 1788134580,
+      }),
+      normalizeDeal({
+        ticket: 1313,
+        symbol: 'GBPUSD',
+        action: 'sell',
+        entry: 'entry_in',
+        volume: 0.02,
+        price: 1.3398,
+        time: 1788134520,
+      }),
+      normalizeDeal({
+        ticket: 1312,
+        symbol: 'EURUSD',
+        action: 'buy',
+        entry: 'entry_in',
+        volume: 0.02,
+        price: 1.087,
+        time: 1788134460,
+      }),
+      normalizeDeal({
+        ticket: 1311,
+        symbol: 'GBPUSD',
+        action: 'buy',
+        entry: 'entry_in',
+        volume: 0.02,
+        price: 1.3395,
+        time: 1788134400,
+      }),
+    ];
+
+    expect(collapseDealHistory(deals)).toEqual([
+      expect.objectContaining({
+        id: 1311,
+        openPrice: 1.3395,
+        closePrice: 1.3402,
+        volume: 0.02,
+        status: 'closed',
+      }),
+    ]);
+  });
+
+  it('keeps entry_out-only MT5 deals visible as standalone closed history', () => {
     const deals = [
       normalizeDeal({
         deal: 1201,
@@ -294,7 +434,52 @@ describe('trade gateway normalization', () => {
       }),
     ];
 
-    expect(collapseDealHistory(deals)).toEqual([]);
+    expect(collapseDealHistory(deals)).toEqual([
+      expect.objectContaining({
+        id: 1201,
+        symbol: 'USDJPY',
+        type: 'entry_out',
+        status: 'closed',
+        side: 'SELL',
+        closePrice: 156.25,
+        profit: 8.5,
+      }),
+    ]);
+  });
+
+  it('omits an unmatched entry_in but keeps an unmatched unkeyed entry_out', () => {
+    const deals = [
+      normalizeDeal({
+        ticket: 1401,
+        order_ticket: 9401,
+        symbol: 'EURUSD',
+        action: 'buy',
+        entry: 'entry_in',
+        volume: 0.01,
+        price: 1.087,
+        time: 1788134400,
+      }),
+      normalizeDeal({
+        ticket: 1402,
+        order_ticket: null,
+        symbol: 'USDJPY',
+        action: 'sell',
+        entry: 'entry_out',
+        volume: 0.01,
+        price: 156.25,
+        profit: 0.8,
+        time: 1788134460,
+      }),
+    ];
+
+    expect(collapseDealHistory(deals)).toEqual([
+      expect.objectContaining({
+        id: 1402,
+        type: 'entry_out',
+        status: 'closed',
+        profit: 0.8,
+      }),
+    ]);
   });
 
   it('returns collapsed deal history rows from getOrderHistory instead of raw entry rows', async () => {
@@ -337,6 +522,56 @@ describe('trade gateway normalization', () => {
         profit: 5.75,
       },
     ]);
+  });
+
+  it('builds history from a bare live-shaped deals array without using order_ticket as identity', async () => {
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          ticket: 2101,
+          order_ticket: 9101,
+          account_login: 200001,
+          symbol: 'XAUUSD',
+          action: 'buy',
+          entry: 'entry_in',
+          volume: 0.01,
+          price: 4320.35,
+          time: 1788134400,
+        },
+        {
+          ticket: 2102,
+          order_ticket: null,
+          account_login: 200001,
+          symbol: 'XAUUSD',
+          action: 'sell',
+          entry: 'entry_out',
+          volume: 0.01,
+          price: 4326.1,
+          profit: 5.75,
+          time: 1788134700,
+        },
+      ]);
+
+    await expect(tradeGatewayApi.getOrderHistory(200001)).resolves.toMatchObject([
+      {
+        id: 2101,
+        symbol: 'XAUUSD',
+        type: 'closed',
+        status: 'closed',
+        openPrice: 4320.35,
+        closePrice: 4326.1,
+        profit: 5.75,
+      },
+    ]);
+  });
+
+  it('surfaces a deals request failure instead of reporting an empty history', async () => {
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('Deals unavailable'));
+
+    await expect(tradeGatewayApi.getOrderHistory(200001)).rejects.toThrow('Deals unavailable');
   });
 
   it('returns only closed trades in history and excludes opening deals and orders', async () => {
@@ -469,6 +704,25 @@ describe('trade gateway normalization', () => {
       openPrice: 1.08765,
       closePrice: 1.08765,
       openTime: new Date(1760000000 * 1000).toISOString(),
+      closeTime: new Date(1760000000 * 1000).toISOString(),
+    });
+  });
+
+  it('normalizes order time_setup and time_done as Unix seconds', () => {
+    expect(normalizeOrder({
+      ticket: 991123,
+      symbol: 'EURUSD',
+      type: 'buy_limit',
+      side: 'buy',
+      volume: 0.2,
+      price_open: 1.08765,
+      time_create: 1759999900,
+      time_setup: 1760000000,
+      time_done: 1760003600,
+    })).toMatchObject({
+      id: 991123,
+      openTime: new Date(1760000000 * 1000).toISOString(),
+      closeTime: new Date(1760003600 * 1000).toISOString(),
     });
   });
 

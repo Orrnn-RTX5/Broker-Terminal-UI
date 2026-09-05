@@ -24,16 +24,18 @@ describe('interactive login runtime boundary source contract', () => {
     expect(welcome).toContain('loadAuthenticatedLoginStoreRuntime');
   });
 
-  it('idle-warms transport only after the real form receives a paint opportunity', () => {
+  it('idle-warms the complete login path only after the real form receives a paint opportunity', () => {
     const welcome = readSource('src/components/WelcomeTerminal.tsx');
-    const warmupStart = welcome.indexOf('const warmTransport');
+    const warmupStart = welcome.indexOf('const warmLoginPath');
     const submitStart = welcome.indexOf('const handleSubmit');
     const warmup = welcome.slice(warmupStart, submitStart);
 
     expect(warmupStart).toBeGreaterThan(0);
     expect(warmup.match(/requestAnimationFrame/g)).toHaveLength(2);
-    expect(warmup).toContain('requestIdleCallback(warmTransport');
-    expect(warmup).toContain('setTimeout(warmTransport, 0)');
+    expect(warmup).toContain('requestIdleCallback(warmLoginPath');
+    expect(warmup).toContain('setTimeout(warmLoginPath, 0)');
+    expect(warmup).toContain('preloadLoginTransportRuntime()');
+    expect(warmup).toContain('onPrepareTerminal?.()');
   });
 
   it('preserves authentication and state-transition ordering', () => {
@@ -42,10 +44,10 @@ describe('interactive login runtime boundary source contract', () => {
 
     expectOrdered(submit, [
       'await preloadLoginTransportRuntime()',
-      'persistBrokerSessionDiscovery({',
-      'updateDynamicUrls();',
       'markAuthenticationRequestStarted();',
       'const authenticationPromise = authV2Api.login({',
+      'persistBrokerSessionDiscovery({',
+      'updateDynamicUrls();',
       'const terminalReadyPromise = feedbackPaintPromise',
       '.then(() => onPrepareTerminal?.())',
       'onPreloadTerminalPresentation?.()',
@@ -57,23 +59,26 @@ describe('interactive login runtime boundary source contract', () => {
       'updateDynamicUrls();',
       'const sessionHandoff = createAuthenticatedSessionHandoff({',
       'appStore.setAuthenticated(',
-      'appStore.addSavedAccount({',
-      'appStore.setActiveAccount(',
       'await terminalReadyPromise;',
       'onLogin(String(accountId), sessionHandoff);',
       'scheduleAuthenticatedShellPaintMeasurement();',
+      'schedulePostLoginBookkeeping(() => {',
     ]);
 
     const authenticationAccepted = submit.indexOf('markAuthenticationAccepted();');
     const authenticationResponse = submit.indexOf('const data = await authenticationPromise;');
-    const sessionCommitted = submit.indexOf('appStore.setActiveAccount(');
+    const sessionCommitted = submit.indexOf('appStore.setAuthenticated(');
     const terminalPreparation = submit.indexOf('const terminalReadyPromise = feedbackPaintPromise');
+    const authenticationRequest = submit.indexOf('const authenticationPromise = authV2Api.login({');
 
     expect(terminalPreparation).toBeGreaterThan(0);
+    expect(authenticationRequest).toBeGreaterThan(0);
+    expect(authenticationRequest).toBeLessThan(terminalPreparation);
     expect(terminalPreparation).toBeLessThan(authenticationResponse);
     expect(terminalPreparation).toBeLessThan(authenticationAccepted);
     expect(terminalPreparation).toBeLessThan(sessionCommitted);
     expect(submit.slice(0, authenticationResponse)).toContain('onPrepareTerminal?.()');
+    expect(submit).not.toContain('appStore.setActiveAccount(loginNum)');
   });
 
   it('keeps pending feedback measurable without replacing the visible Login label', () => {
@@ -90,14 +95,17 @@ describe('interactive login runtime boundary source contract', () => {
     expect(button).not.toContain('rtx-spinner');
   });
 
-  it('warms the submit transport as soon as the real form is approached', () => {
+  it('warms transport on autofocus and the complete login path on real interaction', () => {
     const welcome = readSource('src/components/WelcomeTerminal.tsx');
     const formStart = welcome.indexOf('<form');
     const form = welcome.slice(formStart, welcome.indexOf('>', formStart));
 
-    expect(welcome).toContain('const warmLoginTransport = useCallback');
-    expect(form).toContain('onPointerEnter={warmLoginTransport}');
+    expect(welcome).toContain('const warmLoginPath = useCallback');
+    expect(form).toContain('onPointerEnter={warmLoginPath}');
+    expect(form).toContain('onPointerDownCapture={warmLoginPath}');
+    expect(form).toContain('onInputCapture={warmLoginPath}');
     expect(form).toContain('onFocusCapture={warmLoginTransport}');
+    expect(form).not.toContain('onFocusCapture={warmLoginPath}');
   });
 
   it('limits authentication-wait warmup to presentation styles', () => {
@@ -113,7 +121,7 @@ describe('interactive login runtime boundary source contract', () => {
     expect(presentationWarmup).not.toContain('tradeSocket');
   });
 
-  it('prepares the complete first viewport for the authenticated handoff', () => {
+  it('prepares the authenticated shell while warming the chart outside the shell gate', () => {
     const appShell = readSource('src/AppShell.tsx');
     const app = readSource('src/App.tsx');
     const dockWorkspace = readSource('src/components/dock/DockWorkspace.tsx');
@@ -125,11 +133,24 @@ describe('interactive login runtime boundary source contract', () => {
     expect(dockWorkspace).toContain("import { MarketWatchPanel");
     expect(dockWorkspace).toContain("import { NavigatorPanel }");
     expect(dockWorkspace).toContain("import { BottomDock }");
-    expect(dockWorkspace).toContain("import { TradingChart");
+    expect(dockWorkspace).toContain('preloadTradingChartRuntime');
+    expect(dockWorkspace).toContain('<DeferredTradingChart');
+    expect(dockWorkspace).not.toContain("import { TradingChart,");
     expect(dockWorkspace).not.toContain('lazy(');
     expect(dockWorkspace).not.toContain('<Suspense');
     expect(dockWorkspace).not.toContain('if (!isInitialized) return null');
     expect(dockWorkspace).toContain('data-rtx-authenticated-viewport="true"');
+  });
+
+  it('keeps initially closed tools and trade-overlay helpers out of the shell chunk', () => {
+    const app = readSource('src/App.tsx');
+
+    expect(app).toContain("const LazyOrderPanelDialog = lazy(() => import('./components/OrderPanelDialog')");
+    expect(app).toContain("const LazyDepthOfMarket = lazy(() => import('./components/DepthOfMarket')");
+    expect(app).toContain("const LazyChartPropertiesDialog = lazy(() => import('./components/dialogs/ChartPropertiesDialog')");
+    expect(app).not.toContain("import { OrderPanelDialog } from './components/OrderPanelDialog'");
+    expect(app).not.toContain("import { DepthOfMarket } from './components/DepthOfMarket'");
+    expect(app).toContain("void import('./services/tradeOverlayHistory').then");
   });
 
   it('memoizes retryable dynamic imports and provides no eager store warmup', () => {

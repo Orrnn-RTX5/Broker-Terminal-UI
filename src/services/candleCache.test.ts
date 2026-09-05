@@ -49,6 +49,29 @@ describe('candleCache', () => {
     expect(candleCache.getLatest(otherScopeKey)).toBeNull();
   });
 
+  it('keeps punctuated broker symbols isolated from compact symbol names', () => {
+    const symbolCases = [
+      ['EURUSD.r', 'EURUSDr'],
+      ['0001.HK', '0001HK'],
+      ['NAS100-F', 'NAS100F'],
+    ] as const;
+
+    symbolCases.forEach(([punctuated, compact], index) => {
+      const punctuatedParts = { ...baseKeyParts, symbol: punctuated };
+      const compactParts = { ...baseKeyParts, symbol: compact };
+      const punctuatedKey = candleCache.createKey(punctuatedParts);
+      const compactKey = candleCache.createKey(compactParts);
+
+      expect(punctuatedKey).not.toBe(compactKey);
+
+      candleCache.setLatest(punctuatedKey, [candle(60, index + 10)], punctuatedParts);
+      candleCache.setLatest(compactKey, [candle(60, index + 20)], compactParts);
+
+      expect(candleCache.getLatest(punctuatedKey)?.candles[0].close).toBe(index + 10);
+      expect(candleCache.getLatest(compactKey)?.candles[0].close).toBe(index + 20);
+    });
+  });
+
   it('isolates entries by history cache version', () => {
     const currentKey = candleCache.createKey(baseKeyParts);
     const legacyKey = candleCache.createKey({ ...baseKeyParts, version: 'legacy-empty-history' });

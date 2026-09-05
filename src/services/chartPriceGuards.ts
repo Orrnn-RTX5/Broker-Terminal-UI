@@ -7,8 +7,8 @@ export interface PriceCandle {
 
 export interface CandleReferenceResult<T extends PriceCandle> {
   candles: T[];
-  status: 'compatible' | 'scaled' | 'incompatible' | 'no-reference';
-  factor: number;
+  status: 'compatible' | 'partial' | 'incompatible' | 'no-reference';
+  discardedCount?: number;
 }
 
 export interface LiveQuoteGuardState {
@@ -44,12 +44,98 @@ interface ChartQuoteLike {
 }
 
 const COMPATIBLE_RATIO_LIMIT = 4;
-const POWER_OF_TEN_TOLERANCE = 0.02;
-const MAX_SCALE_POWER = 8;
+const CANDLE_PRICE_OUTLIER_RATIO_LIMIT = 16;
 const DEFAULT_INCOMPATIBLE_QUOTE_DROP_THRESHOLD = 3;
 
 const isFinitePositive = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
+
+const getCandleReferencePrice = (candle: PriceCandle): number | null => {
+  const prices = [candle.open, candle.high, candle.low, candle.close]
+    .filter(isFinitePositive)
+    .sort((a, b) => a - b);
+  if (prices.length !== 4) return null;
+  return (prices[1] + prices[2]) / 2;
+};
+
+export const isStructurallyValidPriceCandle = (candle: PriceCandle): boolean => {
+  const { open, high, low, close } = candle;
+  if (![open, high, low, close].every(isFinitePositive)) return false;
+  if (high < Math.max(open, close) || low > Math.min(open, close) || high < low) return false;
+
+  const bodyReference = (open + close) / 2;
+  return high / bodyReference <= CANDLE_PRICE_OUTLIER_RATIO_LIMIT
+    && bodyReference / low <= CANDLE_PRICE_OUTLIER_RATIO_LIMIT;
+};
+
+/**
+ * Seal a locally built/forming candle when its aggregator has not established
+ * a complete envelope yet. Authoritative backend OHLC is validated strictly
+ * and must never pass through this repair helper.
+ */
+export const repairPriceCandle = <T extends PriceCandle>(candle: T): T | null => {
+  const open = Number(candle.open);
+  const close = Number(candle.close);
+  if (!isFinitePositive(open) || !isFinitePositive(close)) return null;
+
+  const bodyHigh = Math.max(open, close);
+  const bodyLow = Math.min(open, close);
+
+  let high = Number(candle.high);
+  let low = Number(candle.low);
+  if (!isFinitePositive(high)) high = bodyHigh;
+  if (!isFinitePositive(low)) low = bodyLow;
+
+  if (high < low) {
+    const swapped = high;
+    high = low;
+    low = swapped;
+  }
+
+  high = Math.max(high, bodyHigh);
+  low = Math.min(low, bodyLow);
+  if (high < low) return null;
+
+  if (high === candle.high && low === candle.low && open === candle.open && close === candle.close) {
+    return candle;
+  }
+
+  return { ...candle, open, high, low, close };
+};
+
+/**
+ * Removes isolated zero/corrupt price bands before Lightweight Charts can
+ * include them in autoscale. Values are either retained exactly or rejected;
+ * this validator never changes the broker's OHLC price scale.
+ */
+export const sanitizePriceCandles = <T extends PriceCandle>(
+  candles: T[],
+  referencePrice?: number | null,
+): T[] => {
+  // FIX: Rendering must preserve exact backend prices. Cross-row checks may
+  // reject an isolated corrupt band, but they must never rescale it to look valid.
+  const structurallyValid = candles.filter(isStructurallyValidPriceCandle);
+  return structurallyValid.filter((candle, index) => {
+    const previous = structurallyValid[index - 1];
+    const next = structurallyValid[index + 1];
+    if (!previous || !next) return true;
+
+    const candleReference = getCandleReferencePrice(candle);
+    const previousReference = getCandleReferencePrice(previous);
+    const nextReference = getCandleReferencePrice(next);
+    const neighborsAgree = arePriceReferencesCompatible(previousReference, nextReference);
+    const candidateMatchesPrevious = arePriceReferencesCompatible(candleReference, previousReference);
+    const candidateMatchesNext = arePriceReferencesCompatible(candleReference, nextReference);
+    // FIX: When a live/rendered reference is available it decides which side of
+    // an interleaved broker price-band conflict belongs to this chart. A valid
+    // XAU row must not be discarded merely because two adjacent contaminated
+    // 44.xx rows agree with each other.
+    const candidateMatchesExternal = isFinitePositive(referencePrice)
+      && arePriceReferencesCompatible(candleReference, referencePrice);
+    return candidateMatchesExternal
+      || !(neighborsAgree && !candidateMatchesPrevious && !candidateMatchesNext);
+  });
+};
 
 export const getChartPriceFromQuote = (quote: ChartQuoteLike | null | undefined): number | null => {
   if (!quote) return null;
@@ -110,59 +196,65 @@ export const createRenderedPriceReference = (candles: PriceCandle[]): RenderedPr
   candleCount: candles.length,
 });
 
-export const getReferenceScaleFactor = (
+// FIX: Price compatibility is validation only. MetaTrader-style broker prices
+// are authoritative; a decimal-band mismatch must fail closed, never trigger a
+// guessed power-of-ten multiplication of OHLC or live quotes.
+export const arePriceReferencesCompatible = (
   candlePrice: number | null,
   referencePrice: number | null | undefined,
-): number | null => {
-  if (!isFinitePositive(candlePrice) || !isFinitePositive(referencePrice)) return null;
+): boolean => {
+  if (!isFinitePositive(candlePrice) || !isFinitePositive(referencePrice)) return false;
 
   const ratio = candlePrice / referencePrice;
-  if (ratio >= 1 / COMPATIBLE_RATIO_LIMIT && ratio <= COMPATIBLE_RATIO_LIMIT) {
-    return 1;
-  }
-
-  const exponent = Math.round(Math.log10(ratio));
-  if (Math.abs(exponent) > MAX_SCALE_POWER) return null;
-
-  const powerOfTen = 10 ** exponent;
-  const relativeError = Math.abs(ratio - powerOfTen) / powerOfTen;
-  return relativeError <= POWER_OF_TEN_TOLERANCE ? 1 / powerOfTen : null;
+  return ratio >= 1 / COMPATIBLE_RATIO_LIMIT && ratio <= COMPATIBLE_RATIO_LIMIT;
 };
-
-export const scaleCandlePrices = <T extends PriceCandle>(
-  candle: T,
-  factor: number,
-): T => ({
-  ...candle,
-  open: candle.open * factor,
-  high: candle.high * factor,
-  low: candle.low * factor,
-  close: candle.close * factor,
-});
 
 export const normalizeCandlesToReference = <T extends PriceCandle>(
   candles: T[],
   referencePrice: number | null | undefined,
 ): CandleReferenceResult<T> => {
-  if (!isFinitePositive(referencePrice)) {
-    return { candles, status: 'no-reference', factor: 1 };
+  const structurallyValidCandles = sanitizePriceCandles(candles, referencePrice);
+  const hasExternalReference = isFinitePositive(referencePrice);
+  const newestCandle = structurallyValidCandles[structurallyValidCandles.length - 1];
+  const newestCandleReference = newestCandle ? getCandleReferencePrice(newestCandle) : null;
+  const initialReference = hasExternalReference ? referencePrice : newestCandleReference;
+  if (!isFinitePositive(initialReference)) {
+    return { candles: structurallyValidCandles, status: 'no-reference' };
   }
 
-  const medianPrice = getMedianCandlePrice(candles);
-  const factor = getReferenceScaleFactor(medianPrice, referencePrice);
+  const exactCandlesDescending: T[] = [];
+  let rollingReference = initialReference;
+  for (let index = structurallyValidCandles.length - 1; index >= 0; index -= 1) {
+    const candle = structurallyValidCandles[index];
+    const candleReference = getCandleReferencePrice(candle);
+    if (!arePriceReferencesCompatible(candleReference, rollingReference)) {
+      // FIX: A broker page can contain an internally contaminated price band
+      // (for example, 44.xx rows inside XAUUSD 4,4xx history). With an external
+      // live/rendered reference, reject only those exact rows and keep scanning;
+      // never scale, rewrite, or synthesize OHLC. Without an external reference
+      // there is no safe way to choose which band owns the symbol, so fail closed.
+      if (hasExternalReference) continue;
+      return { candles: [], status: 'incompatible' };
+    }
 
-  if (factor === null) {
-    return { candles: [], status: 'incompatible', factor: 1 };
+    exactCandlesDescending.push(candle);
+    rollingReference = candleReference ?? rollingReference;
   }
 
-  if (factor === 1) {
-    return { candles, status: 'compatible', factor };
+  if (exactCandlesDescending.length === 0) {
+    return { candles: [], status: hasExternalReference ? 'incompatible' : 'no-reference' };
   }
+
+  const discardedCount = candles.length - exactCandlesDescending.length;
 
   return {
-    candles: candles.map(candle => scaleCandlePrices(candle, factor)),
-    status: 'scaled',
-    factor,
+    // Reverse a copied array only; every returned OHLC number is still the
+    // exact value supplied by the backend.
+    candles: exactCandlesDescending.reverse(),
+    status: hasExternalReference
+      ? discardedCount > 0 ? 'partial' : 'compatible'
+      : 'no-reference',
+    ...(discardedCount > 0 ? { discardedCount } : {}),
   };
 };
 
@@ -175,14 +267,14 @@ export const normalizeCandlesToRenderedScale = <T extends PriceCandle>(
 export const isPriceCompatibleWithCandles = (
   price: number | null | undefined,
   candles: PriceCandle[],
-): boolean => getReferenceScaleFactor(getMedianCandlePrice(candles), price) !== null;
+): boolean => arePriceReferencesCompatible(getMedianCandlePrice(candles), price);
 
 export const isPriceCompatibleWithReference = (
   price: number | null | undefined,
   reference: RenderedPriceReference | number | null | undefined,
 ): boolean => {
   const referencePrice = typeof reference === 'number' ? reference : reference?.price;
-  return getReferenceScaleFactor(referencePrice ?? null, price) !== null;
+  return arePriceReferencesCompatible(referencePrice ?? null, price);
 };
 
 export const resetLiveQuoteGuardState = (): LiveQuoteGuardState => ({

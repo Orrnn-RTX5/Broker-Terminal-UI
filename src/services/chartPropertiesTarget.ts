@@ -13,6 +13,7 @@ export interface ChartPropertiesTargetFallback {
 export interface ChartPropertiesEventDetail {
   symbol?: unknown;
   timeframe?: unknown;
+  targetContextId?: unknown;
 }
 
 const getNonEmptyString = (value: unknown): string | undefined => {

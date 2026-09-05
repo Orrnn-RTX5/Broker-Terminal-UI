@@ -4,8 +4,11 @@
  * cleanup, and integration with Zustand store for global connection state
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  getEnhancedWebSocketService,
+  releaseEnhancedWebSocketService,
+} from '../services/websocket-enhanced';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { MARKET_WS_URL } from '../config/api';
 import type { WebSocketMessage, ConnectionState, ConnectionMetrics } from '../services/websocket-enhanced';
@@ -59,16 +62,16 @@ export function useWebSocket<T = unknown>(
   const updateMetrics = useWebSocketStore((state) => state.updateMetrics);
   const updateLastMessageTime = useWebSocketStore((state) => state.updateLastMessageTime);
 
-  // WebSocket service instance (singleton)
-  const wsService = useRef(getEnhancedWebSocketService(url));
-  const unsubscribeRef = useRef<(() => void) | null>(null);
+  // FIX: Bind every effect to the URL-keyed service so broker URL changes also
+  // rebind connection state, metrics, and channel ownership.
+  const wsService = useMemo(() => getEnhancedWebSocketService(url), [url]);
 
   // Derived state
   const isConnected = connectionState === 'connected';
 
   // Integrate enhanced service with Zustand store
   useEffect(() => {
-    const ws = wsService.current;
+    const ws = wsService;
 
     // Subscribe to state changes
     const unsubscribeState = ws.onStateChange((state) => {
@@ -84,77 +87,58 @@ export function useWebSocket<T = unknown>(
       unsubscribeState();
       unsubscribeMetrics();
     };
-  }, [setConnectionState, updateMetrics]);
+  }, [setConnectionState, updateMetrics, wsService]);
+
+  useEffect(() => {
+    // FIX: Release an abandoned URL-keyed transport after every consumer has
+    // detached. This prevents an old broker socket from reconnecting on later
+    // session events and repainting the current account's stores.
+    return () => releaseEnhancedWebSocketService(wsService);
+  }, [wsService]);
 
   // Auto-connect on mount
   useEffect(() => {
     if (autoConnect) {
-      wsService.current.connect();
+      wsService.connect();
     }
-
-    // Cleanup on unmount
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-
-      // Note: Don't disconnect the singleton on unmount
-      // Other components might still be using it
-    };
-  }, [autoConnect]);
-
-  // Handle dynamic URL changes (e.g. after login when broker server URL is set)
-  useEffect(() => {
-    const nextWs = getEnhancedWebSocketService(url);
-    if (nextWs !== wsService.current) {
-      console.log(`[useWebSocket] URL updated dynamically to ${url} — recreating WebSocket connection`);
-      wsService.current = nextWs;
-      if (autoConnect) {
-        nextWs.connect();
-      }
-    }
-  }, [url, autoConnect]);
+  }, [autoConnect, wsService]);
 
   // Subscribe to channel if provided
   useEffect(() => {
     if (!channel) return;
 
-    const unsubscribe = wsService.current.subscribe(channel, (message) => {
+    const unsubscribe = wsService.subscribe(channel, (message) => {
       setData(message as T);
       updateLastMessageTime(Date.now());
     });
 
-    unsubscribeRef.current = unsubscribe;
-
     return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
+      // FIX: Each effect owns its exact subscription. Toggling autoConnect must
+      // never tear down a stable channel or unsubscribe another render's owner.
+      unsubscribe();
     };
-  }, [channel, updateLastMessageTime]);
+  }, [channel, updateLastMessageTime, wsService]);
 
   // Actions
   const sendMessage = useCallback((message: WebSocketMessage) => {
-    wsService.current.sendMessage(message);
-  }, []);
+    wsService.sendMessage(message);
+  }, [wsService]);
 
   const subscribe = useCallback((subscribeChannel: string, callback: (data: unknown) => void) => {
-    return wsService.current.subscribe(subscribeChannel, callback);
-  }, []);
+    return wsService.subscribe(subscribeChannel, callback);
+  }, [wsService]);
 
   const subscribeSymbols = useCallback((symbols: string[], callback: (data: unknown) => void) => {
-    return wsService.current.subscribeSymbols(symbols, callback);
-  }, []);
+    return wsService.subscribeSymbols(symbols, callback);
+  }, [wsService]);
 
   const reconnect = useCallback(() => {
-    wsService.current.connect();
-  }, []);
+    wsService.forceReconnect();
+  }, [wsService]);
 
   const disconnect = useCallback(() => {
-    wsService.current.disconnect();
-  }, []);
+    wsService.disconnect();
+  }, [wsService]);
 
   return {
     // Connection state

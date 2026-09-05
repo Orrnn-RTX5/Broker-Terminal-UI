@@ -34,6 +34,7 @@ const fmt = (n: number, digits = 5): string => {
 
 const DataRow = ({ label, value }: { label: string; value: string }) => (
   <div
+    className="rtx-data-window__row"
     style={{
       display: 'grid',
       gridTemplateColumns: '1fr auto',
@@ -43,10 +44,11 @@ const DataRow = ({ label, value }: { label: string; value: string }) => (
       borderBottom: '1px solid rgba(255,255,255,0.04)',
     }}
   >
-    <span style={{ color: '#999', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
+    <span className="rtx-data-window__label" style={{ color: '#999', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
       {label}
     </span>
     <span
+      className="rtx-data-window__value"
       style={{
         color: '#e0e0e0',
         fontSize: 14,
@@ -91,6 +93,7 @@ export const DataWindow: React.FC<DataWindowProps> = ({
 
   return (
     <div
+      className="rtx-data-window"
       style={{
         background: '#131316',
         border: '1px solid #2a2e39',
@@ -107,6 +110,7 @@ export const DataWindow: React.FC<DataWindowProps> = ({
     >
       {/* Title Bar */}
       <div
+        className="rtx-data-window__titlebar"
         onMouseDown={onDragHandleMouseDown}
         style={{
           display: 'flex',
@@ -119,10 +123,11 @@ export const DataWindow: React.FC<DataWindowProps> = ({
           borderBottom: '1px solid #2a2e39',
         }}
       >
-        <span style={{ color: '#c0c0c0', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
+        <span className="rtx-data-window__title" style={{ color: '#c0c0c0', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
           Data Window
         </span>
         <button
+          className="rtx-data-window__close"
           onClick={onClose}
           style={{
             background: 'none',
@@ -143,6 +148,7 @@ export const DataWindow: React.FC<DataWindowProps> = ({
 
       {/* Symbol + Timeframe row */}
       <div
+        className="rtx-data-window__symbol"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -157,13 +163,13 @@ export const DataWindow: React.FC<DataWindowProps> = ({
         <svg width="12" height="10" viewBox="0 0 12 10" fill="none" stroke="#5a9f7a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="1,9 4,5 7,7 11,1" />
         </svg>
-        <span style={{ color: '#c8c8c8', fontSize: 14, lineHeight: '21px', fontFamily: 'var(--font-mono)', fontWeight: 400 }}>
+        <span className="rtx-data-window__symbol-label" style={{ color: '#c8c8c8', fontSize: 14, lineHeight: '21px', fontFamily: 'var(--font-mono)', fontWeight: 400 }}>
           {header}
         </span>
       </div>
 
       {/* Data Rows */}
-      <div style={{ background: '#131316', paddingBottom: 2, overflowY: 'auto', flex: 1 }}>
+      <div className="rtx-data-window__body" style={{ background: '#131316', paddingBottom: 2, overflowY: 'auto', flex: 1 }}>
         <DataRow label="Date" value={data?.date ?? '—'} />
         <DataRow label="Time" value={data?.time ?? '—'} />
         <DataRow label="Open"  value={data ? fmt(data.open, digits)  : '—'} />

@@ -216,7 +216,7 @@ export const NavigatorPanel: React.FC = () => {
             action: () => handleLoginToAccount(acc)
         },
         { label: 'Login to Web Trader', icon: <Icon name="globe" size="xs" />, disabled: true },
-        { label: 'Login to MQL5.community', icon: <Icon name="zap" size="xs" />, disabled: true },
+        { label: 'Login to RTX5.community', icon: <Icon name="zap" size="xs" />, disabled: true },
         { divider: true },
         {
             label: 'Change Password',
@@ -263,7 +263,7 @@ export const NavigatorPanel: React.FC = () => {
     ];
 
     return (
-        <div className="navigator-panel flex flex-col h-full bg-[#131316] text-zinc-300 select-none border-r border-zinc-700">
+        <div className="navigator-panel flex flex-col h-full bg-[#131316] text-zinc-100 select-none border-r border-zinc-700">
             <div className="navigator-panel__body flex-1 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-zinc-700">
                 {/* Accounts */}
                 <ContextMenu items={getGeneralAccountContextMenuItems()}>
@@ -336,7 +336,7 @@ export const NavigatorPanel: React.FC = () => {
                 </ContextMenu>
 
                 {/* Indicators */}
-                <TreeItem label="Indicators" icon={<Icon name="trending-up" size="sm" />} defaultOpen>
+                <TreeItem label="Indicators" icon={<Icon name="trending-up" size="sm" />} defaultOpen disabled>
                     <TreeItem label="Trend" icon={<Icon name="folder" size="sm" className="text-amber-300" />}>
                         <TreeItem label="Moving Average" icon={<Icon name="trending-up" size="sm" />} />
                         <TreeItem label="Bollinger Bands" icon={<Icon name="trending-up" size="sm" />} isLast />
@@ -351,7 +351,7 @@ export const NavigatorPanel: React.FC = () => {
                 </TreeItem>
 
                 {/* Expert Advisors */}
-                <TreeItem label="Expert Advisors" icon={<Icon name="bot" size="sm" className="text-zinc-400" />}>
+                <TreeItem label="Automated Strategies" icon={<Icon name="bot" size="sm" className="text-zinc-400" />} disabled>
                     <TreeItem label="Macd Sample" icon={<Icon name="bot" size="sm" className="text-zinc-400" />} />
                     <TreeItem label="Moving Average" icon={<Icon name="bot" size="sm" className="text-zinc-400" />} />
                     <TreeItem label="Examples" icon={<Icon name="folder" size="sm" className="text-amber-300" />} isLast>
@@ -360,13 +360,13 @@ export const NavigatorPanel: React.FC = () => {
                 </TreeItem>
 
                 {/* Scripts */}
-                <TreeItem label="Scripts" icon={<FileCode size={14} className="text-zinc-400" />}>
+                <TreeItem label="Scripts" icon={<FileCode size={14} className="text-zinc-400" />} disabled>
                     <TreeItem label="CloseAllPositions" icon={<FileCode size={14} className="text-zinc-400" />} />
                     <TreeItem label="CalculateLotSize" icon={<FileCode size={14} className="text-zinc-400" />} isLast />
                 </TreeItem>
 
                 {/* Services */}
-                <TreeItem label="Services" icon={<Icon name="zap" size="sm" className="text-zinc-400" />} defaultOpen>
+                <TreeItem label="Services" icon={<Icon name="zap" size="sm" className="text-zinc-400" />} defaultOpen disabled>
                     <TreeItem label="Market" icon={<Icon name="box" size="sm" className="text-zinc-400" />} />
                     <TreeItem label="Signals" icon={<Icon name="signal" size="sm" className="text-zinc-400" />} />
                     <TreeItem label="Virtual Hosting" icon={<Icon name="globe" size="sm" className="text-zinc-400" />} isLast />
@@ -440,6 +440,7 @@ function TreeItem({
     defaultOpen = false,
     isLast = false,
     onItemClick,
+    disabled = false,
 }: {
     label: string;
     icon: React.ReactNode;
@@ -447,9 +448,11 @@ function TreeItem({
     defaultOpen?: boolean;
     isLast?: boolean;
     onItemClick?: () => void;
+    disabled?: boolean;
 }) {
     const [isOpen, setIsOpen] = useState(defaultOpen);
     const hasChildren = React.Children.count(children) > 0;
+    const isExpandable = hasChildren && !disabled;
 
     return (
         <div className="navigator-tree-item relative" style={{ paddingLeft: 12 }}>
@@ -485,26 +488,37 @@ function TreeItem({
             />
 
             <div
-                className="navigator-tree-item__row flex min-h-[30px] items-center gap-1.5 px-1 hover:bg-[#191a1e] cursor-pointer rounded-sm group select-none"
-                onClick={() => {
+                className={`navigator-tree-item__row flex min-h-[30px] items-center gap-1.5 px-1 rounded-sm select-none ${disabled
+                    ? 'navigator-tree-item__row--disabled cursor-not-allowed text-zinc-600 opacity-[0.55]'
+                    : 'group cursor-pointer hover:bg-[#222226]'
+                    }`}
+                aria-disabled={disabled || undefined}
+                aria-label={disabled ? `${label}, currently unavailable` : undefined}
+                title={disabled ? `${label} is currently unavailable` : undefined}
+                onClick={disabled ? undefined : () => {
                     if (hasChildren) {
                         setIsOpen(!isOpen);
                     } else if (onItemClick) {
                         onItemClick();
                     }
                 }}
-                onDoubleClick={() => hasChildren && setIsOpen(!isOpen)}
+                onDoubleClick={disabled || !hasChildren ? undefined : () => setIsOpen(!isOpen)}
             >
-                {hasChildren && (
-                    <span className="navigator-tree-item__chevron text-zinc-500 group-hover:text-zinc-300 flex-shrink-0" style={{ marginLeft: -2 }}>
+                {isExpandable && (
+                    <span className="navigator-tree-item__chevron text-zinc-400 group-hover:text-zinc-100 flex-shrink-0" style={{ marginLeft: -2 }}>
                         {isOpen ? <Icon name="chevron-down" size="xs" /> : <Icon name="chevron-right" size="xs" />}
                     </span>
                 )}
-                {!hasChildren && <span className="w-3 flex-shrink-0" />}
-                <span className="navigator-tree-item__icon text-zinc-400 group-hover:text-zinc-200 flex-shrink-0">{icon}</span>
-                <span className="navigator-tree-item__label text-[14px] font-normal text-zinc-300 group-hover:text-white truncate">{label}</span>
+                {!isExpandable && <span className="w-3 flex-shrink-0" />}
+                <span className={`navigator-tree-item__icon flex-shrink-0 ${disabled ? 'text-zinc-600' : 'text-zinc-300 group-hover:text-zinc-100'}`}>{icon}</span>
+                <span className={`navigator-tree-item__label truncate text-[14px] font-normal ${disabled ? 'text-zinc-500' : 'text-zinc-100 group-hover:text-white'}`}>{label}</span>
+                {disabled && (
+                    <span className="navigator-tree-item__lock ml-auto mr-1 flex-shrink-0 text-zinc-500" aria-hidden="true">
+                        <Icon name="lock" size="xs" />
+                    </span>
+                )}
             </div>
-            {isOpen && children && (
+            {!disabled && isOpen && children && (
                 <div className="relative">
                     {children}
                 </div>

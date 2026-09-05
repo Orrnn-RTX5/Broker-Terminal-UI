@@ -16,3 +16,9 @@ export type { PrintPreviewDialogProps } from './PrintPreviewDialog';
 
 export { ExitConfirmDialog } from './ExitConfirmDialog';
 export type { ExitConfirmDialogProps } from './ExitConfirmDialog';
+
+export { ChartObjectsDialog } from './ChartObjectsDialog';
+export type {
+  ChartObjectsDialogProps,
+  ChartObjectsDrawingService,
+} from './ChartObjectsDialog';

@@ -9,6 +9,8 @@
   "repository": "github:rtx5-orrnn/rtx5-broker-webterminal-ui",
   "scripts": {
     "dev": "vite --mode web",
+    "dev:editor": "node scripts/startAntigravityPreview.mjs",
+    "dev:editor:install": "node scripts/installAntigravityPreview.mjs",
     "dev:web": "vite --mode web",
     "dev:normal": "vite --mode normal",
     "dev:electron": "vite --mode electron",
@@ -21,6 +23,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
+    "test:editor-preview": "node --test scripts/startAntigravityPreview.test.mjs",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

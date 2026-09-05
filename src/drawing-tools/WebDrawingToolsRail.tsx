@@ -1,4 +1,4 @@
-import { ChevronRight, MousePointer2 } from 'lucide-react';
+import { ChevronRight, PanelLeftClose } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getActiveChartSource } from '../services/activeChartSource';
@@ -16,6 +16,7 @@ import { isWebDrawingToolsRuntime } from './runtime';
 import './WebDrawingToolsRail.css';
 
 const LAST_TOOL_STORAGE_KEY = 'rtx5:web:last-trend-line-tool';
+const RTX5_MARK_SRC = `${import.meta.env.BASE_URL}favicon.png`;
 const MENU_TRIGGER_GAP_PX = 4;
 const VIEWPORT_EDGE_GAP_PX = 8;
 
@@ -60,6 +61,7 @@ export interface WebDrawingToolsRailProps {
 }
 
 export function WebDrawingToolsRail({ selectedSymbol }: WebDrawingToolsRailProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
   const [lastToolId, setLastToolId] = useState<TrendLineToolId>(readStoredTool);
   const [activeToolId, setActiveToolId] = useState<TrendLineToolId | null>(null);
   const [activeTargetContextId, setActiveTargetContextId] = useState<string | null>(null);
@@ -97,15 +99,9 @@ export function WebDrawingToolsRail({ selectedSymbol }: WebDrawingToolsRailProps
     });
   }, []);
 
-  const selectCursor = () => {
-    const targetContextId = getActiveChartSource()?.id;
-    setActiveToolId(null);
-    setActiveTargetContextId(targetContextId ?? null);
+  const hideDrawingTools = () => {
     setMenuOpen(false);
-    commandBus.dispatch({
-      type: 'SELECT_TOOL',
-      payload: { tool: 'cursor', targetContextId },
-    });
+    setIsExpanded(false);
   };
 
   useLayoutEffect(() => {
@@ -268,34 +264,48 @@ export function WebDrawingToolsRail({ selectedSymbol }: WebDrawingToolsRailProps
     <aside
       className="web-drawing-tools-rail"
       aria-label={`Drawing tools for ${selectedSymbol}`}
+      data-expanded={isExpanded ? 'true' : 'false'}
       data-symbol={selectedSymbol}
     >
       <button
-        className="web-drawing-tools-rail__button"
-        data-active={activeToolId === null ? 'true' : 'false'}
+        className="web-drawing-tools-rail__button web-drawing-tools-rail__toggle"
         type="button"
-        aria-label="Cursor"
-        title="Cursor"
-        onClick={selectCursor}
+        aria-expanded={isExpanded}
+        aria-label={isExpanded ? 'Hide drawing tools' : 'Show drawing tools'}
+        title={isExpanded ? 'Hide drawing tools' : 'Show drawing tools'}
+        onClick={isExpanded ? hideDrawingTools : () => setIsExpanded(true)}
       >
-        <MousePointer2 aria-hidden="true" size={20} strokeWidth={1.5} />
+        {isExpanded ? (
+          <PanelLeftClose aria-hidden="true" size={20} strokeWidth={1.5} />
+        ) : (
+          <img
+            className="web-drawing-tools-rail__brand-mark"
+            src={RTX5_MARK_SRC}
+            alt=""
+            aria-hidden="true"
+          />
+        )}
       </button>
 
-      <button
-        ref={triggerRef}
-        className="web-drawing-tools-rail__button web-drawing-tools-rail__trend-button"
-        data-active={activeToolId !== null ? 'true' : 'false'}
-        type="button"
-        aria-label={`${selectedTool.label} — open drawing tools`}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        title={selectedTool.label}
-        onClick={() => setMenuOpen((open) => !open)}
-      >
-        <SelectedIcon aria-hidden="true" size={20} strokeWidth={1.45} />
-        <ChevronRight className="web-drawing-tools-rail__flyout-mark" aria-hidden="true" size={7} />
-      </button>
-      {menu}
+      {isExpanded ? (
+        <>
+          <button
+            ref={triggerRef}
+            className="web-drawing-tools-rail__button web-drawing-tools-rail__trend-button"
+            data-active={activeToolId !== null ? 'true' : 'false'}
+            type="button"
+            aria-label={`${selectedTool.label} — open drawing tools`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title={selectedTool.label}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <SelectedIcon aria-hidden="true" size={20} strokeWidth={1.45} />
+            <ChevronRight className="web-drawing-tools-rail__flyout-mark" aria-hidden="true" size={7} />
+          </button>
+          {menu}
+        </>
+      ) : null}
     </aside>
   );
 }

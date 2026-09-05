@@ -4,6 +4,7 @@ import {
   destroyTradeWebSocketClient,
   getTradeWebSocketClient,
   initializeTradeWebSocketClient,
+  TRADE_WS_STABLE_OPEN_MS,
   TradeWebSocketClient,
   type TradeSocketOptions,
 } from './tradeSocket';
@@ -11,6 +12,7 @@ import {
   clearTradeOrderLatencySamples,
   getTradeOrderLatencySamples,
 } from '../services/orderLatencyTelemetry';
+import { commitBrokerAccountSessionScope } from '../services/brokerSession';
 
 class FakeWebSocket {
   static readonly CONNECTING = 0;
@@ -52,6 +54,15 @@ class FakeWebSocket {
     this.onclose?.();
   }
 }
+
+const originalVisibilityStateDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+
+const setVisibilityState = (state: DocumentVisibilityState): void => {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: state,
+  });
+};
 
 type SentMessage = Record<string, unknown>;
 
@@ -106,6 +117,8 @@ describe('TradeWebSocketClient market orders', () => {
     localStorage.clear();
     sessionStorage.clear();
     clearTradeOrderLatencySamples();
+    setVisibilityState('visible');
+    vi.spyOn(Math, 'random').mockReturnValue(0);
     vi.stubGlobal('WebSocket', FakeWebSocket as unknown as typeof WebSocket);
   });
 
@@ -113,6 +126,12 @@ describe('TradeWebSocketClient market orders', () => {
     destroyTradeWebSocketClient();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    if (originalVisibilityStateDescriptor) {
+      Object.defineProperty(document, 'visibilityState', originalVisibilityStateDescriptor);
+    } else {
+      delete (document as { visibilityState?: DocumentVisibilityState }).visibilityState;
+    }
   });
 
   it('omits zero-value protection from place_order and resolves a direct fill', async () => {
@@ -663,10 +682,87 @@ describe('TradeWebSocketClient market orders', () => {
     client.disconnect();
   });
 
-  it('warms the shared authenticated order socket without a component-level connect call', async () => {
+  it('keeps reconnect backoff across short-lived opens and resets it after a stable open', () => {
+    vi.useFakeTimers();
+    const client = new TradeWebSocketClient({
+      url: 'wss://fxtrustbrokerbackend.orrnn.com/ws/v2',
+      token: 'trader-jwt',
+      reconnect: true,
+    });
+
+    client.connect();
+    FakeWebSocket.instances[0].open();
+    FakeWebSocket.instances[0].close();
+
+    vi.advanceTimersByTime(1000);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    FakeWebSocket.instances[1].open();
+    FakeWebSocket.instances[1].close();
+    vi.advanceTimersByTime(1999);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(3);
+
+    FakeWebSocket.instances[2].open();
+    vi.advanceTimersByTime(TRADE_WS_STABLE_OPEN_MS);
+    FakeWebSocket.instances[2].close();
+    vi.advanceTimersByTime(999);
+    expect(FakeWebSocket.instances).toHaveLength(3);
+    vi.advanceTimersByTime(1);
+    expect(FakeWebSocket.instances).toHaveLength(4);
+
+    client.disconnect();
+  });
+
+  it('pauses trade reconnects while hidden and resumes once visible', () => {
+    vi.useFakeTimers();
+    const client = new TradeWebSocketClient({
+      url: 'wss://fxtrustbrokerbackend.orrnn.com/ws/v2',
+      token: 'trader-jwt',
+      reconnect: true,
+    });
+
+    client.connect();
+    FakeWebSocket.instances[0].open();
+    setVisibilityState('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    FakeWebSocket.instances[0].close();
+
+    vi.advanceTimersByTime(60_000);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    setVisibilityState('visible');
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    client.disconnect();
+  });
+
+  it('rejects anonymous or expired preload tokens and warms after a valid session commit', async () => {
     localStorage.setItem('auth_token', 'persisted-trader-jwt');
+    localStorage.setItem('token_expires_at', String(Date.now() + 60_000));
 
     initializeTradeWebSocketClient();
+    await Promise.resolve();
+
+    expect(FakeWebSocket.instances).toHaveLength(0);
+
+    localStorage.setItem('token_expires_at', String(Date.now() - 1));
+    commitBrokerAccountSessionScope({
+      authenticated: true,
+      accountId: '200002',
+    });
+    await Promise.resolve();
+
+    expect(FakeWebSocket.instances).toHaveLength(0);
+
+    commitBrokerAccountSessionScope({ authenticated: false, accountId: null });
+    localStorage.setItem('token_expires_at', String(Date.now() + 60_000));
+    commitBrokerAccountSessionScope({
+      authenticated: true,
+      accountId: '200002',
+    });
     await Promise.resolve();
 
     expect(FakeWebSocket.instances).toHaveLength(1);

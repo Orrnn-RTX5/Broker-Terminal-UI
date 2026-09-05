@@ -17,7 +17,11 @@ export type Command =
   // Chart Type Commands
   | {
     type: 'SET_CHART_TYPE';
-    payload: { chartType: 'candlestick' | 'bar' | 'line' | 'area' };
+    payload: {
+      chartType: 'candlestick' | 'bar' | 'line' | 'area';
+      /** Route chart-menu/shortcut commands to the chart the user is operating. */
+      targetContextId?: string;
+    };
   }
   // Indicator Commands
   | {
@@ -27,15 +31,15 @@ export type Command =
   // Chart Tool Commands
   | {
     type: 'TOGGLE_CROSSHAIR';
-    payload: Record<string, never>;
+    payload: { targetContextId?: string };
   }
   | {
     type: 'ZOOM_IN';
-    payload: Record<string, never>;
+    payload: { targetContextId?: string };
   }
   | {
     type: 'ZOOM_OUT';
-    payload: Record<string, never>;
+    payload: { targetContextId?: string };
   }
   | {
     type: 'SCROLL_TO_REALTIME';
@@ -67,12 +71,23 @@ export type Command =
   // Timeframe Commands
   | {
     type: 'SET_TIMEFRAME';
-    payload: { timeframe: string };
+    payload: {
+      timeframe: string;
+      targetContextId?: string;
+      panelId?: string;
+    };
   }
   // Indicator Management
   | {
     type: 'ADD_INDICATOR';
-    payload: { name: string; params: Record<string, any> };
+    payload: {
+      id?: string;
+      name: string;
+      indicatorType?: string;
+      params: Record<string, any>;
+      targetContextId?: string;
+      symbol?: string;
+    };
   }
   // Drawing Persistence
   | {
@@ -117,15 +132,15 @@ export type Command =
   }
   | {
     type: 'UNDO';
-    payload: Record<string, never>;
+    payload: { targetContextId?: string };
   }
   | {
     type: 'REDO';
-    payload: Record<string, never>;
+    payload: { targetContextId?: string };
   }
   | {
     type: 'DELETE_SELECTED_DRAWING';
-    payload: Record<string, never>;
+    payload: { targetContextId?: string };
   }
   | {
     type: 'SELECT_ALL_DRAWINGS';
@@ -133,11 +148,11 @@ export type Command =
   }
   | {
     type: 'SET_AUTO_SCROLL';
-    payload: { enabled: boolean };
+    payload: { enabled: boolean; targetContextId?: string };
   }
   | {
     type: 'SET_CHART_SHIFT';
-    payload: { enabled: boolean };
+    payload: { enabled: boolean; targetContextId?: string };
   }
   | {
     type: 'TOGGLE_MAGNET';
@@ -173,7 +188,11 @@ export type Command =
   }
   | {
     type: 'OPEN_INDICATOR_LIST';
-    payload: { category?: string };
+    payload: {
+      category?: string;
+      targetContextId?: string;
+      symbol?: string;
+    };
   };
 
 /**

@@ -119,6 +119,44 @@ export interface Drawing {
   pitchforkLevels?: number[];
 }
 
+export type DrawingCollectionChangeReason =
+  | 'added'
+  | 'deleted'
+  | 'cleared'
+  | 'updated'
+  | 'selection'
+  | 'undo'
+  | 'redo'
+  | 'loaded';
+
+export interface DrawingCollectionChangeDetail {
+  contextId: string;
+  symbol: string;
+  timeframe: string;
+  accountScope?: string;
+  reason: DrawingCollectionChangeReason;
+}
+
+/**
+ * Stamp tools are persisted as `type: "stamp"` plus a subtype. These are the
+ * stamp subtypes that represent directional arrows; deleting the legacy
+ * `shapes` bucket would also remove unrelated objects and is therefore unsafe.
+ */
+export const ARROW_STAMP_SUBTYPES = [
+  'arrowUp',
+  'arrowDown',
+  'arrow',
+  'buy',
+  'sell',
+] as const;
+
+const ARROW_STAMP_SUBTYPE_SET = new Set<string>(ARROW_STAMP_SUBTYPES);
+
+export const isArrowDrawing = (drawing: Pick<Drawing, 'type' | 'subtype'>): boolean =>
+  drawing.type === 'stamp'
+  && typeof drawing.subtype === 'string'
+  && ARROW_STAMP_SUBTYPE_SET.has(drawing.subtype);
+
 interface DrawingHistory {
   action: 'add' | 'delete' | 'modify';
   drawing?: Drawing;
@@ -388,16 +426,75 @@ export class DrawingManager {
     return false;
   }
 
-  private activateTargetContext(contextId?: string): DrawingContextIdentity | null {
+  private resolveTargetContextIdentity(contextId?: string): DrawingContextIdentity | null {
     if (!contextId) return this.currentContextIdentity;
+    for (const context of this.chartContexts.values()) {
+      if (context.contextId === contextId) return this.identityForContext(context);
+    }
+    return null;
+  }
 
-    for (const [container, context] of this.chartContexts.entries()) {
-      if (context.contextId !== contextId) continue;
-      this.activateContext(container, context);
-      return this.identityForContext(context);
+  /**
+   * Runs an operation against one registered chart without leaving that chart
+   * as the manager's implicit active context. This is important for dialogs and
+   * menu commands that may operate on a background dock tab.
+   */
+  private withTargetContext<T>(
+    targetContextId: string | undefined,
+    operation: (identity: DrawingContextIdentity) => T,
+  ): T | undefined {
+    if (!targetContextId) {
+      const identity = this.currentContextIdentity;
+      return identity ? operation(identity) : undefined;
     }
 
-    return null;
+    let targetEntry: [HTMLElement, ChartContext] | null = null;
+    for (const entry of this.chartContexts.entries()) {
+      if (entry[1].contextId === targetContextId) {
+        targetEntry = entry;
+        break;
+      }
+    }
+    if (!targetEntry) return undefined;
+
+    const previous = {
+      activeContainer: this.activeContainer,
+      chart: this.chart,
+      series: this.series,
+      currentContextId: this.currentContextId,
+      currentSymbol: this.currentSymbol,
+      currentTimeframe: this.currentTimeframe,
+      currentAccountScope: this.currentAccountScope,
+    };
+    const [container, context] = targetEntry;
+    this.activateContext(container, context);
+
+    try {
+      return operation(this.identityForContext(context));
+    } finally {
+      this.activeContainer = previous.activeContainer;
+      this.chart = previous.chart;
+      this.series = previous.series;
+      this.currentContextId = previous.currentContextId;
+      this.currentSymbol = previous.currentSymbol;
+      this.currentTimeframe = previous.currentTimeframe;
+      this.currentAccountScope = previous.currentAccountScope;
+    }
+  }
+
+  private dispatchDrawingsChanged(
+    identity: DrawingContextIdentity,
+    reason: DrawingCollectionChangeReason,
+  ): void {
+    window.dispatchEvent(new CustomEvent<DrawingCollectionChangeDetail>('drawings:changed', {
+      detail: {
+        contextId: identity.contextId,
+        symbol: identity.symbol,
+        timeframe: identity.timeframe,
+        accountScope: identity.accountScope,
+        reason,
+      },
+    }));
   }
 
   // Drag state
@@ -428,6 +525,9 @@ export class DrawingManager {
     });
     window.addEventListener('chart-delete-drawing', (event) => {
       this.deleteSelected((event as CustomEvent<{ targetContextId?: string }>).detail?.targetContextId);
+    });
+    window.addEventListener('chart-delete-last-drawing', (event) => {
+      this.deleteLast((event as CustomEvent<{ targetContextId?: string }>).detail?.targetContextId);
     });
   }
 
@@ -802,6 +902,7 @@ export class DrawingManager {
 
     this.renderAll();
     this.dispatchDrawingSelection(completed, owner);
+    this.dispatchDrawingsChanged(owner, 'added');
     if (owner.contextId !== 'legacy:detached') {
       void this.saveToBackend(completed, owner);
       this.persistLocalFor(owner, ownerDrawings);
@@ -849,80 +950,118 @@ export class DrawingManager {
     }));
   }
 
-  selectDrawing(id: string, multi = false): void {
-    if (!multi) this.drawings.forEach(d => (d.selected = false));
-    const d = this.drawings.find(d => d.id === id);
-    if (d) {
-      d.selected = true;
-      // Bring to front
-      const idx = this.drawings.indexOf(d);
-      this.drawings.splice(idx, 1);
-      this.drawings.push(d);
-    }
-    this.renderAll();
-    if (d) this.dispatchDrawingSelection(d, this.currentContextIdentity);
+  selectDrawing(id: string, multi = false, targetContextId?: string): boolean {
+    return this.withTargetContext(targetContextId, identity => {
+      const drawings = this.getDrawingsFor(identity);
+      const hadSelection = drawings.some(drawing => drawing.selected);
+      if (!multi) drawings.forEach(drawing => (drawing.selected = false));
+      const drawing = drawings.find(candidate => candidate.id === id);
+      if (!drawing) {
+        if (!multi && hadSelection) {
+          this.renderAll();
+          window.dispatchEvent(new CustomEvent('drawing:selection-cleared', {
+            detail: { contextId: identity.contextId },
+          }));
+          this.dispatchDrawingsChanged(identity, 'selection');
+        }
+        return false;
+      }
+
+      drawing.selected = true;
+      // Bring to front without changing any other chart's z-order.
+      const index = drawings.indexOf(drawing);
+      drawings.splice(index, 1);
+      drawings.push(drawing);
+      this.renderAll();
+      this.dispatchDrawingSelection(drawing, identity);
+      this.dispatchDrawingsChanged(identity, 'selection');
+      return true;
+    }) ?? false;
   }
 
-  unselectAll(): void {
-    this.drawings.forEach(d => (d.selected = false));
-    this.renderAll();
-    window.dispatchEvent(new CustomEvent('drawing:selection-cleared', {
-      detail: { contextId: this.currentContextId },
-    }));
-  }
-
-  deleteDrawing(id: string, targetContextId?: string): boolean {
-    const identity = this.activateTargetContext(targetContextId);
-    if (!identity) return false;
-    const idx = this.drawings.findIndex(d => d.id === id);
-    if (idx === -1) return false;
-    const removed = this.drawings.splice(idx, 1)[0];
-    const removedSelection = removed.selected === true;
-    this.undoStack.push({ action: 'delete', drawing: JSON.parse(JSON.stringify(removed)) });
-    this.redoStack = [];
-    this.renderAll();
-    void this.deleteFromBackend(id, removed.serverId, identity);
-    this.persistLocal();
-    window.dispatchEvent(new CustomEvent('drawing:deleted', {
-      detail: {
-        id,
-        contextId: identity?.contextId,
-        symbol: identity?.symbol,
-        timeframe: identity?.timeframe,
-      },
-    }));
-    if (removedSelection) {
+  unselectAll(targetContextId?: string): number {
+    return this.withTargetContext(targetContextId, identity => {
+      const drawings = this.getDrawingsFor(identity);
+      const selectedCount = drawings.filter(drawing => drawing.selected).length;
+      drawings.forEach(drawing => (drawing.selected = false));
+      this.renderAll();
       window.dispatchEvent(new CustomEvent('drawing:selection-cleared', {
         detail: { contextId: identity.contextId },
       }));
-    }
-    return true;
+      this.dispatchDrawingsChanged(identity, 'selection');
+      return selectedCount;
+    }) ?? 0;
   }
 
-  deleteSelected(targetContextId?: string): void {
-    if (!this.activateTargetContext(targetContextId)) return;
-    const toDelete = this.drawings.filter(d => d.selected).map(d => d.id);
-    toDelete.forEach(id => this.deleteDrawing(id, targetContextId));
+  deleteDrawing(id: string, targetContextId?: string): boolean {
+    return this.withTargetContext(targetContextId, identity => {
+      const drawings = this.getDrawingsFor(identity);
+      const index = drawings.findIndex(drawing => drawing.id === id);
+      if (index === -1) return false;
+      const removed = drawings.splice(index, 1)[0];
+      const removedSelection = removed.selected === true;
+      this.getUndoStackFor(identity).push({
+        action: 'delete',
+        drawing: JSON.parse(JSON.stringify(removed)),
+      });
+      this.redoStacksByContext.set(buildDrawingContextKey(identity), []);
+      this.renderAll();
+      void this.deleteFromBackend(id, removed.serverId, identity);
+      this.persistLocalFor(identity, drawings);
+      window.dispatchEvent(new CustomEvent('drawing:deleted', {
+        detail: {
+          id,
+          contextId: identity.contextId,
+          symbol: identity.symbol,
+          timeframe: identity.timeframe,
+        },
+      }));
+      if (removedSelection) {
+        window.dispatchEvent(new CustomEvent('drawing:selection-cleared', {
+          detail: { contextId: identity.contextId },
+        }));
+      }
+      this.dispatchDrawingsChanged(identity, 'deleted');
+      return true;
+    }) ?? false;
+  }
+
+  deleteSelected(targetContextId?: string): number {
+    return this.withTargetContext(targetContextId, identity => {
+      const ids = this.getDrawingsFor(identity)
+        .filter(drawing => drawing.selected)
+        .map(drawing => drawing.id);
+      return ids.reduce(
+        (count, id) => count + (this.deleteDrawing(id) ? 1 : 0),
+        0,
+      );
+    }) ?? 0;
   }
 
   clearAllDrawings(persist = true, targetContextId?: string): void {
-    const identity = this.activateTargetContext(targetContextId);
-    if (!identity) return;
-    const deleteInfo = this.drawings.map(d => ({ id: d.id, serverId: d.serverId }));
-    this.drawings = [];
-    this.renderAll();
-    if (persist) {
-      this.persistLocal();
-      deleteInfo.forEach(({ id, serverId }) => void this.deleteFromBackend(id, serverId, identity));
-    }
-    window.dispatchEvent(new CustomEvent('drawings:cleared'));
-    window.dispatchEvent(new CustomEvent('drawing:selection-cleared', {
-      detail: { contextId: identity.contextId },
-    }));
+    this.withTargetContext(targetContextId, identity => {
+      const drawings = this.getDrawingsFor(identity);
+      const deleteInfo = drawings.map(drawing => ({ id: drawing.id, serverId: drawing.serverId }));
+      this.drawingsBySymbol.set(buildDrawingContextKey(identity), []);
+      this.renderAll();
+      if (persist) {
+        this.persistLocalFor(identity, []);
+        deleteInfo.forEach(({ id, serverId }) => void this.deleteFromBackend(id, serverId, identity));
+      }
+      const detail = {
+        contextId: identity.contextId,
+        symbol: identity.symbol,
+        timeframe: identity.timeframe,
+      };
+      window.dispatchEvent(new CustomEvent('drawings:cleared', { detail }));
+      window.dispatchEvent(new CustomEvent('drawing:selection-cleared', { detail }));
+      this.dispatchDrawingsChanged(identity, 'cleared');
+    });
   }
 
-  getDrawings(): Drawing[] {
-    return [...this.drawings];
+  getDrawings(targetContextId?: string): Drawing[] {
+    const identity = this.resolveTargetContextIdentity(targetContextId);
+    return identity ? [...this.getDrawingsFor(identity)] : [];
   }
 
   updateDrawingProperties(
@@ -930,24 +1069,25 @@ export class DrawingManager {
     properties: Partial<Drawing>,
     targetContextId?: string,
   ): boolean {
-    const identity = this.activateTargetContext(targetContextId);
-    if (!identity) return false;
-    const drawing = this.drawings.find(candidate => candidate.id === id);
-    if (!drawing) return false;
-    const previous = JSON.parse(JSON.stringify(drawing)) as Drawing;
-    Object.assign(drawing, properties, { id: drawing.id, type: drawing.type });
-    if (JSON.stringify(previous) === JSON.stringify(drawing)) return true;
-    this.undoStack.push({
-      action: 'modify',
-      oldDrawing: previous,
-      newDrawing: JSON.parse(JSON.stringify(drawing)),
-    });
-    this.redoStack = [];
-    this.persistLocalFor(identity, this.getDrawingsFor(identity));
-    void this.saveToBackend(drawing, identity);
-    this.renderAll();
-    this.dispatchDrawingSelection(drawing, identity);
-    return true;
+    return this.withTargetContext(targetContextId, identity => {
+      const drawing = this.getDrawingsFor(identity).find(candidate => candidate.id === id);
+      if (!drawing) return false;
+      const previous = JSON.parse(JSON.stringify(drawing)) as Drawing;
+      Object.assign(drawing, properties, { id: drawing.id, type: drawing.type });
+      if (JSON.stringify(previous) === JSON.stringify(drawing)) return true;
+      this.getUndoStackFor(identity).push({
+        action: 'modify',
+        oldDrawing: previous,
+        newDrawing: JSON.parse(JSON.stringify(drawing)),
+      });
+      this.redoStacksByContext.set(buildDrawingContextKey(identity), []);
+      this.persistLocalFor(identity, this.getDrawingsFor(identity));
+      void this.saveToBackend(drawing, identity);
+      this.renderAll();
+      this.dispatchDrawingSelection(drawing, identity);
+      this.dispatchDrawingsChanged(identity, 'updated');
+      return true;
+    }) ?? false;
   }
 
   ownsActiveDrawing(contextId: string): boolean {
@@ -960,49 +1100,61 @@ export class DrawingManager {
   }
 
   undo(targetContextId?: string): void {
-    const identity = this.activateTargetContext(targetContextId);
-    if (!identity) return;
-    const entry = this.undoStack.pop();
-    if (!entry) return;
-    if (entry.action === 'add' && entry.drawing) {
-      this.drawings = this.drawings.filter(d => d.id !== entry.drawing!.id);
-      void this.deleteFromBackend(entry.drawing.id, entry.drawing.serverId, identity);
-    } else if (entry.action === 'delete' && entry.drawing) {
-      this.drawings.push(entry.drawing);
-      this.saveToBackend(entry.drawing, identity);
-    } else if (entry.action === 'modify' && entry.oldDrawing) {
-      const idx = this.drawings.findIndex(d => d.id === entry.oldDrawing!.id);
-      if (idx !== -1) {
-        this.drawings[idx] = entry.oldDrawing;
-        this.saveToBackend(entry.oldDrawing, identity);
+    this.withTargetContext(targetContextId, identity => {
+      const undoStack = this.getUndoStackFor(identity);
+      const entry = undoStack.pop();
+      if (!entry) return;
+      const drawings = this.getDrawingsFor(identity);
+      if (entry.action === 'add' && entry.drawing) {
+        this.drawingsBySymbol.set(
+          buildDrawingContextKey(identity),
+          drawings.filter(drawing => drawing.id !== entry.drawing!.id),
+        );
+        void this.deleteFromBackend(entry.drawing.id, entry.drawing.serverId, identity);
+      } else if (entry.action === 'delete' && entry.drawing) {
+        drawings.push(entry.drawing);
+        void this.saveToBackend(entry.drawing, identity);
+      } else if (entry.action === 'modify' && entry.oldDrawing) {
+        const index = drawings.findIndex(drawing => drawing.id === entry.oldDrawing!.id);
+        if (index !== -1) {
+          drawings[index] = entry.oldDrawing;
+          void this.saveToBackend(entry.oldDrawing, identity);
+        }
       }
-    }
-    this.redoStack.push(entry);
-    this.renderAll();
-    this.persistLocal();
+      this.getRedoStackFor(identity).push(entry);
+      this.renderAll();
+      this.persistLocalFor(identity, this.getDrawingsFor(identity));
+      this.dispatchDrawingsChanged(identity, 'undo');
+    });
   }
 
   redo(targetContextId?: string): void {
-    const identity = this.activateTargetContext(targetContextId);
-    if (!identity) return;
-    const entry = this.redoStack.pop();
-    if (!entry) return;
-    if (entry.action === 'add' && entry.drawing) {
-      this.drawings.push(entry.drawing);
-      this.saveToBackend(entry.drawing, identity);
-    } else if (entry.action === 'delete' && entry.drawing) {
-      this.drawings = this.drawings.filter(d => d.id !== entry.drawing!.id);
-      void this.deleteFromBackend(entry.drawing.id, entry.drawing.serverId, identity);
-    } else if (entry.action === 'modify' && entry.newDrawing) {
-      const idx = this.drawings.findIndex(d => d.id === entry.newDrawing!.id);
-      if (idx !== -1) {
-        this.drawings[idx] = entry.newDrawing;
-        this.saveToBackend(entry.newDrawing, identity);
+    this.withTargetContext(targetContextId, identity => {
+      const redoStack = this.getRedoStackFor(identity);
+      const entry = redoStack.pop();
+      if (!entry) return;
+      const drawings = this.getDrawingsFor(identity);
+      if (entry.action === 'add' && entry.drawing) {
+        drawings.push(entry.drawing);
+        void this.saveToBackend(entry.drawing, identity);
+      } else if (entry.action === 'delete' && entry.drawing) {
+        this.drawingsBySymbol.set(
+          buildDrawingContextKey(identity),
+          drawings.filter(drawing => drawing.id !== entry.drawing!.id),
+        );
+        void this.deleteFromBackend(entry.drawing.id, entry.drawing.serverId, identity);
+      } else if (entry.action === 'modify' && entry.newDrawing) {
+        const index = drawings.findIndex(drawing => drawing.id === entry.newDrawing!.id);
+        if (index !== -1) {
+          drawings[index] = entry.newDrawing;
+          void this.saveToBackend(entry.newDrawing, identity);
+        }
       }
-    }
-    this.undoStack.push(entry);
-    this.renderAll();
-    this.persistLocal();
+      this.getUndoStackFor(identity).push(entry);
+      this.renderAll();
+      this.persistLocalFor(identity, this.getDrawingsFor(identity));
+      this.dispatchDrawingsChanged(identity, 'redo');
+    });
   }
 
   updateDrawingPositions(): void {
@@ -2333,8 +2485,8 @@ export class DrawingManager {
     handle.setAttribute('data-geometry-role', role);
     handle.setAttribute('pointer-events', 'all');
     handle.style.cursor = nodeIndex === null ? 'move' : 'crosshair';
-    handle.addEventListener('pointerdown', event => this.beginDrag(event, drawing.id, nodeIndex));
-    handle.addEventListener('contextmenu', event => this.onContextMenu(event, drawing.id));
+    handle.addEventListener('pointerdown', event => this.beginDrag(event as PointerEvent, drawing.id, nodeIndex));
+    handle.addEventListener('contextmenu', event => this.onContextMenu(event as MouseEvent, drawing.id));
     group.appendChild(handle);
   }
 
@@ -3039,6 +3191,7 @@ export class DrawingManager {
           void this.saveToBackend(drawing, this.draggingOwner);
           if (this.draggingOwner) {
             this.persistLocalFor(this.draggingOwner, this.getDrawingsFor(this.draggingOwner));
+            this.dispatchDrawingsChanged(this.draggingOwner, 'updated');
           }
         }
       }
@@ -3144,6 +3297,7 @@ export class DrawingManager {
           sessionStorage.setItem(purgeKey, '1');
           this.drawingsBySymbol.set(drawingContextKey, []);
           this.renderAll();
+          this.dispatchDrawingsChanged(identity, 'loaded');
           return;
         }
 
@@ -3172,6 +3326,7 @@ export class DrawingManager {
         this.drawingsBySymbol.set(drawingContextKey, loadedDrawings);
         this.renderAll();
         this.persistLocalFor(identity, loadedDrawings);
+        this.dispatchDrawingsChanged(identity, 'loaded');
       } else {
         this.loadFromLocal(identity);
       }
@@ -3224,6 +3379,7 @@ export class DrawingManager {
             '(undefined here means it was never saved or was stripped during JSON.parse)');
         });
         this.renderAll();
+        this.dispatchDrawingsChanged(identity, 'loaded');
       }
     } catch { }
   }
@@ -3246,8 +3402,48 @@ export class DrawingManager {
     this.persistLocalFor(target, this.getDrawingsFor(target));
   }
 
-  deleteByType(type: DrawingType): void {
-    this.drawings.filter(d => d.type === type).forEach(d => this.deleteDrawing(d.id));
+  deleteLast(targetContextId?: string): boolean {
+    return this.withTargetContext(targetContextId, identity => {
+      const drawings = this.getDrawingsFor(identity);
+      if (drawings.length === 0) return false;
+
+      // Selection changes z-order, so prefer the most recent still-present add
+      // history entry. Loaded legacy drawings fall back to persisted order.
+      const drawingIds = new Set(drawings.map(drawing => drawing.id));
+      const lastAdded = [...this.getUndoStackFor(identity)]
+        .reverse()
+        .find(entry => (
+          entry.action === 'add'
+          && entry.drawing
+          && drawingIds.has(entry.drawing.id)
+        ))?.drawing;
+      const candidate = lastAdded ?? drawings[drawings.length - 1];
+      return this.deleteDrawing(candidate.id);
+    }) ?? false;
+  }
+
+  deleteArrows(targetContextId?: string): number {
+    return this.withTargetContext(targetContextId, identity => {
+      const ids = this.getDrawingsFor(identity)
+        .filter(isArrowDrawing)
+        .map(drawing => drawing.id);
+      return ids.reduce(
+        (count, id) => count + (this.deleteDrawing(id) ? 1 : 0),
+        0,
+      );
+    }) ?? 0;
+  }
+
+  deleteByType(type: DrawingType, targetContextId?: string): number {
+    return this.withTargetContext(targetContextId, identity => {
+      const ids = this.getDrawingsFor(identity)
+        .filter(drawing => drawing.type === type)
+        .map(drawing => drawing.id);
+      return ids.reduce(
+        (count, id) => count + (this.deleteDrawing(id) ? 1 : 0),
+        0,
+      );
+    }) ?? 0;
   }
 
   updateActiveDrawing(props: Partial<Drawing>): void {
@@ -3265,11 +3461,19 @@ export class DrawingManager {
     this.renderAll();
   }
 
-  /** Unselect a single drawing by id */
-  unselectDrawing(id: string): void {
-    const d = this.drawings.find(d => d.id === id);
-    if (d) d.selected = false;
-    this.renderAll();
+  /** Unselect a single drawing by id in one chart context. */
+  unselectDrawing(id: string, targetContextId?: string): boolean {
+    return this.withTargetContext(targetContextId, identity => {
+      const drawing = this.getDrawingsFor(identity).find(candidate => candidate.id === id);
+      if (!drawing) return false;
+      drawing.selected = false;
+      this.renderAll();
+      window.dispatchEvent(new CustomEvent('drawing:selection-cleared', {
+        detail: { contextId: identity.contextId, drawingId: id },
+      }));
+      this.dispatchDrawingsChanged(identity, 'selection');
+      return true;
+    }) ?? false;
   }
 
   /** Public alias — backward compat for old loadFromStorage calls */
@@ -3279,7 +3483,7 @@ export class DrawingManager {
   }
 
   /** Public alias — backward compat for undoDelete */
-  undoDelete(): void { this.undo(); }
+  undoDelete(targetContextId?: string): void { this.undo(targetContextId); }
 }
 
 // ──────────────────────────────────────────────

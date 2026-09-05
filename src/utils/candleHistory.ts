@@ -7,6 +7,7 @@ export interface CandleHistoryCandle {
   volume: number;
   tickVolume?: number;
   realVolume?: number;
+  closed?: boolean;
 }
 
 export interface LogicalRangeLike {
@@ -68,6 +69,34 @@ export const mergeFormingCandleEnvelope = <T extends CandleHistoryCandle>(
     ),
     ...(realVolume === undefined ? {} : { realVolume }),
   };
+};
+
+/**
+ * Apply one real quote tick to an existing forming candle. A zero volume can
+ * mean that the backend omitted volume; it does not mean the candle's OHLC is
+ * synthetic or safe to reset.
+ */
+export const applyTickToFormingCandle = <T extends CandleHistoryCandle>(
+  previous: T,
+  price: number,
+): T => {
+  if (!Number.isFinite(price) || price <= 0) return { ...previous };
+
+  const previousVolume = Number.isFinite(previous.volume) && previous.volume >= 0
+    ? previous.volume
+    : 0;
+  const previousTickVolume = Number.isFinite(previous.tickVolume) && Number(previous.tickVolume) >= 0
+    ? Number(previous.tickVolume)
+    : previousVolume;
+
+  return mergeFormingCandleEnvelope(previous, {
+    ...previous,
+    high: price,
+    low: price,
+    close: price,
+    volume: previousVolume + 1,
+    tickVolume: previousTickVolume + 1,
+  });
 };
 
 /**
@@ -159,12 +188,74 @@ export const mergeHistoricalCandlesWithBufferedLive = <T extends CandleHistoryCa
   return normalizeCandlePageAscending([
     ...historical.map(candle => {
       const buffered = bufferedByTime.get(candle.time);
-      return buffered
+      return buffered && candle.closed !== true
         ? mergeHistoricalCandleWithBufferedLive(candle, buffered)
         : candle;
     }),
     ...bufferedLive.filter(candle => !historicalTimes.has(candle.time)),
   ]);
+};
+
+export const selectCandlesMutatedAfterGeneration = <T extends CandleHistoryCandle>(
+  candles: readonly T[],
+  mutationGenerationByTime: ReadonlyMap<number, number>,
+  generation: number,
+): T[] => normalizeCandlePageAscending(candles).filter(candle => (
+  (mutationGenerationByTime.get(candle.time) ?? 0) > generation
+));
+
+export interface AuthoritativeHistoryMergeOptions<T extends CandleHistoryCandle> {
+  formingLiveCandle?: T | null;
+  hasNewerLiveMutation?: boolean;
+}
+
+/**
+ * Reconcile a fresh REST history page with rows already shown by the chart.
+ * Older rows are retained before the response window, but the latest backend
+ * page owns its range and end boundary. A genuinely newer live mutation may
+ * retain/extend only its proven forming bucket; a server-finalized candle wins.
+ */
+export const mergeAuthoritativeCandleHistory = <T extends CandleHistoryCandle>(
+  existingCandles: readonly T[],
+  backendCandles: readonly T[],
+  options: AuthoritativeHistoryMergeOptions<T> = {},
+): T[] => {
+  const normalizedBackend = normalizeCandlePageAscending(backendCandles);
+  if (normalizedBackend.length === 0) return normalizeCandlePageAscending(existingCandles);
+  const authoritativeFrom = normalizedBackend[0].time;
+  const authoritativeTo = normalizedBackend[normalizedBackend.length - 1].time;
+  // FIX: A successful backend page replaces its covered interval. Retaining
+  // absent cached/synthetic rows inside that interval makes stale candles
+  // survive forever even after the broker returns corrected history.
+  const provenFormingTime = options.hasNewerLiveMutation
+    && options.formingLiveCandle
+    && isValidHistoryCandle(options.formingLiveCandle)
+    ? options.formingLiveCandle.time
+    : null;
+  // FIX: Preserve older paged history, but discard unproven rows newer than a
+  // successful latest-page response. Only a forming bucket mutated after this
+  // request began may survive beyond the backend's authoritative end time.
+  const existingOutsideAuthoritativeRange = normalizeCandlePageAscending(existingCandles).filter(
+    candle => candle.time < authoritativeFrom
+      || (candle.time > authoritativeTo && candle.time === provenFormingTime),
+  );
+  const merged = mergeSortedCandleHistory(
+    existingOutsideAuthoritativeRange,
+    normalizedBackend,
+    { duplicatePreference: 'incoming' },
+  ).candles;
+
+  const formingLiveCandle = options.formingLiveCandle;
+  if (!options.hasNewerLiveMutation || !formingLiveCandle || !isValidHistoryCandle(formingLiveCandle)) {
+    return merged;
+  }
+
+  const authoritativeBucket = normalizedBackend.find(
+    candle => candle.time === formingLiveCandle.time,
+  );
+  if (authoritativeBucket?.closed === true) return merged;
+
+  return mergeHistoricalCandlesWithBufferedLive(merged, [formingLiveCandle]);
 };
 
 export const mergeSortedCandleHistory = <T extends CandleHistoryCandle>(
@@ -256,18 +347,15 @@ export interface OlderHistoryRangeWindow {
 }
 
 export const selectOlderHistoryCandlesForMerge = <T extends CandleHistoryCandle>(
-  rawCandles: readonly T[],
+  _rawCandles: readonly T[],
   reconciledCandles: readonly T[],
 ): OlderHistoryPageSelection<T> => {
   const normalizedReconciled = normalizeCandlePageAscending(reconciledCandles);
-  if (normalizedReconciled.length > 0) {
-    return { candles: normalizedReconciled, usedRawFallback: false };
-  }
-
-  const normalizedRaw = normalizeCandlePageAscending(rawCandles);
+  // FIX: Price validation is an authority boundary. If reconciliation rejects
+  // a page, do not bypass it by silently prepending the original mismatched rows.
   return {
-    candles: normalizedRaw,
-    usedRawFallback: normalizedRaw.length > 0,
+    candles: normalizedReconciled,
+    usedRawFallback: false,
   };
 };
 

@@ -77,7 +77,41 @@ const mapKnownTradingCode = (code: string): string => {
   return mapped === normalized ? '' : mapped;
 };
 
+const readStructuredBackendError = (
+  err: unknown,
+): { code: string; message: string } | null => {
+  if (!isRecord(err)) return null;
+  const data = isRecord(err.data) ? err.data : isRecord(err.body) ? err.body : null;
+  if (!data) return null;
+  const nested = isRecord(data.error) ? data.error : null;
+  const code = readString(
+    nested?.code
+      ?? data.code
+      ?? data.error_code
+      ?? (typeof data.error === 'string' ? data.error : ''),
+  );
+  const message = readString(
+    nested?.message
+      ?? data.message
+      ?? data.error_message,
+  );
+  if (!code || !message || code === message) return null;
+  return { code, message: scrub(message) };
+};
+
 export const formatOrderError = (err: unknown): string => {
+  if (isRecord(err) && err.preserveBackendOrderError === true) {
+    const code = readString(err.code);
+    const backendMessage = readString(err.backendMessage);
+    if (code && backendMessage) return `${code}: ${backendMessage}`;
+    if (code || backendMessage) return code || backendMessage;
+  }
+
+  const structuredBackendError = readStructuredBackendError(err);
+  if (structuredBackendError) {
+    return `${structuredBackendError.code}: ${structuredBackendError.message}`;
+  }
+
   if (isRecord(err) && err.orderWasSent === true) {
     return 'Order status unknown: the request was sent, but the server did not confirm the final result. Do not place it again; check open positions and order history.';
   }

@@ -389,6 +389,7 @@ export interface Order {
 export interface PlaceOrderRequest {
   login: number;
   account_login?: number;
+  client_order_id?: string;
   symbol: string;
   side: TradeSide;
   volume: number;

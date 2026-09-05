@@ -6,6 +6,13 @@
 import { Icon } from './ui/Icon';
 import { useState } from 'react';
 import { TrendingUp, Activity, BarChart3, Zap } from 'lucide-react';
+
+export const SUPPORTED_INDICATOR_IDS = new Set(['ma', 'ema', 'bb', 'rsi', 'macd', 'volume']);
+
+export const isIndicatorSupported = (indicatorId: string): boolean => (
+  SUPPORTED_INDICATOR_IDS.has(indicatorId.trim().toLowerCase().split('-')[0])
+);
+
 export interface IndicatorInfo {
   id: string;
   name: string;
@@ -249,8 +256,15 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
                   {indicators.map(indicator => (
                     <div
                       key={indicator.id}
-                      onDoubleClick={() => handleAddIndicator(category, indicator)}
-                      className="p-3 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg border border-zinc-700/50 hover:border-emerald-500/50 cursor-pointer transition-all group"
+                      onDoubleClick={() => {
+                        if (isIndicatorSupported(indicator.id)) handleAddIndicator(category, indicator);
+                      }}
+                      aria-disabled={!isIndicatorSupported(indicator.id)}
+                      title={isIndicatorSupported(indicator.id) ? undefined : 'This indicator is not available in the current chart engine'}
+                      className={`p-3 rounded-lg border transition-all group ${isIndicatorSupported(indicator.id)
+                        ? 'bg-zinc-800/50 hover:bg-zinc-800 border-zinc-700/50 hover:border-emerald-500/50 cursor-pointer'
+                        : 'bg-zinc-800/25 border-zinc-800 cursor-not-allowed opacity-55'
+                      }`}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -274,13 +288,18 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
                           )}
                         </div>
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (!isIndicatorSupported(indicator.id)) return;
                             handleAddIndicator(category, indicator);
                           }}
-                          className="ml-2 px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs rounded transition-colors"
+                          disabled={!isIndicatorSupported(indicator.id)}
+                          className="ml-2 px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs rounded transition-colors disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed"
                         >
-                          {indicator.id === 'volume' ? 'Enable' : 'Add'}
+                          {!isIndicatorSupported(indicator.id)
+                            ? 'Unavailable'
+                            : indicator.id === 'volume' ? 'Enable' : 'Add'}
                         </button>
                       </div>
                     </div>
@@ -300,7 +319,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
         {/* Footer */}
         <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
           <p className="text-xs text-zinc-500 text-center">
-            Double-click or press "Add" to insert an indicator
+            Double-click or press "Add" to insert an available indicator
           </p>
         </div>
       </div>

@@ -1,5 +1,4 @@
-import { Icon } from '../ui/Icon';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 // --- TYPES ---
 
 interface CodeBaseItem {
@@ -57,29 +56,45 @@ const EXPERTS_DATA: ExpertItem[] = [
 
 // --- COMPONENTS ---
 
-export function CodeBaseTab() {
+function ResearchRating({ value }: { value: number }) {
     return (
-        <div className="rtx-research-tab h-full flex flex-col bg-[#131316] text-[14px] font-normal">
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
-                <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] leading-[18px] uppercase tracking-wider border-b border-zinc-600">
-                        <tr className="h-[30px]">
-                            <th className="p-1 pl-3 border-r border-zinc-700 w-1/3">Name</th>
-                            <th className="p-1 border-r border-zinc-700 w-1/3">Category</th>
-                            <th className="p-1 border-r border-zinc-700 w-24">Date</th>
-                            <th className="p-1 w-1/4">Author</th>
+        <span className="rtx-research-rating rtx-articles-rating" data-rating={value} aria-label={`${value} of 5`}>
+            {[1, 2, 3, 4, 5].map((star) => (
+                <span key={star} data-on={star <= value || undefined} />
+            ))}
+        </span>
+    );
+}
+
+export function CodeBaseTab() {
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+
+    return (
+        <div className="rtx-research-tab rtx-codebase-tab h-full flex flex-col font-sans text-[14px] font-normal">
+            <div className="rtx-codebase-tab__scroll">
+                <table className="rtx-codebase-tab__table">
+                    <thead className="rtx-codebase-tab__head font-normal text-[12px] leading-[18px]">
+                        <tr>
+                            <th className="rtx-codebase-tab__col--name">Name</th>
+                            <th className="rtx-codebase-tab__col--description">Description</th>
+                            <th className="rtx-codebase-tab__col--category">Category</th>
+                            <th className="rtx-codebase-tab__col--author">Author</th>
+                            <th className="rtx-codebase-tab__col--date">Date</th>
                         </tr>
                     </thead>
-                    <tbody className="text-[13px] font-normal leading-[19.5px] text-zinc-300">
-                        {CODE_BASE_DATA.map((item, i) => (
-                            <tr key={item.id} className={`h-[30px] font-normal ${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-default`}>
-                                <td className="p-1 pl-3 border-r border-zinc-800/50 flex items-center gap-2">
-                                    <Icon name="code" size="xs" className="text-blue-400 opacity-70" />
-                                    <span className="font-normal text-zinc-200">{item.name}</span>
-                                </td>
-                                <td className="p-1 border-r border-zinc-800/50 text-zinc-500 italic">{item.category}</td>
-                                <td className="p-1 border-r border-zinc-800/50 text-zinc-500 font-mono font-normal">{item.date}</td>
-                                <td className="p-1 text-zinc-400">{item.author}</td>
+                    <tbody className="rtx-codebase-tab__body text-[13px] font-normal leading-[19.5px]">
+                        {CODE_BASE_DATA.map((item) => (
+                            <tr
+                                key={item.id}
+                                className="rtx-codebase-row"
+                                data-selected={selectedId === item.id || undefined}
+                                onClick={() => setSelectedId(item.id)}
+                            >
+                                <td className="rtx-codebase-tab__col--name">{item.name}</td>
+                                <td className="rtx-codebase-tab__col--description">{item.description}</td>
+                                <td className="rtx-codebase-tab__col--category">{item.category}</td>
+                                <td className="rtx-codebase-tab__col--author">{item.author}</td>
+                                <td className="rtx-codebase-tab__col--date">{item.date}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -90,35 +105,36 @@ export function CodeBaseTab() {
 }
 
 export function ArticlesTab() {
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+
     return (
-        <div className="rtx-research-tab h-full flex flex-col bg-[#131316] text-[14px] font-normal">
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
-                <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] leading-[18px] uppercase tracking-wider border-b border-zinc-600">
-                        <tr className="h-[30px]">
-                            <th className="p-1 pl-3 border-r border-zinc-700 w-1/4">Name</th>
-                            <th className="p-1 border-r border-zinc-700 w-2/4">Description</th>
-                            <th className="p-1 border-r border-zinc-700 w-24 text-center">Rating</th>
-                            <th className="p-1 w-32 text-right pr-3">Date</th>
+        <div className="rtx-research-tab rtx-articles-tab h-full flex flex-col font-sans text-[14px] font-normal">
+            <div className="rtx-articles-tab__scroll">
+                <table className="rtx-articles-tab__table">
+                    <thead className="rtx-articles-tab__head font-normal text-[12px] leading-[18px]">
+                        <tr>
+                            <th className="rtx-articles-tab__col--name">Name</th>
+                            <th className="rtx-articles-tab__col--description">Description</th>
+                            <th className="rtx-articles-tab__col--author">Author</th>
+                            <th className="rtx-articles-tab__col--rating">Rating</th>
+                            <th className="rtx-articles-tab__col--date">Date</th>
                         </tr>
                     </thead>
-                    <tbody className="text-[13px] font-normal leading-[19.5px] text-zinc-300">
-                        {ARTICLES_DATA.map((item, i) => (
-                            <tr key={item.id} className={`h-[30px] font-normal ${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-default`}>
-                                <td className="p-1 pl-3 border-r border-zinc-800/50 font-normal text-blue-400/90">{item.name}</td>
-                                <td className="p-1 border-r border-zinc-800/50 text-zinc-400 truncate max-w-xs">{item.description}</td>
-                                <td className="p-1 border-r border-zinc-800/50 text-center">
-                                    <div className="flex items-center justify-center gap-0.5">
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                            <Icon name="check-circle" size="sm"
-                                                key={star}
-                                                
-                                                className={star <= item.rating ? "fill-amber-500 text-amber-500" : "text-zinc-600"}
-                                            />
-                                        ))}
-                                    </div>
+                    <tbody className="rtx-articles-tab__body text-[13px] font-normal leading-[19.5px]">
+                        {ARTICLES_DATA.map((item) => (
+                            <tr
+                                key={item.id}
+                                className="rtx-articles-row"
+                                data-selected={selectedId === item.id || undefined}
+                                onClick={() => setSelectedId(item.id)}
+                            >
+                                <td className="rtx-articles-tab__col--name">{item.name}</td>
+                                <td className="rtx-articles-tab__col--description">{item.description}</td>
+                                <td className="rtx-articles-tab__col--author">{item.author}</td>
+                                <td className="rtx-articles-tab__col--rating">
+                                    <ResearchRating value={item.rating} />
                                 </td>
-                                <td className="p-1 pr-3 text-right text-zinc-500 font-mono font-normal">{item.date}</td>
+                                <td className="rtx-articles-tab__col--date">{item.date}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -129,50 +145,40 @@ export function ArticlesTab() {
 }
 
 export function ExpertsTab() {
-    const getTypeIcon = (type: string) => {
-        switch (type) {
-            case 'Advisor': return <Icon name="cpu" size="xs" className="text-blue-400" />;
-            case 'Indicator': return <Icon name="sort" size="xs" className="text-emerald-400" />;
-            case 'Script': return <Icon name="code" size="xs" className="text-amber-400" />;
-            case 'Service': return <Icon name="cpu" size="xs" className="text-purple-400" />;
-            default: return <Icon name="cpu" size="xs" className="text-zinc-400" />;
-        }
-    };
+    const [selectedId, setSelectedId] = useState<string | null>(null);
 
     return (
-        <div className="rtx-research-tab h-full flex flex-col bg-[#131316] text-[14px] font-normal">
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-zinc-700">
-                <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#191a1e] text-zinc-400 z-10 font-normal text-[12px] leading-[18px] uppercase tracking-wider border-b border-zinc-600">
-                        <tr className="h-[30px]">
-                            <th className="p-1 pl-3 border-r border-zinc-700 w-1/4">Name</th>
-                            <th className="p-1 border-r border-zinc-700 w-1/2">Description</th>
-                            <th className="p-1 border-r border-zinc-700 w-24 text-center">Rating</th>
-                            <th className="p-1 border-r border-zinc-700 w-24 text-right">Date</th>
-                            <th className="p-1 w-20 text-right pr-3">Price</th>
+        <div className="rtx-research-tab rtx-experts-tab h-full flex flex-col font-sans text-[14px] font-normal">
+            <div className="rtx-experts-tab__scroll">
+                <table className="rtx-experts-tab__table">
+                    <thead className="rtx-experts-tab__head font-normal text-[12px] leading-[18px]">
+                        <tr>
+                            <th className="rtx-experts-tab__col--name">Name</th>
+                            <th className="rtx-experts-tab__col--description">Description</th>
+                            <th className="rtx-experts-tab__col--type">Type</th>
+                            <th className="rtx-experts-tab__col--rating">Rating</th>
+                            <th className="rtx-experts-tab__col--date">Date</th>
+                            <th className="rtx-experts-tab__col--price">Price</th>
                         </tr>
                     </thead>
-                    <tbody className="text-[13px] font-normal leading-[19.5px] text-zinc-300">
-                        {EXPERTS_DATA.map((item, i) => (
-                            <tr key={item.id} className={`h-[30px] font-normal ${i % 2 === 0 ? 'bg-[#131316]' : 'bg-[#0f0f12]'} hover:bg-[#191a1e] transition-colors group cursor-default`}>
-                                <td className="p-1 pl-3 border-r border-zinc-800/50 flex items-center gap-2">
-                                    {getTypeIcon(item.type)}
-                                    <span className="font-normal text-zinc-200">{item.name}</span>
+                    <tbody className="rtx-experts-tab__body text-[13px] font-normal leading-[19.5px]">
+                        {EXPERTS_DATA.map((item) => (
+                            <tr
+                                key={item.id}
+                                className="rtx-experts-row"
+                                data-selected={selectedId === item.id || undefined}
+                                onClick={() => setSelectedId(item.id)}
+                            >
+                                <td className="rtx-experts-tab__col--name">{item.name}</td>
+                                <td className="rtx-experts-tab__col--description">{item.description}</td>
+                                <td className="rtx-experts-tab__col--type">{item.type}</td>
+                                <td className="rtx-experts-tab__col--rating">
+                                    <ResearchRating value={item.rating} />
                                 </td>
-                                <td className="p-1 border-r border-zinc-800/50 text-zinc-400 truncate max-w-xs">{item.description}</td>
-                                <td className="p-1 border-r border-zinc-800/50 text-center">
-                                    <div className="flex items-center justify-center gap-0.5">
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                            <Icon name="check-circle" size="sm"
-                                                key={star}
-                                                
-                                                className={star <= item.rating ? "fill-amber-500 text-amber-500" : "text-zinc-600"}
-                                            />
-                                        ))}
-                                    </div>
+                                <td className="rtx-experts-tab__col--date">{item.date}</td>
+                                <td className={`rtx-experts-tab__col--price ${item.price === 'Free' ? 'rtx-experts-price--free' : 'rtx-experts-price--paid'}`}>
+                                    {item.price}
                                 </td>
-                                <td className="p-1 border-r border-zinc-800/50 text-right text-zinc-500 font-mono font-normal">{item.date}</td>
-                                <td className="p-1 pr-3 text-right font-bold text-emerald-400">{item.price}</td>
                             </tr>
                         ))}
                     </tbody>

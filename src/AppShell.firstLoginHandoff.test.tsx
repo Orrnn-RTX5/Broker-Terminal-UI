@@ -16,6 +16,7 @@ const shellMocks = vi.hoisted(() => {
     releaseTerminalImport: () => releaseTerminalImport?.(),
     terminalModuleImport: vi.fn(),
     preloadDockWorkspaceViewport: vi.fn(async () => undefined),
+    preloadTradingChartRuntime: vi.fn(async () => undefined),
     terminalRender: vi.fn(),
   };
 });
@@ -36,6 +37,9 @@ vi.mock('./i18n', () => ({
   i18nReady: Promise.resolve(),
 }));
 vi.mock('./authenticatedStyles', () => ({}));
+vi.mock('./startup/tradingChartRuntime', () => ({
+  preloadTradingChartRuntime: shellMocks.preloadTradingChartRuntime,
+}));
 vi.mock('./components/dock/DockWorkspace', () => ({
   preloadDockWorkspaceViewport: shellMocks.preloadDockWorkspaceViewport,
 }));
@@ -121,7 +125,10 @@ describe('AppShell first-login handoff', () => {
       await Promise.resolve();
 
       expect(shellMocks.terminalModuleImport).toHaveBeenCalledTimes(1);
-      expect(shellMocks.preloadDockWorkspaceViewport).toHaveBeenCalledTimes(1);
+      expect(shellMocks.preloadTradingChartRuntime).toHaveBeenCalledTimes(1);
+      // App owns DockWorkspace; only its heavy chart runtime is warmed beside
+      // the shell and must not trigger a second workspace import.
+      expect(shellMocks.preloadDockWorkspaceViewport).not.toHaveBeenCalled();
       expect(shellMocks.terminalRender).toHaveBeenCalled();
       for (const [handoff] of shellMocks.terminalRender.mock.calls) {
         expect(handoff).toEqual(expect.objectContaining({

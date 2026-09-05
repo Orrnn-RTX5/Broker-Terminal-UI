@@ -10,9 +10,15 @@
 
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
-import { buildBrokerWsV2Uri } from './brokerSession';
+import { buildBrokerWsV2Uri, getAccessToken, onSessionChange } from './brokerSession';
 import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
 import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
+import {
+  asUnknownRecord,
+  normalizeBrokerTimestampMs,
+  readBrokerTimestampMs,
+  readCandleFinality,
+} from '../utils/brokerStreamSemantics';
 
 const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
@@ -58,22 +64,51 @@ export const isEnhancedStoreHandledTickFrame = (message: WebSocketMessage): bool
     && hasPositiveBidAsk(message.data);
 };
 
-const normalizePositiveTimestampMs = (value: unknown): number | undefined => {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
-  return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+export const isExactAccountStreamChannel = (
+  channel: unknown,
+  namespace: 'account' | 'positions',
+  activeLogin: unknown,
+): boolean => {
+  // FIX: Account-scoped streams use the exact login encoded by the channel;
+  // never accept a missing, partial, or previous-account identifier.
+  if (typeof channel !== 'string') return false;
+  const prefix = `${namespace}.`;
+  if (!channel.startsWith(prefix)) return false;
+  const channelLogin = channel.slice(prefix.length).trim();
+  const expectedLogin = String(activeLogin ?? '').trim();
+  return channelLogin.length > 0 && expectedLogin.length > 0 && channelLogin === expectedLogin;
+};
+
+const readFirstFiniteNumber = (
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): number | undefined => {
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined || value === '') continue;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return undefined;
+};
+
+const readFirstNonEmptyString = (
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): string | undefined => {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value !== 'string') continue;
+    const normalized = value.trim();
+    if (normalized) return normalized;
+  }
+  return undefined;
 };
 
 const resolveTickSourceTimestampMs = (...values: unknown[]): number | undefined => {
-  for (const value of values) {
-    const record = asMessageRecord(value);
-    if (!record) continue;
-    for (const key of ['sourceTimestamp', 'source_timestamp', 'timestamp', 'time']) {
-      const normalized = normalizePositiveTimestampMs(record[key]);
-      if (normalized !== undefined) return normalized;
-    }
-  }
-  return undefined;
+  // FIX: Normalize every supported broker alias and seconds/ms/us/ns/ISO form
+  // before freshness ordering; receipt time remains a distinct fallback.
+  return readBrokerTimestampMs(values.map(asUnknownRecord));
 };
 
 export interface ConnectionMetrics {
@@ -93,6 +128,16 @@ interface QueuedMessage {
   retries: number;
 }
 
+export const ENHANCED_WS_OPEN_TIMEOUT_MS = 5_000;
+export const ENHANCED_WS_STABLE_OPEN_MS = 10_000;
+
+const RECONNECT_JITTER_RATIO = 0.2;
+
+const addReconnectJitter = (delay: number, maximum: number): number => {
+  const jitter = Math.floor(delay * RECONNECT_JITTER_RATIO * Math.random());
+  return Math.min(maximum, delay + jitter);
+};
+
 export class EnhancedWebSocketService {
   private ws: WebSocket | null = null;
   private url: string;
@@ -104,6 +149,9 @@ export class EnhancedWebSocketService {
   private baseReconnectDelay = 1000;
   private maxReconnectDelay = 30000;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private openTimeout: ReturnType<typeof setTimeout> | null = null;
+  private stableOpenTimeout: ReturnType<typeof setTimeout> | null = null;
+  private reconnectPendingWhileHidden = false;
 
   // Heartbeat/ping-pong
   private pingInterval: ReturnType<typeof setInterval> | null = null;
@@ -111,6 +159,12 @@ export class EnhancedWebSocketService {
   private pingIntervalMs = 25000; // 25 seconds
   private pongTimeoutMs = 15000; // 15 seconds
   private lastPongTime = 0;
+  private lastPingSentAt = 0;
+  // A browser WebSocket cannot use protocol-level ping frames. Only enforce
+  // the application heartbeat after this endpoint has proved it understands
+  // our JSON ping/pong contract; otherwise a server that simply ignores the
+  // optional probe would be mistaken for a dead transport every 40 seconds.
+  private pongSupportedUrl: string | null = null;
   // Track last time ANY message arrived (tick, pong, candle, etc.)
   private lastDataTime = 0;
 
@@ -119,6 +173,8 @@ export class EnhancedWebSocketService {
   private stateListeners: Set<ConnectionStateCallback> = new Set();
   private metricsListeners: Set<MetricsCallback> = new Set();
   private connectionState: ConnectionState = 'disconnected';
+  private disposed = false;
+  private unsubSessionChange: (() => void) | null = null;
 
   // Message buffering and throttling
   private tickBuffer: Map<string, WebSocketMessage> = new Map();
@@ -142,7 +198,6 @@ export class EnhancedWebSocketService {
   };
   private latencyMeasurements: number[] = [];
   private maxLatencyMeasurements = 100;
-  private connectStartTime = 0;
 
   constructor(url: string) {
     this.url = this.normalizeWsUrl(url);
@@ -155,17 +210,21 @@ export class EnhancedWebSocketService {
       // Section 5: Foreground reconnect — re-establish WS when tab becomes visible
       document.addEventListener('visibilitychange', this.handleVisibilityChange);
 
-      // Section 5: Session change reconnect — token rotation, broker URL change
-      import('./brokerSession').then(({ onSessionChange }) => {
-        onSessionChange((reason) => {
-          if (reason === 'logout') {
-            this.disconnect();
-          } else if (reason === 'token_rotation' || reason === 'broker_url_change') {
-            console.log(`[WS] Session change (${reason}) — forcing reconnect`);
-            this.forceReconnect();
-          }
-        });
-      }).catch(() => { /* brokerSession not available */ });
+      // FIX: Own the unsubscribe synchronously so a destroyed service cannot be
+      // resurrected later by a broker/account/token event.
+      this.unsubSessionChange = onSessionChange((reason) => {
+        if (reason === 'logout') {
+          this.disconnect();
+        } else if (
+          reason === 'token_rotation'
+          || reason === 'broker_url_change'
+          || reason === 'login'
+          || reason === 'account_change'
+        ) {
+          console.log(`[WS] Session change (${reason}) — forcing reconnect`);
+          this.forceReconnect();
+        }
+      });
     }
   }
 
@@ -173,19 +232,28 @@ export class EnhancedWebSocketService {
    * Section 5: Force reconnect — resets backoff, closes stale socket, rebuilds URL, reopens
    */
   public forceReconnect(): void {
+    if (this.disposed) return;
     console.log('[WS] Force reconnect triggered');
-    this.reconnectAttempts = 0;
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+    this.clearStableOpenTimeout();
     // Close the stale socket
     if (this.ws) {
-      try { this.ws.close(1000, 'force reconnect'); } catch { /* ignore */ }
+      // FIX: Detach ownership before close so synchronous/late callbacks from
+      // the old credential cannot schedule a ghost reconnect.
+      const socket = this.ws;
       this.ws = null;
+      try { socket.close(1000, 'force reconnect'); } catch { /* ignore */ }
     }
     this.stopPingInterval();
     this.stopFlushInterval();
+    if (this.isRuntimeSuspended()) {
+      this.reconnectPendingWhileHidden = true;
+      this.updateState(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'reconnecting');
+      return;
+    }
     // Reconnect immediately
     this.connect();
   }
@@ -205,15 +273,41 @@ export class EnhancedWebSocketService {
    * Section 5: Visibility change handler — reconnect on tab foreground
    */
   private handleVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') {
+      // FIX: Background timer clamping suspends heartbeat/open deadlines. A
+      // visible transition owns one fresh socket and exact channel resubscribe.
+      this.stopPingInterval();
+      this.clearOpenTimeout();
+      this.reconnectPendingWhileHidden = Boolean(this.ws || this.subscribers.size > 0 || this.reconnectTimeout);
+      if (this.reconnectTimeout) {
+        clearTimeout(this.reconnectTimeout);
+        this.reconnectTimeout = null;
+      }
+      if (this.reconnectPendingWhileHidden) this.updateState('reconnecting');
+      return;
+    }
+
     if (document.visibilityState === 'visible') {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        this.reconnectPendingWhileHidden = Boolean(this.ws || this.subscribers.size > 0);
+        return;
+      }
+
       // Check if connection is stale (no data for 30+ seconds)
       const staleThreshold = 30000;
       const timeSinceLastData = Date.now() - this.lastDataTime;
+      const heartbeatIsStale = this.pongSupportedUrl === this.url && (
+        this.lastPongTime === 0
+        || Date.now() - this.lastPongTime > this.pingIntervalMs + this.pongTimeoutMs + 5000
+      );
       if (
-        timeSinceLastData > staleThreshold &&
-        (!this.ws || this.ws.readyState !== WebSocket.OPEN)
+        this.reconnectPendingWhileHidden
+        || !this.ws
+        || this.ws.readyState !== WebSocket.OPEN
+        || (timeSinceLastData > staleThreshold && heartbeatIsStale)
       ) {
         console.log('[WS] Tab foregrounded with stale connection — reconnecting');
+        this.reconnectPendingWhileHidden = false;
         this.forceReconnect();
       }
     }
@@ -223,18 +317,31 @@ export class EnhancedWebSocketService {
    * Connect to WebSocket server
    */
   public connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('[WS] Already connected');
+    if (this.disposed) return;
+    if (this.isRuntimeSuspended()) {
+      // FIX: Do not start a handshake whose timers will be throttled/offline;
+      // one foreground/online transition will reconnect and resubscribe.
+      this.reconnectPendingWhileHidden = true;
+      this.updateState(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'reconnecting');
       return;
     }
+    if (
+      this.ws?.readyState === WebSocket.OPEN
+      || this.ws?.readyState === WebSocket.CONNECTING
+    ) {
+      console.log('[WS] Connection already open or in progress');
+      return;
+    }
+    this.clearOpenTimeout();
 
     this.updateState('connecting');
-    this.connectStartTime = Date.now();
 
     // Dynamically resolve WebSocket URL from saved server_url at connect-time
     const serverUrl = localStorage.getItem('server_url');
     const isFixApiBackend = this.url.includes('fixapibackend');
-    const token = localStorage.getItem('auth_token');
+    // FIX: The canonical accessor includes sessionStorage and current token
+    // rotation, keeping every account channel on the same authenticated owner.
+    const token = getAccessToken();
     let urlWithAuth: string;
 
     if (!isFixApiBackend && !token) {
@@ -257,16 +364,20 @@ export class EnhancedWebSocketService {
     }
 
     try {
-      this.ws = new WebSocket(urlWithAuth);
+      const socket = new WebSocket(urlWithAuth);
+      this.ws = socket;
 
-      this.ws.onopen = () => {
+      socket.onopen = () => {
+        if (this.ws !== socket) return;
+        this.clearOpenTimeout();
         console.log('[WS] Connected successfully to', this.url);
-        const latency = Date.now() - this.connectStartTime;
-        this.recordLatency(latency);
+        // FIX: A handshake duration is not market-feed RTT. Keep zero as the
+        // existing "unknown" sentinel until a real application ping/pong is measured.
 
-        // Reset attempts on successful connection so counter never gets stuck
-        this.reconnectAttempts = 0;
         this.lastDataTime = Date.now();
+        // FIX: Pong freshness belongs to this socket instance, not its predecessor.
+        this.lastPongTime = 0;
+        this.lastPingSentAt = 0;
         this.metrics.lastConnectedAt = Date.now();
         this.updateState('connected');
         this.startPingInterval();
@@ -274,9 +385,11 @@ export class EnhancedWebSocketService {
         this.processMessageQueue();
         this.resubscribeChannels();
         this.notifyMetricsListeners();
+        this.scheduleStableOpenReset(socket);
       };
 
-      this.ws.onmessage = (event) => {
+      socket.onmessage = (event) => {
+        if (this.ws !== socket) return;
         // Any message proves the connection is alive
         this.lastDataTime = Date.now();
         try {
@@ -288,12 +401,17 @@ export class EnhancedWebSocketService {
         }
       };
 
-      this.ws.onerror = (error) => {
+      socket.onerror = (error) => {
+        if (this.ws !== socket) return;
         console.error('[WS] Error:', error);
         this.updateState('error');
       };
 
-      this.ws.onclose = (event) => {
+      socket.onclose = (event) => {
+        if (this.ws !== socket) return;
+        this.clearOpenTimeout();
+        this.clearStableOpenTimeout();
+        this.ws = null;
         console.log(`[WS] Connection closed (code: ${event.code}, reason: ${event.reason})`);
         this.metrics.lastDisconnectedAt = Date.now();
         this.updateState('disconnected');
@@ -302,7 +420,7 @@ export class EnhancedWebSocketService {
         this.notifyMetricsListeners();
 
         // Check if close was due to authentication failure
-        if (event.code === 1008 || event.code === 401) {
+        if ([1008, 4001, 4003, 4401, 4403].includes(event.code) || event.code === 401) {
           console.error('[WS] Authentication failed - clearing token');
           localStorage.removeItem('auth_token');
           localStorage.removeItem('refresh_token');
@@ -317,6 +435,7 @@ export class EnhancedWebSocketService {
 
         this.attemptReconnect();
       };
+      this.startOpenTimeout(socket);
     } catch (error) {
       console.error('[WS] Connection failed:', error);
       this.updateState('error');
@@ -334,17 +453,73 @@ export class EnhancedWebSocketService {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+    this.clearOpenTimeout();
+    this.clearStableOpenTimeout();
+    this.reconnectPendingWhileHidden = false;
 
     this.stopPingInterval();
     this.stopFlushInterval();
 
     if (this.ws) {
-      this.ws.close(1000, 'Client initiated disconnect');
+      // FIX: Intentional disconnect cannot be mistaken for transport failure.
+      const socket = this.ws;
       this.ws = null;
+      socket.close(1000, 'Client initiated disconnect');
     }
 
     this.reconnectAttempts = 0;
     this.updateState('disconnected');
+  }
+
+  private clearOpenTimeout(): void {
+    if (this.openTimeout === null) return;
+    clearTimeout(this.openTimeout);
+    this.openTimeout = null;
+  }
+
+  private clearStableOpenTimeout(): void {
+    if (this.stableOpenTimeout === null) return;
+    clearTimeout(this.stableOpenTimeout);
+    this.stableOpenTimeout = null;
+  }
+
+  private scheduleStableOpenReset(socket: WebSocket): void {
+    this.clearStableOpenTimeout();
+    this.stableOpenTimeout = setTimeout(() => {
+      this.stableOpenTimeout = null;
+      if (this.ws === socket && socket.readyState === WebSocket.OPEN) {
+        this.reconnectAttempts = 0;
+      }
+    }, ENHANCED_WS_STABLE_OPEN_MS);
+  }
+
+  private isDocumentHidden(): boolean {
+    return typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  }
+
+  private isRuntimeSuspended(): boolean {
+    return this.isDocumentHidden()
+      || (typeof navigator !== 'undefined' && navigator.onLine === false);
+  }
+
+  private startOpenTimeout(socket: WebSocket): void {
+    this.clearOpenTimeout();
+    this.openTimeout = setTimeout(() => {
+      this.openTimeout = null;
+      if (this.ws !== socket || socket.readyState !== WebSocket.CONNECTING) return;
+      if (this.isRuntimeSuspended()) {
+        this.reconnectPendingWhileHidden = true;
+        return;
+      }
+
+      console.warn('[WS] Opening handshake timed out — retrying');
+      this.ws = null;
+      try { socket.close(4000, 'Opening handshake timed out'); } catch { /* ignore */ }
+      this.metrics.lastDisconnectedAt = Date.now();
+      this.updateState('disconnected');
+      this.notifyMetricsListeners();
+      this.attemptReconnect();
+    }, ENHANCED_WS_OPEN_TIMEOUT_MS);
   }
 
   /**
@@ -436,6 +611,14 @@ export class EnhancedWebSocketService {
     return { ...this.metrics };
   }
 
+  public hasActiveConsumers(): boolean {
+    // FIX: Pool eviction is safe only after every channel/state/metrics owner
+    // has detached; otherwise one component could destroy a shared transport.
+    return this.subscribers.size > 0
+      || this.stateListeners.size > 0
+      || this.metricsListeners.size > 0;
+  }
+
   /**
    * Send message to WebSocket server (with offline queueing)
    */
@@ -513,8 +696,12 @@ export class EnhancedWebSocketService {
   private handleMessage(data: WebSocketMessage): void {
     const { type } = data;
 
-    // Handle pong responses
-    if (type === 'pong') {
+    // /ws/v2 uses `action` for commands, while older gateways use `type`.
+    // Accept either response envelope so a valid pong cannot be discarded.
+    const isPong = [data.action, data.type].some((value) => (
+      typeof value === 'string' && value.trim().toLowerCase() === 'pong'
+    ));
+    if (isPong) {
       this.handlePong();
       return;
     }
@@ -550,21 +737,25 @@ export class EnhancedWebSocketService {
         if (data.channel?.startsWith('positions.') && payload?.positions) {
           import('../store/useAppStore').then(({ useAppStore }) => {
             const store = useAppStore.getState();
+            // FIX: A positions snapshot is authoritative only for the login in
+            // its exact channel. Delayed frames from a previous account must
+            // never replace the active account's positions.
+            if (!isExactAccountStreamChannel(data.channel, 'positions', store.accountId)) return;
+
             const standardized = payload.positions.map((p: any) => {
               // Resolve open time from all possible fields — NEVER fall back to now()
               // because that causes execution pins to always snap to the live candle
-              let openTime = '';
-              if (p.time_create && p.time_create > 0) {
-                openTime = new Date(p.time_create * 1000).toISOString();
-              } else if (p.time_ms && p.time_ms > 0) {
-                const ms = p.time_ms > 1_000_000_000_000 ? p.time_ms : p.time_ms * 1000;
-                openTime = new Date(ms).toISOString();
-              } else if (p.time && p.time > 0) {
-                const ms = p.time > 1_000_000_000_000 ? p.time : p.time * 1000;
-                openTime = new Date(ms).toISOString();
-              } else if (p.time_open && p.time_open > 0) {
-                openTime = new Date(p.time_open * 1000).toISOString();
-              }
+              // FIX: Normalize position seconds/ms/us/ns/ISO aliases and never
+              // fall back to now(), which would pin old executions to the live bar.
+              const openTimestamp = readBrokerTimestampMs([p], [
+                'time_create', 'time_create_ms', 'time_create_msc',
+                'time_open', 'time_open_ms', 'time_open_msc',
+                'opened_at', 'open_time', 'openTime',
+                'time_ms', 'time_msc', 'timestamp_ms', 'timestamp', 'time',
+              ]);
+              const openTime = openTimestamp === undefined
+                ? ''
+                : new Date(openTimestamp).toISOString();
               return {
                 id: p.position_id ?? p.ticket ?? 0,
                 symbol: p.symbol || '',
@@ -592,8 +783,7 @@ export class EnhancedWebSocketService {
             import('../store/useAppStore').then(({ useAppStore }) => {
               const store = useAppStore.getState();
               // Filter: only accept data for the current account
-              const channelAccountId = data.channel.split('.')[1];
-              if (channelAccountId && store.accountId && channelAccountId !== store.accountId) return;
+              if (!isExactAccountStreamChannel(data.channel, 'account', store.accountId)) return;
 
               const curAccount = store.account;
               store.setAccount({
@@ -642,20 +832,43 @@ export class EnhancedWebSocketService {
     const ts = sourceTimestamp ?? Date.now();
     const bid = Number(data.bid) || 0;
     const ask = Number(data.ask) || bid;
-    const previousClose = Number((data as any).previous_close ?? (data as any).previousClose) || 0;
-    const dailyOpen = Number((data as any).daily_open ?? (data as any).dailyOpen ?? (data as any).open) || 0;
+    const previousClose = readFirstFiniteNumber(data, ['previous_close', 'previousClose']);
+    const dailyOpen = readFirstFiniteNumber(data, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']);
+    const close = readFirstFiniteNumber(data, ['close', 'previous_close', 'previousClose', 'close_price', 'closePrice']);
+    const last = readFirstFiniteNumber(data, ['last', 'last_price', 'lastPrice']);
+    const volume = readFirstFiniteNumber(data, [
+      'volume',
+      'volume_24h',
+      'volume24h',
+      'tick_volume',
+      'tickVolume',
+      'real_volume',
+      'realVolume',
+    ]);
+    const lp = readFirstNonEmptyString(data, [
+      'lp',
+      'provider',
+      'liquidity_provider',
+      'liquidityProvider',
+      'lp_name',
+      'lpName',
+    ]);
     const session = ((data as any).session ?? {}) as Record<string, unknown>;
+    const high = readFirstFiniteNumber(data, ['high']);
+    const low = readFirstFiniteNumber(data, ['low']);
     const sessionHigh = Math.max(
       Number(session.high_bid) || 0,
       Number(session.high_ask) || 0,
-      Number((data as any).high) || 0
+      high || 0
     );
     const sessionLowValues = [
       Number(session.low_bid) || 0,
       Number(session.low_ask) || 0,
-      Number((data as any).low) || 0,
+      low || 0,
     ].filter((value) => value > 0);
     const sessionLow = sessionLowValues.length > 0 ? Math.min(...sessionLowValues) : undefined;
+    const high24h = readFirstFiniteNumber(data, ['high24h', 'high_24h']) ?? (sessionHigh || undefined);
+    const low24h = readFirstFiniteNumber(data, ['low24h', 'low_24h']) ?? sessionLow;
     const dailyChange = resolveDailyChangePercent(
       readDailyChangePercent(data),
       bid,
@@ -664,9 +877,6 @@ export class EnhancedWebSocketService {
     if (WS_DEBUG) {
       console.log(`[WS TICK] ${data.symbol} bid=${data.bid} ask=${data.ask} spread=${data.spread} ts=${ts} daily=${data.dailyChange}`);
     }
-
-    // Estimate live ping based on tick frequency / server time diff
-    this.estimateLatencyFromActivity(ts);
 
     enqueueLiveTick(data.symbol!, {
       symbol: data.symbol!,
@@ -678,15 +888,16 @@ export class EnhancedWebSocketService {
       // genuine broker events by sourceTimestamp without treating receipt time
       // as proof that the execution quote cache is fresh.
       sourceTimestamp,
-      lp: data.lp as string | undefined,
-      volume: 1,
+      lp,
+      volume,
+      last,
       dailyChange,
-      high24h: data.high24h !== undefined ? Number(data.high24h) : sessionHigh || undefined,
-      low24h: data.low24h !== undefined ? Number(data.low24h) : sessionLow,
-      high: data.high !== undefined ? Number(data.high) : undefined,
-      low: data.low !== undefined ? Number(data.low) : undefined,
-      open: dailyOpen || undefined,
-      close: (previousClose > 0 || data.close !== undefined) ? Number(data.close ?? previousClose) : undefined,
+      high24h,
+      low24h,
+      high,
+      low,
+      open: dailyOpen,
+      close,
     });
   }
 
@@ -695,7 +906,7 @@ export class EnhancedWebSocketService {
    * Format: {type: 'update', symbol, candle: {time, open, high, low, close, volume}}
    */
   private handleFixCandle(data: WebSocketMessage): void {
-    const candle = data.candle as Record<string, number> | undefined;
+    const candle = data.candle as Record<string, unknown> | undefined;
     if (WS_DEBUG && candle) {
       console.log(`[WS CANDLE] ${data.symbol} O=${candle.open} H=${candle.high} L=${candle.low} C=${candle.close} V=${candle.volume}`);
     }
@@ -703,15 +914,41 @@ export class EnhancedWebSocketService {
       const store = useMarketDataStore.getState();
 
       if (candle && data.symbol) {
+        const candleTime = normalizeBrokerTimestampMs(
+          candle.time
+          ?? candle.timestamp
+          ?? candle.timestamp_ms
+          ?? candle.time_ms
+          ?? candle.time_msc
+          ?? candle.t
+          ?? candle.open_time
+          ?? candle.openTime,
+        );
+        if (candleTime === undefined) return;
+        // FIX: Preserve both inner and outer final-candle aliases, including
+        // string/number booleans, through the canonical market-data store.
+        const closed = readCandleFinality([asUnknownRecord(candle), asUnknownRecord(data)]);
+        const sourceTimestamp = readBrokerTimestampMs([asUnknownRecord(data)])
+          ?? readBrokerTimestampMs([asUnknownRecord(candle)], [
+            'sourceTimestamp', 'source_timestamp',
+            'event_timestamp', 'eventTimestamp', 'event_time', 'eventTime',
+            'server_timestamp', 'serverTimestamp', 'server_time', 'serverTime',
+            'updated_at', 'updatedAt', 'revision_time', 'revisionTime',
+          ]);
         store.updateCandle({
           symbol: data.symbol,
-          timeframe: 'M1',
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          volume: candle.volume,
-          time: candle.time,
+          timeframe: String(data.timeframe ?? data.period ?? data.tf ?? candle.timeframe ?? candle.period ?? candle.tf ?? 'M1'),
+          open: Number(candle.open),
+          high: Number(candle.high),
+          low: Number(candle.low),
+          close: Number(candle.close),
+          volume: Number(candle.volume ?? candle.tick_volume ?? candle.tickVolume ?? 0),
+          time: candleTime,
+          ...(closed === undefined ? {} : { closed }),
+          // FIX: Direct candle frames are authoritative backend snapshots;
+          // preserve their revision time so delayed frames cannot regress OHLC.
+          source: 'server',
+          sourceTimestamp,
         });
       }
     }).catch(err => {
@@ -852,19 +1089,43 @@ export class EnhancedWebSocketService {
     }
   }
 
-  /**
-   * Send ping message.
-   * We no longer arm an aggressive `pongTimeout` watchdog because quiet 
-   * markets (illiquid intervals) naturally produce no data, and forcefully
-   * destroying the socket leads to the notorious "Reconnecting..." loop.
-   * Browsers and proxies will naturally drop the connection if the server 
-   * actually dies, triggering `onclose`.
-   */
+  /** Send the optional application heartbeat used by /ws/v2 gateways. */
   private sendPing(): void {
+    if (this.isRuntimeSuspended()) return;
     if (this.ws?.readyState !== WebSocket.OPEN) return;
+    if (this.pongTimeout !== null) return;
 
     const pingTime = Date.now();
-    this.sendMessage({ type: 'ping', timestamp: pingTime });
+    this.lastPingSentAt = pingTime;
+    // Keep `type` for older gateways, but lead with the action-based /ws/v2
+    // command shape used by subscribe/unsubscribe on this same connection.
+    this.sendMessage({ action: 'ping', type: 'ping', timestamp: pingTime });
+
+    // Capability negotiation: the first unanswered application ping is not
+    // evidence of a dead WebSocket. Browsers still receive real transport
+    // closure through `onclose`. Once this endpoint has returned any pong,
+    // later missed deadlines do provide an actionable liveness signal.
+    if (this.pongSupportedUrl !== this.url) return;
+
+    this.pongTimeout = setTimeout(() => {
+      this.pongTimeout = null;
+      const socket = this.ws;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      if (this.isRuntimeSuspended()) {
+        this.reconnectPendingWhileHidden = true;
+        return;
+      }
+      // FIX: A zombie OPEN socket must transition through disconnected and
+      // reconnect/resubscribe instead of keeping stale margin, orders, and OHLC.
+      this.ws = null;
+      try { socket.close(4000, 'WebSocket heartbeat timeout'); } catch { /* ignore */ }
+      this.metrics.lastDisconnectedAt = Date.now();
+      this.updateState('disconnected');
+      this.stopPingInterval();
+      this.stopFlushInterval();
+      this.notifyMetricsListeners();
+      this.attemptReconnect();
+    }, this.pongTimeoutMs);
   }
 
   /**
@@ -878,69 +1139,28 @@ export class EnhancedWebSocketService {
     }
 
     const now = Date.now();
-    if (this.lastPongTime > 0) {
-      const latency = now - this.lastPongTime;
+    this.pongSupportedUrl = this.url;
+    if (this.lastPingSentAt > 0) {
+      const latency = now - this.lastPingSentAt;
       this.recordLatency(latency);
     }
     this.lastPongTime = now;
-  }
-
-  // Keep track of when we last updated the synthetic latency
-  private lastSyntheticPingUpdate: number = 0;
-
-  // Helper method to estimate latency from incoming ticks
-  private estimateLatencyFromActivity(serverTimestamp?: number): void {
-      const now = Date.now();
-      
-      // Throttle synthetic ping updates to once every 2 seconds
-      // Ticks come in VERY fast (multiple times a second), and calling recordLatency
-      // on every single tick will hammer the Zustand store and cause massive React re-renders,
-      // potentially freezing the socket or the UI.
-      if (now - this.lastSyntheticPingUpdate < 2000) {
-          return;
-      }
-      this.lastSyntheticPingUpdate = now;
-
-      // If we got a server timestamp, we can compare it to our computer's clock (roughly) 
-      if (serverTimestamp && serverTimestamp > 1000000000000 && Math.abs(now - serverTimestamp) < 5000) {
-          // Absolute latency calculation (can be negative if clocks are slightly out of sync)
-           let estimatedPing = Math.abs(now - serverTimestamp);
-           
-           if (estimatedPing < 15) {
-               estimatedPing = 15 + Math.random() * 5; 
-           } else if (estimatedPing > 200) {
-               estimatedPing = 40 + Math.random() * 20;
-           }
-
-           this.recordLatency(Math.floor(estimatedPing));
-           return;
-      }
-      
-      // Fallback: Track tick frequency 
-      const timeSinceLastActivity = this.lastPongTime > 0 ? now - this.lastPongTime : now - this.connectStartTime;
-      this.lastPongTime = now; // update pseudo-pong time for fallback
-      
-      let syntheticLatency = timeSinceLastActivity;
-      
-      if (syntheticLatency > 95) {
-          syntheticLatency = 45 + Math.random() * 20; 
-      } else if (syntheticLatency < 15) {
-          syntheticLatency = 15 + Math.random() * 5;
-      }
-      
-      this.recordLatency(Math.floor(syntheticLatency));
   }
 
   /**
    * Record latency measurement
    */
   private recordLatency(latency: number): void {
-    this.latencyMeasurements.push(latency);
+    // FIX: Metrics contain measured application ping/pong RTT only. Never
+    // clamp, randomize, or infer latency from tick cadence/server clock skew.
+    if (!Number.isFinite(latency) || latency < 0) return;
+    const measuredLatency = Math.floor(latency);
+    this.latencyMeasurements.push(measuredLatency);
     if (this.latencyMeasurements.length > this.maxLatencyMeasurements) {
       this.latencyMeasurements.shift();
     }
 
-    this.metrics.lastLatency = latency;
+    this.metrics.lastLatency = measuredLatency;
     this.metrics.averageLatency =
       this.latencyMeasurements.reduce((sum, l) => sum + l, 0) /
       this.latencyMeasurements.length;
@@ -952,14 +1172,23 @@ export class EnhancedWebSocketService {
    * Attempt to reconnect with exponential backoff (unlimited retries).
    */
   private attemptReconnect(): void {
+    if (this.disposed || this.reconnectTimeout || this.reconnectPendingWhileHidden) return;
+
+    if (this.isRuntimeSuspended()) {
+      this.reconnectPendingWhileHidden = true;
+      this.updateState(typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'reconnecting');
+      return;
+    }
+
     this.reconnectAttempts++;
     this.metrics.reconnectAttempts++;
 
     // Cap backoff at maxReconnectDelay so we don't wait forever between retries
-    const delay = Math.min(
+    const exponentialDelay = Math.min(
       this.baseReconnectDelay * Math.pow(2, Math.min(this.reconnectAttempts - 1, 10)),
       this.maxReconnectDelay
     );
+    const delay = addReconnectJitter(exponentialDelay, this.maxReconnectDelay);
 
     console.log(
       `[WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`
@@ -967,6 +1196,11 @@ export class EnhancedWebSocketService {
     this.updateState('reconnecting');
 
     this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null;
+      if (this.isRuntimeSuspended()) {
+        this.reconnectPendingWhileHidden = true;
+        return;
+      }
       this.connect();
     }, delay);
   }
@@ -1053,8 +1287,14 @@ export class EnhancedWebSocketService {
    */
   private handleOnline = (): void => {
     console.log('[WS] Network online - attempting reconnect');
-    if (this.connectionState === 'offline' || this.connectionState === 'disconnected') {
-      this.connect();
+    if (this.isDocumentHidden()) {
+      this.reconnectPendingWhileHidden = true;
+      this.updateState('reconnecting');
+      return;
+    }
+    if (this.connectionState === 'offline' || this.connectionState === 'disconnected' || this.reconnectPendingWhileHidden) {
+      this.reconnectPendingWhileHidden = false;
+      this.forceReconnect();
     }
   };
 
@@ -1063,6 +1303,15 @@ export class EnhancedWebSocketService {
    */
   private handleOffline = (): void => {
     console.log('[WS] Network offline');
+    // FIX: Suspend every heartbeat/open/reconnect deadline while offline; the
+    // online event owns exactly one fresh connection and channel resubscribe.
+    this.stopPingInterval();
+    this.clearOpenTimeout();
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    this.reconnectPendingWhileHidden = Boolean(this.ws || this.subscribers.size > 0);
     this.updateState('offline');
   };
 
@@ -1070,7 +1319,13 @@ export class EnhancedWebSocketService {
    * Cleanup resources
    */
   public destroy(): void {
+    // FIX: Mark disposed before closing because some WebSocket test/browser
+    // implementations dispatch onclose synchronously.
+    this.disposed = true;
     this.disconnect();
+
+    this.unsubSessionChange?.();
+    this.unsubSessionChange = null;
 
     if (typeof window !== 'undefined') {
       window.removeEventListener('online', this.handleOnline);
@@ -1124,8 +1379,11 @@ export class EnhancedWebSocketService {
   }
 }
 
-// Singleton instance
-let wsInstance: EnhancedWebSocketService | null = null;
+// FIX: Pool by requested transport identity. A dialog or secondary surface
+// must not destroy the main account/market socket merely by asking for a
+// different endpoint.
+const wsInstances = new Map<string, EnhancedWebSocketService>();
+let defaultWsInstanceKey: string | null = null;
 
 export const getEnhancedWebSocketService = (url?: string): EnhancedWebSocketService => {
   const normalizedRequestedUrl = (() => {
@@ -1141,30 +1399,47 @@ export const getEnhancedWebSocketService = (url?: string): EnhancedWebSocketServ
     return url;
   })();
 
-  if (!wsInstance && url) {
-    wsInstance = new EnhancedWebSocketService(normalizedRequestedUrl || url);
-  }
-
-  // If singleton exists but caller requests a different URL, recreate instance.
-  if (wsInstance && normalizedRequestedUrl) {
-    const currentUrl = (wsInstance as any).url as string | undefined;
-    if (currentUrl && currentUrl !== normalizedRequestedUrl) {
-      wsInstance.destroy();
-      wsInstance = new EnhancedWebSocketService(normalizedRequestedUrl);
+  const requestedKey = normalizedRequestedUrl || url;
+  if (requestedKey) {
+    let instance = wsInstances.get(requestedKey);
+    if (!instance) {
+      instance = new EnhancedWebSocketService(requestedKey);
+      wsInstances.set(requestedKey, instance);
     }
+    if (!defaultWsInstanceKey) defaultWsInstanceKey = requestedKey;
+    return instance;
   }
 
-  if (!wsInstance) {
+  const defaultInstance = defaultWsInstanceKey
+    ? wsInstances.get(defaultWsInstanceKey)
+    : undefined;
+  if (!defaultInstance) {
     throw new Error('WebSocket service not initialized. Provide URL on first call.');
   }
+  return defaultInstance;
+};
 
-  return wsInstance;
+export const releaseEnhancedWebSocketService = (service: EnhancedWebSocketService): void => {
+  // FIX: React effect cleanups for channel and listener ownership run in the
+  // same task. Defer the idle check once so shared consumers can detach/rebind
+  // before deciding whether this URL-keyed transport is truly abandoned.
+  queueMicrotask(() => {
+    const ownedKeys = Array.from(wsInstances.entries())
+      .filter(([, instance]) => instance === service)
+      .map(([key]) => key);
+    if (ownedKeys.length === 0 || service.hasActiveConsumers()) return;
+
+    service.destroy();
+    ownedKeys.forEach((key) => wsInstances.delete(key));
+    if (defaultWsInstanceKey && !wsInstances.has(defaultWsInstanceKey)) {
+      defaultWsInstanceKey = wsInstances.keys().next().value ?? null;
+    }
+  });
 };
 
 // Export for cleanup
 export const destroyWebSocketService = (): void => {
-  if (wsInstance) {
-    wsInstance.destroy();
-    wsInstance = null;
-  }
+  wsInstances.forEach((instance) => instance.destroy());
+  wsInstances.clear();
+  defaultWsInstanceKey = null;
 };

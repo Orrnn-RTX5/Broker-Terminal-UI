@@ -14,6 +14,7 @@ import {
   normalizeCandlePageAscending,
   type LogicalRangeLike,
 } from '../utils/candleHistory';
+import { sanitizePriceCandles } from '../services/chartPriceGuards';
 
 export type ChartType = 'candlestick' | 'bar' | 'line' | 'area';
 export type Timeframe = 'M1' | 'M5' | 'M15' | 'M30' | 'H1' | 'H4' | 'D1' | 'W1' | 'MN';
@@ -27,7 +28,43 @@ export interface Candle {
   volume: number;
   tickVolume?: number;
   realVolume?: number;
+  closed?: boolean;
 }
+
+// FIX: Preserve explicit backend finality and infer it only when a legacy
+// candle frame omits the flag and an authoritative period boundary is known.
+export const resolveCandleFinalityFromActivePeriod = <T extends Candle>(
+  candle: T,
+  activePeriodStart: number | null | undefined,
+): T => {
+  if (typeof candle.closed === 'boolean' || !Number.isFinite(activePeriodStart)) return candle;
+  return { ...candle, closed: candle.time < Number(activePeriodStart) };
+};
+
+// FIX: Record finalized buckets per timeframe so M1 finality cannot freeze M5/H1.
+export const markFinalizedCandleTime = (
+  finalizedByTimeframe: Map<string, number>,
+  timeframe: string,
+  candleTime: number,
+): void => {
+  if (!Number.isFinite(candleTime)) return;
+  const key = String(timeframe || '').trim().toUpperCase();
+  if (!key) return;
+  finalizedByTimeframe.set(
+    key,
+    Math.max(finalizedByTimeframe.get(key) ?? Number.NEGATIVE_INFINITY, candleTime),
+  );
+};
+
+export const isCandleAtOrBeforeFinalizedTime = (
+  finalizedByTimeframe: ReadonlyMap<string, number>,
+  timeframe: string,
+  candleTime: number,
+): boolean => {
+  const key = String(timeframe || '').trim().toUpperCase();
+  const finalizedTime = finalizedByTimeframe.get(key);
+  return Number.isFinite(finalizedTime) && candleTime <= Number(finalizedTime);
+};
 
 export type VolumeDisplaySettings = Pick<ChartProperties, 'showTickVolumes' | 'showRealVolumes'>;
 
@@ -69,10 +106,19 @@ export interface LivePriceOverlayColors {
   badgeTextColor: '#000000' | '#ffffff';
 }
 
+export const getLivePriceSeriesColor = (
+  colors: ChartProperties['colors'],
+  chartType: ChartType,
+  direction: 'up' | 'down',
+): string => {
+  if (chartType === 'line' || chartType === 'area') return colors.lineChart;
+  if (chartType === 'bar') return direction === 'up' ? colors.barUp : colors.barDown;
+  return direction === 'up' ? colors.bullCandle : colors.bearCandle;
+};
+
 const SESSION_GAP_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5', 'M15', 'M30', 'H1', 'H4']);
 const DENSE_MINUTE_SEPARATOR_TIMEFRAMES = new Set(['M1', 'M5']);
 const MIN_SESSION_GAP_SEPARATOR_SECONDS = 12 * 60 * 60;
-const LIVE_PRICE_MIN_LUMINANCE_DELTA = 0.2;
 const LIVE_PRICE_FALLBACK_DARK = '#000000';
 const LIVE_PRICE_FALLBACK_LIGHT = '#ffffff';
 
@@ -88,41 +134,64 @@ const normalizeColorCandidate = (color: string | undefined): string | null => {
 
 const getColorLuminance = (color: string | undefined): number | null => {
   if (!color) return null;
+  const toLinearChannel = (value: number): number => {
+    const channel = value / 255;
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  const getRelativeLuminance = (r: number, g: number, b: number): number => (
+    (toLinearChannel(r) * 0.2126)
+    + (toLinearChannel(g) * 0.7152)
+    + (toLinearChannel(b) * 0.0722)
+  );
   const trimmed = color.trim();
   const shortHex = /^#([a-f\d])([a-f\d])([a-f\d])$/i.exec(trimmed);
   if (shortHex) {
     const [, r, g, b] = shortHex;
-    return ((parseInt(r + r, 16) * 0.2126) + (parseInt(g + g, 16) * 0.7152) + (parseInt(b + b, 16) * 0.0722)) / 255;
+    return getRelativeLuminance(
+      parseInt(r + r, 16),
+      parseInt(g + g, 16),
+      parseInt(b + b, 16),
+    );
   }
 
   const longHex = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(trimmed);
   if (longHex) {
     const [, r, g, b] = longHex;
-    return ((parseInt(r, 16) * 0.2126) + (parseInt(g, 16) * 0.7152) + (parseInt(b, 16) * 0.0722)) / 255;
+    return getRelativeLuminance(parseInt(r, 16), parseInt(g, 16), parseInt(b, 16));
   }
 
   const rgb = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:,\s*[\d.]+\s*)?\)$/i.exec(trimmed);
   if (rgb) {
     const [, r, g, b] = rgb;
-    return ((Number(r) * 0.2126) + (Number(g) * 0.7152) + (Number(b) * 0.0722)) / 255;
+    return getRelativeLuminance(Number(r), Number(g), Number(b));
   }
 
   return null;
 };
 
+const getColorContrastRatio = (first: string, second: string): number | null => {
+  const firstLuminance = getColorLuminance(first);
+  const secondLuminance = getColorLuminance(second);
+  if (firstLuminance === null || secondLuminance === null) return null;
+  const lighter = Math.max(firstLuminance, secondLuminance);
+  const darker = Math.min(firstLuminance, secondLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+};
+
 const hasReadableColorSeparation = (color: string, background: string): boolean => {
-  const colorLuminance = getColorLuminance(color);
-  const backgroundLuminance = getColorLuminance(background);
-  if (colorLuminance === null || backgroundLuminance === null) return true;
-  return Math.abs(colorLuminance - backgroundLuminance) >= LIVE_PRICE_MIN_LUMINANCE_DELTA;
+  const contrast = getColorContrastRatio(color, background);
+  if (contrast === null) return true;
+  return contrast >= 3;
 };
 
 const getFallbackLineColor = (background: string): '#000000' | '#ffffff' => {
   const backgroundLuminance = getColorLuminance(background);
   if (backgroundLuminance === null) return LIVE_PRICE_FALLBACK_LIGHT;
-  return Math.abs(1 - backgroundLuminance) >= backgroundLuminance
-    ? LIVE_PRICE_FALLBACK_LIGHT
-    : LIVE_PRICE_FALLBACK_DARK;
+  const blackContrast = (backgroundLuminance + 0.05) / 0.05;
+  const whiteContrast = 1.05 / (backgroundLuminance + 0.05);
+  return whiteContrast >= blackContrast ? LIVE_PRICE_FALLBACK_LIGHT : LIVE_PRICE_FALLBACK_DARK;
 };
 
 const getReadableBadgeTextColor = (background: string): '#000000' | '#ffffff' => {
@@ -266,7 +335,7 @@ export const formatChartSeriesData = (
     Number.isFinite(candle.low) &&
     Number.isFinite(candle.close)
   );
-  const sortedCandles = options.assumeSortedUnique
+  const finiteCandles = options.assumeSortedUnique
     ? candles.filter(isValidFormattedCandle)
     : (() => {
       const uniqueCandles = new Map<number, Candle>();
@@ -275,6 +344,7 @@ export const formatChartSeriesData = (
         .filter(isValidFormattedCandle)
         .sort((a, b) => a.time - b.time);
     })();
+  const sortedCandles = sanitizePriceCandles(finiteCandles);
 
   const { candles: renderedCandles, gaps: marketGaps } = marketGapOptions
     ? buildMarketClosedGapSeries(sortedCandles, marketGapOptions)

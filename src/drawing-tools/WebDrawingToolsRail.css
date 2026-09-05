@@ -45,6 +45,36 @@
   box-shadow: inset 2px 0 0 var(--web-drawing-accent);
 }
 
+.web-drawing-tools-rail__toggle {
+  flex: 0 0 40px;
+  border-bottom: 1px solid var(--border-secondary);
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
+}
+
+.web-drawing-tools-rail[data-expanded='true'] .web-drawing-tools-rail__toggle {
+  background: color-mix(in srgb, var(--web-drawing-accent) 18%, var(--bg-quaternary));
+  color: color-mix(in srgb, var(--web-drawing-accent) 48%, var(--text-primary));
+  box-shadow: inset 2px 0 0 var(--web-drawing-accent);
+}
+
+.web-drawing-tools-rail[data-expanded='true'] .web-drawing-tools-rail__toggle:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--web-drawing-accent) 24%, var(--bg-quaternary));
+}
+
+.web-drawing-tools-rail[data-expanded='false'] .web-drawing-tools-rail__toggle:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--web-drawing-accent) 12%, var(--bg-quaternary));
+}
+
+.web-drawing-tools-rail__brand-mark {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  object-fit: cover;
+  pointer-events: none;
+}
+
 .web-drawing-tools-rail__flyout-mark {
   position: absolute;
   right: 2px;

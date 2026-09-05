@@ -16,6 +16,7 @@ const journalHarness = vi.hoisted(() => ({
 
 const clipboardWriteText = vi.fn();
 const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+const originalExecCommandDescriptor = Object.getOwnPropertyDescriptor(document, 'execCommand');
 
 vi.mock('../../services/api', () => ({
     journalApi: {
@@ -103,6 +104,11 @@ describe('JournalTab', () => {
         } else {
             Reflect.deleteProperty(navigator, 'clipboard');
         }
+        if (originalExecCommandDescriptor) {
+            Object.defineProperty(document, 'execCommand', originalExecCommandDescriptor);
+        } else {
+            Reflect.deleteProperty(document, 'execCommand');
+        }
     });
 
     it('loads mode=2/type=0 by default and renders the server response', async () => {
@@ -119,7 +125,7 @@ describe('JournalTab', () => {
             { mode: 2, type: 0 },
             { signal: expect.any(AbortSignal) },
         );
-        expect(screen.getByText('1 entries')).toBeInTheDocument();
+        expect(screen.getByText('1 records')).toBeInTheDocument();
     });
 
     it('uses readable square desktop controls across the Journal toolbar', async () => {
@@ -131,13 +137,63 @@ describe('JournalTab', () => {
         const typeSelect = screen.getByRole('combobox', { name: 'Journal type' });
         const modeSelect = screen.getByRole('combobox', { name: 'Journal mode' });
         const searchInput = screen.getByRole('textbox', { name: 'Filter journal messages' });
-        const timeButton = screen.getByRole('button', { name: '24h' });
+        const timeButton = screen.getByRole('button', { name: 'Today' });
 
         expect(typeSelect).toHaveClass('rtx-journal-control', 'h-7', 'text-[13px]');
         expect(modeSelect).toHaveClass('rtx-journal-control', 'h-7', 'text-[13px]');
         expect(searchInput).toHaveClass('rtx-journal-control', 'h-7', 'text-[13px]');
-        expect(timeButton).toHaveClass('rtx-journal-control', 'h-7', 'text-[13px]');
+        expect(timeButton).toHaveClass('rtx-journal-control', 'h-[22px]', 'text-[12px]');
         expect(typeSelect.closest('.rtx-journal-toolbar')).not.toBeNull();
+    });
+
+    it('keeps Copy visible and falls back when the preview denies Clipboard API access', async () => {
+        journalHarness.getLogs.mockResolvedValue({
+            count: 1,
+            logs: [makeLog({ message: 'Copy fallback row' })],
+        });
+        clipboardWriteText.mockRejectedValueOnce(new DOMException('Clipboard permission denied', 'NotAllowedError'));
+        const execCommand = vi.fn((command: string) => {
+            expect(command).toBe('copy');
+            expect(document.querySelector<HTMLTextAreaElement>('textarea[readonly]')?.value).toContain('Copy fallback row');
+            return true;
+        });
+        Object.defineProperty(document, 'execCommand', {
+            configurable: true,
+            value: execCommand,
+        });
+
+        render(<JournalTab />);
+        expect(await screen.findByText('Copy fallback row')).toBeInTheDocument();
+
+        const copyButton = screen.getByRole('button', { name: 'Copy filtered journal' });
+        expect(copyButton).not.toHaveClass('rtx-journal-advanced-control');
+        fireEvent.click(copyButton);
+
+        await waitFor(() => expect(copyButton).toHaveTextContent('Copied'));
+        expect(clipboardWriteText).toHaveBeenCalledOnce();
+        expect(execCommand).toHaveBeenCalledOnce();
+        expect(document.querySelector('textarea[readonly]')).not.toBeInTheDocument();
+    });
+
+    it('shows Failed when both clipboard paths reject the copy', async () => {
+        journalHarness.getLogs.mockResolvedValue({
+            count: 1,
+            logs: [makeLog({ message: 'Uncopyable row' })],
+        });
+        clipboardWriteText.mockRejectedValueOnce(new DOMException('Clipboard permission denied', 'NotAllowedError'));
+        Object.defineProperty(document, 'execCommand', {
+            configurable: true,
+            value: vi.fn().mockReturnValue(false),
+        });
+
+        render(<JournalTab />);
+        expect(await screen.findByText('Uncopyable row')).toBeInTheDocument();
+        const copyButton = screen.getByRole('button', { name: 'Copy filtered journal' });
+        fireEvent.click(copyButton);
+
+        await waitFor(() => expect(copyButton).toHaveTextContent('Failed'));
+        expect(screen.getByText('Unable to copy the filtered journal')).toBeInTheDocument();
+        expect(document.querySelector('textarea[readonly]')).not.toBeInTheDocument();
     });
 
     it('hydrates the last completed trade latency recorded before Journal mounts', async () => {
@@ -161,6 +217,95 @@ describe('JournalTab', () => {
         await act(async () => {
             await new Promise(resolve => window.setTimeout(resolve, 0));
         });
+    });
+
+    it('renders a correlated local Journal row for an executed order', async () => {
+        journalHarness.getLogs.mockResolvedValue({ count: 0, logs: [] });
+        recordTradeOrderLatency({
+            phase: 'placement_terminal',
+            transport: 'websocket',
+            traceId: '174000',
+            clientOrderId: '123e4567-e89b-42d3-a456-426614174000',
+            sessionScope: journalHarness.sessionScope,
+            symbol: 'XAUUSD',
+            side: 'buy',
+            volume: 0.01,
+            terminalStatus: 'filled',
+            totalMs: 14.625,
+        });
+
+        render(<JournalTab />);
+
+        expect(await screen.findByText('Order executed buy XAUUSD 0.01')).toBeInTheDocument();
+        expect(screen.getByText('14.63 ms')).toBeInTheDocument();
+        expect(screen.getByText('1 records')).toBeInTheDocument();
+        expect(screen.getByTestId('last-trade-latency')).toHaveTextContent('Last trade latency: 14.63 ms');
+    });
+
+    it('adds a failed terminal attempt to the Journal when its event arrives', async () => {
+        journalHarness.getLogs.mockResolvedValue({ count: 0, logs: [] });
+        render(<JournalTab />);
+        await screen.findByText('No journal entries for the selected filters');
+
+        act(() => {
+            recordTradeOrderLatency({
+                phase: 'placement_terminal',
+                transport: 'rest',
+                traceId: '174001',
+                clientOrderId: '123e4567-e89b-42d3-a456-426614174001',
+                sessionScope: journalHarness.sessionScope,
+                symbol: 'XAUUSD',
+                side: 'sell',
+                volume: 0.02,
+                terminalStatus: 'failed',
+                errorCode: 'HTTP_503',
+                errorMessage: 'Gateway unavailable',
+                totalMs: 27.4,
+            });
+        });
+
+        expect(await screen.findByText(
+            'Order failed sell XAUUSD 0.02: HTTP_503: Gateway unavailable',
+        )).toBeInTheDocument();
+        expect(screen.getByText('27.4 ms')).toBeInTheDocument();
+        expect(screen.getByText('1 records')).toBeInTheDocument();
+    });
+
+    it('keeps only the latest terminal observation for one durable client_order_id', async () => {
+        journalHarness.getLogs.mockResolvedValue({ count: 0, logs: [] });
+        const clientOrderId = '123e4567-e89b-42d3-a456-426614174009';
+        recordTradeOrderLatency({
+            phase: 'placement_terminal',
+            transport: 'websocket',
+            traceId: '174009',
+            clientOrderId,
+            sessionScope: journalHarness.sessionScope,
+            symbol: 'XAUUSD',
+            side: 'buy',
+            volume: 0.01,
+            terminalStatus: 'failed',
+            errorMessage: 'Status temporarily unavailable',
+            totalMs: 30,
+        });
+        recordTradeOrderLatency({
+            phase: 'placement_terminal',
+            transport: 'websocket',
+            traceId: '174009',
+            clientOrderId,
+            sessionScope: journalHarness.sessionScope,
+            symbol: 'XAUUSD',
+            side: 'buy',
+            volume: 0.01,
+            terminalStatus: 'filled',
+            totalMs: 42,
+        });
+
+        render(<JournalTab />);
+
+        expect(await screen.findByText('Order executed buy XAUUSD 0.01')).toBeInTheDocument();
+        expect(screen.queryByText(/Status temporarily unavailable/)).not.toBeInTheDocument();
+        expect(screen.getAllByTestId('journal-rendered-row')).toHaveLength(1);
+        expect(screen.getByText('42 ms')).toBeInTheDocument();
     });
 
     it('updates from terminal events and ignores other scopes and nonterminal samples', async () => {
@@ -219,7 +364,7 @@ describe('JournalTab', () => {
             id: 'older',
             type: 2,
             type_text: 'System',
-            datetime: nowSeconds() - 2 * 60 * 60,
+            datetime: nowSeconds() - 2 * 24 * 60 * 60,
             source: 'Terminal',
             message: 'Older connection event',
         });
@@ -227,6 +372,7 @@ describe('JournalTab', () => {
 
         render(<JournalTab />);
         expect(await screen.findByText('Recent order filled')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'All' }));
         expect(screen.getByText('Older connection event')).toBeInTheDocument();
 
         const oneHourButton = screen.getByRole('button', { name: '1h' });
@@ -272,7 +418,7 @@ describe('JournalTab', () => {
         render(<JournalTab />);
 
         expect(await screen.findByText('Journal row 0')).toBeInTheDocument();
-        expect(screen.getByText('1000 entries')).toBeInTheDocument();
+        expect(screen.getByText('1000 records')).toBeInTheDocument();
         expect(screen.getAllByTestId('journal-rendered-row').length).toBeLessThan(50);
         expect(screen.queryByText('Journal row 999')).not.toBeInTheDocument();
 
@@ -289,10 +435,10 @@ describe('JournalTab', () => {
         expect(await screen.findByText('Journal row 999')).toBeInTheDocument();
         expect(screen.getAllByTestId('journal-rendered-row').length).toBeLessThan(50);
 
-        const oneHourButton = screen.getByRole('button', { name: '1h' });
-        fireEvent.click(oneHourButton);
-        expect(oneHourButton).toHaveAttribute('aria-pressed', 'true');
-        expect(await screen.findByText('40 entries')).toBeInTheDocument();
+        const allButton = screen.getByRole('button', { name: 'All' });
+        fireEvent.click(allButton);
+        expect(allButton).toHaveAttribute('aria-pressed', 'true');
+        expect(await screen.findByText('1000 records')).toBeInTheDocument();
         expect(screen.getAllByTestId('journal-rendered-row').length).toBeLessThan(50);
         expect(journalHarness.getLogs).toHaveBeenCalledTimes(1);
     });
@@ -412,14 +558,18 @@ describe('JournalTab', () => {
         expect(screen.queryByText('Stale standard row')).not.toBeInTheDocument();
     });
 
-    it('copies only rows inside the selected 1h, 6h, 24h, and 7d time filter', async () => {
+    it('copies only rows inside each selected hourly and longer period', async () => {
         const now = nowSeconds();
         const logs = [
             makeLog({ id: '30m', datetime: now - 30 * 60, message: 'Journal row 30 minutes old' }),
-            makeLog({ id: '2h', datetime: now - 2 * 60 * 60, message: 'Journal row 2 hours old' }),
-            makeLog({ id: '12h', datetime: now - 12 * 60 * 60, message: 'Journal row 12 hours old' }),
+            makeLog({ id: '90m', datetime: now - 90 * 60, message: 'Journal row 90 minutes old' }),
+            makeLog({ id: '150m', datetime: now - 150 * 60, message: 'Journal row 150 minutes old' }),
+            makeLog({ id: '5h', datetime: now - 5 * 60 * 60, message: 'Journal row 5 hours old' }),
+            makeLog({ id: '10h', datetime: now - 10 * 60 * 60, message: 'Journal row 10 hours old' }),
+            makeLog({ id: '20h', datetime: now - 20 * 60 * 60, message: 'Journal row 20 hours old' }),
             makeLog({ id: '48h', datetime: now - 48 * 60 * 60, message: 'Journal row 48 hours old' }),
             makeLog({ id: '8d', datetime: now - 8 * 24 * 60 * 60, message: 'Journal row 8 days old' }),
+            makeLog({ id: '40d', datetime: now - 40 * 24 * 60 * 60, message: 'Journal row 40 days old' }),
         ];
         journalHarness.getLogs.mockResolvedValue({ count: logs.length, logs });
 
@@ -428,9 +578,14 @@ describe('JournalTab', () => {
 
         const cases = [
             { range: '1h', included: logs.slice(0, 1), excluded: logs.slice(1) },
-            { range: '6h', included: logs.slice(0, 2), excluded: logs.slice(2) },
-            { range: '24h', included: logs.slice(0, 3), excluded: logs.slice(3) },
-            { range: '7d', included: logs.slice(0, 4), excluded: logs.slice(4) },
+            { range: '2h', included: logs.slice(0, 2), excluded: logs.slice(2) },
+            { range: '3h', included: logs.slice(0, 3), excluded: logs.slice(3) },
+            { range: '6h', included: logs.slice(0, 4), excluded: logs.slice(4) },
+            { range: '12h', included: logs.slice(0, 5), excluded: logs.slice(5) },
+            { range: 'Today', included: logs.slice(0, 6), excluded: logs.slice(6) },
+            { range: 'Week', included: logs.slice(0, 7), excluded: logs.slice(7) },
+            { range: 'Month', included: logs.slice(0, 8), excluded: logs.slice(8) },
+            { range: 'All', included: logs, excluded: [] },
         ];
 
         for (const [index, testCase] of cases.entries()) {
@@ -451,7 +606,7 @@ describe('JournalTab', () => {
         const logs = [
             makeLog({ id: 'match', type: 6, type_text: 'Trade', datetime: nowSeconds() - 5 * 60, message: 'Needle trade accepted' }),
             makeLog({ id: 'trade-other', type: 6, type_text: 'Trade', datetime: nowSeconds() - 5 * 60, message: 'Other trade accepted' }),
-            makeLog({ id: 'trade-old', type: 6, type_text: 'Trade', datetime: nowSeconds() - 2 * 60 * 60, message: 'Needle old trade' }),
+            makeLog({ id: 'trade-old', type: 6, type_text: 'Trade', datetime: nowSeconds() - 2 * 24 * 60 * 60, message: 'Needle old trade' }),
             makeLog({ id: 'system-match', type: 2, type_text: 'System', datetime: nowSeconds() - 5 * 60, message: 'Needle system event' }),
         ];
         journalHarness.getLogs.mockResolvedValue({ count: logs.length, logs });
@@ -463,7 +618,7 @@ describe('JournalTab', () => {
         fireEvent.change(typeSelect, { target: { value: '6' } });
         await waitFor(() => expect(journalHarness.getLogs).toHaveBeenCalledTimes(2));
         await screen.findByText('Needle trade accepted');
-        fireEvent.click(screen.getByRole('button', { name: '1h' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Today' }));
         fireEvent.change(screen.getByPlaceholderText(/Filter messages/i), { target: { value: 'needle' } });
         fireEvent.click(screen.getByRole('button', { name: 'Copy filtered journal' }));
 
@@ -526,6 +681,79 @@ describe('JournalTab', () => {
         expect(copiedText).toContain('Gateway\t8.13 ms\tOrder sell XAUUSD 0.01 filled');
         expect(copiedText).toContain('Gateway\t17.4 ms\tOrder sell XAUUSD 0.01 filled');
         expect(copiedText).toContain('Gateway\t\u2014\tOrder filled without timing');
+    });
+
+    it('merges local latency into a terminal server row only by exact client_order_id', async () => {
+        const clientOrderId = '123e4567-e89b-42d3-a456-426614174002';
+        const message = 'Order rejected buy XAUUSD 0.01: Quote is stale';
+        journalHarness.getLogs.mockResolvedValue({
+            count: 1,
+            logs: [makeLog({
+                id: 'server-rejection',
+                client_order_id: clientOrderId,
+                code: 1,
+                code_text: 'ERROR',
+                type: 6,
+                type_text: 'Trade',
+                source: 'Gateway',
+                message,
+            })],
+        });
+        recordTradeOrderLatency({
+            phase: 'placement_terminal',
+            transport: 'websocket',
+            traceId: '174002',
+            clientOrderId,
+            sessionScope: journalHarness.sessionScope,
+            symbol: 'XAUUSD',
+            side: 'buy',
+            volume: 0.01,
+            terminalStatus: 'rejected',
+            errorMessage: 'Quote is stale',
+            totalMs: 31.25,
+        });
+
+        render(<JournalTab />);
+
+        expect(await screen.findByText(message)).toBeInTheDocument();
+        expect(screen.getAllByTestId('journal-rendered-row')).toHaveLength(1);
+        expect(screen.getByText('31.25 ms')).toBeInTheDocument();
+        expect(screen.queryByText('Order rejected buy XAUUSD 0.01: Quote is stale', { selector: '[title]' })).toBeInTheDocument();
+    });
+
+    it('defers to a contradictory authoritative terminal row without mislabeling its latency', async () => {
+        const clientOrderId = '123e4567-e89b-42d3-a456-426614174003';
+        journalHarness.getLogs.mockResolvedValue({
+            count: 1,
+            logs: [makeLog({
+                id: 'server-fill',
+                client_order_id: clientOrderId,
+                type: 6,
+                type_text: 'Trade',
+                source: 'Gateway',
+                message: 'Order buy XAUUSD 0.01 filled',
+            })],
+        });
+        recordTradeOrderLatency({
+            phase: 'placement_terminal',
+            transport: 'websocket',
+            traceId: '174003',
+            clientOrderId,
+            sessionScope: journalHarness.sessionScope,
+            symbol: 'XAUUSD',
+            side: 'buy',
+            volume: 0.01,
+            terminalStatus: 'failed',
+            errorMessage: 'Local status timeout',
+            totalMs: 30_000,
+        });
+
+        render(<JournalTab />);
+
+        expect(await screen.findByText('Order buy XAUUSD 0.01 filled')).toBeInTheDocument();
+        expect(screen.queryByText(/Local status timeout/)).not.toBeInTheDocument();
+        expect(screen.getAllByTestId('journal-rendered-row')).toHaveLength(1);
+        expect(screen.getByText('\u2014')).toBeInTheDocument();
     });
 
     it('copies only the newly loaded server-mode response', async () => {
@@ -611,13 +839,13 @@ describe('JournalTab', () => {
         expect(screen.getByText('Account B current row')).toBeInTheDocument();
     });
 
-    it('polls serially and aborts the active request when unmounted', async () => {
+    it('does not poll and aborts a manual refresh when unmounted', async () => {
         vi.useFakeTimers();
         const initialLoad = deferred<JournalResponse>();
-        const pollLoad = deferred<JournalResponse>();
+        const manualLoad = deferred<JournalResponse>();
         journalHarness.getLogs
             .mockReturnValueOnce(initialLoad.promise)
-            .mockReturnValueOnce(pollLoad.promise);
+            .mockReturnValueOnce(manualLoad.promise);
 
         const view = render(<JournalTab />);
         expect(journalHarness.getLogs).toHaveBeenCalledTimes(1);
@@ -633,10 +861,13 @@ describe('JournalTab', () => {
         });
 
         act(() => {
-            vi.advanceTimersByTime(15000);
+            vi.advanceTimersByTime(60000);
         });
+        expect(journalHarness.getLogs).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Refresh journal' }));
         expect(journalHarness.getLogs).toHaveBeenCalledTimes(2);
-        const pollSignal = journalHarness.getLogs.mock.calls[1][1].signal as AbortSignal;
+        const manualSignal = journalHarness.getLogs.mock.calls[1][1].signal as AbortSignal;
 
         act(() => {
             vi.advanceTimersByTime(30000);
@@ -644,11 +875,11 @@ describe('JournalTab', () => {
         expect(journalHarness.getLogs).toHaveBeenCalledTimes(2);
 
         view.unmount();
-        expect(pollSignal.aborted).toBe(true);
+        expect(manualSignal.aborted).toBe(true);
 
         await act(async () => {
-            pollLoad.resolve({ count: 0, logs: [] });
-            await pollLoad.promise;
+            manualLoad.resolve({ count: 0, logs: [] });
+            await manualLoad.promise;
         });
         act(() => {
             vi.advanceTimersByTime(30000);

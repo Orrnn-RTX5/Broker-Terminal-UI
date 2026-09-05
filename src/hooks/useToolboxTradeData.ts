@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, Position } from '../store/useAppStore';
 import { getStoredAccountLogin, normalizePosition } from '../api/tradeGateway';
 import {
-  buildBrokerWsV2Uri,
   getAccessToken,
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
@@ -10,8 +9,10 @@ import {
 } from '../services/brokerSession';
 import { useAppStore } from '../store/useAppStore';
 import { TRADE_OVERLAY_CLOSE_STATE_EVENT } from '../services/tradeOverlayHistory';
+import { getSessionTradeSnapshotRequests } from '../services/tradeStartupSnapshot';
 import {
   MARKET_ORDER_PLACEMENT_STATE_EVENT,
+  type MarketOrderPlacementState,
   type MarketOrderPlacementStateDetail,
 } from '../services/marketOrderPlacementEvents';
 
@@ -31,7 +32,9 @@ export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'>
   time_create?: number | string;
   time_update?: number | string;
   clientOrderId?: string;
-  placementState?: 'pending' | 'confirmed';
+  placementState?: MarketOrderPlacementState;
+  placementErrorCode?: string;
+  placementErrorMessage?: string;
 };
 
 export type ToolboxTradeDebugEvent = {
@@ -71,7 +74,6 @@ const INITIAL_STATE: ToolboxTradeState = {
 };
 
 const DEBUG_LIMIT = 18;
-const RECONNECT_MS = 3000;
 const IMMEDIATE_POSITION_RETENTION_MS = 30_000;
 const PENDING_MARKET_ORDER_ORPHAN_MS = 120_000;
 
@@ -195,6 +197,8 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     time_update: raw?.time_update ?? normalized.time_update,
     clientOrderId: raw?.clientOrderId ?? raw?.client_order_id,
     placementState: raw?.placementState ?? raw?.placement_state,
+    placementErrorCode: raw?.placementErrorCode ?? raw?.placement_error_code,
+    placementErrorMessage: raw?.placementErrorMessage ?? raw?.placement_error_message,
     comment: raw?.comment ?? normalized.comment ?? '',
   };
 };
@@ -218,6 +222,8 @@ const positionSignature = (position: ToolboxTradePosition): string => [
   position.time_update ?? '',
   position.clientOrderId ?? '',
   position.placementState ?? '',
+  position.placementErrorCode ?? '',
+  position.placementErrorMessage ?? '',
   position.comment ?? '',
 ].join(':');
 
@@ -302,14 +308,41 @@ export const replaceToolboxPositions = (
   rawPositions: any[],
 ): ToolboxTradePosition[] => {
   const previousByTicket = new Map(current.map((position) => [position.id, position]));
-  return rawPositions
-    .map(normalizeToolboxPosition)
-    .filter((position) => position.id > 0)
-    .sort((a, b) => b.id - a.id)
-    .map((position) => {
-      const previous = previousByTicket.get(position.id);
-      return previous && positionSignature(previous) === positionSignature(position) ? previous : position;
-    });
+  const nextByTicket = new Map<number, ToolboxTradePosition>();
+
+  rawPositions.forEach((raw) => {
+    const ticket = getPositionTicket(raw);
+    if (ticket <= 0) return;
+
+    const previous = previousByTicket.get(ticket);
+    const normalized = normalizeToolboxPosition(raw);
+    const hasRenderableIdentity = Boolean(
+      String(normalized.symbol ?? '').trim()
+      && toNumber(normalized.volume, 0) > 0,
+    );
+
+    // Sparse updates may patch a known row, but cannot create a blank row.
+    // This keeps the Trade footer stable while REST and WS snapshots race.
+    const candidate = hasRenderableIdentity
+      ? normalized
+      : previous
+        ? mergePatchIntoPosition(previous, raw)
+        : null;
+    if (
+      !candidate
+      || !String(candidate.symbol ?? '').trim()
+      || !(toNumber(candidate.volume, 0) > 0)
+    ) return;
+
+    nextByTicket.set(
+      ticket,
+      previous && positionSignature(previous) === positionSignature(candidate)
+        ? previous
+        : candidate,
+    );
+  });
+
+  return Array.from(nextByTicket.values()).sort((a, b) => b.id - a.id);
 };
 
 export const patchToolboxPositions = (
@@ -387,6 +420,10 @@ export const applyMarketOrderPlacementState = (
     return current;
   }
 
+  const existingProvisional = current.find((position) => (
+    position.clientOrderId === detail.clientOrderId
+    || position.id === detail.provisionalTicket
+  ));
   const withoutProvisional = current.filter((position) => (
     position.clientOrderId !== detail.clientOrderId
     && position.id !== detail.provisionalTicket
@@ -395,6 +432,29 @@ export const applyMarketOrderPlacementState = (
 
   if (detail.status === 'failed') {
     return removedProvisional ? withoutProvisional : current;
+  }
+
+  const provisionalStatus = ['pending', 'accepted', 'processing', 'rejected', 'expired']
+    .includes(detail.status);
+  if (provisionalStatus) {
+    const source = detail.position && typeof detail.position === 'object'
+      ? detail.position as Record<string, unknown>
+      : existingProvisional;
+    if (!source) return current;
+
+    const rawPosition: Record<string, unknown> = {
+      ...source,
+      client_order_id: detail.clientOrderId,
+      placement_state: detail.status,
+      placement_error_code: detail.errorCode,
+      placement_error_message: detail.errorMessage,
+    };
+    const ticket = getPositionTicket(rawPosition);
+    const volume = toNumber(rawPosition.volume_lots ?? rawPosition.volume ?? rawPosition.quantity, 0);
+    if (!ticket || !rawPosition.symbol || !(volume > 0)) {
+      return removedProvisional ? withoutProvisional : current;
+    }
+    return [normalizeToolboxPosition(rawPosition), ...withoutProvisional];
   }
 
   if (!detail.position || typeof detail.position !== 'object') {
@@ -406,15 +466,6 @@ export const applyMarketOrderPlacementState = (
     client_order_id: detail.clientOrderId,
     placement_state: detail.status,
   };
-
-  if (detail.status === 'pending') {
-    const ticket = getPositionTicket(rawPosition);
-    const volume = toNumber(rawPosition.volume_lots ?? rawPosition.volume ?? rawPosition.quantity, 0);
-    if (!ticket || !rawPosition.symbol || !(volume > 0)) {
-      return removedProvisional ? withoutProvisional : current;
-    }
-    return [normalizeToolboxPosition(rawPosition), ...withoutProvisional];
-  }
 
   return patchToolboxPositions(withoutProvisional, [rawPosition]);
 };
@@ -489,42 +540,73 @@ const arrayFrom = (payload: any, key?: string): any[] => {
   return [];
 };
 
-const extractPositionUpdates = (message: any): any[] => {
-  const payload = message?.data ?? message?.payload ?? message;
-  const nested = payload?.data ?? payload;
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.positions)) return payload.positions;
-  if (Array.isArray(nested?.positions)) return nested.positions;
-  if (payload?.position) return [payload.position];
-  if (payload?.closed_position) return [payload.closed_position];
-  if (getPositionTicket(payload)) return [payload];
-  return [];
-};
-
-const getCloseTickets = (message: any): number[] => {
-  const payload = message?.data ?? message?.payload ?? message;
-  const eventName = String(
-    message?.event ?? message?.type ?? payload?.event ?? payload?.type ?? payload?.data?.type ?? '',
-  ).toLowerCase();
-  const isCloseEvent = ['close', 'closed', 'sl_hit', 'tp_hit', 'stop_out', 'delete'].some((item) => eventName.includes(item));
-  if (!isCloseEvent) return [];
-  return extractPositionUpdates(message).map(getPositionTicket).filter(Boolean);
-};
-
-const openSymbolsFromPositions = (positions: ToolboxTradePosition[]): string[] => (
-  Array.from(new Set(positions.map((position) => String(position.symbol ?? '').toUpperCase()).filter(Boolean)))
-);
-
 const readLogin = (): number | null => {
+  const storeState = useAppStore.getState();
+  const storeLogin = Number.parseInt(String(storeState.accountId ?? ''), 10);
+  if (storeState.isAuthenticated && Number.isFinite(storeLogin) && storeLogin > 0) {
+    return storeLogin;
+  }
+
   const direct = getStoredAccountLogin();
   if (direct) return direct;
-  const storeLogin = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
   return Number.isFinite(storeLogin) && storeLogin > 0 ? storeLogin : null;
 };
 
 const getBrokerRestBaseUrl = (): string => {
   const serverUrl = getServerUrl();
   return serverUrl ? `${serverUrl.replace(/\/+$/, '')}/api/v2` : '';
+};
+
+type WarmTradeStoreSnapshot = Pick<
+  ReturnType<typeof useAppStore.getState>,
+  'isAuthenticated' | 'accountId' | 'account' | 'positions'
+>;
+
+type WarmTradeSessionScope = {
+  authenticated: boolean;
+  accountId: string | null;
+};
+
+export const selectWarmToolboxTradeSnapshot = (
+  storeSnapshot: WarmTradeStoreSnapshot,
+  activeLogin: number | null,
+  sessionScope: WarmTradeSessionScope,
+): Pick<ToolboxTradeState, 'account' | 'positions'> | null => {
+  const storeLogin = Number.parseInt(String(storeSnapshot.accountId ?? ''), 10);
+  const scopeLogin = Number.parseInt(String(sessionScope.accountId ?? ''), 10);
+  if (
+    !activeLogin
+    || !storeSnapshot.isAuthenticated
+    || !sessionScope.authenticated
+    || storeLogin !== activeLogin
+    || scopeLogin !== activeLogin
+  ) {
+    return null;
+  }
+
+  return {
+    account: storeSnapshot.account,
+    positions: replaceToolboxPositions([], storeSnapshot.positions as ToolboxTradePosition[]),
+  };
+};
+
+const createInitialToolboxTradeState = (): ToolboxTradeState => {
+  const login = readLogin();
+  const restBaseUrl = getBrokerRestBaseUrl();
+  const warmSnapshot = selectWarmToolboxTradeSnapshot(
+    useAppStore.getState(),
+    login,
+    getCommittedBrokerAccountSessionScope(),
+  );
+
+  return {
+    ...INITIAL_STATE,
+    login,
+    restBaseUrl,
+    account: warmSnapshot?.account ?? null,
+    positions: warmSnapshot?.positions ?? [],
+    loading: Boolean(login && restBaseUrl && !warmSnapshot),
+  };
 };
 
 const buildUrl = (baseUrl: string, path: string, params?: Record<string, string | number>): string => {
@@ -574,20 +656,18 @@ async function requestBrokerJson<T>(
 export function useToolboxTradeData() {
   const storeAccountId = useAppStore((state) => state.accountId);
   const storeAuthToken = useAppStore((state) => state.authToken);
-  const [state, setState] = useState<ToolboxTradeState>(INITIAL_STATE);
+  const centralAccount = useAppStore((state) => state.account);
+  const centralPositions = useAppStore((state) => state.positions);
+  const [state, setState] = useState<ToolboxTradeState>(createInitialToolboxTradeState);
 
-  const accountRef = useRef<Account | null>(null);
-  const positionsRef = useRef<ToolboxTradePosition[]>([]);
+  const accountRef = useRef<Account | null>(state.account);
+  const positionsRef = useRef<ToolboxTradePosition[]>(state.positions);
   const retainedImmediatePositionsRef = useRef<Map<number, RetainedImmediateToolboxPosition>>(new Map());
   const pendingMarketOrdersRef = useRef<Map<string, RetainedImmediateToolboxPosition>>(new Map());
   const optimisticallyClosedPositionsRef = useRef<Map<number, OptimisticallyClosedToolboxPosition>>(new Map());
   const placementSessionScopeRef = useRef(getCommittedBrokerAccountSessionScopeKey(
     getCommittedBrokerAccountSessionScope(),
   ));
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<number | null>(null);
-  const subscribedChannelsRef = useRef<Set<string>>(new Set());
-  const disposedRef = useRef(false);
   const refreshSeqRef = useRef(0);
   const activeRefreshControllerRef = useRef<AbortController | null>(null);
 
@@ -600,6 +680,7 @@ export function useToolboxTradeData() {
       readLogin() ?? '',
     ].join('|');
   }, [storeAccountId, storeAuthToken]);
+  const stateSessionKeyRef = useRef(sessionKey);
 
   const pushDebug = useCallback((event: ToolboxTradeDebugEvent) => {
     setState((prev) => ({
@@ -616,37 +697,10 @@ export function useToolboxTradeData() {
     setState((prev) => ({ ...prev, account }));
   }, []);
 
-  const sendWsMessage = useCallback((message: Record<string, unknown>) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
-    ws.send(JSON.stringify(message));
-    return true;
-  }, []);
-
-  const syncTickSubscriptions = useCallback((positions: ToolboxTradePosition[]) => {
-    const desired = new Set(openSymbolsFromPositions(positions).map((symbol) => `ticks.${symbol}`));
-    const current = subscribedChannelsRef.current;
-
-    desired.forEach((channel) => {
-      if (!current.has(channel) && sendWsMessage({ action: 'subscribe', channel })) {
-        current.add(channel);
-      }
-    });
-
-    Array.from(current).forEach((channel) => {
-      if (!channel.startsWith('ticks.')) return;
-      if (desired.has(channel)) return;
-      if (sendWsMessage({ action: 'unsubscribe', channel })) {
-        current.delete(channel);
-      }
-    });
-  }, [sendWsMessage]);
-
   const commitPositions = useCallback((positions: ToolboxTradePosition[]) => {
     const previousSig = positionsSignature(positionsRef.current);
     const nextSig = positionsSignature(positions);
     positionsRef.current = positions;
-    syncTickSubscriptions(positions);
     const storePositions = Array.isArray(useAppStore.getState().positions)
       ? useAppStore.getState().positions as ToolboxTradePosition[]
       : [];
@@ -658,7 +712,7 @@ export function useToolboxTradeData() {
     }
     if (previousSig === nextSig) return;
     setState((prev) => ({ ...prev, positions }));
-  }, [syncTickSubscriptions]);
+  }, []);
 
   const refresh = useCallback(async () => {
     const login = readLogin();
@@ -686,18 +740,22 @@ export function useToolboxTradeData() {
     }
 
     try {
-      const [accountBody, metricsBody, positionsBody] = await Promise.all([
-        requestBrokerJson<any>(restBaseUrl, `/account/${login}`, undefined, controller.signal),
-        requestBrokerJson<any>(restBaseUrl, `/account/${login}/metrics`, undefined, controller.signal).catch(() => null),
-        requestBrokerJson<any>(restBaseUrl, `/positions/${login}`, { limit: 50, offset: 0 }, controller.signal),
-      ]);
+      // Start every read together, but never hold open-position rows behind
+      // account or optional metrics latency.
+      const startupRequests = getSessionTradeSnapshotRequests(login);
+      const metricsPromise = requestBrokerJson<any>(
+        restBaseUrl,
+        `/account/${login}/metrics`,
+        undefined,
+        controller.signal,
+      ).catch(() => null);
+      const positionsResult = await startupRequests.positionsResultPromise;
 
       if (seq !== refreshSeqRef.current || controller.signal.aborted) return;
-
-      const mergedAccount = normalizeToolboxAccount(
-        { ...(unwrapData(accountBody) ?? {}), ...(unwrapData(metricsBody) ?? {}) },
-        accountRef.current,
-      );
+      if (positionsResult.status === 'rejected') {
+        throw positionsResult.reason;
+      }
+      const positionsBody = positionsResult.value;
       const rawPositions = arrayFrom(positionsBody, 'positions');
       const rawPositionTickets = new Set(rawPositions.map(getPositionTicket).filter(Boolean));
       const now = Date.now();
@@ -724,7 +782,6 @@ export function useToolboxTradeData() {
           retainedImmediatePositionsRef.current.delete(ticket);
         }
       });
-      commitAccount(mergedAccount);
       commitPositions(mergeRetainedImmediateToolboxPositions(
         snapshot,
         Array.from(retainedImmediatePositionsRef.current.values()),
@@ -746,8 +803,26 @@ export function useToolboxTradeData() {
       pushDebug({
         at: Date.now(),
         source: 'rest',
-        message: `Loaded account ${login}, ${rawPositions.length} open position(s) from ${restBaseUrl}`,
+        message: `Loaded ${rawPositions.length} open position(s) for account ${login} from ${restBaseUrl}`,
       });
+
+      const accountResult = await startupRequests.accountResultPromise;
+      if (seq !== refreshSeqRef.current || controller.signal.aborted) return;
+      if (accountResult.status === 'rejected') {
+        throw accountResult.reason;
+      }
+
+      const accountBody = accountResult.value;
+      commitAccount(normalizeToolboxAccount(unwrapData(accountBody), accountRef.current));
+
+      const metricsBody = await metricsPromise;
+      if (seq !== refreshSeqRef.current || controller.signal.aborted) return;
+      if (metricsBody) {
+        commitAccount(normalizeToolboxAccount(
+          { ...(unwrapData(accountBody) ?? {}), ...(unwrapData(metricsBody) ?? {}) },
+          accountRef.current,
+        ));
+      }
     } catch (error) {
       if (controller.signal.aborted) return;
       const message = error instanceof Error ? error.message : 'Failed to load Trade tab data';
@@ -784,7 +859,19 @@ export function useToolboxTradeData() {
   }, [commitPositions]);
 
   useEffect(() => {
-    disposedRef.current = false;
+    const sessionChanged = stateSessionKeyRef.current !== sessionKey;
+    if (sessionChanged) {
+      stateSessionKeyRef.current = sessionKey;
+      accountRef.current = null;
+      positionsRef.current = [];
+      pendingMarketOrdersRef.current.clear();
+      setState({
+        ...INITIAL_STATE,
+        login: readLogin(),
+        restBaseUrl: getBrokerRestBaseUrl(),
+        loading: Boolean(readLogin()),
+      });
+    }
     retainedImmediatePositionsRef.current.clear();
     optimisticallyClosedPositionsRef.current.clear();
     const nextPlacementScope = getCommittedBrokerAccountSessionScopeKey(
@@ -795,32 +882,41 @@ export function useToolboxTradeData() {
       pendingMarketOrdersRef.current.clear();
       setState((prev) => ({ ...prev, pendingPositions: [] }));
     }
-    void refresh();
     return () => {
       activeRefreshControllerRef.current?.abort();
     };
-  }, [refresh, sessionKey]);
+  }, [sessionKey]);
 
   useEffect(() => {
-    disposedRef.current = false;
-    let forceRefreshTimer: number | null = null;
-    const handleForceRefresh = () => {
-      if (forceRefreshTimer !== null) window.clearTimeout(forceRefreshTimer);
-      // Twenty fills may dispatch twenty reconciliation events. The Toolbox's
-      // REST snapshot performs three requests, so coalesce the burst while its
-      // live WS position stream continues updating the Trade tab immediately.
-      forceRefreshTimer = window.setTimeout(() => {
-        forceRefreshTimer = null;
-        void refresh();
-      }, 100);
-    };
+    const login = readLogin();
+    const storeLogin = Number.parseInt(String(storeAccountId ?? ''), 10);
+    if (!login || storeLogin !== login) return;
+
+    commitAccount(centralAccount);
+    const nextPositions = replaceToolboxPositions(
+      positionsRef.current,
+      Array.isArray(centralPositions) ? centralPositions : [],
+    );
+    const previousSig = positionsSignature(positionsRef.current);
+    const nextSig = positionsSignature(nextPositions);
+    positionsRef.current = nextPositions;
+    setState((prev) => ({
+      ...prev,
+      account: centralAccount,
+      positions: previousSig === nextSig ? prev.positions : nextPositions,
+      loading: false,
+      error: null,
+      login,
+      restBaseUrl: getBrokerRestBaseUrl(),
+      wsState: 'connected',
+    }));
+  }, [centralAccount, centralPositions, commitAccount, storeAccountId]);
+
+  useEffect(() => {
     const handleManualRefresh = () => void refresh();
-    window.addEventListener('rtx:force-refresh-positions', handleForceRefresh);
     window.addEventListener('rtx:toolbox-trade-refresh', handleManualRefresh);
     return () => {
-      window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
       window.removeEventListener('rtx:toolbox-trade-refresh', handleManualRefresh);
-      if (forceRefreshTimer !== null) window.clearTimeout(forceRefreshTimer);
     };
   }, [refresh]);
 
@@ -838,7 +934,7 @@ export function useToolboxTradeData() {
         || toNumber(detail.login, 0) !== login
         || detail.sessionScope !== activeSessionScope
       ) return;
-      if (detail.status === 'pending') {
+      if (['pending', 'accepted', 'processing', 'rejected', 'expired'].includes(detail.status)) {
         const currentPending = Array.from(pendingMarketOrdersRef.current.values())
           .map(({ position }) => position);
         const nextPending = applyMarketOrderPlacementState(
@@ -961,153 +1057,17 @@ export function useToolboxTradeData() {
     return () => window.removeEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleCloseState);
   }, [commitPositions]);
 
-  useEffect(() => {
-    const login = readLogin();
-    const restBaseUrl = getBrokerRestBaseUrl();
-    const token = getAccessToken();
-
-    if (!login || !restBaseUrl || !token) {
-      setState((prev) => ({
-        ...prev,
-        login,
-        wsUrl: '',
-        wsState: 'idle',
-      }));
-      return;
-    }
-
-    let disposed = false;
-    disposedRef.current = false;
-
-    const closeSocket = () => {
-      if (reconnectTimerRef.current) {
-        window.clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-      if (wsRef.current) {
-        try {
-          wsRef.current.close(1000, 'Toolbox Trade tab reconnecting');
-        } catch {
-          // ignore close errors
-        }
-        wsRef.current = null;
-      }
-      subscribedChannelsRef.current.clear();
+  const visibleState = stateSessionKeyRef.current === sessionKey
+    ? state
+    : {
+      ...INITIAL_STATE,
+      login: readLogin(),
+      restBaseUrl: getBrokerRestBaseUrl(),
+      loading: true,
     };
-
-    const subscribeBaseChannels = () => {
-      const channels = [`positions.${login}`, `metrics.${login}`, `account.${login}`];
-      channels.forEach((channel) => {
-        if (sendWsMessage({ action: 'subscribe', channel })) {
-          subscribedChannelsRef.current.add(channel);
-        }
-      });
-      syncTickSubscriptions(positionsRef.current);
-      pushDebug({ at: Date.now(), source: 'ws', message: `Subscribed ${channels.join(', ')}` });
-    };
-
-    const handleMessage = (event: MessageEvent) => {
-      let message: any;
-      try {
-        message = JSON.parse(String(event.data));
-      } catch {
-        return;
-      }
-
-      const channel = String(message?.channel ?? message?.topic ?? '');
-      if (!channel || message?.type === 'subscribed' || message?.type === 'pong') return;
-
-      if (channel.startsWith(`positions.${login}`)) {
-        const closeTickets = getCloseTickets(message);
-        const updates = extractPositionUpdates(message);
-        if (closeTickets.length > 0 || updates.length > 0) {
-          closeTickets.forEach((ticket) => {
-            retainedImmediatePositionsRef.current.delete(ticket);
-            optimisticallyClosedPositionsRef.current.delete(ticket);
-          });
-          updates.forEach((update) => retainedImmediatePositionsRef.current.delete(getPositionTicket(update)));
-          const visibleUpdates = updates.filter(
-            (update) => !optimisticallyClosedPositionsRef.current.has(getPositionTicket(update)),
-          );
-          const next = patchToolboxPositions(positionsRef.current, visibleUpdates, closeTickets);
-          commitPositions(next);
-          setState((prev) => ({ ...prev, lastWsAt: Date.now() }));
-        }
-        return;
-      }
-
-      if (channel.startsWith(`metrics.${login}`) || channel.startsWith(`account.${login}`)) {
-        const account = normalizeToolboxAccount(message, accountRef.current);
-        commitAccount(account);
-        setState((prev) => ({ ...prev, lastWsAt: Date.now() }));
-        return;
-      }
-
-      if (channel.startsWith('ticks.')) {
-        const payload = message?.data ?? message?.payload ?? message;
-        const tick = { ...payload, symbol: payload?.symbol ?? channel.split('.')[1] };
-        const next = patchPositionsFromTick(positionsRef.current, tick);
-        if (next !== positionsRef.current) {
-          commitPositions(next);
-          setState((prev) => ({ ...prev, lastWsAt: Date.now() }));
-        }
-      }
-    };
-
-    const connect = () => {
-      if (disposed) return;
-
-      const wsUrl = buildBrokerWsV2Uri(token);
-      setState((prev) => ({
-        ...prev,
-        wsUrl: wsUrl.replace(/token=[^&]+/i, 'token=***'),
-        wsState: 'connecting',
-      }));
-
-      try {
-        const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          if (disposed) return;
-          setState((prev) => ({ ...prev, wsState: 'connected' }));
-          pushDebug({ at: Date.now(), source: 'ws', message: `Connected to ${wsUrl.replace(/token=[^&]+/i, 'token=***')}` });
-          subscribeBaseChannels();
-        };
-
-        ws.onmessage = handleMessage;
-
-        ws.onerror = () => {
-          if (disposed) return;
-          setState((prev) => ({ ...prev, wsState: 'error' }));
-          pushDebug({ at: Date.now(), source: 'ws', message: 'WebSocket error' });
-        };
-
-        ws.onclose = () => {
-          if (disposed) return;
-          subscribedChannelsRef.current.clear();
-          setState((prev) => ({ ...prev, wsState: 'disconnected' }));
-          reconnectTimerRef.current = window.setTimeout(connect, RECONNECT_MS);
-          pushDebug({ at: Date.now(), source: 'ws', message: `Disconnected; reconnecting in ${RECONNECT_MS}ms` });
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'WebSocket connect failed';
-        setState((prev) => ({ ...prev, wsState: 'error', error: message }));
-        pushDebug({ at: Date.now(), source: 'ws', message });
-      }
-    };
-
-    closeSocket();
-    connect();
-
-    return () => {
-      disposed = true;
-      closeSocket();
-    };
-  }, [commitAccount, commitPositions, pushDebug, sendWsMessage, sessionKey, syncTickSubscriptions]);
 
   return {
-    ...state,
+    ...visibleState,
     refresh,
     removePosition,
     removePositionsByMode,

@@ -5,7 +5,21 @@ export type StartupMetricName =
   | 'login-interaction'
   | 'login-auth'
   | 'auth-network'
+  | 'auth-session-persist'
+  | 'auth-store-runtime'
+  | 'auth-store-commit'
+  | 'auth-terminal-ready'
+  | 'auth-handoff'
   | 'auth-shell';
+
+export type PostAuthenticationPhase = Extract<
+  StartupMetricName,
+  | 'auth-session-persist'
+  | 'auth-store-runtime'
+  | 'auth-store-commit'
+  | 'auth-terminal-ready'
+  | 'auth-handoff'
+>;
 
 type StartupPerformanceBridge = {
   beginInteraction?: (label: string) => number | void;
@@ -68,7 +82,6 @@ export const waitForLoginFeedbackPaint = (): Promise<void> => {
     const selector = 'form[data-rtx-login-form][data-login-submit-pending="true"]';
     let frameId: number | undefined;
     let paintTaskId: number | undefined;
-    let timeoutId: number | undefined;
     let paintScheduled = false;
 
     const hasRenderedFeedback = (): boolean => {
@@ -104,7 +117,7 @@ export const waitForLoginFeedbackPaint = (): Promise<void> => {
       subtree: true,
       attributeFilter: ['aria-busy', 'data-login-submit-pending', 'disabled'],
     });
-    timeoutId = window.setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
       observer.disconnect();
       if (frameId !== undefined) window.cancelAnimationFrame(frameId);
       if (paintTaskId !== undefined) window.clearTimeout(paintTaskId);
@@ -125,6 +138,12 @@ export const markAuthenticationAccepted = (): void => {
   }
 };
 
+/** Publish cumulative post-authentication phases to expose the shell critical path. */
+export const markPostAuthenticationPhase = (name: PostAuthenticationPhase): void => {
+  if (typeof performance === 'undefined' || authAcceptedAt <= 0) return;
+  publishStartupMetric(name, performance.now() - authAcceptedAt);
+};
+
 export const scheduleAuthenticatedShellPaintMeasurement = (): (() => void) => {
   if (
     typeof window === 'undefined'
@@ -138,7 +157,6 @@ export const scheduleAuthenticatedShellPaintMeasurement = (): (() => void) => {
   let cancelled = false;
   let observer: MutationObserver | undefined;
   let frameId: number | undefined;
-  let timeoutId: number | undefined;
   let paintTaskId: number | undefined;
 
   const cleanup = () => {
@@ -163,7 +181,7 @@ export const scheduleAuthenticatedShellPaintMeasurement = (): (() => void) => {
     observer = new MutationObserver(schedulePaintConfirmation);
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
-  timeoutId = window.setTimeout(cleanup, 5_000);
+  const timeoutId = window.setTimeout(cleanup, 5_000);
   schedulePaintConfirmation();
 
   return () => {

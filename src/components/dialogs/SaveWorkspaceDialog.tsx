@@ -6,8 +6,11 @@
 import { Icon } from '../ui/Icon';
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { workspaceApi } from '../../services/api';
 import type { Workspace } from '../../services/api';
+import {
+    getWorkspaceProfile,
+    saveCurrentWorkspaceProfile,
+} from '../../services/localWorkspaceProfiles';
 
 export interface SaveWorkspaceDialogProps {
     onConfirm: (workspaceName?: string) => void;
@@ -23,8 +26,7 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
     onCancel,
     existingWorkspace,
     workspaceData,
-    userId = '1',
-    accountId = '1'
+    accountId = ''
 }) => {
     const [workspaceName, setWorkspaceName] = useState(existingWorkspace || 'Default');
     const [showOverwriteWarning, setShowOverwriteWarning] = useState(false);
@@ -33,69 +35,76 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
 
     const handleSave = async () => {
         setError(null);
+        const workspaceAccountId = accountId.trim();
+        const normalizedWorkspaceName = workspaceName.trim();
 
-        // Check if workspace name already exists locally
-        const existingWorkspaces = JSON.parse(localStorage.getItem('workspaces') || '[]');
-        const workspaceExists = existingWorkspaces.some((w: any) => w.name === workspaceName);
+        if (!workspaceAccountId) {
+            setError('No active trading account is available for this workspace.');
+            return;
+        }
+
+        let workspaceExists = false;
+        try {
+            workspaceExists = Boolean(getWorkspaceProfile({
+                accountId: workspaceAccountId,
+                profileName: normalizedWorkspaceName,
+            }));
+        } catch (saveError) {
+            setError(saveError instanceof Error ? saveError.message : 'The workspace name is not valid.');
+            return;
+        }
 
         if (workspaceExists && !showOverwriteWarning) {
             setShowOverwriteWarning(true);
             return;
         }
 
-        // Perform the save
-        await performSave(workspaceExists);
+        await performSave();
     };
 
-    const performSave = async (overwrite: boolean) => {
+    const performSave = async () => {
         setIsSaving(true);
         setError(null);
 
         try {
-            // Prepare workspace data
-            const workspace: Workspace = {
-                name: workspaceName,
-                userId,
-                accountId,
-                charts: workspaceData?.charts || JSON.stringify([]),
-                layout: workspaceData?.layout || JSON.stringify({}),
-                marketWatch: workspaceData?.marketWatch || JSON.stringify({}),
-                orderPanel: workspaceData?.orderPanel || JSON.stringify({}),
-                version: '1.0.0',
-                isDefault: false,
-                description: `Workspace saved on ${new Date().toLocaleString()}`,
-            };
+            const layout = workspaceData?.layout && typeof workspaceData.layout === 'object'
+                ? workspaceData.layout as Record<string, unknown>
+                : {};
+            const marketWatch = workspaceData?.marketWatch && typeof workspaceData.marketWatch === 'object'
+                ? workspaceData.marketWatch as Record<string, unknown>
+                : {};
+            const orderPanel = workspaceData?.orderPanel && typeof workspaceData.orderPanel === 'object'
+                ? workspaceData.orderPanel as Record<string, unknown>
+                : {};
 
-            // Call API to save workspace
-            const response = await workspaceApi.saveWorkspace(workspace, overwrite);
-
-            if (response.success) {
-                // Save to localStorage as well for offline access
-                const existingWorkspaces = JSON.parse(localStorage.getItem('workspaces') || '[]');
-                const updatedWorkspaces = existingWorkspaces.filter((w: any) => w.name !== workspaceName);
-                updatedWorkspaces.push({
-                    name: workspaceName,
-                    workspaceId: response.workspaceId,
-                    savedAt: new Date().toISOString(),
-                    ...workspaceData
-                });
-                localStorage.setItem('workspaces', JSON.stringify(updatedWorkspaces));
-
-                // Success callback
-                onConfirm(workspaceName);
-            } else {
-                setError(response.message || 'Failed to save workspace');
-            }
-        } catch (err: any) {
-            console.error('[SaveWorkspace] Error:', err);
-            setError(err.message || 'Failed to save workspace. Please try again.');
+            saveCurrentWorkspaceProfile({
+                accountId: accountId.trim(),
+                profileName: workspaceName.trim(),
+                view: {
+                    selectedSymbol: typeof marketWatch.selectedSymbol === 'string'
+                        ? marketWatch.selectedSymbol
+                        : undefined,
+                    orderVolume: typeof orderPanel.volume === 'number'
+                        ? orderPanel.volume
+                        : undefined,
+                    dockHeight: typeof layout.dockHeight === 'number'
+                        ? layout.dockHeight
+                        : undefined,
+                },
+            });
+            onConfirm(workspaceName.trim());
+        } catch (saveError: unknown) {
+            console.error('[SaveWorkspace] Error:', saveError);
+            setError(saveError instanceof Error
+                ? saveError.message
+                : 'Failed to save workspace. Please try again.');
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleOverwriteConfirm = async () => {
-        await performSave(true);
+        await performSave();
     };
 
     return createPortal(

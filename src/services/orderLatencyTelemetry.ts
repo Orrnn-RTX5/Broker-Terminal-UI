@@ -10,6 +10,8 @@ export const TRADE_ORDER_LATENCY_EVENT = 'rtx:trade-order-latency';
 
 export type TradeOrderLatencyTransport = 'websocket' | 'rest';
 
+export type TradeOrderTerminalStatus = 'filled' | 'rejected' | 'expired' | 'failed';
+
 export type TradeOrderLatencyPhase =
   | 'ws_enqueued'
   | 'order_accepted'
@@ -19,7 +21,8 @@ export type TradeOrderLatencyPhase =
   | 'ws_transport_error'
   | 'rest_started'
   | 'rest_completed'
-  | 'rest_failed';
+  | 'rest_failed'
+  | 'placement_terminal';
 
 export interface TradeOrderLatencySample {
   version: 1;
@@ -28,8 +31,15 @@ export interface TradeOrderLatencySample {
   phase: TradeOrderLatencyPhase;
   transport: TradeOrderLatencyTransport;
   traceId: string;
+  /** Exact local correlation key. Retained in memory only for Journal reconciliation. */
+  clientOrderId?: string;
   sessionScope?: string;
   symbol?: string;
+  side?: 'buy' | 'sell';
+  volume?: number;
+  terminalStatus?: TradeOrderTerminalStatus;
+  errorCode?: string;
+  errorMessage?: string;
   reason?: string;
   payloadBytes?: number;
   serializationMs?: number;

@@ -58,6 +58,61 @@ describe('useAppStore setPositions burst merge', () => {
     });
   });
 
+  it('rejects unknown sparse rows while preserving a known ticket update', () => {
+    useAppStore.getState().setPositions([position(24_155, {
+      symbol: 'BTCUSD',
+      volume: 0.01,
+      openPrice: 79_500,
+    })]);
+
+    useAppStore.getState().setPositions([
+      {
+        id: 24_155,
+        currentPrice: 79_608.32,
+        unrealizedPnL: -1.65,
+      } as Position,
+      {
+        id: 1,
+        symbol: '',
+        side: 'BUY',
+        volume: 0,
+        currentPrice: 0,
+      } as Position,
+      {
+        id: 24_185,
+        symbol: '',
+        side: 'BUY',
+        volume: 0,
+        currentPrice: 79_608.32,
+        unrealizedPnL: -0.22,
+      } as Position,
+    ]);
+
+    expect(useAppStore.getState().positions).toEqual([
+      expect.objectContaining({
+        id: 24_155,
+        symbol: 'BTCUSD',
+        volume: 0.01,
+        openPrice: 79_500,
+        currentPrice: 79_608.32,
+        unrealizedPnL: -1.65,
+      }),
+    ]);
+  });
+
+  it('admits a complete new ticket even when opening price is not in the snapshot', () => {
+    useAppStore.getState().setPositions([position(24_185, {
+      symbol: 'BTCUSD',
+      volume: 0.01,
+      openPrice: 0,
+      currentPrice: 79_608.32,
+    })]);
+
+    expect(useAppStore.getState().positions).toEqual([
+      expect.objectContaining({ id: 24_185, symbol: 'BTCUSD', volume: 0.01 }),
+    ]);
+  });
+
   it('merges a 500-position unordered burst by strict ticket id and removes absent rows', () => {
     const initial = Array.from({ length: 500 }, (_, index) => position(index + 1));
     useAppStore.getState().setPositions(initial);

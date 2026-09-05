@@ -31,9 +31,15 @@ export interface ClosedTradeOverlaySnapshot {
   side: TradeOverlaySide;
   volume: number;
   entryPrice: number;
+  /** Candle-aligned timestamp used only to place the entry marker on the chart. */
   entryTime: number;
+  /** Raw broker execution timestamp used in entry details. */
+  entryExecutionTime: number;
   exitPrice: number;
+  /** Candle-aligned timestamp used only to place the close marker on the chart. */
   exitTime: number;
+  /** Raw broker execution timestamp used in close details. */
+  exitExecutionTime: number;
   profit?: number;
   source: ClosedTradeOverlaySource;
 }
@@ -45,8 +51,10 @@ export interface TradeOverlayCloseSnapshotSeed {
   volume: number;
   entryPrice: number;
   entryTime: number;
+  entryExecutionTime?: number;
   exitPrice: number;
   exitTime: number;
+  exitExecutionTime?: number;
   profit?: number;
 }
 
@@ -207,8 +215,10 @@ const pruneOptimisticClosedTradeSnapshotStore = (now = Date.now()) => {
   });
 };
 
+// FIX: Position/deal matching must not collapse separate broker contracts such
+// as EURUSD and EURUSD.r onto the same chart overlay.
 const normalizeSymbol = (value: unknown): string =>
-  String(value ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  String(value ?? '').trim().toUpperCase();
 
 const getTicket = (value: unknown): string | null => {
   const ticket = String(value ?? '').trim();
@@ -357,8 +367,10 @@ export const getTradeOverlayCloseSnapshots = (detail: unknown): TradeOverlayClos
       volume: Number(row.volume ?? row.quantity ?? row.volume_lots ?? row.lots) || 0,
       entryPrice,
       entryTime,
+      entryExecutionTime: entryTime,
       exitPrice,
       exitTime,
+      exitExecutionTime: exitTime,
       profit: Number.isFinite(Number(row.profit)) ? Number(row.profit) : undefined,
     }];
   });
@@ -481,8 +493,10 @@ export const buildOptimisticClosedTradeSnapshot = ({
   volume,
   entryPrice,
   entryTime,
+  entryExecutionTime,
   exitPrice,
   exitTime,
+  exitExecutionTime,
   profit,
 }: TradeOverlayCloseSnapshotSeed): ClosedTradeOverlaySnapshot | null => {
   if (
@@ -503,8 +517,10 @@ export const buildOptimisticClosedTradeSnapshot = ({
     volume: Number(volume) || 0,
     entryPrice,
     entryTime,
+    entryExecutionTime: entryExecutionTime && entryExecutionTime > 0 ? entryExecutionTime : entryTime,
     exitPrice,
     exitTime,
+    exitExecutionTime: exitExecutionTime && exitExecutionTime > 0 ? exitExecutionTime : exitTime,
     profit,
     source: 'app-history',
   };
@@ -731,6 +747,10 @@ export const buildClosedTradeHistorySnapshots = ({
       ?? getTicket(closingDeal.positionId)
       ?? group.ticket;
     const closingVolume = closingDeals.reduce((sum, row) => sum + (Number(row.volume) || 0), 0);
+    const rawEntryTime = getOpenTimeValue(openingDeal);
+    const rawExitTime = getCloseTimeValue(closingDeal);
+    const entryTime = mapTimestamp(rawEntryTime);
+    const exitTime = mapTimestamp(rawExitTime);
 
     addSnapshot({
       key: `trade:${groupTicket}`,
@@ -738,9 +758,11 @@ export const buildClosedTradeHistorySnapshots = ({
       side: normalizeSide(openingDeal.side),
       volume: closingVolume || Number(openingDeal.volume) || Number(closingDeal.volume) || 0,
       entryPrice: getEntryPrice(openingDeal),
-      entryTime: mapTimestamp(getOpenTimeValue(openingDeal)),
+      entryTime,
+      entryExecutionTime: normalizeCloseSnapshotTime(rawEntryTime) || entryTime,
       exitPrice: getExitPrice(closingDeal),
-      exitTime: mapTimestamp(getCloseTimeValue(closingDeal)),
+      exitTime,
+      exitExecutionTime: normalizeCloseSnapshotTime(rawExitTime) || exitTime,
       profit: sortedDeals.reduce((sum, row) => sum + (Number(row.profit) || 0), 0),
       source: 'mt5-history',
     });
@@ -749,6 +771,10 @@ export const buildClosedTradeHistorySnapshots = ({
   directClosedRows.forEach((row) => {
     const ticket = getDirectTicket(row);
     if (!ticket) return;
+    const rawEntryTime = getOpenTimeValue(row);
+    const rawExitTime = getCloseTimeValue(row);
+    const entryTime = mapTimestamp(rawEntryTime);
+    const exitTime = mapTimestamp(rawExitTime);
 
     addSnapshot({
       key: `trade:${ticket}`,
@@ -756,9 +782,11 @@ export const buildClosedTradeHistorySnapshots = ({
       side: normalizeSide(row.side),
       volume: Number(row.volume) || 0,
       entryPrice: getEntryPrice(row),
-      entryTime: mapTimestamp(getOpenTimeValue(row)),
+      entryTime,
+      entryExecutionTime: normalizeCloseSnapshotTime(rawEntryTime) || entryTime,
       exitPrice: getExitPrice(row),
-      exitTime: mapTimestamp(getCloseTimeValue(row)),
+      exitTime,
+      exitExecutionTime: normalizeCloseSnapshotTime(rawExitTime) || exitTime,
       profit: Number(row.profit ?? 0),
       source: getSnapshotSource(row),
     });

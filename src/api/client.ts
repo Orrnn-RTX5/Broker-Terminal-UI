@@ -512,6 +512,8 @@ export interface ApiRequestOptions extends RequestInit {
   headers?: Record<string, string>;
   baseUrl?: string;
   apiKey?: string;
+  /** Per-request deadline. Defaults to 30 seconds. */
+  timeoutMs?: number;
   /** If true, do NOT attach the stored Bearer token to this request */
   skipAuth?: boolean;
   /** If true, use the provided baseUrl exactly without proxying or replacing its host from localStorage.server_url */
@@ -561,6 +563,7 @@ const toRequestInit = (options?: ApiRequestOptions): RequestInit => {
   delete requestInit.skipDynamicUrl;
   delete requestInit.authToken;
   delete requestInit.requestContext;
+  delete requestInit.timeoutMs;
   return requestInit;
 };
 
@@ -656,6 +659,23 @@ const createRequestController = (externalSignal?: AbortSignal): {
   };
 };
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+const resolveRequestTimeoutMs = (value: number | undefined): number => (
+  typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : DEFAULT_REQUEST_TIMEOUT_MS
+);
+
+const requestTimeoutMessage = (timeoutMs: number): string => {
+  const seconds = timeoutMs / 1_000;
+  return `Request timed out after ${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)} seconds`;
+};
+
+const createRequestTimeoutError = (timeoutMs: number): DOMException => (
+  new DOMException(requestTimeoutMessage(timeoutMs), 'TimeoutError')
+);
+
 const executeRequest = async <T>(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   endpoint: string,
@@ -672,7 +692,12 @@ const executeRequest = async <T>(
     options?.skipAuth || AUTH_ENDPOINTS.some((authEndpoint) => normalizedEndpoint === authEndpoint),
   );
   const { controller, cleanup } = createRequestController(options?.signal);
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutMs = resolveRequestTimeoutMs(options?.timeoutMs);
+  let didTimeOut = false;
+  const timeoutId = setTimeout(() => {
+    didTimeOut = true;
+    controller.abort(createRequestTimeoutError(timeoutMs));
+  }, timeoutMs);
 
   try {
     const requestConfig = buildRequestConfig(method, options, shouldSkipAuth, controller.signal, body);
@@ -693,6 +718,9 @@ const executeRequest = async <T>(
     });
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    if (didTimeOut) {
+      throw new ApiError(0, requestTimeoutMessage(timeoutMs));
+    }
     throw new ApiError(0, error instanceof Error ? error.message : 'Network error');
   } finally {
     clearTimeout(timeoutId);

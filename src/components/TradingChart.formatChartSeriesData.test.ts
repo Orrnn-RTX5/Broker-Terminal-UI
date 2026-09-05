@@ -8,9 +8,13 @@ import {
   formatChartSeriesData,
   getLeftVisibleTimeFromLogicalRange,
   getLivePriceOverlayColors,
+  getLivePriceSeriesColor,
+  isCandleAtOrBeforeFinalizedTime,
+  markFinalizedCandleTime,
   getRenderedPrependedBarCount,
   getVisibleLogicalRangeAnchoredToTime,
   isPotentialMarketClosedPlaceholderCandle,
+  resolveCandleFinalityFromActivePeriod,
   shouldRecomputeMarketGapSeparatorsForCandle,
   shouldApplyVisibleRangeResetForRender,
   shouldResetInitialHistoryVisibleRange,
@@ -85,6 +89,31 @@ const closedSessionRun = (
   }))
 );
 
+describe('TradingChart live candle finality helpers', () => {
+  it('infers legacy finality from the active broker period without overriding an explicit flag', () => {
+    const legacyClosed = realCandle(60, 1.1);
+    const legacyForming = realCandle(120, 1.2);
+    const explicitForming = { ...legacyClosed, closed: false };
+
+    expect(resolveCandleFinalityFromActivePeriod(legacyClosed, 120).closed).toBe(true);
+    expect(resolveCandleFinalityFromActivePeriod(legacyForming, 120).closed).toBe(false);
+    expect(resolveCandleFinalityFromActivePeriod(explicitForming, 120)).toBe(explicitForming);
+  });
+
+  it('seals finalized candle times independently for each displayed timeframe', () => {
+    const finalizedByTimeframe = new Map<string, number>();
+    markFinalizedCandleTime(finalizedByTimeframe, 'M1', 240);
+
+    expect(isCandleAtOrBeforeFinalizedTime(finalizedByTimeframe, 'M1', 240)).toBe(true);
+    expect(isCandleAtOrBeforeFinalizedTime(finalizedByTimeframe, 'M1', 300)).toBe(false);
+    expect(isCandleAtOrBeforeFinalizedTime(finalizedByTimeframe, 'M5', 0)).toBe(false);
+
+    markFinalizedCandleTime(finalizedByTimeframe, 'M5', 300);
+    expect(isCandleAtOrBeforeFinalizedTime(finalizedByTimeframe, 'M5', 300)).toBe(true);
+    expect(isCandleAtOrBeforeFinalizedTime(finalizedByTimeframe, 'M1', 300)).toBe(false);
+  });
+});
+
 describe('formatChartSeriesData chart types', () => {
   it('maps Area to the same close-value data contract as Line', () => {
     const candles = [
@@ -114,6 +143,28 @@ describe('formatChartSeriesData chart types', () => {
       { time: 160, value: 1.1075 },
     ]);
     expect(areaResult.seriesData).toEqual(lineResult.seriesData);
+  });
+
+  it('keeps corrupt cached candles out of the rendered price scale', () => {
+    const validBefore = { ...realCandle(100, 4380), open: 4379, high: 4382, low: 4378 };
+    const validAfter = { ...realCandle(280, 4381), open: 4380, high: 4383, low: 4379 };
+    const result = formatChartSeriesData(
+      [
+        validBefore,
+        { time: 160, open: 0, high: 0, low: 0, close: 0, volume: 1 },
+        { time: 220, open: 280000, high: 281000, low: 279000, close: 280500, volume: 1 },
+        validAfter,
+      ],
+      'candlestick',
+      theme,
+      defaultChartProperties,
+    );
+
+    expect(result.sortedCandles).toEqual([validBefore, validAfter]);
+    expect(result.seriesData).toEqual([
+      { time: 100, open: 4379, high: 4382, low: 4378, close: 4380 },
+      { time: 280, open: 4380, high: 4383, low: 4379, close: 4381 },
+    ]);
   });
 });
 
@@ -489,11 +540,29 @@ describe('formatChartSeriesData market gap separators', () => {
 });
 
 describe('live price overlay colors', () => {
-  it('uses default bullish and bearish bar colors for the live price line', () => {
+  it('uses the canonical terminal profit and loss colors by default', () => {
     const colors = defaultChartProperties.colors;
 
-    expect(getLivePriceOverlayColors(colors, colors.barUp).lineColor).toBe('#10B981');
-    expect(getLivePriceOverlayColors(colors, colors.barDown).lineColor).toBe('#EF4444');
+    expect(getLivePriceOverlayColors(colors, colors.bullCandle).lineColor).toBe('#00C896');
+    expect(getLivePriceOverlayColors(colors, colors.bearCandle).lineColor).toBe('#FF4D4F');
+  });
+
+  it('takes the live price color from the series that is actually rendered', () => {
+    const colors = {
+      ...defaultChartProperties.colors,
+      bullCandle: '#11aa77',
+      bearCandle: '#dd4455',
+      barUp: '#228866',
+      barDown: '#bb3344',
+      lineChart: '#3366cc',
+    };
+
+    expect(getLivePriceSeriesColor(colors, 'candlestick', 'up')).toBe('#11aa77');
+    expect(getLivePriceSeriesColor(colors, 'candlestick', 'down')).toBe('#dd4455');
+    expect(getLivePriceSeriesColor(colors, 'bar', 'up')).toBe('#228866');
+    expect(getLivePriceSeriesColor(colors, 'bar', 'down')).toBe('#bb3344');
+    expect(getLivePriceSeriesColor(colors, 'line', 'down')).toBe('#3366cc');
+    expect(getLivePriceSeriesColor(colors, 'area', 'up')).toBe('#3366cc');
   });
 
   it('uses Yellow on Black directional bar colors instead of the black bull candle', () => {
@@ -527,9 +596,16 @@ describe('live price overlay colors', () => {
     }, { isAdvancedUntitledLight: true });
 
     expect(getLivePriceOverlayColors(colors, colors.barUp)).toMatchObject({
-      lineColor: '#facc15',
-      badgeTextColor: '#000000',
+      lineColor: '#4b5563',
+      badgeTextColor: '#ffffff',
     });
+  });
+
+  it('uses WCAG relative luminance for badge text contrast', () => {
+    expect(getLivePriceOverlayColors({
+      background: '#000000',
+      foreground: '#ffffff',
+    }, '#666666').badgeTextColor).toBe('#ffffff');
   });
 
   it('falls back from low-contrast custom directional live line colors', () => {

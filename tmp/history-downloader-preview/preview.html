@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="../../src/index.css" />
+  <style>
+    :root {
+      --bg-primary: #0d0d11;
+      --bg-secondary: #131316;
+      --bg-tertiary: #191a1e;
+      --bg-quaternary: #222226;
+      --text-primary: #e2e2e8;
+      --text-secondary: #808088;
+      --text-tertiary: #50505a;
+      --border-primary: #28282e;
+      --border-secondary: #333338;
+      --color-info: #007acc;
+      --color-info-dim: #007acc24;
+      --color-loss: #f43f5e;
+      --color-loss-dim: #f43f5e30;
+      --color-loss-dimmer: #f43f5e14;
+      --color-profit: #22c55e;
+      --color-profit-dim: #22c55e24;
+      --font-mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+    }
+    body {
+      margin: 0;
+      background: #0d0d11;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .preview-frame {
+      width: 1200px;
+      height: 480px;
+      border: 1px solid var(--border-primary);
+      background: var(--bg-secondary);
+    }
+  </style>
+  <link rel="stylesheet" href="../../src/styles/history-downloader.css" />
+</head>
+<body>
+  <div class="preview-frame" id="root">
+    <section class="rtx-history-downloader text-[14px] font-normal" aria-label="Historical Data Manager">
+      <header class="rtx-history-downloader__header">
+        <div class="rtx-history-downloader__identity">
+          <span class="rtx-history-downloader__identity-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+          </span>
+          <div>
+            <h2>Historical Data Manager</h2>
+            <p>Download and maintain local tick history</p>
+          </div>
+        </div>
+
+        <dl class="rtx-history-downloader__metrics">
+          <div>
+            <dt>Local storage</dt>
+            <dd>14.2 MB</dd>
+          </div>
+          <div>
+            <dt>Cached ticks</dt>
+            <dd>428.5K</dd>
+          </div>
+          <div>
+            <dt>Symbols</dt>
+            <dd>12</dd>
+          </div>
+          <div class="rtx-history-downloader__metric-wide">
+            <dt>Last update</dt>
+            <dd>16:15:30</dd>
+          </div>
+        </dl>
+
+        <button type="button" class="rtx-history-icon-button" title="Refresh data and statistics">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        </button>
+      </header>
+
+      <div class="rtx-history-downloader__workspace">
+        <aside class="rtx-history-symbols">
+          <div class="rtx-history-symbols__toolbar">
+            <div class="rtx-history-section-heading">
+              <div>
+                <h3 class="text-[12px] font-normal">Instruments</h3>
+                <span>12 available</span>
+              </div>
+              <button type="button" class="rtx-history-text-button rtx-history-text-button--danger">
+                Clear cache
+              </button>
+            </div>
+
+            <label class="rtx-history-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="search" placeholder="Search instruments" value="" />
+            </label>
+          </div>
+
+          <div class="rtx-history-symbols__list">
+            <div class="rtx-history-symbol-row" data-selected="true">
+              <button type="button" class="rtx-history-symbol-row__select">
+                <span class="rtx-history-symbol-row__topline">
+                  <strong>EURUSD</strong>
+                  <span>100%</span>
+                </span>
+                <span class="rtx-history-symbol-row__meta">
+                  30 of 30 days cached
+                </span>
+                <span class="rtx-history-progress"><span style="width: 100%"></span></span>
+              </button>
+              <button type="button" class="rtx-history-symbol-row__clear" title="Clear cached data for EURUSD">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+            <div class="rtx-history-symbol-row">
+              <button type="button" class="rtx-history-symbol-row__select">
+                <span class="rtx-history-symbol-row__topline">
+                  <strong>GBPUSD</strong>
+                  <span>65%</span>
+                </span>
+                <span class="rtx-history-symbol-row__meta">
+                  18 of 30 days cached
+                </span>
+                <span class="rtx-history-progress"><span style="width: 65%"></span></span>
+              </button>
+              <button type="button" class="rtx-history-symbol-row__clear">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+            <div class="rtx-history-symbol-row">
+              <button type="button" class="rtx-history-symbol-row__select">
+                <span class="rtx-history-symbol-row__topline">
+                  <strong>USDJPY</strong>
+                  <span>0%</span>
+                </span>
+                <span class="rtx-history-symbol-row__meta">
+                  0 of 30 days cached
+                </span>
+                <span class="rtx-history-progress"><span style="width: 0%"></span></span>
+              </button>
+              <button type="button" class="rtx-history-symbol-row__clear" disabled>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <main class="rtx-history-main">
+          <div class="rtx-history-download-panel">
+            <!-- Top Row: Symbol, Status & Meta Stats -->
+            <div class="rtx-history-download-panel__top">
+              <div class="rtx-history-symbol-group">
+                <span class="rtx-history-symbol-badge">AUDCAD</span>
+                <span class="rtx-history-status-tag rtx-history-status-tag--success">
+                  <span class="rtx-history-status-dot"></span>
+                  1 Day Cached
+                </span>
+              </div>
+
+              <div class="rtx-history-meta-tags">
+                <span>Server Range: <strong>2024.01.01 — 2026.09.03</strong></span>
+                <span>•</span>
+                <span>Local Ticks: <strong>10,000</strong></span>
+              </div>
+            </div>
+
+            <!-- Middle Row: Presets + Dual Date Field + Download Button -->
+            <div class="rtx-history-controls-row">
+              <div class="rtx-history-segmented-presets" role="group" aria-label="Quick date range selection">
+                <button type="button" class="rtx-history-seg-btn is-active">7 Days</button>
+                <button type="button" class="rtx-history-seg-btn">14 Days</button>
+                <button type="button" class="rtx-history-seg-btn">30 Days</button>
+                <button type="button" class="rtx-history-seg-btn">3 Months</button>
+                <button type="button" class="rtx-history-seg-btn">1 Year</button>
+                <button type="button" class="rtx-history-seg-btn">YTD</button>
+                <button type="button" class="rtx-history-seg-btn">All</button>
+              </div>
+
+              <div class="rtx-history-date-inputs">
+                <label class="rtx-history-field">
+                  <span class="rtx-history-field-label">From</span>
+                  <input type="date" class="rtx-history-date-input" value="2026-08-27" />
+                </label>
+
+                <span class="rtx-history-arrow">→</span>
+
+                <label class="rtx-history-field">
+                  <span class="rtx-history-field-label">To</span>
+                  <input type="date" class="rtx-history-date-input" value="2026-09-03" />
+                </label>
+
+                <span class="rtx-history-duration-badge">8 Days</span>
+              </div>
+
+              <button type="button" class="rtx-history-primary-button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>Download History</span>
+              </button>
+            </div>
+
+            <!-- Bottom Row: Coverage Status Banner -->
+            <div class="rtx-history-coverage-banner">
+              <div class="rtx-history-coverage-left">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>Cached Coverage: <strong>2026-08-27</strong> to <strong>2026-08-27</strong> (10,000 ticks recorded)</span>
+              </div>
+
+              <div class="rtx-history-coverage-bar">
+                <span>Local sync: 100%</span>
+                <div class="rtx-history-bar-track">
+                  <div class="rtx-history-bar-fill" style="width: 100%;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <section class="rtx-history-tasks">
+            <div class="rtx-history-tasks__header">
+              <div>
+                <h3>Download queue</h3>
+                <span>1 active</span>
+              </div>
+              <span class="rtx-history-task-count">1 total</span>
+            </div>
+
+            <div class="rtx-history-tasks__list">
+              <article class="rtx-history-task" data-status="downloading">
+                <div class="rtx-history-task__identity">
+                  <span class="rtx-history-task__status-dot"></span>
+                  <div>
+                    <strong>GBPUSD</strong>
+                    <span>2026-02-15 — 2026-03-03</span>
+                  </div>
+                </div>
+
+                <div class="rtx-history-task__progress-area">
+                  <div class="rtx-history-task__progress-label">
+                    <span>Downloading</span>
+                    <span>65% · 142,800 ticks</span>
+                  </div>
+                  <div class="rtx-history-progress rtx-history-progress--task">
+                    <span style="width: 65%"></span>
+                  </div>
+                </div>
+
+                <div class="rtx-history-task__actions">
+                  <button type="button" class="rtx-history-icon-button" title="Pause download">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                  </button>
+                  <button type="button" class="rtx-history-icon-button" title="Cancel download">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  </button>
+                </div>
+              </article>
+            </div>
+          </section>
+        </main>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

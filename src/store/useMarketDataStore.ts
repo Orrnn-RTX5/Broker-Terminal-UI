@@ -12,6 +12,10 @@ import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { getWorkerManager } from '../services/aggregationWorkerManager';
 import {
+  isStructurallyValidPriceCandle,
+  repairPriceCandle,
+} from '../services/chartPriceGuards';
+import {
   areCanonicalUpstreamTicksEqual,
   coalesceFreshestTickEntries,
   compareCanonicalTickFreshness,
@@ -43,6 +47,12 @@ export interface OHLCV {
   low: number;
   close: number;
   volume: number;
+  /** Provenance used to keep a delayed local aggregation from replacing backend OHLC. */
+  source?: CandleUpdateSource;
+  /** Upstream revision/event time in milliseconds when the backend supplies one. */
+  sourceTimestamp?: number;
+  /** Backend finality for the bucket; omitted when the adapter did not report it. */
+  closed?: boolean;
 }
 
 export interface SymbolStats {
@@ -71,6 +81,8 @@ interface SymbolData {
   lastAggregation: number;
 }
 
+export type CandleUpdateSource = 'server' | 'local';
+
 export interface CandleUpdate {
   symbol: string;
   timeframe: string;
@@ -80,6 +92,12 @@ export interface CandleUpdate {
   close: number;
   volume: number;
   time: number;
+  /** Required so locally aggregated candles are never confused with authoritative backend OHLC. */
+  source: CandleUpdateSource;
+  /** Optional backend revision/event time, in seconds or milliseconds. */
+  sourceTimestamp?: number;
+  /** Optional authoritative finality carried by the candle websocket frame. */
+  closed?: boolean;
 }
 
 export interface UpdateTickOptions {
@@ -129,6 +147,138 @@ function createEmptySymbolData(): SymbolData {
     lastAggregation: 0,
   };
 }
+
+const normalizeMarketSymbol = (symbol: unknown): string => (
+  String(symbol || '').trim().toUpperCase()
+);
+
+const normalizePositiveTimestampMs = (value: unknown): number | undefined => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+  return Math.floor(numeric < 1_000_000_000_000 ? numeric * 1000 : numeric);
+};
+
+const areOHLCVRowsEqual = (left: OHLCV, right: OHLCV): boolean => (
+  left.timestamp === right.timestamp
+  && left.open === right.open
+  && left.high === right.high
+  && left.low === right.low
+  && left.close === right.close
+  && left.volume === right.volume
+  && left.source === right.source
+  && left.sourceTimestamp === right.sourceTimestamp
+  && left.closed === right.closed
+);
+
+const toStoredCandle = (update: CandleUpdate): OHLCV | null => {
+  const timestamp = normalizePositiveTimestampMs(update.time);
+  if (timestamp === undefined) return null;
+
+  const prices = {
+    open: Number(update.open),
+    high: Number(update.high),
+    low: Number(update.low),
+    close: Number(update.close),
+  };
+  const acceptedPrices = update.source === 'server'
+    ? (isStructurallyValidPriceCandle(prices) ? prices : null)
+    : repairPriceCandle(prices);
+  if (!acceptedPrices || !isStructurallyValidPriceCandle(acceptedPrices)) return null;
+
+  const numericVolume = Number(update.volume);
+  const sourceTimestamp = normalizePositiveTimestampMs(update.sourceTimestamp);
+  return {
+    timestamp,
+    ...acceptedPrices,
+    volume: Number.isFinite(numericVolume) && numericVolume >= 0 ? numericVolume : 0,
+    source: update.source,
+    ...(sourceTimestamp === undefined ? {} : { sourceTimestamp }),
+    // FIX: Do not discard final/closed metadata at the enhanced socket/store
+    // boundary; exact server corrections can now retain bucket lifecycle state.
+    ...(update.closed === undefined ? {} : { closed: update.closed }),
+  };
+};
+
+const mergeCandleRow = (
+  candles: readonly OHLCV[],
+  incoming: OHLCV,
+  limit: number,
+): OHLCV[] => {
+  const existingIndex = candles.findIndex((candle) => candle.timestamp === incoming.timestamp);
+  let replacement = incoming;
+
+  if (existingIndex >= 0) {
+    const existing = candles[existingIndex];
+
+    // FIX: Backend OHLC is authoritative. Replace the exact bucket verbatim so
+    // a correction can narrow a previously wrong wick; reject older revisions
+    // and never let a delayed local-worker result overwrite a server row.
+    if (existing.source === 'server' && incoming.source === 'local') return candles as OHLCV[];
+    if (
+      existing.sourceTimestamp !== undefined
+      && (
+        incoming.sourceTimestamp === undefined
+        || incoming.sourceTimestamp < existing.sourceTimestamp
+      )
+    ) {
+      return candles as OHLCV[];
+    }
+
+    if (incoming.source === 'local') {
+      const sealed = repairPriceCandle({
+        open: existing.open,
+        high: Math.max(existing.high, incoming.high),
+        low: Math.min(existing.low, incoming.low),
+        close: incoming.close,
+      });
+      if (!sealed || !isStructurallyValidPriceCandle(sealed)) return candles as OHLCV[];
+      replacement = { ...incoming, ...sealed };
+    }
+
+    if (areOHLCVRowsEqual(existing, replacement)) return candles as OHLCV[];
+    const updated = [...candles];
+    updated[existingIndex] = replacement;
+    return updated.sort((left, right) => left.timestamp - right.timestamp).slice(-limit);
+  }
+
+  return [...candles, replacement]
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .slice(-limit);
+};
+
+const mergeLocalAggregation = (
+  existing: readonly OHLCV[],
+  aggregated: readonly OHLCV[],
+  limit: number,
+): OHLCV[] => {
+  const byTimestamp = new Map(existing.map((candle) => [candle.timestamp, candle]));
+
+  aggregated.forEach((candle) => {
+    const repaired = repairPriceCandle(candle);
+    if (!repaired || !isStructurallyValidPriceCandle(repaired)) return;
+
+    const previous = byTimestamp.get(repaired.timestamp);
+    if (previous?.source === 'server') return;
+
+    if (!previous) {
+      byTimestamp.set(repaired.timestamp, { ...repaired, source: 'local' });
+      return;
+    }
+
+    const sealed = repairPriceCandle({
+      open: previous.open,
+      high: Math.max(previous.high, repaired.high),
+      low: Math.min(previous.low, repaired.low),
+      close: repaired.close,
+    });
+    if (!sealed || !isStructurallyValidPriceCandle(sealed)) return;
+    byTimestamp.set(repaired.timestamp, { ...repaired, ...sealed, source: 'local' });
+  });
+
+  return Array.from(byTimestamp.values())
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .slice(-limit);
+};
 
 export const MARKET_TICK_BUFFER_LIMIT = 10_000;
 
@@ -220,25 +370,34 @@ function aggregateTicksToOHLCV(ticks: Tick[], timeframeMs: number): OHLCV[] {
 
   const ohlcvMap = new Map<number, OHLCV>();
 
-  ticks.forEach((tick) => {
-    const bucketTime = Math.floor(tick.timestamp / timeframeMs) * timeframeMs;
-    const midPrice = (tick.bid + tick.ask) / 2;
+  // FIX: Sort by authoritative source time so delayed delivery cannot regress
+  // Close, and use Bid-only OHLC to match the chart/worker/backend contract.
+  [...ticks].sort((left, right) => (
+    (getCanonicalTickTimestamp(left) ?? 0) - (getCanonicalTickTimestamp(right) ?? 0)
+  )).forEach((tick) => {
+    const eventTime = getCanonicalTickTimestamp(tick);
+    if (eventTime === null) return;
+    const bucketTime = Math.floor(eventTime / timeframeMs) * timeframeMs;
+    const bid = Number.isFinite(tick.bid) && tick.bid > 0 ? tick.bid : null;
+    const ask = Number.isFinite(tick.ask) && tick.ask > 0 ? tick.ask : null;
+    const chartPrice = bid ?? ask;
+    if (chartPrice === null) return;
     const volume = tick.volume || 1;
 
     if (!ohlcvMap.has(bucketTime)) {
       ohlcvMap.set(bucketTime, {
         timestamp: bucketTime,
-        open: midPrice,
-        high: midPrice,
-        low: midPrice,
-        close: midPrice,
+        open: chartPrice,
+        high: chartPrice,
+        low: chartPrice,
+        close: chartPrice,
         volume: volume,
       });
     } else {
       const ohlcv = ohlcvMap.get(bucketTime)!;
-      ohlcv.high = Math.max(ohlcv.high, midPrice);
-      ohlcv.low = Math.min(ohlcv.low, midPrice);
-      ohlcv.close = midPrice;
+      ohlcv.high = Math.max(ohlcv.high, chartPrice);
+      ohlcv.low = Math.min(ohlcv.low, chartPrice);
+      ohlcv.close = chartPrice;
       ohlcv.volume += volume;
     }
   });
@@ -513,10 +672,12 @@ export const useMarketDataStore = create<MarketDataState>()(
                   ...state.symbolData,
                   [symbol]: {
                     ...currentData,
-                    ohlcv1m: [...currentData.ohlcv1m, ...results['1m']].slice(-1000),
-                    ohlcv5m: [...currentData.ohlcv5m, ...results['5m']].slice(-500),
-                    ohlcv15m: [...currentData.ohlcv15m, ...results['15m']].slice(-300),
-                    ohlcv1h: [...currentData.ohlcv1h, ...results['1h']].slice(-200),
+                    // FIX: A worker callback may finish after a server candle.
+                    // Merge by bucket and retain every authoritative server row.
+                    ohlcv1m: mergeLocalAggregation(currentData.ohlcv1m, results['1m'], 1000),
+                    ohlcv5m: mergeLocalAggregation(currentData.ohlcv5m, results['5m'], 500),
+                    ohlcv15m: mergeLocalAggregation(currentData.ohlcv15m, results['15m'], 300),
+                    ohlcv1h: mergeLocalAggregation(currentData.ohlcv1h, results['1h'], 200),
                   },
                 },
               };
@@ -533,57 +694,36 @@ export const useMarketDataStore = create<MarketDataState>()(
         },
 
         updateCandle: (update) => {
+          const symbol = normalizeMarketSymbol(update.symbol);
+          const timeframe = String(update.timeframe || '').trim().toUpperCase();
+          if (!symbol || timeframe !== 'M1') return;
+
+          // FIX: Server OHLC is validated and stored exactly, never repaired.
+          // repairPriceCandle remains limited to explicitly local aggregation.
+          const incoming = toStoredCandle(update);
+          if (!incoming) return;
           if (MARKET_DATA_DEBUG) {
-            console.log(`[Store updateCandle] ${update.symbol} ${update.timeframe} O=${update.open} H=${update.high} L=${update.low} C=${update.close} time=${update.time}`);
+            console.log(`[Store updateCandle] ${symbol} ${timeframe} O=${incoming.open} H=${incoming.high} L=${incoming.low} C=${incoming.close} time=${incoming.timestamp}`);
           }
           set((state) => {
-            const data = state.symbolData[update.symbol] || createEmptySymbolData();
+            const data = state.symbolData[symbol] || createEmptySymbolData();
+            const newOHLCV = mergeCandleRow(data.ohlcv1m, incoming, 1000);
+            if (newOHLCV === data.ohlcv1m) return state;
 
-            // Only handling 1m for now as per backend
-            if (update.timeframe === 'M1') {
-              const ohlcv = data.ohlcv1m;
-              const lastCandle = ohlcv[ohlcv.length - 1];
-
-              const newOHLCV = [...ohlcv];
-              if (lastCandle && lastCandle.timestamp === update.time * 1000) {
-                // Update existing
-                newOHLCV[newOHLCV.length - 1] = {
-                  timestamp: update.time * 1000,
-                  open: update.open,
-                  high: update.high,
-                  low: update.low,
-                  close: update.close,
-                  volume: update.volume
-                };
-              } else {
-                // New candle
-                newOHLCV.push({
-                  timestamp: update.time * 1000,
-                  open: update.open,
-                  high: update.high,
-                  low: update.low,
-                  close: update.close,
-                  volume: update.volume
-                });
-                if (newOHLCV.length > 1000) newOHLCV.shift();
-              }
-
-              if (MARKET_DATA_DEBUG) {
-                console.log(`[Store updateCandle] ${update.symbol} now has ${newOHLCV.length} candles`);
-              }
-
-              return {
-                symbolData: {
-                  ...state.symbolData,
-                  [update.symbol]: {
-                    ...data,
-                    ohlcv1m: newOHLCV,
-                    // Note: We don't update lastAggregation here as this is from server
-                  }
-                }
-              };
+            if (MARKET_DATA_DEBUG) {
+              console.log(`[Store updateCandle] ${symbol} now has ${newOHLCV.length} candles`);
             }
-            return state;
+
+            return {
+              symbolData: {
+                ...state.symbolData,
+                [symbol]: {
+                  ...data,
+                  ohlcv1m: newOHLCV,
+                  // Note: Server candles do not change local aggregation cadence.
+                }
+              }
+            };
           });
         },
 
@@ -614,10 +754,12 @@ export const useMarketDataStore = create<MarketDataState>()(
             const data = state.symbolData[symbol];
             if (!data || data.tickBuffer.length === 0) return state;
 
-            const ohlcv1m = aggregateTicksToOHLCV(data.tickBuffer, 60 * 1000);
-            const ohlcv5m = aggregateTicksToOHLCV(data.tickBuffer, 5 * 60 * 1000);
-            const ohlcv15m = aggregateTicksToOHLCV(data.tickBuffer, 15 * 60 * 1000);
-            const ohlcv1h = aggregateTicksToOHLCV(data.tickBuffer, 60 * 60 * 1000);
+            // FIX: Manual local aggregation also merges by bucket so it cannot
+            // discard server history outside the tick buffer or replace it.
+            const ohlcv1m = mergeLocalAggregation(data.ohlcv1m, aggregateTicksToOHLCV(data.tickBuffer, 60 * 1000), 1000);
+            const ohlcv5m = mergeLocalAggregation(data.ohlcv5m, aggregateTicksToOHLCV(data.tickBuffer, 5 * 60 * 1000), 500);
+            const ohlcv15m = mergeLocalAggregation(data.ohlcv15m, aggregateTicksToOHLCV(data.tickBuffer, 15 * 60 * 1000), 300);
+            const ohlcv1h = mergeLocalAggregation(data.ohlcv1h, aggregateTicksToOHLCV(data.tickBuffer, 60 * 60 * 1000), 200);
 
             return {
               symbolData: {

@@ -3,6 +3,21 @@ import { formatOrderError } from './orderError';
 import { ApiError } from '../api/client';
 
 describe('formatOrderError', () => {
+  it('preserves an async command backend code and message verbatim', () => {
+    expect(formatOrderError({
+      preserveBackendOrderError: true,
+      code: 'SOURCE_MISMATCH',
+      backendMessage: 'Execution source does not match quote source.',
+    })).toBe('SOURCE_MISMATCH: Execution source does not match quote source.');
+  });
+
+  it('preserves a structured POST rejection code and message', () => {
+    expect(formatOrderError(new ApiError(429, 'Too many orders are already in flight for this account', {
+      error: 'TOO_MANY_ORDERS',
+      message: 'Too many orders are already in flight for this account',
+    }))).toBe('TOO_MANY_ORDERS: Too many orders are already in flight for this account');
+  });
+
   it('maps a network-level ApiError (status 0) to a connection message', () => {
     const msg = formatOrderError(new ApiError(0, 'fetch failed at http://10.0.0.5:8091/api/orders?token=abc'));
     expect(msg).toBe('Order failed: cannot reach the trading server. Check your connection and try again.');

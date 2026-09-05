@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useRef } from 'react';
+import { useCallback, useReducer, useEffect, useRef } from 'react';
 import type { ToolbarAction } from '../store/toolbarState';
 import { toolbarReducer, initialToolbarState } from '../store/toolbarState';
 import { useCommandBus } from './useCommandBus';
@@ -9,6 +9,11 @@ export function useToolbarState() {
   const { dispatch: dispatchCommand, subscribe } = useCommandBus();
   // Track which command types we just dispatched ourselves, so we don't re-apply them
   const selfDispatchedRef = useRef<Set<string>>(new Set());
+  const stateRef = useRef(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Subscribe to command bus for incoming commands that affect toolbar state
   useEffect(() => {
@@ -69,7 +74,7 @@ export function useToolbarState() {
   }, [subscribe]);
 
   // Wrapper to dispatch both locally and to command bus
-  const dispatch = (action: ToolbarAction) => {
+  const dispatch = useCallback((action: ToolbarAction) => {
     // Update local state
     dispatchLocal(action);
 
@@ -137,7 +142,7 @@ export function useToolbarState() {
         selfDispatchedRef.current.add('SET_AUTO_SCROLL');
         dispatchCommand({
           type: 'SET_AUTO_SCROLL',
-          payload: { enabled: !state.autoScrollEnabled }
+          payload: { enabled: !stateRef.current.autoScrollEnabled }
         } as Command);
         break;
 
@@ -145,14 +150,14 @@ export function useToolbarState() {
         selfDispatchedRef.current.add('SET_CHART_SHIFT');
         dispatchCommand({
           type: 'SET_CHART_SHIFT',
-          payload: { enabled: !state.chartShiftEnabled }
+          payload: { enabled: !stateRef.current.chartShiftEnabled }
         } as Command);
         break;
 
       default:
         break;
     }
-  };
+  }, [dispatchCommand]);
 
   return {
     state,

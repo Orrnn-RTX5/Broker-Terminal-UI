@@ -1,3 +1,5 @@
+import { normalizeExactBrokerSymbol } from './exactBrokerSymbol';
+
 /**
  * Shareable trade deep links.
  *
@@ -68,7 +70,9 @@ export const decodeTradeShare = (encoded: string): SharedChartTrade | null => {
   try {
     const raw = JSON.parse(json) as Record<string, unknown>;
     if (Number(raw.v) !== 1) return null;
-    const symbol = String(raw.s ?? '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    // FIX: A shared chart must reopen the exact broker contract; stripping a
+    // dot/hyphen silently redirected suffixed symbols to a different market.
+    const symbol = normalizeExactBrokerSymbol(raw.s);
     const timeframe = String(raw.f ?? '').trim().toUpperCase();
     const side = String(raw.d ?? '').toUpperCase();
     const ticket = toFinite(raw.k);
@@ -142,17 +146,18 @@ export const copyTextToClipboard = async (text: string): Promise<boolean> => {
     }
   }
   if (typeof document === 'undefined') return false;
+  let textarea: HTMLTextAreaElement | null = null;
   try {
-    const textarea = document.createElement('textarea');
+    textarea = document.createElement('textarea');
     textarea.value = text;
     textarea.setAttribute('readonly', '');
     textarea.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
     document.body.appendChild(textarea);
     textarea.select();
-    const copied = document.execCommand('copy');
-    textarea.remove();
-    return copied;
+    return typeof document.execCommand === 'function' && document.execCommand('copy');
   } catch {
     return false;
+  } finally {
+    textarea?.remove();
   }
 };

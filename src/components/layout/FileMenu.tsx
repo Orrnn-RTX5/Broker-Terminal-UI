@@ -14,6 +14,13 @@ import {
     type ResolvedActiveChartSource,
 } from '../../services/activeChartSource';
 import { useDesktopRelease } from '../../hooks/useDesktopRelease';
+import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import {
+    listWorkspaceProfiles,
+    restoreWorkspaceProfile,
+    saveCurrentWorkspaceProfile,
+    type WorkspaceProfileSummary,
+} from '../../services/localWorkspaceProfiles';
 import {
     getDesktopReleaseButtonTitle,
     getDesktopReleaseVersionLabel,
@@ -186,12 +193,17 @@ const NewChartMenuItemRenderer: React.FC<{ item: NewChartMenuItem; activePair?: 
 };
 
 export interface FileMenuProps {
-    onSave?: () => void;
+    onSave?: (workspaceName?: string) => void;
     onSaveAsPicture?: () => void;
     onOpenDataFolder?: () => void;
-    onPrint?: () => void;
+    onPrint?: (chartData: ChartPrintData, preferences: PrintPreferences) => void | Promise<void>;
     onPrintPreview?: () => void;
     onPrintSetup?: () => void;
+    onCloseActiveChart?: () => void;
+    onChartRestored?: () => void;
+    onProfileRestored?: (profileName: string) => void;
+    onLoginTrade?: () => void;
+    onLoginWebTrader?: () => void;
     accountId?: string;
     onLogout?: () => void;
     onDialogOpenChange?: (open: boolean) => void;
@@ -206,6 +218,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     onPrint,
     onPrintPreview,
     onPrintSetup,
+    onCloseActiveChart,
+    onChartRestored,
+    onProfileRestored,
+    onLoginTrade,
+    onLoginWebTrader,
     accountId,
     onLogout,
     onDialogOpenChange,
@@ -221,10 +238,31 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const [showExitDialog, setShowExitDialog] = useState(false);
     const [showOpenAccountDialog, setShowOpenAccountDialog] = useState(false);
     const [newChartOpen, setNewChartOpen] = useState(false);
+    const [workspaceProfiles, setWorkspaceProfiles] = useState<WorkspaceProfileSummary[]>([]);
+    const recentlyClosedCharts = useDockLayoutStore(state => state.recentlyClosedCharts);
     const showDesktopDownload = typeof window !== 'undefined' && !window.electron;
     const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload });
     const desktopReleaseVersionLabel = getDesktopReleaseVersionLabel(desktopReleaseState.release);
     const desktopReleaseMetaLabel = desktopReleaseVersionLabel || (desktopReleaseState.status === 'loading' ? 'Latest' : '');
+
+    useEffect(() => {
+        const refreshProfiles = () => {
+            if (!accountId?.trim()) {
+                setWorkspaceProfiles([]);
+                return;
+            }
+            try {
+                setWorkspaceProfiles(listWorkspaceProfiles(accountId));
+            } catch (error) {
+                console.warn('[FileMenu] Could not load workspace profiles:', error);
+                setWorkspaceProfiles([]);
+            }
+        };
+
+        refreshProfiles();
+        window.addEventListener('workspace:profile-saved', refreshProfiles);
+        return () => window.removeEventListener('workspace:profile-saved', refreshProfiles);
+    }, [accountId]);
 
     useEffect(() => {
         onDialogOpenChange?.(
@@ -329,11 +367,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const [chartPrintData, setChartPrintData] = useState<ChartPrintData | null>(null);
 
     const handleSave = () => {
-        if (hasUnsavedChanges) {
-            setShowSaveDialog(true);
-        } else {
-            onSave?.();
-        }
+        setShowSaveDialog(true);
     };
 
     const handleSaveAsPicture = () => {
@@ -354,26 +388,47 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
     const handleOpenDataFolder = () => {
         onOpenDataFolder?.();
-        // Open the data folder using electron or browser
-        if (window.electron) {
-            window.electron.shell.openPath('./data');
-        }
     };
 
     const handleDownloadDesktop = () => {
         openDesktopReleaseDownload(desktopReleaseState.release);
     };
 
-    const handlePrint = async () => {
-        // Generate chart data for printing
-        const data = generateChartPrintData();
+    const handlePrint = async (chartData?: ChartPrintData) => {
+        const data = chartData || generateChartPrintData();
+        const preferences = printPreferences || chartPrinter.getPreferences(accountId);
 
         if (onPrint) {
-            onPrint();
+            await onPrint(data, preferences);
         } else {
-            // Use the chart printer service
-            const prefs = chartPrinter.getPreferences();
-            await chartPrinter.printChart(data, prefs);
+            await chartPrinter.printChart(data, preferences);
+        }
+    };
+
+    const handleCloseActiveChart = () => {
+        if (onCloseActiveChart) {
+            onCloseActiveChart();
+            return;
+        }
+        useDockLayoutStore.getState().closeActiveChart(selectedSymbol);
+    };
+
+    const handleRestoreChart = (panelId: string) => {
+        if (useDockLayoutStore.getState().restoreClosedChart(panelId)) {
+            onChartRestored?.();
+        }
+    };
+
+    const handleRestoreProfile = (profileName: string) => {
+        if (!accountId?.trim()) return;
+        try {
+            const result = restoreWorkspaceProfile({ accountId, profileName });
+            if (result.status === 'restored') {
+                onProfileRestored?.(result.profile.name);
+            }
+        } catch (error) {
+            console.error('[FileMenu] Failed to restore workspace profile:', error);
+            window.alert(error instanceof Error ? error.message : 'The workspace profile could not be restored.');
         }
     };
 
@@ -391,28 +446,26 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     };
 
     const generateChartPrintData = (): ChartPrintData => {
-        // Try to capture the chart canvas
-        const chartContainer = document.querySelector('.tv-lightweight-charts');
+        const activeSource = getActiveChartSource();
+        const chartContainer = activeSource?.container
+            || document.querySelector('.tv-lightweight-charts');
         let chartCanvas: HTMLCanvasElement | undefined;
 
-        if (chartContainer) {
-            const canvas = chartContainer.querySelector('canvas');
-            if (canvas) {
-                // Create a copy of the canvas
-                const copiedCanvas = document.createElement('canvas');
-                copiedCanvas.width = canvas.width;
-                copiedCanvas.height = canvas.height;
-                const ctx = copiedCanvas.getContext('2d');
-                if (ctx) {
-                    ctx.drawImage(canvas, 0, 0);
-                    chartCanvas = copiedCanvas;
-                }
+        const canvas = activeSource?.canvas || chartContainer?.querySelector('canvas');
+        if (canvas) {
+            const copiedCanvas = document.createElement('canvas');
+            copiedCanvas.width = canvas.width;
+            copiedCanvas.height = canvas.height;
+            const ctx = copiedCanvas.getContext('2d');
+            if (ctx) {
+                ctx.drawImage(canvas, 0, 0);
+                chartCanvas = copiedCanvas;
             }
         }
 
         return {
-            symbol: selectedSymbol || 'BTCUSD',
-            timeframe: timeframe || '1m',
+            symbol: activeSource?.symbol || selectedSymbol || 'BTCUSD',
+            timeframe: activeSource?.timeframe || timeframe || 'M1',
             dateRange: {
                 from: new Date(Date.now() - 24 * 60 * 60 * 1000),
                 to: new Date(),
@@ -434,42 +487,15 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const performExit = () => {
         onExit?.();
 
-        // Clear authentication state
-        try {
-            useAppStore.getState().logout?.();
-        } catch {
-            console.log('No auth to clear');
-        }
-
-        // Try Electron methods first (if running in Electron)
         const electronRuntime = window.electron as ElectronRuntime | undefined;
         if (electronRuntime) {
-            try {
-                electronRuntime.app?.quit?.();
-                electronRuntime.ipcRenderer?.send?.('app-quit');
-                return;
-            } catch {
-                console.log('Electron quit failed, trying browser methods');
-            }
+            electronRuntime.app?.quit?.();
+            electronRuntime.ipcRenderer?.send?.('app-quit');
+            return;
         }
 
-        // Try window.close() for popup windows
-        try {
-            window.close();
-        } catch {
-            console.log('window.close() not available');
-        }
-
-        // For main browser window - show confirmation and redirect to blank
-        if (!window.closed) {
-            const confirmed = window.confirm('Exit RTX Terminal?');
-            if (confirmed) {
-                // Clear state again just to be safe
-                useAppStore.getState().logout?.();
-
-                // Allow state change to propagate and show login screen
-                window.location.reload();
-            }
+        if (!onExit) {
+            useAppStore.getState().logout?.();
         }
     };
 
@@ -478,6 +504,39 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     return (
         <>
             <div className="rtx-file-menu rtx-menu-surface min-w-[268px] py-1">
+                {(accountId || onLogout) && (
+                    <>
+                        <div
+                            className="mx-1 flex min-h-[50px] items-center gap-2 rounded-sm px-2 py-1.5 text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151]"
+                            aria-label={`Current trading account ${accountId || ''}`.trim()}
+                            data-testid="file-menu-account-header"
+                            role="presentation"
+                        >
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-400 [.rtx-advanced-view_&]:border-[#d6bbfb] [.rtx-advanced-view_&]:bg-[#f4f3ff] [.rtx-advanced-view_&]:text-[#6941C6]">
+                                <Icon name="user" size="sm" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="text-[11px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-[#667085]">Current account</div>
+                                <div className="truncate font-mono text-[13px] font-medium text-zinc-200 [.rtx-advanced-view_&]:text-[#101828]">{accountId || '---'}</div>
+                            </div>
+                            {onLogout && (
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    aria-label="Log Out"
+                                    title="Log out of the current account"
+                                    onClick={onLogout}
+                                    className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-sm border border-rose-500/20 px-2 text-[12px] font-medium text-rose-400 hover:border-rose-500/35 hover:bg-rose-500/10 hover:text-rose-300 [.rtx-advanced-view_&]:border-[#fecdca] [.rtx-advanced-view_&]:text-[#b42318] [.rtx-advanced-view_&]:hover:bg-[#fef3f2] [.rtx-advanced-view_&]:hover:text-[#912018]"
+                                >
+                                    <Icon name="log-out" size="xs" />
+                                    <span>Log Out</span>
+                                </button>
+                            )}
+                        </div>
+                        <div className="rtx-menu-divider" role="separator"></div>
+                    </>
+                )}
+
                 {/* New Chart - Click to open pairs panel directly */}
                 <div className="relative px-1">
                     <button
@@ -526,15 +585,37 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 </div>
 
                 {/* Open Deleted */}
-                <button
-                    disabled
-                    className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
-                    title="Restore deleted charts"
-                >
-                    <div className="w-4 flex items-center justify-center">
-                    </div>
-                    <span className="flex-1">{t('menu.file.openDeleted')}</span>
-                </button>
+                <div className="relative group/deleted px-1 [&:hover>div.submenu]:block">
+                    <button
+                        disabled={recentlyClosedCharts.length === 0}
+                        className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left ${recentlyClosedCharts.length > 0
+                            ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
+                            : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'}`}
+                        title={recentlyClosedCharts.length > 0 ? 'Restore a recently closed chart' : 'No recently closed charts'}
+                    >
+                        <div className="w-4 flex items-center justify-center">
+                            <Icon name="history" size="sm" />
+                        </div>
+                        <span className="flex-1">{t('menu.file.openDeleted')}</span>
+                        {recentlyClosedCharts.length > 0 && <Icon name="chevron-right" size="xs" className="text-zinc-500" />}
+                    </button>
+                    {recentlyClosedCharts.length > 0 && (
+                        <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[190px] max-w-[280px] py-1 z-[101]">
+                            {recentlyClosedCharts.map(panel => (
+                                <button
+                                    key={panel.id}
+                                    type="button"
+                                    onClick={() => handleRestoreChart(panel.id)}
+                                    className="w-full flex min-h-[30px] items-center gap-2 px-3 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default"
+                                    title={`Restore ${panel.title || panel.props?.symbol || 'chart'}`}
+                                >
+                                    <Icon name="candlestick" size="sm" className="shrink-0 text-zinc-400" />
+                                    <span className="truncate">{panel.title || String(panel.props?.symbol || 'Chart')}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
 
                 {/* Profiles submenu */}
                 <div className="relative group/profiles px-1 [&:hover>div.submenu]:block">
@@ -542,29 +623,41 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default"
                         title="Load profile configurations"
                     >
-                        <div className="w-4 flex items-center justify-center">
+                        <div className="w-4 flex items-center justify-center text-zinc-400">
+                            <Icon name="layout" size="sm" />
                         </div>
                         <span className="flex-1">{t('menu.file.profiles')}</span>
                         <Icon name="chevron-right" size="xs" className="text-zinc-500" />
                     </button>
-                    <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[160px] py-1 z-[101]">
-                        {['Default', 'Euro', 'Market'].map(profile => (
+                    <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[180px] py-1 z-[101]">
+                        {workspaceProfiles.map(profile => (
                             <button
-                                key={profile}
+                                key={profile.id}
+                                type="button"
+                                onClick={() => handleRestoreProfile(profile.name)}
                                 className="w-full flex min-h-[30px] items-center gap-3 px-3 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default"
+                                title={`Restore workspace ${profile.name}`}
                             >
-                                {profile}
+                                <Icon name="layout" size="sm" className="shrink-0 text-zinc-400" />
+                                <span className="truncate">{profile.name}</span>
                             </button>
                         ))}
+                        {workspaceProfiles.length === 0 && (
+                            <div className="px-3 py-2 text-[12px] text-zinc-500 [.rtx-advanced-view_&]:text-gray-500">
+                                Save a workspace to create a profile.
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {/* Close */}
                 <button
+                    onClick={handleCloseActiveChart}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Close current chart"
                 >
                     <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
+                        <Icon name="x-close" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.close')}</span>
                     <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">Ctrl+F4</span>
@@ -602,8 +695,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 {/* Open Data Folder */}
                 <button
                     onClick={handleOpenDataFolder}
-                    className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title="Open application data directory"
+                    disabled={!onOpenDataFolder}
+                    className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left group ${onOpenDataFolder
+                        ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
+                        : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'}`}
+                    title={onOpenDataFolder ? 'Open application data directory' : 'Available in the desktop app'}
                 >
                     <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
                         <Icon name="folder-open" size="sm" />
@@ -632,7 +728,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Print */}
                 <button
-                    onClick={handlePrint}
+                    onClick={() => { void handlePrint(); }}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Print chart"
                 >
@@ -669,40 +765,6 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 <div className="rtx-menu-divider" role="separator"></div>
 
-                {(accountId || onLogout) && (
-                    <>
-                        <div
-                            className="mx-1 flex min-h-[42px] items-center gap-3 rounded-sm px-2 py-1.5 text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151]"
-                            aria-label={`Current trading account ${accountId || ''}`.trim()}
-                            role="presentation"
-                        >
-                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-400 [.rtx-advanced-view_&]:border-[#d6bbfb] [.rtx-advanced-view_&]:bg-[#f4f3ff] [.rtx-advanced-view_&]:text-[#6941C6]">
-                                <Icon name="user" size="sm" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="text-[12px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-[#667085]">Current account</div>
-                                <div className="truncate font-mono text-[14px] font-normal text-zinc-200 [.rtx-advanced-view_&]:text-[#101828]">{accountId || '---'}</div>
-                            </div>
-                        </div>
-
-                        {onLogout && (
-                            <button
-                                type="button"
-                                role="menuitem"
-                                onClick={onLogout}
-                                className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 [.rtx-advanced-view_&]:text-[#b42318] [.rtx-advanced-view_&]:hover:bg-[#fef3f2] [.rtx-advanced-view_&]:hover:text-[#912018] cursor-default group"
-                            >
-                                <div className="w-4 flex items-center justify-center">
-                                    <Icon name="log-out" size="sm" />
-                                </div>
-                                <span className="flex-1">Log Out</span>
-                            </button>
-                        )}
-
-                        <div className="rtx-menu-divider" role="separator"></div>
-                    </>
-                )}
-
                 {/* Open an Account */}
                 <button
                     onClick={() => setShowOpenAccountDialog(true)}
@@ -717,21 +779,27 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Login to Trade Account */}
                 <button
-                    disabled
-                    className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
-                    title="Connect to trading account"
+                    onClick={onLoginTrade}
+                    disabled={!onLoginTrade}
+                    className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left ${onLoginTrade
+                        ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
+                        : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'}`}
+                    title={onLoginTrade ? 'Connect to another trading account' : 'Trade account login is unavailable'}
                 >
                     <div className="w-4 flex items-center justify-center">
-                        <Icon name="log-in" size="sm" className="text-blue-400/50" />
+                        <Icon name="log-in" size="sm" className={onLoginTrade ? 'text-blue-400' : 'text-blue-400/50'} />
                     </div>
                     <span className="flex-1">{t('menu.file.loginTrade')}</span>
                 </button>
 
                 {/* Login to Web Trader */}
                 <button
-                    disabled
-                    className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
-                    title="Access web trading platform"
+                    onClick={onLoginWebTrader}
+                    disabled={!onLoginWebTrader}
+                    className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left ${onLoginWebTrader
+                        ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
+                        : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'}`}
+                    title={onLoginWebTrader ? 'Open this broker in Web Trader' : 'Web Trader URL is not configured'}
                 >
                     <div className="w-4 flex items-center justify-center">
                         <Icon name="globe" size="sm" />
@@ -739,11 +807,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     <span className="flex-1">{t('menu.file.loginWeb')}</span>
                 </button>
 
-                {/* Login to MQL5.community */}
+                {/* Login to RTX5.community */}
                 <button
                     disabled
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
-                    title="Connect to MQL5 community"
+                    title="RTX5 Community is not configured for this deployment"
                 >
                     <div className="w-4 flex items-center justify-center">
                         <Icon name="help-circle" size="sm" className="text-blue-500/50" />
@@ -769,11 +837,12 @@ export const FileMenu: React.FC<FileMenuProps> = ({
             {/* Dialogs */}
             {showSaveDialog && (
                 <SaveWorkspaceDialog
-                    onConfirm={() => {
+                    onConfirm={(workspaceName) => {
                         setShowSaveDialog(false);
-                        onSave?.();
+                        onSave?.(workspaceName);
                     }}
                     onCancel={() => setShowSaveDialog(false)}
+                    accountId={accountId}
                 />
             )}
 
@@ -785,13 +854,13 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         console.log('Print preferences saved:', preferences);
                     }}
                     onCancel={() => setShowPrintSetupDialog(false)}
-                    accountId="1"
+                    accountId={accountId}
                 />
             )}
 
             {showPrintPreviewDialog && (
                 <PrintPreviewDialog
-                    onPrint={handlePrint}
+                    onPrint={() => handlePrint(chartPrintData || undefined)}
                     onClose={() => setShowPrintPreviewDialog(false)}
                     chartData={chartPrintData || undefined}
                     preferences={printPreferences || undefined}
@@ -825,8 +894,19 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     }}
                     onConfirm={(saveWorkspace) => {
                         setShowExitDialog(false);
-                        if (saveWorkspace) {
-                            onSave?.();
+                        if (saveWorkspace && accountId?.trim()) {
+                            try {
+                                saveCurrentWorkspaceProfile({
+                                    accountId,
+                                    profileName: 'Default',
+                                });
+                            } catch (error) {
+                                console.error('[FileMenu] Could not save workspace before exit:', error);
+                                window.alert(error instanceof Error
+                                    ? error.message
+                                    : 'The workspace could not be saved before exit.');
+                                return;
+                            }
                         }
                         performExit();
                     }}

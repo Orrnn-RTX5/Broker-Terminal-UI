@@ -12,6 +12,8 @@ import {
   type SharedChartTrade,
 } from './tradeShareLink';
 
+const originalExecCommandDescriptor = Object.getOwnPropertyDescriptor(document, 'execCommand');
+
 const sampleTrade: SharedChartTrade = {
   version: 1,
   ticket: 21261,
@@ -28,6 +30,11 @@ const sampleTrade: SharedChartTrade = {
 afterEach(() => {
   resetSharedChartTradeCache();
   vi.restoreAllMocks();
+  if (originalExecCommandDescriptor) {
+    Object.defineProperty(document, 'execCommand', originalExecCommandDescriptor);
+  } else {
+    Reflect.deleteProperty(document, 'execCommand');
+  }
 });
 
 describe('trade share encoding', () => {
@@ -35,6 +42,16 @@ describe('trade share encoding', () => {
     const encoded = encodeTradeShare(sampleTrade);
     expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(decodeTradeShare(encoded)).toEqual(sampleTrade);
+  });
+
+  it('preserves exact broker punctuation when decoding a shared trade', () => {
+    const punctuated = { ...sampleTrade, symbol: '  xauusd.raw  ' };
+    expect(decodeTradeShare(encodeTradeShare(punctuated))).toMatchObject({
+      symbol: 'XAUUSD.RAW',
+    });
+    expect(decodeTradeShare(encodeTradeShare({ ...sampleTrade, symbol: 'BTCUSD-PRO' }))).toMatchObject({
+      symbol: 'BTCUSD-PRO',
+    });
   });
 
   it('rejects malformed or invalid payloads', () => {
@@ -88,5 +105,18 @@ describe('copyTextToClipboard', () => {
     (document as Document & { execCommand?: (command: string) => boolean }).execCommand = execCommand;
     await expect(copyTextToClipboard('fallback')).resolves.toBe(true);
     expect(execCommand).toHaveBeenCalledWith('copy');
+    expect(document.querySelector('textarea[readonly]')).toBeNull();
+  });
+
+  it('cleans up the fallback textarea when execCommand throws', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+    Object.assign(navigator, { clipboard: { writeText } });
+    const execCommand = vi.fn().mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    (document as Document & { execCommand?: (command: string) => boolean }).execCommand = execCommand;
+
+    await expect(copyTextToClipboard('fallback')).resolves.toBe(false);
+    expect(document.querySelector('textarea[readonly]')).toBeNull();
   });
 });

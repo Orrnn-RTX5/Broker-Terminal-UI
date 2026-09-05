@@ -39,12 +39,9 @@ describe('Electron desktop quick-actions toolbar contract', () => {
         expect(topToolbarSource).not.toContain("import { LeftDrawingToolbar } from './LeftDrawingToolbar';");
         expect(topToolbarSource).not.toContain('<LeftDrawingToolbar');
         expect(topToolbarSource).not.toContain('<WebDrawingToolsRail');
-        expect(appSource).toContain(
-            "import { WebDrawingToolsRail, isWebDrawingToolsRuntime } from './drawing-tools';",
-        );
-        expect(appSource).toContain(
-            '{isWebDrawingToolsRuntime() && <WebDrawingToolsRail selectedSymbol={selectedSymbol} />}',
-        );
+        expect(appSource).toContain('WebDrawingToolsRail,');
+        expect(appSource).toContain('isWebDrawingToolsRuntime,');
+        expect(appSource).toContain('<WebDrawingToolsRail selectedSymbol={desktopToolbarSymbol} />');
     });
 
     it('keeps the reference quick actions and Account-owned Logout reachable', () => {
@@ -81,7 +78,11 @@ describe('Electron desktop quick-actions toolbar contract', () => {
         expect(appSource).toContain(
             'const desktopToolbarSymbol = chartSelectionReadiness.renderedChartSymbol || selectedSymbol;',
         );
+        expect(appSource).toContain('setSelectedSymbol(renderedChartSymbol);');
         expect(appSource).toContain('symbol={desktopToolbarSymbol}');
+        expect(appSource).toContain('<WebDrawingToolsRail selectedSymbol={desktopToolbarSymbol} />');
+        expect(appSource).toContain('${desktopToolbarSymbol},${tf}`');
+        expect(appSource).toContain('marketStatus={desktopToolbarMarketStatus}');
     });
 
     it('does not restore a standalone desktop Logout button in MenuBar', () => {

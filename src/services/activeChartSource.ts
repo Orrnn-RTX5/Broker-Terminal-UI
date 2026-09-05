@@ -26,6 +26,30 @@ const isConnectedElement = <T extends Element>(element: T | null | undefined): e
   return !!element && element.isConnected;
 };
 
+const isVisibleDockChartElement = (element: Element | null): boolean => {
+  if (!element) return false;
+
+  const dockLayer = element.closest<HTMLElement>('[data-dock-tab-content]');
+  if (!dockLayer) return true;
+
+  const inlineOpacity = Number.parseFloat(dockLayer.style.opacity || '1');
+  if (
+    dockLayer.style.display === 'none'
+    || dockLayer.style.visibility === 'hidden'
+    || dockLayer.style.pointerEvents === 'none'
+    || inlineOpacity === 0
+  ) {
+    return false;
+  }
+
+  if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return true;
+  const computed = window.getComputedStyle(dockLayer);
+  return computed.display !== 'none'
+    && computed.visibility !== 'hidden'
+    && computed.pointerEvents !== 'none'
+    && Number.parseFloat(computed.opacity || '1') !== 0;
+};
+
 export const findLargestChartCanvas = (container: HTMLElement | null): HTMLCanvasElement | null => {
   if (!container) return null;
 
@@ -58,6 +82,10 @@ const resolveRegisteredSource = (
     timeframe: source.getTimeframe?.(),
   };
 };
+
+const isResolvedSourceVisible = (source: ResolvedActiveChartSource): boolean => (
+  isVisibleDockChartElement(source.container ?? source.canvas)
+);
 
 const resolveLegacyWindowSource = (): ResolvedActiveChartSource | null => {
   if (typeof window === 'undefined') return null;
@@ -96,8 +124,11 @@ export const registerActiveChartSource = (
   sources.set(source.id, source);
 
   if (!activeSourceId) {
-    activeSourceId = source.id;
-    publishLegacyWindowSource(resolveRegisteredSource(source));
+    const resolved = resolveRegisteredSource(source);
+    if (resolved && isResolvedSourceVisible(resolved)) {
+      activeSourceId = source.id;
+      publishLegacyWindowSource(resolved);
+    }
   }
 
   return () => unregisterActiveChartSource(source.id);
@@ -110,6 +141,13 @@ export const activateActiveChartSource = (id: string): ResolvedActiveChartSource
   const resolved = resolveRegisteredSource(source);
   if (!resolved) {
     sources.delete(id);
+    if (activeSourceId === id) activeSourceId = null;
+    publishLegacyWindowSource(null);
+    publishLegacyWindowSource(getActiveChartSource());
+    return null;
+  }
+
+  if (!isResolvedSourceVisible(resolved)) {
     if (activeSourceId === id) activeSourceId = null;
     publishLegacyWindowSource(null);
     publishLegacyWindowSource(getActiveChartSource());
@@ -134,29 +172,30 @@ export const getActiveChartSource = (): ResolvedActiveChartSource | null => {
   if (activeSourceId) {
     const active = sources.get(activeSourceId);
     const resolved = active ? resolveRegisteredSource(active) : null;
-    if (resolved) {
+    if (resolved && isResolvedSourceVisible(resolved)) {
       publishLegacyWindowSource(resolved);
       return resolved;
     }
 
-    sources.delete(activeSourceId);
+    if (!resolved) sources.delete(activeSourceId);
     activeSourceId = null;
   }
 
   for (const source of Array.from(sources.values()).reverse()) {
     const resolved = resolveRegisteredSource(source);
-    if (resolved) {
+    if (resolved && isResolvedSourceVisible(resolved)) {
       activeSourceId = source.id;
       publishLegacyWindowSource(resolved);
       return resolved;
     }
 
-    sources.delete(source.id);
+    if (!resolved) sources.delete(source.id);
   }
 
   const legacy = resolveLegacyWindowSource();
-  publishLegacyWindowSource(legacy);
-  return legacy;
+  const visibleLegacy = legacy && isResolvedSourceVisible(legacy) ? legacy : null;
+  publishLegacyWindowSource(visibleLegacy);
+  return visibleLegacy;
 };
 
 export const clearActiveChartSources = (): void => {

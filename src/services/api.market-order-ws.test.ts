@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getTradeWebSocketClient: vi.fn(),
   wsPlaceOrder: vi.fn(),
   restPlaceOrder: vi.fn(),
+  restGetOrderCommand: vi.fn(),
 }));
 
 vi.mock('../api/tradeSocket', async (importOriginal) => {
@@ -21,6 +22,7 @@ vi.mock('../api/endpoints', async (importOriginal) => {
     tradingApi: {
       ...actual.tradingApi,
       placeOrder: mocks.restPlaceOrder,
+      getOrderCommand: mocks.restGetOrderCommand,
     },
   };
 });
@@ -87,6 +89,7 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     mocks.getTradeWebSocketClient.mockReset();
     mocks.wsPlaceOrder.mockReset();
     mocks.restPlaceOrder.mockReset();
+    mocks.restGetOrderCommand.mockReset();
     localStorage.clear();
     clearTradeOrderLatencySamples();
 
@@ -174,10 +177,20 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     });
     expect(placementDetails[0].provisionalTicket).toBeLessThan(0);
     expect(placementDetails[1]).toMatchObject({
-      status: 'confirmed',
+      status: 'filled',
       clientOrderId: CLIENT_ORDER_ID,
       position: result,
     });
+    expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
+      phase: 'placement_terminal',
+      transport: 'websocket',
+      clientOrderId: CLIENT_ORDER_ID,
+      terminalStatus: 'filled',
+      symbol: 'BTCUSD',
+      side: 'buy',
+      volume: 0.01,
+      totalMs: expect.any(Number),
+    }));
   });
 
   it('starts the transport before publishing the immediate pending row', async () => {
@@ -209,7 +222,7 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
 
       resolveFill(order);
       await placement;
-      expect(events).toEqual(['transport-started', 'pending', 'confirmed']);
+      expect(events).toEqual(['transport-started', 'pending', 'filled']);
     } finally {
       window.removeEventListener(MARKET_ORDER_PLACEMENT_STATE_EVENT, recordPlacement);
     }
@@ -316,7 +329,7 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     expect(onNewTrade).toHaveBeenCalledTimes(1);
     expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
       'pending',
-      'confirmed',
+      'filled',
     ]);
     const sessionScope = mocks.wsPlaceOrder.mock.calls[0][2]?.sessionScope;
     expect(sessionScope).toEqual(expect.any(String));
@@ -326,7 +339,8 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     ]));
   });
 
-  it('never creates again through REST after the WebSocket order was sent but status is unknown', async () => {
+  it('reconciles a sent WebSocket timeout through GET without creating the order again', async () => {
+    vi.useFakeTimers();
     const uncertainError = Object.assign(new Error(
       'The order was sent, but its final status could not be confirmed.',
     ), {
@@ -337,16 +351,156 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
       clientOrderId: CLIENT_ORDER_ID,
     });
     mocks.wsPlaceOrder.mockRejectedValue(uncertainError);
+    mocks.restGetOrderCommand
+      .mockResolvedValueOnce({
+        status: 'processing',
+        client_order_id: CLIENT_ORDER_ID,
+      })
+      .mockResolvedValueOnce({
+        status: 'filled',
+        client_order_id: CLIENT_ORDER_ID,
+        position: restPosition,
+      });
 
-    await expect(api.orders.placeMarketOrder(inputOrder)).rejects.toBe(uncertainError);
+    try {
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await expect(placement).resolves.toMatchObject({ ticket: 990002 });
 
-    expect(extractWsClientOrderId()).toBe(CLIENT_ORDER_ID);
-    expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
-    expect(onNewTrade).not.toHaveBeenCalled();
-    expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
-      'pending',
-      'failed',
-    ]);
+      expect(extractWsClientOrderId()).toBe(CLIENT_ORDER_ID);
+      expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledTimes(2);
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledWith(CLIENT_ORDER_ID);
+      expect(onNewTrade).toHaveBeenCalledOnce();
+      expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
+        'pending',
+        'processing',
+        'filled',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('preserves the backend rejection from GET after a sent WebSocket timeout without creating again', async () => {
+    vi.useFakeTimers();
+    const uncertainError = Object.assign(new Error(
+      'The order was sent, but its final status could not be confirmed.',
+    ), {
+      name: 'TradeSocketTransportError',
+      code: 'ORDER_STATUS_TIMEOUT',
+      retryable: false,
+      orderWasSent: true,
+      clientOrderId: CLIENT_ORDER_ID,
+    });
+    mocks.wsPlaceOrder.mockRejectedValue(uncertainError);
+    mocks.restGetOrderCommand.mockResolvedValue({
+      status: 'rejected',
+      client_order_id: CLIENT_ORDER_ID,
+      error: {
+        code: 'NO_FRESH_QUOTE',
+        message: 'No fresh BTCUSD quote is available.',
+      },
+    });
+
+    try {
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      const rejection = expect(placement).rejects.toMatchObject({
+        status: 'rejected',
+        code: 'NO_FRESH_QUOTE',
+        backendMessage: 'No fresh BTCUSD quote is available.',
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await rejection;
+
+      expect(extractWsClientOrderId()).toBe(CLIENT_ORDER_ID);
+      expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledOnce();
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledWith(CLIENT_ORDER_ID);
+      expect(onNewTrade).not.toHaveBeenCalled();
+      expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
+        'pending',
+        'processing',
+        'rejected',
+      ]);
+      expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail).toMatchObject({
+        errorCode: 'NO_FRESH_QUOTE',
+        errorMessage: 'No fresh BTCUSD quote is available.',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('expires sent WebSocket reconciliation at the original 30-second deadline', async () => {
+    vi.useFakeTimers();
+    const uncertainError = Object.assign(new Error(
+      'The order was sent, but its final status could not be confirmed.',
+    ), {
+      name: 'TradeSocketTransportError',
+      code: 'ORDER_STATUS_TIMEOUT',
+      retryable: false,
+      orderWasSent: true,
+      clientOrderId: CLIENT_ORDER_ID,
+    });
+    mocks.wsPlaceOrder.mockImplementation(() => new Promise((_, reject) => {
+      setTimeout(() => reject(uncertainError), 20_000);
+    }));
+    mocks.restGetOrderCommand.mockResolvedValue({
+      status: 'processing',
+      client_order_id: CLIENT_ORDER_ID,
+    });
+
+    try {
+      let settled = false;
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      const terminal = placement.then(
+        () => ({ resolved: true as const }),
+        (error: unknown) => ({ resolved: false as const, error }),
+      ).finally(() => {
+        settled = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(settled).toBe(false);
+      expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(terminal).resolves.toMatchObject({
+        resolved: false,
+        error: {
+          status: 'expired',
+          code: 'ORDER_COMMAND_EXPIRED',
+          backendMessage: 'No terminal order result arrived before execute_before.',
+        },
+      });
+
+      expect(extractWsClientOrderId()).toBe(CLIENT_ORDER_ID);
+      expect(mocks.restPlaceOrder).not.toHaveBeenCalled();
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledTimes(10);
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledWith(CLIENT_ORDER_ID);
+      expect(onNewTrade).not.toHaveBeenCalled();
+      expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
+        'pending',
+        'processing',
+        'expired',
+      ]);
+      expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail).toMatchObject({
+        errorCode: 'ORDER_COMMAND_EXPIRED',
+        errorMessage: 'No terminal order result arrived before execute_before.',
+      });
+      expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
+        phase: 'placement_terminal',
+        transport: 'websocket',
+        clientOrderId: CLIENT_ORDER_ID,
+        terminalStatus: 'expired',
+        errorCode: 'ORDER_COMMAND_EXPIRED',
+        errorMessage: 'No terminal order result arrived before execute_before.',
+        totalMs: expect.any(Number),
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('uses REST immediately when the trade socket is closed', async () => {
@@ -404,7 +558,137 @@ describe('ordersApi.placeMarketOrder WebSocket-first transport', () => {
     expect(onNewTrade).not.toHaveBeenCalled();
     expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
       'pending',
+      'rejected',
+    ]);
+    expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail).toMatchObject({
+      errorCode: 'QUOTE_STALE',
+      errorMessage: 'Quote is stale for BTCUSD',
+    });
+    expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
+      phase: 'placement_terminal',
+      transport: 'websocket',
+      clientOrderId: CLIENT_ORDER_ID,
+      terminalStatus: 'rejected',
+      errorCode: 'QUOTE_STALE',
+      errorMessage: 'Quote is stale for BTCUSD',
+      totalMs: expect.any(Number),
+    }));
+  });
+
+  it('records a terminal latency when the final REST attempt fails', async () => {
+    tradeSocket.connectionState = 'closed';
+    tradeSocket.readyState = 3;
+    mocks.restPlaceOrder.mockRejectedValue(Object.assign(new Error('Gateway unavailable'), {
+      code: 'HTTP_503',
+    }));
+
+    await expect(api.orders.placeMarketOrder(inputOrder)).rejects.toThrow('Gateway unavailable');
+
+    expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
+      'pending',
       'failed',
     ]);
+    expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
+      phase: 'placement_terminal',
+      transport: 'rest',
+      clientOrderId: CLIENT_ORDER_ID,
+      terminalStatus: 'failed',
+      errorCode: 'HTTP_503',
+      errorMessage: 'Gateway unavailable',
+      totalMs: expect.any(Number),
+    }));
+  });
+
+  it('polls an accepted REST command until filled without publishing a fake position early', async () => {
+    vi.useFakeTimers();
+    tradeSocket.connectionState = 'closed';
+    tradeSocket.readyState = 3;
+    mocks.restPlaceOrder.mockResolvedValue({
+      status: 'accepted',
+      client_order_id: CLIENT_ORDER_ID,
+      execute_before: Date.now() + 30_000,
+    });
+    mocks.restGetOrderCommand
+      .mockResolvedValueOnce({
+        status: 'processing',
+        client_order_id: CLIENT_ORDER_ID,
+        execute_before: Date.now() + 30_000,
+      })
+      .mockResolvedValueOnce({
+        status: 'filled',
+        client_order_id: CLIENT_ORDER_ID,
+        position: restPosition,
+      });
+
+    try {
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onNewTrade).not.toHaveBeenCalled();
+      expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
+        'pending',
+        'accepted',
+      ]);
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      await expect(placement).resolves.toMatchObject({ ticket: 990002 });
+      expect(mocks.restPlaceOrder).toHaveBeenCalledOnce();
+      expect(mocks.restGetOrderCommand).toHaveBeenCalledTimes(2);
+      expect(onNewTrade).toHaveBeenCalledOnce();
+      expect(onPlacementState.mock.calls.map(([event]) => (event as CustomEvent).detail.status)).toEqual([
+        'pending',
+        'accepted',
+        'processing',
+        'filled',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the backend rejection code and message on the terminal lifecycle event', async () => {
+    vi.useFakeTimers();
+    tradeSocket.connectionState = 'closed';
+    tradeSocket.readyState = 3;
+    mocks.restPlaceOrder.mockResolvedValue({
+      status: 'accepted',
+      client_order_id: CLIENT_ORDER_ID,
+    });
+    mocks.restGetOrderCommand.mockResolvedValue({
+      status: 'rejected',
+      client_order_id: CLIENT_ORDER_ID,
+      error: {
+        code: 'NO_FRESH_QUOTE',
+        message: 'No fresh BTCUSD quote is available.',
+      },
+    });
+
+    try {
+      const placement = api.orders.placeMarketOrder(inputOrder);
+      const rejection = expect(placement).rejects.toMatchObject({
+        status: 'rejected',
+        code: 'NO_FRESH_QUOTE',
+        backendMessage: 'No fresh BTCUSD quote is available.',
+      });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await rejection;
+      expect(mocks.restPlaceOrder).toHaveBeenCalledOnce();
+      expect(onNewTrade).not.toHaveBeenCalled();
+      expect((onPlacementState.mock.calls.at(-1)?.[0] as CustomEvent).detail).toMatchObject({
+        status: 'rejected',
+        errorCode: 'NO_FRESH_QUOTE',
+        errorMessage: 'No fresh BTCUSD quote is available.',
+      });
+      expect(getTradeOrderLatencySamples()).toContainEqual(expect.objectContaining({
+        phase: 'placement_terminal',
+        transport: 'rest',
+        clientOrderId: CLIENT_ORDER_ID,
+        terminalStatus: 'rejected',
+        errorCode: 'NO_FRESH_QUOTE',
+        errorMessage: 'No fresh BTCUSD quote is available.',
+        totalMs: expect.any(Number),
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

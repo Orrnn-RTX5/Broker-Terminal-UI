@@ -10,6 +10,24 @@ import {
 } from './tradeLevelDrag';
 
 describe('tradeLevelDrag', () => {
+  it('keeps punctuated broker contracts in separate override fingerprints', () => {
+    const common = {
+      side: 'BUY' as const,
+      volume: 0.01,
+      entryPrice: 1.1,
+      entryTime: 123,
+      digits: 5,
+    };
+
+    const base = createTradeLevelOverrideFingerprint({ ...common, symbol: 'XAUUSD' });
+    const raw = createTradeLevelOverrideFingerprint({ ...common, symbol: ' xauusd.raw ' });
+    const pro = createTradeLevelOverrideFingerprint({ ...common, symbol: 'XAUUSD-PRO' });
+
+    expect(raw).toContain(':XAUUSD.RAW:');
+    expect(pro).toContain(':XAUUSD-PRO:');
+    expect(new Set([base, raw, pro])).toHaveLength(3);
+  });
+
   it('creates TP above a BUY entry and SL below a BUY entry', () => {
     expect(resolveTradeLevelDragRole('BUY', 'ENTRY', 1.10000, 1.10100)).toBe('TP');
     expect(resolveTradeLevelDragRole('BUY', 'ENTRY', 1.10000, 1.09900)).toBe('SL');

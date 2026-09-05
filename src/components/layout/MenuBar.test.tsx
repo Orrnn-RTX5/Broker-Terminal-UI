@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-i18next', () => ({
@@ -26,18 +26,58 @@ vi.mock('../../store/useAppStore', () => {
     return { useAppStore };
 });
 
+const openWebTraderMock = vi.hoisted(() => vi.fn().mockResolvedValue({
+    status: 'opened',
+    brokerId: 'test',
+    brokerName: 'Test Broker',
+    url: 'https://terminal.example.com',
+    openedWith: 'browser',
+}));
+const closeActiveChartMock = vi.hoisted(() => vi.fn(() => true));
+
+vi.mock('../../services/webTrader', () => ({
+    openWebTrader: openWebTraderMock,
+}));
+
+vi.mock('../../store/useDockLayoutStore', () => ({
+    useDockLayoutStore: {
+        getState: () => ({ closeActiveChart: closeActiveChartMock }),
+    },
+}));
+
 vi.mock('./FileMenu', () => ({
     FileMenu: ({
         onSave,
+        onCloseActiveChart,
+        onChartRestored,
+        onProfileRestored,
+        onLoginTrade,
+        onLoginWebTrader,
+        onOpenDataFolder,
+        onExit,
         accountId,
         onLogout,
     }: {
-        onSave: () => void;
+        onSave: (workspaceName?: string) => void;
+        onCloseActiveChart?: () => void;
+        onChartRestored?: () => void;
+        onProfileRestored?: (profileName: string) => void;
+        onLoginTrade?: () => void;
+        onLoginWebTrader?: () => void;
+        onOpenDataFolder?: () => void;
+        onExit?: () => void;
         accountId?: string;
         onLogout?: () => void;
     }) => (
         <div data-testid="file-menu">
-            <button type="button" onClick={onSave}>Save workspace</button>
+            <button type="button" onClick={() => onSave('Default')}>Save workspace</button>
+            {onCloseActiveChart && <button type="button" onClick={onCloseActiveChart}>Close current chart</button>}
+            {onChartRestored && <button type="button" onClick={onChartRestored}>Restore chart</button>}
+            {onProfileRestored && <button type="button" onClick={() => onProfileRestored('Market')}>Restore profile</button>}
+            {onLoginTrade && <button type="button" onClick={onLoginTrade}>Login trade account</button>}
+            {onLoginWebTrader && <button type="button" onClick={onLoginWebTrader}>Open web trader</button>}
+            {onOpenDataFolder && <button type="button" onClick={onOpenDataFolder}>Open data folder</button>}
+            {onExit && <button type="button" onClick={onExit}>Exit terminal</button>}
             {accountId && <span>Current account {accountId}</span>}
             {onLogout && <button type="button" onClick={onLogout}>Log Out</button>}
         </div>
@@ -57,6 +97,11 @@ vi.mock('../SymbolsDialog', () => ({
 import { MenuBar } from './MenuBar';
 import { commandBus } from '../../services/commandBus';
 import { drawingManager } from '../../services/drawingManager';
+import {
+    defaultChartProperties,
+    getPresetSchemeColors,
+    useChartSettingsStore,
+} from '../../store/useChartSettingsStore';
 
 type ElectronWindowApi = NonNullable<Window['electron']>['window'];
 
@@ -80,6 +125,13 @@ const installElectronBridge = () => {
 afterEach(() => {
     cleanup();
     delete window.electron;
+    useChartSettingsStore.setState({
+        globalProperties: {
+            ...defaultChartProperties,
+            colors: { ...defaultChartProperties.colors },
+        },
+        symbolProperties: {},
+    });
     vi.restoreAllMocks();
 });
 
@@ -95,7 +147,9 @@ describe('MenuBar hamburger launcher', () => {
         fireEvent.click(screen.getByRole('menuitem', { name: 'Chart controls' }));
 
         const chartsMenu = screen.getByRole('menu', { name: 'Chart controls menu' });
-        const chartItems = within(chartsMenu).getAllByRole('menuitem');
+        const chartItems = Array.from(chartsMenu.querySelectorAll<HTMLElement>(
+            '[role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]',
+        ));
         const chartItemNames = chartItems.map(item => item.getAttribute('aria-label'));
         const lineIndex = chartItemNames.indexOf('menu.charts.lineChart');
         const areaIndex = chartItemNames.indexOf('menu.charts.areaChart');
@@ -103,7 +157,7 @@ describe('MenuBar hamburger launcher', () => {
         expect(lineIndex).toBeGreaterThanOrEqual(0);
         expect(areaIndex).toBe(lineIndex + 1);
 
-        fireEvent.click(within(chartsMenu).getByRole('menuitem', { name: 'menu.charts.lineChart' }));
+        fireEvent.click(within(chartsMenu).getByRole('menuitemradio', { name: 'menu.charts.lineChart' }));
         expect(dispatchSpy).toHaveBeenLastCalledWith({
             type: 'SET_CHART_TYPE',
             payload: { chartType: 'line' },
@@ -112,7 +166,7 @@ describe('MenuBar hamburger launcher', () => {
         fireEvent.click(launcher);
         fireEvent.click(screen.getByRole('menuitem', { name: 'Chart settings' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Chart controls' }));
-        fireEvent.click(screen.getByRole('menuitem', { name: 'menu.charts.areaChart' }));
+        fireEvent.click(screen.getByRole('menuitemradio', { name: 'menu.charts.areaChart' }));
         expect(dispatchSpy).toHaveBeenLastCalledWith({
             type: 'SET_CHART_TYPE',
             payload: { chartType: 'area' },
@@ -135,7 +189,7 @@ describe('MenuBar hamburger launcher', () => {
             'One Click Trading',
             'Light Theme',
             'Color Templates',
-            'MQL5 Algo Trading',
+            'RTX5 Algo Trading',
             'RTX5 Terminal',
             'Economic Calendar',
             'Language',
@@ -145,11 +199,17 @@ describe('MenuBar hamburger launcher', () => {
         ]) {
             expect(screen.getByRole('menuitem', { name: label })).toBeInTheDocument();
         }
-        expect(screen.getByText('RTX Terminal')).toBeInTheDocument();
+        const tradingAccountsItem = screen.getByRole('menuitem', { name: 'Trading accounts' });
+        const chartSettingsItem = screen.getByRole('menuitem', { name: 'Chart settings' });
+        expect(screen.queryByTestId('connected-account-card')).not.toBeInTheDocument();
+        expect(screen.queryByText('Connected account')).not.toBeInTheDocument();
+        expect(tradingAccountsItem.compareDocumentPosition(chartSettingsItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(screen.queryByRole('menu', { name: 'Chart settings menu' })).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'Chart settings' }));
-        expect(screen.getByRole('menu', { name: 'Chart settings menu' })).toBeInTheDocument();
+        const chartSettingsMenu = screen.getByRole('menu', { name: 'Chart settings menu' });
+        expect(chartSettingsMenu).toBeInTheDocument();
+        expect(chartSettingsMenu.style.top).toBe('-38px');
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'Chart controls' }));
         expect(screen.getByRole('menu', { name: 'Chart controls menu' })).toBeInTheDocument();
@@ -173,6 +233,64 @@ describe('MenuBar hamburger launcher', () => {
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
 
+    it('wires chart close, restore, profile restore, and trade login to live application owners', () => {
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        render(<MenuBar />);
+        const launcher = screen.getByRole('button', { name: 'Open application menu' });
+
+        const openFileMenu = () => {
+            fireEvent.click(launcher);
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Trading accounts' }));
+        };
+
+        openFileMenu();
+        fireEvent.click(screen.getByRole('button', { name: 'Close current chart' }));
+        expect(closeActiveChartMock).toHaveBeenCalledTimes(1);
+        expect(dispatchSpy.mock.calls.some(([event]) => (
+            event.type === 'rtx:order-feedback'
+            && (event as CustomEvent).detail?.message === 'Chart closed. Use Open Deleted to restore it.'
+        ))).toBe(true);
+
+        openFileMenu();
+        fireEvent.click(screen.getByRole('button', { name: 'Restore chart' }));
+        expect(dispatchSpy.mock.calls.some(([event]) => event.type === 'rtx:order-feedback')).toBe(true);
+
+        openFileMenu();
+        fireEvent.click(screen.getByRole('button', { name: 'Restore profile' }));
+        const feedbackEvents = dispatchSpy.mock.calls
+            .map(([event]) => event)
+            .filter((event) => event.type === 'rtx:order-feedback') as CustomEvent[];
+        expect(feedbackEvents.at(-1)?.detail).toEqual({
+            message: 'Workspace "Market" restored.',
+            type: 'success',
+        });
+
+        openFileMenu();
+        fireEvent.click(screen.getByRole('button', { name: 'Login trade account' }));
+        expect(dispatchSpy.mock.calls.some(([event]) => event.type === 'rtx:openLoginDialog')).toBe(true);
+    });
+
+    it('opens the configured broker Web Trader and reports the result', async () => {
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        render(<MenuBar />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Trading accounts' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Open web trader' }));
+
+        await waitFor(() => expect(openWebTraderMock).toHaveBeenCalledTimes(1));
+        const feedbackEvent = dispatchSpy.mock.calls
+            .map(([event]) => event)
+            .find((event) => (
+                event.type === 'rtx:order-feedback'
+                && (event as CustomEvent).detail?.message === 'Opened Test Broker Web Trader.'
+            )) as CustomEvent | undefined;
+        expect(feedbackEvent?.detail).toEqual({
+            message: 'Opened Test Broker Web Trader.',
+            type: 'success',
+        });
+    });
+
     it('closes on Escape and an outside click', () => {
         render(<MenuBar />);
         const launcher = screen.getByRole('button', { name: 'Open application menu' });
@@ -187,6 +305,58 @@ describe('MenuBar hamburger launcher', () => {
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
 
+    it('shows genuine chart color templates and applies the choice only to the active chart', () => {
+        useChartSettingsStore.setState({
+            globalProperties: {
+                ...defaultChartProperties,
+                colors: { ...defaultChartProperties.colors },
+            },
+            symbolProperties: {},
+        });
+        const initialGlobalProperties = useChartSettingsStore.getState().globalProperties;
+
+        render(<MenuBar chartSymbol="XAUUSD" />);
+        fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Color Templates' }));
+
+        const colorTemplatesMenu = screen.getByRole('menu', { name: 'Color Templates menu' });
+        expect(within(colorTemplatesMenu).getAllByRole('menuitemradio').map(item => item.textContent)).toEqual([
+            'Green on Black',
+            'Black on White',
+            'Yellow on Black',
+        ]);
+        expect(within(colorTemplatesMenu).getByRole('menuitemradio', { name: 'Green on Black' }))
+            .toHaveAttribute('aria-checked', 'true');
+        for (const unrelatedItem of [
+            'Font Size',
+            'Focus Chart',
+            'menu.view.languages',
+            'menu.view.toolbars',
+            'menu.view.statusBar',
+            'menu.view.chartsBar',
+            'Search Symbols',
+            'menu.view.depthOfMarket',
+            'menu.view.marketWatch',
+            'menu.view.dataWindow',
+            'menu.view.navigator',
+            'menu.view.toolbox',
+            'menu.view.strategyTester',
+            'menu.view.fullScreen',
+        ]) {
+            expect(within(colorTemplatesMenu).queryByText(unrelatedItem)).not.toBeInTheDocument();
+        }
+
+        fireEvent.click(within(colorTemplatesMenu).getByRole('menuitemradio', { name: 'Yellow on Black' }));
+
+        const chartSettings = useChartSettingsStore.getState();
+        expect(chartSettings.globalProperties).toBe(initialGlobalProperties);
+        expect(chartSettings.symbolProperties.XAUUSD).toMatchObject({
+            colorScheme: 'Yellow on Black',
+            colors: getPresetSchemeColors('Yellow on Black'),
+        });
+        expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
+    });
+
     it('keeps the original actions reachable through the professional launcher', () => {
         const onSetAdvancedViewEnabled = vi.fn();
         const onSetAdvancedFontSize = vi.fn();
@@ -197,7 +367,7 @@ describe('MenuBar hamburger launcher', () => {
 
         render(
             <MenuBar
-                advancedViewEnabled={false}
+                advancedViewEnabled
                 advancedFontSize="normal"
                 focusChart={false}
                 activeDrawingTool={null}
@@ -213,31 +383,30 @@ describe('MenuBar hamburger launcher', () => {
         const launcher = screen.getByRole('button', { name: 'Open application menu' });
 
         fireEvent.click(launcher);
-        expect(screen.getByText('Arijit Nayak')).toBeInTheDocument();
-        expect(screen.getByText('200002 - MetaQuotes-Demo')).toBeInTheDocument();
-        expect(screen.getByText('Demo')).toBeInTheDocument();
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Color Templates' }));
+        expect(screen.queryByText('Arijit Nayak')).not.toBeInTheDocument();
+        expect(screen.queryByText('200002 - MetaQuotes-Demo')).not.toBeInTheDocument();
+        expect(screen.queryByText('Demo')).not.toBeInTheDocument();
+        expect(screen.queryByText('Current account 200002')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         expect(screen.getByRole('menuitem', { name: 'Search Symbols' })).toBeInTheDocument();
-        const themeMenuItem = screen.getByRole('menuitem', { name: 'Theme' });
-        expect(themeMenuItem).toHaveAttribute('aria-expanded', 'false');
-        fireEvent.click(themeMenuItem);
-        expect(themeMenuItem).toHaveAttribute('aria-expanded', 'true');
         fireEvent.click(screen.getByRole('menuitem', { name: 'Font Size' }));
         fireEvent.click(screen.getByRole('menuitemradio', { name: 'Large' }));
         expect(onSetAdvancedFontSize).toHaveBeenCalledWith('large');
 
         fireEvent.click(launcher);
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Color Templates' }));
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Theme' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Focus Chart' }));
         expect(onSetFocusChart).toHaveBeenCalledWith(true);
 
         fireEvent.click(launcher);
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Light Theme' }));
-        expect(onSetAdvancedViewEnabled).toHaveBeenCalledWith(true);
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Dark Theme' }));
+        expect(onSetAdvancedViewEnabled).toHaveBeenCalledWith(false);
 
         fireEvent.click(launcher);
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Color Templates' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View & interface' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Search Symbols' }));
         expect(screen.getByRole('dialog', { name: 'Symbols dialog' })).toBeInTheDocument();
 
@@ -311,6 +480,9 @@ describe('MenuBar Electron desktop menubar', () => {
 
         fireEvent.click(screen.getByRole('button', { name: 'Save workspace' }));
         expect(screen.queryByRole('menu', { name: 'File menu' })).not.toBeInTheDocument();
+
+        fireEvent.click(within(menubar).getByRole('menuitem', { name: 'View' }));
+        expect(within(screen.getByRole('menu', { name: 'View menu' })).getByRole('menuitem', { name: 'Theme' })).toBeInTheDocument();
     });
 
     it('leaves desktop Logout to the upper-right Account popup without duplicating it in File', () => {
@@ -334,7 +506,7 @@ describe('MenuBar Electron desktop menubar', () => {
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'Charts' }));
         const chartsMenu = screen.getByRole('menu', { name: 'Charts menu' });
-        fireEvent.click(within(chartsMenu).getByRole('menuitem', { name: 'menu.charts.lineChart' }));
+        fireEvent.click(within(chartsMenu).getByRole('menuitemradio', { name: 'menu.charts.lineChart' }));
         expect(dispatchSpy).toHaveBeenLastCalledWith({
             type: 'SET_CHART_TYPE',
             payload: { chartType: 'line' },

@@ -183,7 +183,14 @@ interface AppState {
   bootstrapStep: string;
 
   // Actions
-  setAuthenticated: (isAuth: boolean, accountId?: string, authToken?: string, refreshToken?: string, expiresAt?: number) => void;
+  setAuthenticated: (
+    isAuth: boolean,
+    accountId?: string,
+    authToken?: string,
+    refreshToken?: string,
+    expiresAt?: number,
+    savedAccount?: SavedAccount,
+  ) => void;
   setAuthTokens: (authToken: string, refreshToken?: string, expiresAt?: number) => void;
   setIsRefreshing: (isRefreshing: boolean) => void;
   setAuthToken: (token: string | null) => void;
@@ -341,6 +348,20 @@ const updateTickLookup = (
   return nextLookup;
 };
 
+const upsertSavedAccount = (accounts: unknown, account: SavedAccount): SavedAccount[] => {
+  const retained = sanitizeSavedAccounts(accounts);
+  const safeAccount = sanitizeSavedAccount(account);
+  if (!safeAccount) return retained;
+
+  const nextAccount = { ...safeAccount, lastUsed: Date.now() };
+  const existingIndex = retained.findIndex((candidate) => candidate.login === safeAccount.login);
+  if (existingIndex < 0) return [...retained, nextAccount];
+
+  return retained.map((candidate, index) => (
+    index === existingIndex ? { ...candidate, ...nextAccount } : candidate
+  ));
+};
+
 const applyAppTickBatch = (
   state: AppState,
   entries: readonly AppTickEntry[],
@@ -370,6 +391,24 @@ const applyAppTickBatch = (
     }
     if (candidate.low === undefined && prevTick?.low !== undefined) {
       candidate.low = prevTick.low;
+    }
+    if (candidate.lp === undefined && prevTick?.lp !== undefined) {
+      candidate.lp = prevTick.lp;
+    }
+    if (candidate.volume === undefined && prevTick?.volume !== undefined) {
+      candidate.volume = prevTick.volume;
+    }
+    if (candidate.last === undefined && prevTick?.last !== undefined) {
+      candidate.last = prevTick.last;
+    }
+    if (candidate.open === undefined && prevTick?.open !== undefined) {
+      candidate.open = prevTick.open;
+    }
+    if (candidate.close === undefined && prevTick?.close !== undefined) {
+      candidate.close = prevTick.close;
+    }
+    if (candidate.digits === undefined && prevTick?.digits !== undefined) {
+      candidate.digits = prevTick.digits;
     }
 
     const freshness = prevTick ? compareCanonicalTickFreshness(prevTick, candidate) : 1;
@@ -420,8 +459,15 @@ export const resolveTickFromLookup = (
   const exact = ticks[normalizedSymbol] || ticks[rawSymbol];
   if (exact) return exact;
 
-  const lookupKey = tickLookup[normalizedSymbol] || tickLookup[getTickBaseLookupKey(normalizedSymbol)];
-  return lookupKey ? ticks[lookupKey] : undefined;
+  // FIX: Stream/execution lookup is exact. A base-symbol fallback can price a
+  // position or order for XAUUSD with XAUUSD.raw (or another broker contract).
+  const lookupKey = tickLookup[normalizedSymbol];
+  const lookupTick = lookupKey ? ticks[lookupKey] : undefined;
+  if (!lookupTick) return undefined;
+  return normalizeTickLookupKey(lookupKey) === normalizedSymbol
+    || normalizeTickLookupKey(lookupTick.symbol) === normalizedSymbol
+    ? lookupTick
+    : undefined;
 };
 
 export const useAppStore = create<AppState>()(
@@ -430,26 +476,49 @@ export const useAppStore = create<AppState>()(
       (set) => ({
         ...initialState,
 
-        setAuthenticated: (isAuth, accountId, authToken, refreshToken, expiresAt) => {
+        setAuthenticated: (isAuth, accountId, authToken, refreshToken, expiresAt, savedAccount) => {
           if (isAuth && accountId) {
             // Log successful login to system journal
             useSystemJournalStore.getState().addLog('System', `Login to RTX5 as account ${accountId}`);
           }
 
-          set({
-            isAuthenticated: isAuth,
-            accountId: accountId || null,
-            authToken: authToken || null,
-            refreshToken: refreshToken || null,
-            tokenExpiresAt: expiresAt || null
+          let sessionChangeReason: 'login' | 'account_change' | null = null;
+          set((state) => {
+            const nextAccountId = accountId || null;
+            const authenticatedSessionChanged = isAuth && (
+              !state.isAuthenticated
+              || state.accountId !== nextAccountId
+            );
+            // FIX: Account identity is part of market-data ownership even when
+            // broker URL and authentication boolean do not change.
+            if (authenticatedSessionChanged) {
+              sessionChangeReason = state.isAuthenticated ? 'account_change' : 'login';
+            }
+
+            return {
+              isAuthenticated: isAuth,
+              accountId: nextAccountId,
+              authToken: authToken || null,
+              refreshToken: refreshToken || null,
+              tokenExpiresAt: expiresAt || null,
+              ...(authenticatedSessionChanged ? {
+                account: null,
+                positions: [],
+                orders: [],
+                trades: [],
+              } : {}),
+              ...(savedAccount ? { savedAccounts: upsertSavedAccount(state.savedAccounts, savedAccount) } : {}),
+            };
           });
           commitBrokerAccountSessionScope({
             authenticated: isAuth,
             accountId: accountId || null,
           });
+          if (sessionChangeReason) emitSessionChange(sessionChangeReason);
         },
 
         setAuthTokens: (authToken, refreshToken, expiresAt) => {
+          let tokenRotated = false;
           // Write to localStorage so the API client (which reads from localStorage) picks up the new token
           if (typeof window !== 'undefined') {
             if (authToken) localStorage.setItem('auth_token', authToken);
@@ -457,16 +526,23 @@ export const useAppStore = create<AppState>()(
             if (expiresAt) localStorage.setItem('token_expires_at', new Date(expiresAt).toISOString());
             dispatchAuthTokenUpdated();
           }
-          set((state) => ({
-            authToken,
-            refreshToken: refreshToken !== undefined ? refreshToken : state.refreshToken,
-            tokenExpiresAt: expiresAt !== undefined ? expiresAt : state.tokenExpiresAt
-          }));
+          set((state) => {
+            tokenRotated = state.authToken !== authToken;
+            return {
+              authToken,
+              refreshToken: refreshToken !== undefined ? refreshToken : state.refreshToken,
+              tokenExpiresAt: expiresAt !== undefined ? expiresAt : state.tokenExpiresAt
+            };
+          });
+          // FIX: Token refresh must rotate every socket, not only notify API
+          // consumers through the browser event.
+          if (tokenRotated) emitSessionChange('token_rotation');
         },
 
         setIsRefreshing: (isRefreshing) => set({ isRefreshing }),
 
         setAuthToken: (token) => {
+          const previousToken = useAppStore.getState().authToken;
           if (typeof window !== 'undefined') {
             if (token) {
               localStorage.setItem('auth_token', token);
@@ -476,6 +552,9 @@ export const useAppStore = create<AppState>()(
             dispatchAuthTokenUpdated();
           }
           set({ authToken: token });
+          // FIX: The single-token setter participates in the same socket
+          // credential lifecycle as the full refresh-token setter.
+          if (previousToken !== token) emitSessionChange(token ? 'token_rotation' : 'logout');
         },
 
         clearAuth: () => {
@@ -490,6 +569,9 @@ export const useAppStore = create<AppState>()(
           set({ isAuthenticated: false, accountId: null, authToken: null, refreshToken: null, tokenExpiresAt: null });
           commitBrokerAccountSessionScope({ authenticated: false, accountId: null });
           dispatchAuthTokenUpdated();
+          // FIX: ClearAuth is a full session boundary and must invalidate all
+          // broker-owned sockets and quote/candle caches.
+          emitSessionChange('logout');
         },
 
         logout: () => {
@@ -550,9 +632,26 @@ export const useAppStore = create<AppState>()(
             // of filled orders merges in O(n), instead of doing an O(n) find
             // for every incoming row and blocking the next Buy/Sell click.
             const existingById = new Map(state.positions.map((position) => [position.id, position]));
-            const nextPositions = positions.map((incoming) => {
+            const nextPositions = positions.flatMap((incoming): Position[] => {
               const existing = existingById.get(incoming.id);
-              if (!existing) return incoming;
+              if (!existing) {
+                // Price/P&L deltas can arrive before the authoritative open-
+                // position snapshot. Do not expose those sparse records as
+                // blank rows; admit the ticket once symbol and volume exist.
+                const incomingId = Number(incoming.id);
+                const incomingSymbol = String(incoming.symbol ?? '').trim();
+                const incomingVol = Number(incoming.volume ?? incoming.quantity ?? 0);
+                if (
+                  !Number.isFinite(incomingId)
+                  || incomingId <= 0
+                  || !incomingSymbol
+                  || !Number.isFinite(incomingVol)
+                  || incomingVol <= 0
+                ) {
+                  return [];
+                }
+                return [incoming];
+              }
 
               // A full update always has non-zero openPrice/open_price and volume/quantity.
               const incomingOpen = Number(incoming.openPrice ?? incoming.open_price ?? 0);
@@ -560,16 +659,16 @@ export const useAppStore = create<AppState>()(
               const isFullUpdate = incomingOpen > 0 && incomingVol > 0;
 
               if (isFullUpdate) {
-                return {
+                return [{
                   ...existing,
                   ...incoming,
                   symbol: incoming.symbol || existing.symbol,
                   chartEntryPrice: incoming.chartEntryPrice ?? existing.chartEntryPrice,
                   chartEntryTime: incoming.chartEntryTime ?? existing.chartEntryTime,
-                };
+                }];
               } else {
                 // Partial P&L or quote updates — preserve all other existing properties!
-                return {
+                return [{
                   ...existing,
                   currentPrice: Number(incoming.currentPrice ?? incoming.current_price ?? 0) > 0
                     ? Number(incoming.currentPrice ?? incoming.current_price)
@@ -586,7 +685,7 @@ export const useAppStore = create<AppState>()(
                   profit: incoming.profit !== undefined ? Number(incoming.profit) : existing.profit,
                   time_update: incoming.time_update || existing.time_update,
                   time_create: incoming.time_create || existing.time_create,
-                };
+                }];
               }
             });
 
@@ -602,21 +701,7 @@ export const useAppStore = create<AppState>()(
         setAccount: (account) => set({ account }),
 
         addSavedAccount: (account) =>
-          set((state) => {
-            const safeAccount = sanitizeSavedAccount(account);
-            if (!safeAccount) return { savedAccounts: sanitizeSavedAccounts(state.savedAccounts) };
-            const exists = state.savedAccounts.find((a) => a.login === safeAccount.login);
-            if (exists) {
-              return {
-                savedAccounts: state.savedAccounts.map((a) =>
-                  a.login === safeAccount.login ? { ...a, ...safeAccount, lastUsed: Date.now() } : a
-                )
-              };
-            }
-            return {
-              savedAccounts: [...sanitizeSavedAccounts(state.savedAccounts), { ...safeAccount, lastUsed: Date.now() }]
-            };
-          }),
+          set((state) => ({ savedAccounts: upsertSavedAccount(state.savedAccounts, account) })),
 
         removeSavedAccount: (login) =>
           set((state) => ({
@@ -624,9 +709,20 @@ export const useAppStore = create<AppState>()(
           })),
 
         setActiveAccount: (login) => {
+          let accountChanged = false;
+          let sessionAuthenticated = false;
           set((state) => {
+            const nextAccountId = login.toString();
+            accountChanged = state.accountId !== nextAccountId;
+            sessionAuthenticated = state.isAuthenticated;
             return {
-              accountId: login.toString(),
+              accountId: nextAccountId,
+              ...(accountChanged ? {
+                account: null,
+                positions: [],
+                orders: [],
+                trades: [],
+              } : {}),
               savedAccounts: state.savedAccounts.map((a) =>
                 a.login === login ? { ...a, lastUsed: Date.now() } : a
               )
@@ -634,11 +730,19 @@ export const useAppStore = create<AppState>()(
           });
           const committedScope = getCommittedBrokerAccountSessionScope();
           commitBrokerAccountSessionScope({
-            authenticated: committedScope.authenticated,
-            accountId: committedScope.authenticated ? login.toString() : null,
+            // FIX: The live store is authoritative here. A stale committed
+            // scope must not turn an unauthenticated account selection into a
+            // ghost authenticated session.
+            authenticated: sessionAuthenticated,
+            accountId: sessionAuthenticated ? login.toString() : null,
             brokerId: committedScope.brokerId,
             serverUrl: committedScope.serverUrl,
           });
+          // FIX: Notify sockets only after both Zustand and the committed
+          // broker/account scope own the new login, and only for a real
+          // authenticated identity change. Re-selecting the same account is
+          // intentionally silent so it cannot create duplicate reconnects.
+          if (accountChanged && sessionAuthenticated) emitSessionChange('account_change');
         },
 
         setChartMaximized: (isMaximized) => set({ isChartMaximized: isMaximized }),

@@ -4,9 +4,12 @@ import react from '@vitejs/plugin-react'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import * as http from 'node:http'
 import * as https from 'node:https'
+import * as net from 'node:net'
 import { isIP, type Socket } from 'node:net'
+import * as tls from 'node:tls'
 import {
   createPinnedConnectionOptions,
+  normalizeProxyAccessOrigin,
   resolveProxyAddresses,
   type ResolvedProxyAddress,
 } from './viteBrokerProxyAddress'
@@ -106,38 +109,8 @@ const copyProxyHeaders = (headers: IncomingHttpHeaders): IncomingHttpHeaders => 
   return nextHeaders
 }
 
-const toHttpOrigin = (value: string): string | null => {
-  const trimmed = String(value || '').trim().replace(/\/+$/, '')
-  if (!trimmed) return null
-
-  try {
-    const parsed = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
-    return parsed.origin
-  } catch {
-    return null
-  }
-}
-
-const toWsOrigin = (value: string): string | null => {
-  const trimmed = String(value || '').trim().replace(/\/+$/, '')
-  if (!trimmed) return null
-
-  try {
-    const parsed = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed) ? trimmed : `wss://${trimmed}`)
-    if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:' && parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
-    parsed.protocol = parsed.protocol === 'http:' ? 'ws:' : parsed.protocol === 'https:' ? 'wss:' : parsed.protocol
-    parsed.pathname = ''
-    parsed.search = ''
-    parsed.hash = ''
-    return parsed.toString().replace(/\/$/, '')
-  } catch {
-    return null
-  }
-}
-
 const addOrigin = (origins: Set<string>, value: string): void => {
-  const origin = toHttpOrigin(value)
+  const origin = normalizeProxyAccessOrigin(value)
   if (origin) origins.add(origin)
 }
 
@@ -193,29 +166,6 @@ const parseDynamicProxyTarget = (requestUrl: string, prefix: string): URL | null
   }
 }
 
-const rewriteDynamicWsProxyPath = (path: string): string => {
-  const prefix = '/__broker_feed_ws'
-  if (!path.startsWith(`${prefix}/`)) return path.replace(/^\/__broker_feed_ws/, '')
-
-  const pathAfterPrefix = path.slice(prefix.length + 1)
-  const slashIndex = pathAfterPrefix.indexOf('/')
-  if (slashIndex < 0) return '/'
-
-  const encodedOrigin = pathAfterPrefix.slice(0, slashIndex)
-  const targetPath = pathAfterPrefix.slice(slashIndex)
-
-  try {
-    const origin = new URL(decodeURIComponent(encodedOrigin))
-    if (origin.protocol !== 'ws:' && origin.protocol !== 'wss:') return '/'
-    const queryIndex = targetPath.indexOf('?')
-    const pathname = queryIndex >= 0 ? targetPath.slice(0, queryIndex) : targetPath
-    const search = queryIndex >= 0 ? targetPath.slice(queryIndex) : ''
-    return `${pathname || '/'}${search}`
-  } catch {
-    return '/'
-  }
-}
-
 type BrokerProxyAccess = {
   trustedOrigins: Set<string>
   envAllowedOrigins: Set<string>
@@ -226,21 +176,22 @@ const createBrokerProxyAccess = (env: Record<string, string>): BrokerProxyAccess
   const trustedOrigins = new Set<string>()
   const envAllowedOrigins = new Set<string>()
 
-  ;[
-    'https://backend.orrnn.com',
-    'https://superbackend.orrnn.com',
-    'https://testsuperbackend.orrnn.com',
-    'https://testbrokerbackend.orrnn.com',
-    'https://fxtrustsuperbackned.orrnn.com',
-    'https://fxtrustbrokerbackend.orrnn.com',
-    env.VITE_API_URL,
-    env.VITE_BACKEND_URL,
-    env.VITE_BROKER_DISCOVERY_URL,
-    env.VITE_DEV_BROKER_API_URL,
-    env.VITE_RTX5_API_URL,
-    env.VITE_API_V2_URL,
-    env.VITE_FIX_API_URL,
-  ].forEach((value) => addOrigin(trustedOrigins, value || ''))
+    ;[
+      'https://backend.orrnn.com',
+      'https://superbackend.orrnn.com',
+      'https://testsuperbackend.orrnn.com',
+      'https://testbrokerbackend.orrnn.com',
+      'https://fxtrustsuperbackned.orrnn.com',
+      'https://fxtrustbrokerbackend.orrnn.com',
+      'https://services.growtradingacademy.com',
+      env.VITE_API_URL,
+      env.VITE_BACKEND_URL,
+      env.VITE_BROKER_DISCOVERY_URL,
+      env.VITE_DEV_BROKER_API_URL,
+      env.VITE_RTX5_API_URL,
+      env.VITE_API_V2_URL,
+      env.VITE_FIX_API_URL,
+    ].forEach((value) => addOrigin(trustedOrigins, value || ''))
 
   splitAllowlist(env.VITE_DEV_PROXY_ALLOWED_ORIGINS).forEach((value) => addOrigin(envAllowedOrigins, value))
   splitAllowlist(env.VITE_DEV_BROKER_PROXY_ALLOWED_ORIGINS).forEach((value) => addOrigin(envAllowedOrigins, value))
@@ -256,10 +207,15 @@ const validateProxyTarget = async (
   target: URL,
   access: BrokerProxyAccess
 ): Promise<{ allowed: true; resolvedAddresses: ResolvedProxyAddress[] } | { allowed: false; reason: string }> => {
-  const explicitlyAllowed = access.envAllowedOrigins.has(target.origin)
+  const comparableOrigin = normalizeProxyAccessOrigin(target.origin)
+  if (!comparableOrigin) {
+    return { allowed: false, reason: 'Broker proxy target uses an unsupported protocol' }
+  }
+
+  const explicitlyAllowed = access.envAllowedOrigins.has(comparableOrigin)
   const knownOrigin = explicitlyAllowed
-    || access.trustedOrigins.has(target.origin)
-    || access.discoveredBrokerOrigins.has(target.origin)
+    || access.trustedOrigins.has(comparableOrigin)
+    || access.discoveredBrokerOrigins.has(comparableOrigin)
 
   if (!knownOrigin) {
     return { allowed: false, reason: 'Broker proxy target is not in the trusted origin allowlist' }
@@ -399,6 +355,117 @@ const isBrokerDiscoveryResponse = (prefix: string, target: URL): boolean => {
   return prefix === '/__broker_discovery' && /^\/api\/v\d+\/broker\/servers\/?$/.test(target.pathname)
 }
 
+// Vite's static server.proxy cannot route WebSocket upgrades to a per-request
+// dynamic origin (the broker is encoded in the path). Bridge the upgrade by
+// hand: replay the client's handshake against the decoded broker origin with
+// the Origin header stripped (broker backends reject unknown browser origins),
+// then pipe raw sockets both ways.
+const rewriteUpgradeRequestHead = (req: IncomingMessage, target: URL): Buffer => {
+  const lines = [`${req.method || 'GET'} ${target.pathname}${target.search} HTTP/1.1`]
+  for (const [key, value] of Object.entries(req.headers)) {
+    const lower = key.toLowerCase()
+    if (lower === 'host' || lower === 'origin' || lower === 'connection' || lower === 'upgrade') continue
+    if (Array.isArray(value)) {
+      value.forEach((item) => lines.push(`${key}: ${item}`))
+    } else if (value !== undefined) {
+      lines.push(`${key}: ${value}`)
+    }
+  }
+  lines.push(`Host: ${target.host}`)
+  lines.push('Connection: Upgrade')
+  lines.push('Upgrade: websocket')
+  lines.push('', '')
+  return Buffer.from(lines.join('\r\n'))
+}
+
+const bridgeWebSocketUpgrade = (
+  req: IncomingMessage,
+  socket: Socket,
+  head: Buffer,
+  target: URL,
+  resolvedAddresses: readonly ResolvedProxyAddress[],
+): void => {
+  const useTls = target.protocol === 'wss:'
+  const port = target.port ? Number(target.port) : useTls ? 443 : 80
+  const requestHead = rewriteUpgradeRequestHead(req, target)
+  const connectionOptions = createPinnedConnectionOptions(resolvedAddresses)
+
+  let outbound: Socket | null = null
+  const fail = () => {
+    socket.destroy()
+    outbound?.destroy()
+  }
+  socket.on('error', fail)
+
+  const startPiping = (out: Socket) => {
+    outbound = out
+    out.on('error', fail)
+    out.write(requestHead)
+    if (head.length > 0) out.write(head)
+    socket.pipe(out)
+    out.pipe(socket)
+  }
+
+  if (useTls) {
+    const tlsSocket = tls.connect(
+      {
+        host: target.hostname,
+        port,
+        servername: target.hostname,
+        rejectUnauthorized: false,
+        ...connectionOptions,
+      },
+      () => startPiping(tlsSocket),
+    )
+    tlsSocket.on('error', fail)
+  } else {
+    const netSocket = net.connect(
+      { host: target.hostname, port, ...connectionOptions },
+      () => startPiping(netSocket),
+    )
+    netSocket.on('error', fail)
+  }
+}
+
+const dynamicBrokerWsProxyPlugin = (prefix: string, access: BrokerProxyAccess): Plugin => ({
+  name: 'rtx5-dynamic-broker-ws-proxy',
+  configureServer(server) {
+    server.httpServer?.on('upgrade', (req, socket, head) => {
+      const requestUrl = req.url || ''
+      if (!requestUrl.startsWith(`${prefix}/`)) return
+
+      const pathAfterPrefix = requestUrl.slice(prefix.length + 1)
+      const slashIndex = pathAfterPrefix.indexOf('/')
+      const encodedOrigin = slashIndex >= 0 ? pathAfterPrefix.slice(0, slashIndex) : pathAfterPrefix
+      const targetPath = slashIndex >= 0 ? pathAfterPrefix.slice(slashIndex) : '/'
+
+      let target: URL
+      try {
+        const origin = new URL(decodeURIComponent(encodedOrigin))
+        if (origin.protocol !== 'ws:' && origin.protocol !== 'wss:') throw new Error('unsupported ws protocol')
+        const queryIndex = targetPath.indexOf('?')
+        origin.pathname = (queryIndex >= 0 ? targetPath.slice(0, queryIndex) : targetPath) || '/'
+        origin.search = queryIndex >= 0 ? targetPath.slice(queryIndex) : ''
+        target = origin
+      } catch {
+        ; (socket as Socket).destroy()
+        return
+      }
+
+      const clientSocket = socket as Socket
+      void validateProxyTarget(target, access)
+        .then((validation) => {
+          if (!validation.allowed) {
+            clientSocket.destroy()
+            return
+          }
+          bridgeWebSocketUpgrade(req, clientSocket, head as Buffer, target, validation.resolvedAddresses)
+        })
+        .catch(() => clientSocket.destroy())
+    })
+  },
+})
+
 const dynamicBrokerProxyPlugin = (prefixes: string[], access: BrokerProxyAccess): Plugin => ({
   name: 'rtx5-dynamic-broker-proxy',
   configureServer(server) {
@@ -462,72 +529,68 @@ export default defineConfig(({ mode }) => {
   const discoveryTarget = env.VITE_BROKER_DISCOVERY_URL || 'https://testbrokerbackend.orrnn.com';
   const brokerApiTarget = env.VITE_DEV_BROKER_API_URL || env.VITE_RTX5_API_URL || 'https://testbrokerbackend.orrnn.com';
   const wsTarget = (env.VITE_WS_URL || env.VITE_FIX_WS_URL || 'wss://backend.orrnn.com/ws/v2').replace(/\/ws\/v2$/, '');
-  const feedWsTarget = toWsOrigin(env.VITE_MARKET_WS_URL || env.VITE_WS_URL || env.VITE_FIX_WS_URL || wsTarget) || wsTarget;
   const brokerProxyAccess = createBrokerProxyAccess(env);
 
   return {
-  base: './',
-  plugins: [
-    retiredServiceWorkerDevPlugin(),
-    dynamicBrokerProxyPlugin(['/__broker_api', '/__broker_discovery'], brokerProxyAccess),
-    react(),
-  ],
-  server: {
-    host: '127.0.0.1',
-    port: 5173,
-    open: true,
-    warmup: {
-      clientFiles: [
-        './src/main.tsx',
-        './src/bootstrap.tsx',
-        './src/AppShell.tsx',
-        './src/components/WelcomeTerminal.tsx',
-        './src/App.tsx',
-        './src/components/dock/DockWorkspace.tsx',
-        './src/components/TradingChart.tsx',
-        './src/components/BottomDock.tsx',
-        './src/components/layout/TopToolbar.tsx',
-      ],
-    },
-    proxy: {
-      '/__broker_discovery': {
-        target: discoveryTarget,
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/__broker_discovery/, ''),
+    base: './',
+    plugins: [
+      retiredServiceWorkerDevPlugin(),
+      dynamicBrokerProxyPlugin(['/__broker_api', '/__broker_discovery'], brokerProxyAccess),
+      dynamicBrokerWsProxyPlugin('/__broker_feed_ws', brokerProxyAccess),
+      react(),
+    ],
+    server: {
+      host: '127.0.0.1',
+      port: 5173,
+      open: true,
+      warmup: {
+        clientFiles: [
+          './src/main.tsx',
+          './src/bootstrap.tsx',
+          './src/AppShell.tsx',
+          './src/components/WelcomeTerminal.tsx',
+          './src/App.tsx',
+          './src/components/dock/DockWorkspace.tsx',
+          './src/components/TradingChart.tsx',
+          './src/components/BottomDock.tsx',
+          './src/components/layout/TopToolbar.tsx',
+        ],
       },
-      '/__broker_api': {
-        target: brokerApiTarget,
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/__broker_api/, ''),
-      },
-      '/api': {
-        target: backendTarget,
-        changeOrigin: true,
-        secure: true,
-        // NOTE: ws:true removed — it caused 503s by intercepting HTTP requests
-        // as WebSocket upgrades. WS connections use /fix-ws proxy below.
-      },
-      '/fix-ws': {
-        target: wsTarget,
-        changeOrigin: true,
-        secure: false,
-        ws: true,
-        configure: configureWsProxy('fix-ws'),
-      },
-      '/__broker_feed_ws': {
-        target: feedWsTarget,
-        changeOrigin: true,
-        secure: false,
-        ws: true,
-        rewrite: rewriteDynamicWsProxyPath,
-        configure: configureWsProxy('broker feed ws', { stripOrigin: true }),
+      proxy: {
+        '/__broker_discovery': {
+          target: discoveryTarget,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/__broker_discovery/, ''),
+        },
+        '/__broker_api': {
+          target: brokerApiTarget,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/__broker_api/, ''),
+        },
+        '/api': {
+          target: backendTarget,
+          changeOrigin: true,
+          secure: true,
+          // NOTE: ws:true removed — it caused 503s by intercepting HTTP requests
+          // as WebSocket upgrades. WS connections use /fix-ws proxy below.
+        },
+        '/fix-ws': {
+          target: wsTarget,
+          changeOrigin: true,
+          secure: false,
+          ws: true,
+          configure: configureWsProxy('fix-ws'),
+        }
+        // '/__broker_feed_ws' upgrades are routed by dynamicBrokerWsProxyPlugin,
+        // which decodes the per-request broker origin (a static proxy target
+        // sent every broker's WebSocket to the .env broker — breaking live data
+        // whenever the runtime broker differs).
       }
+    },
+    optimizeDeps: {
+      include: ['lightweight-charts', 'html2canvas-pro'],
     }
-  },
-  optimizeDeps: {
-    include: ['lightweight-charts', 'html2canvas-pro'],
-  }
   };
 })

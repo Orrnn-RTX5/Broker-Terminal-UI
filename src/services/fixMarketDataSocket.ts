@@ -24,15 +24,43 @@ export interface FixTickMessage {
   ask: number;
   spread: number;
   timestamp: number;
-  high24h: number;
-  low24h: number;
-  dailyChange: number;
+  high24h?: number;
+  high_24h?: number;
+  low24h?: number;
+  low_24h?: number;
+  dailyChange?: number;
   lp?: string;
+  provider?: string;
+  liquidity_provider?: string;
+  liquidityProvider?: string;
+  volume?: number;
+  volume_24h?: number;
+  volume24h?: number;
+  tick_volume?: number;
+  tickVolume?: number;
+  real_volume?: number;
+  realVolume?: number;
+  last?: number;
+  last_price?: number;
+  lastPrice?: number;
+  high?: number;
+  low?: number;
+  open?: number;
+  daily_open?: number;
+  dailyOpen?: number;
+  close?: number;
+  previous_close?: number;
+  previousClose?: number;
 }
 
 export interface FixCandleMessage {
   type: 'update';
   symbol: string;
+  sourceTimestamp?: number;
+  source_timestamp?: number;
+  event_timestamp?: number;
+  server_timestamp?: number;
+  timestamp?: number;
   candle: {
     time: number;
     open: number;
@@ -44,6 +72,32 @@ export interface FixCandleMessage {
 }
 
 export type FixSocketMessage = FixTickMessage | FixCandleMessage;
+
+const readFirstFiniteNumber = (
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): number | undefined => {
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null || value === undefined || value === '') continue;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return undefined;
+};
+
+const readFirstNonEmptyString = (
+  record: Record<string, unknown>,
+  keys: readonly string[],
+): string | undefined => {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value !== 'string') continue;
+    const normalized = value.trim();
+    if (normalized) return normalized;
+  }
+  return undefined;
+};
 
 type MessageHandler = (data: FixSocketMessage) => void;
 type StateHandler = (state: FixSocketState) => void;
@@ -240,7 +294,32 @@ export class FixMarketDataSocket {
    * Process tick message and update store
    */
   private processTick(tick: FixTickMessage): void {
-    const { symbol, bid, ask, spread, timestamp, high24h, low24h, dailyChange, lp } = tick;
+    const { symbol, bid, ask, spread, timestamp, dailyChange } = tick;
+    const record = tick as unknown as Record<string, unknown>;
+    const high24h = readFirstFiniteNumber(record, ['high24h', 'high_24h']);
+    const low24h = readFirstFiniteNumber(record, ['low24h', 'low_24h']);
+    const volume = readFirstFiniteNumber(record, [
+      'volume',
+      'volume_24h',
+      'volume24h',
+      'tick_volume',
+      'tickVolume',
+      'real_volume',
+      'realVolume',
+    ]);
+    const last = readFirstFiniteNumber(record, ['last', 'last_price', 'lastPrice']);
+    const lp = readFirstNonEmptyString(record, [
+      'lp',
+      'provider',
+      'liquidity_provider',
+      'liquidityProvider',
+      'lp_name',
+      'lpName',
+    ]);
+    const open = readFirstFiniteNumber(record, ['daily_open', 'dailyOpen', 'open', 'open_price', 'openPrice']);
+    const close = readFirstFiniteNumber(record, ['close', 'previous_close', 'previousClose', 'close_price', 'closePrice']);
+    const high = readFirstFiniteNumber(record, ['high']);
+    const low = readFirstFiniteNumber(record, ['low']);
 
     // Convert timestamp to milliseconds if it's in seconds
     const ts = timestamp > 1000000000000 ? timestamp : timestamp * 1000;
@@ -252,11 +331,17 @@ export class FixMarketDataSocket {
       ask,
       spread,
       timestamp: ts,
+      sourceTimestamp: ts,
       lp,
-      volume: 1,
+      volume,
+      last,
       dailyChange,
       high24h,
       low24h,
+      high,
+      low,
+      open,
+      close,
     });
   }
 
@@ -265,6 +350,10 @@ export class FixMarketDataSocket {
    */
   private processCandle(data: FixCandleMessage): void {
     const { symbol, candle } = data;
+    const sourceTimestamp = readFirstFiniteNumber(
+      data as unknown as Record<string, unknown>,
+      ['sourceTimestamp', 'source_timestamp', 'event_timestamp', 'server_timestamp', 'timestamp'],
+    );
 
     // Update market data store with candle data
     const store = useMarketDataStore.getState();
@@ -277,6 +366,10 @@ export class FixMarketDataSocket {
       close: candle.close,
       volume: candle.volume,
       time: candle.time,
+      // FIX: WebSocket candle snapshots are authoritative backend OHLC; keep
+      // their event revision separate from the candle bucket timestamp.
+      source: 'server',
+      sourceTimestamp,
     });
   }
   

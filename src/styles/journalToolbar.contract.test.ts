@@ -8,11 +8,17 @@ const journalSource = readSource('src/components/layout/JournalTab.tsx');
 const indexCss = readSource('src/index.css');
 
 describe('Journal toolbar visual contract', () => {
-  it('keeps the toolbar and its controls at readable desktop sizes', () => {
-    expect(journalSource).toContain('rtx-journal-toolbar flex min-h-[42px]');
+  it('uses the same compact terminal geometry as the History reference', () => {
+    expect(journalSource).toContain('flex h-[31px] min-h-[31px]');
     expect(journalSource).toContain('rtx-journal-control h-7 min-w-[94px]');
     expect(journalSource).toContain('rtx-journal-control h-7 min-w-[112px]');
     expect(journalSource).toContain('rtx-journal-control h-7 w-full');
+    expect(journalSource).toContain("{ label: '1h', hours: 1 }");
+    expect(journalSource).toContain("{ label: '2h', hours: 2 }");
+    expect(journalSource).toContain("{ label: '3h', hours: 3 }");
+    expect(journalSource).toContain("{ label: 'Today', hours: 24 }");
+    expect(journalSource).toContain("{ label: 'All', hours: 0 }");
+    expect(journalSource).toContain('rtx-journal-table__head sticky top-0');
   });
 
   it('uses squared corners and an inset focus treatment instead of an outer ring', () => {

@@ -121,7 +121,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
 
   return ReactDOM.createPortal(
     <div 
-      className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+      className="rtx-chart-template-dialog-backdrop fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
       onContextMenuCapture={(e) => {
         e.stopPropagation();
         e.preventDefault();
@@ -130,7 +130,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
       onMouseDown={(e) => e.stopPropagation()}
     >
       <div 
-        className="bg-[#1e222d] border border-white/10 rounded-lg shadow-[0_32px_64px_rgba(0,0,0,0.8)] w-[420px] max-h-[600px] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden"
+        className="rtx-chart-template-dialog bg-[#1e222d] border border-white/10 rounded-lg shadow-[0_32px_64px_rgba(0,0,0,0.8)] w-[420px] max-h-[600px] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden"
         style={{ 
           transform: `translate(${pos.x}px, ${pos.y}px)`,
           transition: dragRef.current ? 'none' : 'transform 0.1s ease-out'

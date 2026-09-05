@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FetchCandlesOptions, OHLCData } from './chartDataService';
 import {
+  backfillRecentInteriorHistoryGaps,
   createSelectedTimeframeHistoryCoordinator,
   createChartHistoryBackfillDiagnostics,
   fetchOlderHistoryPage,
+  findRecentInteriorHistoryGaps,
   getHistoryPageSize,
   getInitialHistoryCount,
   getNextOlderHistoryCursor,
@@ -240,6 +242,180 @@ describe('chart history loader', () => {
     expect(result.attempts).toBe(2);
     expect(result.source).toBe('backend');
     expect(result.usedDerivedFallback).toBe(false);
+  });
+
+  it('finds bounded recent M1 gaps and prioritizes the newest visible holes', () => {
+    const candles = [
+      candle(0),
+      candle(60),
+      candle(600),
+      candle(660),
+      candle(1800),
+    ];
+
+    expect(findRecentInteriorHistoryGaps(candles, {
+      lookbackSeconds: 2000,
+      maxGapSeconds: 1200,
+      maxRequests: 2,
+    })).toEqual([
+      { from: 720, to: 1740, missingCandleCount: 18 },
+      { from: 120, to: 540, missingCandleCount: 8 },
+    ]);
+  });
+
+  it('backfills sparse authenticated history ranges without inventing candles', async () => {
+    const source = [candle(60), candle(120), candle(360), candle(420)];
+    const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => {
+      if (options.from === 180 && options.to === 300) {
+        return [candle(180), candle(240), candle(300)];
+      }
+      return [];
+    });
+
+    const result = await backfillRecentInteriorHistoryGaps({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      candles: source,
+      lookbackSeconds: 600,
+      fetchCandles,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledWith(expect.objectContaining({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      count: 3,
+      from: 180,
+      to: 300,
+    }));
+    expect(result).toMatchObject({
+      requestedGaps: 1,
+      failedGaps: 0,
+      addedCandles: 3,
+    });
+    expect(result.candles.map(item => item.time)).toEqual([60, 120, 180, 240, 300, 360, 420]);
+  });
+
+  it('ignores out-of-range rows when a gap endpoint disregards its from/to contract', async () => {
+    const result = await backfillRecentInteriorHistoryGaps({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      candles: [candle(60), candle(240)],
+      lookbackSeconds: 600,
+      fetchCandles: async () => [candle(10_000)],
+    });
+
+    expect(result.addedCandles).toBe(0);
+    expect(result.candles.map(item => item.time)).toEqual([60, 240]);
+  });
+
+  it('retries only residual holes when a range endpoint returns a partial page', async () => {
+    const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => {
+      if (options.from === 120 && options.to === 240) return [candle(120), candle(180)];
+      if (options.from === 180 && options.to === 300) return [candle(240)];
+      return [];
+    });
+
+    const result = await backfillRecentInteriorHistoryGaps({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      candles: [candle(60), candle(300)],
+      lookbackSeconds: 600,
+      fetchCandles,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ requestedGaps: 2, failedGaps: 0, addedCandles: 3 });
+    expect(result.candles.map(item => item.time)).toEqual([60, 120, 180, 240, 300]);
+  });
+
+  it('uses boundary overlap on pass two when an exclusive endpoint returns zero for one missing candle', async () => {
+    const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => {
+      if (options.from === 120 && options.to === 120) return [];
+      if (options.from === 60 && options.to === 180) return [candle(120)];
+      return [];
+    });
+
+    const result = await backfillRecentInteriorHistoryGaps({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      candles: [candle(60), candle(180)],
+      lookbackSeconds: 600,
+      fetchCandles,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledTimes(2);
+    expect(fetchCandles).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      count: 1,
+      from: 120,
+      to: 120,
+    }));
+    expect(fetchCandles).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      count: 3,
+      from: 60,
+      to: 180,
+    }));
+    expect(result.candles.map(item => item.time)).toEqual([60, 120, 180]);
+  });
+
+  it('enforces maxRequests as one operation-wide budget across residual passes', async () => {
+    const fetchCandles = vi.fn(async () => [] as OHLCData[]);
+
+    const result = await backfillRecentInteriorHistoryGaps({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      candles: [candle(60), candle(240)],
+      lookbackSeconds: 600,
+      maxRequests: 2,
+      maxMissingCandles: 20,
+      maxPasses: 5,
+      fetchCandles,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledTimes(2);
+    expect(fetchCandles).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      count: 2,
+      from: 120,
+      to: 180,
+    }));
+    expect(fetchCandles).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      count: 4,
+      from: 60,
+      to: 240,
+    }));
+    expect(result).toMatchObject({ requestedGaps: 2, failedGaps: 0, addedCandles: 0 });
+    expect(result.candles.map(item => item.time)).toEqual([60, 240]);
+  });
+
+  it('enforces maxMissingCandles as one operation-wide budget across residual passes', async () => {
+    const fetchCandles = vi.fn(async (options: FetchCandlesOptions) => {
+      if (options.from === 120 && options.to === 180) return [candle(120)];
+      return [];
+    });
+
+    const result = await backfillRecentInteriorHistoryGaps({
+      symbol: 'XAUUSD',
+      timeframe: 'M1',
+      candles: [candle(60), candle(240)],
+      lookbackSeconds: 600,
+      maxRequests: 10,
+      maxMissingCandles: 3,
+      maxPasses: 5,
+      fetchCandles,
+    });
+
+    expect(fetchCandles).toHaveBeenCalledTimes(2);
+    expect(fetchCandles).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      count: 2,
+      from: 120,
+      to: 180,
+    }));
+    expect(fetchCandles).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      count: 3,
+      from: 120,
+      to: 240,
+    }));
+    expect(result).toMatchObject({ requestedGaps: 2, failedGaps: 0, addedCandles: 1 });
+    expect(result.candles.map(item => item.time)).toEqual([60, 120, 240]);
   });
 
   it('derives higher-timeframe older candles from M1 before requesting the native timeframe', async () => {

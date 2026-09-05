@@ -12,6 +12,18 @@ export interface JournalLogEntry {
     message: string;
 }
 
+const playJournalSoundAfterPaint = (type: 'login' | 'welcome') => {
+    const play = () => playSystemSound(type);
+    if (typeof window === 'undefined') return;
+
+    if (typeof window.requestAnimationFrame === 'function' && document.visibilityState === 'visible') {
+        window.requestAnimationFrame(() => window.setTimeout(play, 0));
+        return;
+    }
+
+    window.setTimeout(play, 0);
+};
+
 interface SystemJournalState {
     logs: JournalLogEntry[];
     addLog: (type_text: string, message: string, source?: string) => void;
@@ -37,9 +49,9 @@ export const useSystemJournalStore = create<SystemJournalState>((set) => ({
 
         // System Audio Triggers
         if (message.includes('Login to RTX5')) {
-            playSystemSound('login');
+            playJournalSoundAfterPaint('login');
         } else if (message.includes('Welcome to RTX5')) {
-            playSystemSound('welcome');
+            playJournalSoundAfterPaint('welcome');
         }
 
         // Deduplication: prevent identical messages from spamming the journal within 1 second

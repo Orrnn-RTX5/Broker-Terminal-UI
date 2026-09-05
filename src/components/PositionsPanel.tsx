@@ -31,6 +31,10 @@ import { tradingV2Api } from '../api/trade';
 import { API_V2_BASE_URL } from '../config/api';
 import { buildBrokerWsV2Uri } from '../services/brokerSession';
 import type { Position as AppPosition } from '../store/useAppStore';
+import {
+  normalizeExactBrokerSymbol,
+  parseExactTickChannelSymbol,
+} from '../utils/exactBrokerSymbol';
 
 // ─────────────────────────────────────────────
 // Types matching the RTX5 Gateway REST response
@@ -119,6 +123,37 @@ const getDigits = (symbol: string): number => {
   if (symbol.startsWith('XAU')) return 2;
   if (symbol.startsWith('XAG')) return 3;
   return 5;
+};
+
+// FIX: Position rows resolve the same exact, punctuation-preserving key that
+// the authoritative ticks.{SYMBOL} channel handler writes.
+export const resolvePositionsPanelTick = (
+  ticks: Readonly<Record<string, SymbolTick>>,
+  symbol: unknown,
+): SymbolTick | undefined => ticks[normalizeExactBrokerSymbol(symbol)];
+
+// FIX: Apply a quote under the complete channel-owned symbol. The payload may
+// omit its symbol or report an unsuffixed alias, but it cannot rename a channel.
+export const mergePositionsPanelChannelTick = (
+  ticks: Record<string, SymbolTick>,
+  channel: unknown,
+  payload: { symbol?: unknown; bid?: unknown; ask?: unknown },
+): Record<string, SymbolTick> => {
+  const symbol = parseExactTickChannelSymbol(channel);
+  if (
+    !symbol
+    || typeof payload?.bid !== 'number'
+    || !Number.isFinite(payload.bid)
+    || typeof payload?.ask !== 'number'
+    || !Number.isFinite(payload.ask)
+  ) {
+    return ticks;
+  }
+
+  return {
+    ...ticks,
+    [symbol]: { bid: payload.bid, ask: payload.ask },
+  };
 };
 
 /** Format Unix seconds → local date-time string (MT5 style) */
@@ -565,7 +600,11 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
 
   // Unique symbols with open positions (for ticks subscription)
   const openSymbols = useMemo(() => {
-    return [...new Set(positions.map(p => p.symbol))];
+    // FIX: Normalize case/whitespace for subscription keys while retaining the
+    // complete broker suffix and punctuation for each distinct contract.
+    return [...new Set(positions
+      .map((position) => normalizeExactBrokerSymbol(position.symbol))
+      .filter(Boolean))];
   }, [positions]);
 
   // ─────────────────────────────────────────────
@@ -740,11 +779,7 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
       if (channel.startsWith('ticks.')) {
         const tickPayload = data as TickData;
         if (tickPayload && typeof tickPayload.bid === 'number') {
-          const sym = tickPayload.symbol || channel.split('.')[1];
-          setTicks(prev => ({
-            ...prev,
-            [sym]: { bid: tickPayload.bid, ask: tickPayload.ask },
-          }));
+          setTicks((previous) => mergePositionsPanelChannelTick(previous, channel, tickPayload));
         }
         return;
       }
@@ -1008,7 +1043,7 @@ export function PositionsPanel({ accountId, wsConnection }: PositionsPanelProps)
                       onModifySLTP={handleModifySLTP}
                       onClose={handleClosePosition}
                       onDoubleClick={p => setModifyPosition(p)}
-                      tick={ticks[pos.symbol]}
+                      tick={resolvePositionsPanelTick(ticks, pos.symbol)}
                       loading={loading}
                     />
                   ))

@@ -122,8 +122,11 @@ describe('enterprise typography contract', () => {
   });
 
   it('locks Market Watch, trade dock, status, and journal to measured reference roles', () => {
-    expect(marketWatchSource).toMatch(/className="rtx-market-watch__symbol"[\s\S]*fontSize: 14,[\s\S]*fontWeight: 400/);
-    expect(marketWatchSource).toMatch(/className="rtx-market-watch__column-heading"[\s\S]*fontSize: 12, fontWeight: 400/);
+    expect(marketWatchSource).toMatch(/className="rtx-market-watch__symbol"[\s\S]*fontSize: 13,[\s\S]*fontWeight: 500/);
+    expect(marketWatchSource).toMatch(/className="rtx-market-watch__column-heading"[\s\S]*fontSize: 12, fontWeight: 500/);
+    expect(marketWatchSource).toContain('.rtx-market-watch .rtx-market-watch__price .price-big { font-size: inherit !important; font-weight: inherit !important; }');
+    expect(advancedCss).toMatch(/\.text-\\\[14px\\\],[\s\S]*\.rtx-market-watch__symbol,[\s\S]*\.rtx-market-watch__daily,[\s\S]*font-size: var\(--rtx-advanced-primary-font-size, 14px\) !important;/);
+    expect(advancedCss).toMatch(/\.text-\\\[13px\\\],[\s\S]*\.rtx-market-watch__column-heading,[\s\S]*font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;/);
     expect(bottomDockSource).toContain('rtx-trade-table__head sticky top-0');
     expect(bottomDockSource).toContain('font-normal text-[12px] leading-[18px]');
     expect(bottomDockSource).toContain('text-[13px] leading-[19.5px] font-normal');

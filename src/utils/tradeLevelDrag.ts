@@ -1,3 +1,5 @@
+import { normalizeExactBrokerSymbol } from './exactBrokerSymbol';
+
 export type TradeLevelDragSide = 'BUY' | 'SELL';
 export type TradeLevelDragTarget = 'ENTRY' | 'SL' | 'TP';
 export type TradeLevelDragResultRole = 'SL' | 'TP';
@@ -73,7 +75,9 @@ export const createTradeLevelOverrideFingerprint = ({
   entryTime,
   digits,
 }: TradeLevelOverrideIdentity): string => {
-  const normalizedSymbol = String(symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  // FIX: Keep broker punctuation in the ownership key so two contracts cannot
+  // share and overwrite the same local dragged SL/TP override.
+  const normalizedSymbol = normalizeExactBrokerSymbol(symbol);
   const normalizedSide = side === 'SELL' ? 'SELL' : 'BUY';
   const normalizedVolume = Number.isFinite(volume) ? Number(volume) : 0;
   const normalizedEntryTime = Number.isFinite(entryTime) ? Math.trunc(entryTime) : 0;

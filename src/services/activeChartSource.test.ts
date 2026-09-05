@@ -66,4 +66,48 @@ describe('activeChartSource registry', () => {
       container: containerB,
     });
   });
+
+  it('ignores a mounted but hidden chart tab without unregistering it', () => {
+    const hiddenLayer = document.createElement('div');
+    hiddenLayer.dataset.dockTabContent = 'panel-hidden';
+    hiddenLayer.style.opacity = '0';
+    hiddenLayer.style.pointerEvents = 'none';
+    const hiddenContainer = document.createElement('div');
+    hiddenLayer.appendChild(hiddenContainer);
+
+    const visibleLayer = document.createElement('div');
+    visibleLayer.dataset.dockTabContent = 'panel-visible';
+    visibleLayer.style.opacity = '1';
+    visibleLayer.style.pointerEvents = 'auto';
+    const visibleContainer = document.createElement('div');
+    visibleLayer.appendChild(visibleContainer);
+    document.body.append(hiddenLayer, visibleLayer);
+
+    registerActiveChartSource({
+      id: 'chart-hidden',
+      getContainer: () => hiddenContainer,
+      getSymbol: () => 'AAVUSD',
+    });
+    registerActiveChartSource({
+      id: 'chart-visible',
+      getContainer: () => visibleContainer,
+      getSymbol: () => 'XAUUSD',
+    });
+
+    expect(activateActiveChartSource('chart-hidden')).toBeNull();
+    expect(getActiveChartSource()).toMatchObject({
+      id: 'chart-visible',
+      symbol: 'XAUUSD',
+    });
+
+    hiddenLayer.style.opacity = '1';
+    hiddenLayer.style.pointerEvents = 'auto';
+    visibleLayer.style.opacity = '0';
+    visibleLayer.style.pointerEvents = 'none';
+
+    expect(activateActiveChartSource('chart-hidden')).toMatchObject({
+      id: 'chart-hidden',
+      symbol: 'AAVUSD',
+    });
+  });
 });

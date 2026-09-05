@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { WelcomeTerminal } from './components/WelcomeTerminal';
 
 import { DockWorkspace } from './components/dock/DockWorkspace';
@@ -14,6 +14,7 @@ import { isEnhancedStoreHandledTickFrame } from './services/websocket-enhanced';
 import { getTradeEntryPriceFromQuote } from './services/chartPriceGuards';
 import { getQuoteSocketManager } from './services/quoteSocketManager';
 import { captureTradeOrderIntent } from './services/orderLatencyTelemetry';
+import { loadSessionTradeSnapshot } from './services/tradeStartupSnapshot';
 import { resolveOptionalPositionTime, resolvePositionOpenTime } from './services/tradePositionTime';
 import { API_BASE_URL, WS_ENDPOINTS, updateDynamicUrls } from './config/api';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -22,7 +23,6 @@ import { getCachedSymbolMarketStatus, useSymbolMarketStatus } from './hooks/useS
 import {
   buildChartEligibleSymbolNames,
   buildTradeEligibleSymbolNames,
-  getInstrumentSymbolName,
   getUniqueSymbolNames as getAllowedSymbolNames,
   normalizeSymbolName,
   pickPreferredChartSymbol,
@@ -41,16 +41,12 @@ import {
 } from './startup/authenticatedSessionHandoff';
 import { TerminalLoadFallback } from './startup/TerminalLoadFallback';
 
-import { LastSymbolPanel } from './components/LastSymbolPanel';
 import { useLastSymbolStore } from './store/useLastSymbolStore';
 import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
-import { marketV2Api, tradingV2Api } from './api/trade';
-import { tradeGatewayApi } from './api/tradeGateway';
-import {
-  dispatchTradeOverlayCloseState,
-  type TradeOverlayCloseSnapshotPayload,
-} from './services/tradeOverlayHistory';
+import { tradingV2Api } from './api/trade';
+import { collapseDealHistory, tradeGatewayApi } from './api/tradeGateway';
+import type { TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
 import { formatOrderError } from './utils/orderError';
 import { CHART_POSITION_ACTION_EVENT, type ChartPositionActionDetail } from './utils/chartTradeControls';
@@ -58,12 +54,14 @@ import { getSharedChartTrade } from './utils/tradeShareLink';
 import { closePositionsLocalFirst } from './services/localFirstCloseCoordinator';
 import { createUnavailableMarketStatus, getMarketStatusTradeBlockMessage, shouldBlockSymbolTrading } from './utils/marketStatus';
 import { getStoredBrokerServer } from './services/brokerServers';
+import { getActiveChartSource } from './services/activeChartSource';
+import type { ChartPrintData, PrintPreferences } from './services/chartPrinter';
 import {
   getCommittedBrokerAccountSessionScope,
   getCommittedBrokerAccountSessionScopeKey,
 } from './services/brokerSession';
-import { IndicatorNavigator } from './components/IndicatorNavigator';
 import type { IndicatorInfo } from './components/IndicatorNavigator';
+import type { DepthOrderRequest } from './components/DepthOfMarket';
 
 // Layout Components
 import { TopToolbar } from './components/layout/TopToolbar';
@@ -74,19 +72,18 @@ import {
 } from './drawing-tools';
 import { StatusBar } from './components/layout/StatusBar';
 import { UpdateBanner } from './components/layout/UpdateBanner';
-import { OrderPanelDialog } from './components/OrderPanelDialog';
-import { DepthOfMarket } from './components/DepthOfMarket';
-import { DataWindow } from './components/DataWindow';
-import { SaveWorkspaceDialog } from './components/dialogs/SaveWorkspaceDialog';
-import { AccountPanel } from './components/AccountPanel';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
-import { ChartPropertiesDialog } from './components/dialogs/ChartPropertiesDialog';
+import { SaveWorkspaceDialog } from './components/dialogs/SaveWorkspaceDialog';
 import { useConfirmStore } from './store/useConfirmStore';
 import { useChartSettingsStore } from './store/useChartSettingsStore';
 import {
   resolveChartPropertiesTarget,
   type ChartPropertiesEventDetail,
 } from './services/chartPropertiesTarget';
+import {
+  getActiveChartCommandTarget,
+  getPanelIdFromChartContextId,
+} from './services/chartCommandTarget';
 
 // Services
 import { windowManager, type LayoutMode } from './services/windowManager';
@@ -107,6 +104,22 @@ import { useNotificationStore } from './store/useNotificationStore';
 // Alerts
 import { useAlertStore } from './store/useAlertStore';
 
+const LazyLastSymbolPanel = lazy(() => import('./components/LastSymbolPanel').then((module) => ({ default: module.LastSymbolPanel })));
+const LazyIndicatorNavigator = lazy(() => import('./components/IndicatorNavigator').then((module) => ({ default: module.IndicatorNavigator })));
+const LazyOrderPanelDialog = lazy(() => import('./components/OrderPanelDialog').then((module) => ({ default: module.OrderPanelDialog })));
+const LazyDepthOfMarket = lazy(() => import('./components/DepthOfMarket').then((module) => ({ default: module.DepthOfMarket })));
+const LazyDataWindow = lazy(() => import('./components/DataWindow'));
+const LazyAccountPanel = lazy(() => import('./components/AccountPanel').then((module) => ({ default: module.AccountPanel })));
+const LazyChartPropertiesDialog = lazy(() => import('./components/dialogs/ChartPropertiesDialog').then((module) => ({ default: module.ChartPropertiesDialog })));
+const LazyChartObjectsDialog = lazy(() => import('./components/dialogs/ChartObjectsDialog').then((module) => ({ default: module.ChartObjectsDialog })));
+
+type TradeOverlayCloseDispatcher = typeof import('./services/tradeOverlayHistory')['dispatchTradeOverlayCloseState'];
+const dispatchTradeOverlayCloseState: TradeOverlayCloseDispatcher = (...args) => {
+  void import('./services/tradeOverlayHistory').then((module) => {
+    module.dispatchTradeOverlayCloseState(...args);
+  });
+};
+
 const ORDER_FEEDBACK_EVENT = 'rtx:order-feedback';
 
 type OrderFeedbackDetail = {
@@ -126,13 +139,55 @@ const publishOrderFeedback = (
 
 const setChartVolumeBarsVisible = (visible: boolean, activeSymbol?: string) => {
   const store = useChartSettingsStore.getState();
-  store.updateGlobalProperty('showTickVolumes', visible);
-  store.updateGlobalProperty('showRealVolumes', false);
-
   if (activeSymbol) {
     store.updateSymbolProperty(activeSymbol, 'showTickVolumes', visible);
     store.updateSymbolProperty(activeSymbol, 'showRealVolumes', false);
+    return;
   }
+
+  store.updateGlobalProperty('showTickVolumes', visible);
+  store.updateGlobalProperty('showRealVolumes', false);
+};
+
+type PrintChartRequest = {
+  chartData?: ChartPrintData;
+  preferences?: PrintPreferences;
+};
+
+const toSettingsChartType = (chartType: ChartType) => {
+  if (chartType === 'bar') return 'Bar' as const;
+  if (chartType === 'line') return 'Line' as const;
+  if (chartType === 'area') return 'Area' as const;
+  return 'Candlesticks' as const;
+};
+
+const getDockPanelChartType = (
+  layout: any,
+  targetContextId: string | undefined,
+  fallback: ChartType,
+): ChartType => {
+  const panelId = getPanelIdFromChartContextId(targetContextId);
+  if (!panelId || !layout) return fallback;
+
+  const find = (node: any): ChartType | undefined => {
+    if (!node) return undefined;
+    if (node.id === panelId && !Array.isArray(node.children)) {
+      const candidate = node.props?.chartType;
+      return ['candlestick', 'bar', 'line', 'area'].includes(candidate)
+        ? candidate as ChartType
+        : undefined;
+    }
+
+    for (const child of node.children || []) {
+      const found = find(child);
+      if (found) return found;
+    }
+    return undefined;
+  };
+
+  return find(layout.root)
+    ?? (layout.floatingPanels || []).map(find).find(Boolean)
+    ?? fallback;
 };
 
 // Helper to get auth headers for fetch
@@ -296,23 +351,24 @@ type OrderHistoryRefreshResult = {
 };
 
 const fetchOrderHistory = async (login: number): Promise<OrderHistoryRefreshResult> => {
-  const results = await Promise.allSettled([
+  const [closedPositionsResult, dealsResult] = await Promise.allSettled([
     tradeGatewayApi.getClosedPositions(login),
     tradeGatewayApi.getDeals(login),
-    tradeGatewayApi.getOrders(login),
   ]);
 
-  const rejected = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-  const fulfilled = results.filter((result): result is PromiseFulfilledResult<any[]> => result.status === 'fulfilled');
-
-  if (fulfilled.length === 0 && rejected.length > 0) {
-    throw new Error(rejected.map((result) => getErrorMessage(result.reason, 'history endpoint failed')).join('; '));
+  if (dealsResult.status === 'rejected') {
+    throw new Error(getErrorMessage(dealsResult.reason, 'Deals history endpoint failed'));
   }
 
+  const closedPositions = closedPositionsResult.status === 'fulfilled'
+    ? closedPositionsResult.value
+    : [];
+  const closedDeals = collapseDealHistory(dealsResult.value);
+
   return {
-    trades: mergeOrderHistory(fulfilled.map((result) => result.value)),
-    warning: rejected.length > 0
-      ? rejected.map((result) => getErrorMessage(result.reason, 'history endpoint failed')).join('; ')
+    trades: mergeOrderHistory([closedDeals.length > 0 ? closedDeals : closedPositions]),
+    warning: closedPositionsResult.status === 'rejected'
+      ? getErrorMessage(closedPositionsResult.reason, 'Closed-position history endpoint failed')
       : null,
   };
 };
@@ -474,18 +530,25 @@ const normalizePositions = (payload: unknown): Position[] => {
       ? (payload as RawRecord).positions
       : [];
 
-  return source.map((raw: RawRecord, index: number) => {
-    const parsedId = Number.parseInt(String(raw.ticket ?? raw.id ?? index + 1), 10);
+  return source.flatMap((raw: RawRecord): Position[] => {
+    // Position streams also carry metadata and sparse price/P&L deltas. A row
+    // without a real broker ticket must never be assigned an array index: the
+    // resulting synthetic `1` flickers in and out whenever a snapshot arrives.
+    const parsedId = Number.parseInt(String(
+      raw.ticket ?? raw.position_id ?? raw.position_ticket ?? raw.id ?? '',
+    ), 10);
+    if (!Number.isFinite(parsedId) || parsedId <= 0) return [];
+
     const openPrice = toNumber(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.price, 0);
     const currentPrice = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, openPrice);
     const rawSide = String(raw.side ?? '').toLowerCase();
     const chartEntryTime = resolveOptionalPositionTime(raw.chartEntryTime ?? raw.chart_entry_time);
 
-    return {
-      id: Number.isFinite(parsedId) ? parsedId : index + 1,
+    return [{
+      id: parsedId,
       symbol: String(raw.symbol ?? ''),
       side: rawSide === 'sell' || rawSide === 'short' ? 'SELL' : 'BUY',
-      volume: toNumber(raw.quantity ?? raw.volume, 0),
+      volume: toNumber(raw.volume_lots ?? raw.quantity ?? raw.volume, 0),
       openPrice,
       currentPrice,
       openTime: resolvePositionOpenTime(raw, chartEntryTime),
@@ -496,7 +559,7 @@ const normalizePositions = (payload: unknown): Position[] => {
       unrealizedPnL: toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0),
       chartEntryPrice: toNumber(raw.chartEntryPrice, 0) || undefined,
       chartEntryTime,
-    };
+    }];
   });
 };
 
@@ -692,7 +755,6 @@ const extractAccountPayload = (message: any): RawRecord => {
 };
 
 const POSITION_CLOSED_EVENTS = new Set(['close', 'closed', 'sl_hit', 'tp_hit']);
-const TRADE_WS_HEARTBEAT_STALE_MS = 10_000;
 
 const toV2Timeframe = (value: string | undefined): string => {
   const normalized = String(value || 'M1').trim().toUpperCase();
@@ -716,7 +778,14 @@ const getPositionEventName = (message: any): string => {
 
 const getPositionEventTicket = (message: any): number | null => {
   const payload = message?.position ?? message?.data?.position ?? message?.data ?? message;
-  const ticket = Number.parseInt(String(payload?.ticket ?? payload?.id ?? payload?.position_ticket ?? message?.ticket ?? ''), 10);
+  const ticket = Number.parseInt(String(
+    payload?.ticket
+      ?? payload?.position_id
+      ?? payload?.position_ticket
+      ?? payload?.id
+      ?? message?.ticket
+      ?? '',
+  ), 10);
   return Number.isFinite(ticket) && ticket > 0 ? ticket : null;
 };
 
@@ -796,14 +865,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const accountPollInFlightRef = useRef<Promise<void> | null>(null);
   const accountPollInFlightLoginRef = useRef<number | null>(null);
   const sessionRestoreStartedRef = useRef(false);
-  const authorizedSymbolsSessionRef = useRef('');
   const lastTradeWsMessageAtRef = useRef(0);
   const tradeDataVersionRef = useRef(0);
   const localTradeDataVersionRef = useRef(0);
   const optimisticClosedTicketsRef = useRef<Set<number>>(new Set());
-  const [isLoadingSymbols, setIsLoadingSymbols] = useState(false);
-  const [hasLoadedSymbols, setHasLoadedSymbols] = useState(false);
-  const [allSymbols, setAllSymbols] = useState<unknown[]>([]);
   const activeMarketSnapshot = useActiveMarketSymbols();
   const marketInstrumentsSnapshot = useMarketInstruments();
   const {
@@ -1300,10 +1365,20 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [showChartProperties, setShowChartProperties] = useState(false);
   const [chartPropsSymbol, setChartPropsSymbol] = useState('');
   const [chartPropsTimeframe, setChartPropsTimeframe] = useState('M1');
+  const [chartPropsContextId, setChartPropsContextId] = useState<string | undefined>(undefined);
+  const [chartObjectsTarget, setChartObjectsTarget] = useState<{
+    targetContextId: string | null;
+    symbol: string;
+    timeframe?: string;
+  } | null>(null);
 
   // Indicator Navigator state
   const [showIndicatorNavigator, setShowIndicatorNavigator] = useState(false);
   const [indicatorNavCategory, setIndicatorNavCategory] = useState<string | undefined>(undefined);
+  const [indicatorTarget, setIndicatorTarget] = useState<{
+    targetContextId?: string;
+    symbol?: string;
+  }>({});
 
   // Data Window state
   const [showDataWindow, setShowDataWindow] = useState(false);
@@ -1425,7 +1500,19 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     return null;
   }, []);
 
-  const allowedSymbolNames = useMemo(() => getAllowedSymbolNames(allSymbols), [allSymbols]);
+  const allowedSymbolNames = useMemo(
+    () => getAllowedSymbolNames(marketInstrumentsSnapshot.authorizedSymbols),
+    [marketInstrumentsSnapshot.authorizedSymbols],
+  );
+  const authenticatedCatalogSymbolSet = useMemo(() => new Set(getAllowedSymbolNames([
+    ...marketInstrumentsSnapshot.authorizedSymbols,
+    ...marketInstrumentsSnapshot.disabledSymbols,
+  ])), [marketInstrumentsSnapshot.authorizedSymbols, marketInstrumentsSnapshot.disabledSymbols]);
+  const allSymbols = useMemo(() => marketInstrumentsSnapshot.symbols.filter((instrument) => (
+    authenticatedCatalogSymbolSet.has(normalizeSymbolName(instrument.symbol))
+  )), [authenticatedCatalogSymbolSet, marketInstrumentsSnapshot.symbols]);
+  const hasLoadedSymbols = marketInstrumentsSnapshot.authorizationSettled;
+  const isLoadingSymbols = isAuthenticated && !marketInstrumentsSnapshot.authorizationSettled;
   const publicMarketSymbolNames = useMemo(
     () => getAllowedSymbolNames(marketInstrumentsSnapshot.symbols),
     [marketInstrumentsSnapshot.symbols],
@@ -1516,8 +1603,27 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const unsub1 = commandBus.subscribe('SET_CHART_TYPE' as any, (payload: any) => {
       const ct = payload?.chartType;
       if (ct && ['candlestick', 'bar', 'line', 'area'].includes(ct)) {
-        console.log('[App] Command bus SET_CHART_TYPE ->', ct);
-        setChartType(ct as ChartType);
+        const runtimeChartType = ct as ChartType;
+        const activeTarget = getActiveChartCommandTarget();
+        const targetContextId = payload?.targetContextId ?? activeTarget.targetContextId;
+        const targetPanelId = getPanelIdFromChartContextId(targetContextId);
+        const targetSymbol = payload?.symbol ?? activeTarget.symbol;
+
+        console.log('[App] Command bus SET_CHART_TYPE ->', runtimeChartType, targetContextId ?? 'global');
+        if (targetPanelId) {
+          useDockLayoutStore.getState().updatePanelProps(targetPanelId, {
+            props: { chartType: runtimeChartType },
+          });
+        } else {
+          setChartType(runtimeChartType);
+        }
+
+        const settingsStore = useChartSettingsStore.getState();
+        if (targetSymbol) {
+          settingsStore.updateSymbolProperty(targetSymbol, 'chartType', toSettingsChartType(runtimeChartType));
+        } else {
+          settingsStore.updateGlobalProperty('chartType', toSettingsChartType(runtimeChartType));
+        }
       }
     });
     const unsub2 = commandBus.subscribe('SET_TIMEFRAME' as any, (payload: any) => {
@@ -1528,7 +1634,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       }
     });
     const unsub3 = commandBus.subscribe('OPEN_INDICATOR_LIST' as any, (payload: any) => {
+      const activeTarget = getActiveChartCommandTarget();
       setIndicatorNavCategory(payload?.category ?? undefined);
+      setIndicatorTarget({
+        targetContextId: payload?.targetContextId ?? activeTarget.targetContextId,
+        symbol: payload?.symbol ?? activeTarget.symbol,
+      });
       setShowIndicatorNavigator(true);
     });
     return () => { unsub1(); unsub2(); unsub3(); };
@@ -1582,35 +1693,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // Handle Close Active Chart (File > Close menu and Ctrl+F4 shortcut)
   useEffect(() => {
     const handleCloseActiveChart = () => {
-      // Get active chart id from dockmanager or just close the most recently focused panel
-      // For now we'll close the currently selected symbol panel if we can find it in the layout
-      const layout = useDockLayoutStore.getState().layout;
-      let targetId: string | null = null;
-
-      // Traverse to find a chart with the selected symbol
-      const findChart = (container: any) => {
-        if (!container.children) return;
-        for (const child of container.children) {
-          if (child.component === 'Chart' && child.props?.symbol === selectedSymbol) {
-            targetId = child.id;
-            break;
-          }
-          if (child.children) {
-            findChart(child);
-          }
-        }
-      };
-
-      findChart(layout.root);
-      if (!targetId) {
-        for (const float of layout.floatingPanels) {
-          findChart(float);
-        }
-      }
-
-      if (targetId) {
-        useDockLayoutStore.getState().removePanel(targetId);
-      }
+      const currentSymbol = useAppStore.getState().selectedSymbol;
+      useDockLayoutStore.getState().closeActiveChart(currentSymbol);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1628,7 +1712,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       window.removeEventListener('close-active-chart', handleCloseActiveChart);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []); // Empty deps - handler uses functional updates for current state
+  }, []);
 
   // Handle global menu actions
 
@@ -2134,10 +2218,17 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     getQuoteSocketManager().reconnect();
     void activeMarketSnapshot.reload();
   }, [activeMarketSnapshot.reload, reconnect]);
-  const accountStreamConnectedRef = useRef(isConnected);
-  accountStreamConnectedRef.current = isConnected;
+  const previousTradeConnectionStateRef = useRef(connectionState);
 
-  // Fetch account and positions from backend + periodic polling
+  useEffect(() => {
+    const previousState = previousTradeConnectionStateRef.current;
+    previousTradeConnectionStateRef.current = connectionState;
+    if (previousState !== 'connected' && connectionState === 'connected') {
+      window.dispatchEvent(new Event('rtx:trade-stream-recovered'));
+    }
+  }, [connectionState]);
+
+  // Fetch account and positions once, then only after an actual stream recovery.
   useEffect(() => {
     if (!isAuthenticated || !accountId) return;
 
@@ -2171,10 +2262,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           }
         }
 
-        const [accResult, posResult] = await Promise.allSettled([
-          api.account.getAccountSummary(loginId),
-          api.positions.getPositions(loginId),
-        ]);
+        const {
+          accountResult: accResult,
+          positionsResult: posResult,
+        } = await loadSessionTradeSnapshot(loginId);
 
         const activeLogin = parsePositiveInt(useAppStore.getState().accountId || accountIdRef.current || undefined);
         if (!isAuthenticatedRef.current || activeLogin !== loginId) {
@@ -2255,17 +2346,14 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       });
     });
 
-    // Poll account/positions only as a fallback heartbeat; order/history refreshes are event/manual driven.
-    const pollInterval = setInterval(() => {
-      const hasFreshTradeWs = accountStreamConnectedRef.current
-        && Date.now() - lastTradeWsMessageAtRef.current < TRADE_WS_HEARTBEAT_STALE_MS;
-      if (hasFreshTradeWs) return;
+    const handleTradeStreamRecovery = () => {
       void fetchAccountHeartbeat(false);
-    }, 3000);
+    };
+    window.addEventListener('rtx:trade-stream-recovered', handleTradeStreamRecovery);
 
     return () => {
       setupActive = false;
-      clearInterval(pollInterval);
+      window.removeEventListener('rtx:trade-stream-recovered', handleTradeStreamRecovery);
     };
   }, [beginTradeRestRead, isAuthenticated, accountId, isStaleTradeRestRead, reconcileOptimisticClosedPositions, refreshOrdersAndHistory]);
 
@@ -2299,26 +2387,29 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     const unsubscribers: Array<() => void> = [];
 
-    const subscribeTimeout = setTimeout(() => {
-      const selected = normalizeSymbolName(selectedSymbol);
-      if (!selected || !chartEligibleSymbolSet.has(selected)) return;
+    // FIX: The rendered/active chart is the subscription authority. The
+    // persisted Market Watch selection can legitimately differ after workspace
+    // restore, and subscribing that stale value leaves the visible chart on a
+    // different symbol from the authenticated market socket.
+    const activeChartTarget = getActiveChartCommandTarget(selectedSymbol, timeframe);
+    const selected = normalizeSymbolName(activeChartTarget.symbol);
+    const selectedTimeframe = activeChartTarget.timeframe || timeframe;
+    if (!selected || !chartEligibleSymbolsKey.split(',').includes(selected)) return;
 
-      console.log(`[WS] Connected! Subscribing to selected chart channels for ${selected}`);
+    console.log(`[WS] Syncing selected chart subscriptions for ${selected}`);
 
-      try {
-        unsubscribers.push(subscribe(`ticks.${selected}`, () => undefined));
-        useMarketDataStore.getState().subscribeSymbol(selected);
-        unsubscribers.push(subscribe(`candles.${selected}.${toV2Timeframe(timeframe as string)}`, () => undefined));
-        unsubscribers.push(subscribe(`depth.${selected}`, () => undefined));
+    try {
+      unsubscribers.push(subscribe(`ticks.${selected}`, () => undefined));
+      useMarketDataStore.getState().subscribeSymbol(selected);
+      unsubscribers.push(subscribe(`candles.${selected}.${toV2Timeframe(selectedTimeframe)}`, () => undefined));
+      unsubscribers.push(subscribe(`depth.${selected}`, () => undefined));
 
-        console.log(`[WS] <<< selected chart v2 subscriptions active for ${selected}`);
-      } catch (e) {
-        console.error("[WS] Failed to subscribe to v2 market channels:", e);
-      }
-    }, 500);
+      console.log(`[WS] <<< selected chart v2 subscriptions active for ${selected}`);
+    } catch (e) {
+      console.error("[WS] Failed to subscribe to v2 market channels:", e);
+    }
 
     return () => {
-      clearTimeout(subscribeTimeout);
       unsubscribers.forEach(unsubscribe => unsubscribe());
     };
   }, [
@@ -2328,7 +2419,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     selectedSymbol,
     timeframe,
     chartEligibleSymbolsKey,
-    chartEligibleSymbolSet,
   ]);
 
   useEffect(() => {
@@ -2454,7 +2544,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           const tickPayload: any = (isLiveQuote || data.channel?.startsWith('ticks.') || data.channel === 'prices') && data.data ? data.data : data;
 
           if (data.channel?.startsWith('ticks.') && tickPayload && !tickPayload.symbol) {
-            tickPayload.symbol = data.channel.split('.')[1];
+            // FIX: Preserve the complete broker symbol after `ticks.`; splitting
+            // truncates valid identities such as 0001.HK and EURUSD.r.
+            tickPayload.symbol = data.channel.slice('ticks.'.length);
           }
 
           // Always log received ticks for debugging
@@ -2487,91 +2579,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
             const rawSymbol = typeof tickData.symbol === 'string' ? tickData.symbol.trim() : '';
             if (!rawSymbol) return;
-            const baseSymbol = rawSymbol.split('.')[0];
-
-            // Fast path: if exact symbol exists in store, skip variant resolution
-            if (currentStore[rawSymbol] || currentStore[baseSymbol]) {
-              const variants: string[] = [];
-              if (currentStore[rawSymbol]) variants.push(rawSymbol);
-              if (baseSymbol !== rawSymbol && currentStore[baseSymbol]) variants.push(baseSymbol);
-              if (variants.length === 0) variants.push(rawSymbol);
-
-              variants.forEach(resolveSymbol => {
-                const scopedTickData = { ...tickData, symbol: resolveSymbol };
-                const previousTick = currentStore[resolveSymbol];
-                const normalizedTick = normalizeRealtimeTick(scopedTickData, previousTick);
-                if (normalizedTick) {
-                  enqueueLiveTick(normalizedTick.symbol, {
-                    ...normalizedTick,
-                    timestamp: normalizedTick.timestamp || Date.now(),
-                    lp: normalizedTick.lp || 'YOFX',
-                    volume: normalizedTick.volume || 1,
-                  });
-                  const normalizedBase = normalizedTick.symbol.split('.')[0];
-                  if (normalizedBase && normalizedBase !== normalizedTick.symbol) {
-                    enqueueLiveTick(normalizedBase, {
-                      ...normalizedTick,
-                      symbol: normalizedBase,
-                      timestamp: normalizedTick.timestamp || Date.now(),
-                      lp: normalizedTick.lp || 'YOFX',
-                      volume: normalizedTick.volume || 1,
-                    });
-                  }
-                }
-              });
-              return; // Skip slow variant resolution below
+            const exactSymbol = rawSymbol.toUpperCase();
+            // FIX: Treat the broker symbol as an opaque identity. Fan-out to a
+            // base/suffix variant can overwrite another executable contract and
+            // corrupt its forming candle, price line, PnL, and order price.
+            const scopedTickData = { ...tickData, symbol: exactSymbol };
+            const normalizedTick = normalizeRealtimeTick(scopedTickData, currentStore[exactSymbol]);
+            if (normalizedTick) {
+              if (WS_DEBUG) console.log(`[WS] Updating exact store symbol ${normalizedTick.symbol}: bid=${normalizedTick.bid}`);
+              enqueueLiveTick(normalizedTick.symbol, normalizedTick);
+            } else if (WS_DEBUG) {
+              console.log(`[DEBUG WS] normalizeRealtimeTick returned null for ${exactSymbol}`, scopedTickData);
             }
-
-            // Slow path: full variant resolution for symbols with suffixes
-            const currentStoreKeys = Object.keys(currentStore);
-            const rawLower = rawSymbol.toLowerCase();
-            const baseLower = baseSymbol.toLowerCase();
-
-            const variants = currentStoreKeys.filter(key => {
-              const keyLower = key.toLowerCase();
-              return keyLower === rawLower || keyLower === baseLower || keyLower.startsWith(`${baseLower}.`);
-            });
-
-            if (!variants.some(v => v.toLowerCase() === rawLower)) variants.push(rawSymbol);
-            if (!variants.some(v => v.toLowerCase() === baseLower)) variants.push(baseSymbol);
-
-            if (variants.length === 0) {
-              variants.push(baseSymbol);
-            }
-
-            variants.forEach(resolveSymbol => {
-              // Only update this variant if it's currently tracked in the store OR if it's the exact base symbol
-              const shouldUpdate = currentStore[resolveSymbol] || resolveSymbol === rawSymbol || resolveSymbol === baseSymbol;
-              if (WS_DEBUG) console.log(`[WS variants] ${resolveSymbol}: shouldUpdate=${shouldUpdate} (inStore=${!!currentStore[resolveSymbol]})`);
-              if (shouldUpdate) {
-                const scopedTickData = { ...tickData, symbol: resolveSymbol };
-                const previousTick = currentStore[resolveSymbol];
-                if (WS_DEBUG) console.log(`[WS] Normalizing tick for ${resolveSymbol}:`, scopedTickData);
-                const normalizedTick = normalizeRealtimeTick(scopedTickData, previousTick);
-
-                if (normalizedTick) {
-                  if (WS_DEBUG) console.log(`[WS] Updating store for ${normalizedTick.symbol}: bid=${normalizedTick.bid}`);
-                  enqueueLiveTick(normalizedTick.symbol, {
-                    ...normalizedTick,
-                    timestamp: normalizedTick.timestamp || Date.now(),
-                    lp: normalizedTick.lp || 'YOFX',
-                    volume: normalizedTick.volume || 1,
-                  });
-                  const normalizedBase = normalizedTick.symbol.split('.')[0];
-                  if (normalizedBase && normalizedBase !== normalizedTick.symbol) {
-                    enqueueLiveTick(normalizedBase, {
-                      ...normalizedTick,
-                      symbol: normalizedBase,
-                      timestamp: normalizedTick.timestamp || Date.now(),
-                      lp: normalizedTick.lp || 'YOFX',
-                      volume: normalizedTick.volume || 1,
-                    });
-                  }
-                } else {
-                  if (WS_DEBUG) console.log(`[DEBUG WS] normalizeRealtimeTick returned null for ${resolveSymbol}`, scopedTickData);
-                }
-              }
-            });
           });
 
           // Check price alerts only when active alerts exist.
@@ -2627,10 +2646,32 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             close: toNumber(candle?.close ?? candle?.Close, 0),
             volume: toNumber(candle?.volume ?? candle?.Volume, 0),
             time: normalizedTime,
+            // FIX: This path receives backend OHLC, not a locally aggregated candle.
+            source: 'server',
+            sourceTimestamp: toNumber(
+              candle?.sourceTimestamp
+                ?? candle?.source_timestamp
+                ?? candle?.updated_at
+                ?? data?.sourceTimestamp
+                ?? data?.source_timestamp
+                ?? data?.event_timestamp
+                ?? data?.server_timestamp,
+              Number.NaN,
+            ),
           });
         } else if (data.type === 'candle_update') {
-          // Dispatch to market data store
-          useMarketDataStore.getState().updateCandle(data);
+          // FIX: Mark raw candle_update frames as authoritative server OHLC.
+          useMarketDataStore.getState().updateCandle({
+            ...data,
+            source: 'server',
+            sourceTimestamp: toNumber(
+              data?.sourceTimestamp
+                ?? data?.source_timestamp
+                ?? data?.event_timestamp
+                ?? data?.server_timestamp,
+              Number.NaN,
+            ),
+          });
         }
       } catch (e) {
         console.error('[WS] Parse error:', e);
@@ -2659,6 +2700,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     side: 'BUY' | 'SELL',
     requestedSymbol?: string,
     requestedVolume?: number,
+    protection?: { priceSl?: number; priceTp?: number },
   ) => {
     const intentAtMs = captureTradeOrderIntent();
     try {
@@ -2687,6 +2729,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         // asynchronous, so use that explicit value instead of a stale closure.
         volume: requestedVolume ?? volume,
         login: loginId,
+        ...(protection?.priceSl ? { price_sl: protection.priceSl } : {}),
+        ...(protection?.priceTp ? { price_tp: protection.priceTp } : {}),
       }, { intentAtMs });
       // Quick actions are intentionally not serialized: each user action gets
       // its own idempotency key and WebSocket pending-map entry.
@@ -2704,6 +2748,66 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       publishOrderFeedback(formatOrderError(err));
     }
   }, [ensureMarketOpenForOrder, getAllowedSymbol, getLiveTradingLogin, selectedSymbol, volume, refreshPositions, refreshOrdersAndHistory]);
+
+  const handleDepthOrder = useCallback(async (request: DepthOrderRequest) => {
+    setVolume(request.volume);
+    console.log(
+      `[DOM] ${request.execution === 'limit' ? 'Pending' : 'Market'} order: ${request.side} ${request.volume} @ ${request.price}`,
+    );
+
+    if (request.execution === 'market') {
+      await placeOrder(request.side, domSymbol, request.volume, {
+        priceSl: request.priceSl,
+        priceTp: request.priceTp,
+      });
+      return;
+    }
+
+    try {
+      const loginId = getLiveTradingLogin();
+      if (!loginId) {
+        publishOrderFeedback('No trading account is selected. Please sign in again.');
+        return;
+      }
+
+      const submitSymbol = getAllowedSymbol(normalizeSymbolName(domSymbol));
+      if (!submitSymbol) {
+        publishOrderFeedback(`${domSymbol || 'Selected symbol'} has no current tradable quote. Order was not sent.`);
+        return;
+      }
+      if (!Number.isFinite(request.price) || request.price <= 0) {
+        publishOrderFeedback('The selected depth price is invalid. Order was not sent.');
+        return;
+      }
+      if (!Number.isFinite(request.volume) || request.volume <= 0) {
+        publishOrderFeedback('The selected order volume is invalid. Order was not sent.');
+        return;
+      }
+      if (!ensureMarketOpenForOrder(submitSymbol)) return;
+
+      const side = request.side.toLowerCase() as 'buy' | 'sell';
+      await api.orders.placePendingOrder({
+        login: loginId,
+        symbol: submitSymbol,
+        side,
+        volume: request.volume,
+        type: `${side}_limit`,
+        price: request.price,
+        ...(request.priceSl ? { price_sl: request.priceSl } : {}),
+        ...(request.priceTp ? { price_tp: request.priceTp } : {}),
+      });
+
+      publishOrderFeedback(
+        `${request.side} limit order placed for ${request.volume} ${submitSymbol} at ${request.price}.`,
+        'success',
+      );
+      refreshOrdersAndHistory(loginId).catch((error) => {
+        console.error('[DOM] Failed to refresh pending orders/history:', error);
+      });
+    } catch (error) {
+      publishOrderFeedback(formatOrderError(error));
+    }
+  }, [domSymbol, ensureMarketOpenForOrder, getAllowedSymbol, getLiveTradingLogin, placeOrder, refreshOrdersAndHistory]);
 
   const handleOrderPanelSubmit = useCallback(async (order: {
     type: 'buy' | 'sell';
@@ -2781,52 +2885,27 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     }
   }, [clearOptimisticClosedTickets, getLiveTradingLogin, markLocalTradeMutation, refreshOrdersAndHistory, refreshPositions]);
 
-  // Fetch symbols from backend
+  // useMarketInstruments owns the authenticated catalog request. Reuse that
+  // result for selection and trading so App does not issue a second identical
+  // /instruments request during the login-to-terminal critical path.
   useEffect(() => {
-    const sessionKey = isAuthenticated && accountId ? accountId : '';
-    if (!sessionKey) {
-      authorizedSymbolsSessionRef.current = '';
+    if (!isAuthenticated || !accountId) {
       didApplyLiveChartPreferenceRef.current = false;
-      setAllSymbols([]);
-      setIsLoadingSymbols(false);
-      setHasLoadedSymbols(false);
       return;
     }
+    if (!marketInstrumentsSnapshot.authorizationSettled || allowedSymbolNames.length === 0) return;
 
-    // Keep one authorized-catalog request owner per account session. This also
-    // prevents StrictMode's development replay from firing the request twice.
-    if (authorizedSymbolsSessionRef.current === sessionKey) return;
-    authorizedSymbolsSessionRef.current = sessionKey;
-
-    setIsLoadingSymbols(true);
-    setHasLoadedSymbols(false);
-    marketV2Api.getAuthorizedInstruments()
-      .then(data => {
-        if (authorizedSymbolsSessionRef.current !== sessionKey) return;
-        const symbols = (Array.isArray(data) ? data : []).filter(item => Boolean(getInstrumentSymbolName(item)));
-        const nextAllowedSymbols = getAllowedSymbolNames(symbols);
-        if (symbols.length > 0) {
-          setAllSymbols(symbols);
-          setSelectedSymbol(prev => {
-            const current = normalizeSymbolName(prev);
-            const saved = normalizeSymbolName(localStorage.getItem(SELECTED_SYMBOL_STORAGE_KEY));
-            return current || saved || nextAllowedSymbols[0] || '';
-          });
-        } else {
-          setAllSymbols([]);
-        }
-      })
-      .catch(err => {
-        if (authorizedSymbolsSessionRef.current !== sessionKey) return;
-        console.error('Failed to fetch symbols:', err);
-        setAllSymbols([]);
-      })
-      .finally(() => {
-        if (authorizedSymbolsSessionRef.current !== sessionKey) return;
-        setHasLoadedSymbols(true);
-        setIsLoadingSymbols(false);
-      });
-  }, [accountId, isAuthenticated]);
+    setSelectedSymbol((previous) => {
+      const current = normalizeSymbolName(previous);
+      const saved = normalizeSymbolName(localStorage.getItem(SELECTED_SYMBOL_STORAGE_KEY));
+      return current || saved || allowedSymbolNames[0] || '';
+    });
+  }, [
+    accountId,
+    allowedSymbolNames,
+    isAuthenticated,
+    marketInstrumentsSnapshot.authorizationSettled,
+  ]);
 
   const chartSelectionReconciliationKey = useMemo(() => buildChartSelectionReconciliationKey({
     sessionKey: accountId,
@@ -2960,12 +3039,24 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     selectedSymbol,
   ]);
   const desktopToolbarSymbol = chartSelectionReadiness.renderedChartSymbol || selectedSymbol;
+  // FIX: A restored dock tab is the authoritative active-chart selection. Keep
+  // global chart-bound commands and persistence aligned with what is visible.
+  useEffect(() => {
+    const renderedChartSymbol = normalizeSymbolName(chartSelectionReadiness.renderedChartSymbol);
+    if (!renderedChartSymbol || renderedChartSymbol === normalizeSymbolName(selectedSymbol)) return;
+    setSelectedSymbol(renderedChartSymbol);
+  }, [chartSelectionReadiness.renderedChartSymbol, selectedSymbol]);
+  // FIX: During the one reconciliation render, never pair the visible chart
+  // symbol with another symbol's cached market-status metadata.
+  const desktopToolbarMarketStatus = normalizeSymbolName(selectedMarketStatus.symbol) === normalizeSymbolName(desktopToolbarSymbol)
+    ? selectedMarketStatus
+    : getCachedSymbolMarketStatus(desktopToolbarSymbol);
   const chartSelectionDiagnosticAttributes = getChartSelectionDiagnosticAttributes(chartSelectionReadiness);
   const chartRuntimeReady = shouldMountChartRuntime({
     authenticated: isAuthenticated,
     accountId,
     restoredLayoutAccountId,
-    catalogSettled: hasLoadedSymbols && !isLoadingSymbols,
+    catalogSettled: hasLoadedChartSymbols,
     feedPreferenceSettled: activeMarketSymbolsSettled && hasAppliedLiveChartPreference,
   });
 
@@ -2999,11 +3090,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const marginMode = brokerConfigRef.current?.marginMode === 'NETTING' ? 'Netting' : 'Hedge';
     const broker     = brokerConfigRef.current?.brokerName || 'RTX Terminal';
     const tf         = tfLabel[timeframe] ?? timeframe.toUpperCase();
-    const title      = `${accountId} - ${server} - ${marginMode} - ${broker} - ${selectedSymbol},${tf}`;
+    // FIX: Browser/Electron chrome follows the rendered active dock tab, not a
+    // stale Market Watch or pre-restore selection.
+    const title      = `${accountId} - ${server} - ${marginMode} - ${broker} - ${desktopToolbarSymbol},${tf}`;
 
     document.title = title;
     window.electron?.window?.setTitle(title);
-  }, [isAuthenticated, accountId, selectedSymbol, timeframe]);
+  }, [isAuthenticated, accountId, desktopToolbarSymbol, timeframe]);
 
   // TODO: Replace with API call to /api/notifications
   // Fetch real notifications from backend
@@ -3057,18 +3150,36 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     };
   }, [displayToast]);
 
+  // Opening the ticket is a navigation action, so it follows the active chart
+  // and chart/catalog eligibility. The stricter live-trading gate remains in
+  // handleOrderPanelSubmit, where an order can actually be sent.
+  const openOrderPanelForSymbol = useCallback((
+    requestedSymbol?: unknown,
+    requestedPrice?: { bid: number; ask: number },
+  ): boolean => {
+    const explicitSymbol = normalizeSymbolName(requestedSymbol);
+    const activeChartSymbol = normalizeSymbolName(
+      getActiveChartCommandTarget(selectedSymbol, timeframe).symbol,
+    );
+    const targetSymbol = explicitSymbol || activeChartSymbol || normalizeSymbolName(selectedSymbol);
+    const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);
+
+    if (!dialogSymbol) {
+      publishOrderFeedback(`${targetSymbol || 'Selected symbol'} is not available for a new order.`);
+      return false;
+    }
+
+    const tick = useAppStore.getState().ticks[dialogSymbol];
+    setOrderPanelSymbol(dialogSymbol);
+    setOrderPanelPrice(requestedPrice ?? { bid: tick?.bid || 0, ask: tick?.ask || 0 });
+    setOrderPanelOpen(true);
+    return true;
+  }, [getAllowedSymbol, getChartEligibleSymbol, selectedSymbol, timeframe]);
+
   // Keyboard shortcut handlers
   const handleOpenOrderPanel = useCallback((symbol: string, price: { bid: number; ask: number }) => {
-    const requestedSymbol = normalizeSymbolName(symbol);
-    const allowedSymbol = getAllowedSymbol(requestedSymbol || selectedSymbol);
-    if (!allowedSymbol) return;
-    setOrderPanelOpen(prev => {
-      if (prev) return false;
-      setOrderPanelSymbol(allowedSymbol);
-      setOrderPanelPrice(price);
-      return true;
-    });
-  }, [getAllowedSymbol, selectedSymbol]);
+    openOrderPanelForSymbol(symbol, price);
+  }, [openOrderPanelForSymbol]);
 
   const handleQuickBuy = useCallback(() => {
     if (selectedSymbol) {
@@ -3083,11 +3194,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   }, [selectedSymbol, placeOrder]);
 
   const handleOpenDOM = useCallback((symbolOrEvent: string | CustomEvent) => {
+    const activeSymbol = getActiveChartCommandTarget().symbol;
     const requestedSymbol = typeof symbolOrEvent === 'string'
       ? symbolOrEvent 
-      : (symbolOrEvent.detail?.symbol || selectedSymbol);
+      : (symbolOrEvent.detail?.symbol || activeSymbol || selectedSymbol);
     const hasRequestedSymbol = Boolean(normalizeSymbolName(requestedSymbol));
-    const symbol = getAllowedSymbol(hasRequestedSymbol ? requestedSymbol : selectedSymbol);
+    const targetSymbol = hasRequestedSymbol ? requestedSymbol : (activeSymbol || selectedSymbol);
+    const symbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);
     if (!symbol) return;
     
     if (showDOM && domSymbol === symbol) {
@@ -3097,7 +3210,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       setDomPos({ x: 620, y: 56 }); // Enforce fixed MT5 position
       setShowDOM(true);
     }
-  }, [getAllowedSymbol, selectedSymbol, showDOM, domSymbol]);
+  }, [getAllowedSymbol, getChartEligibleSymbol, selectedSymbol, showDOM, domSymbol]);
 
   // Workspace handlers
   const handleSaveWorkspace = useCallback(() => {
@@ -3111,39 +3224,37 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     displayToast(`Workspace "${workspaceName}" saved successfully!`, 'success');
   }, [displayToast]);
 
-  const handleOpenDataFolder = useCallback(() => {
+  const handleOpenDataFolder = useCallback(async () => {
     console.log('[App] Open data folder');
+    const openDataFolder = window.electron?.shell?.openDataFolder;
+    if (!openDataFolder) {
+      displayToast('Open Data Folder is available in the desktop app.', 'error');
+      return;
+    }
+
     try {
-      // Check if running in Electron environment
-      if (window.electron?.shell) {
-        window.electron.shell.openPath('./data');
-      } else {
-        // Fallback for web: Show info message
-        const dataPath = window.location.origin + '/data';
-        console.log('[App] Data folder location:', dataPath);
-        // Create a temporary link to trigger download folder
-        const link = document.createElement('a');
-        link.href = dataPath;
-        link.target = '_blank';
-        link.click();
-      }
+      const errorMessage = await openDataFolder();
+      if (errorMessage) throw new Error(errorMessage);
     } catch (error) {
       console.error('[App] Failed to open data folder:', error);
+      displayToast('The application data folder could not be opened.', 'error');
     }
-  }, []);
+  }, [displayToast]);
 
-  const handlePrintChart = useCallback(async () => {
+  const handlePrintChart = useCallback(async (request: PrintChartRequest = {}) => {
     console.log('[App] Print chart - Ctrl+P');
     try {
       // Import dynamically to avoid circular dependencies
       const { chartPrinter } = await import('./services/chartPrinter');
 
-      // Try to capture the chart canvas
-      const chartContainer = document.querySelector('.tv-lightweight-charts');
-      let chartCanvas: HTMLCanvasElement | undefined;
+      let chartData = request.chartData;
+      if (!chartData) {
+        const activeSource = getActiveChartSource();
+        const chartContainer = activeSource?.container
+          || document.querySelector('.tv-lightweight-charts');
+        const canvas = activeSource?.canvas || chartContainer?.querySelector('canvas');
+        let chartCanvas: HTMLCanvasElement | undefined;
 
-      if (chartContainer) {
-        const canvas = chartContainer.querySelector('canvas');
         if (canvas) {
           const copiedCanvas = document.createElement('canvas');
           copiedCanvas.width = canvas.width;
@@ -3154,26 +3265,27 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             chartCanvas = copiedCanvas;
           }
         }
+
+        chartData = {
+          symbol: activeSource?.symbol || selectedSymbol,
+          timeframe: activeSource?.timeframe || timeframe as string || 'M1',
+          dateRange: {
+            from: new Date(Date.now() - 24 * 60 * 60 * 1000),
+            to: new Date(),
+          },
+          chartCanvas,
+          indicators: [],
+          drawings: [],
+        };
       }
 
-      const chartData = {
-        symbol: selectedSymbol,
-        timeframe: timeframe as string || 'M1',
-        dateRange: {
-          from: new Date(Date.now() - 24 * 60 * 60 * 1000),
-          to: new Date(),
-        },
-        chartCanvas,
-        indicators: [],
-        drawings: [],
-      };
-
-      const preferences = chartPrinter.getPreferences();
+      const preferences = request.preferences
+        || chartPrinter.getPreferences(accountId || undefined);
       await chartPrinter.printChart(chartData, preferences);
     } catch (error) {
       console.error('[App] Failed to print:', error);
     }
-  }, [selectedSymbol, timeframe]);
+  }, [accountId, selectedSymbol, timeframe]);
 
   const handleToggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -3188,7 +3300,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     // 1. Workspace & File Handlers
     const handleSaveWorkspaceEvent = () => handleSaveWorkspace();
     const handleOpenDataFolderEvent = () => handleOpenDataFolder();
-    const handlePrintChartEvent = () => handlePrintChart();
+    const handlePrintChartEvent = (event: Event) => {
+      const request = (event as CustomEvent<PrintChartRequest>).detail;
+      void handlePrintChart(request || {});
+    };
     const handleTileWindows = () => {
       console.log('[App] Tiling chart windows');
       useDockLayoutStore.getState().tileWindows();
@@ -3312,26 +3427,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       setSelectedSymbol(symbol);
     };
 
-    const handleOpenOrderDialog = (e: CustomEvent) => {
-      const requestedSymbol = normalizeSymbolName(e.detail?.symbol);
-      const symbol = getAllowedSymbol(requestedSymbol || selectedSymbol);
-      if (!symbol) return;
-      const tick = useAppStore.getState().ticks[symbol];
-      setOrderPanelSymbol(symbol);
-      setOrderPanelPrice({ bid: tick?.bid || 0, ask: tick?.ask || 0 });
-      setOrderPanelOpen(true);
+    const handleOpenOrderDialog = (event: CustomEvent<{ symbol?: unknown }>) => {
+      openOrderPanelForSymbol(event.detail?.symbol);
     };
 
-    const handleOpenNewOrder = () => {
-      setOrderPanelOpen(prev => {
-        if (prev) return false;
-        const symbol = getAllowedSymbol(selectedSymbol);
-        if (!symbol) return false;
-        const tick = useAppStore.getState().ticks[symbol];
-        setOrderPanelSymbol(symbol);
-        setOrderPanelPrice({ bid: tick?.bid || 0, ask: tick?.ask || 0 });
-        return true;
-      });
+    const handleOpenNewOrder = (event: Event) => {
+      const detail = (event as CustomEvent<{ symbol?: unknown }>).detail;
+      openOrderPanelForSymbol(detail?.symbol);
     };
 
     // 3. UI & Utility Handlers
@@ -3344,6 +3446,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const chartSymbol = getChartEligibleSymbol(sym);
       if (sym && chartSymbol) setSelectedSymbol(chartSymbol);
       if (tf) setTimeframe(tf);
+    };
+
+    const handleWorkspaceProfileRestored = (e: CustomEvent) => {
+      const restoredDockHeight = Number(e.detail?.state?.chartView?.dockHeight);
+      if (Number.isFinite(restoredDockHeight) && restoredDockHeight >= 80) {
+        setDockHeight(restoredDockHeight);
+      }
     };
 
     const handleTogglePanel = (e: CustomEvent) => {
@@ -3434,14 +3543,46 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const handleOpenChartProperties = (e: CustomEvent<ChartPropertiesEventDetail>) => {
       setShowChartProperties(prev => {
         if (prev) return false;
+        const activeTarget = getActiveChartCommandTarget();
         const target = resolveChartPropertiesTarget(e.detail, {
           symbol: selectedSymbol,
           timeframe,
         });
         setChartPropsSymbol(target.symbol);
         setChartPropsTimeframe(target.timeframe);
+        setChartPropsContextId(
+          typeof e.detail?.targetContextId === 'string'
+            ? e.detail.targetContextId
+            : activeTarget.targetContextId,
+        );
         return true;
       });
+    };
+
+    const handleOpenChartObjects = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        targetContextId?: unknown;
+        symbol?: unknown;
+        timeframe?: unknown;
+      }>).detail;
+      const activeTarget = getActiveChartCommandTarget(selectedSymbol, timeframe);
+      const targetContextId = typeof detail?.targetContextId === 'string'
+        ? detail.targetContextId
+        : activeTarget.targetContextId;
+      const symbol = typeof detail?.symbol === 'string' && detail.symbol.trim()
+        ? detail.symbol.trim()
+        : (activeTarget.symbol || selectedSymbol);
+      const targetTimeframe = typeof detail?.timeframe === 'string' && detail.timeframe.trim()
+        ? detail.timeframe.trim()
+        : activeTarget.timeframe;
+
+      setChartObjectsTarget(current => current
+        ? null
+        : {
+            targetContextId: targetContextId || null,
+            symbol,
+            timeframe: targetTimeframe,
+          });
     };
 
     // 4. Attach Listeners
@@ -3452,14 +3593,16 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     window.addEventListener('tileWindows', handleTileWindows);
     window.addEventListener('openChart', handleOpenChart as EventListener);
     window.addEventListener('openOrderDialog', handleOpenOrderDialog as EventListener);
-    window.addEventListener('openNewOrder', handleOpenNewOrder);
+    window.addEventListener('openNewOrder', handleOpenNewOrder as EventListener);
     window.addEventListener('openDepthOfMarket', handleOpenDOM as EventListener);
     window.addEventListener('openDataWindow', handleOpenDataWindow);
     window.addEventListener('openChartProperties', handleOpenChartProperties as EventListener);
+    window.addEventListener('open-object-list', handleOpenChartObjects);
     window.addEventListener('toggleAccountPanel', handleToggleAccountPanel);
     window.addEventListener('layout-undo', handleLayoutUndo);
     window.addEventListener('layout-redo', handleLayoutRedo);
     window.addEventListener('chartSymbolChanged', handleChartSymbolChanged as EventListener);
+    window.addEventListener('workspace:profile-restored', handleWorkspaceProfileRestored as EventListener);
     window.addEventListener('togglePanel', handleTogglePanel as EventListener);
     window.addEventListener('change-timeframe', handleChangeTimeframe as EventListener);
     const handleChangeChartType = (e: CustomEvent) => {
@@ -3479,14 +3622,16 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       window.removeEventListener('tileWindows', handleTileWindows);
       window.removeEventListener('openChart', handleOpenChart as EventListener);
       window.removeEventListener('openOrderDialog', handleOpenOrderDialog as EventListener);
-      window.removeEventListener('openNewOrder', handleOpenNewOrder);
+      window.removeEventListener('openNewOrder', handleOpenNewOrder as EventListener);
       window.removeEventListener('openDepthOfMarket', handleOpenDOM as EventListener);
       window.removeEventListener('openDataWindow', handleOpenDataWindow);
       window.removeEventListener('openChartProperties', handleOpenChartProperties as EventListener);
+      window.removeEventListener('open-object-list', handleOpenChartObjects);
       window.removeEventListener('toggleAccountPanel', handleToggleAccountPanel);
       window.removeEventListener('layout-undo', handleLayoutUndo);
       window.removeEventListener('layout-redo', handleLayoutRedo);
       window.removeEventListener('chartSymbolChanged', handleChartSymbolChanged as EventListener);
+      window.removeEventListener('workspace:profile-restored', handleWorkspaceProfileRestored as EventListener);
       window.removeEventListener('togglePanel', handleTogglePanel as EventListener);
       window.removeEventListener('change-timeframe', handleChangeTimeframe as EventListener);
       window.removeEventListener('change-chart-type', handleChangeChartType as EventListener);
@@ -3494,7 +3639,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     };
   }, [
     selectedSymbol, timeframe, placeOrder, handleOpenDOM, 
-    handleSaveWorkspace, handleOpenDataFolder, handlePrintChart, getAllowedSymbol, getChartEligibleSymbol
+    handleSaveWorkspace, handleOpenDataFolder, handlePrintChart, getAllowedSymbol, getChartEligibleSymbol,
+    openOrderPanelForSymbol
   ]);
 
 
@@ -3543,7 +3689,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             onChartTypeChange={setChartType}
             onTimeframeChange={setTimeframe}
             symbol={desktopToolbarSymbol}
-            marketStatus={selectedMarketStatus}
+            marketStatus={desktopToolbarMarketStatus}
             feedStatus={activeMarketSnapshot}
             onRefreshConnection={refreshDesktopConnection}
             onLoadTemplate={(template) => {
@@ -3561,7 +3707,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           <div className="flex-1 flex overflow-hidden relative">
             {isWebDrawingToolsRuntime() && (
               <>
-                <WebDrawingToolsRail selectedSymbol={selectedSymbol} />
+                {/* FIX: Drawing chrome labels the same active symbol targeted by its commands. */}
+                <WebDrawingToolsRail selectedSymbol={desktopToolbarSymbol} />
                 <WebDrawingSelectionToolbar />
               </>
             )}
@@ -3608,17 +3755,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                     background: '#131316',
                   }}
                 >
-                  <DepthOfMarket
-                    symbol={domSymbol}
-                    onClose={() => setShowDOM(false)}
-                    onCloseBulk={handleCloseBulk}
-                    onDragHandleMouseDown={handleDomMouseDown}
-                    onPlaceOrder={(side, price, vol) => {
-                      setVolume(vol);
-                      console.log(`DOM Order: ${side} ${vol} @ ${price}`);
-                      placeOrder(side, domSymbol, vol);
-                    }}
-                  />
+                  <Suspense fallback={<div className="h-full w-full bg-[#131316]" />}>
+                    <LazyDepthOfMarket
+                      symbol={domSymbol}
+                      onClose={() => setShowDOM(false)}
+                      onCloseBulk={handleCloseBulk}
+                      onDragHandleMouseDown={handleDomMouseDown}
+                      onPlaceOrder={handleDepthOrder}
+                    />
+                  </Suspense>
                   {/* Right edge resize handle */}
                   <div
                     onMouseDown={(e) => handleDomResizeMouseDown(e, 'e')}
@@ -3673,10 +3818,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                     overflow: 'hidden',
                   }}
                 >
-                  <DataWindow
-                    onClose={() => setShowDataWindow(false)}
-                    onDragHandleMouseDown={handleDataWindowMouseDown}
-                  />
+                  <Suspense fallback={<div className="h-full w-full bg-[#131316]" />}>
+                    <LazyDataWindow
+                      onClose={() => setShowDataWindow(false)}
+                      onDragHandleMouseDown={handleDataWindowMouseDown}
+                    />
+                  </Suspense>
                   {/* N — top edge */}
                   <div onMouseDown={(e) => handleDataWindowResizeMouseDown(e, 'n')}
                     style={{ position:'absolute', top:0, left:6, right:6, height:5, cursor:'ns-resize', zIndex:20 }} />
@@ -3710,21 +3857,24 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
               {/* Account Panel (Right Side) */}
               {showAccountPanel && (
-                <AccountPanel
-                  onClose={() => setShowAccountPanel(false)}
-                  wsConnection={wsRef.current}
-                />
+                <Suspense fallback={null}>
+                  <LazyAccountPanel
+                    onClose={() => setShowAccountPanel(false)}
+                    wsConnection={wsRef.current}
+                  />
+                </Suspense>
               )}
             </div>
           </div>
 
           {/* 4. Status Bar */}
+          {/* FIX: Status chrome must identify the chart the user can actually see. */}
           <StatusBar
             wsRef={wsRef}
             reconnectCallback={reconnectCallbackRef.current || undefined}
-            symbol={selectedSymbol}
+            symbol={desktopToolbarSymbol}
             timeframe={timeframe}
-            marketStatus={selectedMarketStatus}
+            marketStatus={desktopToolbarMarketStatus}
           />
 
           {/* OTA Update Banner (fixed overlay, top-right) */}
@@ -3734,14 +3884,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           <AlertsContainer wsConnection={wsRef.current} />
 
           {/* Order Panel Dialog (F9) */}
-          <OrderPanelDialog
-            isOpen={orderPanelOpen}
-            onClose={() => setOrderPanelOpen(false)}
-            symbol={orderPanelSymbol || selectedSymbol}
-            currentPrice={orderPanelPrice}
-            onSubmitOrder={handleOrderPanelSubmit}
-            marketStatus={selectedMarketStatus}
-          />
+          {orderPanelOpen && (
+            <Suspense fallback={null}>
+              <LazyOrderPanelDialog
+                isOpen
+                onClose={() => setOrderPanelOpen(false)}
+                symbol={orderPanelSymbol || selectedSymbol}
+                currentPrice={orderPanelPrice}
+                onSubmitOrder={handleOrderPanelSubmit}
+                marketStatus={selectedMarketStatus}
+              />
+            </Suspense>
+          )}
 
           {/* Save Workspace Dialog (Ctrl+S) */}
           {showSaveWorkspaceDialog && (
@@ -3787,7 +3941,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           )}
 
           {/* Last Symbol Trading Panel */}
-          {lastSymbolPanelVisible && <LastSymbolPanel />}
+          {lastSymbolPanelVisible && (
+            <Suspense fallback={null}>
+              <LazyLastSymbolPanel />
+            </Suspense>
+          )}
 
           {/* Notification Toast Container */}
           <ToastContainer notifications={activeToasts} />
@@ -3796,34 +3954,73 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           <ConfirmDialog />
 
           {/* Indicator Navigator (Insert > Indicators, toolbar button) */}
-          <IndicatorNavigator
-            isOpen={showIndicatorNavigator}
-            onClose={() => setShowIndicatorNavigator(false)}
-            initialCategory={indicatorNavCategory}
-            onAddIndicator={(indicator: IndicatorInfo) => {
-              if (indicator.category === 'Volume' && indicator.name === 'Volume') {
-                setChartVolumeBarsVisible(true, selectedSymbol || undefined);
-                setShowIndicatorNavigator(false);
-                return;
-              }
+          {showIndicatorNavigator && (
+            <Suspense fallback={null}>
+              <LazyIndicatorNavigator
+                isOpen
+                onClose={() => setShowIndicatorNavigator(false)}
+                initialCategory={indicatorNavCategory}
+                onAddIndicator={(indicator: IndicatorInfo) => {
+                  const activeTarget = getActiveChartCommandTarget(selectedSymbol, timeframe);
+                  const targetContextId = indicatorTarget.targetContextId ?? activeTarget.targetContextId;
+                  const targetSymbol = indicatorTarget.symbol ?? activeTarget.symbol ?? selectedSymbol;
+                  if (indicator.category === 'Volume' && indicator.name === 'Volume') {
+                    setChartVolumeBarsVisible(true, targetSymbol || undefined);
+                    setShowIndicatorNavigator(false);
+                    return;
+                  }
 
-              commandBus.dispatch({
-                type: 'ADD_INDICATOR',
-                payload: { name: indicator.name, params: indicator.parameters ?? {} }
-              });
-              setShowIndicatorNavigator(false);
-            }}
-          />
+                  commandBus.dispatch({
+                    type: 'ADD_INDICATOR',
+                    payload: {
+                      id: indicator.id,
+                      name: indicator.name,
+                      indicatorType: indicator.id.replace(/-\d+$/, ''),
+                      params: indicator.parameters ?? {},
+                      targetContextId,
+                      symbol: targetSymbol,
+                    }
+                  });
+                  setShowIndicatorNavigator(false);
+                }}
+              />
+            </Suspense>
+          )}
 
           {/* Chart Properties Dialog (F8) */}
-          <ChartPropertiesDialog
-             isOpen={showChartProperties}
-             onClose={() => setShowChartProperties(false)}
-             symbol={chartPropsSymbol}
-             timeframe={chartPropsTimeframe as Timeframe}
-             currentChartType={chartType}
-             onChartTypeChange={setChartType}
-          />
+          {showChartProperties && (
+            <Suspense fallback={null}>
+              <LazyChartPropertiesDialog
+                isOpen
+                onClose={() => setShowChartProperties(false)}
+                symbol={chartPropsSymbol}
+                timeframe={chartPropsTimeframe as Timeframe}
+                targetContextId={chartPropsContextId}
+                currentChartType={getDockPanelChartType(dockLayout, chartPropsContextId, chartType)}
+                onChartTypeChange={(nextChartType) => {
+                  commandBus.dispatch({
+                    type: 'SET_CHART_TYPE',
+                    payload: {
+                      chartType: nextChartType,
+                      targetContextId: chartPropsContextId,
+                    },
+                  });
+                }}
+              />
+            </Suspense>
+          )}
+
+          {chartObjectsTarget && (
+            <Suspense fallback={null}>
+              <LazyChartObjectsDialog
+                isOpen
+                targetContextId={chartObjectsTarget.targetContextId}
+                symbol={chartObjectsTarget.symbol}
+                timeframe={chartObjectsTarget.timeframe}
+                onClose={() => setChartObjectsTarget(null)}
+              />
+            </Suspense>
+          )}
         </div>
       </KeyboardShortcutProvider>
 

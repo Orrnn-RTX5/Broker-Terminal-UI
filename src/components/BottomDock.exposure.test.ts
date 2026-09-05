@@ -70,4 +70,26 @@ describe('BottomDock exposure helpers', () => {
     expect(formatExposureVolume('GBP', -2000)).toBe('-2.000K');
     expect(formatExposureVolume('XAU', 1)).toBe('1.00');
   });
+
+  it('calculates long segment percentages summing to 1 for long exposure', () => {
+    const summary = buildExposureSummary(
+      [{
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        volume: 0.01,
+        currentPrice: 2000,
+      }],
+      {
+        balance: 10000,
+        equity: 10000,
+        margin: 20,
+        freeMargin: 9980,
+        currency: 'USD',
+      }
+    );
+
+    const totalPct = summary.longSegments.reduce((acc, seg) => acc + seg.percent, 0);
+    expect(totalPct).toBeCloseTo(1, 4);
+    expect(summary.longSegments[0].color).toBeTruthy();
+  });
 });

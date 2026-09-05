@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
+import { normalizeExactBrokerSymbol } from '../utils/exactBrokerSymbol';
 
 const PENDING_REFRESHES = new Set<number>();
 
@@ -15,12 +16,14 @@ export function useAutoCloseMonitor(intervalMs = 500) {
             const positions = appState.positions;
             const ticks = appState.ticks;
 
-            // Pre-compute normalized ticks dictionary for ultra-fast fuzzy resolution
-            const normalizedTicks: Record<string, any> = {};
-            for (const key in ticks) {
-                 const norm = key.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-                 normalizedTicks[norm] = ticks[key];
-            }
+            // FIX: Build an exact-symbol index with trim/case normalization only.
+            // Broker suffixes are separate contracts and must never cross SL/TP.
+            const exactTicks = new Map(
+                Object.entries(ticks).map(([symbol, tick]) => [
+                    normalizeExactBrokerSymbol(symbol),
+                    tick,
+                ] as const),
+            );
 
             positions.forEach(pos => {
                 if (!pos.id || PENDING_REFRESHES.has(pos.id)) return;
@@ -28,10 +31,10 @@ export function useAutoCloseMonitor(intervalMs = 500) {
                 // Only check if we actually have SL or TP defined locally or from server
                 if ((!pos.sl || pos.sl === 0) && (!pos.tp || pos.tp === 0)) return;
 
-                const symbolStr = (pos.symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-                
-                // O(1) lookup against normalized dictionary
-                const tick = ticks[pos.symbol] || normalizedTicks[symbolStr];
+                const symbolKey = normalizeExactBrokerSymbol(pos.symbol);
+
+                // O(1) lookup without collapsing dots, hyphens, or broker suffixes.
+                const tick = exactTicks.get(symbolKey);
 
                 if (!tick) return;
 

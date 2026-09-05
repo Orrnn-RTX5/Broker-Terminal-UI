@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { DockLayout } from '../../services/dockManager';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import type { ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';
+import type { MarketInstrumentsSnapshot } from '../../hooks/useLiveMarketData';
 import { DockWorkspace } from './DockWorkspace';
 
 const chartMocks = vi.hoisted(() => ({
@@ -101,12 +102,27 @@ const createActiveMarketSnapshot = (
   ...overrides,
 });
 
+const createMarketInstrumentsSnapshot = (
+  overrides: Partial<MarketInstrumentsSnapshot> = {},
+): MarketInstrumentsSnapshot => ({
+  symbols: [{ symbol: 'BTCUSD' }],
+  authorizedInstruments: [{ symbol: 'BTCUSD' }],
+  authorizedSymbols: ['BTCUSD'],
+  disabledSymbols: [],
+  authorizationSettled: true,
+  loading: false,
+  error: null,
+  reload: vi.fn().mockResolvedValue(undefined),
+  ...overrides,
+});
+
 const renderWorkspace = (
   layout: DockLayout,
   selectedSymbol: string,
   chartRuntimeEnabled = true,
   activeMarketSnapshot = createActiveMarketSnapshot(),
   allSymbols: unknown[] = ['BTCUSD'],
+  marketInstrumentsSnapshot = createMarketInstrumentsSnapshot(),
 ) => {
   useDockLayoutStore.setState({ layout });
   return render(
@@ -117,6 +133,7 @@ const renderWorkspace = (
       chartSymbols={allSymbols}
       tradeSymbols={activeMarketSnapshot.current ? activeMarketSnapshot.symbols : []}
       activeMarketSnapshot={activeMarketSnapshot}
+      marketInstrumentsSnapshot={marketInstrumentsSnapshot}
       selectedSymbol={selectedSymbol}
       chartRuntimeEnabled={chartRuntimeEnabled}
       onSymbolSelect={vi.fn()}
@@ -172,13 +189,14 @@ describe('DockWorkspace chart diagnostic attributes', () => {
     expect(panel?.getAttribute('data-chart-rendered-symbol')).toBe('BTCUSD');
   });
 
-  it('keeps the dock flush against the drawing rail, toolbar, and status bar while preserving the right gutter', () => {
+  it('keeps the dock flush on every edge after the right-side rail is removed', () => {
     const { container } = renderWorkspace(chartLayout('chart-1', 'BTCUSD'), 'BTCUSD');
     const workspace = container.querySelector<HTMLElement>('[data-rtx-authenticated-viewport="true"]');
 
     expect(workspace).not.toBeNull();
     expect(workspace?.style.paddingTop).toBe('0px');
-    expect(workspace?.style.paddingRight).toBe('6px');
+    // FIX: The removed right-side exposure rail no longer reserves a 6px gutter.
+    expect(workspace?.style.paddingRight).toBe('0px');
     expect(workspace?.style.paddingBottom).toBe('0px');
     expect(workspace?.style.paddingLeft).toBe('0px');
   });
@@ -199,6 +217,34 @@ describe('DockWorkspace chart diagnostic attributes', () => {
     });
   });
 
+  it('passes authenticated broker lot constraints to the exact chart symbol', async () => {
+    renderWorkspace(
+      chartLayout('chart-1', 'BTCUSD'),
+      'BTCUSD',
+      true,
+      createActiveMarketSnapshot(),
+      [{ symbol: 'BTCUSD', minVolume: 0.01, maxVolume: 100, volumeStep: 0.01 }],
+      createMarketInstrumentsSnapshot({
+        authorizedInstruments: [{
+          symbol: 'BTCUSD',
+          minVolume: 0.001,
+          maxVolume: 25,
+          volumeStep: 0.001,
+        }],
+      }),
+    );
+
+    await waitFor(() => expect(chartMocks.render).toHaveBeenCalled());
+    // FIX regression: authenticated metadata overrides the public catalog for
+    // the exact symbol before reaching the one-click lot editor.
+    expect(chartMocks.render.mock.lastCall?.[0]).toMatchObject({
+      symbol: 'BTCUSD',
+      minVolume: 0.001,
+      maxVolume: 25,
+      volumeStep: 0.001,
+    });
+  });
+
   it('keeps chart network runtime disabled until startup selection is settled', async () => {
     const view = renderWorkspace(chartLayout('chart-1', 'BTCUSD'), 'BTCUSD', false);
 
@@ -213,6 +259,7 @@ describe('DockWorkspace chart diagnostic attributes', () => {
         chartSymbols={['BTCUSD']}
         tradeSymbols={['BTCUSD']}
         activeMarketSnapshot={createActiveMarketSnapshot()}
+        marketInstrumentsSnapshot={createMarketInstrumentsSnapshot()}
         selectedSymbol="BTCUSD"
         chartRuntimeEnabled
         onSymbolSelect={vi.fn()}

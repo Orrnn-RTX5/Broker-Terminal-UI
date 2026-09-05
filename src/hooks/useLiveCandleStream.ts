@@ -16,6 +16,7 @@ import {
   type Timeframe,
 } from '../services/candleAggregationService';
 import { useAppStore } from '../store/useAppStore';
+import { normalizeBrokerTimestampSeconds } from '../utils/brokerStreamSemantics';
 
 const VALID_TIMEFRAMES: Timeframe[] = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', 'MN'];
 
@@ -47,19 +48,34 @@ export function useLiveCandleStream(
 
   // Step 8: Canonical candle engine — ingest live candle
   const handleCandle = useCallback((payload: CandlePayload) => {
+    // FIX: Accept every broker epoch precision at this legacy hook boundary.
+    // CandleSocketManager already normalizes this today, but keeping the hook
+    // canonical prevents a future/direct adapter from shifting a bucket time.
+    const time = normalizeBrokerTimestampSeconds(payload.time);
+    if (time === undefined) return;
+
     // Normalize to CandleData format
     const candle: CandleData = {
-      time: payload.time > 1_000_000_000_000 ? Math.floor(payload.time / 1000) : payload.time,
+      time,
       open: payload.open,
       high: payload.high,
       low: payload.low,
       close: payload.close,
       volume: payload.volume,
-      isComplete: false,
+      // FIX: Preserve authoritative backend finality instead of reopening every
+      // server-final candle as a mutable forming bucket.
+      isComplete: payload.closed === true,
     };
 
-    // Step 9: Merge live + history — via candleAggregationService
-    candleAggregationService.addCompletedCandle(symbol, validTimeframe, candle);
+    // FIX: A forming server update must remain mutable. Only an explicit
+    // canonical finality=true is committed through the completed-candle path;
+    // missing finality fails safe as partial instead of freezing live OHLC.
+    candleAggregationService.reconcileServerCandle(
+      symbol,
+      validTimeframe,
+      candle,
+      payload.closed === true,
+    );
 
     // Get merged candles (REST history + live)
     const merged = candleAggregationService

@@ -10,7 +10,8 @@ import { chartPrinter, type PrintPreferences, type ChartPrintData } from '../../
 
 export interface PrintPreviewDialogProps {
   onClose: () => void;
-  onPrint: () => void;
+  /** Owns the actual print operation. Called exactly once for each confirmed print. */
+  onPrint: () => void | Promise<void>;
   chartData?: ChartPrintData;
   preferences?: PrintPreferences;
 }
@@ -79,8 +80,7 @@ export const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
 
     setIsPrinting(true);
     try {
-      await chartPrinter.printChart(chartData, preferences);
-      onPrint();
+      await onPrint();
       onClose();
     } catch (error) {
       console.error('Print failed:', error);

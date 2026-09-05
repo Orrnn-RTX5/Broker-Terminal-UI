@@ -642,7 +642,12 @@ const pickPersistedMarketOrigin = (
   return nextUrl;
 };
 
-const pickPersistedFeedUrl = (nextFeedUrl: string, nextWsUrl: string, hasToken: boolean): string => {
+const pickPersistedFeedUrl = (
+  nextFeedUrl: string,
+  nextWsUrl: string,
+  hasToken: boolean,
+  canRetainCurrentFeed: boolean,
+): string => {
   if (typeof window === 'undefined') return nextFeedUrl;
 
   const currentFeedUrl = normalizeOptionalWsUrl(getLocalStorageItem('feed_url'));
@@ -652,7 +657,9 @@ const pickPersistedFeedUrl = (nextFeedUrl: string, nextWsUrl: string, hasToken: 
     || (!nextFeedUrl && nextWsUrl && isPort8091Url(nextWsUrl))
   );
 
-  if (hasValidDiscoveryFeed && (nextLooksLikeBadLoginFeed || (hasToken && !nextFeedUrl))) {
+  // FIX: A missing feed_url may reuse discovery only inside the same broker.
+  // Carrying broker A's socket into broker B mixes credentials and stale prices.
+  if (canRetainCurrentFeed && hasValidDiscoveryFeed && (nextLooksLikeBadLoginFeed || (hasToken && !nextFeedUrl))) {
     return currentFeedUrl;
   }
 
@@ -707,10 +714,15 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   const backendUrl = pickPersistedMarketOrigin(backendCandidateUrl, hasToken, hasExplicitValidMarketUrl, currentMarketOrigin, sameBroker);
   const serverUrl = pickPersistedMarketOrigin(serverCandidateUrl, hasToken, hasExplicitValidMarketUrl, currentMarketOrigin, sameBroker);
   const wsUrl = pickPersistedWsUrl(wsCandidateUrl, hasToken, hasExplicitValidMarketUrl, currentMarketOrigin, sameBroker);
-  const feedUrl = pickPersistedFeedUrl(normalizeOptionalWsUrl(normalizedInput.feed_url || normalizedInput.feed_ws_url), wsUrl, Boolean(token));
+  const brokerChanged = !sameBroker || hasBrokerServerChanged(serverUrl);
+  const feedUrl = pickPersistedFeedUrl(
+    normalizeOptionalWsUrl(normalizedInput.feed_url || normalizedInput.feed_ws_url),
+    wsUrl,
+    Boolean(token),
+    !brokerChanged,
+  );
   const feedStatusUrl = normalizeOptionalHttpUrl(normalizedInput.feed_status_url);
   const logoUrl = String(normalizedInput.logo_url || '').trim();
-  const brokerChanged = !sameBroker || hasBrokerServerChanged(serverUrl);
   const brokerChangedWithoutToken = !token && brokerChanged;
 
   if (token) {

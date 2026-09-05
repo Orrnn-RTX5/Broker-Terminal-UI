@@ -1,0 +1,37 @@
+{
+  "name": "antigravity-preview-bridge",
+  "displayName": "RTX5 Antigravity Preview Bridge",
+  "description": "Opens local development servers in Antigravity's Jetski Preview from a terminal command.",
+  "version": "1.2.0",
+  "publisher": "rtx5",
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "main": "./extension.cjs",
+  "activationEvents": [
+    "onStartupFinished",
+    "onUri",
+    "onCommand:rtxPreview.open"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "rtxPreview.open",
+        "title": "Open Local Dev Server",
+        "category": "RTX5 Preview"
+      }
+    ]
+  }
+}

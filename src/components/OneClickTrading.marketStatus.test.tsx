@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const orderMocks = vi.hoisted(() => ({
@@ -98,13 +99,110 @@ describe('OneClickTrading market status', () => {
     expect(volumeInput).toHaveStyle({ width: '48px', height: '24px' });
     expect(volumeInput.style.background).not.toContain('rgba');
 
-    expect(volumeInput).toHaveValue(0.01);
+    expect(volumeInput).toHaveValue('0.01');
     fireEvent.click(increaseButton);
-    expect(volumeInput).toHaveValue(0.02);
+    expect(volumeInput).toHaveValue('0.02');
     fireEvent.click(decreaseButton);
-    expect(volumeInput).toHaveValue(0.01);
+    expect(volumeInput).toHaveValue('0.01');
     fireEvent.click(decreaseButton);
-    expect(volumeInput).toHaveValue(0.01);
+    expect(volumeInput).toHaveValue('0.01');
+  });
+
+  it('allows replacing the default lot with 1 or more without retaining the leading zero', async () => {
+    const user = userEvent.setup();
+    render(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })}
+      />,
+    );
+
+    const volumeInput = screen.getByLabelText<HTMLInputElement>('Lot size');
+
+    // FIX regression: the field must preserve the transient empty draft so a
+    // trader can replace 0.01 character-by-character instead of being stuck at 0.x.
+    await user.clear(volumeInput);
+    expect(volumeInput.value).toBe('');
+    expect(getTradeButton('BUY').disabled).toBe(true);
+    expect(getTradeButton('SELL').disabled).toBe(true);
+
+    await user.type(volumeInput, '1');
+    expect(volumeInput.value).toBe('1');
+    await user.tab();
+    expect(volumeInput.value).toBe('1.00');
+
+    await user.clear(volumeInput);
+    await user.type(volumeInput, '1.25');
+    expect(volumeInput.value).toBe('1.25');
+    await user.tab();
+    expect(volumeInput.value).toBe('1.25');
+    expect(getTradeButton('BUY').disabled).toBe(false);
+    expect(getTradeButton('SELL').disabled).toBe(false);
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+  });
+
+  it('uses the active broker symbol lot precision instead of forcing two decimals', async () => {
+    const user = userEvent.setup();
+    render(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        minVolume={0.001}
+        maxVolume={2}
+        volumeStep={0.001}
+        marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })}
+      />,
+    );
+
+    const volumeInput = screen.getByLabelText<HTMLInputElement>('Lot size');
+    expect(volumeInput.value).toBe('0.001');
+
+    await user.clear(volumeInput);
+    await user.type(volumeInput, '1.257');
+    await user.tab();
+    expect(volumeInput.value).toBe('1.257');
+
+    await user.clear(volumeInput);
+    await user.type(volumeInput, '3');
+    await user.tab();
+    expect(volumeInput.value).toBe('2.000');
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+  });
+
+  it('submits the committed keyboard-entered lot value', async () => {
+    const user = userEvent.setup();
+    useAppStore.setState({ isAuthenticated: true, accountId: '200002' });
+    orderMocks.placeMarketOrder.mockReturnValue(new Promise(() => {}));
+
+    render(
+      <OneClickTrading
+        symbol="EURUSD"
+        timeframe="M5"
+        visible
+        tradeAllowed
+        marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })}
+      />,
+    );
+
+    const volumeInput = screen.getByLabelText<HTMLInputElement>('Lot size');
+    await user.clear(volumeInput);
+    await user.type(volumeInput, '1.25');
+    await user.tab();
+    await user.click(getTradeButton('BUY'));
+
+    // FIX regression: execution must use the displayed draft's committed value,
+    // never the stale 0.01 numeric state that existed before keyboard editing.
+    expect(orderMocks.placeMarketOrder).toHaveBeenCalledWith({
+      side: 'buy',
+      symbol: 'EURUSD',
+      volume: 1.25,
+      login: 200002,
+    }, { intentAtMs: expect.any(Number) });
   });
 
   it('uses the roomier OneClickTrading dimensions in advanced light mode', () => {
@@ -129,7 +227,7 @@ describe('OneClickTrading market status', () => {
     expect(rowChildren[2]).toHaveStyle({ width: 'auto', minWidth: '110px', height: '34px' });
   });
 
-  it('keeps the last BTCUSD M1 prices visible but disables trading when freshness denies the symbol', () => {
+  it('keeps stale prices visible and disables trading without an inline stale-quote warning', () => {
     useAppStore.getState().setTicks({
       BTCUSD: {
         symbol: 'BTCUSD',
@@ -161,7 +259,7 @@ describe('OneClickTrading market status', () => {
     expect(sellButton).toHaveStyle({ opacity: '1' });
     expect(buyButton).toHaveAttribute('title', 'Live tradable quote unavailable - order not sent');
     expect(sellButton).toHaveAttribute('title', 'Live tradable quote unavailable - order not sent');
-    expect(screen.getByText('Live tradable quote unavailable - order not sent')).toBeInTheDocument();
+    expect(screen.queryByText('Live tradable quote unavailable - order not sent')).toBeNull();
   });
 
   it.each([
@@ -225,7 +323,7 @@ describe('OneClickTrading market status', () => {
     expect(sellButton.disabled).toBe(false);
   });
 
-  it('clears an older stale-quote banner when a concurrent newer order fills', async () => {
+  it('shows a backend rejection below the controls and clears it when a newer order fills', async () => {
     useAppStore.setState({ isAuthenticated: true, accountId: '200002' });
     let rejectOlderOrder: ((reason: Error) => void) | undefined;
     let resolveNewerOrder: ((position: Record<string, never>) => void) | undefined;
@@ -247,13 +345,15 @@ describe('OneClickTrading market status', () => {
       />,
     );
 
+    const tradingRow = screen.getByTestId('one-click-trading-row');
     fireEvent.click(getTradeButton('BUY'));
     fireEvent.click(getTradeButton('SELL'));
 
     await act(async () => {
       rejectOlderOrder?.(Object.assign(new Error('Quote is stale for EURUSD'), { code: 'QUOTE_STALE' }));
     });
-    expect(screen.getByText('Order failed: Quote is stale for EURUSD')).not.toBeNull();
+    const backendError = screen.getByText('Order failed: Quote is stale for EURUSD');
+    expect(tradingRow.nextElementSibling).toBe(backendError);
 
     await act(async () => {
       resolveNewerOrder?.({});

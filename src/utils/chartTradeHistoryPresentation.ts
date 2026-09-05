@@ -8,6 +8,11 @@ export interface TradeHistoryBadgeTextOptions {
   price: number;
   digits: number;
   time: number;
+  includeSeconds?: boolean;
+}
+
+export interface TradeHistoryGmtTimeOptions {
+  includeSeconds?: boolean;
 }
 
 export interface TradeHistoryLabelPlacementOptions {
@@ -52,7 +57,10 @@ export interface TradeHistoryLabelVerticalPlacement {
 }
 
 /** Formats a Unix timestamp explicitly in GMT, independent of the device timezone. */
-export const formatTradeHistoryGmtTime = (unixSeconds: number): string => {
+export const formatTradeHistoryGmtTime = (
+  unixSeconds: number,
+  { includeSeconds = false }: TradeHistoryGmtTimeOptions = {},
+): string => {
   if (!Number.isFinite(unixSeconds) || unixSeconds <= 0) return '';
 
   const date = new Date(unixSeconds * 1000);
@@ -60,7 +68,10 @@ export const formatTradeHistoryGmtTime = (unixSeconds: number): string => {
 
   const hours = String(date.getUTCHours()).padStart(2, '0');
   const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-  return `${hours}:${minutes} GMT`;
+  const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+  return includeSeconds
+    ? `${hours}:${minutes}:${seconds} GMT`
+    : `${hours}:${minutes} GMT`;
 };
 
 export const buildTradeHistoryBadgeText = ({
@@ -70,10 +81,11 @@ export const buildTradeHistoryBadgeText = ({
   price,
   digits,
   time,
+  includeSeconds = false,
 }: TradeHistoryBadgeTextOptions): string => {
   const safeDigits = Number.isFinite(digits) ? Math.max(0, Math.min(10, Math.floor(digits))) : 2;
   const formattedPrice = Number.isFinite(price) ? price.toFixed(safeDigits) : '—';
-  const formattedTime = formatTradeHistoryGmtTime(time);
+  const formattedTime = formatTradeHistoryGmtTime(time, { includeSeconds });
 
   return [
     `${positionSide} ${lifecycle}`,

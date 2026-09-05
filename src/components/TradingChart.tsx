@@ -21,7 +21,6 @@ import {
   HistogramSeries,
 } from 'lightweight-charts';
 import type { IChartApi, IPriceLine, ISeriesApi, Time } from 'lightweight-charts';
-import { useToolbarState } from '../hooks/useToolbarState';
 import { useCrosshair } from '../hooks/useCrosshair';
 import { useQuoteSubscription } from '../hooks/useQuoteSubscription';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
@@ -47,7 +46,7 @@ import { setLiveMarketDataFrozen } from '../services/liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { drawingManager } from '../services/drawingManager';
 import { resolveTrendToolColor } from '../drawing-tools/toolDefaults';
-import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
+import { getQuoteSocketManager } from '../services/quoteSocketManager';
 import {
   candleAggregationService,
   getTimeframeSeconds,
@@ -80,7 +79,7 @@ import type { PeriodSeparator } from '../utils/periodSeparators';
 import { rememberTradeHistoryPositionLevels } from '../utils/tradeHistoryLevelCache';
 import { ChartContextMenu } from './ChartContextMenu';
 import { captureFullPage } from '../services/screenshotService';
-import { indicatorManager } from '../services/indicatorManager';
+import { IndicatorManager, type IndicatorConfig } from '../services/indicatorManager';
 import { chartDataService } from '../services/chartDataService';
 import { candleCache, type CandleCacheKey, type CandleCacheMetadata, type CandleCacheSource } from '../services/candleCache';
 import {
@@ -89,6 +88,7 @@ import {
   isM1DerivedFallbackTimeframe,
 } from '../services/derivedTimeframeHistoryService';
 import {
+  backfillRecentInteriorHistoryGaps,
   createChartHistoryBackfillDiagnostics,
   createSelectedTimeframeHistoryCoordinator,
   fetchOlderHistoryPage as fetchChartOlderHistoryPage,
@@ -107,11 +107,9 @@ import {
   canDropPreloadedCandlesForLiveQuoteMismatch,
   getChartPriceFromQuote,
   createRenderedPriceReference,
-  getReferenceScaleFactor,
   isPriceCompatibleWithReference,
   normalizeCandlesToReference,
   resetLiveQuoteGuardState,
-  scaleCandlePrices,
   updateLiveQuoteGuardState,
   type RenderedPriceReference,
 } from '../services/chartPriceGuards';
@@ -136,7 +134,6 @@ import {
 import {
   CANDLE_TIMEFRAMES,
   alignTimeframeBoundarySeconds,
-  getCandleRolloverStartSeconds,
   getTimeframePeriodSeconds,
 } from '../utils/timeframeBoundary';
 import {
@@ -164,11 +161,6 @@ import {
   buildTradeHistoryBadgeText,
   formatTradeHistoryGmtTime,
   getTradeHistoryExecutionSide,
-  getTradeHistoryLabelMaxWidth,
-  resolveTradeHistoryLabelPlacement,
-  resolveTradeHistoryLabelVerticalPlacement,
-  type TradeHistoryLifecycle,
-  type TradeHistoryLabelRect,
 } from '../utils/chartTradeHistoryPresentation';
 import {
   buildTradeShareUrl,
@@ -206,13 +198,16 @@ import {
   type TradeOverlayHistoryRow,
 } from '../services/tradeOverlayHistory';
 import {
+  applyTickToFormingCandle,
   applyBrokerTimeOffsetToCandles,
   formatHistoryForOhlcv,
   getVisibleLogicalRangeForDataRender,
+  mergeAuthoritativeCandleHistory,
   mergeHistoricalCandlesWithBufferedLive,
   mergeFormingCandleEnvelope,
   mergeBackendCandlePage,
   prependCandleHistory,
+  selectCandlesMutatedAfterGeneration,
   selectOlderHistoryCandlesForMerge,
   upsertCandleIntoHistory,
   type LogicalRangeLike,
@@ -222,12 +217,16 @@ import {
   getDisplayVolume,
   getLeftVisibleTimeFromLogicalRange,
   getLivePriceOverlayColors,
+  getLivePriceSeriesColor,
+  isCandleAtOrBeforeFinalizedTime,
+  markFinalizedCandleTime,
   getRenderedPrependedBarCount,
   getSeparatorPriority,
   getValidSortedCandles,
   getVisibleLogicalRangeAnchoredToTime,
   isDenseMinuteSeparatorTimeframe,
   isPotentialMarketClosedPlaceholderCandle,
+  resolveCandleFinalityFromActivePeriod,
   shouldRecomputeMarketGapSeparatorsForCandle,
   shouldRestoreProtectedHistoryForFullRender,
   shouldApplyVisibleRangeResetForRender,
@@ -246,6 +245,41 @@ import {
 } from '../utils/currentClosedMarketTail';
 
 export type { ChartType, Timeframe } from './TradingChart.helpers';
+
+const SUPPORTED_CHART_INDICATOR_TYPES = new Set(['ma', 'sma', 'ema', 'rsi', 'macd', 'bb', 'bollinger']);
+
+const getFixedChartPriceRange = (
+  settings: Pick<ChartProperties, 'scaleFix' | 'fixedMinimum' | 'fixedMaximum'>
+): { from: number; to: number } | null => {
+  const from = Number(settings.fixedMinimum);
+  const to = Number(settings.fixedMaximum);
+  return settings.scaleFix && Number.isFinite(from) && Number.isFinite(to) && to > from
+    ? { from, to }
+    : null;
+};
+
+interface AddChartIndicatorRequest {
+  id?: string;
+  name: string;
+  indicatorType?: string;
+  params?: Record<string, any>;
+}
+
+const resolveChartIndicatorType = (request: AddChartIndicatorRequest): string | null => {
+  const explicitType = request.indicatorType?.trim().toLowerCase();
+  if (explicitType && SUPPORTED_CHART_INDICATOR_TYPES.has(explicitType)) return explicitType;
+
+  const idType = request.id?.split('-')[0]?.trim().toLowerCase();
+  if (idType && SUPPORTED_CHART_INDICATOR_TYPES.has(idType)) return idType;
+
+  const normalizedName = request.name.trim().toLowerCase();
+  if (normalizedName.includes('bollinger')) return 'bb';
+  if (normalizedName.includes('exponential') || normalizedName === 'ema') return 'ema';
+  if (normalizedName.includes('moving average') || normalizedName === 'ma' || normalizedName.includes('sma')) return 'sma';
+  if (normalizedName.includes('relative strength') || normalizedName === 'rsi') return 'rsi';
+  if (normalizedName.includes('macd')) return 'macd';
+  return null;
+};
 
 // MT5-style "comfortable" candle width — used to compute how many bars to fit
 // across the visible chart area on initial-load and on axis reset. Adapting to
@@ -275,7 +309,7 @@ const TRADE_LEVEL_CROSS_REFRESH_MIN_DISPATCH_INTERVAL_MS = 3_000;
 const TRADE_LEVEL_BADGE_LEFT_INSET_PX = 10;
 const TRADE_LEVEL_BADGE_STACK_OFFSET_PX = 76;
 const LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX = 52;
-const LIVE_PRICE_BADGE_PRICE_ROW_OFFSET_PX = 8;
+const LIVE_PRICE_BADGE_PRICE_ROW_OFFSET_PX = 10;
 const TRADE_MISSING_POSITION_GRACE_MS = 30_000;
 const REALTIME_SCROLL_THRESHOLD_BARS = 2;
 const LIVE_CHART_UPDATE_INTERVAL_MS = 50;
@@ -509,17 +543,6 @@ const applyBrokerTimeOffset = (candles: Candle[], offsetSeconds: number): Candle
   applyBrokerTimeOffsetToCandles(candles, offsetSeconds)
 );
 
-const detectBrokerHistoryOffsetSeconds = (candles: Candle[]): number => {
-  const lastCandleTime = candles[candles.length - 1]?.time;
-  if (!Number.isFinite(lastCandleTime)) return 0;
-
-  const trueUtcSecs = Date.now() / 1000;
-  if (Number(lastCandleTime) <= trueUtcSecs + 300) return 0;
-
-  const rawOffset = Number(lastCandleTime) - trueUtcSecs;
-  return Math.round(rawOffset / 1800) * 1800;
-};
-
 type ChartColorPalette = ChartProperties['colors'];
 const MINUTE_SEPARATOR_PIXEL_DEDUP_DISTANCE = 10;
 
@@ -641,6 +664,7 @@ interface ActiveTradeSnapshot {
   volume: number;
   entryPrice: number;
   entryTime: number;
+  entryExecutionTime: number;
   currentPrice: number;
   currentTime: number;
   sl?: number;
@@ -672,14 +696,12 @@ interface PendingChartDataRender {
 }
 
 interface OverlayNodeData {
-  kind: 'horizontal-line' | 'price-badge' | 'price-hit-area' | 'segment' | 'marker' | 'label';
+  kind: 'horizontal-line' | 'price-badge' | 'price-hit-area' | 'segment' | 'marker';
   price?: number;
   time?: number;
   endPrice?: number;
   endTime?: number;
   markerSide?: TradeSide;
-  labelOffsetX?: number;
-  labelOffsetY?: number;
   /** Extra vertical shift (px) applied after the price coordinate for price-badge nodes. */
   pixelOffsetY?: number;
   resolveTime?: () => number | null;
@@ -708,6 +730,10 @@ interface TradingChartProps {
   isActive?: boolean;
   /** Broker-authoritative quote precision from the authorized instrument catalog. */
   priceDigits?: number;
+  /** Broker-authoritative lot constraints for this exact execution symbol. */
+  minVolume?: number;
+  maxVolume?: number;
+  volumeStep?: number;
 }
 
 export const TradingChart = React.memo(function TradingChart({
@@ -718,6 +744,9 @@ export const TradingChart = React.memo(function TradingChart({
   tradeAllowed = false,
   isActive = true,
   priceDigits,
+  minVolume,
+  maxVolume,
+  volumeStep,
 }: TradingChartProps) {
   const resolvedPriceDigits = resolveSymbolPriceDigits(symbol, priceDigits);
   const resolvedPricePoint = getPricePointFromDigits(resolvedPriceDigits);
@@ -748,16 +777,41 @@ export const TradingChart = React.memo(function TradingChart({
     () => `trading-chart:${panelId || chartInstanceId}`,
     [chartInstanceId, panelId],
   );
+  const localIndicatorManagerRef = useRef<IndicatorManager | null>(null);
+  if (!localIndicatorManagerRef.current) {
+    localIndicatorManagerRef.current = new IndicatorManager();
+  }
+  const localIndicatorManager = localIndicatorManagerRef.current;
+  const indicatorStorageScope = useMemo(() => (
+    [
+      brokerAccountSessionScope || 'default-account',
+      panelId || activeChartSourceId,
+      symbol.trim().toUpperCase() || 'UNKNOWN',
+      activeTimeframe,
+    ]
+      .map(part => encodeURIComponent(part))
+      .join(':')
+  ), [activeChartSourceId, activeTimeframe, brokerAccountSessionScope, panelId, symbol]);
+  const indicatorStorageScopeRef = useRef(indicatorStorageScope);
+  indicatorStorageScopeRef.current = indicatorStorageScope;
+  const loadedIndicatorStorageScopeRef = useRef<string | null>(null);
+  const indicatorSequenceRef = useRef(0);
   const drawingAccountScope = !isDesktopBackendTarget() ? brokerAccountSessionScope : undefined;
   const chartQuoteSourceId = useMemo(() => {
-    const normalizedSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'UNKNOWN';
+    // FIX: Demand ownership retains the exact broker symbol, including suffixes.
+    const normalizedSymbol = encodeURIComponent(symbol.trim().toUpperCase() || 'UNKNOWN');
     return `chart:${panelId || chartInstanceId}:${normalizedSymbol}`;
   }, [chartInstanceId, panelId, symbol]);
 
   const marketStatus = useSymbolMarketStatus(symbol, {
     enabled: visibleRuntime.status,
   });
-  const liveMarketDataFrozen = marketStatus.isTradeBlocked && !isLikelyAlwaysOpenCryptoSymbol(symbol);
+  // FIX: Trading permission and market-data ingestion are separate concerns.
+  // Unknown/closed trade status may disable orders, but valid broker ticks and
+  // authoritative final candles must continue to repair/display chart history.
+  const marketClosedForPresentation = marketStatus.status === 'closed'
+    && !isLikelyAlwaysOpenCryptoSymbol(symbol);
+  const liveMarketDataFrozen = false;
   // Keep quote demand even when trading is blocked. Weekend/forex-closed status
   // must not hide a live crypto chart (BTCUSD) that the feed is still streaming.
   useQuoteSubscription(symbol ? [symbol] : [], chartQuoteSourceId, { enabled: visibleRuntime.quote });
@@ -775,8 +829,13 @@ export const TradingChart = React.memo(function TradingChart({
   const squareGridHostSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const squareGridPrimitiveRef = useRef<SquareChartGridPrimitive | null>(null);
   const priceLineRef = useRef<any>(null); // Kept as 'any' as IPriceLine is not imported
-  const { state: toolbarState } = useToolbarState();
-  const autoScrollEnabledRef = useRef(toolbarState.autoScrollEnabled);
+  const askPriceLineRef = useRef<IPriceLine | null>(null);
+  const lastPriceLineRef = useRef<IPriceLine | null>(null);
+  const initialChartSettingsSnapshot = useChartSettingsStore.getState();
+  const autoScrollEnabledRef = useRef(
+    initialChartSettingsSnapshot.symbolProperties[symbol]?.chartAutoScroll
+    ?? initialChartSettingsSnapshot.globalProperties.chartAutoScroll
+  );
   // Tracks current active drawing tool — used inside event-handler closures
   const activeToolRef = useRef<string | null>(null);
   const drawingCommandTargetRef = useRef<string | null>(null);
@@ -819,20 +878,33 @@ export const TradingChart = React.memo(function TradingChart({
     );
     return true;
   }, [getDrawingSeriesData]);
-  const isDrawingCommandTarget = useCallback((targetContextId?: string): boolean => {
-    const resolvedTargetContextId = targetContextId ?? getActiveChartSource()?.id;
+  const isChartCommandTarget = useCallback((payload?: {
+    targetContextId?: string;
+    panelId?: string;
+  }): boolean => {
+    const explicitTargetContextId = payload?.targetContextId
+      ?? (payload?.panelId ? `trading-chart:${payload.panelId}` : undefined);
+    const resolvedTargetContextId = explicitTargetContextId ?? getActiveChartSource()?.id;
     return Boolean(
       resolvedTargetContextId
       && resolvedTargetContextId === drawingRuntimeContextRef.current.contextId
     );
   }, []);
+  const isDrawingCommandTarget = useCallback((targetContextId?: string): boolean => (
+    isChartCommandTarget({ targetContextId })
+  ), [isChartCommandTarget]);
   const liveMarketDataFrozenRef = useRef(liveMarketDataFrozen);
+  const marketClosedForPresentationRef = useRef(marketClosedForPresentation);
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
 
   useEffect(() => {
     liveMarketDataFrozenRef.current = liveMarketDataFrozen;
   }, [liveMarketDataFrozen]);
+
+  useEffect(() => {
+    marketClosedForPresentationRef.current = marketClosedForPresentation;
+  }, [marketClosedForPresentation]);
 
   useEffect(() => {
     setLiveMarketDataFrozen(activeChartSourceId, symbol, false);
@@ -853,9 +925,14 @@ export const TradingChart = React.memo(function TradingChart({
   }, []);
 
   // Custom crosshair
-  const crosshairEnabled = toolbarState.crosshairEnabled;
+  const [crosshairEnabled, setCrosshairEnabled] = useState(false);
   const crosshairEnabledRef = useRef(crosshairEnabled);
   crosshairEnabledRef.current = crosshairEnabled;
+
+  useEffect(() => commandBus.subscribe('TOGGLE_CROSSHAIR', (payload) => {
+    if (!isChartCommandTarget(payload)) return;
+    setCrosshairEnabled((enabled) => !enabled);
+  }), [isChartCommandTarget]);
   const [brokerTimeOffsetSec, setBrokerTimeOffsetSec] = useState(0);
   const brokerTimeOffsetSecRef = useRef(0);
 
@@ -993,7 +1070,10 @@ export const TradingChart = React.memo(function TradingChart({
         'Preparing chart…',
       ]
   ), [activeTimeframe, loadingPhase, symbol]);
-  const [showOneClick, setShowOneClick] = useState(true);
+  const [showOneClick, setShowOneClick] = useState(
+    initialChartSettingsSnapshot.symbolProperties[symbol]?.showQuickTradingButtons
+      ?? initialChartSettingsSnapshot.globalProperties.showQuickTradingButtons,
+  );
   const [apiError, setApiError] = useState<string | null>(null);
   // Inline text-input overlay for the text drawing tool (replaces browser prompt)
   const [textInputOverlay, setTextInputOverlay] = useState<{ x: number; y: number; time: number; price: number } | null>(null);
@@ -1003,11 +1083,15 @@ export const TradingChart = React.memo(function TradingChart({
   const [ctxMenu, setCtxMenu] = useState<{ visible: boolean; x: number; y: number }>({
     visible: false, x: 0, y: 0,
   });
+  const [currentIndicators, setCurrentIndicators] = useState<IndicatorConfig[]>([]);
   const [ctxAutoScroll, setCtxAutoScroll] = useState(() => {
     const state = useChartSettingsStore.getState();
     return state.symbolProperties[symbol]?.chartAutoScroll ?? state.globalProperties.chartAutoScroll;
   });
-  const [ctxChartShift, setCtxChartShift] = useState(false);
+  const [ctxChartShift, setCtxChartShift] = useState(() => {
+    const state = useChartSettingsStore.getState();
+    return state.symbolProperties[symbol]?.chartShift ?? state.globalProperties.chartShift;
+  });
   const [ctxShowTradeLevels, setCtxShowTradeLevels] = useState(() => {
     const state = useChartSettingsStore.getState();
     return state.symbolProperties[symbol]?.showTradeLevels ?? state.globalProperties.showTradeLevels;
@@ -1017,6 +1101,14 @@ export const TradingChart = React.memo(function TradingChart({
     return state.symbolProperties[symbol]?.showTradeHistory ?? state.globalProperties.showTradeHistory;
   });
   const [localChartType, setLocalChartType] = useState<ChartType>(chartType);
+
+  const toggleOneClickTrading = useCallback(() => {
+    setShowOneClick((current) => {
+      const visible = !current;
+      useChartSettingsStore.getState().updateSymbolProperty(symbol, 'showQuickTradingButtons', visible);
+      return visible;
+    });
+  }, [symbol]);
 
   useEffect(() => {
     setLocalChartType(chartType);
@@ -1035,6 +1127,8 @@ export const TradingChart = React.memo(function TradingChart({
 
   const candlesRef = useRef<Candle[]>([]);
   const currentCandleRef = useRef<Candle | null>(null);
+  const liveCandleMutationGenerationRef = useRef(0);
+  const liveCandleMutationGenerationByTimeRef = useRef(new Map<number, number>());
   const prevPriceRef = useRef<number | null>(null);
   const synchronizedMarketClockRef = useRef<SynchronizedMarketClockAnchor | null>(null);
   const isDisposedRef = useRef(false);
@@ -1051,8 +1145,66 @@ export const TradingChart = React.memo(function TradingChart({
   const historyBackfillDiagnosticsRef = useRef<ChartHistoryBackfillDiagnostics>(
     createChartHistoryBackfillDiagnostics()
   );
-  const ctxChartShiftRef = useRef(false);
+  const ctxChartShiftRef = useRef(ctxChartShift);
   const latestCandleJumpPendingRef = useRef(false);
+
+  const refreshCurrentIndicators = useCallback(() => {
+    setCurrentIndicators(localIndicatorManager.getIndicators().map(indicator => ({
+      ...indicator,
+      parameters: { ...indicator.parameters },
+    })));
+  }, [localIndicatorManager]);
+
+  const persistCurrentIndicators = useCallback(() => {
+    localIndicatorManager.saveToStorage(
+      loadedIndicatorStorageScopeRef.current ?? indicatorStorageScopeRef.current
+    );
+  }, [localIndicatorManager]);
+
+  const addLocalIndicator = useCallback((request: AddChartIndicatorRequest): boolean => {
+    if (!chartRef.current) return false;
+
+    const indicatorType = resolveChartIndicatorType(request);
+    if (!indicatorType) {
+      console.warn(`[TradingChart] Unsupported indicator requested: ${request.name}`);
+      return false;
+    }
+
+    const parameters = { ...(request.params ?? {}) };
+    if (
+      (indicatorType === 'bb' || indicatorType === 'bollinger')
+      && parameters.stdDev === undefined
+      && parameters.deviation !== undefined
+    ) {
+      parameters.stdDev = parameters.deviation;
+    }
+
+    const existingIds = new Set(localIndicatorManager.getIndicators().map(indicator => indicator.id));
+    const requestedId = request.id?.trim() || `${indicatorType}-${Date.now()}`;
+    let id = requestedId;
+    while (existingIds.has(id)) {
+      indicatorSequenceRef.current += 1;
+      id = `${requestedId}-${indicatorSequenceRef.current}`;
+    }
+
+    localIndicatorManager.addIndicator({
+      id,
+      name: request.name,
+      type: indicatorType,
+      parameters,
+      visible: true,
+      color: typeof parameters.color === 'string' ? parameters.color : undefined,
+    });
+    refreshCurrentIndicators();
+    persistCurrentIndicators();
+    return true;
+  }, [localIndicatorManager, persistCurrentIndicators, refreshCurrentIndicators]);
+
+  const clearLocalIndicators = useCallback(() => {
+    localIndicatorManager.clearAll();
+    refreshCurrentIndicators();
+    persistCurrentIndicators();
+  }, [localIndicatorManager, persistCurrentIndicators, refreshCurrentIndicators]);
 
   // Broker/source time remains authoritative across timeframe changes. A symbol
   // switch must wait for that instrument's own first source timestamp before
@@ -1105,9 +1257,10 @@ export const TradingChart = React.memo(function TradingChart({
   const livePriceRepaintFrameRef = useRef<number | null>(null);
   const repaintTradeOverlayGeometryRef = useRef<() => void>(() => undefined);
   const livePriceOverlayColorsRef = useRef<LivePriceOverlayColors>(
-    getLivePriceOverlayColors(defaultChartProperties.colors, defaultChartProperties.colors.barUp)
+    getLivePriceOverlayColors(defaultChartProperties.colors, defaultChartProperties.colors.bullCandle)
   );
   const livePriceColorPaletteRef = useRef<ChartColorPalette>(defaultChartProperties.colors);
+  const lastLivePriceDirectionalColorRef = useRef(defaultChartProperties.colors.bullCandle);
   const leftVisibleTimeRef = useRef<number | null>(null);
   const lastAcceptedQuoteRef = useRef<number | null>(null);
   const incompatibleQuoteCountRef = useRef(0);
@@ -1247,18 +1400,85 @@ export const TradingChart = React.memo(function TradingChart({
     }
   }, []);
 
+  const syncSupplementalPriceLines = useCallback((askPrice: number, lastPrice: number) => {
+    const series = seriesRef.current;
+    if (!series) return;
+
+    const settings = chartSettingsRef.current;
+    const syncLine = (
+      lineRef: React.MutableRefObject<IPriceLine | null>,
+      visible: boolean,
+      price: number,
+      color: string,
+      title: string,
+    ) => {
+      if (!visible || !Number.isFinite(price) || price <= 0) {
+        try {
+          lineRef.current?.applyOptions({ lineVisible: false, axisLabelVisible: false });
+        } catch {
+          lineRef.current = null;
+        }
+        return;
+      }
+
+      const options = {
+        price,
+        color,
+        lineWidth: 1 as const,
+        lineStyle: LineStyle.Dashed,
+        lineVisible: true,
+        axisLabelVisible: true,
+        title,
+      };
+
+      try {
+        if (!lineRef.current) {
+          lineRef.current = series.createPriceLine(options);
+        } else {
+          lineRef.current.applyOptions(options);
+        }
+      } catch {
+        lineRef.current = null;
+      }
+    };
+
+    syncLine(
+      askPriceLineRef,
+      settings.showAskPriceLine,
+      askPrice,
+      settings.colors.askPriceLine,
+      'ASK',
+    );
+    syncLine(
+      lastPriceLineRef,
+      settings.showLastPriceLine,
+      lastPrice,
+      settings.colors.lastPriceLine,
+      'LAST',
+    );
+  }, []);
+
   const getLivePriceDirectionalColor = useCallback((
     activeCandleTime?: number,
     nextClose?: number,
   ): string => {
     const colors = livePriceColorPaletteRef.current;
     const currentCandle = currentCandleRef.current;
-    if (!currentCandle || !Number.isFinite(currentCandle.open)) return colors.barUp;
-    if (activeCandleTime !== undefined && currentCandle.time !== activeCandleTime) return colors.barUp;
+    const fallback = lastLivePriceDirectionalColorRef.current
+      || getLivePriceSeriesColor(colors, chartType, 'up');
+    if (!currentCandle || !Number.isFinite(currentCandle.open)) return fallback;
+    if (activeCandleTime !== undefined && currentCandle.time !== activeCandleTime) return fallback;
     const close = nextClose ?? currentCandle.close;
-    if (!Number.isFinite(close)) return colors.barUp;
-    return close >= currentCandle.open ? colors.barUp : colors.barDown;
-  }, []);
+    if (!Number.isFinite(close)) return fallback;
+
+    const color = getLivePriceSeriesColor(
+      colors,
+      chartType,
+      close >= currentCandle.open ? 'up' : 'down',
+    );
+    lastLivePriceDirectionalColorRef.current = color;
+    return color;
+  }, [chartType]);
 
   const applyStableLivePriceHorizontalGeometry = useCallback((measuredScaleWidth: number) => {
     const measuredWidth = Number.isFinite(measuredScaleWidth) && measuredScaleWidth > 0
@@ -1307,6 +1527,10 @@ export const TradingChart = React.memo(function TradingChart({
   }, [applyStableLivePriceHorizontalGeometry, getLivePriceDirectionalColor]);
 
   const repaintLivePriceOverlayFromCurrentPrice = useCallback((activeCandle: Candle) => {
+    if (!chartSettingsRef.current.showBidPriceLine) {
+      hideLivePriceOverlay(false);
+      return;
+    }
     const livePrice = Number(activeCandle.close);
     if (!Number.isFinite(livePrice) || !livePriceLineRef.current || !livePriceBadgeRef.current || !seriesRef.current) return;
 
@@ -1364,13 +1588,6 @@ export const TradingChart = React.memo(function TradingChart({
     );
   }, [clearPeriodSeparators, hideLivePriceOverlay, resetLiveQuotePriceGuard, symbol]);
 
-  // Listen for Alt+T toggle-one-click-trading event from GlobalShortcuts
-  useEffect(() => {
-    const handler = () => setShowOneClick(prev => !prev);
-    // window.addEventListener('toggle-one-click-trading', handler);
-    return () => window.removeEventListener('toggle-one-click-trading', handler);
-  }, []);
-
   // Infinite scroll tracking
   const loadMoreHistoryRef = useRef<(() => Promise<void>) | null>(null);
   const historyRequestCoordinatorRef = useRef(createSelectedTimeframeHistoryCoordinator());
@@ -1389,7 +1606,49 @@ export const TradingChart = React.memo(function TradingChart({
     chartSettingsRef.current = chartSettings;
     setCtxShowTradeLevels(chartSettings.showTradeLevels);
     setCtxShowTradeHistory(chartSettings.showTradeHistory);
+    setShowOneClick(chartSettings.showQuickTradingButtons);
   }, [chartSettings]);
+
+  useEffect(() => {
+    if (!chartSettings.showOHLC || !currentCandleRef.current) return;
+    const candle = currentCandleRef.current;
+    updateLegendDOM(
+      candle.open,
+      candle.high,
+      candle.low,
+      candle.close,
+      getDisplayVolume(candle, chartSettings),
+    );
+  }, [chartSettings, updateLegendDOM]);
+
+  useEffect(() => {
+    if (!chartSettings.showAskPriceLine) {
+      try {
+        askPriceLineRef.current?.applyOptions({ lineVisible: false, axisLabelVisible: false });
+      } catch {
+        askPriceLineRef.current = null;
+      }
+    }
+    if (!chartSettings.showLastPriceLine) {
+      try {
+        lastPriceLineRef.current?.applyOptions({ lineVisible: false, axisLabelVisible: false });
+      } catch {
+        lastPriceLineRef.current = null;
+      }
+    }
+
+    if (!chartSettings.showBidPriceLine) {
+      hideLivePriceOverlay(false);
+    } else if (currentCandleRef.current) {
+      repaintLivePriceOverlayFromCurrentPrice(currentCandleRef.current);
+    }
+  }, [
+    chartSettings.showAskPriceLine,
+    chartSettings.showBidPriceLine,
+    chartSettings.showLastPriceLine,
+    hideLivePriceOverlay,
+    repaintLivePriceOverlayFromCurrentPrice,
+  ]);
 
   const [isAdvancedUntitledLight, setIsAdvancedUntitledLight] = useState(() => {
     if (typeof document === 'undefined') return false;
@@ -1427,8 +1686,11 @@ export const TradingChart = React.memo(function TradingChart({
     [chartSettings, isAdvancedUntitledLight],
   );
   const initialLivePriceOverlayColors = useMemo(
-    () => getLivePriceOverlayColors(chartColors, chartColors.barUp),
-    [chartColors],
+    () => getLivePriceOverlayColors(
+      chartColors,
+      getLivePriceSeriesColor(chartColors, chartType, 'up'),
+    ),
+    [chartColors, chartType],
   );
   const chartTheme = useMemo(
     () => buildChartTheme(chartColors, chartSettings.showGrid),
@@ -1439,6 +1701,7 @@ export const TradingChart = React.memo(function TradingChart({
 
   useEffect(() => {
     livePriceColorPaletteRef.current = chartColors;
+    lastLivePriceDirectionalColorRef.current = getLivePriceSeriesColor(chartColors, chartType, 'up');
     const overlayColors = getLivePriceOverlayColors(chartColors, getLivePriceDirectionalColor());
     livePriceOverlayColorsRef.current = overlayColors;
     if (livePriceLineRef.current) {
@@ -1448,7 +1711,7 @@ export const TradingChart = React.memo(function TradingChart({
       livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;
       livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;
     }
-  }, [chartColors, getLivePriceDirectionalColor]);
+  }, [chartColors, chartType, getLivePriceDirectionalColor]);
 
   useEffect(() => {
     chartThemeRef.current = chartTheme;
@@ -1582,6 +1845,14 @@ export const TradingChart = React.memo(function TradingChart({
     });
   }, [renderPeriodSeparators]);
 
+  useEffect(() => {
+    if (chartSettings.showPeriodSeparators) {
+      schedulePeriodSeparatorRender();
+      return;
+    }
+    clearPeriodSeparators();
+  }, [chartSettings.showPeriodSeparators, clearPeriodSeparators, schedulePeriodSeparatorRender]);
+
   const isPotentialMarketClosedPlaceholder = useCallback((candle: Candle): boolean => {
     return isPotentialMarketClosedPlaceholderCandle(candle, {
       symbol: prevSymbolRef.current || symbol,
@@ -1592,7 +1863,9 @@ export const TradingChart = React.memo(function TradingChart({
 
   const getClosedMarketRenderCandles = useCallback((candles: Candle[]): Candle[] => {
     return getCurrentClosedMarketRenderCandles(candles, {
-      isMarketClosed: liveMarketDataFrozenRef.current,
+      // FIX: Closed-session presentation may hide placeholders without freezing
+      // incoming backend corrections or pre/after-market quote data.
+      isMarketClosed: marketClosedForPresentationRef.current,
       sessionCloseTimeMs: marketStatus.sessionCloseTimeMs,
     });
   }, [marketStatus.sessionCloseTimeMs]);
@@ -1625,15 +1898,11 @@ export const TradingChart = React.memo(function TradingChart({
     return null;
   }, []);
   const resolveCurrentQuote = useCallback((): number | null => {
-    const normalizedSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    // FIX: Never collapse punctuation-distinct instruments into one live key.
+    const normalizedSymbol = symbol.trim().toUpperCase();
     const ticks = useAppStore.getState().ticks;
     const tick = ticks[symbol]
-      ?? ticks[symbol.toUpperCase()]
-      ?? (() => {
-        const key = Object.keys(ticks).find(k =>
-          k.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedSymbol);
-        return key ? ticks[key] : undefined;
-      })();
+      ?? ticks[normalizedSymbol];
 
     return getChartPriceFromQuote(tick);
   }, [symbol]);
@@ -1649,17 +1918,29 @@ export const TradingChart = React.memo(function TradingChart({
 
   const reconcileCandlesWithLiveQuote = useCallback((candles: Candle[], context: string): Candle[] => {
     const referencePrice = resolveCurrentQuote();
+    const renderedReferencePrice = getCachedRenderedPriceReference().price;
     const result = referencePrice
       ? normalizeCandlesToReference(candles, referencePrice)
-      : normalizeCandlesToReference(candles, getCachedRenderedPriceReference().price);
+      : normalizeCandlesToReference(candles, renderedReferencePrice);
 
-    if (result.status === 'scaled') {
-      const source = referencePrice ? 'live quote' : 'rendered candle';
-      console.warn(`[Chart] Normalized ${symbol} ${context} candles by factor ${result.factor} to match ${source} scale.`);
-    } else if (result.status === 'incompatible') {
-      const source = referencePrice ? `live quote ${referencePrice}` : 'rendered candles';
-      console.warn(`[Chart] Ignoring ${symbol} ${context} candles because their price range is incompatible with ${source}.`);
+    if (result.status === 'incompatible') {
+      const source = referencePrice
+        ? `live quote ${referencePrice}`
+        : renderedReferencePrice
+          ? `rendered candle reference ${renderedReferencePrice}`
+          : 'the backend candle sequence';
+      // FIX: Broker OHLC values are authoritative. A decimal-band mismatch is
+      // rejected and diagnosed instead of multiplying prices to fit another feed.
+      console.warn(`[Chart] Ignoring ${symbol} ${context} candles because their exact price range is incompatible with ${source}.`);
       setApiError(`${symbol} candle range differs from ${referencePrice ? 'live quote' : 'rendered chart'}; waiting for matching ${timeframe} data.`);
+    } else if (result.status === 'partial') {
+      // FIX: Render every exact candle that belongs to the externally verified
+      // symbol price band while rejecting contaminated rows; gaps stay visible
+      // exactly as supplied instead of being filled or price-scaled locally.
+      console.warn(
+        `[Chart] Rejected ${result.discardedCount ?? 0} incompatible ${symbol} ${context} candle(s); `
+        + `kept ${result.candles.length} exact candle(s) matching ${referencePrice ? `live quote ${referencePrice}` : `rendered candle reference ${renderedReferencePrice}`}.`,
+      );
     }
 
     return result.candles as Candle[];
@@ -1962,7 +2243,7 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       syncLeftVisibleTime();
-      indicatorManager.setOHLCData(sortedCandles.map(c => ({
+      localIndicatorManager.setOHLCData(sortedCandles.map(c => ({
         time: c.time as Time,
         open: c.open,
         high: c.high,
@@ -2188,7 +2469,7 @@ export const TradingChart = React.memo(function TradingChart({
       rightPriceScale: {
         borderColor: chartTheme.scaleBorder,
         scaleMargins: { top: 0.05, bottom: 0.28 },
-        autoScale: !chartSettings.scaleFixOneToOne,
+        autoScale: !chartSettings.scaleFixOneToOne && getFixedChartPriceRange(chartSettings) === null,
         // Trade price-line labels must stay on their real price coordinate.
         // Close prices intentionally overlap instead of being collision-shifted.
         alignLabels: false,
@@ -2227,7 +2508,7 @@ export const TradingChart = React.memo(function TradingChart({
     squareGridHostSeries.attachPrimitive(squareGridPrimitive);
     squareGridHostSeriesRef.current = squareGridHostSeries;
     squareGridPrimitiveRef.current = squareGridPrimitive;
-    indicatorManager.setChart(chart);
+    localIndicatorManager.setChart(chart);
 
     // Initial setup handled by autoSize: true
 
@@ -2632,7 +2913,11 @@ export const TradingChart = React.memo(function TradingChart({
     chart.timeScale().subscribeVisibleLogicalRangeChange(logicalRangeHandler);
 
     return () => {
-      indicatorManager.setChart(null);
+      const activeIndicatorStorageScope = loadedIndicatorStorageScopeRef.current
+        ?? indicatorStorageScopeRef.current;
+      localIndicatorManager.saveToStorage(activeIndicatorStorageScope);
+      localIndicatorManager.clearAll();
+      localIndicatorManager.setChart(null);
       isDisposedRef.current = true;
       visibleRangeHistoryUserInitiatedRef.current = false;
       isChartInteractionActiveRef.current = false;
@@ -2727,8 +3012,37 @@ export const TradingChart = React.memo(function TradingChart({
       squareGridHostSeriesRef.current = null;
       squareGridPrimitiveRef.current = null;
       priceLineRef.current = null;
+      askPriceLineRef.current = null;
+      lastPriceLineRef.current = null;
     };
   }, []);
+
+  // Indicator ownership is panel-local. Persist the previous account/panel
+  // scope before hydrating another one, while the chart series are still live.
+  useEffect(() => {
+    if (isDisposedRef.current || !chartRef.current) return;
+    if (loadedIndicatorStorageScopeRef.current === indicatorStorageScope) return;
+
+    if (loadedIndicatorStorageScopeRef.current) {
+      localIndicatorManager.saveToStorage(loadedIndicatorStorageScopeRef.current);
+      localIndicatorManager.clearAll();
+    }
+
+    localIndicatorManager.loadFromStorage(indicatorStorageScope);
+    loadedIndicatorStorageScopeRef.current = indicatorStorageScope;
+    refreshCurrentIndicators();
+  }, [indicatorStorageScope, localIndicatorManager, refreshCurrentIndicators]);
+
+  useEffect(() => commandBus.subscribe('ADD_INDICATOR', payload => {
+    if (!isChartCommandTarget(payload)) return;
+    if (payload.symbol && payload.symbol.trim().toUpperCase() !== symbol.trim().toUpperCase()) return;
+    addLocalIndicator({
+      id: payload.id,
+      name: payload.name,
+      indicatorType: payload.indicatorType,
+      params: payload.params,
+    });
+  }), [addLocalIndicator, isChartCommandTarget, symbol]);
 
   // Update chart with candles helper
   const updateChartData = useCallback((candles: Candle[], currentChartType?: ChartType, request: ChartDataRenderRequest = {}) => {
@@ -2766,7 +3080,7 @@ export const TradingChart = React.memo(function TradingChart({
   }, [symbol]);
 
   useEffect(() => {
-    if (!liveMarketDataFrozen) return;
+    if (!marketClosedForPresentation) return;
 
     const activeTf = prevTimeframeRef.current || timeframe;
     let nextCandles = candlesRef.current;
@@ -2812,7 +3126,7 @@ export const TradingChart = React.memo(function TradingChart({
     });
   }, [
     getLatestRenderableCandle,
-    liveMarketDataFrozen,
+    marketClosedForPresentation,
     marketStatus.sessionCloseTimeMs,
     reloadAggregationCandles,
     requestChartDataRender,
@@ -2904,9 +3218,11 @@ export const TradingChart = React.memo(function TradingChart({
     renderedPriceReferenceRef.current = createRenderedPriceReference(candles);
     hasDisplayedHistoryRef.current = candles.length > 1;
     protectedDisplayedHistoryRef.current = candles.length > 1 ? candles : [];
-    brokerTimeOffsetSecRef.current = cached.brokerOffsetSeconds ?? 0;
-    setBrokerTimeOffsetSec(brokerTimeOffsetSecRef.current);
-    reloadAggregationCandles(candles, activeTf, cached.brokerOffsetSeconds ?? 0);
+    // FIX: Cache metadata cannot prove a broker offset and older entries may
+    // contain the former wall-clock guess. Reuse only the currently explicit
+    // runtime offset (zero for the present UTC backend contract).
+    const explicitBrokerOffsetSeconds = brokerTimeOffsetSecRef.current;
+    reloadAggregationCandles(candles, activeTf, explicitBrokerOffsetSeconds);
 
     updateChartData(candles, undefined, {
       immediate: true,
@@ -2920,7 +3236,7 @@ export const TradingChart = React.memo(function TradingChart({
       const normalizedTime = getTimeframePeriodSeconds(
         last.time,
         activeTf as AggTimeframe,
-        cached.brokerOffsetSeconds ?? 0,
+        explicitBrokerOffsetSeconds,
       )?.startTime ?? last.time;
       currentCandleRef.current = { ...last, time: normalizedTime };
       updateLegendDOM(last.open, last.high, last.low, last.close, getDisplayVolume(last, chartSettingsRef.current));
@@ -2995,35 +3311,22 @@ export const TradingChart = React.memo(function TradingChart({
     };
   }, [symbol]);
 
-  const normalizeRenderedCandlesToLivePrice = useCallback((price: number, activeTf: Timeframe): boolean => {
+  const validateRenderedCandlesAgainstLivePrice = useCallback((price: number, activeTf: Timeframe): boolean => {
     const candles = candlesRef.current;
     if (candles.length === 0) return true;
 
     const reference = getCachedRenderedPriceReference();
-    const factor = getReferenceScaleFactor(reference.price, price);
-    if (factor === null) return false;
-    if (factor === 1) return true;
+    if (isPriceCompatibleWithReference(price, reference)) return true;
 
-    console.warn(`[Chart] Normalizing existing ${symbol} candles by factor ${factor} before applying delayed live quote ${price}.`);
-
-    candlesRef.current = candles.map(candle => scaleCandlePrices(candle, factor));
-    if (currentCandleRef.current) {
-      currentCandleRef.current = scaleCandlePrices(currentCandleRef.current, factor);
-    }
-
-    reloadAggregationCandles(candlesRef.current, activeTf);
-    renderedPriceReferenceRef.current = {
-      price: reference.price === null ? null : reference.price * factor,
-      candleCount: candlesRef.current.length,
-    };
-    updateChartData(candlesRef.current, undefined, {
-      immediate: true,
-      reason: 'live-quote-scale-normalization',
-    });
-    prevPriceRef.current = currentCandleRef.current?.close ?? candlesRef.current[candlesRef.current.length - 1]?.close ?? null;
-
-    return true;
-  }, [getCachedRenderedPriceReference, reloadAggregationCandles, symbol, updateChartData]);
+    // FIX: Never rewrite already rendered backend OHLC to make a delayed quote
+    // appear compatible. Keep the exact broker values and reject the mismatched
+    // event until the symbol/session feeds agree.
+    console.warn(
+      `[Chart] Ignoring ${symbol} ${activeTf} live price ${price}; `
+      + `it is incompatible with exact backend candle reference ${reference.price}.`,
+    );
+    return false;
+  }, [getCachedRenderedPriceReference, symbol]);
 
   // Load historical data
   const loadHistory = useCallback(async (selectedSymbol: string, selectedTimeframe: Timeframe) => {
@@ -3051,10 +3354,9 @@ export const TradingChart = React.memo(function TradingChart({
       historyRequestCoordinatorRef.current.abort();
       const hydratedFromCache = hydrateHistoryFromCache(activeTf, 'cached-history');
       if (!hydratedFromCache) {
-        setLoadingPhase(
-          marketDataReadySymbolRef.current === selectedSymbol ? 'receiving' : 'connecting',
-        );
+        setLoadingPhase('receiving');
       }
+      const liveCandleGenerationAtRequestStart = liveCandleMutationGenerationRef.current;
 
       const historyRequest = historyRequestCoordinatorRef.current.start({
         symbol: selectedSymbol,
@@ -3070,6 +3372,7 @@ export const TradingChart = React.memo(function TradingChart({
           targetTimeframe: activeTf,
           signal: options.signal,
           targetCandleLimit: getDerivedM1InitialTargetCandleLimit(activeTf),
+          maxM1Pages: 1,
           includeM1Candles: true,
           yieldBetweenPages: waitForProgressiveHistoryIdleTurn,
         });
@@ -3094,6 +3397,24 @@ export const TradingChart = React.memo(function TradingChart({
       if (!isCurrentHistoryLoad()) return;
 
       candles = getValidSortedCandles(candles);
+      const receivedHistoryCount = candles.length;
+      if (activeTf === 'M1' && candles.length > 1) {
+        const gapBackfill = await backfillRecentInteriorHistoryGaps({
+          symbol: selectedSymbol,
+          timeframe: activeTf,
+          // Backend candle timestamps are already authoritative UTC seconds.
+          candles,
+          signal: historyRequest.signal,
+        });
+        if (!isCurrentHistoryLoad()) return;
+        candles = gapBackfill.candles as Candle[];
+        if (gapBackfill.addedCandles > 0) {
+          console.info(
+            `[Chart] Backfilled ${gapBackfill.addedCandles} missing ${selectedSymbol} ${activeTf} candles ` +
+            `from ${gapBackfill.requestedGaps} bounded history ranges.`,
+          );
+        }
+      }
       if (derivedInitialHistory) {
         console.log(
           `[Chart] M1-derived initial history produced ${derivedInitialHistory.candles.length} ${activeTf} candles for ${selectedSymbol} ` +
@@ -3101,7 +3422,7 @@ export const TradingChart = React.memo(function TradingChart({
           `reachedBeginning=${derivedInitialHistory.reachedBeginning})`
         );
       }
-      console.log(`[Chart] Received initial ${candles.length} candles from ${historySource}`);
+      console.log(`[Chart] Received initial ${receivedHistoryCount} candles from ${historySource}`);
 
       // If API returns empty candles, initialize series so live ticks can build candles
       if (candles.length === 0) {
@@ -3135,16 +3456,7 @@ export const TradingChart = React.memo(function TradingChart({
         return;
       }
 
-      const rawHistoryCandles = candles;
       candles = reconcileCandlesWithLiveQuote(candles, 'history');
-      if (
-        candles.length === 0 &&
-        rawHistoryCandles.length > getTradingChartDefaultVisibleBars(activeTf)
-      ) {
-        console.warn(`[Chart] Keeping raw ${selectedSymbol} ${activeTf} history after live quote reconciliation rejected ${rawHistoryCandles.length} candles.`);
-        candles = rawHistoryCandles;
-        setApiError(null);
-      }
 
       if (candles.length === 0) {
         if (hydratedFromCache) {
@@ -3167,31 +3479,11 @@ export const TradingChart = React.memo(function TradingChart({
         return;
       }
 
-      // ── TIMEZONE AUTOCORRECTION ──────────────────────────────────────────────
-      // MT5 REST backends often return history in broker time (EET, UTC+2/+3),
-      // while live WebSocket ticks stream in UTC. If the REST history is placed
-      // artificially in the 'future', it prevents the live ticks from ever 
-      // rolling over the chart. We detect >5 min forward drift and shift it back.
-      let detectedBrokerOffsetSecs = 0;
-      if (candles.length > 0) {
-        const lastCandleTime = candles[candles.length - 1].time as number;
-        const trueUtcSecs = Date.now() / 1000;
-
-        if (lastCandleTime > trueUtcSecs + 300) {
-          const rawOffset = lastCandleTime - trueUtcSecs;
-          // MT5 timezone differences are typically in full hour or half-hour increments.
-          const offsetSecs = Math.round(rawOffset / 1800) * 1800; // Snap to 30 mins
-          detectedBrokerOffsetSecs = offsetSecs;
-          console.warn(`[Chart] 🕒 Timezone mismatch detected: REST history is ${offsetSecs / 3600}h ahead. Correcting timeline.`);
-
-          candles.forEach(c => {
-            c.time = (c.time as number) - offsetSecs;
-          });
-        }
-
-        brokerTimeOffsetSecRef.current = detectedBrokerOffsetSecs;
-        setBrokerTimeOffsetSec(detectedBrokerOffsetSecs);
-      }
+      // FIX: Keep backend Unix timestamps unchanged. Comparing the last candle
+      // with Date.now() and snapping the difference to 30-minute increments
+      // shifted valid future/test sessions and made REST and stream buckets diverge.
+      // A non-zero offset may only come from an explicit broker contract.
+      const explicitBrokerOffsetSeconds = brokerTimeOffsetSecRef.current;
 
       const protectedHistory = protectedDisplayedHistoryRef.current;
       const shouldPreserveProtectedHistory = (
@@ -3204,25 +3496,19 @@ export const TradingChart = React.memo(function TradingChart({
       // rollover) while REST history is still in flight. Join those buffered
       // candles into the historical baseline before the first visible setData:
       // history keeps the true bucket open/range and live keeps the latest close.
-      const bufferedLiveCandles = hasDisplayedHistoryRef.current
-        ? []
-        : mergeCandleCollections(
+      const bufferedLiveCandles = liveCandleMutationGenerationRef.current > liveCandleGenerationAtRequestStart
+        ? selectCandlesMutatedAfterGeneration(mergeCandleCollections(
           candlesRef.current,
           currentCandleRef.current ? [currentCandleRef.current] : [],
-        );
+        ), liveCandleMutationGenerationByTimeRef.current, liveCandleGenerationAtRequestStart)
+        : [];
+      const retainedHistory = shouldPreserveProtectedHistory ? protectedHistory : candlesRef.current;
+      candles = mergeAuthoritativeCandleHistory(retainedHistory, candles);
       if (bufferedLiveCandles.length > 0) {
+        // FIX: Replace the backend-covered range first, then overlay only ticks
+        // mutated after the request began; explicit backend finals still win.
         candles = mergeHistoricalCandlesWithBufferedLive(candles, bufferedLiveCandles);
       }
-
-      candles = mergeCandleCollections(
-        candles,
-        shouldPreserveProtectedHistory
-          ? protectedHistory
-          : (bufferedLiveCandles.length > 0 ? [] : candlesRef.current),
-        bufferedLiveCandles.length > 0
-          ? []
-          : (currentCandleRef.current ? [currentCandleRef.current] : []),
-      );
 
       candlesRef.current = candles;
       renderedPriceReferenceRef.current = createRenderedPriceReference(candles);
@@ -3239,7 +3525,7 @@ export const TradingChart = React.memo(function TradingChart({
       const derivedM1Seed = historySource === 'derived-m1' && derivedInitialHistory
         ? derivedInitialHistory.m1Candles.map(candle => ({
           ...candle,
-          time: candle.time - detectedBrokerOffsetSecs,
+          time: candle.time - explicitBrokerOffsetSeconds,
         }))
         : [];
       const aggregationSeedTimeframe = derivedM1Seed.length > 0 ? 'M1' : activeTf;
@@ -3249,7 +3535,7 @@ export const TradingChart = React.memo(function TradingChart({
         selectedSymbol,
         aggregationSeedTimeframe as AggTimeframe,
         ohlcvCandles,
-        detectedBrokerOffsetSecs,
+        explicitBrokerOffsetSeconds,
       );
 
       // One exact M1 seed can satisfy later timeframe clicks without another
@@ -3266,7 +3552,7 @@ export const TradingChart = React.memo(function TradingChart({
             candleAggregationService.getCandles(selectedSymbol, targetTf, true, false),
             ohlcvCandles[0]?.time,
             targetTf,
-            detectedBrokerOffsetSecs,
+            explicitBrokerOffsetSeconds,
           );
           const warmCandles = getValidSortedCandles(
             reusableAggregates
@@ -3276,13 +3562,13 @@ export const TradingChart = React.memo(function TradingChart({
             setHistoryCache(
               targetTf as Timeframe,
               warmCandles,
-              detectedBrokerOffsetSecs,
+              explicitBrokerOffsetSeconds,
               'derived-m1',
             );
           }
         }
       }
-      setHistoryCache(activeTf, candles, detectedBrokerOffsetSecs, historySource);
+      setHistoryCache(activeTf, candles, explicitBrokerOffsetSeconds, historySource);
       console.log(
         `[Chart] Loaded ${ohlcvCandles.length} ${aggregationSeedTimeframe} source candles into aggregation service ` +
         `for ${selectedSymbol} ${activeTf}`
@@ -3319,7 +3605,7 @@ export const TradingChart = React.memo(function TradingChart({
           const normalizedTime = getTimeframePeriodSeconds(
             last.time,
             activeTf as AggTimeframe,
-            detectedBrokerOffsetSecs,
+            explicitBrokerOffsetSeconds,
           )?.startTime ?? last.time;
 
           currentCandleRef.current = { ...last, time: normalizedTime };
@@ -3378,7 +3664,7 @@ export const TradingChart = React.memo(function TradingChart({
   // opacity transition; after it finishes we unmount the overlay entirely.
   useActiveChartRuntimeEffect(visibleRuntime.interval, () => {
     if (loadingPhase !== 'ready') return;
-    const timer = window.setTimeout(() => setLoadingPhase('hidden'), 400);
+    const timer = window.setTimeout(() => setLoadingPhase('hidden'), 180);
     return () => window.clearTimeout(timer);
   }, [loadingPhase]);
 
@@ -3479,10 +3765,6 @@ export const TradingChart = React.memo(function TradingChart({
         console.warn(`[Chart] Ignoring ${symbol} older history batch because no valid candles were available.`);
         return;
       }
-      if (selectedOlderHistory.usedRawFallback) {
-        console.warn(`[Chart] Keeping raw older history for ${symbol} ${activeTf} after price reconciliation rejected the batch.`);
-      }
-
       const prependResult = prependCandleHistory(candlesRef.current, selectedOlderHistory.candles);
       candlesRef.current = prependResult.candles;
       historyBackfillDiagnosticsRef.current = markHistoryBackfillPageLoaded(
@@ -3696,6 +3978,8 @@ export const TradingChart = React.memo(function TradingChart({
     if (seriesRef.current) {
       try { chartRef.current!.removeSeries(seriesRef.current); } catch { }
       seriesRef.current = null;
+      askPriceLineRef.current = null;
+      lastPriceLineRef.current = null;
     }
     if (volumeRef.current) {
       try { chartRef.current!.removeSeries(volumeRef.current); } catch { }
@@ -4141,13 +4425,15 @@ export const TradingChart = React.memo(function TradingChart({
   // Completely independent of command bus lifecycle.
   useEffect(() => {
     const handleShift = (e: Event) => {
-      const enabled = (e as CustomEvent).detail?.enabled === true;
+      const detail = (e as CustomEvent).detail;
+      if (!isChartCommandTarget(detail)) return;
+      const enabled = detail?.enabled === true;
       ctxChartShiftRef.current = enabled;
       setCtxChartShift(enabled);
     };
     window.addEventListener('rtx:chartShift', handleShift);
     return () => window.removeEventListener('rtx:chartShift', handleShift);
-  }, []);
+  }, [isChartCommandTarget]);
 
   // Apply chart shift when ctxChartShift changes
   useEffect(() => {
@@ -4163,13 +4449,13 @@ export const TradingChart = React.memo(function TradingChart({
   }, [ctxChartShift, timeframe]);
 
   useEffect(() => {
+    autoScrollEnabledRef.current = chartSettings.chartAutoScroll;
     setCtxAutoScroll(chartSettings.chartAutoScroll);
   }, [chartSettings.chartAutoScroll]);
 
   useEffect(() => {
-    if (!chartSettings.chartShift) {
-      setCtxChartShift(false);
-    }
+    ctxChartShiftRef.current = chartSettings.chartShift;
+    setCtxChartShift(chartSettings.chartShift);
   }, [chartSettings.chartShift]);
 
   useEffect(() => {
@@ -4245,7 +4531,7 @@ export const TradingChart = React.memo(function TradingChart({
       handleScale: TRADING_VIEW_HANDLE_SCALE,
       rightPriceScale: {
         borderColor: chartTheme.scaleBorder,
-        autoScale: !chartSettings.scaleFixOneToOne,
+        autoScale: !chartSettings.scaleFixOneToOne && getFixedChartPriceRange(chartSettings) === null,
         alignLabels: false,
       },
       timeScale: {
@@ -4253,6 +4539,22 @@ export const TradingChart = React.memo(function TradingChart({
         borderColor: chartTheme.scaleBorder,
       },
     });
+
+    squareGridPrimitiveRef.current?.applyOptions({
+      visible: chartSettings.showGrid,
+      cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,
+      verticalColor: chartTheme.gridVertical,
+      horizontalColor: chartTheme.gridHorizontal,
+    });
+
+    const fixedPriceRange = getFixedChartPriceRange(chartSettings);
+    if (fixedPriceRange) {
+      try {
+        chart.priceScale('right').setVisibleRange(fixedPriceRange);
+      } catch {
+        // The chart can be disposed during a rapid tab or symbol switch.
+      }
+    }
 
     // Update Series colors
     if (seriesRef.current) {
@@ -4380,7 +4682,8 @@ export const TradingChart = React.memo(function TradingChart({
   useActiveChartRuntimeEffect(visibleRuntime.candle, () => {
     if (!isActive || !symbol) return;
 
-    const normalizedSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    // FIX: Preserve the exact broker symbol through cache and tick routing.
+    const normalizedSymbol = symbol.trim().toUpperCase();
 
     // ── State (local to this effect closure) ──────────────────────────────────
     let liveEffectClosed = false;
@@ -4389,6 +4692,10 @@ export const TradingChart = React.memo(function TradingChart({
     let pendingLiveChartPaint = false;
     let pendingLiveChartRequiresFullRender = false;
     let pendingLiveShouldScrollToRealtime = false;
+    // FIX: Explicit backend finals seal only the matching displayed timeframe.
+    // A single M1 timestamp must not freeze the containing M5/H1 candle after a
+    // timeframe switch, while switching back to M1 still retains its seal.
+    const finalizedCandleTimeByTimeframe = new Map<string, number>();
 
     const canPaintLiveChart = (allowDuringSettle = false): boolean => (
       isActiveRef.current
@@ -4565,20 +4872,21 @@ export const TradingChart = React.memo(function TradingChart({
     postInteractionCallbacksRef.current.paintLive = paintDeferredLive;
 
     // ── rollover ───────────────────────────────────────────────────────────────
-    // Opens a new candle at newTime. Does nothing if currentCandleRef is already
-    // at or past newTime (idempotent — safe to call from multiple paths).
-    const rollover = (newTime: number, openPrice?: number) => {
+    // FIX: Opens a new candle only from a real tick/server OHLC open. Clock
+    // passage alone must never manufacture a zero-volume previous-close bar.
+    const rollover = (newTime: number, openPrice: number) => {
       console.log(`[Rollover] called → newTime=${new Date(newTime * 1000).toISOString()}, current=${currentCandleRef.current ? new Date((currentCandleRef.current.time as number) * 1000).toISOString() : 'null'}`);
       if (liveMarketDataFrozenRef.current) { console.warn('[Rollover] BAIL: market data frozen'); return; }
       if (!currentCandleRef.current) { console.warn('[Rollover] BAIL: currentCandleRef is null'); return; }
       if ((currentCandleRef.current.time as number) >= newTime) { console.warn(`[Rollover] BAIL: current=${currentCandleRef.current.time} >= newTime=${newTime} (already rolled)`); return; }
       if (isDisposedRef.current) { console.warn('[Rollover] BAIL: disposed'); return; }
+      if (!Number.isFinite(openPrice) || openPrice <= 0) return;
 
       // Archive the completed candle (once).
       const done = { ...currentCandleRef.current };
       candlesRef.current = upsertCandleIntoHistory(candlesRef.current, done).candles;
 
-      const open = openPrice ?? done.close; // MT5 rule: open = previous close (no gap)
+      const open = openPrice;
       const newCandle: Candle = { time: newTime, open, high: open, low: open, close: open, volume: 0, tickVolume: 0 };
       currentCandleRef.current = newCandle;
       console.log(`[Chart] ✅ Rollover done → ${new Date(newTime * 1000).toISOString()}`);
@@ -4600,18 +4908,13 @@ export const TradingChart = React.memo(function TradingChart({
         activeTf,
         boundaryOffsetSeconds,
       );
-      const rolloverStart = getCandleRolloverStartSeconds(
-        Number(currentCandle.time),
-        marketNowSeconds,
-        activeTf,
-        boundaryOffsetSeconds,
-      );
-      if (!currentPeriod || rolloverStart === null || rolloverStart !== currentPeriod.startTime) {
+      if (!currentPeriod || currentPeriod.startTime <= Number(currentCandle.time)) {
         return null;
       }
 
-      rollover(rolloverStart);
-      return rolloverStart;
+      // FIX: Return the pending real boundary for stale-tick rejection/countdown
+      // only. The first source event is responsible for creating the new bar.
+      return currentPeriod.startTime;
     };
 
     scheduleBoundaryTimerRef.current = reconcileSynchronizedCandleBoundary;
@@ -4623,6 +4926,20 @@ export const TradingChart = React.memo(function TradingChart({
       }
     };
     document.addEventListener('visibilitychange', handleSynchronizedClockVisibilityChange);
+
+    // FIX: Feed every raw selected-symbol websocket frame into the candle model
+    // before the quote/store render batching path coalesces it. Rendering may be
+    // throttled, but High/Low/volume must retain short-lived ticks like MT/TV.
+    const unsubscribeRawQuoteAggregation = getQuoteSocketManager().onQuoteSnapshot(symbol, (tick) => {
+      if (liveEffectClosed || isDisposedRef.current || isRebuildingRef.current) return;
+      candleAggregationService.processTick({
+        symbol,
+        bid: tick.bid,
+        ask: tick.ask,
+        timestamp: tick.sourceTimestamp ?? tick.timestamp,
+        volume: 1,
+      });
+    });
 
     // ── Main tick polling loop ─────────────────────────────────────────
     const interval = setInterval(() => {
@@ -4638,33 +4955,29 @@ export const TradingChart = React.memo(function TradingChart({
       // Get the latest tick from window.rtxTickCache map first for high performance, fallback to Zustand store
       let tick = typeof window !== 'undefined' && window.rtxTickCache
         ? (window.rtxTickCache.get(symbol)
-          ?? window.rtxTickCache.get(symbol.toUpperCase())
           ?? window.rtxTickCache.get(normalizedSymbol))
         : undefined;
 
       if (!tick) {
         const state = useAppStore.getState();
         tick = state.ticks[symbol]
-          ?? state.ticks[symbol.toUpperCase()]
-          ?? (() => {
-            const key = Object.keys(state.ticks).find(k =>
-              k.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedSymbol);
-            return key ? state.ticks[key] : undefined;
-          })();
+          // FIX: Only the exact broker identity can update this chart; fuzzy
+          // punctuation-stripped lookup can cross EURUSD/EURUSD.r instruments.
+          ?? state.ticks[normalizedSymbol];
       }
 
       // ── MIGRATED: Local clock-based boundary check removed ──────────
       // Tick/server timestamps and the synchronized market clock now share the
       // same boundary calculation; the local PC wall clock never rolls the model.
 
-      // Refresh the monotonic market-time anchor before deduping the cached
-      // quote, then reconcile on every poll. An unchanged quote can therefore
-      // close its candle exactly once without treating Date.now() as market time.
+      // FIX: Refresh the monotonic market-time anchor for countdown/boundary
+      // awareness only. An unchanged quote never creates a synthetic candle.
       synchronizeChartMarketClock(tick?.sourceTimestamp ?? tick?.timestamp);
-      const synchronizedRolloverStart = reconcileSynchronizedCandleBoundary();
+      reconcileSynchronizedCandleBoundary();
 
       const price = getChartPriceFromQuote(tick);
       if (price == null) return;
+      syncSupplementalPriceLines(Number(tick.ask ?? tick.bid), price);
       const rawTickTimestamp = Number(tick.sourceTimestamp ?? tick.timestamp);
       if (!Number.isFinite(rawTickTimestamp) || rawTickTimestamp <= 0) return;
 
@@ -4675,7 +4988,7 @@ export const TradingChart = React.memo(function TradingChart({
       if (tickKey === lastTickKey) return;
       lastTickKey = tickKey;
 
-      const livePriceMatchesRenderedScale = normalizeRenderedCandlesToLivePrice(price, activeTf);
+      const livePriceMatchesRenderedScale = validateRenderedCandlesAgainstLivePrice(price, activeTf);
       if (!livePriceMatchesRenderedScale || !isLivePriceSafeForCandles(price)) {
         const allowDrop = canDropPreloadedCandlesForLiveQuoteMismatch({
           hasDisplayedHistory: hasDisplayedHistoryRef.current,
@@ -4746,10 +5059,9 @@ export const TradingChart = React.memo(function TradingChart({
 
       // ── SAFEGUARD: prevent laggy broker ticks from pulling chart backwards ──
       if (currentCandleRef.current && ts < currentCandleRef.current.time) {
-        // A retained pre-boundary cache tick must not become the first tick of a
-        // zero-volume candle that the synchronized clock just opened.
-        if (synchronizedRolloverStart !== null || currentCandleRef.current.volume === 0) return;
-        ts = currentCandleRef.current.time as number;
+        // FIX: Never retimestamp a stale broker event into the active bucket;
+        // doing so mutates current OHLC with an old-session/late-stream value.
+        return;
       }
 
       const aggregationUpdates = candleAggregationService.processTick({
@@ -4782,6 +5094,24 @@ export const TradingChart = React.memo(function TradingChart({
         ? { ...m1DerivedCandle, tickVolume: m1DerivedCandle.volume }
         : null;
 
+      // FIX: A backend `closed:true` bucket is immutable. Replayed ticks with
+      // that event period cannot reopen it or reintroduce stale local OHLC.
+      if (isCandleAtOrBeforeFinalizedTime(finalizedCandleTimeByTimeframe, activeTf, candleTime)) return;
+
+      // Record only a real accepted quote mutation. A history refresh can then
+      // distinguish a newer forming candle from the stale cache row that was
+      // already present when its REST request started.
+      const liveMutationGeneration = liveCandleMutationGenerationRef.current + 1;
+      liveCandleMutationGenerationRef.current = liveMutationGeneration;
+      const liveMutationTime = Number(candleTime);
+      liveCandleMutationGenerationByTimeRef.current.delete(liveMutationTime);
+      liveCandleMutationGenerationByTimeRef.current.set(liveMutationTime, liveMutationGeneration);
+      while (liveCandleMutationGenerationByTimeRef.current.size > 256) {
+        const oldestTrackedTime = liveCandleMutationGenerationByTimeRef.current.keys().next().value;
+        if (oldestTrackedTime === undefined) break;
+        liveCandleMutationGenerationByTimeRef.current.delete(oldestTrackedTime);
+      }
+
       // ── Update live price DOM line + badge ──
 
       // ── Candle rollover or update ──────────────────────────────────────────
@@ -4811,21 +5141,8 @@ export const TradingChart = React.memo(function TradingChart({
             currentCandleRef.current,
             derivedCurrentCandle,
           );
-        } else if (currentCandleRef.current.volume === 0) {
-          // This is the true first tick of a candle opened prematurely by the clock timer.
-          // Snap the OHLC to the real tick price to allow gaps to render correctly.
-          currentCandleRef.current.open = price;
-          currentCandleRef.current.high = price;
-          currentCandleRef.current.low = price;
-          currentCandleRef.current.close = price;
-          currentCandleRef.current.volume = 1;
-          currentCandleRef.current.tickVolume = 1;
         } else {
-          currentCandleRef.current.high = Math.max(currentCandleRef.current.high, price);
-          currentCandleRef.current.low = Math.min(currentCandleRef.current.low, price);
-          currentCandleRef.current.close = price;
-          currentCandleRef.current.volume += 1;
-          currentCandleRef.current.tickVolume = (currentCandleRef.current.tickVolume ?? currentCandleRef.current.volume - 1) + 1;
+          currentCandleRef.current = applyTickToFormingCandle(currentCandleRef.current, price);
         }
         push(currentCandleRef.current, false);
       }
@@ -4886,19 +5203,40 @@ export const TradingChart = React.memo(function TradingChart({
     }, LIVE_CHART_UPDATE_INTERVAL_MS);
 
     // ── FIX WebSocket: server-confirmed completed candles ──────────────────────
-    const applyServerCandle = (c: Candle, source: CandleCacheSource = 'backend') => {
+    const applyServerCandle = (
+      c: Candle,
+      source: CandleCacheSource = 'backend',
+      candleTimeframe: AggTimeframe = 'M1',
+    ) => {
       if (liveEffectClosed || isDisposedRef.current || isRebuildingRef.current) return;
       if (liveMarketDataFrozenRef.current) return;
       const [reconciled] = reconcileCandlesWithLiveQuote([c], 'stream update');
       if (!reconciled) return;
       c = reconciled;
-      if (!normalizeRenderedCandlesToLivePrice(c.close, prevTimeframeRef.current || timeframe)) return;
+      if (!validateRenderedCandlesAgainstLivePrice(c.close, prevTimeframeRef.current || timeframe)) return;
       mergeHistoryCache(
         prevTimeframeRef.current || timeframe,
         [c],
         brokerTimeOffsetSecRef.current,
         source,
       );
+
+      if (c.closed === true) {
+        // FIX: Final backend OHLC replaces the local forming candle exactly;
+        // expand-only live merging would otherwise preserve a wrong local wick.
+        markFinalizedCandleTime(finalizedCandleTimeByTimeframe, candleTimeframe, c.time);
+        candlesRef.current = mergeBackendCandlePage(candlesRef.current, [c]).candles;
+        if (!currentCandleRef.current || c.time >= currentCandleRef.current.time) {
+          currentCandleRef.current = { ...c };
+        }
+        updateChartData(candlesRef.current, undefined, {
+          reason: 'server-final-candle-replacement',
+        });
+        if (currentCandleRef.current?.time === c.time) {
+          repaintLivePriceOverlayOrDefer(currentCandleRef.current);
+        }
+        return;
+      }
 
       // 1. Is this an update to an older (already closed) bar?
       if (currentCandleRef.current && c.time < currentCandleRef.current.time) {
@@ -4967,10 +5305,29 @@ export const TradingChart = React.memo(function TradingChart({
     const getDisplayedStreamTimeframe = (): AggTimeframe => (
       (prevTimeframeRef.current || 'M1') as AggTimeframe
     );
-    const commitServerM1Candle = (candle: Candle) => {
-      const [m1] = formatHistoryForOhlcv([candle]);
-      if (!m1) return;
-      candleAggregationService.addCompletedCandle(symbol, 'M1', m1);
+    const classifyServerM1CandleFinality = (candle: Candle): Candle => {
+      if (typeof candle.closed === 'boolean') return candle;
+      const marketNowSeconds = getSynchronizedChartMarketNowMs() / 1000;
+      const activeM1Period = getTimeframePeriodSeconds(
+        marketNowSeconds,
+        'M1',
+        brokerTimeOffsetSecRef.current,
+      );
+      // FIX: Legacy updates without finality metadata are classified against
+      // broker-synchronized M1 time, not arrival order or the local PC clock.
+      return resolveCandleFinalityFromActivePeriod(candle, activeM1Period?.startTime);
+    };
+    const reconcileServerM1Candle = (candle: Candle): Candle => {
+      const classifiedCandle = classifyServerM1CandleFinality(candle);
+      const [m1] = formatHistoryForOhlcv([classifiedCandle]);
+      if (!m1) return classifiedCandle;
+      candleAggregationService.reconcileServerCandle(
+        symbol,
+        'M1',
+        m1,
+        classifiedCandle.closed === true,
+      );
+      return classifiedCandle;
     };
     const applyLatestM1DerivedServerCandle = () => {
       const displayedStreamTimeframe = getDisplayedStreamTimeframe();
@@ -4982,7 +5339,13 @@ export const TradingChart = React.memo(function TradingChart({
         false,
       );
       const latest = derivedCandles[derivedCandles.length - 1];
-      if (latest) applyServerCandle({ ...latest, tickVolume: latest.volume }, 'derived-m1');
+      if (latest) {
+        applyServerCandle(
+          { ...latest, tickVolume: latest.volume, closed: latest.isComplete === true },
+          'derived-m1',
+          displayedStreamTimeframe,
+        );
+      }
     };
     const candleStream = chartDataService.subscribeCandles({
       symbol,
@@ -4990,38 +5353,65 @@ export const TradingChart = React.memo(function TradingChart({
       onSnapshot: (snapshot) => {
         if (liveEffectClosed || isDisposedRef.current || isRebuildingRef.current || snapshot.length === 0) return;
         if (liveMarketDataFrozenRef.current) return;
-        const rawSnapshot = getValidSortedCandles(snapshot as Candle[]);
+        const rawSnapshot = getValidSortedCandles(snapshot as Candle[]).map(classifyServerM1CandleFinality);
+        // FIX: Validate the exact backend scale before either painting M1 or
+        // feeding M1 into a derived timeframe. An incompatible page fails closed.
+        const reconciledSnapshot = reconcileCandlesWithLiveQuote(rawSnapshot, 'stream snapshot');
+        if (reconciledSnapshot.length === 0) return;
         const displayedStreamTimeframe = getDisplayedStreamTimeframe();
         if (displayedStreamTimeframe !== 'M1') {
-          // The newest M1 in a snapshot can still be forming; completed rows are
-          // enough to advance the shared builder without overwriting a forming
-          // minute with a server partial.
-          rawSnapshot.slice(0, -1).forEach(commitServerM1Candle);
+          // FIX: Respect explicit finality (or synchronized-period fallback)
+          // for every row. Blindly dropping the newest snapshot row omitted a
+          // valid final M1 and left derived M5/H1 values stale after reconnect.
+          reconciledSnapshot.forEach(reconcileServerM1Candle);
           applyLatestM1DerivedServerCandle();
           return;
         }
-        let reconciledSnapshot = reconcileCandlesWithLiveQuote(rawSnapshot, 'stream snapshot');
-        if (
-          reconciledSnapshot.length === 0 &&
-          rawSnapshot.length > getTradingChartDefaultVisibleBars(prevTimeframeRef.current || streamTimeframe)
-        ) {
-          console.warn(`[Chart] Keeping raw ${symbol} ${prevTimeframeRef.current || streamTimeframe} stream snapshot after live quote reconciliation rejected ${rawSnapshot.length} candles.`);
-          reconciledSnapshot = rawSnapshot;
-          setApiError(null);
-        }
-        if (reconciledSnapshot.length === 0) return;
         const activeFormingCandle = currentCandleRef.current;
         const protectedSnapshot = activeFormingCandle
           ? reconciledSnapshot.map((snapshotCandle) => (
-            snapshotCandle.time === activeFormingCandle.time
+            snapshotCandle.time === activeFormingCandle.time && snapshotCandle.closed !== true
               ? mergeFormingCandleEnvelope(activeFormingCandle, snapshotCandle)
               : snapshotCandle
           ))
           : reconciledSnapshot;
+        // FIX: A snapshot may end on an explicitly final row. Seal it before
+        // cached quote polling can mutate that timestamp again.
+        protectedSnapshot.forEach((snapshotCandle) => {
+          if (snapshotCandle.closed === true) {
+            markFinalizedCandleTime(finalizedCandleTimeByTimeframe, 'M1', snapshotCandle.time);
+          }
+        });
+        // FIX: Seed the canonical M1 builder from the same protected snapshot
+        // painted by the chart, so raw ticks and backend OHLC cannot diverge.
+        candleAggregationService.loadHistoricalCandles(
+          symbol,
+          'M1',
+          formatHistoryForOhlcv(protectedSnapshot),
+          brokerTimeOffsetSecRef.current,
+        );
+        const explicitFinal = [...protectedSnapshot].reverse().find(item => item.closed === true);
+        if (explicitFinal) reconcileServerM1Candle(explicitFinal);
         const latestClose = protectedSnapshot[protectedSnapshot.length - 1]?.close;
-        if (latestClose && !normalizeRenderedCandlesToLivePrice(latestClose, prevTimeframeRef.current || streamTimeframe)) return;
-        candlesRef.current = mergeBackendCandlePage(candlesRef.current, protectedSnapshot).candles;
-        mergeHistoryCache(prevTimeframeRef.current || streamTimeframe, protectedSnapshot);
+        if (latestClose && !validateRenderedCandlesAgainstLivePrice(latestClose, prevTimeframeRef.current || streamTimeframe)) return;
+        // FIX: A stream snapshot is authoritative for its covered interval;
+        // remove stale/fabricated cached rows that the backend no longer sends.
+        const hasNewerLiveSnapshotMutation = Boolean(
+          activeFormingCandle
+          && liveCandleMutationGenerationByTimeRef.current.has(activeFormingCandle.time),
+        );
+        candlesRef.current = mergeAuthoritativeCandleHistory(candlesRef.current, protectedSnapshot, {
+          // FIX: A delayed stream snapshot may end one bucket behind a real tick.
+          // Preserve that future bucket only when this session actually mutated it.
+          formingLiveCandle: activeFormingCandle,
+          hasNewerLiveMutation: hasNewerLiveSnapshotMutation,
+        });
+        setHistoryCache(
+          prevTimeframeRef.current || streamTimeframe,
+          candlesRef.current,
+          brokerTimeOffsetSecRef.current,
+          'backend',
+        );
         updateChartData(candlesRef.current, undefined, {
           immediate: true,
           releaseLivePaintAfterRender: true,
@@ -5038,13 +5428,26 @@ export const TradingChart = React.memo(function TradingChart({
       },
       onCandle: (candle) => {
         if (liveEffectClosed) return;
+        const [validatedCandle] = reconcileCandlesWithLiveQuote(
+          [classifyServerM1CandleFinality(candle)],
+          'stream update',
+        );
+        // FIX: Do not contaminate canonical M1 aggregation with a candle from
+        // an incompatible symbol/decimal band. The backend value is not altered.
+        if (!validatedCandle) return;
         const displayedStreamTimeframe = getDisplayedStreamTimeframe();
         if (displayedStreamTimeframe === 'M1') {
-          applyServerCandle(candle);
+          // FIX: Route legacy M1 updates through the same finality classifier as
+          // higher-timeframe derivation before painting or sealing the bucket.
+          applyServerCandle(reconcileServerM1Candle(validatedCandle), 'backend', 'M1');
           return;
         }
-        commitServerM1Candle(candle);
+        reconcileServerM1Candle(validatedCandle);
         applyLatestM1DerivedServerCandle();
+      },
+      onConnected: () => {
+        // FIX: Clear transient stream text after a successful reconnect.
+        if (!liveEffectClosed) setApiError(null);
       },
       onError: (error) => {
         if (!liveEffectClosed) setApiError(error.message);
@@ -5054,6 +5457,8 @@ export const TradingChart = React.memo(function TradingChart({
     return () => {
       liveEffectClosed = true;
       clearInterval(interval);
+      // FIX: Release the raw-tick model listener with the exact chart runtime.
+      unsubscribeRawQuoteAggregation();
       candleStream.close();
       document.removeEventListener('visibilitychange', handleSynchronizedClockVisibilityChange);
       if (scheduleBoundaryTimerRef.current === reconcileSynchronizedCandleBoundary) {
@@ -5181,7 +5586,8 @@ export const TradingChart = React.memo(function TradingChart({
 
   // Handle ZOOM_IN / ZOOM_OUT commands from toolbar buttons only (no mouse wheel zoom)
   useEffect(() => {
-    const handleZoomIn = () => {
+    const handleZoomIn = (payload: { targetContextId?: string; panelId?: string }) => {
+      if (!isChartCommandTarget(payload)) return;
       if (isDisposedRef.current || !chartRef.current) return;
       try {
         const newSpacing = Math.min(pixelsPerBarRef.current * 1.2, 30);
@@ -5193,7 +5599,8 @@ export const TradingChart = React.memo(function TradingChart({
       } catch (e) { /* disposed */ }
     };
 
-    const handleZoomOut = () => {
+    const handleZoomOut = (payload: { targetContextId?: string; panelId?: string }) => {
+      if (!isChartCommandTarget(payload)) return;
       if (isDisposedRef.current || !chartRef.current) return;
       try {
         const newSpacing = Math.max(pixelsPerBarRef.current / 1.2, 1);
@@ -5223,7 +5630,10 @@ export const TradingChart = React.memo(function TradingChart({
       } catch (e) { /* disposed */ }
     };
 
-    const unsubScrollToRealtime = commandBus.subscribe('SCROLL_TO_REALTIME' as any, handleScrollToRealtime);
+    const unsubScrollToRealtime = commandBus.subscribe('SCROLL_TO_REALTIME' as any, (payload: any) => {
+      if (!isChartCommandTarget(payload)) return;
+      handleScrollToRealtime();
+    });
 
     const handleJumpToLatestCandle = () => {
       if (isDisposedRef.current || !chartRef.current) return;
@@ -5236,7 +5646,10 @@ export const TradingChart = React.memo(function TradingChart({
       } catch (e) { /* disposed */ }
     };
 
-    const unsubJumpToLatestCandle = commandBus.subscribe('JUMP_TO_LATEST_CANDLE', handleJumpToLatestCandle);
+    const unsubJumpToLatestCandle = commandBus.subscribe('JUMP_TO_LATEST_CANDLE' as any, (payload: any) => {
+      if (!isChartCommandTarget(payload)) return;
+      handleJumpToLatestCandle();
+    });
 
     const handleResetChartViewport = async () => {
       if (isDisposedRef.current || !chartRef.current) return;
@@ -5275,31 +5688,59 @@ export const TradingChart = React.memo(function TradingChart({
         if (activeSymbol) {
           setLoadingPhase('connecting');
           try {
+            const resetHistoryLiveGenerationAtRequestStart = liveCandleMutationGenerationRef.current;
             const resetHistoryRequest = historyRequestCoordinatorRef.current.start({
               symbol: activeSymbol,
               timeframe: activeTf,
               count: getInitialHistoryCount(activeTf),
             }, options => chartDataService.fetchCandles(options));
             let fetchedCandles = getValidSortedCandles(await resetHistoryRequest.result);
-            if (
-              isDisposedRef.current
-              || !resetHistoryRequest.isCurrent()
-              || (prevSymbolRef.current || symbol) !== activeSymbol
-              || (prevTimeframeRef.current || timeframe) !== activeTf
-            ) return;
+            const isCurrentResetHistoryLoad = () => (
+              !isDisposedRef.current
+              && resetHistoryRequest.isCurrent()
+              && (prevSymbolRef.current || symbol) === activeSymbol
+              && (prevTimeframeRef.current || timeframe) === activeTf
+            );
+            if (!isCurrentResetHistoryLoad()) return;
 
-            const rawFetchedCandles = fetchedCandles;
+            if (activeTf === 'M1' && fetchedCandles.length > 1) {
+              const resetGapBackfill = await backfillRecentInteriorHistoryGaps({
+                symbol: activeSymbol,
+                timeframe: activeTf,
+                candles: fetchedCandles,
+                signal: resetHistoryRequest.signal,
+              });
+              if (!isCurrentResetHistoryLoad()) return;
+              fetchedCandles = resetGapBackfill.candles as Candle[];
+            }
             fetchedCandles = reconcileCandlesWithLiveQuote(fetchedCandles, 'reset viewport history');
-            if (fetchedCandles.length === 0 && rawFetchedCandles.length >= minimumResetBars) {
-              fetchedCandles = rawFetchedCandles;
-              setApiError(null);
+            if (brokerTimeOffsetSecRef.current !== 0) {
+              fetchedCandles = applyBrokerTimeOffset(
+                fetchedCandles,
+                brokerTimeOffsetSecRef.current,
+              );
             }
 
-            const resetCandles = mergeCandleCollections(
-              fetchedCandles,
+            const resetBaseline = mergeCandleCollections(
               resetHistory,
               getCandlesForFullRender(),
             );
+            const resetBufferedLiveCandles = (
+              liveCandleMutationGenerationRef.current > resetHistoryLiveGenerationAtRequestStart
+            ) ? selectCandlesMutatedAfterGeneration(mergeCandleCollections(
+                getCandlesForFullRender(),
+                currentCandleRef.current ? [currentCandleRef.current] : [],
+              ), liveCandleMutationGenerationByTimeRef.current, resetHistoryLiveGenerationAtRequestStart) : [];
+            // FIX: Replace the backend-covered interval first, then replay only
+            // ticks that arrived after this request began. Reversing this order
+            // allowed the REST page to erase a genuinely newer forming candle.
+            let resetCandles = mergeAuthoritativeCandleHistory(resetBaseline, fetchedCandles);
+            if (resetBufferedLiveCandles.length > 0) {
+              resetCandles = mergeHistoricalCandlesWithBufferedLive(
+                resetCandles,
+                resetBufferedLiveCandles,
+              );
+            }
             if (renderResetCandles(resetCandles, 'reset-chart-viewport-fetch')) {
               return;
             }
@@ -5324,10 +5765,14 @@ export const TradingChart = React.memo(function TradingChart({
 
     resetChartViewport = handleResetChartViewport;
 
-    const unsubResetChartViewport = commandBus.subscribe('RESET_CHART_VIEWPORT', handleResetChartViewport);
+    const unsubResetChartViewport = commandBus.subscribe('RESET_CHART_VIEWPORT' as any, (payload: any) => {
+      if (!isChartCommandTarget(payload)) return;
+      void handleResetChartViewport();
+    });
 
     // Auto-Scroll (Snap to live edge)
     const unsubAutoScroll = commandBus.subscribe('SET_AUTO_SCROLL' as any, (payload: any) => {
+      if (!isChartCommandTarget(payload)) return;
       if (isDisposedRef.current || !chartRef.current) return;
       try {
         const enabled = payload?.enabled === true;
@@ -5357,12 +5802,15 @@ export const TradingChart = React.memo(function TradingChart({
     };
 
     const unsubChartShift = commandBus.subscribe('SET_CHART_SHIFT' as any, (payload: any) => {
+      if (!isChartCommandTarget(payload)) return;
       applyChartShift(payload?.enabled === true);
     });
 
     // Direct window event fallback (more reliable than command bus lifecycle)
     const handleChartShiftEvent = (e: Event) => {
-      const enabled = (e as CustomEvent).detail?.enabled === true;
+      const detail = (e as CustomEvent).detail;
+      if (!isChartCommandTarget(detail)) return;
+      const enabled = detail?.enabled === true;
       applyChartShift(enabled);
     };
     window.addEventListener('rtx:chartShift', handleChartShiftEvent);
@@ -5370,6 +5818,7 @@ export const TradingChart = React.memo(function TradingChart({
     // Timeframe Change from Top Bar
     const unsubTimeframe = commandBus.subscribe('SET_TIMEFRAME' as any, (payload: any) => {
       if (isDisposedRef.current || !chartRef.current) return;
+      if (!isChartCommandTarget(payload)) return;
 
       // Strict targeted event mapping
       if (panelId && payload?.panelId && panelId !== payload.panelId) return;
@@ -5406,18 +5855,16 @@ export const TradingChart = React.memo(function TradingChart({
           }
         }
 
-        // Update the panel title so the Dock layout tab updates too
-        if (panelId && payload.timeframe) {
-          console.log(`[TradingChart] Global timeframe sync: updating tab title to ${symbol},${payload.timeframe}`);
-          const store = useDockLayoutStore.getState();
-          const currentPanel = store.layout.root.children?.find((c: any) => c.id === panelId) ||
-            store.layout.floatingPanels.find((c: any) => c.id === panelId);
+      }
 
-          store.updatePanelProps(panelId, {
-            props: { ...((currentPanel as any)?.props || {}), symbol: symbol, timeframe: payload.timeframe },
-            title: `${symbol},${payload.timeframe}`
-          });
-        }
+      // Targeted and active-source commands both keep the dock tab's own
+      // timeframe in sync without mutating sibling chart panels.
+      if (panelId && payload.timeframe) {
+        console.log(`[TradingChart] Timeframe sync: updating tab title to ${symbol},${payload.timeframe}`);
+        useDockLayoutStore.getState().updatePanelProps(panelId, {
+          props: { symbol, timeframe: payload.timeframe },
+          title: `${symbol},${payload.timeframe}`,
+        });
       }
 
       const newTimeframe = payload?.timeframe;
@@ -5470,7 +5917,7 @@ export const TradingChart = React.memo(function TradingChart({
       unsubTimeframe();
       window.removeEventListener('rtx:chartShift', handleChartShiftEvent);
     };
-  }, []);
+  }, [isChartCommandTarget]);
 
   // Handle SELECT_TOOL command — bridge toolbar buttons to drawingManager
   useEffect(() => {
@@ -5604,32 +6051,32 @@ export const TradingChart = React.memo(function TradingChart({
 
   // Handle UNDO / REDO / DELETE commands from toolbar
   useEffect(() => {
-    const runForActiveDrawingContext = (action: () => void): boolean => {
-      if (!isDrawingCommandTarget() || !bindDrawingManagerToChart()) return false;
+    const runForDrawingContext = (targetContextId: string | undefined, action: () => void): boolean => {
+      if (!isDrawingCommandTarget(targetContextId) || !bindDrawingManagerToChart()) return false;
       action();
       return true;
     };
 
-    const unsubUndo = commandBus.subscribe('UNDO', () => {
-      if (runForActiveDrawingContext(() => drawingManager.undo(drawingRuntimeContextRef.current.contextId))) {
+    const unsubUndo = commandBus.subscribe('UNDO', (payload) => {
+      if (runForDrawingContext(payload.targetContextId, () => drawingManager.undo(drawingRuntimeContextRef.current.contextId))) {
         console.log('[Chart] Undo drawing');
       }
     });
 
-    const unsubRedo = commandBus.subscribe('REDO', () => {
-      if (runForActiveDrawingContext(() => drawingManager.redo(drawingRuntimeContextRef.current.contextId))) {
+    const unsubRedo = commandBus.subscribe('REDO', (payload) => {
+      if (runForDrawingContext(payload.targetContextId, () => drawingManager.redo(drawingRuntimeContextRef.current.contextId))) {
         console.log('[Chart] Redo drawing');
       }
     });
 
-    const unsubDeleteSelected = commandBus.subscribe('DELETE_SELECTED_DRAWING', () => {
-      if (runForActiveDrawingContext(() => drawingManager.deleteSelected(drawingRuntimeContextRef.current.contextId))) {
+    const unsubDeleteSelected = commandBus.subscribe('DELETE_SELECTED_DRAWING', (payload) => {
+      if (runForDrawingContext(payload.targetContextId, () => drawingManager.deleteSelected(drawingRuntimeContextRef.current.contextId))) {
         console.log('[Chart] Deleted selected drawings');
       }
     });
 
     const unsubDeleteById = commandBus.subscribe('DELETE_DRAWING', (payload) => {
-      if (runForActiveDrawingContext(() => drawingManager.deleteDrawing(payload.id, drawingRuntimeContextRef.current.contextId))) {
+      if (runForDrawingContext(undefined, () => drawingManager.deleteDrawing(payload.id, drawingRuntimeContextRef.current.contextId))) {
         console.log(`[Chart] Deleted drawing: ${payload.id}`);
       }
     });
@@ -5640,156 +6087,35 @@ export const TradingChart = React.memo(function TradingChart({
       unsubDeleteSelected();
       unsubDeleteById();
     };
-  }, []);
+  }, [bindDrawingManagerToChart, isDrawingCommandTarget]);
 
-  // Crosshair command state is owned by useToolbarState. Hidden tabs retain the
-  // latest setting without owning another dedicated command subscription, while
-  // useCrosshair above only runs its pointer/RAF work for the visible chart.
+  // Crosshair state is local to each chart and only the targeted chart toggles.
 
-  // Keyboard shortcuts for drawing tools + Alt+T one-click trading
+  // The global shortcut manager owns keyboard input. Keep only the dashboard
+  // event bridge here so one keystroke cannot execute twice for the active chart.
   useEffect(() => {
     if (!isActive) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip if user is typing in an input/textarea
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      // Alt+T = Toggle One-Click Trading panel (show/hide)
-      if (false && e.altKey && (e.key === 't' || e.key === 'T' || e.code === 'KeyT')) {
-        e.preventDefault();
-        setShowOneClick(prev => !prev);
-        return;
-      }
-
-      // F9 = New Order
-      if (false && e.key === 'F9') {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent('openNewOrder'));
-        return;
-      }
-
-      // F8 = Chart Properties
-      if (e.key === 'F8') {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent('openChartProperties'));
-        return;
-      }
-
-      // Alt+1 = Bar Chart
-      if (e.altKey && (e.key === '1' || e.code === 'Digit1')) {
-        e.preventDefault();
-        setLocalChartType('bar');
-        commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar' } });
-        return;
-      }
-
-      // Alt+2 = Candlesticks
-      if (e.altKey && (e.key === '2' || e.code === 'Digit2')) {
-        e.preventDefault();
-        setLocalChartType('candlestick');
-        commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick' } });
-        return;
-      }
-
-      // Alt+3 = Line Chart
-      if (e.altKey && (e.key === '3' || e.code === 'Digit3')) {
-        e.preventDefault();
-        setLocalChartType('line');
-        commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'line' } });
-        return;
-      }
-
-      // Alt+B = Depth of Market
-      if (false && e.altKey && (e.key === 'b' || e.key === 'B' || e.code === 'KeyB')) {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent('openDepthOfMarket', { detail: { symbol } }));
-        return;
-      }
-
-      // Alt+G = Toggle Grid
-      if (false && e.altKey && (e.key === 'g' || e.key === 'G' || e.code === 'KeyG')) {
-        e.preventDefault();
-        const currentGrid = useChartSettingsStore.getState().globalProperties.showGrid;
-        useChartSettingsStore.getState().updateGlobalProperty('showGrid', !currentGrid);
-        return;
-      }
-
-      // Ctrl+K = Toggle Volumes
-      if (false && e.ctrlKey && (e.key === 'k' || e.key === 'K' || e.code === 'KeyK')) {
-        e.preventDefault();
-        const currentVols = useChartSettingsStore.getState().globalProperties.showTickVolumes;
-        useChartSettingsStore.getState().updateGlobalProperty('showTickVolumes', !currentVols);
-        return;
-      }
-
-
-      // Ctrl+Z = Undo
-      if (e.ctrlKey && e.key === 'z') {
-        if (!isDrawingCommandTarget() || !bindDrawingManagerToChart()) return;
-        e.preventDefault();
-        drawingManager.undo(drawingRuntimeContextRef.current.contextId);
-        console.log('[Chart] Keyboard: Undo');
-        return;
-      }
-
-      // Ctrl+Y = Redo
-      if (e.ctrlKey && e.key === 'y') {
-        if (!isDrawingCommandTarget() || !bindDrawingManagerToChart()) return;
-        e.preventDefault();
-        drawingManager.redo(drawingRuntimeContextRef.current.contextId);
-        console.log('[Chart] Keyboard: Redo');
-        return;
-      }
-
-      // Delete / Backspace = Delete selected drawing
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (!isDrawingCommandTarget() || !bindDrawingManagerToChart()) return;
-        // Only delete if not in an input field
-        drawingManager.deleteSelected(drawingRuntimeContextRef.current.contextId);
-        console.log('[Chart] Keyboard: Delete selected');
-        return;
-      }
-
-      // Escape = Cancel active drawing or deselect all
-      if (e.key === 'Escape') {
-        if (!isDrawingCommandTarget() || !bindDrawingManagerToChart()) return;
-        const contextId = drawingRuntimeContextRef.current.contextId;
-        const active = drawingManager.getActiveDrawing(contextId);
-        if (active) {
-          drawingManager.cancelDrawing(contextId);
-          drawingCommandTargetRef.current = null;
-          activeToolRef.current = null;
-          setTextInputOverlay(null);
-          // Reset tool back to cursor in toolbar
-          commandBus.dispatch({
-            type: 'SELECT_TOOL',
-            payload: { tool: 'cursor', targetContextId: contextId },
-          });
-          console.log('[Chart] Keyboard: Cancelled active drawing');
-        } else {
-          drawingManager.unselectAll();
-          console.log('[Chart] Keyboard: Deselected all');
-        }
-        return;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
     // Listen for toggle-one-click-trading event from dashboard toolbar
-    const handleToggleOneClick = () => setShowOneClick(prev => !prev);
+    const handleToggleOneClick = () => {
+      if (!isActiveRef.current) return;
+      toggleOneClickTrading();
+    };
     window.addEventListener('toggle-one-click-trading', handleToggleOneClick);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('toggle-one-click-trading', handleToggleOneClick);
     };
-  }, [isActive, symbol]);
+  }, [isActive, toggleOneClickTrading]);
 
   // ─── Trade Annotations on Chart (MT5-style entry/exit markers + live trails) ───
   const TRADE_BUY_COLOR = '#22c55e';
   const TRADE_SELL_COLOR = '#ef4444';
+  const TRADE_HISTORY_PROFIT_COLOR = '#00e6a8';
+  const TRADE_HISTORY_LOSS_COLOR = '#ff5a67';
+  const TRADE_HISTORY_LIGHT_PROFIT_COLOR = '#007a55';
+  const TRADE_HISTORY_LIGHT_LOSS_COLOR = '#c6283d';
+  const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v3-clean';
   // MT5-style entry lines: dotted blue for BUY, dotted red for SELL.
   const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';
   const TRADE_ENTRY_LINE_SELL_COLOR = '#ef4444';
@@ -5926,7 +6252,7 @@ export const TradingChart = React.memo(function TradingChart({
     const overlayHost = overlayRef.current?.parentElement ?? overlayRef.current;
     const staleSelector = layer === 'active'
       ? '.rtx-trade-marker--active,.rtx-trade-active-segment,.rtx-trade-level-line,.rtx-trade-level-badge,.rtx-trade-level-hit-area'
-      : '.rtx-trade-marker--history,.rtx-trade-history-line,.rtx-trade-history-label';
+      : '.rtx-trade-marker--history,.rtx-trade-marker-hover-target,.rtx-trade-history-line';
     overlayHost?.querySelectorAll(staleSelector).forEach((node) => {
       try {
         node.remove();
@@ -6030,8 +6356,8 @@ export const TradingChart = React.memo(function TradingChart({
     // they are rather than culling the entire overlay against height 0.
     if (chartWidth <= 0 || chartHeight <= 0) return;
     const priceScaleWidth = series.priceScale().width();
-    const paneHeight = Math.max(0, chartHeight - chart.timeScale().height());
-    const occupiedHistoryLabelRects: TradeHistoryLabelRect[] = [];
+    const timeScaleHeight = chart.timeScale().height();
+    const plotHeight = Math.max(0, chartHeight - (Number.isFinite(timeScaleHeight) ? timeScaleHeight : 0));
     const snapCssPixel = (value: number): number => Math.round(value);
     const resolveTimeCoordinate = (time: unknown): number | null => {
       const numericTime = Number(time);
@@ -6133,10 +6459,12 @@ export const TradingChart = React.memo(function TradingChart({
 
             el.style.display = 'block';
             el.style.left = `${geometry.left}px`;
-            el.style.top = `${geometry.top}px`;
+            const isHistoryLine = el.classList.contains('rtx-trade-history-line');
+            const segmentHeight = el.offsetHeight || 1;
+            el.style.top = `${geometry.top - (isHistoryLine ? segmentHeight / 2 : 0)}px`;
             el.style.width = `${geometry.width}px`;
             el.style.transform = `rotate(${geometry.angleDeg}deg)`;
-            el.style.transformOrigin = '0 0';
+            el.style.transformOrigin = isHistoryLine ? '0 50%' : '0 0';
             continue;
           }
 
@@ -6171,41 +6499,32 @@ export const TradingChart = React.memo(function TradingChart({
             el.style.transform = node.markerSide === 'BUY'
               ? 'translate(-50%, 0)'
               : 'translate(-50%, -100%)';
-            continue;
-          }
 
-          if (node.kind === 'label') {
-            el.style.display = el.dataset.display || 'block';
-            const plotWidth = Math.max(0, chartWidth - priceScaleWidth);
-            const labelGap = node.labelOffsetX ?? 14;
-            el.style.maxWidth = `${getTradeHistoryLabelMaxWidth({
-              anchorX: x,
-              plotWidth,
-              gap: labelGap,
-            })}px`;
-            const placement = resolveTradeHistoryLabelPlacement({
-              anchorX: x,
-              labelWidth: el.offsetWidth,
-              plotWidth,
-              gap: labelGap,
-            });
-            el.dataset.anchor = placement.anchor;
-            el.style.left = `${snapCssPixel(placement.left)}px`;
-            if (el.classList.contains('rtx-trade-history-label')) {
-              const verticalPlacement = resolveTradeHistoryLabelVerticalPlacement({
-                preferredCenterY: y + (node.labelOffsetY ?? 0),
-                labelHeight: el.offsetHeight || 24,
-                chartHeight: paneHeight,
-                left: placement.left,
-                width: el.offsetWidth,
-                occupied: occupiedHistoryLabelRects,
-              });
-              occupiedHistoryLabelRects.push(verticalPlacement.rect);
-              el.dataset.lane = String(verticalPlacement.lane);
-              el.style.top = `${snapCssPixel(verticalPlacement.centerY)}px`;
-            } else {
-              el.style.top = `${snapCssPixel(y + (node.labelOffsetY ?? -18))}px`;
+            const tooltip = el.querySelector<HTMLElement>('.rtx-trade-marker__price-tooltip');
+            if (tooltip) {
+              const plotWidth = Math.max(0, chartWidth - priceScaleWidth);
+              const tooltipWidth = tooltip.offsetWidth || 64;
+              const markerWidth = el.offsetWidth || 15;
+              const maxTooltipLeft = Math.max(6, plotWidth - tooltipWidth - 6);
+              const tooltipLeft = Math.min(maxTooltipLeft, Math.max(6, x - tooltipWidth / 2));
+              tooltip.style.left = `${tooltipLeft - (x - markerWidth / 2)}px`;
+              tooltip.style.right = 'auto';
+              tooltip.style.transform = 'none';
+
+              const markerHeight = el.offsetHeight || 32;
+              const markerTop = node.markerSide === 'BUY' ? y : y - markerHeight;
+              const markerBottom = node.markerSide === 'BUY' ? y + markerHeight : y;
+              const tooltipHeight = tooltip.offsetHeight || 58;
+              const tooltipGap = 7;
+              const fitsAbove = markerTop - tooltipGap - tooltipHeight >= 4;
+              const fitsBelow = markerBottom + tooltipGap + tooltipHeight <= plotHeight - 4;
+              let placeAbove = node.markerSide === 'BUY';
+              if (placeAbove && !fitsAbove && fitsBelow) placeAbove = false;
+              if (!placeAbove && !fitsBelow && fitsAbove) placeAbove = true;
+              tooltip.style.bottom = placeAbove ? `calc(100% + ${tooltipGap}px)` : 'auto';
+              tooltip.style.top = placeAbove ? 'auto' : `calc(100% + ${tooltipGap}px)`;
             }
+            continue;
           }
         } catch {
           el.style.display = 'none';
@@ -6219,7 +6538,12 @@ export const TradingChart = React.memo(function TradingChart({
       try { refreshTradeControlMetrics(); } catch { }
     }
 
-    if (livePriceRef.current !== null && livePriceLineRef.current && livePriceBadgeRef.current) {
+    if (
+      chartSettingsRef.current.showBidPriceLine
+      && livePriceRef.current !== null
+      && livePriceLineRef.current
+      && livePriceBadgeRef.current
+    ) {
       const y = series.priceToCoordinate(livePriceRef.current);
       if (y !== null && y !== undefined && y > 0) {
         const overlayColors = livePriceOverlayColorsRef.current;
@@ -6232,8 +6556,10 @@ export const TradingChart = React.memo(function TradingChart({
         livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;
         livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;
       }
+    } else if (!chartSettingsRef.current.showBidPriceLine) {
+      hideLivePriceOverlay(false);
     }
-  }, [applyStableLivePriceHorizontalGeometry]);
+  }, [applyStableLivePriceHorizontalGeometry, hideLivePriceOverlay]);
 
   repaintTradeOverlayGeometryRef.current = updateLabelPositions;
 
@@ -6265,7 +6591,8 @@ export const TradingChart = React.memo(function TradingChart({
 
     hydrateTradeLevelOverrides();
 
-    const normalizedChartSymbol = symbol.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    // FIX: Trade overlays use the same opaque identity as orders and quotes.
+    const normalizedChartSymbol = symbol.trim().toUpperCase();
     const digits = resolvedPriceDigits;
 
     const queueTradeOverlayRelayout = () => {
@@ -6317,10 +6644,7 @@ export const TradingChart = React.memo(function TradingChart({
     const resolveSymbolTick = (ticks: Record<string, any>) => {
       if (ticks[symbol]) return ticks[symbol];
       if (ticks[symbol.toUpperCase()]) return ticks[symbol.toUpperCase()];
-      const exactKey = Object.keys(ticks).find((key) =>
-        key.replace(/[^A-Za-z0-9]/g, '').toUpperCase() === normalizedChartSymbol,
-      );
-      return exactKey ? ticks[exactKey] : null;
+      return null;
     };
 
     const mapTradeTimestampToChartTime = (rawTimestamp: unknown): number | null => {
@@ -6365,6 +6689,14 @@ export const TradingChart = React.memo(function TradingChart({
 
     const getEntryColor = (side: TradeSide) => side === 'BUY' ? TRADE_BUY_COLOR : TRADE_SELL_COLOR;
     const getExitColor = (side: TradeSide) => side === 'BUY' ? TRADE_SELL_COLOR : TRADE_BUY_COLOR;
+    const getHistoryProfitColor = () => isChartSurfaceLight()
+      ? TRADE_HISTORY_LIGHT_PROFIT_COLOR
+      : TRADE_HISTORY_PROFIT_COLOR;
+    const getHistoryLossColor = () => isChartSurfaceLight()
+      ? TRADE_HISTORY_LIGHT_LOSS_COLOR
+      : TRADE_HISTORY_LOSS_COLOR;
+    const getHistoryEntryColor = (side: TradeSide) => side === 'BUY' ? getHistoryProfitColor() : getHistoryLossColor();
+    const getHistoryExitColor = (side: TradeSide) => side === 'BUY' ? getHistoryLossColor() : getHistoryProfitColor();
     const getLiveTrailTime = () =>
       currentCandleRef.current?.time
       ?? candlesRef.current[candlesRef.current.length - 1]?.time
@@ -6439,8 +6771,10 @@ export const TradingChart = React.memo(function TradingChart({
         volume: trade.volume,
         entryPrice: existingTrade?.entryPrice ?? trade.entryPrice,
         entryTime: existingTrade?.entryTime ?? resolveClosedEntryTime(trade),
+        entryExecutionTime: existingTrade?.entryExecutionTime ?? trade.entryExecutionTime,
         exitPrice,
         exitTime,
+        exitExecutionTime: existingTrade?.exitExecutionTime ?? normalizeUnixSeconds(Date.now()) ?? exitTime,
         profit: existingTrade?.profit,
       });
     };
@@ -6464,8 +6798,10 @@ export const TradingChart = React.memo(function TradingChart({
         ...snapshot,
         entryPrice: existingTrade?.entryPrice ?? snapshot.entryPrice,
         entryTime,
+        entryExecutionTime: snapshot.entryExecutionTime ?? existingTrade?.entryExecutionTime ?? snapshot.entryTime,
         exitPrice: existingTrade?.exitPrice ?? snapshot.exitPrice,
         exitTime,
+        exitExecutionTime: snapshot.exitExecutionTime ?? existingTrade?.exitExecutionTime ?? snapshot.exitTime,
         profit: snapshot.profit ?? existingTrade?.profit,
       });
     };
@@ -6476,9 +6812,11 @@ export const TradingChart = React.memo(function TradingChart({
         side: trade.side,
         volume: trade.volume,
         entryPrice: trade.entryPrice,
-        entryTime: resolveCloseSnapshotOverlayTime(trade.entryTime, trade.entryTime),
+        entryTime: resolveCloseSnapshotOverlayTime(trade.entryExecutionTime, trade.entryTime),
+        entryExecutionTime: trade.entryExecutionTime,
         exitPrice: trade.exitPrice,
-        exitTime: resolveCloseSnapshotOverlayTime(trade.exitTime, trade.exitTime),
+        exitTime: resolveCloseSnapshotOverlayTime(trade.exitExecutionTime, trade.exitTime),
+        exitExecutionTime: trade.exitExecutionTime,
         profit: trade.profit,
       })
     );
@@ -6486,7 +6824,7 @@ export const TradingChart = React.memo(function TradingChart({
       const pnl = trade.profit ?? (
         trade.side === 'BUY' ? trade.exitPrice - trade.entryPrice : trade.entryPrice - trade.exitPrice
       );
-      return pnl >= 0 ? TRADE_BUY_COLOR : TRADE_SELL_COLOR;
+      return pnl >= 0 ? getHistoryProfitColor() : getHistoryLossColor();
     };
     const requestTradeHistoryRefresh = () => {
       const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
@@ -6676,70 +7014,124 @@ export const TradingChart = React.memo(function TradingChart({
       activeOverlayNodeDataRef.current.push(node);
     };
 
-    const createArrowSvg = (side: TradeSide, color: string) => side === 'BUY'
-      ? `<svg width="15" height="20" viewBox="0 0 16 20" fill="none" aria-hidden="true"><path d="M8 1.5L15 8.5H11V18.5H5V8.5H1L8 1.5Z" fill="${color}" stroke="#f8fafc" stroke-width="1.15" stroke-linejoin="round"/></svg>`
-      : `<svg width="15" height="20" viewBox="0 0 16 20" fill="none" aria-hidden="true"><path d="M8 18.5L1 11.5H5V1.5H11V11.5H15L8 18.5Z" fill="${color}" stroke="#f8fafc" stroke-width="1.15" stroke-linejoin="round"/></svg>`;
+    const appendHistoryInteractionNode = (element: HTMLElement, node: OverlayNodeData) => {
+      const host = overlayRef.current?.parentElement ?? overlayRef.current;
+      host?.appendChild(element);
+      historyOverlayNodesRef.current.push(element);
+      historyOverlayNodeDataRef.current.push(node);
+    };
 
-    const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer, opacity = 1, resolveTime?: () => number | null, lifecycle: 'open' | 'close' = 'open') => {
+    const createArrowSvg = (side: TradeSide, color: string, emphasized: boolean) => {
+      const width = 20;
+      const height = emphasized ? 24 : 26;
+      const path = emphasized
+        ? side === 'BUY'
+          ? 'M10 1.5L18.5 10H14V22.5H6V10H1.5L10 1.5Z'
+          : 'M10 22.5L1.5 14H6V1.5H14V14H18.5L10 22.5Z'
+        : side === 'BUY'
+          ? 'M10 1.5L18.5 10H14V24.5H6V10H1.5L10 1.5Z'
+          : 'M10 24.5L1.5 16H6V1.5H14V16H18.5L10 24.5Z';
+      const outline = isChartSurfaceLight() ? '#0f172a' : '#f8fafc';
+      const strokeWidth = emphasized ? 1.75 : 1.15;
+      return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="${path}" fill="${color}" stroke="${outline}" stroke-width="${strokeWidth}" stroke-linejoin="round"/></svg>`;
+    };
+
+    const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer, opacity = 1, resolveTime?: () => number | null, lifecycle: 'open' | 'close' = 'open', historyPositionSide: TradeSide = side, executionTime = time) => {
       const marker = document.createElement('div');
       marker.className = `rtx-trade-marker rtx-trade-marker--${layer} rtx-trade-marker--${lifecycle}`;
       marker.dataset.tradeLifecycle = lifecycle;
-      marker.title = title;
-      marker.innerHTML = createArrowSvg(side, color);
-      marker.style.cssText = `position:absolute;display:none;width:15px;height:20px;z-index:16;pointer-events:none;opacity:${opacity};filter:drop-shadow(0 1px 1px rgba(0,0,0,0.9)) drop-shadow(0 0 3px ${color}99);`;
+      if (layer === 'active') marker.title = title;
+      const isHistoryMarker = layer === 'history';
+      const markerWidth = 20;
+      const markerHeight = isHistoryMarker ? 24 : 26;
+      marker.innerHTML = createArrowSvg(side, color, isHistoryMarker);
+      marker.style.cssText = `position:absolute;display:none;width:${markerWidth}px;height:${markerHeight}px;z-index:${isHistoryMarker ? 20 : 16};pointer-events:none;opacity:${opacity};filter:drop-shadow(0 1px 1px rgba(0,0,0,0.72));`;
       appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side, resolveTime }, layer);
-    };
 
-    const createTradeHistoryLabel = (positionSide: TradeSide, executionSide: TradeSide, lifecycle: TradeHistoryLifecycle, price: number, time: number, layer: TradeOverlayLayer, opacity = 1, ticketLabel = '') => {
-      const label = document.createElement('div');
-      const timeLabel = formatTradeHistoryGmtTime(time);
+      if (layer !== 'history') return;
+
       const lightSurface = isChartSurfaceLight();
-      const palette = getTradeOverlayCardPalette(executionSide, lightSurface);
-      const accentWash = colorWithAlpha(palette.border, clampAlpha(opacity) * 0.24, 'rgba(0,0,0,0)');
-      const baseBackground = lightSurface ? '#f8fafc' : '#111827';
-      const background = `linear-gradient(${accentWash},${accentWash}),${baseBackground}`;
-      const badgeText = buildTradeHistoryBadgeText({
-        positionSide,
-        lifecycle,
-        ticketLabel,
+      const palette = getTradeOverlayCardPalette(side, lightSurface);
+      const lifecycleLabel = lifecycle === 'open' ? 'OPEN' : 'CLOSE';
+      const timeLabel = formatTradeHistoryGmtTime(executionTime, { includeSeconds: true });
+      const accessibleLabel = buildTradeHistoryBadgeText({
+        positionSide: historyPositionSide,
+        lifecycle: lifecycleLabel,
         price,
         digits,
-        time,
+        time: executionTime,
+        includeSeconds: true,
       });
-      label.className = `rtx-trade-history-label rtx-trade-history-label--${positionSide.toLowerCase()} rtx-trade-history-label--${lifecycle.toLowerCase()}`;
-      label.dataset.display = 'inline-flex';
-      label.dataset.tradeLifecycle = lifecycle.toLowerCase();
-      label.setAttribute('aria-label', badgeText);
-      label.title = badgeText;
-      label.style.cssText = `position:absolute;display:none;align-items:stretch;height:24px;padding:0;background:${background};border:1px solid ${palette.border};color:${palette.text};font-size:11px;font-family:${CHART_AXIS_FONT_FAMILY};font-variant-numeric:tabular-nums;font-weight:650;white-space:nowrap;z-index:17;pointer-events:none;border-radius:4px;line-height:22px;overflow:hidden;box-sizing:border-box;transform:translateY(-50%);letter-spacing:0.01em;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;${palette.shadow}`;
+      const hoverTarget = document.createElement('div');
+      hoverTarget.className = `rtx-trade-marker-hover-target rtx-trade-marker-hover-target--${lifecycle}`;
+      hoverTarget.dataset.tradeLifecycle = lifecycle;
+      hoverTarget.dataset.hoverPrice = title;
+      hoverTarget.dataset.hoverTime = timeLabel;
+      hoverTarget.dataset.positionSide = historyPositionSide;
+      hoverTarget.setAttribute('role', 'img');
+      hoverTarget.setAttribute('aria-label', accessibleLabel);
+      hoverTarget.tabIndex = 0;
+      hoverTarget.style.cssText = 'position:absolute;display:none;width:32px;height:36px;z-index:22;pointer-events:auto;cursor:help;background:transparent;';
 
-      const sideChip = document.createElement('span');
-      sideChip.className = 'rtx-trade-history-label__side';
-      sideChip.textContent = positionSide;
-      sideChip.style.cssText = `display:inline-flex;align-items:center;flex:0 0 auto;padding:0 6px;background:${palette.border};color:#fff;font-weight:800;letter-spacing:0.035em;`;
+      const tooltip = document.createElement('span');
+      tooltip.className = 'rtx-trade-marker__price-tooltip';
+      const verticalPosition = side === 'BUY'
+        ? 'bottom:calc(100% + 7px);'
+        : 'top:calc(100% + 7px);';
+      const tooltipBackground = lightSurface ? '#ffffff' : '#111827';
+      const tooltipText = lightSurface ? '#111827' : '#f8fafc';
+      tooltip.style.cssText = `position:absolute;left:50%;${verticalPosition}display:block;min-width:148px;padding:0;border:1px solid ${palette.border};border-radius:6px;background:${tooltipBackground};color:${tooltipText};font-size:11px;font-family:${CHART_AXIS_FONT_FAMILY};font-variant-numeric:tabular-nums;line-height:16px;white-space:nowrap;pointer-events:none;opacity:0;visibility:hidden;transform:translateX(-50%);transition:opacity 90ms ease;box-shadow:0 6px 18px rgba(0,0,0,0.38);overflow:hidden;`;
 
-      const lifecycleChip = document.createElement('span');
-      lifecycleChip.className = 'rtx-trade-history-label__lifecycle';
-      lifecycleChip.textContent = lifecycle;
-      lifecycleChip.style.cssText = `display:inline-flex;align-items:center;flex:0 0 auto;padding:0 6px;border-right:1px solid ${palette.border};font-size:10px;font-weight:800;letter-spacing:0.07em;`;
+      const tooltipHeader = document.createElement('span');
+      tooltipHeader.className = 'rtx-trade-marker__tooltip-header';
+      tooltipHeader.textContent = `${historyPositionSide} ${lifecycleLabel}`;
+      tooltipHeader.style.cssText = `display:block;padding:3px 8px;border-bottom:1px solid ${colorWithAlpha(palette.border, 0.5, palette.border)};background:${palette.background};color:${palette.text};font-size:10px;font-weight:800;letter-spacing:0.075em;`;
 
-      const details = document.createElement('span');
-      details.className = 'rtx-trade-history-label__details';
-      details.textContent = [ticketLabel, price.toFixed(digits), timeLabel].filter(Boolean).join(' · ');
-      details.style.cssText = 'display:block;min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;padding:0 7px;font-weight:650;';
+      const tooltipDetails = document.createElement('span');
+      tooltipDetails.className = 'rtx-trade-marker__tooltip-details';
+      tooltipDetails.style.cssText = 'display:grid;grid-template-columns:auto 1fr;column-gap:10px;row-gap:1px;padding:4px 8px 5px;';
+      const detailLabelColor = lightSurface ? '#667085' : '#98a2b3';
+      const appendTooltipDetail = (labelText: string, valueText: string) => {
+        const label = document.createElement('span');
+        label.textContent = labelText;
+        label.style.cssText = `color:${detailLabelColor};font-weight:600;`;
+        const value = document.createElement('span');
+        value.textContent = valueText;
+        value.style.cssText = `color:${tooltipText};font-weight:750;text-align:right;`;
+        tooltipDetails.append(label, value);
+      };
+      appendTooltipDetail('Price', title);
+      appendTooltipDetail('Time', timeLabel);
+      tooltip.append(tooltipHeader, tooltipDetails);
 
-      label.append(sideChip, lifecycleChip, details);
-      appendOverlayNode(label, { kind: 'label', price, time, labelOffsetX: 14, labelOffsetY: 0 }, layer);
+      const setPriceTooltipVisible = (visible: boolean) => {
+        tooltip.style.opacity = visible ? '1' : '0';
+        tooltip.style.visibility = visible ? 'visible' : 'hidden';
+      };
+      hoverTarget.addEventListener('pointerenter', () => setPriceTooltipVisible(true));
+      hoverTarget.addEventListener('pointerleave', () => setPriceTooltipVisible(false));
+      hoverTarget.addEventListener('focus', () => setPriceTooltipVisible(true));
+      hoverTarget.addEventListener('blur', () => setPriceTooltipVisible(false));
+      hoverTarget.appendChild(tooltip);
+      appendHistoryInteractionNode(
+        hoverTarget,
+        { kind: 'marker', price, time, markerSide: side, resolveTime },
+      );
     };
 
     const createTradeSegment = (price: number, time: number, color: string, lineStyle: 'solid' | 'dashed', layer: TradeOverlayLayer, endPrice?: number, endTime?: number, resolveEndPrice?: () => number | null, resolveEndTime?: () => number | null, opacity = 1) => {
       const line = document.createElement('div');
       line.className = layer === 'history' ? 'rtx-trade-history-line' : 'rtx-trade-active-segment';
-      const thickness = lineStyle === 'solid' ? 2 : 1;
+      const isHistoryLine = layer === 'history';
+      const thickness = isHistoryLine ? 2 : lineStyle === 'solid' ? 2 : 1;
+      const safeOpacity = clampAlpha(opacity);
+      const historyVisualOpacity = safeOpacity > 0 ? 0.78 + safeOpacity * 0.22 : 0;
       const background = lineStyle === 'solid'
         ? color
         : `repeating-linear-gradient(to right, ${color} 0 6px, transparent 6px 10px)`;
-      line.style.cssText = `position:absolute;display:none;height:${thickness}px;background:${background};border:0;border-radius:999px;z-index:${lineStyle === 'solid' ? 13 : 9};pointer-events:none;opacity:${opacity};transform-origin:0 50%;will-change:transform,width;`;
+      const renderedOpacity = isHistoryLine ? historyVisualOpacity : safeOpacity;
+      const segmentZIndex = isHistoryLine ? 17 : lineStyle === 'solid' ? 13 : 9;
+      line.style.cssText = `position:absolute;display:none;height:${thickness}px;background:${background};border:0;border-radius:999px;z-index:${segmentZIndex};pointer-events:none;opacity:${renderedOpacity};transform-origin:0 50%;will-change:transform,width;`;
       appendOverlayNode(line, { kind: 'segment', price, time, endPrice, endTime, resolveEndPrice, resolveEndTime }, layer);
     };
 
@@ -7096,31 +7488,21 @@ export const TradingChart = React.memo(function TradingChart({
         || useChartSettingsStore.getState().globalProperties;
       const showTradeLevels = chartProperties.showTradeLevels !== false;
       const showTradeHistory = chartProperties.showTradeHistory !== false;
-      const showTradeHistoryBoxes = chartProperties.showTradeHistoryBoxes !== false;
       const showTradeHistoryArrows = chartProperties.showTradeHistoryArrows !== false;
-      const showAnyTradeHistoryOverlay = showTradeHistory || showTradeHistoryBoxes || showTradeHistoryArrows;
+      const showAnyTradeHistoryOverlay = showTradeHistory || showTradeHistoryArrows;
       const tradeHistoryLineOpacityPercent = clampChartOpacityPercent(
         chartProperties.tradeHistoryLineOpacity,
         defaultChartProperties.tradeHistoryLineOpacity,
       );
-      const tradeHistoryBoxOpacityPercent = clampChartOpacityPercent(
-        chartProperties.tradeHistoryBoxOpacity,
-        defaultChartProperties.tradeHistoryBoxOpacity,
-      );
       const tradeHistoryLineOpacity = tradeHistoryLineOpacityPercent / 100;
-      const tradeHistoryBoxOpacity = tradeHistoryBoxOpacityPercent / 100;
       const appState = useAppStore.getState();
       const appPositions = Array.isArray(appState.positions) ? appState.positions : [];
       const appTrades = Array.isArray(appState.trades) ? appState.trades : [];
       const liveTrailTime = getLiveTrailTime();
       const isMatchingTradeSymbol = (rawSymbol: unknown) => {
-        const positionSymbol = String(rawSymbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        const positionSymbol = String(rawSymbol || '').trim().toUpperCase();
         if (!positionSymbol) return false;
-        return (
-          positionSymbol === normalizedChartSymbol
-          || positionSymbol.startsWith(normalizedChartSymbol)
-          || normalizedChartSymbol.startsWith(positionSymbol)
-        );
+        return positionSymbol === normalizedChartSymbol;
       };
       const getPositionId = (position: any): number | string | null => {
         const rawId = position?.id ?? position?.ticket ?? position?.positionId ?? position?.position_id;
@@ -7203,13 +7585,10 @@ export const TradingChart = React.memo(function TradingChart({
       }));
 
       const matchingPositions = normalizedAppPositions.filter((position) => {
-        const positionSymbol = String(position.symbol || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        const positionSymbol = String(position.symbol || '').trim().toUpperCase();
         if (!position.id || !positionSymbol) return false;
-        return Number(position.volume) > 0 && (
-          positionSymbol === normalizedChartSymbol
-          || positionSymbol.startsWith(normalizedChartSymbol)
-          || normalizedChartSymbol.startsWith(positionSymbol)
-        );
+        // FIX: Never render or manage a different suffix contract's position.
+        return Number(position.volume) > 0 && positionSymbol === normalizedChartSymbol;
       });
 
       const nextActiveSnapshots = new Map<string, ActiveTradeSnapshot>();
@@ -7266,6 +7645,7 @@ export const TradingChart = React.memo(function TradingChart({
           volume: position.volume,
           entryPrice,
           entryTime,
+          entryExecutionTime: rawEntryTime ?? entryTime,
           currentPrice: getLiveTrailPrice(position.side, position.currentPrice || entryPrice) ?? entryPrice,
           currentTime: liveTrailTime ?? entryTime,
           sl: position.sl,
@@ -7418,6 +7798,12 @@ export const TradingChart = React.memo(function TradingChart({
               optimisticClosedTradeSnapshotsRef.current.delete(trade.key);
               forgetTradeOverlayOptimisticClosedSnapshot(trade.key);
             }
+          } else if (existingTrade) {
+            registerClosedTrade({
+              ...existingTrade,
+              entryExecutionTime: trade.entryExecutionTime,
+              exitExecutionTime: trade.exitExecutionTime,
+            });
           }
         });
       }
@@ -7449,6 +7835,8 @@ export const TradingChart = React.memo(function TradingChart({
             trade.volume,
             trade.entryTime,
             trade.exitTime,
+            trade.entryExecutionTime,
+            trade.exitExecutionTime,
             formatSignaturePrice(trade.entryPrice),
             formatSignaturePrice(trade.exitPrice),
             trade.source,
@@ -7461,6 +7849,7 @@ export const TradingChart = React.memo(function TradingChart({
       const nextActiveSignature = [
         normalizedChartSymbol,
         timeframe,
+        TRADE_HISTORY_PRESENTATION_VERSION,
         showTradeLevels ? 'levels:on' : 'levels:off',
         sharedTradeSignature,
         activeSignature,
@@ -7468,11 +7857,10 @@ export const TradingChart = React.memo(function TradingChart({
       const nextHistorySignature = [
         normalizedChartSymbol,
         timeframe,
+        TRADE_HISTORY_PRESENTATION_VERSION,
         showTradeHistory ? 'history-lines:on' : 'history-lines:off',
-        showTradeHistoryBoxes ? 'boxes:on' : 'boxes:off',
         showTradeHistoryArrows ? 'arrows:on' : 'arrows:off',
         `line-opacity:${tradeHistoryLineOpacityPercent}`,
-        `box-opacity:${tradeHistoryBoxOpacityPercent}`,
         closedSignature,
       ].join('\n');
 
@@ -7632,39 +8020,18 @@ export const TradingChart = React.memo(function TradingChart({
 
         if (showAnyTradeHistoryOverlay) {
           closedTrades.forEach((trade) => {
-            const entryColor = getEntryColor(trade.side);
+            const entryColor = getHistoryEntryColor(trade.side);
             const exitSide = getTradeHistoryExecutionSide(trade.side, 'CLOSE');
-            const ticketLabel = getTradeTicketLabel(trade.key);
             if (showTradeHistory) {
               createTradeSegment(trade.entryPrice, trade.entryTime, deriveClosedTradeColor(trade), 'solid', 'history', trade.exitPrice, trade.exitTime, undefined, undefined, tradeHistoryLineOpacity);
             }
             if (showTradeHistoryArrows) {
-              const entryLabel = buildTradeHistoryBadgeText({
-                positionSide: trade.side,
-                lifecycle: 'OPEN',
-                ticketLabel,
-                price: trade.entryPrice,
-                digits,
-                time: trade.entryTime,
-              });
-              createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, entryLabel, entryColor, 'history', 1, undefined, 'open');
-            }
-            if (showTradeHistoryBoxes) {
-              createTradeHistoryLabel(trade.side, trade.side, 'OPEN', trade.entryPrice, trade.entryTime, 'history', tradeHistoryBoxOpacity, ticketLabel);
+              const entryPriceLabel = formatTradeLevelBadgePrice(trade.entryPrice);
+              createTradeMarker(trade.side, trade.entryPrice, trade.entryTime, entryPriceLabel, entryColor, 'history', 1, undefined, 'open', trade.side, trade.entryExecutionTime);
             }
             if (showTradeHistoryArrows) {
-              const closeLabel = buildTradeHistoryBadgeText({
-                positionSide: trade.side,
-                lifecycle: 'CLOSE',
-                ticketLabel,
-                price: trade.exitPrice,
-                digits,
-                time: trade.exitTime,
-              });
-              createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, `${closeLabel} (${exitSide} execution)`, getExitColor(trade.side), 'history', 1, undefined, 'close');
-            }
-            if (showTradeHistoryBoxes) {
-              createTradeHistoryLabel(trade.side, exitSide, 'CLOSE', trade.exitPrice, trade.exitTime, 'history', tradeHistoryBoxOpacity, ticketLabel);
+              const closePriceLabel = formatTradeLevelBadgePrice(trade.exitPrice);
+              createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, getHistoryExitColor(trade.side), 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime);
             }
           });
         }
@@ -7709,10 +8076,8 @@ export const TradingChart = React.memo(function TradingChart({
       if (
         currentProperties.showTradeLevels !== previousProperties.showTradeLevels
         || currentProperties.showTradeHistory !== previousProperties.showTradeHistory
-        || currentProperties.showTradeHistoryBoxes !== previousProperties.showTradeHistoryBoxes
         || currentProperties.showTradeHistoryArrows !== previousProperties.showTradeHistoryArrows
         || currentProperties.tradeHistoryLineOpacity !== previousProperties.tradeHistoryLineOpacity
-        || currentProperties.tradeHistoryBoxOpacity !== previousProperties.tradeHistoryBoxOpacity
       ) {
         renderTradeOverlay(true);
       }
@@ -7810,7 +8175,7 @@ export const TradingChart = React.memo(function TradingChart({
       try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(timeScaleHandler); } catch { }
       clearTradeOverlayVisualRuntime();
     };
-  }, [brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, updateLabelPositions]);
+  }, [brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, TRADE_HISTORY_PRESENTATION_VERSION, updateLabelPositions]);
 
   useEffect(() => {
     if (candlesLoadedRev <= 0) return;
@@ -8091,10 +8456,11 @@ export const TradingChart = React.memo(function TradingChart({
         ...appPositions.filter((p: any) => !allIds.has(p.id)),
       ];
 
-      const normalizedChartSymbol = symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      // FIX: Legacy overlay rendering follows exact broker identity as well.
+      const normalizedChartSymbol = symbol.trim().toUpperCase();
       const myPositions = positions.filter(p => {
-        const posSymbol = (p.symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-        const matchesSymbol = posSymbol === normalizedChartSymbol || posSymbol.startsWith(normalizedChartSymbol) || normalizedChartSymbol.startsWith(posSymbol);
+        const posSymbol = String(p.symbol || '').trim().toUpperCase();
+        const matchesSymbol = posSymbol === normalizedChartSymbol;
         const vol = Number(p.volume);
         return matchesSymbol && !isNaN(vol) && vol > 0;
       });
@@ -8181,7 +8547,7 @@ export const TradingChart = React.memo(function TradingChart({
       const mt5HistoryDeals = Array.isArray(mt5State.history) ? mt5State.history : [];
       const historyByPosition = new Map<number, typeof mt5HistoryDeals>();
 
-      mt5HistoryDeals.filter(d => (d.symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedChartSymbol).forEach(d => {
+      mt5HistoryDeals.filter(d => String(d.symbol || '').trim().toUpperCase() === normalizedChartSymbol).forEach(d => {
         const pid = (d as any).position || (d as any).position_id;
         if (pid) {
           if (!historyByPosition.has(pid)) historyByPosition.set(pid, []);
@@ -8211,7 +8577,7 @@ export const TradingChart = React.memo(function TradingChart({
       });
 
       const appTrades = Array.isArray(state.trades) ? state.trades : [];
-      appTrades.filter((t: any) => (t.symbol || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalizedChartSymbol).forEach((t: any) => {
+      appTrades.filter((t: any) => String(t.symbol || '').trim().toUpperCase() === normalizedChartSymbol).forEach((t: any) => {
         if (t.closeTime && t.closePrice) {
           const entryTs = typeof t.openTime === 'string' ? Math.floor(new Date(t.openTime).getTime() / 1000) : t.openTime;
           const exitTs = typeof t.closeTime === 'string' ? Math.floor(new Date(t.closeTime).getTime() / 1000) : t.closeTime;
@@ -8307,6 +8673,7 @@ export const TradingChart = React.memo(function TradingChart({
   // ── Context menu handlers ──────────────────────────────────────────────────
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); // Block the browser's native right-click menu
+    activateActiveChartSource(activeChartSourceId);
 
     // If the right-click originated from a drawing SVG hit element, let the
     // DrawingContextMenu handle it — don't show the chart menu on top.
@@ -8320,7 +8687,7 @@ export const TradingChart = React.memo(function TradingChart({
     }
 
     setCtxMenu({ visible: true, x: e.clientX, y: e.clientY });
-  }, []);
+  }, [activeChartSourceId]);
 
   const closeCtxMenu = useCallback(() => {
     setCtxMenu(prev => ({ ...prev, visible: false }));
@@ -8328,25 +8695,28 @@ export const TradingChart = React.memo(function TradingChart({
 
   const handleCtxChartTypeChange = useCallback((type: ChartType) => {
     setLocalChartType(type);
-    commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: type } });
-  }, []);
+    commandBus.dispatch({
+      type: 'SET_CHART_TYPE',
+      payload: { chartType: type, targetContextId: activeChartSourceId },
+    });
+  }, [activeChartSourceId]);
 
   const handleCtxTimeframeChange = useCallback((tf: Timeframe) => {
-    commandBus.dispatch({ type: 'SET_TIMEFRAME' as any, payload: { timeframe: tf } });
-    window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: tf } }));
-  }, []);
+    commandBus.dispatch({
+      type: 'SET_TIMEFRAME' as any,
+      payload: { timeframe: tf, targetContextId: activeChartSourceId, panelId },
+    });
+  }, [activeChartSourceId, panelId]);
 
   const handleCtxToggleGrid = useCallback(() => {
-    const currentGrid = useChartSettingsStore.getState().globalProperties.showGrid;
-    useChartSettingsStore.getState().updateGlobalProperty('showGrid', !currentGrid);
-  }, []);
+    const next = !chartSettingsRef.current.showGrid;
+    useChartSettingsStore.getState().updateSymbolProperty(symbol, 'showGrid', next);
+  }, [symbol]);
 
   const handleCtxToggleVolumes = useCallback(() => {
     const store = useChartSettingsStore.getState();
     const currentProperties = store.symbolProperties[symbol] || store.globalProperties;
     const next = !(currentProperties.showTickVolumes || currentProperties.showRealVolumes);
-    store.updateGlobalProperty('showTickVolumes', next);
-    store.updateGlobalProperty('showRealVolumes', false);
     store.updateSymbolProperty(symbol, 'showTickVolumes', next);
     store.updateSymbolProperty(symbol, 'showRealVolumes', false);
   }, [symbol]);
@@ -8354,35 +8724,40 @@ export const TradingChart = React.memo(function TradingChart({
   const handleCtxToggleAutoScroll = useCallback(() => {
     setCtxAutoScroll(prev => {
       const next = !prev;
-      useChartSettingsStore.getState().updateGlobalProperty('chartAutoScroll', next);
-      commandBus.dispatch({ type: 'SET_AUTO_SCROLL' as any, payload: { enabled: next } });
+      useChartSettingsStore.getState().updateSymbolProperty(symbol, 'chartAutoScroll', next);
+      commandBus.dispatch({
+        type: 'SET_AUTO_SCROLL',
+        payload: { enabled: next, targetContextId: activeChartSourceId },
+      });
       return next;
     });
-  }, []);
+  }, [activeChartSourceId, symbol]);
 
   const handleCtxToggleChartShift = useCallback(() => {
     setCtxChartShift(prev => {
       const next = !prev;
-      useChartSettingsStore.getState().updateGlobalProperty('chartShift', next);
-      commandBus.dispatch({ type: 'SET_CHART_SHIFT' as any, payload: { enabled: next } });
+      useChartSettingsStore.getState().updateSymbolProperty(symbol, 'chartShift', next);
+      commandBus.dispatch({
+        type: 'SET_CHART_SHIFT',
+        payload: { enabled: next, targetContextId: activeChartSourceId },
+      });
       return next;
     });
-  }, []);
+  }, [activeChartSourceId, symbol]);
 
   const handleCtxToggleTradeLevels = useCallback(() => {
     setCtxShowTradeLevels(prev => {
       const next = !prev;
-      useChartSettingsStore.getState().updateGlobalProperty('showTradeLevels', next);
+      useChartSettingsStore.getState().updateSymbolProperty(symbol, 'showTradeLevels', next);
       window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
       return next;
     });
-  }, []);
+  }, [symbol]);
 
   const handleCtxToggleTradeHistory = useCallback(() => {
     setCtxShowTradeHistory(prev => {
       const next = !prev;
       const store = useChartSettingsStore.getState();
-      store.updateGlobalProperty('showTradeHistory', next);
       store.updateSymbolProperty(symbol, 'showTradeHistory', next);
       window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
       return next;
@@ -8390,16 +8765,14 @@ export const TradingChart = React.memo(function TradingChart({
   }, [symbol]);
 
   const handleCtxZoomIn = useCallback(() => {
-    commandBus.dispatch({ type: 'ZOOM_IN', payload: {} });
-  }, []);
+    commandBus.dispatch({ type: 'ZOOM_IN', payload: { targetContextId: activeChartSourceId } });
+  }, [activeChartSourceId]);
 
   const handleCtxZoomOut = useCallback(() => {
-    commandBus.dispatch({ type: 'ZOOM_OUT', payload: {} });
-  }, []);
+    commandBus.dispatch({ type: 'ZOOM_OUT', payload: { targetContextId: activeChartSourceId } });
+  }, [activeChartSourceId]);
 
-  const handleCtxDeleteIndicators = () => {
-    indicatorManager.clearAll();
-  };
+  const handleCtxDeleteIndicators = clearLocalIndicators;
 
   const handleOpenTemplateDialog = (mode: 'save' | 'load') => {
     setTemplateDialogMode(mode);
@@ -8411,16 +8784,36 @@ export const TradingChart = React.memo(function TradingChart({
     setLocalChartType(template.chartType as ChartType);
     commandBus.dispatch({
       type: 'SET_CHART_TYPE',
-      payload: { chartType: template.chartType as ChartType },
+      payload: { chartType: template.chartType as ChartType, targetContextId: activeChartSourceId },
+    });
+    commandBus.dispatch({
+      type: 'SET_TIMEFRAME' as any,
+      payload: { timeframe: template.timeframe, targetContextId: activeChartSourceId, panelId },
     });
 
+    const settingsStore = useChartSettingsStore.getState();
+    settingsStore.updateSymbolProperty(symbol, 'showGrid', template.showGrid);
+    settingsStore.updateSymbolProperty(symbol, 'showTickVolumes', template.showVolumes);
+    settingsStore.updateSymbolProperty(symbol, 'showRealVolumes', false);
+
+    localIndicatorManager.clearAll();
+    for (const indicator of template.indicators) {
+      addLocalIndicator({
+        id: indicator.id,
+        name: indicator.name,
+        indicatorType: indicator.type,
+        params: indicator.parameters,
+      });
+    }
+    refreshCurrentIndicators();
+    persistCurrentIndicators();
+
     squareGridPrimitiveRef.current?.applyOptions({
-      visible: chartSettings.showGrid,
+      visible: template.showGrid,
       cellSizeCssPx: SQUARE_CHART_GRID_CELL_SIZE_PX,
       verticalColor: chartTheme.gridVertical,
       horizontalColor: chartTheme.gridHorizontal,
     });
-    // You might need more logic here to apply indicators/drawings
     console.log('[TradingChart] Loading template:', template);
     setTemplateDialogOpen(false);
   };
@@ -8442,8 +8835,14 @@ export const TradingChart = React.memo(function TradingChart({
   }, []);
 
   const handleCtxOpenProperties = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('openChartProperties', { detail: { symbol, timeframe: activeTimeframe } }));
-  }, [activeTimeframe, symbol]);
+    window.dispatchEvent(new CustomEvent('openChartProperties', {
+      detail: {
+        symbol,
+        timeframe: activeTimeframe,
+        targetContextId: activeChartSourceId,
+      },
+    }));
+  }, [activeChartSourceId, activeTimeframe, symbol]);
 
   // ── Drag to Spawn MT5 Trade Levels ──
   useEffect(() => {
@@ -9202,7 +9601,7 @@ export const TradingChart = React.memo(function TradingChart({
       {/* Loading — phased status: connecting → receiving → fades out on ready */}
       {loadingPhase !== 'hidden' && (
         <div
-          className={`absolute inset-0 flex flex-col items-center justify-center bg-[#0a0a0f]/95 z-20 pointer-events-none transition-opacity duration-300 ${loadingPhase === 'ready' ? 'opacity-0' : 'opacity-100'}`}
+          className={`absolute inset-0 flex flex-col items-center justify-center bg-[#0a0a0f]/95 z-20 pointer-events-none transition-opacity duration-150 ${loadingPhase === 'ready' ? 'opacity-0' : 'opacity-100'}`}
         >
           <div className="flex items-end gap-1 mb-5 opacity-30" aria-hidden="true">
             {Array.from({ length: 14 }).map((_, i) => (
@@ -9232,69 +9631,85 @@ export const TradingChart = React.memo(function TradingChart({
       {/* Premium MT5 HTML HUD — dark mode keeps original styling;
           advanced/untitled-light mode gets sans font, semibold/bold mix,
           theme-purple symbol with traditional H/L colors highlighted in soft pills. */}
-      {isAdvancedUntitledLight ? (
+      {(chartSettings.showTicker || chartSettings.showOHLC) && (isAdvancedUntitledLight ? (
         <div className="rtx-chart-hud" style={{
           position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
           fontFamily: 'var(--font-sans)', fontSize: '14px', fontWeight: 400, lineHeight: '16px', letterSpacing: 'normal',
           display: 'flex', alignItems: 'center', gap: '8px'
         }}>
-          <span style={{
-            fontWeight: 400, color: '#7f56d9',
-            background: 'rgba(127, 86, 217, 0.10)',
-            padding: '2px 8px', borderRadius: '4px',
-          }}>{symbol}, {timeframe}</span>
-          <span style={{ fontWeight: 400, color: '#475467' }}>
-            O: <span ref={ohlcOpenRef} style={{
-              fontWeight: 400, color: '#1d2939',
-              background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
-            }}>0.00000</span>
-          </span>
-          <span style={{ fontWeight: 400, color: '#475467' }}>
-            H: <span ref={ohlcHighRef} style={{
-              fontWeight: 400, color: '#16a34a',
-              background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
-            }}>0.00000</span>
-          </span>
-          <span style={{ fontWeight: 400, color: '#475467' }}>
-            L: <span ref={ohlcLowRef} style={{
-              fontWeight: 400, color: '#dc2626',
-              background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
-            }}>0.00000</span>
-          </span>
-          <span style={{ fontWeight: 400, color: '#475467' }}>
-            C: <span ref={ohlcCloseRef} style={{
-              fontWeight: 400, color: '#1d2939',
-              background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
-            }}>0.00000</span>
-          </span>
-          <span style={{ fontWeight: 400, color: '#475467' }}>
-            V: <span ref={ohlcVolumeRef} style={{
-              fontWeight: 400, color: '#1d2939',
-              background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
-            }}>0</span>
-          </span>
+          {chartSettings.showTicker && (
+            <span style={{
+              fontWeight: 400, color: '#7f56d9',
+              background: 'rgba(127, 86, 217, 0.10)',
+              padding: '2px 8px', borderRadius: '4px',
+            }}>{symbol}, {timeframe}</span>
+          )}
+          {chartSettings.showOHLC && (
+            <>
+              <span style={{ fontWeight: 400, color: '#475467' }}>
+                O: <span ref={ohlcOpenRef} style={{
+                  fontWeight: 400, color: '#1d2939',
+                  background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
+                }}>0.00000</span>
+              </span>
+              <span style={{ fontWeight: 400, color: '#475467' }}>
+                H: <span ref={ohlcHighRef} style={{
+                  fontWeight: 400, color: '#16a34a',
+                  background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
+                }}>0.00000</span>
+              </span>
+              <span style={{ fontWeight: 400, color: '#475467' }}>
+                L: <span ref={ohlcLowRef} style={{
+                  fontWeight: 400, color: '#dc2626',
+                  background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
+                }}>0.00000</span>
+              </span>
+              <span style={{ fontWeight: 400, color: '#475467' }}>
+                C: <span ref={ohlcCloseRef} style={{
+                  fontWeight: 400, color: '#1d2939',
+                  background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
+                }}>0.00000</span>
+              </span>
+              <span style={{ fontWeight: 400, color: '#475467' }}>
+                V: <span ref={ohlcVolumeRef} style={{
+                  fontWeight: 400, color: '#1d2939',
+                  background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
+                }}>0</span>
+              </span>
+            </>
+          )}
         </div>
       ) : (
         <div className="rtx-chart-hud" style={{
           position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
-          fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 400, lineHeight: '16px', color: '#A1A1AA',
+          fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 400, lineHeight: '16px', color: chartTheme.axisText,
           textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px'
         }}>
-          <span style={{ fontWeight: 400, color: '#E4E4E7' }}>{symbol}, {timeframe}</span>
-          <span>O: <span ref={ohlcOpenRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
-          <span>H: <span ref={ohlcHighRef} style={{ color: '#22C55E' }}>0.00000</span></span>
-          <span>L: <span ref={ohlcLowRef} style={{ color: '#EF4444' }}>0.00000</span></span>
-          <span>C: <span ref={ohlcCloseRef} style={{ color: '#E4E4E7' }}>0.00000</span></span>
-          <span>V: <span ref={ohlcVolumeRef} style={{ color: '#E4E4E7' }}>0</span></span>
+          {chartSettings.showTicker && (
+            <span style={{ fontWeight: 500, color: chartTheme.text }}>{symbol}, {timeframe}</span>
+          )}
+          {chartSettings.showOHLC && (
+            <>
+              <span>O: <span ref={ohlcOpenRef} style={{ color: chartTheme.text }}>0.00000</span></span>
+              <span>H: <span ref={ohlcHighRef} style={{ color: chartTheme.candleUp }}>0.00000</span></span>
+              <span>L: <span ref={ohlcLowRef} style={{ color: chartTheme.candleDown }}>0.00000</span></span>
+              <span>C: <span ref={ohlcCloseRef} style={{ color: chartTheme.text }}>0.00000</span></span>
+              <span>V: <span ref={ohlcVolumeRef} style={{ color: chartTheme.text }}>0</span></span>
+            </>
+          )}
         </div>
-      )}
+      ))}
 
       {/*
         Chart Container - must have explicit dimensions for lightweight-charts.
         Its native grid is painted below candles/series; never add a DOM grid
         layer beside this container because that would cover chart data.
       */}
-      <div ref={containerRef} className="absolute inset-0 w-full h-full" />
+      <div
+        ref={containerRef}
+        className="absolute inset-0 w-full h-full"
+        style={{ zIndex: chartSettings.chartOnForeground ? 11 : 0 }}
+      />
 
       {/* Drawing Overlay — always pointer-events:none so chart canvas receives all mouse events */}
       <div
@@ -9304,7 +9719,7 @@ export const TradingChart = React.memo(function TradingChart({
           position: 'absolute',
           inset: 0,
           pointerEvents: 'none',
-          zIndex: 10,
+          zIndex: chartSettings.chartOnForeground ? 5 : 10,
         }}
       />
 
@@ -9366,10 +9781,10 @@ export const TradingChart = React.memo(function TradingChart({
           left: 0,
           right: LIVE_PRICE_SCALE_WIDTH_FALLBACK_PX,
           height: 0,
-          borderTop: `1px solid ${initialLivePriceOverlayColors.lineColor}`,
+          borderTop: `0.5px solid ${initialLivePriceOverlayColors.lineColor}`,
           pointerEvents: 'none',
           zIndex: 7,
-          transform: 'translateY(-0.5px)',
+          transform: 'translateY(-0.25px)',
         }}
       />
       <div
@@ -9378,17 +9793,17 @@ export const TradingChart = React.memo(function TradingChart({
           position: 'absolute',
           top: -9999,
           right: 0,
-          padding: '0 4px',
+          padding: '2px 6px 4px',
           background: initialLivePriceOverlayColors.badgeBackground,
           color: initialLivePriceOverlayColors.badgeTextColor,
-          fontFamily: "Consolas, 'Courier New', monospace",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
           whiteSpace: 'nowrap',
           pointerEvents: 'none',
           zIndex: 9,
           borderRadius: 2,
           transform: `translateY(-${LIVE_PRICE_BADGE_PRICE_ROW_OFFSET_PX}px)`,
-          letterSpacing: '0.01em',
-          textAlign: 'left',
+          letterSpacing: 0,
+          textAlign: 'center',
           boxSizing: 'border-box',
         }}
       >
@@ -9397,8 +9812,9 @@ export const TradingChart = React.memo(function TradingChart({
           style={{
             display: 'block',
             fontSize: 11,
-            fontWeight: 700,
+            fontWeight: 600,
             lineHeight: '16px',
+            fontVariantNumeric: 'tabular-nums',
           }}
         />
         <span
@@ -9407,10 +9823,12 @@ export const TradingChart = React.memo(function TradingChart({
           aria-hidden="true"
           style={{
             display: 'none',
-            fontSize: 10,
+            fontSize: 11,
             fontWeight: 600,
             lineHeight: '14px',
-            opacity: 0.95,
+            letterSpacing: '0.04em',
+            fontVariantNumeric: 'tabular-nums',
+            opacity: 1,
           }}
         />
       </div>
@@ -9425,6 +9843,9 @@ export const TradingChart = React.memo(function TradingChart({
         visible={showOneClick}
         tradeAllowed={tradeAllowed}
         marketStatus={marketStatus}
+        minVolume={minVolume}
+        maxVolume={maxVolume}
+        volumeStep={volumeStep}
       />
 
 
@@ -9435,6 +9856,7 @@ export const TradingChart = React.memo(function TradingChart({
         x={ctxMenu.x}
         y={ctxMenu.y}
         symbol={symbol}
+        targetContextId={activeChartSourceId}
         currentChartType={localChartType}
         currentTimeframe={prevTimeframeRef.current || timeframe}
         oneClickTrading={showOneClick}
@@ -9446,7 +9868,7 @@ export const TradingChart = React.memo(function TradingChart({
         showTradeHistory={ctxShowTradeHistory}
         onChangeChartType={handleCtxChartTypeChange}
         onChangeTimeframe={handleCtxTimeframeChange}
-        onToggleOneClickTrading={() => setShowOneClick(prev => !prev)}
+        onToggleOneClickTrading={toggleOneClickTrading}
         onToggleGrid={handleCtxToggleGrid}
         onToggleVolumes={handleCtxToggleVolumes}
         onToggleAutoScroll={handleCtxToggleAutoScroll}
@@ -9459,12 +9881,13 @@ export const TradingChart = React.memo(function TradingChart({
         onRefresh={handleCtxRefresh}
         onZoomIn={handleCtxZoomIn}
         onZoomOut={handleCtxZoomOut}
+        onAddIndicator={addLocalIndicator}
         onDeleteIndicators={handleCtxDeleteIndicators}
         onOpenNewOrder={handleCtxOpenNewOrder}
         onOpenDOM={handleCtxOpenDOM}
         onOpenTemplateDialog={handleOpenTemplateDialog}
         onClose={closeCtxMenu}
-        currentIndicators={[]}
+        currentIndicators={currentIndicators}
         currentDrawingTools={[]}
       />
 
@@ -9478,7 +9901,7 @@ export const TradingChart = React.memo(function TradingChart({
           timeframe: timeframe,
           showGrid: chartSettings.showGrid,
           showVolumes: chartSettings.showTickVolumes || chartSettings.showRealVolumes,
-          indicators: [], // Should be real indicators
+          indicators: currentIndicators,
           drawingTools: [],
           colors: { background: '#0e0e12', grid: '#222226', candle: { up: '#00c896', down: '#ff4d4f', border: '#378658' }, volume: { up: '#00c896', down: '#ff4d4f' } }
         }}

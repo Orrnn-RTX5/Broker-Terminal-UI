@@ -18,6 +18,11 @@ import { alignTimeframeBoundarySeconds } from '../utils/timeframeBoundary';
 import { decodeJwtPayload } from '../utils/jwt';
 import { candleCache } from './candleCache';
 import {
+  getChartPriceFromQuote,
+  isStructurallyValidPriceCandle,
+  repairPriceCandle,
+} from './chartPriceGuards';
+import {
   CANDLE_TIMEFRAME_SECONDS,
   normalizeBackendCandleTimeframe,
   normalizeBackendCandleTimeframeOrNull,
@@ -25,6 +30,11 @@ import {
   type BackendCandleTimeframe,
   type CandleApiQueryParams,
 } from '../utils/candleApi';
+import {
+  asUnknownRecord,
+  normalizeBrokerTimestampSeconds,
+  readCandleFinality,
+} from '../utils/brokerStreamSemantics';
 
 export type OHLCData = {
   time: number;
@@ -35,6 +45,7 @@ export type OHLCData = {
   volume: number;
   tickVolume?: number;
   realVolume?: number;
+  closed?: boolean;
 };
 
 export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d';
@@ -55,11 +66,21 @@ export interface CandleStreamOptions {
   onSnapshot?: (candles: OHLCData[]) => void;
   onCandle?: (candle: OHLCData) => void;
   onError?: (error: Error) => void;
+  onConnected?: () => void;
 }
 
 export interface CandleStreamSubscription {
   close: () => void;
 }
+
+export const CANDLE_STREAM_BASE_RECONNECT_DELAY_MS = 1_000;
+export const CANDLE_STREAM_OPEN_TIMEOUT_MS = 10_000;
+export const CANDLE_STREAM_SUBSCRIPTION_ACK_TIMEOUT_MS = 3_000;
+export const CANDLE_STREAM_MAX_SUBSCRIPTION_RETRIES = 3;
+export const CANDLE_STREAM_HEARTBEAT_INTERVAL_MS = 25_000;
+export const CANDLE_STREAM_PONG_TIMEOUT_MS = 10_000;
+const CANDLE_STREAM_MAX_RECONNECT_DELAY_MS = 30_000;
+const CANDLE_STREAM_AUTH_CLOSE_CODES = new Set([1008, 4001, 4003, 4401, 4403]);
 
 const normalizeTimeForApiTimeframe = (time: number, timeframe?: ApiTimeframe): number => {
   if (!time || !timeframe) return time;
@@ -127,8 +148,14 @@ const normalizeBrokerId = (value: unknown): string => String(value ?? '').trim()
 const canonicalizeBrokerId = (value: unknown): string => {
   const normalized = normalizeBrokerId(value).toLowerCase();
   if (normalized === 'test' || normalized === 'fxtrust') return 'fxtrust';
-  return normalizeBrokerId(value);
+  return normalized;
 };
+
+// The public /api/v1 candle bridge only exists for the TEST/FX Trust environment.
+// Other brokers must go straight to the authenticated /api/v2 endpoint, otherwise
+// every chart load pays for a doomed bridge round-trip first.
+const isPublicBridgeCandleBroker = (brokerId: string): boolean =>
+  !brokerId || canonicalizeBrokerId(brokerId) === 'fxtrust';
 
 const getActiveBrokerId = (): string => {
   if (typeof window === 'undefined') return '';
@@ -169,25 +196,35 @@ const buildQuery = (params: CandleApiQueryParams): string => {
   return qs ? `?${qs}` : '';
 };
 
-const normalizeSymbol = (symbol: string): string =>
-  symbol.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+// FIX: Broker symbol punctuation is part of the instrument identity (for
+// example `0001.HK` or `EURUSD.r`). Only normalize case/whitespace; stripping
+// punctuation can subscribe one chart to a different instrument or no stream.
+const normalizeSymbol = (symbol: string): string => symbol.trim().toUpperCase();
 
 const normalizeApiTimeframeValue = (timeframe: unknown): ApiTimeframe | null => {
   return normalizeBackendCandleTimeframeOrNull(timeframe);
 };
 
 const toSeconds = (value: unknown): number => {
-  const raw = typeof value === 'string' && Number.isNaN(Number(value))
-    ? new Date(value).getTime() / 1000
-    : Number(value);
-  if (!Number.isFinite(raw)) return 0;
-  return raw > 1_000_000_000_000 ? Math.floor(raw / 1000) : Math.floor(raw);
+  // FIX: History and stream bars share one seconds/ms/us/ns/ISO conversion.
+  return normalizeBrokerTimestampSeconds(value) ?? 0;
 };
 
 const toFiniteNumber = (value: unknown): number | undefined => {
   if (value === undefined || value === null || value === '') return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const toOptionalBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === 'closed' || normalized === 'final') return true;
+  if (normalized === 'false' || normalized === 'open' || normalized === 'forming') return false;
+  return undefined;
 };
 
 const CANDLE_ARRAY_KEYS = [
@@ -331,11 +368,21 @@ const messageMatchesCandleSubscription = (
   timeframe: ApiTimeframe,
 ): boolean => {
   const messageChannel = getMessageChannel(message);
-  if (messageChannel) return messageChannel === channel;
+  if (messageChannel) return messageChannel.toUpperCase() === channel.toUpperCase();
 
   const messageSymbol = findMetadataText(message, SYMBOL_METADATA_KEYS);
   const messageTimeframe = findMetadataText(message, TIMEFRAME_METADATA_KEYS);
-  if (!messageSymbol || !messageTimeframe) return false;
+  if (!messageSymbol) return false;
+
+  // FIX: The deployed backend's direct `{type:'update', symbol, candle}` frame
+  // is implicitly M1. Accept that documented legacy form only for an M1
+  // subscription; other channel-less frames still require explicit timeframe.
+  if (!messageTimeframe) {
+    return timeframe === 'M1'
+      && isRecord(message)
+      && String(message.type ?? '').toLowerCase() === 'update'
+      && normalizeSymbol(messageSymbol) === symbol;
+  }
 
   return normalizeSymbol(messageSymbol) === symbol
     && normalizeApiTimeframeValue(messageTimeframe) === timeframe;
@@ -403,8 +450,19 @@ export class ChartDataService {
     const positiveVolume = [tickVolume, legacyVolume, realVolume]
       .find(value => value !== undefined && value > 0);
     const volume = positiveVolume ?? tickVolume ?? legacyVolume ?? realVolume ?? 0;
+    const closed = toOptionalBoolean(
+      row.closed
+      ?? row.is_closed
+      ?? row.isClosed
+      ?? row.complete
+      ?? row.completed
+      ?? row.is_complete
+      ?? row.isComplete
+      ?? row.final,
+    );
 
-    if (!time || ![open, high, low, close].every(Number.isFinite)) return null;
+    const backendPrices = { open, high, low, close };
+    if (!time || !isStructurallyValidPriceCandle(backendPrices)) return null;
 
     return {
       time,
@@ -415,6 +473,7 @@ export class ChartDataService {
       volume: Number.isFinite(volume) ? volume : 0,
       ...(tickVolume !== undefined ? { tickVolume } : {}),
       ...(realVolume !== undefined ? { realVolume } : {}),
+      ...(closed !== undefined ? { closed } : {}),
     };
   }
 
@@ -431,7 +490,19 @@ export class ChartDataService {
     return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
   }
 
-  private normalizeCandleResponse(input: any, timeframe?: string): OHLCData[] {
+  private normalizeCandleResponse(input: any, timeframe?: string, expectedSymbol?: string): OHLCData[] {
+    // FIX: When the broker supplies response identity metadata, validate it
+    // before painting. A stale proxy response for another symbol/timeframe must
+    // fail closed; legacy bare candle arrays remain supported.
+    const responseSymbol = findMetadataText(input, SYMBOL_METADATA_KEYS);
+    const responseTimeframe = findMetadataText(input, TIMEFRAME_METADATA_KEYS);
+    if (expectedSymbol && responseSymbol && normalizeSymbol(responseSymbol) !== normalizeSymbol(expectedSymbol)) {
+      throw new Error(`Candle response symbol mismatch: expected ${expectedSymbol}, received ${responseSymbol}`);
+    }
+    if (timeframe && responseTimeframe
+      && normalizeApiTimeframeValue(responseTimeframe) !== this.normalizeTimeframe(timeframe)) {
+      throw new Error(`Candle response timeframe mismatch: expected ${timeframe}, received ${responseTimeframe}`);
+    }
     const extracted = findCandleArray(input);
     if (!extracted.matched) throw new Error('Malformed candle response');
     const candles = this.normalizeCandleItems(extracted.candles, timeframe);
@@ -445,14 +516,41 @@ export class ChartDataService {
     const next = [...candles];
     const last = next[next.length - 1];
 
+    // FIX: Backend OHLC is already validated at the transport boundary. Never
+    // "repair" or widen a server-final candle: a broker correction must be
+    // able to replace an earlier bad wick exactly. Only forming updates retain
+    // their observed envelope while the bucket is still open.
+    if (!isStructurallyValidPriceCandle(incoming)) return next;
+    const sealedIncoming = { ...incoming };
+
     if (!last || incoming.time > last.time) {
-      next.push(incoming);
+      next.push(sealedIncoming);
     } else if (incoming.time === last.time) {
-      next[next.length - 1] = { ...last, ...incoming };
+      const merged = sealedIncoming.closed === true
+        ? sealedIncoming
+        : {
+          ...last,
+          ...sealedIncoming,
+          high: Math.max(last.high, sealedIncoming.high),
+          low: Math.min(last.low, sealedIncoming.low),
+          volume: Math.max(last.volume, sealedIncoming.volume),
+        };
+      next[next.length - 1] = merged;
     } else {
       const index = next.findIndex(c => c.time === incoming.time);
-      if (index >= 0) next[index] = { ...next[index], ...incoming };
-      else next.push(incoming);
+      if (index >= 0) {
+        const existing = next[index];
+        next[index] = sealedIncoming.closed === true
+          ? sealedIncoming
+          : {
+            ...existing,
+            ...sealedIncoming,
+            high: Math.max(existing.high, sealedIncoming.high),
+            low: Math.min(existing.low, sealedIncoming.low),
+            volume: Math.max(existing.volume, sealedIncoming.volume),
+          };
+      }
+      else next.push(sealedIncoming);
       const sorted = next.sort((a, b) => a.time - b.time);
       return maxCandles && sorted.length > maxCandles ? sorted.slice(-maxCandles) : sorted;
     }
@@ -466,6 +564,14 @@ export class ChartDataService {
   }
 
   async fetchCandles(options: FetchCandlesOptions): Promise<OHLCData[]> {
+    // The chart owns a session cache for immediate warm paints, but every
+    // refresh here must reach the broker. Treating a 60-second snapshot as a
+    // fresh REST response allowed stale forming OHLC to overwrite live state,
+    // and sharing an in-flight AbortSignal coupled unrelated chart requests.
+    return this.fetchCandlesFromNetwork(options);
+  }
+
+  private async fetchCandlesFromNetwork(options: FetchCandlesOptions): Promise<OHLCData[]> {
     const { symbol, timeframe, count, from, to, signal } = options;
     const apiTf = this.normalizeTimeframe(timeframe);
     const apiV2BaseUrl = runtimeApiV2BaseUrl();
@@ -484,13 +590,7 @@ export class ChartDataService {
       isAuthenticatedCore?: boolean;
     }> = [];
 
-    // TEST/FX Trust stores live OHLC on the public bridge `/api/v1/candles`.
-    // Hit that first so the chart is not blocked by a hanging/401 `/api/v2/candles`.
-    if (from === undefined && to === undefined) {
-      const publicUrl = buildPublicBridgeCandleUrl(symbol, apiTf, queryParams.limit);
-      if (publicUrl) attempts.push({ url: publicUrl });
-    }
-
+    let authenticatedAttemptAdded = false;
     if (token && apiV2BaseUrl) {
       try {
         assertCandleAuthMatchesActiveBroker(token);
@@ -499,10 +599,20 @@ export class ChartDataService {
           headers: authHeaders,
           isAuthenticatedCore: true,
         });
+        authenticatedAttemptAdded = true;
       } catch (error) {
         if (!(error instanceof CandleAuthBrokerMismatchError)) throw error;
         console.warn('[ChartData] Skipping authenticated v2 candles after broker mismatch; trying public feed candles.');
       }
+    }
+
+    // TEST/FX Trust also exposes a short process-era snapshot on the public
+    // `/api/v1/candles` bridge. It is a fallback only: authenticated v2 history
+    // is authoritative and can contain substantially more rows than the bridge.
+    if (from === undefined && to === undefined
+      && (!token || !authenticatedAttemptAdded || isPublicBridgeCandleBroker(getActiveBrokerId()))) {
+      const publicUrl = buildPublicBridgeCandleUrl(symbol, apiTf, queryParams.limit);
+      if (publicUrl) attempts.push({ url: publicUrl });
     }
 
     if (attempts.length === 0) {
@@ -523,7 +633,7 @@ export class ChartDataService {
 
         let candles: OHLCData[];
         try {
-          candles = this.normalizeCandleResponse(await response.json(), apiTf);
+          candles = this.normalizeCandleResponse(await response.json(), apiTf, symbol);
         } catch (error) {
           if ((error as Error).name === 'AbortError') throw error;
           const normalizedError = error instanceof Error ? error : new Error('Malformed candle response');
@@ -551,56 +661,322 @@ export class ChartDataService {
     const apiTf = this.normalizeTimeframe(options.timeframe);
     const symbol = normalizeSymbol(options.symbol);
     const channel = `candles.${symbol}.${apiTf}`;
-    const token = getAuthToken();
-    const brokerUrl = buildBrokerWsV2Uri(token);
-    const wsBase = brokerUrl || RTX5_WS_URL.replace(/\/$/, '');
-    const separator = wsBase.includes('?') ? '&' : '?';
-    const url = brokerUrl || `${wsBase}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}`;
     let closed = false;
     let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let openTimer: ReturnType<typeof setTimeout> | null = null;
+    let subscriptionAckTimer: ReturnType<typeof setTimeout> | null = null;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    let pongTimer: ReturnType<typeof setTimeout> | null = null;
+    let subscriptionAttempts = 0;
+    let subscriptionReady = false;
+    let reconnectAttempts = 0;
+    let reconnectPendingWhileSuspended = false;
 
-    try {
-      ws = new WebSocket(url);
+    const isDocumentHidden = () => (
+      typeof document !== 'undefined' && document.visibilityState === 'hidden'
+    );
+    const isRuntimeSuspended = () => (
+      isDocumentHidden()
+      || (typeof navigator !== 'undefined' && navigator.onLine === false)
+    );
 
-      ws.onopen = () => {
-        if (!ws || closed) return;
-        if (token) ws.send(JSON.stringify({ action: 'auth', token }));
-        ws.send(JSON.stringify({ action: 'subscribe', channel, channels: [channel] }));
+    const clearReconnectTimer = () => {
+      if (reconnectTimer === null) return;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    };
+
+    const clearOpenTimer = () => {
+      if (openTimer === null) return;
+      clearTimeout(openTimer);
+      openTimer = null;
+    };
+
+    const clearSubscriptionAckTimer = () => {
+      if (subscriptionAckTimer === null) return;
+      clearTimeout(subscriptionAckTimer);
+      subscriptionAckTimer = null;
+    };
+
+    const recordTransportActivity = () => {
+      if (pongTimer === null) return;
+      clearTimeout(pongTimer);
+      pongTimer = null;
+    };
+
+    const clearHeartbeat = () => {
+      if (heartbeatTimer !== null) clearInterval(heartbeatTimer);
+      if (pongTimer !== null) clearTimeout(pongTimer);
+      heartbeatTimer = null;
+      pongTimer = null;
+    };
+
+    const buildStreamUrl = (): { url: string; token: string | null } => {
+      // FIX: Re-read URL and token for every reconnect so broker/account or
+      // token rotation cannot silently reopen against stale session inputs.
+      const token = getAuthToken();
+      const brokerUrl = buildBrokerWsV2Uri(token);
+      const wsBase = brokerUrl || RTX5_WS_URL.replace(/\/$/, '');
+      const separator = wsBase.includes('?') ? '&' : '?';
+      return {
+        url: brokerUrl || `${wsBase}${token ? `${separator}token=${encodeURIComponent(token)}` : ''}`,
+        token,
       };
+    };
 
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          if (!messageMatchesCandleSubscription(message, channel, symbol, apiTf)) return;
+    let connect = () => undefined;
+    const scheduleReconnect = () => {
+      if (closed || reconnectTimer !== null) return;
+      if (isRuntimeSuspended()) {
+        reconnectPendingWhileSuspended = true;
+        return;
+      }
+      const delay = Math.min(
+        CANDLE_STREAM_BASE_RECONNECT_DELAY_MS * Math.pow(2, Math.min(reconnectAttempts, 10)),
+        CANDLE_STREAM_MAX_RECONNECT_DELAY_MS,
+      );
+      reconnectAttempts += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        if (isRuntimeSuspended()) {
+          reconnectPendingWhileSuspended = true;
+          return;
+        }
+        connect();
+      }, delay);
+    };
 
-          const snapshot = extractCandles(message);
-          if (snapshot.length > 0) {
-            options.onSnapshot?.(this.normalizeCandles(snapshot, apiTf));
+    const sendSubscription = (socket: WebSocket) => {
+      if (closed || ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ action: 'subscribe', channel, channels: [channel] }));
+      clearSubscriptionAckTimer();
+      subscriptionAckTimer = setTimeout(() => {
+        subscriptionAckTimer = null;
+        if (closed || ws !== socket || subscriptionReady) return;
+        if (isRuntimeSuspended()) {
+          reconnectPendingWhileSuspended = true;
+          return;
+        }
+        if (subscriptionAttempts < CANDLE_STREAM_MAX_SUBSCRIPTION_RETRIES) {
+          subscriptionAttempts += 1;
+          // FIX: Retry an unconfirmed exact channel on the same healthy socket
+          // before replacing the transport.
+          sendSubscription(socket);
+          return;
+        }
+        ws = null;
+        try { socket.close(4000, 'Candle subscription acknowledgement timeout'); } catch { /* ignore */ }
+        scheduleReconnect();
+      }, CANDLE_STREAM_SUBSCRIPTION_ACK_TIMEOUT_MS);
+    };
+
+    const startHeartbeat = (socket: WebSocket) => {
+      clearHeartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (closed || ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+        if (isRuntimeSuspended()) return;
+        try { socket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() })); } catch { /* deadline below reconnects */ }
+        if (pongTimer !== null) return;
+        pongTimer = setTimeout(() => {
+          pongTimer = null;
+          if (closed || ws !== socket) return;
+          if (isRuntimeSuspended()) {
+            reconnectPendingWhileSuspended = true;
             return;
           }
+          // FIX: Rebuild a zombie OPEN stream so closed-candle corrections and
+          // forming updates cannot remain silently stale.
+          ws = null;
+          clearHeartbeat();
+          clearSubscriptionAckTimer();
+          try { socket.close(4000, 'Candle stream heartbeat timeout'); } catch { /* ignore */ }
+          scheduleReconnect();
+        }, CANDLE_STREAM_PONG_TIMEOUT_MS);
+      }, CANDLE_STREAM_HEARTBEAT_INTERVAL_MS);
+    };
 
-          const candle = this.normalizeCandle(extractCandle(message), apiTf);
-          if (candle) options.onCandle?.(candle);
-        } catch (error) {
-          options.onError?.(error instanceof Error ? error : new Error('Invalid candle stream message'));
-        }
-      };
+    connect = () => {
+      if (closed) return;
+      if (isRuntimeSuspended()) {
+        reconnectPendingWhileSuspended = true;
+        return;
+      }
+      const { url, token } = buildStreamUrl();
+      if (!url) {
+        options.onError?.(new Error(`Candle stream URL is unavailable for ${channel}`));
+        scheduleReconnect();
+        return;
+      }
 
-      ws.onerror = () => {
-        options.onError?.(new Error(`Candle stream error for ${channel}`));
-      };
-    } catch (error) {
-      options.onError?.(error instanceof Error ? error : new Error('Failed to open candle stream'));
+      try {
+        const socket = new WebSocket(url);
+        ws = socket;
+        subscriptionAttempts = 0;
+        subscriptionReady = false;
+        // FIX: A WebSocket can remain CONNECTING forever without producing a
+        // close event. Bound that state and enter the same backoff/reconnect path.
+        clearOpenTimer();
+        openTimer = setTimeout(() => {
+          openTimer = null;
+          if (closed || ws !== socket || socket.readyState !== WebSocket.CONNECTING) return;
+          if (isRuntimeSuspended()) {
+            reconnectPendingWhileSuspended = true;
+            return;
+          }
+          ws = null;
+          try { socket.close(4000, 'Candle stream open timeout'); } catch { /* ignore */ }
+          scheduleReconnect();
+        }, CANDLE_STREAM_OPEN_TIMEOUT_MS);
+
+        socket.onopen = () => {
+          // FIX: Socket identity guards prevent late events from a replaced
+          // broker/account connection from mutating the active chart.
+          if (closed || ws !== socket) return;
+          clearOpenTimer();
+          reconnectPendingWhileSuspended = false;
+          reconnectAttempts = 0;
+          startHeartbeat(socket);
+          if (token) socket.send(JSON.stringify({ action: 'auth', token }));
+          sendSubscription(socket);
+        };
+
+        socket.onmessage = (event) => {
+          if (closed || ws !== socket) return;
+          recordTransportActivity();
+          try {
+            const message = JSON.parse(event.data);
+            if (!messageMatchesCandleSubscription(message, channel, symbol, apiTf)) return;
+            if (String(message?.type ?? '').toLowerCase() === 'error') return;
+            clearSubscriptionAckTimer();
+            if (!subscriptionReady) {
+              subscriptionReady = true;
+              // FIX: Report ready only after the broker confirms or emits data
+              // for this exact symbol/timeframe, not merely after TCP opens.
+              options.onConnected?.();
+            }
+
+            const snapshot = extractCandles(message);
+            if (snapshot.length > 0) {
+              options.onSnapshot?.(this.normalizeCandles(snapshot, apiTf));
+              return;
+            }
+
+            const extractedCandle = extractCandle(message);
+            const candle = this.normalizeCandle(extractedCandle, apiTf);
+            if (candle) {
+              // FIX: Some v2 adapters put finality on the channel envelope
+              // rather than the nested candle; retain either representation.
+              const finality = readCandleFinality([
+                asUnknownRecord(extractedCandle),
+                asUnknownRecord(message?.data),
+                asUnknownRecord(message),
+              ]);
+              options.onCandle?.(finality === undefined ? candle : { ...candle, closed: finality });
+            }
+          } catch (error) {
+            options.onError?.(error instanceof Error ? error : new Error('Invalid candle stream message'));
+          }
+        };
+
+        socket.onerror = () => {
+          // FIX: The close event owns retry scheduling. Reporting a terminal UI
+          // error here would leave stale error text visible after a successful reconnect.
+          if (!closed && ws === socket) console.warn(`[ChartData] Candle stream transport error for ${channel}; awaiting reconnect.`);
+        };
+
+        socket.onclose = (event) => {
+          if (ws !== socket) return;
+          clearOpenTimer();
+          clearSubscriptionAckTimer();
+          clearHeartbeat();
+          ws = null;
+          if (closed) return;
+          if (CANDLE_STREAM_AUTH_CLOSE_CODES.has(event.code)) {
+            options.onError?.(new Error(`Candle stream authorization failed for ${channel}`));
+            return;
+          }
+          // FIX: A transient disconnect now backs off and resubscribes instead
+          // of permanently stopping backend OHLC corrections for this chart.
+          scheduleReconnect();
+        };
+      } catch (error) {
+        options.onError?.(error instanceof Error ? error : new Error('Failed to open candle stream'));
+        scheduleReconnect();
+      }
+    };
+
+    const refreshConnection = (reason: string) => {
+      if (closed) return;
+      clearReconnectTimer();
+      clearOpenTimer();
+      clearSubscriptionAckTimer();
+      clearHeartbeat();
+      const socket = ws;
+      ws = null;
+      try { socket?.close(1000, reason); } catch { /* ignore */ }
+      reconnectPendingWhileSuspended = false;
+      connect();
+    };
+
+    const handleOnline = () => {
+      if (closed) return;
+      if (isDocumentHidden()) {
+        reconnectPendingWhileSuspended = true;
+        return;
+      }
+      refreshConnection('Network restored; refreshing candle stream');
+    };
+    const handleOffline = () => {
+      // FIX: Suspend background/offline deadlines; online/foreground creates a
+      // fresh socket and replays the exact candle subscription once.
+      clearReconnectTimer();
+      clearOpenTimer();
+      clearSubscriptionAckTimer();
+      clearHeartbeat();
+      reconnectPendingWhileSuspended = true;
+    };
+    const handleVisibilityChange = () => {
+      if (isDocumentHidden()) {
+        clearReconnectTimer();
+        clearOpenTimer();
+        clearSubscriptionAckTimer();
+        clearHeartbeat();
+        reconnectPendingWhileSuspended = true;
+        return;
+      }
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      if (reconnectPendingWhileSuspended || ws?.readyState === WebSocket.OPEN) {
+        refreshConnection('Foreground restored; refreshing candle stream');
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
     }
+    connect();
 
     return {
       close: () => {
         closed = true;
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ action: 'unsubscribe', channel, channels: [channel] }));
+        clearReconnectTimer();
+        clearOpenTimer();
+        clearSubscriptionAckTimer();
+        clearHeartbeat();
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
         }
-        ws?.close(1000, 'Chart candle subscription closed');
+        const socket = ws;
         ws = null;
+        if (socket?.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ action: 'unsubscribe', channel, channels: [channel] }));
+        }
+        // FIX: Detach ownership before close so an intentional close cannot
+        // enter the reconnect path even when a test/browser fires onclose synchronously.
+        socket?.close(1000, 'Chart candle subscription closed');
       },
     };
   }
@@ -621,28 +997,39 @@ export class ChartDataService {
       // Calculate candle time (floor to interval)
       const candleTime = Math.floor(tick.timestamp / intervalMs) * intervalMs;
 
-      // Get mid price
-      const price = (tick.bid + tick.ask) / 2;
+      // FIX: MetaTrader-style chart OHLC is built from Bid. Ask is only a
+      // fallback when Bid is unavailable; it must not widen candle wicks by the
+      // spread because Ask belongs to the execution overlay, not Bid OHLC.
+      const price = getChartPriceFromQuote(tick);
+      if (price === null) continue;
+      const tickHigh = price;
+      const tickLow = price;
 
       if (!candles.has(candleTime)) {
-        // Create new candle
-        candles.set(candleTime, {
+        const opened = repairPriceCandle({
           time: candleTime,
           open: price,
-          high: price,
-          low: price,
+          high: tickHigh,
+          low: tickLow,
           close: price,
           volume: tick.volume || 0,
           tickVolume: tick.volume || 0,
         });
+        if (opened) candles.set(candleTime, opened);
       } else {
-        // Update existing candle
         const candle = candles.get(candleTime)!;
-        candle.high = Math.max(candle.high, price);
-        candle.low = Math.min(candle.low, price);
+        candle.high = Math.max(candle.high, tickHigh);
+        candle.low = Math.min(candle.low, tickLow);
         candle.close = price;
         candle.volume += tick.volume || 0;
         candle.tickVolume = (candle.tickVolume ?? 0) + (tick.volume || 0);
+        const repaired = repairPriceCandle(candle);
+        if (repaired) {
+          candle.high = repaired.high;
+          candle.low = repaired.low;
+          candle.open = repaired.open;
+          candle.close = repaired.close;
+        }
       }
     }
 

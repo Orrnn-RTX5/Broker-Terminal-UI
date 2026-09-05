@@ -222,9 +222,28 @@ body {
 }
 
 /* === Primary chart command strip === */
-.rtx-toolbar-command-cluster,
-.rtx-toolbar-group {
-  gap: 2px;
+.rtx-toolbar-command-cluster {
+  gap: 0;
+  padding-inline: 8px;
+}
+
+.rtx-toolbar-group,
+.rtx-timeframe-strip {
+  gap: 6px;
+}
+
+.rtx-mt5-divider {
+  margin-inline: 3px;
+  width: 0;
+}
+
+.rtx-toolbar-icon-button svg,
+.rtx-toolbar-action__icon svg,
+.rtx-toolbar-icon-button svg [stroke-width],
+.rtx-toolbar-action__icon svg [stroke-width] {
+  height: 20px;
+  stroke-width: 1.25;
+  width: 20px;
 }
 
 .rtx-toolbar-action,
@@ -234,7 +253,7 @@ body {
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   box-shadow: none;
-  color: var(--color-zinc-400, #a1a1aa);
+  color: var(--text-primary);
   display: inline-flex;
   height: 32px;
   justify-content: center;
@@ -248,7 +267,7 @@ body {
   gap: 6px;
   letter-spacing: -0.01em;
   line-height: 1;
-  padding: 0 8px;
+  padding: 0 10px;
   white-space: nowrap;
 }
 
@@ -263,8 +282,9 @@ body {
 }
 
 .rtx-toolbar-action--primary {
-  background: var(--bg-tertiary);
-  border-color: var(--border-primary);
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
   color: var(--text-primary);
 }
 
@@ -304,6 +324,15 @@ body {
   background: var(--color-info-dim);
   border-color: var(--border-tertiary);
   box-shadow: inset 0 -2px 0 var(--color-info);
+  color: var(--color-blue-300, #93c5fd);
+}
+
+/* Chart-type radios use the same single-frame selection language as timeframes. */
+.rtx-toolbar-icon-button[role='radio'][aria-checked='true'] {
+  background: rgb(59 130 246 / 0.15);
+  border-color: rgb(59 130 246 / 0.5);
+  border-radius: 3px;
+  box-shadow: none;
   color: var(--color-blue-300, #93c5fd);
 }
 
@@ -681,54 +710,8 @@ textarea {
 
 .rtx-application-menu {
   animation: rtx-application-menu-enter 120ms ease-out;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
   transform-origin: top left;
-}
-
-.rtx-application-menu__account {
-  align-items: center;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-primary);
-  display: flex;
-  min-height: 62px;
-  padding: 10px 13px;
-  position: relative;
-}
-
-.rtx-application-menu__account-title {
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: var(--font-weight-semibold);
-  line-height: 20px;
-  padding-right: 62px;
-}
-
-.rtx-application-menu__account-meta {
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: var(--font-weight-normal);
-  line-height: 18px;
-}
-
-.rtx-application-menu__status {
-  align-items: center;
-  border: 1px solid var(--color-profit-dim);
-  border-radius: 999px;
-  color: var(--color-profit);
-  display: inline-flex;
-  flex: none;
-  font-size: 11px;
-  font-weight: var(--font-weight-semibold);
-  gap: 4px;
-  line-height: 18px;
-  padding: 0 6px;
-  position: absolute;
-  right: 10px;
-  top: 10px;
-}
-
-.rtx-application-menu__status.is-live {
-  border-color: var(--color-warning-dim);
-  color: var(--color-warning);
 }
 
 .rtx-application-menu__items {
@@ -742,9 +725,11 @@ textarea {
   border-radius: 2px;
   color: var(--text-primary);
   display: flex;
-  font-size: 14px;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: var(--rtx-advanced-dense-font-size, 13px);
   font-weight: var(--font-weight-normal);
   gap: 10px;
+  line-height: 19.5px;
   min-height: 38px;
   outline: none;
   padding: 7px 10px;
@@ -809,6 +794,20 @@ textarea {
   width: 100%;
 }
 
+/* The web three-line menu follows the same dense text role as Trade rows.
+   Keep the shared row rule at 14px because Electron also consumes it. */
+.rtx-application-menu .rtx-menu-row,
+.rtx-application-menu .rtx-file-menu button.text-\[14px\] {
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: var(--rtx-advanced-dense-font-size, 13px);
+  font-weight: var(--font-weight-normal);
+  line-height: 19.5px;
+}
+
+.rtx-application-menu .rtx-menu-row > .font-segoe {
+  font-family: inherit;
+}
+
 .rtx-menu-row:not(.is-disabled):hover,
 .rtx-menu-row:not(.is-disabled):focus-visible,
 .rtx-menu-row.is-open {
@@ -840,6 +839,11 @@ textarea {
   font-family: var(--font-sans);
   font-size: 12px;
   font-weight: var(--font-weight-normal);
+}
+
+.rtx-application-menu .rtx-menu-row__shortcut {
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  line-height: 18px;
 }
 
 .rtx-menu-row__check {
@@ -1295,15 +1299,16 @@ html.rtx-desktop-shell-active .rtx-toolbar-icon-button {
 }
 
 html.rtx-desktop-shell-active .rtx-toolbar-action--primary {
-  background: #ffffff !important;
-  border-color: #c1c4c8 !important;
+  background: transparent !important;
+  border-color: transparent !important;
   color: #202124 !important;
 }
 
 html.rtx-desktop-shell-active .rtx-toolbar-icon-button[aria-checked='true'] {
   background: #c9def5 !important;
   border-color: #6e9fd4 !important;
-  box-shadow: inset 0 -2px 0 #0b4f91;
+  border-radius: 3px;
+  box-shadow: none;
   color: #064b8e !important;
 }
 

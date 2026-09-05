@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "./styles/theme.css";
 @import "./styles/advanced-untitled-light.css";
+@import "./styles/enterprise-light.css";
+@import "./styles/last-symbol-panel.css";
+@import "./styles/history-downloader.css";
+@import "./styles/calendar-tab.css";
+@import "./styles/research-tabs.css";
 
 /* RTX Terminal — Global Base Styles */
 html, body, #root {
@@ -42,7 +47,7 @@ button:active {
   background: transparent !important;
 }
 
-.rtx-panel-shell, .rtx-chart-panel, .rtx-bottom-dock, .rtx-bottom-dock__content {
+.rtx-panel-shell, .rtx-chart-panel {
   background: rgba(15, 23, 42, 0.5) !important;
   backdrop-filter: blur(16px) !important;
   -webkit-backdrop-filter: blur(16px) !important;
@@ -51,18 +56,50 @@ button:active {
   box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.05), 0 8px 32px 0 rgba(0,0,0,0.3) !important;
 }
 
+html:not(.rtx-skin-untitled-light) :is(.rtx-bottom-dock, .rtx-bottom-dock__content) {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: var(--border-primary) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
 .rtx-chart-panel {
   border-radius: 0 !important;
 }
 
+.rtx-panel-shell:has(.rtx-bottom-dock),
+.rtx-bottom-dock,
+.rtx-bottom-dock__tabs,
+.rtx-bottom-dock__tabs .rtx-dock-tab,
+.rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
+  border-radius: 0 !important;
+}
+
 .rtx-bottom-dock__tabs {
-  background: rgba(2, 6, 23, 0.7) !important;
-  backdrop-filter: blur(12px) !important;
-  border-radius: 0 0 10px 10px !important;
+  background: var(--bg-tertiary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: 0 !important;
 }
 
 .bg-\[\#131316\], .bg-\[\#0e0e12\], .bg-\[\#191a1e\], .bg-\[\#0f0f12\] {
   background-color: transparent !important;
+}
+
+html:not(.rtx-skin-untitled-light) :is(.rtx-bottom-dock, .rtx-bottom-dock__content, .rtx-trade-tab, .rtx-trade-scroll, .navigator-panel).bg-\[\#131316\],
+html:not(.rtx-skin-untitled-light) .rtx-bottom-dock :is(.bg-\[\#131316\], .bg-\[\#0e0e12\], .bg-\[\#0f0f12\]),
+html:not(.rtx-skin-untitled-light) .navigator-panel :is(.bg-\[\#131316\], .bg-\[\#0e0e12\], .bg-\[\#0f0f12\], .bg-\[\#191a1e\]) {
+  background-color: var(--bg-secondary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer.bg-\[\#191a1e\],
+html:not(.rtx-skin-untitled-light) .rtx-bottom-dock .bg-\[\#191a1e\] {
+  background-color: var(--bg-tertiary) !important;
 }
 
 /* Prevent transparency on dropdown menus, submenus, dialogs, and popups in dark mode */
@@ -115,52 +152,58 @@ tr.rtx-trade-row.rtx-trade-row--selected button {
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-tab {
-  background:
-    linear-gradient(180deg, rgba(17, 20, 29, 0.98) 0%, rgba(8, 10, 15, 0.98) 100%) !important;
+  background: var(--bg-secondary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-scroll {
-  background:
-    radial-gradient(900px 180px at 8% -70px, rgba(37, 99, 235, 0.14), transparent 60%),
-    linear-gradient(180deg, rgba(14, 17, 25, 0.96), rgba(8, 9, 13, 0.98));
+  background: var(--bg-secondary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-table {
   border-collapse: separate !important;
   border-spacing: 0 !important;
+  color: var(--text-primary);
 }
 
+html:not(.rtx-skin-untitled-light) .rtx-trade-table__head {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  box-shadow: none !important;
+  text-shadow: none;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-trade-table thead th,
 html:not(.rtx-skin-untitled-light) .rtx-trade-table__head th {
   height: 30px;
-  background:
-    linear-gradient(180deg, rgba(25, 29, 39, 0.96), rgba(14, 17, 24, 0.98)) !important;
-  border-color: rgba(71, 85, 105, 0.42) !important;
-  color: #b9c2d4 !important;
+  background: var(--bg-tertiary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--border-secondary) !important;
+  color: var(--text-primary) !important;
   font-size: 12px;
   font-weight: var(--font-weight-normal);
   letter-spacing: normal;
   text-shadow: none;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.45);
+  box-shadow: none;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody {
-  background: rgba(7, 8, 12, 0.96);
+  background: var(--bg-secondary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row {
-  background: rgba(10, 12, 18, 0.95) !important;
-  box-shadow: inset 0 -1px 0 rgba(148, 163, 184, 0.055);
+  background: var(--bg-secondary) !important;
+  box-shadow: none;
+  border-top: none !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row:nth-child(even) {
-  background: rgba(13, 16, 23, 0.95) !important;
+  background: var(--bg-secondary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected):hover {
-  background:
-    linear-gradient(90deg, rgba(56, 189, 248, 0.13), rgba(15, 23, 42, 0.24) 36%, rgba(15, 23, 42, 0.18)) !important;
+  background: var(--bg-quaternary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) tr.rtx-trade-row.rtx-trade-row--selected,
@@ -174,19 +217,28 @@ html:not(.rtx-skin-untitled-light) tr.rtx-trade-row.rtx-trade-row--selected:hove
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row td {
-  border-right-color: rgba(71, 85, 105, 0.34) !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--border-secondary) !important;
   font-size: 13px;
   font-weight: var(--font-weight-normal);
   line-height: 19.5px;
+  text-shadow: none;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected) {
-  color: #cbd5e1;
+  color: var(--text-primary);
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected) td.text-\[\#aeb5c3\],
+html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected) td.text-\[\#8d95a3\],
+html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected) td.text-\[\#d8dde8\] {
+  color: var(--text-primary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-close-button {
-  opacity: 0.72;
+  opacity: 1;
   border-radius: 4px !important;
+  color: var(--text-primary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-row:hover .rtx-trade-close-button {
@@ -194,71 +246,145 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-row:hover .rtx-trade-close-button 
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer {
-  background:
-    linear-gradient(180deg, rgba(20, 23, 32, 0.98), rgba(12, 14, 20, 0.98)) !important;
-  border-top-color: rgba(100, 116, 139, 0.45) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 -10px 28px rgba(0, 0, 0, 0.22) !important;
+  background: var(--bg-tertiary) !important;
+  border-top-color: var(--border-primary) !important;
+  box-shadow: none !important;
+  color: var(--text-primary);
+  position: static;
+  flex-shrink: 0;
 }
 
-html:not(.rtx-skin-untitled-light) .rtx-trade-footer > div {
-  min-height: 28px;
-  gap: 4px;
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer > div,
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer-inner {
+  min-height: 26px;
+  gap: 16px !important;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-status,
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-metric,
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-floating {
-  background: rgba(15, 23, 42, 0.5) !important;
-  border: 1px solid rgba(51, 65, 85, 0.68) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer-status {
+  width: auto;
+  height: auto;
+  padding: 0;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-metric {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  height: 20px;
-  gap: 3px;
-  padding: 0 4px;
-  border-radius: 3px;
+  height: auto;
+  gap: 4px;
+  padding: 0;
   line-height: 1;
   white-space: nowrap;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-floating {
-  color: #d8dee9;
+  min-width: 0;
+  padding: 0;
+  justify-content: center;
+  text-align: center;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer-currency {
+  color: inherit;
+  margin-left: 4px;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-actions {
-  border-left: 1px solid rgba(71, 85, 105, 0.55);
+  border-left: 1px solid var(--border-secondary);
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer .rtx-trade-metric-label,
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer .text-zinc-500,
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer .text-zinc-400,
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer .text-zinc-300 {
+  color: var(--text-primary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer .rtx-trade-metric-label {
-  color: #7f8ca3 !important;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: var(--font-weight-normal);
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer .rtx-trade-metric-label::after {
+  content: ':';
+  margin-right: 4px;
+}
+
+.rtx-exposure-account-bar {
+  align-items: center;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-primary);
+  box-shadow: none;
+  color: var(--text-primary);
+  display: flex;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+  gap: 16px;
+  height: 30px;
+  overflow-x: auto;
+  padding: 0 12px;
+}
+
+.rtx-exposure-account-metric {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 4px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.rtx-exposure-account-label {
+  color: inherit;
+}
+
+.rtx-exposure-account-value {
+  font-variant-numeric: tabular-nums;
+}
+
+
+
+html:not(.rtx-skin-untitled-light) .rtx-exposure-account-bar {
+  background: var(--bg-tertiary) !important;
+  box-shadow: none !important;
+  color: var(--text-primary);
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-exposure-account-label,
+html:not(.rtx-skin-untitled-light) .rtx-exposure-account-value {
+  color: var(--text-primary);
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-action {
   min-width: 68px;
   height: 20px;
   border-radius: 3px !important;
-  background: rgba(15, 23, 42, 0.64) !important;
-  border-color: rgba(100, 116, 139, 0.5) !important;
-  color: #d8dee9 !important;
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-secondary) !important;
+  color: var(--text-primary) !important;
   white-space: nowrap;
   flex-shrink: 0;
   line-height: 1;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: none;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-action:hover:not(:disabled) {
-  background: rgba(30, 41, 59, 0.95) !important;
-  border-color: rgba(148, 163, 184, 0.62) !important;
+  background: var(--bg-quaternary) !important;
+  border-color: var(--border-tertiary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-action--danger {
@@ -278,27 +404,214 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-footer-action--danger:hover:not(:d
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs {
-  background: linear-gradient(180deg, rgba(11, 15, 24, 0.98), rgba(6, 9, 15, 0.98)) !important;
-  border-top-color: rgba(100, 116, 139, 0.42) !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  background: var(--bg-tertiary) !important;
+  border-top-color: var(--border-primary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-dock-tab-scroller {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  height: 30px !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-dock-tab-scroller::-webkit-scrollbar {
+  display: none;
+  height: 0;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-dock-tab-actions {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  height: 30px !important;
+  margin-left: 0 !important;
+  background: transparent !important;
+  border: none;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-dock-tab-actions .rtx-dock-tab {
+  padding-left: 10px !important;
+  padding-right: 10px !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab {
-  border-color: rgba(51, 65, 85, 0.7) !important;
-  color: #94a3b8 !important;
-  background: rgba(9, 13, 22, 0.72) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 30px !important;
+  line-height: 30px !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  border-color: var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  background: transparent !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab:hover {
-  color: #e2e8f0 !important;
-  background: rgba(30, 41, 59, 0.7) !important;
+  color: #ffffff !important;
+  background: var(--bg-quaternary) !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
   color: #ffffff !important;
-  background:
-    linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.96)) !important;
-  border-top-color: #60a5fa !important;
-  box-shadow: inset 0 2px 0 #60a5fa;
+  background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%) !important;
+  border-top-color: #0284c7 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-weight: 600;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab--danger {
+  color: #fecaca !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab--danger:hover:not(:disabled) {
+  color: #ffffff !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__search,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__table,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__grid {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  text-shadow: none;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__footer {
+  background: var(--bg-tertiary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  color: var(--text-primary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch thead th,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__column-heading {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  color: var(--text-primary) !important;
+  border: none !important;
+  box-shadow: none !important;
+  text-shadow: none;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch tbody tr,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch tbody td,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch .rtx-market-watch__row {
+  background: var(--bg-secondary) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch tbody tr:hover,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch tbody tr:hover td,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch .mw-row:hover,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch .rtx-market-watch__row--selected,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch .rtx-market-watch__row--selected td {
+  background: var(--bg-quaternary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch .rtx-market-watch__row--selected {
+  box-shadow: inset 2px 0 0 #60a5fa !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__symbol,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__spread:not(.rtx-market-watch__spread--empty),
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__footer-action,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__footer-count,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__empty-text {
+  color: var(--text-primary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__close {
+  color: var(--text-secondary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__close:hover {
+  color: var(--text-primary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--bid:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty),
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--bid:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) :is(.price-display, .price-big, .price-small) {
+  color: #ff5858 !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--ask:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty),
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--ask:not(.rtx-market-watch__price--up):not(.rtx-market-watch__price--down):not(.rtx-market-watch__price--empty) :is(.price-display, .price-big, .price-small) {
+  color: #4597ff !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--up,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--up :is(.price-display, .price-big, .price-small),
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__daily--up {
+  color: #4597ff !important;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--down,
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__price--down :is(.price-display, .price-big, .price-small),
+html:not(.rtx-skin-untitled-light) .rtx-market-watch__daily--down {
+  color: #ff5858 !important;
+}
+
+html:not(.rtx-skin-untitled-light) .bg-\[\#131316\]:has(.navigator-panel),
+html:not(.rtx-skin-untitled-light) .bg-\[\#131316\]:has(.rtx-market-watch),
+html:not(.rtx-skin-untitled-light) .navigator-panel,
+html:not(.rtx-skin-untitled-light) .navigator-panel__body {
+  background: var(--bg-secondary) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  text-shadow: none;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+html:not(.rtx-skin-untitled-light) .navigator-panel {
+  --navigator-tree-line: var(--border-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-primary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .navigator-tree-item__row:hover {
+  background: var(--bg-quaternary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .navigator-tree-item__label {
+  color: var(--text-primary) !important;
+}
+
+html:not(.rtx-skin-untitled-light) .navigator-tree-item__chevron,
+html:not(.rtx-skin-untitled-light) .navigator-tree-item__icon {
+  color: var(--text-secondary);
+}
+
+html:not(.rtx-skin-untitled-light) .navigator-tree-item__row:hover .navigator-tree-item__chevron,
+html:not(.rtx-skin-untitled-light) .navigator-tree-item__row:hover .navigator-tree-item__icon {
+  color: var(--text-primary);
+}
+
+/* Locked Navigator placeholders must not suggest that they are interactive. */
+html .navigator-panel .navigator-tree-item__row.navigator-tree-item__row--disabled:hover {
+  background: transparent !important;
 }
 
 /* Global ultra-premium scrollbar */
@@ -380,6 +693,18 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 /* Journal toolbar: compact desktop geometry without pill-shaped focus rings. */
+.rtx-journal-toolbar:not(.rtx-journal-toolbar--expanded) .rtx-journal-advanced-control {
+  display: none !important;
+}
+
+.rtx-journal-toolbar .rtx-journal-periods {
+  order: -1;
+}
+
+.rtx-journal-toolbar .rtx-journal-primary-action {
+  order: -1;
+}
+
 html .rtx-journal-toolbar .rtx-journal-control {
   border-radius: 2px !important;
   font-size: max(13px, var(--rtx-advanced-primary-font-size, 13px)) !important;

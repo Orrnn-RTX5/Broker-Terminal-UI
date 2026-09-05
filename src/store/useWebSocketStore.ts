@@ -7,6 +7,8 @@ import { create } from 'zustand';
 
 export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error' | 'offline';
 
+export type QuoteTransport = 'feed' | 'v2' | 'none';
+
 export interface ConnectionMetrics {
   messagesSent: number;
   messagesReceived: number;
@@ -26,12 +28,17 @@ interface WebSocketStoreState {
   isStale: boolean;
   lastMessageTime: number | null;
 
+  // Quote transport state (Market Watch bid/ask stream)
+  quoteTransport: QuoteTransport;
+  quoteFallbackActive: boolean;
+
   // Metrics
   fixMetrics: ConnectionMetrics;
   legacyMetrics: ConnectionMetrics;
 
   // Actions
   setConnectionState: (state: ConnectionState, source?: 'fix_socket' | 'legacy_mt5') => void;
+  setQuoteTransportState: (transport: QuoteTransport, fallbackActive: boolean) => void;
   updateMetrics: (metrics: Partial<ConnectionMetrics>, source?: 'fix_socket' | 'legacy_mt5') => void;
   markStale: (stale: boolean) => void;
   updateLastMessageTime: (time: number) => void;
@@ -59,6 +66,9 @@ export const useWebSocketStore = create<WebSocketStoreState>((set) => ({
   isStale: false,
   lastMessageTime: null,
 
+  quoteTransport: 'none',
+  quoteFallbackActive: false,
+
   fixMetrics: { ...initialMetrics },
   legacyMetrics: { ...initialMetrics },
 
@@ -83,6 +93,9 @@ export const useWebSocketStore = create<WebSocketStoreState>((set) => ({
         connectionState: nextUiState,
       };
     }),
+
+  setQuoteTransportState: (quoteTransport, quoteFallbackActive) =>
+    set({ quoteTransport, quoteFallbackActive }),
 
   updateMetrics: (metricsUpdate, source) =>
     set((state) => {

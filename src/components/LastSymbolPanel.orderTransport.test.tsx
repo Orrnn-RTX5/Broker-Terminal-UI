@@ -92,4 +92,24 @@ describe('LastSymbolPanel market-order transport', () => {
       Array.from({ length: 20 }, (_, index) => index % 2 === 0 ? 'buy' : 'sell'),
     );
   });
+
+  it('submits the exact punctuated broker contract in canonical case', async () => {
+    useAppStore.getState().setTicks({
+      'XAUUSD.raw': {
+        symbol: 'XAUUSD.raw',
+        bid: 2500,
+        ask: 2500.2,
+        spread: 0.2,
+        timestamp: Date.now(),
+        digits: 2,
+      },
+    });
+    useLastSymbolStore.setState({ lastSymbol: ' xauusd.raw ' });
+    render(<LastSymbolPanel />);
+
+    fireEvent.keyDown(window, { key: 'B', shiftKey: true });
+
+    await waitFor(() => expect(mocks.placeMarketOrder).toHaveBeenCalledTimes(1));
+    expect(mocks.placeMarketOrder.mock.calls[0][0].symbol).toBe('XAUUSD.RAW');
+  });
 });

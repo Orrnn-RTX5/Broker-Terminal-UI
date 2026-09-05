@@ -6,15 +6,22 @@
 import React from 'react';
 import '@testing-library/jest-dom';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { FileMenu } from './FileMenu';
 import {
     clearActiveChartSources,
     registerActiveChartSource,
 } from '../../services/activeChartSource';
+import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { chartPrinter } from '../../services/chartPrinter';
 
 const savePictureDialogMock = vi.hoisted(() => ({
     props: [] as any[],
+}));
+const workspaceProfilesMock = vi.hoisted(() => ({
+    listWorkspaceProfiles: vi.fn(() => [] as Array<Record<string, string>>),
+    restoreWorkspaceProfile: vi.fn(),
+    saveCurrentWorkspaceProfile: vi.fn(),
 }));
 
 // 1. Mock i18n translations
@@ -33,7 +40,7 @@ vi.mock('react-i18next', () => {
         'menu.file.openAccount': 'Open an Account',
         'menu.file.loginTrade': 'Login to Trade Account',
         'menu.file.loginWeb': 'Login to Web Trader',
-        'menu.file.loginMql5': 'Login to MQL5.community',
+        'menu.file.loginMql5': 'Login to RTX5.community',
         'menu.file.exit': 'Exit',
     };
     return {
@@ -93,12 +100,16 @@ vi.mock('../../services/chartPrinter', () => ({
     }
 }));
 
+vi.mock('../../services/localWorkspaceProfiles', () => ({
+    ...workspaceProfilesMock,
+}));
+
 // 5. Mock all child dialogs
 vi.mock('../dialogs/SaveWorkspaceDialog', () => ({
     SaveWorkspaceDialog: ({ onConfirm, onCancel }: any) => (
         <div data-testid="save-workspace-dialog">
             <span>Save Workspace</span>
-            <button onClick={onConfirm}>Confirm Save</button>
+            <button onClick={() => onConfirm('Default')}>Confirm Save</button>
             <button onClick={onCancel}>Cancel Save</button>
         </div>
     )
@@ -171,6 +182,8 @@ describe('FileMenu Component', () => {
         vi.clearAllMocks();
         savePictureDialogMock.props = [];
         clearActiveChartSources();
+        useDockLayoutStore.setState({ recentlyClosedCharts: [] });
+        workspaceProfilesMock.listWorkspaceProfiles.mockReturnValue([]);
         vi.spyOn(window, 'alert').mockImplementation(() => { });
     });
 
@@ -206,27 +219,47 @@ describe('FileMenu Component', () => {
             expect(openAccountBtn).not.toBeDisabled();
             expect(loginBtn).toBeDisabled();
         });
+
+        it('shows professional icons for Profiles and Close', () => {
+            render(<FileMenu {...mockHandlers} />);
+
+            const profilesButton = screen.getByText('Profiles').closest('button');
+            const closeButton = screen.getByText('Close').closest('button');
+
+            expect(profilesButton?.querySelector('svg')).toBeInTheDocument();
+            expect(closeButton?.querySelector('svg')).toBeInTheDocument();
+        });
     });
 
     describe('Basic Actions', () => {
-        it('shows the active account and logs out from the File section', () => {
+        it('keeps the active account and logout together at the top of the File section', () => {
             const onLogout = vi.fn();
             render(<FileMenu {...mockHandlers} accountId="200002" onLogout={onLogout} />);
 
-            expect(screen.getByLabelText('Current trading account 200002')).toBeInTheDocument();
-            expect(screen.getByText('200002')).toBeInTheDocument();
+            const accountHeader = screen.getByTestId('file-menu-account-header');
+            const newChartButton = screen.getByText('New Chart').closest('button');
+            const logoutButton = within(accountHeader).getByRole('menuitem', { name: 'Log Out' });
 
-            fireEvent.click(screen.getByRole('menuitem', { name: 'Log Out' }));
+            expect(accountHeader).toHaveAttribute('aria-label', 'Current trading account 200002');
+            expect(within(accountHeader).getByText('200002')).toBeInTheDocument();
+            expect(accountHeader.compareDocumentPosition(newChartButton!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(screen.getAllByRole('menuitem', { name: 'Log Out' })).toHaveLength(1);
+
+            fireEvent.click(logoutButton);
             expect(onLogout).toHaveBeenCalledTimes(1);
         });
 
-        it('calls onSave when Save is clicked', () => {
+        it('saves the named workspace through the canonical dialog', () => {
             render(<FileMenu {...mockHandlers} hasUnsavedChanges={false} />);
 
             const saveBtn = screen.getByText('Save').closest('button');
             fireEvent.click(saveBtn!);
+            expect(screen.getByTestId('save-workspace-dialog')).toBeInTheDocument();
+            expect(mockHandlers.onSave).not.toHaveBeenCalled();
 
-            expect(mockHandlers.onSave).toHaveBeenCalledTimes(1);
+            fireEvent.click(screen.getByText('Confirm Save'));
+
+            expect(mockHandlers.onSave).toHaveBeenCalledWith('Default');
         });
 
         it('calls onSaveAsPicture when Save As Picture is clicked', () => {
@@ -282,6 +315,70 @@ describe('FileMenu Component', () => {
             expect(mockHandlers.onOpenDataFolder).toHaveBeenCalledTimes(1);
         });
 
+        it('closes the current chart through the canonical menu action', () => {
+            const onCloseActiveChart = vi.fn();
+            render(<FileMenu {...mockHandlers} onCloseActiveChart={onCloseActiveChart} />);
+
+            fireEvent.click(screen.getByText('Close').closest('button')!);
+
+            expect(onCloseActiveChart).toHaveBeenCalledTimes(1);
+        });
+
+        it('restores a recently closed chart from Open Deleted', () => {
+            useDockLayoutStore.setState({
+                recentlyClosedCharts: [{
+                    id: 'closed-xauusd',
+                    title: 'XAUUSD,M15',
+                    component: 'Chart',
+                    props: { symbol: 'XAUUSD', timeframe: 'M15' },
+                }],
+            });
+            const restoreSpy = vi.spyOn(useDockLayoutStore.getState(), 'restoreClosedChart').mockReturnValue(true);
+            const onChartRestored = vi.fn();
+            render(<FileMenu {...mockHandlers} onChartRestored={onChartRestored} />);
+
+            fireEvent.click(screen.getByRole('button', { name: 'XAUUSD,M15' }));
+
+            expect(restoreSpy).toHaveBeenCalledWith('closed-xauusd');
+            expect(onChartRestored).toHaveBeenCalledTimes(1);
+        });
+
+        it('lists and restores real account-scoped workspace profiles', async () => {
+            workspaceProfilesMock.listWorkspaceProfiles.mockReturnValue([{
+                id: 'profile-market',
+                accountId: '200002',
+                name: 'Market',
+                createdAt: '2026-09-02T10:00:00.000Z',
+                updatedAt: '2026-09-02T10:00:00.000Z',
+            }]);
+            workspaceProfilesMock.restoreWorkspaceProfile.mockReturnValue({
+                status: 'restored',
+                profile: { name: 'Market' },
+            });
+            const onProfileRestored = vi.fn();
+            render(<FileMenu {...mockHandlers} accountId="200002" onProfileRestored={onProfileRestored} />);
+
+            const profileButton = await screen.findByRole('button', { name: 'Market' });
+            fireEvent.click(profileButton);
+
+            expect(workspaceProfilesMock.restoreWorkspaceProfile).toHaveBeenCalledWith({
+                accountId: '200002',
+                profileName: 'Market',
+            });
+            expect(onProfileRestored).toHaveBeenCalledWith('Market');
+        });
+
+        it('opens the established trade-account login flow', () => {
+            const onLoginTrade = vi.fn();
+            render(<FileMenu {...mockHandlers} onLoginTrade={onLoginTrade} />);
+
+            const loginButton = screen.getByText('Login to Trade Account').closest('button')!;
+            expect(loginButton).not.toBeDisabled();
+            fireEvent.click(loginButton);
+
+            expect(onLoginTrade).toHaveBeenCalledTimes(1);
+        });
+
         it('calls onPrint when Print is clicked', () => {
             render(<FileMenu {...mockHandlers} />);
 
@@ -289,6 +386,17 @@ describe('FileMenu Component', () => {
             fireEvent.click(printBtn!);
 
             expect(mockHandlers.onPrint).toHaveBeenCalledTimes(1);
+        });
+
+        it('uses the active account print preferences for direct printing', async () => {
+            render(<FileMenu accountId="200002" />);
+
+            fireEvent.click(screen.getByText('Print').closest('button')!);
+
+            await waitFor(() => {
+                expect(chartPrinter.getPreferences).toHaveBeenCalledWith('200002');
+                expect(chartPrinter.printChart).toHaveBeenCalledTimes(1);
+            });
         });
     });
 

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyTickToFormingCandle,
   applyBrokerTimeOffsetToCandles,
   buildOlderHistoryRangeFallbackWindows,
   formatHistoryForOhlcv,
   getVisibleLogicalRangeForDataRender,
+  mergeAuthoritativeCandleHistory,
   mergeHistoricalCandlesWithBufferedLive,
   mergeHistoricalCandleWithBufferedLive,
   mergeFormingCandleEnvelope,
@@ -11,6 +13,7 @@ import {
   normalizeCandlePageAscending,
   offsetLogicalRangeForPrependedCandles,
   prependCandleHistory,
+  selectCandlesMutatedAfterGeneration,
   selectOlderHistoryCandlesForMerge,
   upsertCandleIntoHistory,
   type CandleHistoryCandle,
@@ -119,6 +122,26 @@ describe('candle history helpers', () => {
       low: 88,
       close: 96,
       volume: 20,
+    });
+  });
+
+  it('does not collapse a valid zero-volume forming candle when its first live tick arrives', () => {
+    const previous = candle(60, 105, {
+      open: 100,
+      high: 110,
+      low: 90,
+      volume: 0,
+      tickVolume: 0,
+    });
+
+    expect(applyTickToFormingCandle(previous, 102)).toEqual({
+      time: 60,
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 102,
+      volume: 1,
+      tickVolume: 1,
     });
   });
 
@@ -235,6 +258,210 @@ describe('candle history helpers', () => {
     ]);
   });
 
+  it('lets fresh backend OHLC replace stale cached duplicates while retaining older rows', () => {
+    const stale = [
+      candle(60, 60),
+      candle(120, 999, { open: 990, high: 1000, low: 980 }),
+    ];
+    const backend = [
+      candle(120, 125, { open: 121, high: 127, low: 119 }),
+      candle(180, 180),
+    ];
+
+    const result = mergeAuthoritativeCandleHistory(stale, backend);
+
+    expect(result.map(item => item.time)).toEqual([60, 120, 180]);
+    expect(result[1]).toEqual(backend[0]);
+  });
+
+  it('drops an unproven cached candle newer than a successful latest backend page', () => {
+    const staleFuture = candle(300, 999, { open: 990, high: 1000, low: 980 });
+    const backend = [
+      candle(120, 125, { closed: true }),
+      candle(180, 185, { closed: false }),
+    ];
+
+    expect(mergeAuthoritativeCandleHistory([
+      candle(60, 65),
+      ...backend,
+      staleFuture,
+    ], backend).map(item => item.time)).toEqual([60, 120, 180]);
+  });
+
+  it('retains a future bucket only when a post-request live mutation proves it', () => {
+    const formingBeforeRequest = candle(240, 245, {
+      open: 241,
+      high: 247,
+      low: 239,
+      closed: false,
+    });
+    const newerLive = candle(240, 250, {
+      open: 246,
+      high: 252,
+      low: 244,
+      closed: false,
+    });
+    const backend = [candle(120, 125, { closed: true }), candle(180, 185, { closed: true })];
+
+    expect(mergeAuthoritativeCandleHistory(
+      [formingBeforeRequest],
+      backend,
+      { formingLiveCandle: newerLive, hasNewerLiveMutation: true },
+    )).toEqual([
+      ...backend,
+      expect.objectContaining({
+        time: 240,
+        open: 241,
+        high: 252,
+        low: 239,
+        close: 250,
+      }),
+    ]);
+  });
+
+  it('replaces only the authoritative backend range while preserving outside rows and a newer forming overlay', () => {
+    const olderOutsideRange = candle(60, 60);
+    const staleDuplicate = candle(120, 999, { open: 990, high: 1000, low: 980 });
+    const fabricatedInterior = candle(180, 777, { open: 770, high: 780, low: 760 });
+    const formingBeforeRequest = candle(300, 300, {
+      open: 295,
+      high: 305,
+      low: 290,
+      volume: 40,
+      tickVolume: 40,
+      closed: false,
+    });
+    const backend = [
+      candle(120, 125, { open: 121, high: 127, low: 119, closed: true }),
+      candle(240, 245, { open: 241, high: 247, low: 239, closed: true }),
+    ];
+    const newerFormingMutation = candle(300, 310, {
+      open: 302,
+      high: 312,
+      low: 298,
+      volume: 41,
+      tickVolume: 41,
+      closed: false,
+    });
+
+    const result = mergeAuthoritativeCandleHistory(
+      [olderOutsideRange, staleDuplicate, fabricatedInterior, formingBeforeRequest],
+      backend,
+      {
+        formingLiveCandle: newerFormingMutation,
+        hasNewerLiveMutation: true,
+      },
+    );
+
+    expect(result.map(item => item.time)).toEqual([60, 120, 240, 300]);
+    expect(result[0]).toEqual(olderOutsideRange);
+    expect(result[1]).toEqual(backend[0]);
+    expect(result.some(item => item.time === fabricatedInterior.time)).toBe(false);
+    expect(result[3]).toMatchObject({
+      time: 300,
+      open: 295,
+      high: 312,
+      low: 290,
+      close: 310,
+      volume: 41,
+      tickVolume: 41,
+      closed: false,
+    });
+  });
+
+  it('does not let an unchanged local forming candle overwrite fresh backend OHLC', () => {
+    const backend = candle(120, 125, {
+      open: 121,
+      high: 127,
+      low: 119,
+      volume: 40,
+      closed: false,
+    });
+    const staleLocal = candle(120, 999, {
+      open: 990,
+      high: 1000,
+      low: 980,
+      volume: 4,
+    });
+
+    expect(mergeAuthoritativeCandleHistory([staleLocal], [backend], {
+      formingLiveCandle: staleLocal,
+      hasNewerLiveMutation: false,
+    })).toEqual([backend]);
+  });
+
+  it('overlays only a newer live mutation onto a forming backend candle', () => {
+    const backend = candle(120, 125, {
+      open: 121,
+      high: 127,
+      low: 119,
+      volume: 40,
+      tickVolume: 40,
+      closed: false,
+    });
+    const newerLive = candle(120, 130, {
+      open: 124,
+      high: 131,
+      low: 123,
+      volume: 5,
+      tickVolume: 5,
+    });
+
+    expect(mergeAuthoritativeCandleHistory([], [backend], {
+      formingLiveCandle: newerLive,
+      hasNewerLiveMutation: true,
+    })).toEqual([{
+      ...backend,
+      high: 131,
+      close: 130,
+    }]);
+  });
+
+  it('keeps a finalized backend candle authoritative over a newer local mutation', () => {
+    const backend = candle(120, 125, {
+      open: 121,
+      high: 127,
+      low: 119,
+      volume: 40,
+      closed: true,
+    });
+    const newerLive = candle(120, 130, {
+      open: 124,
+      high: 131,
+      low: 123,
+      volume: 5,
+    });
+
+    expect(mergeAuthoritativeCandleHistory([], [backend], {
+      formingLiveCandle: newerLive,
+      hasNewerLiveMutation: true,
+    })).toEqual([backend]);
+  });
+
+  it('selects every candle changed after a request began, including a rolled bucket', () => {
+    const justClosed = candle(120, 125);
+    const forming = candle(180, 130);
+    const stale = candle(60, 115);
+    const generations = new Map<number, number>([
+      [60, 4],
+      [120, 6],
+      [180, 7],
+    ]);
+
+    expect(selectCandlesMutatedAfterGeneration(
+      [stale, justClosed, forming],
+      generations,
+      5,
+    )).toEqual([justClosed, forming]);
+  });
+
+  it('does not overlay buffered live values onto a backend-finalized candle', () => {
+    const finalized = candle(120, 125, { closed: true });
+    const buffered = candle(120, 130, { high: 131 });
+
+    expect(mergeHistoricalCandlesWithBufferedLive([finalized], [buffered])).toEqual([finalized]);
+  });
+
   it('keeps candles sorted ascending after unsorted backend pages and live upserts', () => {
     const normalized = normalizeCandlePageAscending([
       candle(300, 300),
@@ -271,14 +498,14 @@ describe('candle history helpers', () => {
     });
   });
 
-  it('keeps valid raw older candles when price reconciliation rejects the whole page', () => {
+  it('fails closed when price reconciliation rejects an older page', () => {
     const result = selectOlderHistoryCandlesForMerge([
       candle(120, 120),
       candle(60, 60),
     ], []);
 
-    expect(result.usedRawFallback).toBe(true);
-    expect(result.candles.map(item => item.time)).toEqual([60, 120]);
+    expect(result.usedRawFallback).toBe(false);
+    expect(result.candles).toEqual([]);
   });
 
   it('prefers reconciled older candles when price reconciliation succeeds', () => {
