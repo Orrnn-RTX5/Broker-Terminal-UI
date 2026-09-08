@@ -72,8 +72,10 @@ describe('Navigator locked placeholder sections', () => {
     });
 
     const accountsRow = getTreeRow('Accounts');
+    const accountsLabel = within(accountsRow).getByText('Accounts');
     expect(accountsRow).not.toHaveAttribute('aria-disabled');
     expect(accountsRow).toHaveClass('cursor-pointer');
+    expect(accountsLabel).toHaveClass('text-[14px]', 'font-normal');
     expect(accountsRow.querySelector('.navigator-tree-item__lock')).toBeNull();
     expect(screen.getByText('https://test-broker.example')).toBeInTheDocument();
 
@@ -89,8 +91,9 @@ describe('Navigator locked placeholder sections', () => {
       expect(row).toHaveAttribute('aria-label', `${label}, currently unavailable`);
       expect(row).toHaveAttribute('title', `${label} is currently unavailable`);
       expect(row).toHaveClass('navigator-tree-item__row--disabled', 'cursor-not-allowed');
+      expect(row).not.toHaveClass('opacity-[0.55]');
       expect(row.querySelector('.navigator-tree-item__chevron')).toBeNull();
-      expect(within(row).getByText(label)).toBeInTheDocument();
+      expect(within(row).getByText(label)).toHaveClass('text-[14px]', 'font-normal');
       expect(row.querySelector('.navigator-tree-item__lock')).not.toBeNull();
 
       fireEvent.click(row);

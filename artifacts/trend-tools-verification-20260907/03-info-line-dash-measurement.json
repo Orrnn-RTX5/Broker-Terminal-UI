@@ -1,0 +1,50 @@
+{
+  "source": "03-info-line-tradingview-dashed-3px/00002.png",
+  "line_start": [
+    685.5,
+    215.5
+  ],
+  "line_end": [
+    925.5,
+    455.5
+  ],
+  "measurement_window_along_line_px": [
+    190,
+    330
+  ],
+  "blue_mask": "B>140, B-R>60, B-G>35, perpendicular distance<3px",
+  "median_colored_length_px": 16.263455967290586,
+  "median_clear_gap_px": 16.970562748477146,
+  "median_centroid_period_px": 33.22611256028276,
+  "components": [
+    {
+      "start": 196.5756851698602,
+      "end": 211.42492757477768,
+      "length": 16.26345596729057,
+      "centroid": 203.9348335222091,
+      "pixels": 54
+    },
+    {
+      "start": 229.80970388562793,
+      "end": 244.65894629054543,
+      "length": 16.2634559672906,
+      "centroid": 237.16094608249185,
+      "pixels": 53
+    },
+    {
+      "start": 262.3366158202091,
+      "end": 277.1858582251266,
+      "length": 16.2634559672906,
+      "centroid": 269.96803240207146,
+      "pixels": 53
+    },
+    {
+      "start": 296.27774131716336,
+      "end": 310.4198769408943,
+      "length": 15.556349186104047,
+      "centroid": 303.34880912902884,
+      "pixels": 51
+    }
+  ],
+  "inference": "Raster spacing is consistent with the earlier nominal 15px dash / 18px gap at 3px stroke; nominal values are an inference, not a TradingView API read."
+}

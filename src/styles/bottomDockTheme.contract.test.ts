@@ -50,7 +50,14 @@ describe('bottom dock dark surface contract', () => {
       /\.rtx-trade-footer-metric,[\s\S]*?\.rtx-trade-footer-floating \{[^}]*background: transparent !important;[^}]*border: none !important;/,
     );
     expect(indexCss).toMatch(/\.rtx-trade-metric-label::after \{[^}]*content: ':';/);
-    expect(indexCss).toMatch(/\.rtx-trade-footer-inner \{[^}]*gap: 16px !important;/);
+    expect(indexCss).toMatch(/\.rtx-trade-footer-inner \{[^}]*gap: 0 !important;/);
+    expect(indexCss).toMatch(/\.rtx-trade-footer-metrics \{[^}]*gap: 16px !important;/);
+    expect(indexCss).toMatch(
+      /\.rtx-trade-footer-floating--profit \{[^}]*display: grid;[^}]*grid-template-columns: minmax\(0, 1fr\) auto minmax\(0, 1fr\);/,
+    );
+    expect(indexCss).toMatch(
+      /\.rtx-trade-footer-currency \{[^}]*display: inline-block;[^}]*margin-left: 4px;[^}]*position: static;/,
+    );
     expect(indexCss).toMatch(/\.rtx-exposure-account-bar \{[\s\S]*background: var\(--bg-tertiary\);/);
     expect(readSource('src/components/BottomDock.tsx')).toContain('Balance:');
     expect(indexCss).toMatch(

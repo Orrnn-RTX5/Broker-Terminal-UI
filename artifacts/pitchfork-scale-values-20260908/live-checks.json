@@ -1,0 +1,48 @@
+[
+  {
+    "stage": "hover-before-first-click",
+    "committed": 0,
+    "cursor": 0,
+    "prices": [],
+    "selected": 0
+  },
+  {
+    "stage": "two-anchors-and-moving-third",
+    "committed": 2,
+    "cursor": 1,
+    "prices": [
+      "4465.80",
+      "4471.89",
+      "4461.24"
+    ],
+    "selected": 0
+  },
+  {
+    "stage": "pointer-outside-chart",
+    "committed": 2,
+    "cursor": 0,
+    "prices": [
+      "4465.80",
+      "4471.89"
+    ],
+    "selected": 0
+  },
+  {
+    "stage": "pointer-reenters-chart",
+    "committed": 2,
+    "cursor": 1,
+    "prices": [
+      "4465.80",
+      "4471.89",
+      "4460.48"
+    ],
+    "selected": 0
+  },
+  {
+    "stage": "escape-cancels-construction",
+    "committed": 0,
+    "cursor": 0,
+    "prices": [],
+    "selected": 0
+  }
+]

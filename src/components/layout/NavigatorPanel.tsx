@@ -489,7 +489,7 @@ function TreeItem({
 
             <div
                 className={`navigator-tree-item__row flex min-h-[30px] items-center gap-1.5 px-1 rounded-sm select-none ${disabled
-                    ? 'navigator-tree-item__row--disabled cursor-not-allowed text-zinc-600 opacity-[0.55]'
+                    ? 'navigator-tree-item__row--disabled cursor-not-allowed text-zinc-600'
                     : 'group cursor-pointer hover:bg-[#222226]'
                     }`}
                 aria-disabled={disabled || undefined}

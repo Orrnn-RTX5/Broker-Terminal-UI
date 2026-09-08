@@ -1,0 +1,293 @@
+[
+  {
+    "stage": "placed",
+    "anchorPrices": [
+      4459.83,
+      4468.1
+    ],
+    "levels": [
+      {
+        "level": 0,
+        "actual": 4468.1,
+        "expectedFromRoundedAnchors": 4468.1,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.236,
+        "actual": 4466.15,
+        "expectedFromRoundedAnchors": 4466.14828,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.382,
+        "actual": 4464.94,
+        "expectedFromRoundedAnchors": 4464.940860000001,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.5,
+        "actual": 4463.97,
+        "expectedFromRoundedAnchors": 4463.965,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.618,
+        "actual": 4462.99,
+        "expectedFromRoundedAnchors": 4462.98914,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.786,
+        "actual": 4461.6,
+        "expectedFromRoundedAnchors": 4461.5997800000005,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 1,
+        "actual": 4459.83,
+        "expectedFromRoundedAnchors": 4459.83,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 1.618,
+        "actual": 4454.72,
+        "expectedFromRoundedAnchors": 4454.719139999999,
+        "roundingTolerance": 0.01618001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 2.618,
+        "actual": 4446.45,
+        "expectedFromRoundedAnchors": 4446.449139999999,
+        "roundingTolerance": 0.02618001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 3.618,
+        "actual": 4438.18,
+        "expectedFromRoundedAnchors": 4438.179139999998,
+        "roundingTolerance": 0.03618001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 4.236,
+        "actual": 4433.07,
+        "expectedFromRoundedAnchors": 4433.068279999999,
+        "roundingTolerance": 0.04236001,
+        "valueMatches": true,
+        "geometryMatches": true
+      }
+    ]
+  },
+  {
+    "stage": "dragged",
+    "anchorPrices": [
+      4459.83,
+      4470.52
+    ],
+    "levels": [
+      {
+        "level": 0,
+        "actual": 4470.52,
+        "expectedFromRoundedAnchors": 4470.52,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.236,
+        "actual": 4467.99,
+        "expectedFromRoundedAnchors": 4467.99716,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.382,
+        "actual": 4466.43,
+        "expectedFromRoundedAnchors": 4466.43642,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.5,
+        "actual": 4465.17,
+        "expectedFromRoundedAnchors": 4465.175,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.618,
+        "actual": 4463.91,
+        "expectedFromRoundedAnchors": 4463.91358,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.786,
+        "actual": 4462.12,
+        "expectedFromRoundedAnchors": 4462.11766,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 1,
+        "actual": 4459.83,
+        "expectedFromRoundedAnchors": 4459.83,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 1.618,
+        "actual": 4453.23,
+        "expectedFromRoundedAnchors": 4453.22358,
+        "roundingTolerance": 0.01618001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 2.618,
+        "actual": 4442.55,
+        "expectedFromRoundedAnchors": 4442.533579999999,
+        "roundingTolerance": 0.02618001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 3.618,
+        "actual": 4431.86,
+        "expectedFromRoundedAnchors": 4431.843579999999,
+        "roundingTolerance": 0.03618001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 4.236,
+        "actual": 4425.26,
+        "expectedFromRoundedAnchors": 4425.237159999998,
+        "roundingTolerance": 0.04236001,
+        "valueMatches": true,
+        "geometryMatches": true
+      }
+    ]
+  },
+  {
+    "stage": "zoomed",
+    "anchorPrices": [
+      4459.83,
+      4470.52
+    ],
+    "levels": [
+      {
+        "level": 0,
+        "actual": 4470.52,
+        "expectedFromRoundedAnchors": 4470.52,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.236,
+        "actual": 4467.99,
+        "expectedFromRoundedAnchors": 4467.99716,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.382,
+        "actual": 4466.43,
+        "expectedFromRoundedAnchors": 4466.43642,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.5,
+        "actual": 4465.17,
+        "expectedFromRoundedAnchors": 4465.175,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.618,
+        "actual": 4463.91,
+        "expectedFromRoundedAnchors": 4463.91358,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 0.786,
+        "actual": 4462.12,
+        "expectedFromRoundedAnchors": 4462.11766,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 1,
+        "actual": 4459.83,
+        "expectedFromRoundedAnchors": 4459.83,
+        "roundingTolerance": 0.01000001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 1.618,
+        "actual": 4453.23,
+        "expectedFromRoundedAnchors": 4453.22358,
+        "roundingTolerance": 0.01618001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 2.618,
+        "actual": 4442.55,
+        "expectedFromRoundedAnchors": 4442.533579999999,
+        "roundingTolerance": 0.02618001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 3.618,
+        "actual": 4431.86,
+        "expectedFromRoundedAnchors": 4431.843579999999,
+        "roundingTolerance": 0.03618001,
+        "valueMatches": true,
+        "geometryMatches": true
+      },
+      {
+        "level": 4.236,
+        "actual": 4425.26,
+        "expectedFromRoundedAnchors": 4425.237159999998,
+        "roundingTolerance": 0.04236001,
+        "valueMatches": true,
+        "geometryMatches": true
+      }
+    ]
+  }
+]

@@ -86,6 +86,25 @@
   color: var(--color-loss);
 }
 
+.position-drawing-settings {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font: 13px var(--font-sans);
+}
+.position-drawing-settings::backdrop { background: rgb(0 0 0 / 40%); }
+.position-drawing-settings h2 { margin: 0 0 16px; font-size: 17px; }
+.position-drawing-settings label { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 16px; margin: 9px 0; }
+.position-drawing-settings input, .position-drawing-settings select { width: 100%; min-width: 0; padding: 7px; color: var(--text-primary); background: var(--bg-primary); border: 1px solid var(--border-secondary); border-radius: 4px; }
+.position-drawing-settings p { font-size: 11px; line-height: 1.5; color: var(--text-secondary); }
+.position-drawing-settings__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.position-drawing-settings__actions button { padding: 8px 18px; border-radius: 4px; border: 1px solid var(--border-secondary); background: var(--bg-primary); color: var(--text-primary); cursor: pointer; }
+
 :root[data-theme='light'] .web-drawing-selection-toolbar,
 .theme-light .web-drawing-selection-toolbar,
 .rtx-skin-untitled-light .web-drawing-selection-toolbar,

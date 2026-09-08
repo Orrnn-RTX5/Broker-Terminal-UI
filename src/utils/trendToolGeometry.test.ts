@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TREND_LINE_TOOLS } from '../config/trendLineTools';
 import {
   clipLineToViewport,
+  constrainPointTo45DegreeAngle,
   createPitchforkGeometry,
   parallelSegmentThrough,
   screenAngleDegrees,
@@ -28,6 +29,28 @@ describe('trend line tool registry', () => {
 });
 
 describe('trend line screen geometry', () => {
+  it.each([
+    [80, 10, 1, 0], [80, 65, 1, 1], [10, 80, 0, 1], [-65, 80, -1, 1],
+    [-80, 10, -1, 0], [-80, -65, -1, -1], [10, -80, 0, -1], [65, -80, 1, -1],
+  ])('constrains the pointer vector (%i, %i) to the nearest 45-degree direction', (dx, dy, xSign, ySign) => {
+    const anchor = { x: 100, y: 100 };
+    const actual = constrainPointTo45DegreeAngle(anchor, { x: 100 + dx, y: 100 + dy });
+    const actualX = actual.x - anchor.x;
+    const actualY = actual.y - anchor.y;
+    expect(Math.sign(actualX)).toBe(xSign);
+    expect(Math.sign(actualY)).toBe(ySign);
+    if (xSign && ySign) expect(Math.abs(actualX)).toBeCloseTo(Math.abs(actualY), 8);
+    expect(Math.hypot(actualX, actualY)).toBeCloseTo(Math.hypot(dx, dy), 8);
+  });
+
+  it('keeps coincident anchors finite and matches the observed diagonal endpoint drag', () => {
+    expect(constrainPointTo45DegreeAngle({ x: 10, y: 20 }, { x: 10, y: 20 }))
+      .toEqual({ x: 10, y: 20 });
+    const actual = constrainPointTo45DegreeAngle({ x: 587, y: 220 }, { x: 900, y: 480 });
+    expect(actual.x).toBeCloseTo(874.723, 2);
+    expect(actual.y).toBeCloseTo(507.723, 2);
+  });
+
   it('keeps segments finite and clips rays or extended lines to the pane', () => {
     expect(clipLineToViewport({ x: 20, y: 80 }, { x: 80, y: 20 }, 100, 100, 'segment')).toEqual({
       start: { x: 20, y: 80 },
@@ -89,4 +112,3 @@ describe('trend line screen geometry', () => {
     expect(screenAngleDegrees({ x: 0, y: 100 }, { x: 100, y: 0 })).toBeCloseTo(45);
   });
 });
-

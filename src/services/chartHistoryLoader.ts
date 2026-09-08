@@ -12,6 +12,7 @@ import {
 
 export const DEFAULT_HISTORY_PAGE_SIZE = 3000;
 export const M1_HISTORY_PAGE_SIZE = 5000;
+export const FIRST_PAINT_HISTORY_COUNT = 500;
 export const M5_HISTORY_PAGE_SIZE = 5000;
 export const M1_OLDER_HISTORY_RANGE_FALLBACK_WINDOWS = 8;
 export const M1_INTERIOR_GAP_LOOKBACK_SECONDS = 12 * 60 * 60;
@@ -22,6 +23,16 @@ export const M1_INTERIOR_GAP_REQUEST_CONCURRENCY = 4;
 export const M1_INTERIOR_GAP_MAX_PASSES = 2;
 
 export type FetchCandlesPage = (options: FetchCandlesOptions) => Promise<OHLCData[]>;
+
+/** A late gap repair may add missing buckets, but must never rewind live OHLC. */
+export const mergeMissingHistoryCandles = <T extends OHLCData>(
+  current: readonly T[],
+  repaired: readonly T[],
+): { candles: T[]; addedCount: number } => {
+  const existingTimes = new Set(current.map(candle => candle.time));
+  const missing = repaired.filter(candle => !existingTimes.has(candle.time));
+  return mergeBackendCandlePage(current, missing);
+};
 
 export interface OlderHistoryPageOptions {
   symbol: string;

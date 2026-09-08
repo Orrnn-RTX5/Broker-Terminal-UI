@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "tools": [
+    "Pitchfork",
+    "Schiff pitchfork",
+    "Modified Schiff pitchfork",
+    "Inside pitchfork"
+  ],
+  "stages": [
+    "first hover",
+    "first anchor press and movement",
+    "second anchor and moving third",
+    "completed selection"
+  ],
+  "boundaryAndCancellationPassed": true,
+  "broker": "Achiever Financials"
+}

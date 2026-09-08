@@ -16,6 +16,7 @@ import {
 } from '../config/backendTarget.js';
 import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
 import { resolveLoginHeroAsset, toPublicAssetPath, type LoginHeroAsset } from './welcomeHeroAssets';
+import { BrokerLogoImage, buildBrokerDirectoryLogoUrl } from './BrokerLogoImage';
 import {
     beginLoginPerformanceMeasurement,
     markAuthenticationAccepted,
@@ -116,6 +117,7 @@ const LOGIN_TITLE_TEXT = 'Sign in to';
 const LOGIN_TITLE_ACCESSIBLE_LABEL = 'Sign in to RTX5';
 const RTX5_TITLE_LOGO_SRC = toPublicAssetPath('brand/rtx5-login-wordmark.png');
 const BROKER_PRESENTATION_CACHE_KEY = 'rtx_broker_presentation_v1';
+export const LAST_AUTHENTICATED_BROKER_ID_KEY = 'rtx_last_authenticated_broker_id';
 
 interface BrokerPresentationCache {
     version: 1;
@@ -156,7 +158,7 @@ const writeBrokerPresentationCache = (broker: BrokerServerItem, healthVerifiedAt
             version: 1,
             brokerId: String(broker.broker_id),
             brokerName: String(broker.broker_name || broker.broker_id),
-            logoUrl: String(broker.logo_url || ''),
+            logoUrl: String(broker.logo_url || existing?.logoUrl || ''),
             region: broker.region ? String(broker.region) : undefined,
             healthVerifiedAt: healthVerifiedAt ?? existing?.healthVerifiedAt,
         };
@@ -366,7 +368,7 @@ export const buildConfiguredRuntimeBroker = (): BrokerServerItem | undefined => 
         server_url: backendUrl,
         backend_url: backendUrl,
         market_api_url: backendUrl,
-        logo_url: cachedPresentation?.logoUrl || storedLogoUrl,
+        logo_url: buildBrokerDirectoryLogoUrl(brokerId) || cachedPresentation?.logoUrl || storedLogoUrl,
         region: cachedPresentation?.region,
     };
 };
@@ -376,20 +378,28 @@ export const pickDiscoveryBroker = (
     options: {
         isDesktopBrokerSelection?: boolean;
         savedBrokerId?: string | null;
+        lastAuthenticatedBrokerId?: string | null;
     } = {}
 ): BrokerServerItem | undefined => {
     const isDesktop = Boolean(options.isDesktopBrokerSelection);
     const runtimeBroker = isDesktop ? undefined : findBrokerForWebRuntime(brokers);
-    const savedBroker = isDesktop
-        ? brokers.find(broker => brokerMatchesLookup(broker, options.savedBrokerId))
+    const savedBroker = brokers.find(broker => brokerMatchesLookup(broker, options.savedBrokerId));
+    const authenticatedSavedBroker = savedBroker
+        && brokerMatchesLookup(savedBroker, options.lastAuthenticatedBrokerId)
+        ? savedBroker
         : undefined;
     const configuredBrokerId = getRuntimeConfiguredBrokerId() || DEFAULT_BROKER_ID;
     const configuredBroker = brokers.find(broker => brokerMatchesLookup(broker, configuredBrokerId));
     const configuredRuntimeBroker = buildConfiguredRuntimeBroker();
 
-    return isDesktop
-        ? savedBroker || configuredBroker || configuredRuntimeBroker || brokers[0]
-        : runtimeBroker || configuredBroker || configuredRuntimeBroker || brokers[0];
+    // Discovery may identify localhost as a local demo broker. That inferred
+    // match must not replace an explicit deployment broker (or a broker from a
+    // previously successful login) when the directory arrives asynchronously.
+    return authenticatedSavedBroker
+        || configuredBroker
+        || configuredRuntimeBroker
+        || runtimeBroker
+        || brokers[0];
 };
 
 const isAbortError = (err: unknown): boolean =>
@@ -587,6 +597,7 @@ export function WelcomeTerminal({
                 const selectedDiscoveryBroker = pickDiscoveryBroker(data, {
                     isDesktopBrokerSelection,
                     savedBrokerId,
+                    lastAuthenticatedBrokerId: localStorage.getItem(LAST_AUTHENTICATED_BROKER_ID_KEY),
                 });
 
                 if (selectedDiscoveryBroker) {
@@ -650,19 +661,6 @@ export function WelcomeTerminal({
                 skipDynamicUrl: true,
             });
 
-            // The request has an explicit base URL, so persist routing only
-            // after fetch dispatch. This keeps synchronous storage/session
-            // listeners out of the request-start critical path while ensuring
-            // the App graph evaluates against the selected broker.
-            persistBrokerSessionDiscovery({
-                ...submitBroker,
-                broker_id: submitBroker.broker_id,
-                backend_url: brokerServerUrl,
-                market_api_url: brokerExtApiUrl,
-                server_url: brokerServerUrl,
-            });
-            updateDynamicUrls();
-
             // Dispatch the small, critical authentication request before a
             // cold App/CSS preload can compete for bandwidth and main-thread
             // evaluation. The large terminal graph still loads concurrently
@@ -694,6 +692,10 @@ export function WelcomeTerminal({
                 feed_status_url: data.feed_status_url || submitBroker.feed_status_url,
                 logo_url: submitBroker.logo_url,
             });
+            localStorage.setItem(
+                LAST_AUTHENTICATED_BROKER_ID_KEY,
+                String(data.broker_id || submitBroker.broker_id),
+            );
             updateDynamicUrls();
             markPostAuthenticationPhase('auth-session-persist');
 
@@ -903,11 +905,10 @@ export function WelcomeTerminal({
                             <div className="rtx-broker-strip">
                                 <div className="rtx-route-row">
                                     <div className="rtx-route-logo">
-                                        {selectedBroker?.logo_url ? (
-                                            <img src={selectedBroker.logo_url} alt="" decoding="async" />
-                                        ) : (
-                                            <span>{selectedBrokerName.slice(0, 1).toUpperCase()}</span>
-                                        )}
+                                        <BrokerLogoImage
+                                            broker={selectedBroker}
+                                            fallback={<span>{selectedBrokerName.slice(0, 1).toUpperCase()}</span>}
+                                        />
                                     </div>
                                     <div className="rtx-route-copy">
                                         <span className="rtx-summary-label">Broker Server</span>
@@ -1018,8 +1019,8 @@ export function WelcomeTerminal({
                                         ref={isDesktopBrokerSelection ? dropdownRef : undefined}
                                         className={`rtx-broker-input-wrap ${isDesktopBrokerSelection ? 'is-selectable' : 'is-locked'}`}
                                     >
-                                        {selectedBroker?.logo_url && (
-                                            <img src={selectedBroker.logo_url} alt="" className="rtx-broker-logo" decoding="async" />
+                                        {selectedBroker && (
+                                            <BrokerLogoImage broker={selectedBroker} className="rtx-broker-logo" />
                                         )}
                                         <input
                                             id="rtxBrokerServer"
@@ -1065,7 +1066,7 @@ export function WelcomeTerminal({
                                             }}
                                             style={{
                                                 ...inputStyle,
-                                                paddingLeft: selectedBroker?.logo_url ? 42 : 16,
+                                                paddingLeft: selectedBroker ? 42 : 16,
                                                 paddingRight: isDesktopBrokerSelection ? 54 : 32,
                                                 color: '#ffffff',
                                             }}
@@ -1099,11 +1100,10 @@ export function WelcomeTerminal({
                                                             className={`rtx-broker-option ${selectedBroker?.broker_id === item.broker_id ? 'is-selected' : ''}`}
                                                         >
                                                             <span>
-                                                                {item.logo_url ? (
-                                                                    <img src={item.logo_url} alt="" decoding="async" />
-                                                                ) : (
-                                                                    <i aria-hidden="true">B</i>
-                                                                )}
+                                                                <BrokerLogoImage
+                                                                    broker={item}
+                                                                    fallback={<i aria-hidden="true">B</i>}
+                                                                />
                                                                 <strong>{item.broker_name}</strong>
                                                             </span>
                                                             {item.region && <em>{item.region}</em>}

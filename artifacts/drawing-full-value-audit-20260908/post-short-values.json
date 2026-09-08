@@ -1,0 +1,122 @@
+{
+  "geometry": [
+    {
+      "role": "short-position-profit-zone",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "short-position-loss-zone",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "short-position-entry",
+      "x": "773.5454545454546",
+      "y": "263.3799513033682"
+    },
+    {
+      "role": "short-position-target",
+      "x": "773.5454545454546",
+      "y": "508.48975955609285"
+    },
+    {
+      "role": "short-position-stop",
+      "x": "773.5454545454546",
+      "y": "99.9734124682185"
+    },
+    {
+      "role": "short-position-target-label-background",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "short-position-target-label",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "short-position-stop-label-background",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "short-position-stop-label",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "short-position-stats-background",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "short-position-stats",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "short-position-target-handle",
+      "x": "1440",
+      "y": "508.48975955609285"
+    },
+    {
+      "role": "short-position-stop-handle",
+      "x": "1440",
+      "y": "99.9734124682185"
+    },
+    {
+      "role": "short-position-duration-edge",
+      "x": "1440",
+      "y": "99.9734124682185"
+    },
+    {
+      "role": "short-position-width-handle",
+      "x": "1440",
+      "y": "263.3799513033682"
+    },
+    {
+      "role": "position-entry-price-scale-label",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "position-entry-price-scale-label-text",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "position-target-price-scale-label",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "position-target-price-scale-label-text",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "position-stop-price-scale-label",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "position-stop-price-scale-label-text",
+      "x": null,
+      "y": null
+    },
+    {
+      "role": "selection-anchor-1",
+      "x": null,
+      "y": null
+    }
+  ],
+  "texts": [
+    "Target: 15.00 (0.34%) 1,500, Amount: 2,575",
+    "Stop: 10.00 (0.22%) 1,000, Amount: 2,450",
+    "Closed PnL: −10.00, Qty: 5Risk/reward ratio: 1.50",
+    "4470.00",
+    "4455.00",
+    "4480.00"
+  ]
+}

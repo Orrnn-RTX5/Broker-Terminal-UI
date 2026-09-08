@@ -1,0 +1,39 @@
+{
+  "capture": "tv-position-settings-and-values",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 9,
+  "encoded_frames": 10,
+  "source_duration_ms": 5723,
+  "encoded_duration_ms": 5723,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    666,
+    980,
+    1614,
+    2033,
+    2429,
+    2829,
+    3125,
+    3485
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    666,
+    980,
+    1614,
+    2033,
+    2429,
+    2829,
+    3125,
+    3485,
+    5722
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\tv-position-settings-and-values.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\tv-position-settings-and-values.jpg",
+  "capture_errors": []
+}

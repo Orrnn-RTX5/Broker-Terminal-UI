@@ -1,0 +1,28 @@
+{
+  "capture": "02-ray-tradingview-reverse",
+  "method": "Continuously sampled browser screenshots, variable approximately 1-3 fps with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 4,
+  "encoded_frames": 5,
+  "source_duration_ms": 6633,
+  "encoded_duration_ms": 6633,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    1122,
+    4489,
+    5558
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    1122,
+    4489,
+    5558,
+    6632
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\02-ray-tradingview-reverse.mp4",
+  "contact_sheet": "contact-sheets\\02-ray-tradingview-reverse.jpg",
+  "capture_errors": []
+}

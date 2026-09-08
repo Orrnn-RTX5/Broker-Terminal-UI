@@ -3,9 +3,14 @@ import { useMarketDataStore, type Tick as MarketTick } from '../store/useMarketD
 import {
   areCanonicalUpstreamTicksEqual,
   compareCanonicalTickFreshness,
+  getCanonicalTickTimestamp,
   upsertFreshestTick,
 } from '../utils/liveTickSemantics';
 import { onSessionChange } from './brokerSession';
+import {
+  flushMarketWatchDailyChangeCache,
+  rememberCurrentMarketWatchDailyChange,
+} from './marketWatchDailyChangeCache';
 
 export type LiveTick = MarketTick & Partial<AppTick>;
 
@@ -197,6 +202,24 @@ export const enqueueLiveTick = (symbol: string, tick: LiveTick): void => {
     console.error(`[LiveTickDispatcher] Invalid tick for ${symbol}:`, error);
     return;
   }
+
+  const dailyChange = fullTick.dailyChange;
+  const asOf = getCanonicalTickTimestamp(fullTick);
+  if (typeof dailyChange === 'number' && Number.isFinite(dailyChange) && asOf !== null) {
+    try {
+      // Preserve the broker's exact symbol identity (including punctuation),
+      // while making lookup casing deterministic across quote transports.
+      rememberCurrentMarketWatchDailyChange(
+        normalizeFreezeKey(symbol),
+        dailyChange,
+        asOf,
+        'quote',
+      );
+    } catch (error) {
+      // Persistence is display recovery only; it must never interrupt live delivery.
+      console.error('[LiveTickDispatcher] Daily Change cache write failed:', error);
+    }
+  }
   
   if (typeof window !== 'undefined' && window.rtxTickCache) {
     window.rtxTickCache.set(symbol, fullTick);
@@ -255,6 +278,12 @@ export const flushLiveTicks = (): void => {
 export const resetLiveMarketDataSession = (): void => {
   // FIX: Source timestamps are comparable only within one broker session. Old
   // queues/caches would otherwise reject or briefly repaint the new session.
+  try {
+    flushMarketWatchDailyChangeCache();
+  } catch (error) {
+    // A storage failure must not prevent the broker/account boundary reset.
+    console.error('[LiveTickDispatcher] Daily Change cache flush failed:', error);
+  }
   clearDispatcherRuntime();
   if (typeof window !== 'undefined') window.rtxTickCache?.clear();
   useMarketDataStore.getState().clearAllData();

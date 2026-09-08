@@ -1,0 +1,62 @@
+{
+  "productionSource": "src/drawing-tools/forecastingMeasurementRenderer.ts",
+  "results": [
+    {
+      "name": "Long target distance, percentage, and ticks",
+      "pass": true,
+      "actual": "Target: 10.00 (10.00%) 1,000, Amount: 1250",
+      "expected": "10.00, 10.00%, 1,000 ticks"
+    },
+    {
+      "name": "Symmetric risk/reward",
+      "pass": true,
+      "actual": "Open PnL: 125.000, Qty: 25Risk/reward ratio: 1",
+      "expected": "Ratio 1"
+    },
+    {
+      "name": "Historical Long PnL at right edge t=3",
+      "pass": false,
+      "actual": "Open PnL: 125.000, Qty: 25Risk/reward ratio: 1",
+      "expected": "Open PnL: 3.000 (103 - 100)"
+    },
+    {
+      "name": "Historical Short PnL at right edge t=3",
+      "pass": false,
+      "actual": "Open PnL: 125.000, Qty: 25Risk/reward ratio: 1",
+      "expected": "Open PnL: 3.000 (100 - 97)"
+    },
+    {
+      "name": "Future Long PnL uses price offset, not quantity-scaled money",
+      "pass": false,
+      "actual": "Open PnL: 125.000, Qty: 25Risk/reward ratio: 1",
+      "expected": "Open PnL: 5.000 (105 - 100)"
+    },
+    {
+      "name": "Target hit inside drawing closes displayed result",
+      "pass": false,
+      "actual": "Open PnL: 175.000, Qty: 25Risk/reward ratio: 1",
+      "expected": "Closed PnL: 10.000"
+    },
+    {
+      "name": "Missing candles and price do not assert zero PnL",
+      "pass": false,
+      "actual": "Open PnL: 0.000, Qty: 25Risk/reward ratio: 1",
+      "expected": "Unavailable PnL"
+    },
+    {
+      "name": "Quantity does not force a minimum that exceeds the 250 risk assumption",
+      "pass": false,
+      "actual": "Open PnL: 0.000, Qty: 1Risk/reward ratio: 1",
+      "expected": "Raw qty 0.5; zero whole units if integer-only"
+    },
+    {
+      "name": "Long/Short opposite signed price movements produce equal positive PnL magnitude",
+      "pass": true,
+      "actual": {
+        "long": "Open PnL: 125.000, Qty: 25Risk/reward ratio: 1",
+        "short": "Open PnL: 125.000, Qty: 25Risk/reward ratio: 1"
+      },
+      "expected": "Equal values (unit/time semantics audited separately)"
+    }
+  ]
+}

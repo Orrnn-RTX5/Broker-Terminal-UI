@@ -1,0 +1,96 @@
+{
+  "method": "Continuously sampled browser screenshots during native UI actions; OS pointer not captured",
+  "durationMs": 5257,
+  "complete": true,
+  "frames": [
+    {
+      "file": "00000.png",
+      "ms": 0
+    },
+    {
+      "file": "00001.png",
+      "ms": 341
+    },
+    {
+      "file": "00002.png",
+      "ms": 590
+    },
+    {
+      "file": "00003.png",
+      "ms": 812
+    },
+    {
+      "file": "00004.png",
+      "ms": 1037
+    },
+    {
+      "file": "00005.png",
+      "ms": 1439
+    },
+    {
+      "file": "00006.png",
+      "ms": 1735
+    },
+    {
+      "file": "00007.png",
+      "ms": 1940
+    },
+    {
+      "file": "00008.png",
+      "ms": 2187
+    },
+    {
+      "file": "00009.png",
+      "ms": 2405
+    },
+    {
+      "file": "00010.png",
+      "ms": 2641
+    },
+    {
+      "file": "00011.png",
+      "ms": 2988
+    },
+    {
+      "file": "00012.png",
+      "ms": 3190
+    },
+    {
+      "file": "00013.png",
+      "ms": 3425
+    },
+    {
+      "file": "00014.png",
+      "ms": 3641
+    },
+    {
+      "file": "00015.png",
+      "ms": 3884
+    },
+    {
+      "file": "00016.png",
+      "ms": 4103
+    },
+    {
+      "file": "00017.png",
+      "ms": 4305
+    },
+    {
+      "file": "00018.png",
+      "ms": 4507
+    },
+    {
+      "file": "00019.png",
+      "ms": 4727
+    },
+    {
+      "file": "00020.png",
+      "ms": 4930
+    },
+    {
+      "file": "00021.png",
+      "ms": 5149
+    }
+  ],
+  "errors": []
+}

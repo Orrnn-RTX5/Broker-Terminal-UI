@@ -1183,6 +1183,8 @@ const TradeTab = memo(function TradeTab({
         + visibleTradeColumns.reduce((total, column) => total + columnWidths[column.key], 0)
         + columnWidths.close
     ), [columnWidths, visibleTradeColumns]);
+    const footerProfitColumnWidth = `${(columnWidths.profit / visibleTradeTableWidth) * 100}%`;
+    const footerCloseColumnWidth = `${(columnWidths.close / visibleTradeTableWidth) * 100}%`;
 
     const visibleOptionalColumnCount = useMemo(
         () => visibleTradeColumns.length,
@@ -1871,33 +1873,35 @@ ${rows}
                 <div
                     className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full text-[13px] font-normal text-zinc-300 tabular-nums"
                 >
-                    <div className="rtx-trade-footer-inner flex w-max min-w-full items-center gap-3 px-1.5 py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
-                        <button
-                            ref={footerMetricButtonRef}
-                            type="button"
-                            className="rtx-trade-footer-status inline-flex h-5 w-5 shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-0 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
-                            title="Select footer metrics"
-                            aria-label="Footer metrics"
-                            aria-haspopup="menu"
-                            aria-expanded={footerMetricMenu !== null}
-                            onClick={(event) => {
-                                event.stopPropagation();
-                                toggleFooterMetricMenu(event.currentTarget);
-                            }}
-                        >
-                            <Icon name="plus-circle" size="xs" className="text-current shrink-0" />
-                        </button>
-                        {visibleFooterMetrics.map(metric => (
-                            <span key={metric.key} className="rtx-trade-footer-metric" title={getFooterMetricComment(metric.key)}>
-                                <span className="rtx-trade-metric-label text-zinc-500">{metric.label}</span>
-                                {renderFooterMetricValue(metric.key)}
-                            </span>
-                        ))}
+                    <div className="rtx-trade-footer-inner flex w-max min-w-full items-center py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
+                        <div className="rtx-trade-footer-metrics flex min-w-0 items-center gap-3 px-1.5">
+                            <button
+                                ref={footerMetricButtonRef}
+                                type="button"
+                                className="rtx-trade-footer-status inline-flex h-5 w-5 shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-0 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
+                                title="Select footer metrics"
+                                aria-label="Footer metrics"
+                                aria-haspopup="menu"
+                                aria-expanded={footerMetricMenu !== null}
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleFooterMetricMenu(event.currentTarget);
+                                }}
+                            >
+                                <Icon name="plus-circle" size="xs" className="text-current shrink-0" />
+                            </button>
+                            {visibleFooterMetrics.map(metric => (
+                                <span key={metric.key} className="rtx-trade-footer-metric" title={getFooterMetricComment(metric.key)}>
+                                    <span className="rtx-trade-metric-label text-zinc-500">{metric.label}</span>
+                                    {renderFooterMetricValue(metric.key)}
+                                </span>
+                            ))}
+                        </div>
                         <div className="min-w-2 flex-1" />
                         {isColumnVisible('profit') ? (
                             <span
-                                className={`rtx-trade-footer-floating inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap text-center font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
-                                style={{ width: columnWidths.profit, flex: `0 0 ${columnWidths.profit}px` }}
+                                className={`rtx-trade-footer-floating rtx-trade-footer-floating--profit inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap text-center font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
+                                style={{ width: footerProfitColumnWidth, flex: `0 0 ${footerProfitColumnWidth}` }}
                                 title={`Floating P/L: ${formatMoney(totalLivePnL)} ${account?.currency || 'USD'}`}
                             >
                                 <BlinkingText
@@ -1920,7 +1924,7 @@ ${rows}
                                 <span className="rtx-trade-footer-currency">{account?.currency || 'USD'}</span>
                             </span>
                         )}
-                        <span className="rtx-trade-footer-close-spacer shrink-0" style={{ width: columnWidths.close, flex: `0 0 ${columnWidths.close}px` }} aria-hidden="true" />
+                        <span className="rtx-trade-footer-close-spacer shrink-0" style={{ width: footerCloseColumnWidth, flex: `0 0 ${footerCloseColumnWidth}` }} aria-hidden="true" />
                     </div>
                 </div>
                 {displayedLivePositions.length === 0 && !loading && !error && (

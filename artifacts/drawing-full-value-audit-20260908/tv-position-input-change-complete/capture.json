@@ -1,0 +1,22 @@
+{
+  "method": "Continuously sampled browser screenshots during native UI actions; OS pointer not captured",
+  "durationMs": 11008,
+  "complete": false,
+  "frames": [
+    {
+      "file": "00000.png",
+      "ms": 0
+    },
+    {
+      "file": "00001.png",
+      "ms": 5757
+    },
+    {
+      "file": "00002.png",
+      "ms": 10807
+    }
+  ],
+  "errors": [
+    "UI action failed: Error: Timed out after 3000ms waiting for selector internal:role=dialog[name=\"Long position\"s] >> internal:role=textbox >> nth=2: Timed out after 3000ms waiting for CDP command Runtime.evaluate.\nlocator.fill failed for selector internal:role=dialog[name=\"Long position\"s] >> internal:role=textbox >> nth=2"
+  ]
+}

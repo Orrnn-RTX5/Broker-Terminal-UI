@@ -973,7 +973,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-volume-control 
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-volume-control input {
   flex: 1 1 auto;
-  background: #ffffff !important;
+  background: transparent !important;
   border: none !important;
   border-radius: 0 !important;
   color: #1c1c1c !important;
@@ -1015,7 +1015,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-volume-control 
   color: #a7b0b8 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-volume-control :is(button, input):focus-visible {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-volume-control button:focus-visible {
   outline-color: #1d4ed8 !important;
 }
 

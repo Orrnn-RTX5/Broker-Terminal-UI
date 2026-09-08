@@ -19,6 +19,22 @@ import { DrawingManager } from './drawingManager';
 
 const chart = {} as IChartApi;
 const series = {} as ISeriesApi<'Candlestick'>;
+const interactiveChart = {
+  timeScale: () => ({
+    timeToCoordinate: () => 100,
+    logicalToCoordinate: () => 100,
+    coordinateToTime: () => 1_700_000_000,
+    coordinateToLogical: () => 10,
+    height: () => 0,
+  }),
+  priceScale: () => ({ width: () => 0 }),
+} as unknown as IChartApi;
+const interactiveSeries = {
+  priceToCoordinate: () => 100,
+  coordinateToPrice: () => 2000,
+  options: () => ({ priceFormat: { precision: 2, minMove: 0.01 } }),
+  priceFormatter: () => ({ format: (price: number) => price.toFixed(2) }),
+} as unknown as ISeriesApi<'Candlestick'>;
 
 describe('DrawingManager.setChart', () => {
   beforeEach(() => {
@@ -81,8 +97,9 @@ describe('DrawingManager.setChart', () => {
 
     renderAll.mockClear();
     manager.startDrawing('trendline');
-    manager.updatePreviewPoint(1_700_000_000, 2000);
     expect(renderAll).toHaveBeenCalledTimes(1);
+    manager.updatePreviewPoint(1_700_000_000, 2000);
+    expect(renderAll).toHaveBeenCalledTimes(2);
   });
 
   it('does not confuse chart, series, symbol, or timeframe changes with equality', async () => {
@@ -154,5 +171,64 @@ describe('DrawingManager.setChart', () => {
     svgB.appendChild(emptyMarker);
     manager.renderContext(containerB);
     expect(svgB.querySelector('[data-test-marker="empty"]')).toBe(emptyMarker);
+  });
+
+  it('targets the active registration when a detached remount shares its context id', async () => {
+    const manager = new DrawingManager();
+    const staleContainer = document.createElement('div');
+    const remountedContainer = document.createElement('div');
+    document.body.appendChild(staleContainer);
+
+    manager.setChart(interactiveChart, interactiveSeries, 'STALE', 1, staleContainer, 'M1', 'chart-remount', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(1));
+    staleContainer.remove();
+    document.body.appendChild(remountedContainer);
+    manager.setChart(interactiveChart, interactiveSeries, 'CURRENT', 1, remountedContainer, 'M5', 'chart-remount', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(2));
+
+    manager.startDrawing('hline');
+    expect(manager.addPoint(1_700_000_000, 2000, undefined, 'chart-remount')).toBe(true);
+    expect(manager.getDrawings()).toHaveLength(1);
+    expect(remountedContainer.querySelectorAll('g[data-id]')).toHaveLength(1);
+
+    const drawingId = manager.getDrawings()[0].id;
+    expect(manager.deleteDrawing(drawingId, 'chart-remount')).toBe(true);
+    expect(manager.getDrawings()).toHaveLength(0);
+    expect(remountedContainer.querySelectorAll('g[data-id]')).toHaveLength(0);
+
+    manager.startDrawing('hline');
+    expect(manager.addPoint(1_700_000_060, 2001, undefined, 'chart-remount')).toBe(true);
+
+    expect(manager.deleteSelected('chart-remount')).toBe(1);
+    expect(manager.getDrawings()).toHaveLength(0);
+    expect(remountedContainer.querySelectorAll('g[data-id]')).toHaveLength(0);
+  });
+
+  it('targets the newest connected remount when another chart is active', async () => {
+    const manager = new DrawingManager();
+    const staleContainer = document.createElement('div');
+    const remountedContainer = document.createElement('div');
+    const otherContainer = document.createElement('div');
+    document.body.appendChild(staleContainer);
+
+    manager.setChart(interactiveChart, interactiveSeries, 'STALE', 1, staleContainer, 'M1', 'chart-remount', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(1));
+    staleContainer.remove();
+    document.body.append(remountedContainer, otherContainer);
+    manager.setChart(interactiveChart, interactiveSeries, 'CURRENT', 1, remountedContainer, 'M5', 'chart-remount', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(2));
+
+    manager.startDrawing('hline');
+    expect(manager.addPoint(1_700_000_000, 2000, undefined, 'chart-remount')).toBe(true);
+    expect(manager.getDrawings()).toHaveLength(1);
+    expect(remountedContainer.querySelectorAll('g[data-id]')).toHaveLength(1);
+
+    manager.setChart(interactiveChart, interactiveSeries, 'OTHER', 1, otherContainer, 'H1', 'chart-other', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(3));
+    manager.clearAllDrawings(true, 'chart-remount');
+
+    manager.setChart(interactiveChart, interactiveSeries, 'CURRENT', 1, remountedContainer, 'M5', 'chart-remount', 'account-1');
+    expect(manager.getDrawings()).toHaveLength(0);
+    expect(remountedContainer.querySelectorAll('g[data-id]')).toHaveLength(0);
   });
 });

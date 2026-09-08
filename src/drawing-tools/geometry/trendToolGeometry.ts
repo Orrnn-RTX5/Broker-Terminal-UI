@@ -12,6 +12,22 @@ export type LineExtent = 'segment' | 'ray' | 'infinite';
 
 const EPSILON = 1e-7;
 
+/** Snap to horizontal, vertical, or diagonal while preserving pointer distance. */
+export const constrainPointTo45DegreeAngle = (anchor: ScreenPoint, point: ScreenPoint): ScreenPoint => {
+  const dx = point.x - anchor.x;
+  const dy = point.y - anchor.y;
+  const distance = Math.hypot(dx, dy);
+  if (!Number.isFinite(distance) || distance < EPSILON) return { ...point };
+  const step = Math.PI / 4;
+  const angle = Math.round(Math.atan2(dy, dx) / step) * step;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  return {
+    x: anchor.x + distance * (Math.abs(cosine) < EPSILON ? 0 : cosine),
+    y: anchor.y + distance * (Math.abs(sine) < EPSILON ? 0 : sine),
+  };
+};
+
 export const clipLineToViewport = (
   start: ScreenPoint,
   through: ScreenPoint,

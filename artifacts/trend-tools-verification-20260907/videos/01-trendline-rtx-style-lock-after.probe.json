@@ -1,0 +1,29 @@
+{
+  "capture": "01-trendline-rtx-style-lock-after",
+  "method": "Continuously sampled browser screenshots, variable approximately 1-3 fps with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 5,
+  "encoded_frames": 6,
+  "source_duration_ms": 1558,
+  "encoded_duration_ms": 1558,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    387,
+    748,
+    1119,
+    1440
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    387,
+    748,
+    1119,
+    1440,
+    1557
+  ],
+  "timing_verified": true,
+  "video": "videos\\01-trendline-rtx-style-lock-after.mp4",
+  "contact_sheet": "contact-sheets\\01-trendline-rtx-style-lock-after.jpg",
+  "capture_errors": []
+}

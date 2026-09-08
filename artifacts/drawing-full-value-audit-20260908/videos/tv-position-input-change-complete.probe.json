@@ -1,0 +1,29 @@
+{
+  "capture": "tv-position-input-change-complete",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 3,
+  "encoded_frames": 4,
+  "source_duration_ms": 11008,
+  "encoded_duration_ms": 11008,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    5757,
+    10807
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    5757,
+    10807,
+    11007
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\tv-position-input-change-complete.mp4",
+  "capture_complete": false,
+  "contact_sheet": "contact-sheets\\tv-position-input-change-complete.jpg",
+  "capture_errors": [
+    "UI action failed: Error: Timed out after 3000ms waiting for selector internal:role=dialog[name=\"Long position\"s] >> internal:role=textbox >> nth=2: Timed out after 3000ms waiting for CDP command Runtime.evaluate.\nlocator.fill failed for selector internal:role=dialog[name=\"Long position\"s] >> internal:role=textbox >> nth=2"
+  ]
+}

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { FetchCandlesOptions, OHLCData } from './chartDataService';
 import {
   backfillRecentInteriorHistoryGaps,
+  mergeMissingHistoryCandles,
   createSelectedTimeframeHistoryCoordinator,
   createChartHistoryBackfillDiagnostics,
   fetchOlderHistoryPage,
@@ -28,6 +29,17 @@ const candle = (time: number): OHLCData => ({
 });
 
 describe('chart history loader', () => {
+  it('adds late gap candles without overwriting live prices or newly loaded older history', () => {
+    const live = { ...candle(240), close: 245, high: 246, volume: 40 };
+    const current = [candle(60), candle(120), live, candle(300)];
+    const repaired = [candle(120), candle(180), candle(240)];
+    const result = mergeMissingHistoryCandles(current, repaired);
+    expect(result.addedCount).toBe(1);
+    expect(result.candles.map(item => item.time)).toEqual([60, 120, 180, 240, 300]);
+    expect(result.candles.find(item => item.time === 240)).toEqual(live);
+    expect(mergeMissingHistoryCandles(result.candles, repaired).addedCount).toBe(0);
+  });
+
   it('starts exactly one request for the selected timeframe and schedules no delayed fetches', async () => {
     vi.useFakeTimers();
     try {

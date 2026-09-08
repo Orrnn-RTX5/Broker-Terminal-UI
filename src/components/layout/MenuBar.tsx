@@ -639,7 +639,7 @@ export const MenuBar = ({
             { label: t('menu.help.signals'), icon: <Icon name="signal" size="sm" className="text-emerald-400" /> },
             { label: t('menu.help.quotes'), icon: <Icon name="trending-up" size="sm" /> },
             { label: t('menu.help.forum'), icon: <Icon name="callout" size="sm" /> },
-            { label: t('menu.help.cloudHosting'), icon: <Icon name="globe" size="sm" className="text-zinc-400" /> },
+            { label: t('menu.help.cloudHosting'), icon: <Icon name="globe" size="sm" className="rtx-menu-icon--neutral" /> },
             { divider: true, label: '' },
             {
                 label: t('menu.help.mobile'),

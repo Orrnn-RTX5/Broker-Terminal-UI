@@ -1,0 +1,36 @@
+{
+  "capture": "fixed-01-trendline",
+  "method": "Continuously sampled browser screenshots, variable approximately 1-3 fps with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 8,
+  "encoded_frames": 9,
+  "source_duration_ms": 4377,
+  "encoded_duration_ms": 4377,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    0,
+    316,
+    909,
+    1384,
+    1724,
+    2091,
+    2548,
+    4259
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    316,
+    909,
+    1384,
+    1724,
+    2091,
+    2548,
+    4259,
+    4376
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\fixed-01-trendline.mp4",
+  "contact_sheet": "contact-sheets\\fixed-01-trendline.jpg",
+  "capture_errors": []
+}

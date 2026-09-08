@@ -1,0 +1,380 @@
+- 'button "Logged in as mql5helpline Active layout: Unnamed"'
+- generic: "11"
+- toolbar:
+  - button "XAUUSD":
+    - generic: XAUUSD
+  - button "Switch data type":
+  - button "Compare symbols":
+  - button "1 minute":
+    - generic: 1m
+  - button "Candles":
+  - button "Indicators, metrics, and strategies":
+    - generic: Indicators
+  - button "Indicator templates":
+  - button "Create alert":
+    - generic: Alert
+  - button "Bar replay":
+    - generic: Replay
+  - button "Undo create horizontal line":
+  - button [disabled]:
+  - button "Layout setup":
+  - button "Save all charts for all symbols and intervals on your layout":
+    - generic: Unnamed
+    - generic: Save
+  - button "Manage layouts":
+  - button "Quick search":
+  - button "Settings":
+  - button "Fullscreen mode":
+  - button "Take a snapshot":
+  - button "Trade":
+    - generic: Trade
+  - button "Share your idea with the trade community":
+    - generic: Publish
+- toolbar:
+  - button "Arrow":
+  - button "Cursors" [pressed]:
+  - button "Horizontal line":
+  - button "Trend tools":
+  - button "Fib retracement":
+  - button "Gann and Fibonacci tools":
+  - button "XABCD pattern":
+  - button "Patterns":
+  - button "Long position":
+  - button "Forecasting and measurement tools":
+  - button "Brush":
+  - button "Geometric shapes":
+  - button "Text":
+  - button "Annotation tools":
+  - button "Icon":
+  - button "Icons":
+  - button "Measure":
+  - button "Zoom in":
+  - button "Zoom out":
+  - button "Magnet mode snaps drawings placed near price bars to the closest OHLC value":
+  - button "Magnets":
+  - button "Keep drawing":
+  - button "Lock drawings and indicators":
+  - button "Lock options":
+  - button "Hide all drawings":
+  - button "Hide options":
+  - button "Remove objects":
+  - button "Remove options":
+- 'region "Chart #1"':
+  - toolbar:
+    - generic: X
+    - button "Change symbol": Gold Spot / U.S. Dollar
+    - generic "Change interval":
+      - text: ·
+      - button "Change interval": "1"
+    - text: ·
+    - generic: OANDA
+    - button "Flag symbol":
+    - button "More":
+    - button "Market open · One update every 5 seconds":
+    - generic: O
+    - generic: 4,391.610
+    - generic: H
+    - generic: 4,392.190
+    - generic: L
+    - generic: 4,391.145
+    - generic: C
+    - generic: 4,392.075
+    - generic: +0.470 (+0.01%)
+  - generic: 4,394.950
+  - generic: Sell
+  - generic "Spread": "60.0"
+  - generic: 4,395.550
+  - generic: Buy
+  - button "Hide indicator legend":
+  - toolbar:
+    - generic "Volume · Ticks":
+      - generic: Vol · Ticks
+    - button "Hide":
+    - button "Settings":
+    - button "Remove":
+    - button "More":
+    - generic "Volume": "701"
+  - generic "Chart for OANDA:XAUUSD, 1 minute"
+  - generic: USD
+- toolbar:
+  - button "1 day in 1 minute intervals":
+    - generic: 1D
+  - button "5 days in 5 minutes intervals":
+    - generic: 5D
+  - button "1 month in 30 minutes intervals":
+    - generic: 1M
+  - button "3 months in 1 hour intervals":
+    - generic: 3M
+  - button "6 months in 2 hours intervals":
+    - generic: 6M
+  - button "Year to day in 1 day intervals":
+    - generic: YTD
+  - button "1 year in 1 day intervals":
+    - generic: 1Y
+  - button "5 years in 1 week intervals":
+    - generic: 5Y
+  - button "All data in 1 month intervals":
+    - generic: All
+  - button "Go to":
+  - button "Timezone":
+    - generic: 14:01:12 UTC+5:30
+- toolbar:
+  - button "Watchlist, details, and news" [pressed]:
+  - button "Alerts":
+  - button "Object tree and data window":
+  - button "Chats":
+  - button "Screeners":
+  - button "Pine":
+  - button "Calendars":
+  - button "Community":
+  - button "Notifications":
+  - button "Products":
+  - button "Help Center":
+- button "Daftar Pantau":
+  - generic: Daftar Pantau
+- button "Add symbol":
+- button "Advanced view":
+- button "Settings":
+- button:
+- button "Symbol"
+- button "Last"
+- button "Chg"
+- button "Chg%"
+- generic: "N"
+- generic: NIFTY
+- generic: 23,636.70
+- generic: −142.45
+- generic: −0.60%
+- generic: B
+- generic: BANKNIFTY
+- generic: 56,766.45
+- generic: −321.85
+- generic: −0.56%
+- generic: S
+- generic: SENSEX
+- generic "Quotes are delayed by 15 min": D
+- generic: 75,604.15
+- generic: −528.66
+- generic: −0.69%
+- generic: C
+- generic: CNXIT
+- generic: 29,929.35
+- generic: −65.85
+- generic: −0.22%
+- generic: S
+- generic: SPX
+- generic "Market closed"
+- generic: 7,718.61
+- generic: −29.09
+- generic: −0.38%
+- generic: Stocks
+- generic: R
+- generic: RELIANCE
+- generic: 1,289.6
+- generic: −19.9
+- generic: −1.52%
+- generic: A
+- generic: AXISBANK
+- generic: 1,245.0
+- generic: −21.0
+- generic: −1.66%
+- generic: H
+- generic: HDFCBANK
+- generic: "704.80"
+- generic: −5.70
+- generic: −0.80%
+- generic: I
+- generic: ICICIBANK
+- generic: 1,400.6
+- generic: −26.9
+- generic: −1.88%
+- generic: B
+- generic: BAJFINANCE
+- generic: 1,056.7
+- generic: −3.3
+- generic: −0.31%
+- generic: Futures
+- generic: "N"
+- generic: NIFTY1!
+- generic: 23,735.0
+- generic: −132.7
+- generic: −0.56%
+- generic: B
+- generic: BANKNIFTY1!
+- generic: 57,118.4
+- generic: −265.6
+- generic: −0.46%
+- generic: R
+- generic: RELIANCE1!
+- generic: 1,294.00
+- generic: −19.70
+- generic: −1.50%
+- generic: I
+- generic: INFY1!
+- generic: 1,089.00
+- generic: −4.60
+- generic: −0.42%
+- generic: Forex
+- generic: U
+- generic: USDINR
+- generic: "94.7600"
+- generic: "0.2850"
+- generic: 0.30%
+- generic: E
+- generic: EURUSD
+- text: "1.1613"
+- superscript: "7"
+- generic: −0.00087
+- generic: −0.07%
+- generic: G
+- generic: GBPUSD
+- text: "1.352"
+- text: "8"
+- superscript: "9"
+- generic: −0.00111
+- generic: −0.08%
+- generic: U
+- generic: USDJPY
+- text: "153."
+- text: "93"
+- superscript: "7"
+- generic: −0.405
+- generic: −0.26%
+- generic: Crypto
+- generic: B
+- generic: BTCUSD
+- generic: 78,432
+- generic: −659
+- generic: −0.83%
+- generic: E
+- generic: ETHUSD
+- generic: 2,475.0
+- generic: −14.7
+- generic: −0.59%
+- generic: X
+- generic: XRPUSD
+- generic: "1.38668"
+- generic: −0.00978
+- generic: −0.70%
+- generic: L
+- generic: LTCUSD
+- generic: "55.13"
+- generic: −0.09
+- generic: −0.16%
+- generic: X
+- generic: XAUUSD
+- button "Metrics":
+- generic "Add note":
+- generic "Settings":
+- link "Gold Spot / U.S. Dollar":
+  - /url: https://www.tradingview.com/symbols/XAUUSD/?exchange=OANDA
+  - text: Gold Spot / U.S. Dollar
+- text: OANDA
+- text: Commodity
+- text: Cfd
+- text: 4,39
+- text: "5.26"
+- superscript: "0"
+- generic: USD
+- generic: −10.805
+- generic: −0.25%
+- generic: Market open
+- text: News
+- generic "Sep 8, 2026, 12:24 GMT+5:30"
+- generic: Gold ticks up with US inflation data on radar
+- generic: More events
+- generic: Performance
+- generic: −1.38%
+- generic: 1W
+- generic: 3.69%
+- generic: 1M
+- generic: 3.21%
+- generic: 3M
+- generic: −15.17%
+- generic: 6M
+- generic: 1.53%
+- generic: YTD
+- generic: 22.31%
+- generic: 1Y
+- generic: Seasonals
+- table:
+  - row:
+    - cell
+    - cell
+    - cell
+  - row:
+    - cell
+    - cell
+    - cell
+- generic: "2026"
+- generic: "2025"
+- generic: "2024"
+- button "More seasonals"
+- generic: Technicals
+- generic: Neutral
+- generic: Sell
+- generic: Buy
+- generic: Strong sell
+- generic: Strong buy
+- generic: Strong sell
+- generic: Sell
+- generic: Neutral
+- generic: Buy
+- generic: Strong buy
+- button "More technicals"
+- text: Browse community
+- text: posts
+- generic "Hide Tab":
+- generic "Trading panel"
+- generic: Trend tools
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- log:
+  - list
+- generic "Templates":
+- generic "Line tool colors":
+- generic "Line tool text colors":
+- generic "Line tool width":
+  - generic: 2px
+- generic "Style":
+- generic "Settings":
+- generic "Remove":
+- generic "More":

@@ -1,0 +1,50 @@
+{
+  "method": "Continuously sampled browser screenshots during native UI actions; OS pointer not captured",
+  "durationMs": 4257,
+  "complete": false,
+  "frames": [
+    {
+      "file": "00000.png",
+      "ms": 0
+    },
+    {
+      "file": "00001.png",
+      "ms": 332
+    },
+    {
+      "file": "00002.png",
+      "ms": 696
+    },
+    {
+      "file": "00003.png",
+      "ms": 1385
+    },
+    {
+      "file": "00004.png",
+      "ms": 1812
+    },
+    {
+      "file": "00005.png",
+      "ms": 2175
+    },
+    {
+      "file": "00006.png",
+      "ms": 2449
+    },
+    {
+      "file": "00007.png",
+      "ms": 2804
+    },
+    {
+      "file": "00008.png",
+      "ms": 3334
+    },
+    {
+      "file": "00009.png",
+      "ms": 3742
+    }
+  ],
+  "errors": [
+    "UI action failed: Error: Timed out after 3000ms waiting for selector internal:role=row[name=\"Extended line\"s]: Browser Use encountered an error interacting with this webpage: Error: Element is not hidden\n    at <anonymous>:224:441\n    at <anonymous>:224:479\n    at <anonymous>:225:11\n    at <anonymous>:226:11\nlocator.waitFor(hidden) timed out for selector internal:role=row[name=\"Extended line\"s]"
+  ]
+}

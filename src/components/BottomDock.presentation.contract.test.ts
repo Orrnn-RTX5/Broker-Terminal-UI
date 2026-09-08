@@ -89,8 +89,10 @@ describe('BottomDock trade type presentation', () => {
         expect(tradeTab.lastIndexOf('rtx-trade-scroll')).toBeLessThan(tradeTab.indexOf('rtx-trade-footer'));
         expect(tradeTab).not.toContain('syncHorizontalScroll');
         expect(tradeTab).not.toContain('footerScrollRef');
-        expect(tradeTab).toContain('columnWidths.profit');
+        expect(tradeTab).toContain('footerProfitColumnWidth');
+        expect(tradeTab).toContain('footerCloseColumnWidth');
         expect(tradeTab).toContain('rtx-trade-footer-floating');
+        expect(tradeTab).toContain('rtx-trade-footer-floating--profit');
         expect(tradeTab).toContain('justify-center');
     });
 

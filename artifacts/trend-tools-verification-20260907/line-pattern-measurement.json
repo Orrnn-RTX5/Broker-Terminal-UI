@@ -1,0 +1,306 @@
+[
+  {
+    "name": "tradingview-dashed-3px",
+    "source": "01-trendline-tradingview-lock/00005.png",
+    "line_start": [
+      601,
+      235
+    ],
+    "line_end": [
+      889,
+      523
+    ],
+    "measurement_window_along_line_px": [
+      20,
+      165
+    ],
+    "blue_mask": "B>140, B-R>60, B-G>35; perpendicular distance<3px",
+    "median_colored_length_px": 16.263455967290597,
+    "median_clear_gap_px": 16.970562748477132,
+    "median_centroid_period_px": 32.876616775929975,
+    "components": [
+      {
+        "start_px": 32.526911934581186,
+        "end_px": 47.37615433949868,
+        "projected_footprint_length_px": 16.263455967290593,
+        "centroid_px": 40.0170059871498,
+        "pixels": 54
+      },
+      {
+        "start_px": 65.05382386916237,
+        "end_px": 79.90306627407988,
+        "projected_footprint_length_px": 16.2634559672906,
+        "centroid_px": 72.543917921731,
+        "pixels": 54
+      },
+      {
+        "start_px": 98.2878425849301,
+        "end_px": 113.13708498984761,
+        "projected_footprint_length_px": 16.2634559672906,
+        "centroid_px": 105.91643689734651,
+        "pixels": 52
+      },
+      {
+        "start_px": 131.52186130069785,
+        "end_px": 145.6639969244288,
+        "projected_footprint_length_px": 15.556349186104047,
+        "centroid_px": 138.7930536732765,
+        "pixels": 53
+      }
+    ]
+  },
+  {
+    "name": "tradingview-dotted-3px",
+    "source": "01-trendline-tradingview-dotted/00003.png",
+    "line_start": [
+      583,
+      235
+    ],
+    "line_end": [
+      871,
+      523
+    ],
+    "measurement_window_along_line_px": [
+      20,
+      165
+    ],
+    "blue_mask": "B>140, B-R>60, B-G>35; perpendicular distance<3px",
+    "median_colored_length_px": 4.2426406871192865,
+    "median_clear_gap_px": 7.778174593052019,
+    "median_centroid_period_px": 11.942247860039458,
+    "components": [
+      {
+        "start_px": 23.334523779156072,
+        "end_px": 26.16295090390226,
+        "projected_footprint_length_px": 4.242640687119283,
+        "centroid_px": 24.684454906875843,
+        "pixels": 11
+      },
+      {
+        "start_px": 35.35533905932738,
+        "end_px": 38.18376618407357,
+        "projected_footprint_length_px": 4.2426406871192865,
+        "centroid_px": 36.910973977937786,
+        "pixels": 10
+      },
+      {
+        "start_px": 47.37615433949868,
+        "end_px": 50.20458146424488,
+        "projected_footprint_length_px": 4.242640687119294,
+        "centroid_px": 48.79036790187178,
+        "pixels": 12
+      },
+      {
+        "start_px": 59.396969619669996,
+        "end_px": 62.22539674441619,
+        "projected_footprint_length_px": 4.2426406871192865,
+        "centroid_px": 60.66976182580578,
+        "pixels": 10
+      },
+      {
+        "start_px": 71.41778489984131,
+        "end_px": 74.24621202458749,
+        "projected_footprint_length_px": 4.242640687119279,
+        "centroid_px": 72.61986642785844,
+        "pixels": 10
+      },
+      {
+        "start_px": 83.43860018001261,
+        "end_px": 86.26702730475881,
+        "projected_footprint_length_px": 4.242640687119294,
+        "centroid_px": 84.8528137423857,
+        "pixels": 11
+      },
+      {
+        "start_px": 95.45941546018392,
+        "end_px": 98.2878425849301,
+        "projected_footprint_length_px": 4.242640687119279,
+        "centroid_px": 96.66149698820105,
+        "pixels": 10
+      },
+      {
+        "start_px": 107.48023074035522,
+        "end_px": 110.30865786510142,
+        "projected_footprint_length_px": 4.242640687119294,
+        "centroid_px": 108.63731456411503,
+        "pixels": 11
+      },
+      {
+        "start_px": 119.50104602052653,
+        "end_px": 122.32947314527273,
+        "projected_footprint_length_px": 4.242640687119294,
+        "centroid_px": 121.1273916172556,
+        "pixels": 10
+      },
+      {
+        "start_px": 131.52186130069785,
+        "end_px": 134.35028842544403,
+        "projected_footprint_length_px": 4.242640687119279,
+        "centroid_px": 132.79465350683364,
+        "pixels": 10
+      },
+      {
+        "start_px": 142.83556979968262,
+        "end_px": 146.37110370561535,
+        "projected_footprint_length_px": 4.949747468305833,
+        "centroid_px": 144.72118788284675,
+        "pixels": 12
+      },
+      {
+        "start_px": 155.56349186104046,
+        "end_px": 157.68481220460012,
+        "projected_footprint_length_px": 3.5355339059327546,
+        "centroid_px": 156.6634357428862,
+        "pixels": 9
+      }
+    ]
+  },
+  {
+    "name": "rtx-dashed-3px",
+    "source": "01-trendline-rtx-style-lock-after/00004.png",
+    "line_start": [
+      1301,
+      420
+    ],
+    "line_end": [
+      1564,
+      299
+    ],
+    "measurement_window_along_line_px": [
+      20,
+      260
+    ],
+    "blue_mask": "B>140, B-R>60, B-G>35; perpendicular distance<3px",
+    "median_colored_length_px": 11.174455353706264,
+    "median_clear_gap_px": 0.9084642219551018,
+    "median_centroid_period_px": 12.119793125811718,
+    "components": [
+      {
+        "start_px": 23.675337556198695,
+        "end_px": 33.52336606111881,
+        "projected_footprint_length_px": 11.174455353706266,
+        "centroid_px": 28.725815248090186,
+        "pixels": 27
+      },
+      {
+        "start_px": 35.34029450502901,
+        "end_px": 45.18832300994913,
+        "projected_footprint_length_px": 11.174455353706277,
+        "centroid_px": 40.261518797170105,
+        "pixels": 26
+      },
+      {
+        "start_px": 47.423214080690386,
+        "end_px": 57.271242585610494,
+        "projected_footprint_length_px": 11.174455353706263,
+        "centroid_px": 52.434954031258464,
+        "pixels": 29
+      },
+      {
+        "start_px": 59.50613365635175,
+        "end_px": 69.35416216127186,
+        "projected_footprint_length_px": 11.174455353706263,
+        "centroid_px": 64.55474715707018,
+        "pixels": 28
+      },
+      {
+        "start_px": 71.58905323201311,
+        "end_px": 81.43708173693324,
+        "projected_footprint_length_px": 11.174455353706277,
+        "centroid_px": 76.36576896722516,
+        "pixels": 28
+      },
+      {
+        "start_px": 83.67197280767449,
+        "end_px": 93.52000131259462,
+        "projected_footprint_length_px": 11.174455353706277,
+        "centroid_px": 88.34861057851998,
+        "pixels": 26
+      },
+      {
+        "start_px": 95.75489238333586,
+        "end_px": 105.60292088825598,
+        "projected_footprint_length_px": 11.174455353706277,
+        "centroid_px": 100.51748750305602,
+        "pixels": 26
+      },
+      {
+        "start_px": 107.83781195899724,
+        "end_px": 117.68584046391734,
+        "projected_footprint_length_px": 11.174455353706263,
+        "centroid_px": 112.78243648975005,
+        "pixels": 30
+      },
+      {
+        "start_px": 119.9207315346586,
+        "end_px": 129.76876003957872,
+        "projected_footprint_length_px": 11.174455353706277,
+        "centroid_px": 124.58259390340673,
+        "pixels": 28
+      },
+      {
+        "start_px": 132.00365111031996,
+        "end_px": 153.02613496894634,
+        "projected_footprint_length_px": 22.34891070741253,
+        "centroid_px": 142.36045726211586,
+        "pixels": 55
+      },
+      {
+        "start_px": 155.2610260396876,
+        "end_px": 165.10905454460774,
+        "projected_footprint_length_px": 11.174455353706291,
+        "centroid_px": 160.28118321044076,
+        "pixels": 24
+      },
+      {
+        "start_px": 167.34394561534899,
+        "end_px": 177.1919741202691,
+        "projected_footprint_length_px": 11.174455353706263,
+        "centroid_px": 172.1037556953151,
+        "pixels": 27
+      },
+      {
+        "start_px": 179.42686519101034,
+        "end_px": 189.27489369593047,
+        "projected_footprint_length_px": 11.174455353706291,
+        "centroid_px": 184.3508794434704,
+        "pixels": 26
+      },
+      {
+        "start_px": 191.50978476667171,
+        "end_px": 201.35781327159182,
+        "projected_footprint_length_px": 11.174455353706263,
+        "centroid_px": 196.26959484663786,
+        "pixels": 27
+      },
+      {
+        "start_px": 203.5927043423331,
+        "end_px": 213.4407328472532,
+        "projected_footprint_length_px": 11.174455353706263,
+        "centroid_px": 208.63448247541695,
+        "pixels": 27
+      },
+      {
+        "start_px": 215.67562391799447,
+        "end_px": 225.52365242291455,
+        "projected_footprint_length_px": 11.174455353706234,
+        "centroid_px": 220.4818742898307,
+        "pixels": 27
+      },
+      {
+        "start_px": 227.75854349365582,
+        "end_px": 237.60657199857593,
+        "projected_footprint_length_px": 11.174455353706263,
+        "centroid_px": 232.84676191860981,
+        "pixels": 27
+      },
+      {
+        "start_px": 239.8414630693172,
+        "end_px": 249.6894915742373,
+        "projected_footprint_length_px": 11.174455353706263,
+        "centroid_px": 244.64771344115343,
+        "pixels": 27
+      }
+    ]
+  }
+]

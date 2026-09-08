@@ -1,0 +1,24 @@
+{
+  "method": "Sequential browser screenshots before and after UI actions; intervening motion is not captured",
+  "complete": true,
+  "durationMs": 36071,
+  "frames": [
+    {
+      "file": "00000.png",
+      "ms": 8054
+    },
+    {
+      "file": "00001.png",
+      "ms": 18203
+    },
+    {
+      "file": "00002.png",
+      "ms": 34686
+    },
+    {
+      "file": "00003.png",
+      "ms": 35056
+    }
+  ],
+  "errors": []
+}

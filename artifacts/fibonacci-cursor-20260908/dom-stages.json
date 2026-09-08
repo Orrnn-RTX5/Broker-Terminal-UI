@@ -1,0 +1,1601 @@
+[
+  {
+    "name": "retracement-initial",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76"
+    ],
+    "selected": []
+  },
+  {
+    "name": "retracement-press-move",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-retracement-band-0-0-236",
+      "fib-retracement-band-0-236-0-382",
+      "fib-retracement-band-0-382-0-5",
+      "fib-retracement-band-0-5-0-618",
+      "fib-retracement-band-0-618-0-786",
+      "fib-retracement-band-0-786-1",
+      "fib-retracement-band-1-1-618",
+      "fib-retracement-band-1-618-2-618",
+      "fib-retracement-band-2-618-3-618",
+      "fib-retracement-band-3-618-4-236",
+      "fib-retracement-level-0",
+      "fib-retracement-label-0",
+      "fib-retracement-level-0-236",
+      "fib-retracement-label-0-236",
+      "fib-retracement-level-0-382",
+      "fib-retracement-label-0-382",
+      "fib-retracement-level-0-5",
+      "fib-retracement-label-0-5",
+      "fib-retracement-level-0-618",
+      "fib-retracement-label-0-618",
+      "fib-retracement-level-0-786",
+      "fib-retracement-label-0-786",
+      "fib-retracement-level-1",
+      "fib-retracement-label-1",
+      "fib-retracement-level-1-618",
+      "fib-retracement-label-1-618",
+      "fib-retracement-level-2-618",
+      "fib-retracement-label-2-618",
+      "fib-retracement-level-3-618",
+      "fib-retracement-label-3-618",
+      "fib-retracement-level-4-236",
+      "fib-retracement-label-4-236",
+      "fib-retracement-reference"
+    ],
+    "prices": [
+      "4457.76",
+      "4462.59"
+    ],
+    "selected": []
+  },
+  {
+    "name": "retracement-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-retracement-band-0-0-236",
+      "fib-retracement-band-0-236-0-382",
+      "fib-retracement-band-0-382-0-5",
+      "fib-retracement-band-0-5-0-618",
+      "fib-retracement-band-0-618-0-786",
+      "fib-retracement-band-0-786-1",
+      "fib-retracement-band-1-1-618",
+      "fib-retracement-band-1-618-2-618",
+      "fib-retracement-band-2-618-3-618",
+      "fib-retracement-band-3-618-4-236",
+      "fib-retracement-level-0",
+      "fib-retracement-label-0",
+      "fib-retracement-level-0-236",
+      "fib-retracement-label-0-236",
+      "fib-retracement-level-0-382",
+      "fib-retracement-label-0-382",
+      "fib-retracement-level-0-5",
+      "fib-retracement-label-0-5",
+      "fib-retracement-level-0-618",
+      "fib-retracement-label-0-618",
+      "fib-retracement-level-0-786",
+      "fib-retracement-label-0-786",
+      "fib-retracement-level-1",
+      "fib-retracement-label-1",
+      "fib-retracement-level-1-618",
+      "fib-retracement-label-1-618",
+      "fib-retracement-level-2-618",
+      "fib-retracement-label-2-618",
+      "fib-retracement-level-3-618",
+      "fib-retracement-label-3-618",
+      "fib-retracement-level-4-236",
+      "fib-retracement-label-4-236",
+      "fib-retracement-reference"
+    ],
+    "prices": [
+      "4457.76",
+      "4470.86"
+    ],
+    "selected": []
+  },
+  {
+    "name": "retracement-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4470.86"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 773.5454545454546,
+        "y": 175.99999999999756
+      }
+    ]
+  },
+  {
+    "name": "edit-before",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4470.86"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 773.5454545454546,
+        "y": 175.99999999999756
+      }
+    ]
+  },
+  {
+    "name": "edit-after",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4473.62"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 860.8181818181819,
+        "y": 135.9999999999926
+      }
+    ]
+  },
+  {
+    "name": "edit-deselected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [],
+    "selected": []
+  },
+  {
+    "name": "edit-reselected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4473.62"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 860.8181818181819,
+        "y": 135.9999999999926
+      }
+    ]
+  },
+  {
+    "name": "05-trend-based-fib-extension-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-extension-leg-ab"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "05-trend-based-fib-extension-third-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      },
+      {
+        "x": "686.2727272727274",
+        "y": "205.999999999998"
+      }
+    ],
+    "previewRoles": [
+      "fib-extension-leg-ab",
+      "fib-extension-leg-bc",
+      "fib-extension-band-0-0-236",
+      "fib-extension-band-0-236-0-382",
+      "fib-extension-band-0-382-0-5",
+      "fib-extension-band-0-5-0-618",
+      "fib-extension-band-0-618-0-786",
+      "fib-extension-band-0-786-1",
+      "fib-extension-band-1-1-618",
+      "fib-extension-band-1-618-2-618",
+      "fib-extension-band-2-618-3-618",
+      "fib-extension-band-3-618-4-236",
+      "fib-extension-level-0",
+      "fib-extension-label-0",
+      "fib-extension-level-0-236",
+      "fib-extension-label-0-236",
+      "fib-extension-level-0-382",
+      "fib-extension-label-0-382",
+      "fib-extension-level-0-5",
+      "fib-extension-label-0-5",
+      "fib-extension-level-0-618",
+      "fib-extension-label-0-618",
+      "fib-extension-level-0-786",
+      "fib-extension-label-0-786",
+      "fib-extension-level-1",
+      "fib-extension-label-1",
+      "fib-extension-level-1-618",
+      "fib-extension-label-1-618",
+      "fib-extension-level-2-618",
+      "fib-extension-label-2-618",
+      "fib-extension-level-3-618",
+      "fib-extension-label-3-618",
+      "fib-extension-level-4-236",
+      "fib-extension-label-4-236"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.70"
+    ],
+    "selected": []
+  },
+  {
+    "name": "05-trend-based-fib-extension-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.70"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-3",
+        "x": 773.5454545454546,
+        "y": 396.000000000005
+      }
+    ]
+  },
+  {
+    "name": "06-fib-channel-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-channel-baseline"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "06-fib-channel-third-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      },
+      {
+        "x": "686.2727272727274",
+        "y": "205.999999999998"
+      }
+    ],
+    "previewRoles": [
+      "fib-channel-fill",
+      "fib-channel-band-0-236-0-382",
+      "fib-channel-band-0-382-0-5",
+      "fib-channel-band-0-5-0-618",
+      "fib-channel-band-0-618-0-786",
+      "fib-channel-band-0-786-1",
+      "fib-channel-band-1-1-618",
+      "fib-channel-band-1-618-2-618",
+      "fib-channel-band-2-618-3-618",
+      "fib-channel-baseline",
+      "fib-channel-level-0-236",
+      "fib-channel-label-0-236",
+      "fib-channel-level-0-382",
+      "fib-channel-label-0-382",
+      "fib-channel-level-0-5",
+      "fib-channel-label-0-5",
+      "fib-channel-level-0-618",
+      "fib-channel-label-0-618",
+      "fib-channel-level-0-786",
+      "fib-channel-label-0-786",
+      "fib-channel-level-1",
+      "fib-channel-label-1",
+      "fib-channel-level-1-618",
+      "fib-channel-label-1-618",
+      "fib-channel-level-2-618",
+      "fib-channel-label-2-618",
+      "fib-channel-level-3-618",
+      "fib-channel-label-3-618"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.70"
+    ],
+    "selected": []
+  },
+  {
+    "name": "06-fib-channel-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.70"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-3",
+        "x": 773.5454545454546,
+        "y": 396.000000000005
+      }
+    ]
+  },
+  {
+    "name": "07-fib-time-zone-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-time-zone-reference",
+      "fib-time-zone-level-0",
+      "fib-time-zone-label-0",
+      "fib-time-zone-level-1",
+      "fib-time-zone-label-1",
+      "fib-time-zone-level-2",
+      "fib-time-zone-label-2",
+      "fib-time-zone-level-3",
+      "fib-time-zone-label-3",
+      "fib-time-zone-level-5",
+      "fib-time-zone-label-5",
+      "fib-time-zone-level-8",
+      "fib-time-zone-label-8",
+      "fib-time-zone-level-13",
+      "fib-time-zone-label-13",
+      "fib-time-zone-level-21",
+      "fib-time-zone-label-21",
+      "fib-time-zone-level-34",
+      "fib-time-zone-label-34",
+      "fib-time-zone-level-55",
+      "fib-time-zone-label-55",
+      "fib-time-zone-level-89",
+      "fib-time-zone-label-89"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "07-fib-time-zone-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      }
+    ]
+  },
+  {
+    "name": "08-fib-speed-resistance-fan-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-speed-fan-reference",
+      "fib-speed-fan-price-band-0-0-25",
+      "fib-speed-fan-price-band-0-25-0-382",
+      "fib-speed-fan-price-band-0-382-0-5",
+      "fib-speed-fan-price-band-0-5-0-618",
+      "fib-speed-fan-price-band-0-618-0-75",
+      "fib-speed-fan-price-band-0-75-1",
+      "fib-speed-fan-time-band-0-0-25",
+      "fib-speed-fan-time-band-0-25-0-382",
+      "fib-speed-fan-time-band-0-382-0-5",
+      "fib-speed-fan-time-band-0-5-0-618",
+      "fib-speed-fan-time-band-0-618-0-75",
+      "fib-speed-fan-time-band-0-75-1",
+      "fib-speed-fan-time-grid-0",
+      "fib-speed-fan-price-grid-0",
+      "fib-speed-fan-ray-price-0",
+      "fib-speed-fan-ray-time-0",
+      "fib-speed-fan-time-label-0",
+      "fib-speed-fan-price-label-0",
+      "fib-speed-fan-time-grid-0-25",
+      "fib-speed-fan-price-grid-0-25",
+      "fib-speed-fan-ray-price-0-25",
+      "fib-speed-fan-ray-time-0-25",
+      "fib-speed-fan-time-label-0-25",
+      "fib-speed-fan-price-label-0-25",
+      "fib-speed-fan-time-grid-0-382",
+      "fib-speed-fan-price-grid-0-382",
+      "fib-speed-fan-ray-price-0-382",
+      "fib-speed-fan-ray-time-0-382",
+      "fib-speed-fan-time-label-0-382",
+      "fib-speed-fan-price-label-0-382",
+      "fib-speed-fan-time-grid-0-5",
+      "fib-speed-fan-price-grid-0-5",
+      "fib-speed-fan-ray-price-0-5",
+      "fib-speed-fan-ray-time-0-5",
+      "fib-speed-fan-time-label-0-5",
+      "fib-speed-fan-price-label-0-5",
+      "fib-speed-fan-time-grid-0-618",
+      "fib-speed-fan-price-grid-0-618",
+      "fib-speed-fan-ray-price-0-618",
+      "fib-speed-fan-ray-time-0-618",
+      "fib-speed-fan-time-label-0-618",
+      "fib-speed-fan-price-label-0-618",
+      "fib-speed-fan-time-grid-0-75",
+      "fib-speed-fan-price-grid-0-75",
+      "fib-speed-fan-ray-price-0-75",
+      "fib-speed-fan-ray-time-0-75",
+      "fib-speed-fan-time-label-0-75",
+      "fib-speed-fan-price-label-0-75",
+      "fib-speed-fan-time-grid-1",
+      "fib-speed-fan-price-grid-1",
+      "fib-speed-fan-ray-price-1",
+      "fib-speed-fan-ray-time-1",
+      "fib-speed-fan-time-label-1",
+      "fib-speed-fan-price-label-1"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "08-fib-speed-resistance-fan-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      }
+    ]
+  },
+  {
+    "name": "09-trend-based-fib-time-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "trend-fib-time-leg-ab"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "09-trend-based-fib-time-third-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      },
+      {
+        "x": "686.2727272727274",
+        "y": "205.999999999998"
+      }
+    ],
+    "previewRoles": [
+      "trend-fib-time-leg-ab",
+      "trend-fib-time-leg-bc",
+      "trend-fib-time-band-0-0-382",
+      "trend-fib-time-band-0-382-0-618",
+      "trend-fib-time-band-0-618-1",
+      "trend-fib-time-band-1-1-382",
+      "trend-fib-time-band-1-382-1-618",
+      "trend-fib-time-band-1-618-2",
+      "trend-fib-time-band-2-2-382",
+      "trend-fib-time-band-2-382-2-618",
+      "trend-fib-time-level-0",
+      "trend-fib-time-label-0",
+      "trend-fib-time-level-0-382",
+      "trend-fib-time-label-0-382",
+      "trend-fib-time-level-0-618",
+      "trend-fib-time-label-0-618",
+      "trend-fib-time-level-1",
+      "trend-fib-time-label-1",
+      "trend-fib-time-level-1-382",
+      "trend-fib-time-label-1-382",
+      "trend-fib-time-level-1-618",
+      "trend-fib-time-label-1-618",
+      "trend-fib-time-level-2",
+      "trend-fib-time-label-2",
+      "trend-fib-time-level-2-382",
+      "trend-fib-time-label-2-382",
+      "trend-fib-time-level-2-618",
+      "trend-fib-time-label-2-618"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.70"
+    ],
+    "selected": []
+  },
+  {
+    "name": "09-trend-based-fib-time-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.70"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-3",
+        "x": 773.5454545454546,
+        "y": 396.000000000005
+      }
+    ]
+  },
+  {
+    "name": "10-fib-circles-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-circles-reference",
+      "fib-circle-band-0-0-236",
+      "fib-circle-level-0-236",
+      "fib-circle-label-0-236",
+      "fib-circle-band-0-236-0-382",
+      "fib-circle-level-0-382",
+      "fib-circle-label-0-382",
+      "fib-circle-band-0-382-0-5",
+      "fib-circle-level-0-5",
+      "fib-circle-label-0-5",
+      "fib-circle-band-0-5-0-618",
+      "fib-circle-level-0-618",
+      "fib-circle-label-0-618",
+      "fib-circle-band-0-618-0-786",
+      "fib-circle-level-0-786",
+      "fib-circle-label-0-786",
+      "fib-circle-band-0-786-1",
+      "fib-circle-level-1",
+      "fib-circle-label-1",
+      "fib-circle-band-1-1-618",
+      "fib-circle-level-1-618",
+      "fib-circle-label-1-618",
+      "fib-circle-band-1-618-2-618",
+      "fib-circle-level-2-618",
+      "fib-circle-label-2-618",
+      "fib-circle-band-2-618-3-618",
+      "fib-circle-level-3-618",
+      "fib-circle-label-3-618",
+      "fib-circle-band-3-618-4-236",
+      "fib-circle-level-4-236",
+      "fib-circle-label-4-236"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "10-fib-circles-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      }
+    ]
+  },
+  {
+    "name": "11-fib-spiral-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-spiral-reference",
+      "fib-spiral"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "11-fib-spiral-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      }
+    ]
+  },
+  {
+    "name": "12-fib-speed-resistance-arcs-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-speed-arcs-reference",
+      "fib-speed-arc-band-0-0-236",
+      "fib-speed-arc-level-0-236",
+      "fib-speed-arc-label-0-236",
+      "fib-speed-arc-band-0-236-0-382",
+      "fib-speed-arc-level-0-382",
+      "fib-speed-arc-label-0-382",
+      "fib-speed-arc-band-0-382-0-5",
+      "fib-speed-arc-level-0-5",
+      "fib-speed-arc-label-0-5",
+      "fib-speed-arc-band-0-5-0-618",
+      "fib-speed-arc-level-0-618",
+      "fib-speed-arc-label-0-618",
+      "fib-speed-arc-band-0-618-0-786",
+      "fib-speed-arc-level-0-786",
+      "fib-speed-arc-label-0-786",
+      "fib-speed-arc-band-0-786-1",
+      "fib-speed-arc-level-1",
+      "fib-speed-arc-label-1",
+      "fib-speed-arc-band-1-1-618",
+      "fib-speed-arc-level-1-618",
+      "fib-speed-arc-label-1-618",
+      "fib-speed-arc-band-1-618-2-618",
+      "fib-speed-arc-level-2-618",
+      "fib-speed-arc-label-2-618",
+      "fib-speed-arc-band-2-618-3-618",
+      "fib-speed-arc-level-3-618",
+      "fib-speed-arc-label-3-618",
+      "fib-speed-arc-band-3-618-4-236",
+      "fib-speed-arc-level-4-236",
+      "fib-speed-arc-label-4-236"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "12-fib-speed-resistance-arcs-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      }
+    ]
+  },
+  {
+    "name": "13-fib-wedge-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-wedge-boundary-start"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "13-fib-wedge-third-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      },
+      {
+        "x": "686.2727272727274",
+        "y": "205.999999999998"
+      }
+    ],
+    "previewRoles": [
+      "fib-wedge-boundary-start",
+      "fib-wedge-boundary-end",
+      "fib-wedge-arc-level-0-236",
+      "fib-wedge-arc-level-0-382",
+      "fib-wedge-arc-level-0-5",
+      "fib-wedge-arc-level-0-618",
+      "fib-wedge-arc-level-0-786",
+      "fib-wedge-arc-level-1"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.95"
+    ],
+    "selected": []
+  },
+  {
+    "name": "13-fib-wedge-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.95"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-3",
+        "x": 729.909090909091,
+        "y": 392.2640816505182
+      }
+    ]
+  },
+  {
+    "name": "14-pitchfan-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "pitchfan-construction-ab"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "14-pitchfan-third-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      },
+      {
+        "x": "686.2727272727274",
+        "y": "205.999999999998"
+      }
+    ],
+    "previewRoles": [
+      "pitchfan-construction-ab",
+      "pitchfan-construction-bc",
+      "pitchfan-band-0-0-25",
+      "pitchfan-band-0-25-0-382",
+      "pitchfan-band-0-382-0-5",
+      "pitchfan-band-0-5-0-618",
+      "pitchfan-band-0-618-0-75",
+      "pitchfan-band-0-75-1",
+      "pitchfan-ray-0",
+      "pitchfan-ray-0-25",
+      "pitchfan-ray-0-382",
+      "pitchfan-median",
+      "pitchfan-ray-0-618",
+      "pitchfan-ray-0-75",
+      "pitchfan-ray-1"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.70"
+    ],
+    "selected": []
+  },
+  {
+    "name": "14-pitchfan-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79",
+      "4455.70"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-3",
+        "x": 773.5454545454546,
+        "y": 396.000000000005
+      }
+    ]
+  },
+  {
+    "name": "15-gann-box-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "gann-box-frame",
+      "gann-box-time-band-0-0-25",
+      "gann-box-price-band-0-0-25",
+      "gann-box-time-band-0-25-0-382",
+      "gann-box-price-band-0-25-0-382",
+      "gann-box-time-band-0-382-0-5",
+      "gann-box-price-band-0-382-0-5",
+      "gann-box-time-band-0-5-0-618",
+      "gann-box-price-band-0-5-0-618",
+      "gann-box-time-band-0-618-0-75",
+      "gann-box-price-band-0-618-0-75",
+      "gann-box-time-band-0-75-1",
+      "gann-box-price-band-0-75-1",
+      "gann-box-time-level-0-25",
+      "gann-box-price-level-0-25",
+      "gann-box-time-label-0-25",
+      "gann-box-price-label-0-25",
+      "gann-box-time-level-0-382",
+      "gann-box-price-level-0-382",
+      "gann-box-time-label-0-382",
+      "gann-box-price-label-0-382",
+      "gann-box-time-level-0-5",
+      "gann-box-price-level-0-5",
+      "gann-box-time-label-0-5",
+      "gann-box-price-label-0-5",
+      "gann-box-time-level-0-618",
+      "gann-box-price-level-0-618",
+      "gann-box-time-label-0-618",
+      "gann-box-price-label-0-618",
+      "gann-box-time-level-0-75",
+      "gann-box-price-level-0-75",
+      "gann-box-time-label-0-75",
+      "gann-box-price-label-0-75"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "15-gann-box-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      }
+    ]
+  },
+  {
+    "name": "16-gann-square-fixed-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "gann-square-fixed-band-1",
+      "gann-square-fixed-band-2",
+      "gann-square-fixed-band-3",
+      "gann-square-fixed-band-4",
+      "gann-square-fixed-frame",
+      "gann-square-fixed-grid-vertical-1",
+      "gann-square-fixed-grid-horizontal-1",
+      "gann-square-fixed-arc-1",
+      "gann-square-fixed-grid-vertical-2",
+      "gann-square-fixed-grid-horizontal-2",
+      "gann-square-fixed-arc-2",
+      "gann-square-fixed-grid-vertical-3",
+      "gann-square-fixed-grid-horizontal-3",
+      "gann-square-fixed-arc-3",
+      "gann-square-fixed-grid-vertical-4",
+      "gann-square-fixed-grid-horizontal-4",
+      "gann-square-fixed-arc-4",
+      "gann-square-fixed-fan-1",
+      "gann-square-fixed-fan-2",
+      "gann-square-fixed-fan-3",
+      "gann-square-fixed-fan-4"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "16-gann-square-fixed-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      }
+    ]
+  },
+  {
+    "name": "17-gann-square-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "gann-square-frame",
+      "gann-square-grid-band-vertical-0-0-25",
+      "gann-square-grid-band-horizontal-0-0-25",
+      "gann-square-grid-band-vertical-0-25-0-382",
+      "gann-square-grid-band-horizontal-0-25-0-382",
+      "gann-square-grid-band-vertical-0-382-0-5",
+      "gann-square-grid-band-horizontal-0-382-0-5",
+      "gann-square-grid-band-vertical-0-5-0-618",
+      "gann-square-grid-band-horizontal-0-5-0-618",
+      "gann-square-grid-band-vertical-0-618-0-75",
+      "gann-square-grid-band-horizontal-0-618-0-75",
+      "gann-square-grid-band-vertical-0-75-1",
+      "gann-square-grid-band-horizontal-0-75-1",
+      "gann-square-grid-vertical-0-25",
+      "gann-square-grid-horizontal-0-25",
+      "gann-square-grid-vertical-0-382",
+      "gann-square-grid-horizontal-0-382",
+      "gann-square-grid-vertical-0-5",
+      "gann-square-grid-horizontal-0-5",
+      "gann-square-grid-vertical-0-618",
+      "gann-square-grid-horizontal-0-618",
+      "gann-square-grid-vertical-0-75",
+      "gann-square-grid-horizontal-0-75",
+      "gann-square-fan-0-25",
+      "gann-square-fan-0-382",
+      "gann-square-fan-0-5",
+      "gann-square-fan-0-618",
+      "gann-square-fan-0-75",
+      "gann-square-arc-0-25",
+      "gann-square-arc-0-382",
+      "gann-square-arc-0-5",
+      "gann-square-arc-0-618",
+      "gann-square-arc-0-786",
+      "gann-square-arc-1"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "17-gann-square-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      }
+    ]
+  },
+  {
+    "name": "18-gann-fan-first-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "gann-fan-band-1x8-1x4",
+      "gann-fan-band-1x4-1x3",
+      "gann-fan-band-1x3-1x2",
+      "gann-fan-band-1x2-1x1",
+      "gann-fan-band-1x1-2x1",
+      "gann-fan-band-2x1-3x1",
+      "gann-fan-band-3x1-4x1",
+      "gann-fan-band-4x1-8x1",
+      "gann-fan-ray-1x8",
+      "gann-fan-label-1x8",
+      "gann-fan-ray-1x4",
+      "gann-fan-label-1x4",
+      "gann-fan-ray-1x3",
+      "gann-fan-label-1x3",
+      "gann-fan-ray-1x2",
+      "gann-fan-label-1x2",
+      "gann-fan-ray-1x1",
+      "gann-fan-label-1x1",
+      "gann-fan-ray-2x1",
+      "gann-fan-label-2x1",
+      "gann-fan-ray-3x1",
+      "gann-fan-label-3x1",
+      "gann-fan-ray-4x1",
+      "gann-fan-label-4x1",
+      "gann-fan-ray-8x1",
+      "gann-fan-label-8x1"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "18-gann-fan-selected",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": [
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-1",
+        "x": 380.818181818182,
+        "y": 366.0000000000046
+      },
+      {
+        "offset": {
+          "x": 419,
+          "y": 74
+        },
+        "role": "selection-anchor-2",
+        "x": 686.2727272727274,
+        "y": 205.999999999998
+      }
+    ]
+  },
+  {
+    "name": "Fib retracement Alt + F-cancel-preview",
+    "anchors": [
+      {
+        "x": "162.63636363636374",
+        "y": "265.9999999999988"
+      }
+    ],
+    "previewRoles": [
+      "fib-retracement-band-0-0-236",
+      "fib-retracement-band-0-236-0-382",
+      "fib-retracement-band-0-382-0-5",
+      "fib-retracement-band-0-5-0-618",
+      "fib-retracement-band-0-618-0-786",
+      "fib-retracement-band-0-786-1",
+      "fib-retracement-band-1-1-618",
+      "fib-retracement-band-1-618-2-618",
+      "fib-retracement-band-2-618-3-618",
+      "fib-retracement-band-3-618-4-236",
+      "fib-retracement-level-0",
+      "fib-retracement-label-0",
+      "fib-retracement-level-0-236",
+      "fib-retracement-label-0-236",
+      "fib-retracement-level-0-382",
+      "fib-retracement-label-0-382",
+      "fib-retracement-level-0-5",
+      "fib-retracement-label-0-5",
+      "fib-retracement-level-0-618",
+      "fib-retracement-label-0-618",
+      "fib-retracement-level-0-786",
+      "fib-retracement-label-0-786",
+      "fib-retracement-level-1",
+      "fib-retracement-label-1",
+      "fib-retracement-level-1-618",
+      "fib-retracement-label-1-618",
+      "fib-retracement-level-2-618",
+      "fib-retracement-label-2-618",
+      "fib-retracement-level-3-618",
+      "fib-retracement-label-3-618",
+      "fib-retracement-level-4-236",
+      "fib-retracement-label-4-236",
+      "fib-retracement-reference"
+    ],
+    "prices": [
+      "4464.66",
+      "4460.52"
+    ],
+    "selected": []
+  },
+  {
+    "name": "Fib retracement Alt + F-leave",
+    "anchors": [
+      {
+        "x": "162.63636363636374",
+        "y": "265.9999999999988"
+      }
+    ],
+    "previewRoles": [
+      "fib-retracement-band-0-0-236",
+      "fib-retracement-band-0-236-0-382",
+      "fib-retracement-band-0-382-0-5",
+      "fib-retracement-band-0-5-0-618",
+      "fib-retracement-band-0-618-0-786",
+      "fib-retracement-band-0-786-1",
+      "fib-retracement-band-1-1-618",
+      "fib-retracement-band-1-618-2-618",
+      "fib-retracement-band-2-618-3-618",
+      "fib-retracement-band-3-618-4-236",
+      "fib-retracement-level-0",
+      "fib-retracement-label-0",
+      "fib-retracement-level-0-236",
+      "fib-retracement-label-0-236",
+      "fib-retracement-level-0-382",
+      "fib-retracement-label-0-382",
+      "fib-retracement-level-0-5",
+      "fib-retracement-label-0-5",
+      "fib-retracement-level-0-618",
+      "fib-retracement-label-0-618",
+      "fib-retracement-level-0-786",
+      "fib-retracement-label-0-786",
+      "fib-retracement-level-1",
+      "fib-retracement-label-1",
+      "fib-retracement-level-1-618",
+      "fib-retracement-label-1-618",
+      "fib-retracement-level-2-618",
+      "fib-retracement-label-2-618",
+      "fib-retracement-level-3-618",
+      "fib-retracement-label-3-618",
+      "fib-retracement-level-4-236",
+      "fib-retracement-label-4-236",
+      "fib-retracement-reference"
+    ],
+    "prices": [
+      "4464.66"
+    ],
+    "selected": []
+  },
+  {
+    "name": "Fib retracement Alt + F-reentry",
+    "anchors": [
+      {
+        "x": "162.63636363636374",
+        "y": "265.9999999999988"
+      }
+    ],
+    "previewRoles": [
+      "fib-retracement-band-0-0-236",
+      "fib-retracement-band-0-236-0-382",
+      "fib-retracement-band-0-382-0-5",
+      "fib-retracement-band-0-5-0-618",
+      "fib-retracement-band-0-618-0-786",
+      "fib-retracement-band-0-786-1",
+      "fib-retracement-band-1-1-618",
+      "fib-retracement-band-1-618-2-618",
+      "fib-retracement-band-2-618-3-618",
+      "fib-retracement-band-3-618-4-236",
+      "fib-retracement-level-0",
+      "fib-retracement-label-0",
+      "fib-retracement-level-0-236",
+      "fib-retracement-label-0-236",
+      "fib-retracement-level-0-382",
+      "fib-retracement-label-0-382",
+      "fib-retracement-level-0-5",
+      "fib-retracement-label-0-5",
+      "fib-retracement-level-0-618",
+      "fib-retracement-label-0-618",
+      "fib-retracement-level-0-786",
+      "fib-retracement-label-0-786",
+      "fib-retracement-level-1",
+      "fib-retracement-label-1",
+      "fib-retracement-level-1-618",
+      "fib-retracement-label-1-618",
+      "fib-retracement-level-2-618",
+      "fib-retracement-label-2-618",
+      "fib-retracement-level-3-618",
+      "fib-retracement-label-3-618",
+      "fib-retracement-level-4-236",
+      "fib-retracement-label-4-236",
+      "fib-retracement-reference"
+    ],
+    "prices": [
+      "4464.66",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "Fib retracement Alt + F-cancelled",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [],
+    "selected": []
+  },
+  {
+    "name": "Trend-based fib extension-cancel-preview",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-extension-leg-ab"
+    ],
+    "prices": [
+      "4457.76",
+      "4460.52"
+    ],
+    "selected": []
+  },
+  {
+    "name": "Trend-based fib extension-leave",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-extension-leg-ab"
+    ],
+    "prices": [
+      "4457.76"
+    ],
+    "selected": []
+  },
+  {
+    "name": "Trend-based fib extension-reentry",
+    "anchors": [
+      {
+        "x": "380.818181818182",
+        "y": "366.0000000000046"
+      }
+    ],
+    "previewRoles": [
+      "fib-extension-leg-ab"
+    ],
+    "prices": [
+      "4457.76",
+      "4468.79"
+    ],
+    "selected": []
+  },
+  {
+    "name": "Trend-based fib extension-cancelled",
+    "anchors": [],
+    "previewRoles": [],
+    "prices": [],
+    "selected": []
+  }
+]

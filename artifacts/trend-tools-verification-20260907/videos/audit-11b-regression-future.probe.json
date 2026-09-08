@@ -1,0 +1,42 @@
+{
+  "capture": "audit-11b-regression-future",
+  "method": "Continuously sampled browser screenshots, variable approximately 1-3 fps with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 11,
+  "encoded_frames": 12,
+  "source_duration_ms": 4136,
+  "encoded_duration_ms": 4136,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    0,
+    538,
+    1086,
+    1650,
+    1920,
+    2137,
+    2507,
+    3170,
+    3439,
+    3732,
+    4031
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    538,
+    1086,
+    1650,
+    1920,
+    2137,
+    2507,
+    3170,
+    3439,
+    3732,
+    4031,
+    4135
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\audit-11b-regression-future.mp4",
+  "contact_sheet": "contact-sheets\\audit-11b-regression-future.jpg",
+  "capture_errors": []
+}

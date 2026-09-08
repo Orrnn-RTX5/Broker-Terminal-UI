@@ -1,0 +1,246 @@
+{
+  "before": {
+    "geometry": [
+      {
+        "role": "long-position-profit-zone",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-loss-zone",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-entry",
+        "x": "795.3636363636364",
+        "y": "259.2374949166324"
+      },
+      {
+        "role": "long-position-target",
+        "x": "795.3636363636364",
+        "y": "-40.14030093534916"
+      },
+      {
+        "role": "long-position-stop",
+        "x": "795.3636363636364",
+        "y": "458.82269215128684"
+      },
+      {
+        "role": "long-position-target-label-background",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-target-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-stop-label-background",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-stop-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-stats-background",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-stats",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-target-handle",
+        "x": "1440",
+        "y": "-40.14030093534916"
+      },
+      {
+        "role": "long-position-stop-handle",
+        "x": "1440",
+        "y": "458.82269215128684"
+      },
+      {
+        "role": "long-position-duration-edge",
+        "x": "1440",
+        "y": "-40.14030093534916"
+      },
+      {
+        "role": "long-position-width-handle",
+        "x": "1440",
+        "y": "259.2374949166324"
+      },
+      {
+        "role": "position-entry-price-scale-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-entry-price-scale-label-text",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-target-price-scale-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-target-price-scale-label-text",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-stop-price-scale-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-stop-price-scale-label-text",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "selection-anchor-1",
+        "x": null,
+        "y": null
+      }
+    ],
+    "texts": [
+      "Target: 15.00 (0.34%) 1,500, Amount: 2,575",
+      "Stop: 10.00 (0.22%) 1,000, Amount: 2,450",
+      "Open PnL: 2.90, Qty: 5Risk/reward ratio: 1.50",
+      "4470.00",
+      "4485.00",
+      "4460.00"
+    ]
+  },
+  "after": {
+    "geometry": [
+      {
+        "role": "long-position-profit-zone",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-loss-zone",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-entry",
+        "x": "795.3636363636364",
+        "y": "263.3799513033682"
+      },
+      {
+        "role": "long-position-target",
+        "x": "795.3636363636364",
+        "y": "18.270143050643583"
+      },
+      {
+        "role": "long-position-stop",
+        "x": "795.3636363636364",
+        "y": "426.78649013851793"
+      },
+      {
+        "role": "long-position-target-label-background",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-target-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-stop-label-background",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-stop-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-stats-background",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-stats",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "long-position-target-handle",
+        "x": "1440",
+        "y": "18.270143050643583"
+      },
+      {
+        "role": "long-position-stop-handle",
+        "x": "1440",
+        "y": "426.78649013851793"
+      },
+      {
+        "role": "long-position-duration-edge",
+        "x": "1440",
+        "y": "18.270143050643583"
+      },
+      {
+        "role": "long-position-width-handle",
+        "x": "1440",
+        "y": "263.3799513033682"
+      },
+      {
+        "role": "position-entry-price-scale-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-entry-price-scale-label-text",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-target-price-scale-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-target-price-scale-label-text",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-stop-price-scale-label",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "position-stop-price-scale-label-text",
+        "x": null,
+        "y": null
+      },
+      {
+        "role": "selection-anchor-1",
+        "x": null,
+        "y": null
+      }
+    ],
+    "texts": [
+      "Target: 15.00 (0.34%) 1,500, Amount: 2,575",
+      "Stop: 10.00 (0.22%) 1,000, Amount: 2,450",
+      "Open PnL: 2.90, Qty: 5Risk/reward ratio: 1.50",
+      "4470.00",
+      "4485.00",
+      "4460.00"
+    ]
+  }
+}

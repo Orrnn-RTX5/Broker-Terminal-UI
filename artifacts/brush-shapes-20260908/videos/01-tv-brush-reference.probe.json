@@ -1,0 +1,42 @@
+{
+  "capture": "01-tv-brush-reference",
+  "method": "Browser screenshot sequence with original timestamps. See capture.json for the capture method. Sequential captures omit motion between UI actions; this is not a continuous native screen recording.",
+  "source_frames": 10,
+  "encoded_frames": 12,
+  "source_duration_ms": 169652,
+  "encoded_duration_ms": 169652,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    447,
+    25941,
+    26688,
+    40702,
+    58379,
+    81247,
+    124444,
+    147010,
+    168062,
+    168644
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    447,
+    25941,
+    26688,
+    40702,
+    58379,
+    81247,
+    124444,
+    147010,
+    168062,
+    168644,
+    169651
+  ],
+  "initial_first_sample_hold_ms": 447,
+  "timing_verified": true,
+  "video": "videos\\01-tv-brush-reference.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\01-tv-brush-reference.jpg",
+  "capture_errors": []
+}

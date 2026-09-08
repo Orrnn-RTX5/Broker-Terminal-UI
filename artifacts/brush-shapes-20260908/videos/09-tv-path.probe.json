@@ -1,0 +1,34 @@
+{
+  "capture": "09-tv-path",
+  "method": "Browser screenshot sequence with original timestamps. See capture.json for the capture method. Sequential captures omit motion between UI actions; this is not a continuous native screen recording.",
+  "source_frames": 6,
+  "encoded_frames": 8,
+  "source_duration_ms": 83253,
+  "encoded_duration_ms": 83253,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    450,
+    28234,
+    45826,
+    55694,
+    81948,
+    82238
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    450,
+    28234,
+    45826,
+    55694,
+    81948,
+    82238,
+    83252
+  ],
+  "initial_first_sample_hold_ms": 450,
+  "timing_verified": true,
+  "video": "videos\\09-tv-path.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\09-tv-path.jpg",
+  "capture_errors": []
+}

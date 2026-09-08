@@ -1,0 +1,33 @@
+{
+  "capture": "rtx-ghost-feed-completion",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 6,
+  "encoded_frames": 7,
+  "source_duration_ms": 9195,
+  "encoded_duration_ms": 9195,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    3725,
+    7565,
+    8252,
+    8470,
+    8979
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    3725,
+    7565,
+    8252,
+    8470,
+    8979,
+    9194
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\rtx-ghost-feed-completion.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\rtx-ghost-feed-completion.jpg",
+  "capture_errors": []
+}

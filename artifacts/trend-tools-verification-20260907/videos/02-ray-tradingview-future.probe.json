@@ -1,0 +1,34 @@
+{
+  "capture": "02-ray-tradingview-future",
+  "method": "Continuously sampled browser screenshots, variable approximately 1-3 fps with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 7,
+  "encoded_frames": 8,
+  "source_duration_ms": 15770,
+  "encoded_duration_ms": 15770,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    1018,
+    1836,
+    5550,
+    6450,
+    11842,
+    13577
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    1018,
+    1836,
+    5550,
+    6450,
+    11842,
+    13577,
+    15769
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\02-ray-tradingview-future.mp4",
+  "contact_sheet": "contact-sheets\\02-ray-tradingview-future.jpg",
+  "capture_errors": []
+}

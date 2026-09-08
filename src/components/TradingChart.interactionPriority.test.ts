@@ -10,6 +10,35 @@ const source = readFileSync(
 ).replace(/\r\n/g, '\n');
 
 describe('TradingChart interaction-priority contract', () => {
+  it('renders first history before scheduling cancellable background gap repairs', () => {
+    const load = source.slice(source.indexOf('const loadHistory = useCallback'), source.indexOf('// Fade the loading overlay'));
+    const firstRender = load.indexOf("reason: 'initial-history'");
+    const background = load.indexOf('void (async () =>');
+    const repair = load.indexOf('await backfillRecentInteriorHistoryGaps(');
+    expect(firstRender).toBeGreaterThan(0);
+    expect(background).toBeGreaterThan(firstRender);
+    expect(repair).toBeGreaterThan(background);
+    expect(load.slice(background, repair)).toContain('if (!isCurrentHistoryLoad()) return;');
+    expect(load.slice(repair)).toContain('if (!isCurrentHistoryLoad() || gapBackfill.addedCandles === 0) return;');
+    expect(load.slice(background, repair)).toContain('mergeMissingHistoryCandles(');
+    expect(load.slice(repair)).toContain('applyAdditionalHistory(gapBackfill.candles');
+  });
+
+  it('requests a small cold M1 page and expands only after first paint under the same cancellation signal', () => {
+    const load = source.slice(source.indexOf('const loadHistory = useCallback'), source.indexOf('// Fade the loading overlay'));
+    expect(load).toContain("const useProgressiveInitialHistory = activeTf === 'M1' && !hydratedFromCache;");
+    expect(load).toContain('count: useProgressiveInitialHistory ? FIRST_PAINT_HISTORY_COUNT : getInitialHistoryCount(activeTf)');
+    const firstRender = load.indexOf("reason: 'initial-history'");
+    const background = load.indexOf('void (async () =>');
+    const expansion = load.indexOf('const extendedHistory = await chartDataService.fetchCandles(');
+    expect(background).toBeGreaterThan(firstRender);
+    expect(expansion).toBeGreaterThan(background);
+    expect(load.slice(expansion)).toContain('signal: historyRequest.signal');
+    expect(load.slice(expansion)).toContain("if (!isCurrentHistoryLoad()) return;\n              const addedCount = applyAdditionalHistory");
+    expect(load.indexOf('warmOtherTimeframeCaches();')).toBeGreaterThan(background);
+    expect(load).toContain('if (useProgressiveInitialHistory && receivedHistoryCount >= FIRST_PAINT_HISTORY_COUNT)');
+  });
+
   it('uses M1-derived history as the primary source for every higher timeframe', () => {
     const loadStart = source.indexOf('const loadHistory = useCallback');
     const loadEnd = source.indexOf('// Load more historical data', loadStart);
@@ -46,7 +75,7 @@ describe('TradingChart interaction-priority contract', () => {
       .toBeLessThan(loadHistory.indexOf('historyRequestCoordinatorRef.current.start({'));
     expect(loadHistory).toContain('for (const targetTf of CANDLE_TIMEFRAMES)');
     expect(loadHistory).toContain("if (targetTf === 'M1' || targetTf === activeTf) continue;");
-    expect(loadHistory).toContain('if (existingWarmCache?.candles.length) continue;');
+    expect(loadHistory).toContain('warmCandles.length > (existingWarmCache?.candles.length ?? 0)');
     expect(loadHistory).toContain('omitPartialLeadingM1Aggregate(');
     expect(loadHistory).toContain("setHistoryCache(\n              targetTf as Timeframe,");
     expect(loadHistory).toContain("'derived-m1',");
@@ -639,7 +668,7 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('does no drawing-preview work for cursor-mode crosshair moves', () => {
-    const drawingSetupStart = source.indexOf('let isDrawingFreehand = false;');
+    const drawingSetupStart = source.indexOf('let isDrawingContinuous = false;');
     const handlerStart = source.indexOf('const crosshairHandler = (param: any) => {', drawingSetupStart);
     const handlerEnd = source.indexOf('chart.subscribeCrosshairMove(crosshairHandler);', handlerStart);
     const handler = source.slice(handlerStart, handlerEnd);
@@ -652,14 +681,32 @@ describe('TradingChart interaction-priority contract', () => {
     expect(earlyReturn).toBeGreaterThan(-1);
     expect(handler).toContain('activeDrawing');
     expect(handler).toContain('activeToolRef.current');
-    expect(handler).toContain('isDrawingFreehand');
+    expect(handler).toContain('isDrawingContinuous');
     expect(earlyReturn).toBeLessThan(handler.indexOf("querySelectorAll('canvas')"));
     expect(earlyReturn).toBeLessThan(handler.indexOf('coordinateToLogical('));
     expect(earlyReturn).toBeLessThan(handler.indexOf('coordinateToPrice('));
-    expect(earlyReturn).toBeLessThan(handler.indexOf('drawingManager.setChart('));
+    expect(earlyReturn).toBeLessThan(handler.indexOf('bindDrawingManagerToChart()'));
     expect(handler).toContain('drawingManager.updatePreviewPointWithLogical(');
     expect(handler).toContain('drawingManager.updatePreviewPoint(');
-    expect(handler).toContain('drawingManager.addPoint(time, price, undefined, activeChartSourceId)');
+    expect(handler).toContain('drawingManager.addPoint(');
+  });
+
+  it('keeps the arrow cursor while drawing, matching TradingView arrow mode', () => {
+    const selectToolStart = source.indexOf("commandBus.subscribe('SELECT_TOOL'");
+    const selectToolEnd = source.indexOf('// Handle UNDO / REDO / DELETE commands', selectToolStart);
+    const selectToolSource = source.slice(selectToolStart, selectToolEnd);
+    const drawingModeStart = selectToolSource.indexOf('// Drawing mode:');
+    const drawingModeSource = selectToolSource.slice(drawingModeStart);
+
+    expect(selectToolStart).toBeGreaterThan(-1);
+    expect(selectToolEnd).toBeGreaterThan(selectToolStart);
+    expect(drawingModeStart).toBeGreaterThan(-1);
+    expect(drawingModeSource).toContain('vertLine: { visible: false, labelVisible: false }');
+    expect(drawingModeSource).toContain('horzLine: { visible: false, labelVisible: false }');
+    expect(drawingModeSource).toContain("containerRef.current.style.cursor = 'default'");
+    expect(drawingModeSource).toContain("wrapper.setAttribute('data-cursor', 'select')");
+    expect(drawingModeSource).not.toContain("containerRef.current.style.cursor = 'crosshair'");
+    expect(drawingModeSource).not.toContain("wrapper.setAttribute('data-cursor', 'draw')");
   });
 
   it('does not relayout the main trade overlay for crosshair-only movement', () => {

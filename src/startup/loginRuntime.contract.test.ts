@@ -46,8 +46,6 @@ describe('interactive login runtime boundary source contract', () => {
       'await preloadLoginTransportRuntime()',
       'markAuthenticationRequestStarted();',
       'const authenticationPromise = authV2Api.login({',
-      'persistBrokerSessionDiscovery({',
-      'updateDynamicUrls();',
       'const terminalReadyPromise = feedbackPaintPromise',
       '.then(() => onPrepareTerminal?.())',
       'onPreloadTerminalPresentation?.()',
@@ -56,6 +54,7 @@ describe('interactive login runtime boundary source contract', () => {
       'markAuthenticationAccepted();',
       'loadAuthenticatedLoginStoreRuntime();',
       'persistBrokerSessionDiscovery({',
+      'LAST_AUTHENTICATED_BROKER_ID_KEY,',
       'updateDynamicUrls();',
       'const sessionHandoff = createAuthenticatedSessionHandoff({',
       'appStore.setAuthenticated(',
@@ -70,6 +69,7 @@ describe('interactive login runtime boundary source contract', () => {
     const sessionCommitted = submit.indexOf('appStore.setAuthenticated(');
     const terminalPreparation = submit.indexOf('const terminalReadyPromise = feedbackPaintPromise');
     const authenticationRequest = submit.indexOf('const authenticationPromise = authV2Api.login({');
+    const sessionPersistence = submit.indexOf('persistBrokerSessionDiscovery({');
 
     expect(terminalPreparation).toBeGreaterThan(0);
     expect(authenticationRequest).toBeGreaterThan(0);
@@ -77,6 +77,9 @@ describe('interactive login runtime boundary source contract', () => {
     expect(terminalPreparation).toBeLessThan(authenticationResponse);
     expect(terminalPreparation).toBeLessThan(authenticationAccepted);
     expect(terminalPreparation).toBeLessThan(sessionCommitted);
+    expect(sessionPersistence).toBeGreaterThan(authenticationResponse);
+    expect(submit.slice(0, authenticationResponse)).not.toContain('persistBrokerSessionDiscovery({');
+    expect(submit.slice(0, authenticationResponse)).not.toContain('updateDynamicUrls();');
     expect(submit.slice(0, authenticationResponse)).toContain('onPrepareTerminal?.()');
     expect(submit).not.toContain('appStore.setActiveAccount(loginNum)');
   });

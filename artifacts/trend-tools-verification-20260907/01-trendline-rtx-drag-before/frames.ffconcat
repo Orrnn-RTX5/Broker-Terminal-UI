@@ -1,0 +1,13 @@
+ffconcat version 1.0
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-rtx-drag-before/00000.png'
+option framerate 1000
+duration 0.648000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-rtx-drag-before/00001.png'
+option framerate 1000
+duration 0.242000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-rtx-drag-before/00002.png'
+option framerate 1000
+duration 0.944000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-rtx-drag-before/00003.png'
+option framerate 1000
+duration 0.001000

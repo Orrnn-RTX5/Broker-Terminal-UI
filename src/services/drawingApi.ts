@@ -14,6 +14,7 @@
  */
 
 import { FIX_API_URL } from '../config/api';
+import type { PositionSizing } from '../drawing-tools/positionDrawingValues';
 
 // Server response types
 export interface ServerDrawing {
@@ -32,11 +33,14 @@ export interface ServerDrawingProperties {
     time: number;
     price: number;
     logicalIndex?: number;
+    barOffset?: number;
     pixelXOffset?: number;
   }>;
   color?: string;
   lineWidth?: number;
   lineStyle?: 'solid' | 'dashed' | 'dotted';
+  fillColor?: string;
+  fillOpacity?: number;
   text?: string;
   subtype?: string;
   locked?: boolean;
@@ -48,6 +52,22 @@ export interface ServerDrawingProperties {
   regressionLowerDeviation?: number;
   showRegressionPearson?: boolean;
   pitchforkLevels?: number[];
+  positionTargetPrice?: number;
+  positionStopPrice?: number;
+  positionEndTime?: number;
+  positionEndLogicalIndex?: number;
+  positionSizing?: PositionSizing;
+  seriesSnapshot?: Array<{
+    time: number;
+    open?: number;
+    high?: number;
+    low?: number;
+    close?: number;
+    value?: number;
+    volume?: number;
+    tickVolume?: number;
+    realVolume?: number;
+  }>;
 }
 
 export interface LoadDrawingsResponse {
@@ -69,12 +89,15 @@ export interface ClientDrawing {
     time: number;
     price: number;
     logicalIndex?: number;
+    barOffset?: number;
     pixelXOffset?: number;
   }>;
   text?: string;
   color?: string;
   lineWidth?: number;
   lineStyle?: 'solid' | 'dashed' | 'dotted';
+  fillColor?: string;
+  fillOpacity?: number;
   selected?: boolean;
   locked?: boolean;
   subtype?: string;
@@ -86,6 +109,22 @@ export interface ClientDrawing {
   regressionLowerDeviation?: number;
   showRegressionPearson?: boolean;
   pitchforkLevels?: number[];
+  positionTargetPrice?: number;
+  positionStopPrice?: number;
+  positionEndTime?: number;
+  positionEndLogicalIndex?: number;
+  positionSizing?: PositionSizing;
+  seriesSnapshot?: Array<{
+    time: number;
+    open?: number;
+    high?: number;
+    low?: number;
+    close?: number;
+    value?: number;
+    volume?: number;
+    tickVolume?: number;
+    realVolume?: number;
+  }>;
 }
 
 class DrawingApiService {
@@ -142,6 +181,8 @@ class DrawingApiService {
       text: props.text,
       color: props.color || '#3b82f6',
       lineWidth: props.lineWidth || 2,
+      fillColor: props.fillColor,
+      fillOpacity: props.fillOpacity,
       lineStyle: props.lineStyle || 'solid',
       selected: false,     // Always false on load
       locked: props.locked || false,
@@ -153,6 +194,12 @@ class DrawingApiService {
       regressionLowerDeviation: props.regressionLowerDeviation,
       showRegressionPearson: props.showRegressionPearson,
       pitchforkLevels: props.pitchforkLevels,
+      positionTargetPrice: props.positionTargetPrice,
+      positionStopPrice: props.positionStopPrice,
+      positionEndTime: props.positionEndTime,
+      positionEndLogicalIndex: props.positionEndLogicalIndex,
+      positionSizing: props.positionSizing,
+      seriesSnapshot: props.seriesSnapshot,
       serverId: serverDrawing.id,  // Store server ID for deletes/updates
     };
   }
@@ -170,6 +217,8 @@ class DrawingApiService {
         points: drawing.points,
         color: drawing.color,
         lineWidth: drawing.lineWidth,
+        fillColor: drawing.fillColor,
+        fillOpacity: drawing.fillOpacity,
         lineStyle: drawing.lineStyle,
         text: drawing.text,
         subtype: drawing.subtype,
@@ -180,6 +229,12 @@ class DrawingApiService {
         regressionLowerDeviation: drawing.regressionLowerDeviation,
         showRegressionPearson: drawing.showRegressionPearson,
         pitchforkLevels: drawing.pitchforkLevels,
+        positionTargetPrice: drawing.positionTargetPrice,
+        positionStopPrice: drawing.positionStopPrice,
+        positionEndTime: drawing.positionEndTime,
+        positionEndLogicalIndex: drawing.positionEndLogicalIndex,
+        positionSizing: drawing.positionSizing,
+        seriesSnapshot: drawing.seriesSnapshot,
         locked: drawing.locked,
         // Exclude 'selected' - it's transient UI state
       },

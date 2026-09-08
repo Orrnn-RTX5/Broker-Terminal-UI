@@ -46,6 +46,8 @@ import { setLiveMarketDataFrozen } from '../services/liveTickDispatcher';
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { drawingManager } from '../services/drawingManager';
 import { resolveTrendToolColor } from '../drawing-tools/toolDefaults';
+import { projectDrawingTimeAtLogical } from '../drawing-tools/geometry/drawingTimeProjection';
+import { isTrendDrawingInputActive, setTrendDrawingInputActive, usesDirectDrawingPointerInput } from '../drawing-tools/drawingInteractionPriority';
 import { getQuoteSocketManager } from '../services/quoteSocketManager';
 import {
   candleAggregationService,
@@ -55,6 +57,7 @@ import {
   type Timeframe as AggTimeframe,
 } from '../services/candleAggregationService';
 import { useAppStore } from '../store/useAppStore';
+import { updateDrawingCandle } from '../drawing-tools/drawingCandleUpdates';
 import api from '../services/api';
 import { isDesktopBackendTarget } from '../config/backendTarget.js';
 import { useDockLayoutStore } from '../store/useDockLayoutStore';
@@ -89,6 +92,8 @@ import {
 } from '../services/derivedTimeframeHistoryService';
 import {
   backfillRecentInteriorHistoryGaps,
+  FIRST_PAINT_HISTORY_COUNT,
+  mergeMissingHistoryCandles,
   createChartHistoryBackfillDiagnostics,
   createSelectedTimeframeHistoryCoordinator,
   fetchOlderHistoryPage as fetchChartOlderHistoryPage,
@@ -842,10 +847,14 @@ export const TradingChart = React.memo(function TradingChart({
   const drawingRuntimeContextRef = useRef({
     contextId: activeChartSourceId,
     accountScope: drawingAccountScope,
+    symbol,
+    timeframe: activeTimeframe,
   });
   drawingRuntimeContextRef.current = {
     contextId: activeChartSourceId,
     accountScope: drawingAccountScope,
+    symbol,
+    timeframe: activeTimeframe,
   };
   const overlayRef = useRef<HTMLDivElement>(null);
   const periodSeparatorsRef = useRef<PeriodSeparator[]>([]);
@@ -863,15 +872,14 @@ export const TradingChart = React.memo(function TradingChart({
     const overlay = overlayRef.current;
     if (!chart || !series || !overlay) return false;
 
-    const metadata = chartExportMetadataRef.current;
     const drawingContext = drawingRuntimeContextRef.current;
     drawingManager.setChart(
       chart,
       series,
-      metadata.symbol,
+      drawingContext.symbol,
       1,
       overlay,
-      metadata.timeframe,
+      drawingContext.timeframe,
       drawingContext.contextId,
       drawingContext.accountScope,
       getDrawingSeriesData,
@@ -2456,7 +2464,8 @@ export const TradingChart = React.memo(function TradingChart({
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        // Arrow/cursor is the default tool — hide crosshair lines until a drawing tool is selected
+        // Native crosshair lines stay hidden. Explicit Crosshair mode uses the
+        // custom overlay below; drawing tools only place and preview geometry.
         vertLine: { visible: false, color: chartTheme.crosshair, width: 1, style: 2, labelVisible: false },
         horzLine: { visible: false, color: chartTheme.crosshair, width: 1, style: 2, labelVisible: false },
       },
@@ -2673,6 +2682,12 @@ export const TradingChart = React.memo(function TradingChart({
         // cannot reposition them when only the price range changes. Keep their
         // cached price-to-coordinate geometry in the same frame as the canvas.
         repaintTradeOverlayGeometryRef.current();
+        // SVG drawings use the same price transform. A price-axis drag does
+        // not emit a time-range change, so it must also queue their repaint.
+        if (drawingRenderFrameRef.current === null && drawingRenderSettledFrameRef.current === null) {
+          const drawingContext = drawingRuntimeContextRef.current;
+          scheduleDrawingRenderAfterChartData(drawingContext.symbol, drawingContext.timeframe as Timeframe);
+        }
       });
     };
 
@@ -3357,11 +3372,12 @@ export const TradingChart = React.memo(function TradingChart({
         setLoadingPhase('receiving');
       }
       const liveCandleGenerationAtRequestStart = liveCandleMutationGenerationRef.current;
+      const useProgressiveInitialHistory = activeTf === 'M1' && !hydratedFromCache;
 
       const historyRequest = historyRequestCoordinatorRef.current.start({
         symbol: selectedSymbol,
         timeframe: activeTf,
-        count: getInitialHistoryCount(activeTf),
+        count: useProgressiveInitialHistory ? FIRST_PAINT_HISTORY_COUNT : getInitialHistoryCount(activeTf),
       }, async options => {
         if (!deriveInitialHistoryFromM1) {
           return chartDataService.fetchCandles(options);
@@ -3398,23 +3414,6 @@ export const TradingChart = React.memo(function TradingChart({
 
       candles = getValidSortedCandles(candles);
       const receivedHistoryCount = candles.length;
-      if (activeTf === 'M1' && candles.length > 1) {
-        const gapBackfill = await backfillRecentInteriorHistoryGaps({
-          symbol: selectedSymbol,
-          timeframe: activeTf,
-          // Backend candle timestamps are already authoritative UTC seconds.
-          candles,
-          signal: historyRequest.signal,
-        });
-        if (!isCurrentHistoryLoad()) return;
-        candles = gapBackfill.candles as Candle[];
-        if (gapBackfill.addedCandles > 0) {
-          console.info(
-            `[Chart] Backfilled ${gapBackfill.addedCandles} missing ${selectedSymbol} ${activeTf} candles ` +
-            `from ${gapBackfill.requestedGaps} bounded history ranges.`,
-          );
-        }
-      }
       if (derivedInitialHistory) {
         console.log(
           `[Chart] M1-derived initial history produced ${derivedInitialHistory.candles.length} ${activeTf} candles for ${selectedSymbol} ` +
@@ -3541,16 +3540,17 @@ export const TradingChart = React.memo(function TradingChart({
       // One exact M1 seed can satisfy later timeframe clicks without another
       // network round trip. Fill only missing derived-frame caches, preserving
       // any richer entry that this session already fetched.
-      if (aggregationSeedTimeframe === 'M1') {
+      const warmOtherTimeframeCaches = () => {
+        if (aggregationSeedTimeframe !== 'M1') return;
+        const oldestSeedTime = activeTf === 'M1' ? candlesRef.current[0]?.time : ohlcvCandles[0]?.time;
         for (const targetTf of CANDLE_TIMEFRAMES) {
           if (targetTf === 'M1' || targetTf === activeTf) continue;
           const { key: warmCacheKey } = buildHistoryCacheTarget(targetTf as Timeframe);
           const existingWarmCache = candleCache.getLatest(warmCacheKey);
-          if (existingWarmCache?.candles.length) continue;
 
           const reusableAggregates = omitPartialLeadingM1Aggregate(
             candleAggregationService.getCandles(selectedSymbol, targetTf, true, false),
-            ohlcvCandles[0]?.time,
+            oldestSeedTime,
             targetTf,
             explicitBrokerOffsetSeconds,
           );
@@ -3558,7 +3558,7 @@ export const TradingChart = React.memo(function TradingChart({
             reusableAggregates
               .map(candle => ({ ...candle, tickVolume: candle.volume })) as Candle[],
           );
-          if (warmCandles.length > 0) {
+          if (warmCandles.length > (existingWarmCache?.candles.length ?? 0)) {
             setHistoryCache(
               targetTf as Timeframe,
               warmCandles,
@@ -3567,7 +3567,7 @@ export const TradingChart = React.memo(function TradingChart({
             );
           }
         }
-      }
+      };
       setHistoryCache(activeTf, candles, explicitBrokerOffsetSeconds, historySource);
       console.log(
         `[Chart] Loaded ${ohlcvCandles.length} ${aggregationSeedTimeframe} source candles into aggregation service ` +
@@ -3632,8 +3632,77 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }
 
-      // Keep startup bounded to the initial page. Older candles remain available
-      // through the visible-left-edge loadMoreHistory path.
+      // Paint the initial viewport before warming other timeframes or fetching
+      // deeper history. The same request owner cancels all follow-up work.
+      {
+        // Release the initial load and paint its authoritative baseline first.
+        // Gap repair can require several network rounds; it is not a condition
+        // for displaying the first page. The selection owner cancels this work
+        // on logout, account change, symbol change, or timeframe change.
+        void (async () => {
+          await waitForProgressiveHistoryIdleTurn(historyRequest.signal);
+          if (!isCurrentHistoryLoad()) return;
+          warmOtherTimeframeCaches();
+          if (activeTf !== 'M1' || candles.length < 2) return;
+
+          const applyAdditionalHistory = (incoming: Candle[], reason: string): number => {
+            const added = mergeMissingHistoryCandles(
+              currentCandleRef.current
+                ? upsertCandleIntoHistory(candlesRef.current, currentCandleRef.current).candles
+                : candlesRef.current,
+              reconcileCandlesWithLiveQuote(getValidSortedCandles(incoming), 'history'),
+            );
+            if (added.addedCount === 0) return 0;
+            candlesRef.current = added.candles;
+            protectedDisplayedHistoryRef.current = added.candles;
+            renderedPriceReferenceRef.current = createRenderedPriceReference(added.candles);
+            setHistoryCache(activeTf, added.candles, explicitBrokerOffsetSeconds, historySource);
+            reloadAggregationCandles(added.candles, activeTf, explicitBrokerOffsetSeconds);
+            requestChartDataRender({ resetVisibleRange: false, reason });
+            return added.addedCount;
+          };
+
+          // The latest 500 bars fill the first viewport. Expand in the background
+          // without replacing live buckets or changing the user's visible range.
+          if (useProgressiveInitialHistory && receivedHistoryCount >= FIRST_PAINT_HISTORY_COUNT) {
+            try {
+              const extendedHistory = await chartDataService.fetchCandles({
+                symbol: selectedSymbol,
+                timeframe: activeTf,
+                count: getInitialHistoryCount(activeTf),
+                signal: historyRequest.signal,
+              });
+              if (!isCurrentHistoryLoad()) return;
+              const addedCount = applyAdditionalHistory(extendedHistory, 'background-history-page');
+              if (addedCount > 0) {
+                warmOtherTimeframeCaches();
+                console.info(`[Chart] Added ${addedCount} older ${selectedSymbol} candles after first paint.`);
+              }
+            } catch (error) {
+              if (!isCurrentHistoryLoad()) return;
+              console.warn('[Chart] Background history page failed; keeping visible candles:', error);
+            }
+          }
+
+          const gapBackfill = await backfillRecentInteriorHistoryGaps({
+            symbol: selectedSymbol,
+            timeframe: activeTf,
+            candles: candlesRef.current,
+            signal: historyRequest.signal,
+          });
+          if (!isCurrentHistoryLoad() || gapBackfill.addedCandles === 0) return;
+
+          const addedCount = applyAdditionalHistory(gapBackfill.candles as Candle[], 'background-history-gaps');
+          if (addedCount > 0) {
+            warmOtherTimeframeCaches();
+            console.info(`[Chart] Filled ${addedCount} history gaps after first paint for ${selectedSymbol} ${activeTf}.`);
+          }
+        })().catch(error => {
+          if (isCurrentHistoryLoad() && !isAbortError(error)) {
+            console.warn('[Chart] Background history gap repair failed:', error);
+          }
+        });
+      }
     } catch (err: unknown) {
       if (isAbortError(err)) return;
       console.warn('[Chart] Failed to load history:', err);
@@ -3658,7 +3727,7 @@ export const TradingChart = React.memo(function TradingChart({
         }
       }
     }
-  }, [buildHistoryCacheTarget, getLatestRenderableCandle, hydrateHistoryFromCache, reconcileCandlesWithLiveQuote, requestChartDataRender, resetEmptyHistoryState, resetLiveQuotePriceGuard, restoreProtectedDisplayedHistory, setHistoryCache, updateChartData]);
+  }, [buildHistoryCacheTarget, getLatestRenderableCandle, hydrateHistoryFromCache, reconcileCandlesWithLiveQuote, reloadAggregationCandles, requestChartDataRender, resetEmptyHistoryState, resetLiveQuotePriceGuard, restoreProtectedDisplayedHistory, setHistoryCache, updateChartData]);
 
   // Fade the loading overlay out after candles arrive. 'ready' starts the CSS
   // opacity transition; after it finishes we unmount the overlay entirely.
@@ -4123,7 +4192,9 @@ export const TradingChart = React.memo(function TradingChart({
       }
     );
 
-    let isDrawingFreehand = false;
+    let isDrawingContinuous = false;
+    let continuousPointerId: number | null = null;
+    let continuousDrawingId: string | null = null;
 
     /**
      * coordinateToFractionalLogical -- pixel X to true fractional bar index.
@@ -4144,41 +4215,45 @@ export const TradingChart = React.memo(function TradingChart({
       const fraction = (x - c0) / barWidth;
       return intBar + fraction;
     };
+    let ignoreNextDrawingClick = false;
+    let drawingMousePointerActive = false;
     const clickHandler = (param: any) => {
+      // Mouse trend tools commit on press. The chart's later click is the same
+      // gesture and must not add another anchor (or clear the new selection).
+      if (ignoreNextDrawingClick) {
+        ignoreNextDrawingClick = false;
+        return;
+      }
+      const drawingContext = drawingRuntimeContextRef.current;
+      const contextId = drawingContext.contextId;
       console.log(`[TradingChart] 🖱️ CLICK on chart: time=${param.time}, point=${!!param.point}, series=${!!seriesRef.current}, activeToolRef=${activeToolRef.current}`);
       if (!param.point || !seriesRef.current) {
         console.log(`[TradingChart] ❌ Click rejected: point=${!!param.point}, series=${!!seriesRef.current}`);
         return;
       }
 
-      if (
-        drawingCommandTargetRef.current !== activeChartSourceId
-        || !drawingManager.ownsActiveDrawing(activeChartSourceId)
-      ) return;
+      if (!drawingManager.ownsActiveDrawing(contextId)) {
+        // A plain canvas click clears this chart's selection, including clicks
+        // in future whitespace where lightweight-charts supplies no time.
+        if (!activeToolRef.current) drawingManager.unselectAll(contextId);
+        return;
+      }
+      if (drawingCommandTargetRef.current !== contextId) return;
 
-      // Bind the interacted panel to drawingManager dynamically
-      drawingManager.setChart(
-        chart,
-        seriesRef.current,
-        symbol,
-        1,
-        overlayRef.current,
-        timeframe,
-        activeChartSourceId,
-        drawingRuntimeContextRef.current.accountScope,
-        getDrawingSeriesData,
-      );
+      // Symbol/timeframe fast paths retain these listeners. Rebind from the
+      // current runtime rather than the values captured when the series began.
+      if (!bindDrawingManagerToChart()) return;
 
+      const drawingLogical = coordinateToFractionalLogical(param.point.x)
+        ?? chart.timeScale().coordinateToLogical(param.point.x);
       let time = param.time;
       if (!time && param.point) {
-        const logical = chart.timeScale().coordinateToLogical(param.point.x);
-        if (logical !== null && candlesRef.current.length > 0) {
-          const lastCandle = candlesRef.current[candlesRef.current.length - 1];
-          const lastIndex = candlesRef.current.length - 1;
-          const tfSec = getTimeframeSeconds(timeframe as AggTimeframe);
-          time = lastCandle.time + (logical - lastIndex) * tfSec;
-          console.log(`[TradingChart] Projected click time: logical=${logical}, lastIndex=${lastIndex}, time=${time}`);
-        }
+        time = projectDrawingTimeAtLogical(
+          seriesRef.current,
+          chart.timeScale(),
+          drawingLogical,
+          getTimeframeSeconds(drawingContext.timeframe as AggTimeframe),
+        );
       }
 
       if (!time) {
@@ -4186,7 +4261,7 @@ export const TradingChart = React.memo(function TradingChart({
         return;
       }
 
-      const activeDrawing = drawingManager.getActiveDrawing(activeChartSourceId);
+      const activeDrawing = drawingManager.getActiveDrawing(contextId);
       console.log(`[TradingChart] 📐 activeDrawing=${!!activeDrawing}, type=${activeDrawing?.type}, points=${activeDrawing?.points?.length}`);
       if (activeDrawing && activeDrawing.type !== 'freehand') {
         const price = seriesRef.current.coordinateToPrice(param.point.y);
@@ -4205,7 +4280,7 @@ export const TradingChart = React.memo(function TradingChart({
           // Callout tool: place first point normally, show text input on second click
           if (activeDrawing.type === 'callout' && activeDrawing.points.length === 1) {
             // Place the second point first (label box position)
-            drawingManager.addPoint(time as number, price, undefined, activeChartSourceId);
+            drawingManager.addPoint(time as number, price, undefined, contextId);
             // Now prompt for the label text
             setTextInputOverlay({ x: clientX, y: clientY - 40, time: time as number, price });
             setTextInputValue('');
@@ -4224,7 +4299,7 @@ export const TradingChart = React.memo(function TradingChart({
               (time || Date.now() / 1000) as number,
               price,
               pixelXOffset,
-              activeChartSourceId,
+              contextId,
             );
           } else {
             // Every other tool stays anchored in time/price space so endpoint and
@@ -4233,19 +4308,83 @@ export const TradingChart = React.memo(function TradingChart({
               (time || Date.now() / 1000) as number,
               price,
               undefined,
-              activeChartSourceId,
+              contextId,
+              drawingLogical ?? undefined,
+              Boolean(param.sourceEvent?.shiftKey),
             );
           }
         }
       }
     };
+    // lightweight-charts intentionally omits MouseEvent.detail from its
+    // sourceEvent payload. Capture the native second click first: click one of
+    // a double-click records the final Ghost Feed anchor through clickHandler;
+    // detail >= 2 completes it before the chart can record the point again.
+    const handleGhostFeedClickCapture = (event: MouseEvent) => {
+      const contextId = drawingRuntimeContextRef.current.contextId;
+      if (event.detail < 2) return;
+      if (drawingCommandTargetRef.current !== contextId) return;
+      const activeDrawing = drawingManager.getActiveDrawing(contextId);
+      const isPath = activeDrawing?.type === 'shapes' && ['path', 'polyline'].includes(activeDrawing.subtype!);
+      if (!isPath && (activeDrawing?.type !== 'measure' || activeDrawing.subtype !== 'ghost_feed')) return;
+      drawingManager.finishDrawing(contextId);
+    };
+    if (containerRef.current) {
+      containerRef.current.addEventListener('click', handleGhostFeedClickCapture, true);
+    }
     chart.subscribeClick(clickHandler);
 
     const handlePointerDown = (e: PointerEvent) => {
-      if (drawingCommandTargetRef.current !== activeChartSourceId) return;
-      const activeDrawing = drawingManager.getActiveDrawing(activeChartSourceId);
-      if (activeDrawing && activeDrawing.type === 'freehand') {
-        isDrawingFreehand = true;
+      ignoreNextDrawingClick = false;
+      drawingMousePointerActive = e.pointerType === 'mouse';
+      const drawingContext = drawingRuntimeContextRef.current;
+      const contextId = drawingContext.contextId;
+      if (drawingCommandTargetRef.current !== contextId) return;
+      if (!e.isPrimary || e.button !== 0 || isDrawingContinuous) return;
+      const activeDrawing = drawingManager.getActiveDrawing(contextId);
+      if (
+        e.pointerType === 'mouse'
+        && activeDrawing
+        && activeDrawing.type !== 'freehand'
+        && usesDirectDrawingPointerInput(activeDrawing)
+        && containerRef.current
+      ) {
+        const container = containerRef.current;
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const plotWidth = container.clientWidth - chart.priceScale('right').width();
+        const plotHeight = container.clientHeight - chart.timeScale().height();
+        if (x < 0 || y < 0 || x >= plotWidth || y >= plotHeight) return;
+
+        // TradingView records each anchor on mouse-down, even if the user
+        // moves before releasing. Native chart clicks discard that gesture.
+        // Suppress compatibility mouse-down so the final anchor cannot also
+        // start a chart pan after drawing:saved restores scrolling.
+        e.preventDefault();
+        clickHandler({
+          point: { x, y },
+          time: chart.timeScale().coordinateToTime(x),
+          sourceEvent: e,
+        });
+        ignoreNextDrawingClick = true;
+        return;
+      }
+      if (activeDrawing?.type === 'freehand') {
+        const container = containerRef.current;
+        if (!container || !bindDrawingManagerToChart()) return;
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        if (x < 0 || y < 0 || x >= container.clientWidth - chart.priceScale('right').width()
+          || y >= container.clientHeight - chart.timeScale().height()) return;
+        e.preventDefault();
+        ignoreNextDrawingClick = true;
+        isDrawingContinuous = true;
+        continuousPointerId = e.pointerId;
+        continuousDrawingId = activeDrawing.id;
+        drawingManager.addFreehandPoint(x, y, contextId, true);
+        try { container.setPointerCapture(e.pointerId); } catch { /* Detached synthetic pointer. */ }
       }
     };
 
@@ -4254,33 +4393,70 @@ export const TradingChart = React.memo(function TradingChart({
     }
 
 
-    const handlePointerUp = () => {
-      if (isDrawingFreehand) {
-        isDrawingFreehand = false;
-        const activeDrawing = drawingManager.getActiveDrawing(activeChartSourceId);
-        if (activeDrawing && activeDrawing.points.length > 1) {
-          drawingManager.finishDrawing();
+    const handlePointerUp = (event: PointerEvent) => {
+      if (isDrawingContinuous) {
+        const contextId = drawingRuntimeContextRef.current.contextId;
+        if (continuousPointerId !== null && event.pointerId !== continuousPointerId) return;
+        const activeDrawing = drawingManager.getActiveDrawing(contextId);
+        const ownsStroke = activeDrawing?.id === continuousDrawingId;
+        if (ownsStroke && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+          handleDrawingPointerMove(event);
+        }
+        isDrawingContinuous = false;
+        continuousPointerId = null;
+        continuousDrawingId = null;
+        try { containerRef.current?.releasePointerCapture(event.pointerId); } catch { /* Already released. */ }
+        if (!ownsStroke) return;
+        if (activeDrawing && activeDrawing.points.length > 0) {
+          drawingManager.finishDrawing(contextId);
         } else if (activeDrawing) {
-          drawingManager.cancelDrawing(activeChartSourceId);
+          drawingManager.cancelDrawing(contextId);
         }
       }
     };
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (!isDrawingContinuous) return;
+      if (continuousPointerId !== null && event.pointerId !== continuousPointerId) return;
+      isDrawingContinuous = false;
+      continuousPointerId = null;
+      const contextId = drawingRuntimeContextRef.current.contextId;
+      if (drawingManager.getActiveDrawing(contextId)?.id === continuousDrawingId) {
+        drawingManager.cancelDrawing(contextId);
+      }
+      continuousDrawingId = null;
+    };
     window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerCancel);
 
     const crosshairHandler = (param: any) => {
-      const ownsDrawingContext = drawingCommandTargetRef.current === activeChartSourceId;
+      const drawingContext = drawingRuntimeContextRef.current;
+      const contextId = drawingContext.contextId;
+      const ownsDrawingContext = drawingCommandTargetRef.current === contextId;
       const activeDrawing = ownsDrawingContext
-        ? drawingManager.getActiveDrawing(activeChartSourceId)
+        ? drawingManager.getActiveDrawing(contextId)
         : null;
       const needsDrawingPreview = Boolean(
         ownsDrawingContext
-        && (activeDrawing || activeToolRef.current || isDrawingFreehand)
+        && (activeDrawing || activeToolRef.current || isDrawingContinuous)
       );
 
       // Cursor-mode crosshair events are owned entirely by lightweight-charts.
       // Avoid canvas queries, coordinate conversion and drawing-manager work
       // until a drawing tool actually needs a live preview.
       if (!needsDrawingPreview) return;
+      // Brush samples belong exclusively to native pointer events, including
+      // pen/touch input. Hidden crosshair events can be snapped or duplicated.
+      if (activeDrawing?.type === 'freehand') return;
+
+      // Anchor tools use native pointer movement, including movement with the
+      // button held. Ignore native crosshair resets as well: only a real DOM
+      // pointerleave should hide a mouse-owned preview's coordinate labels.
+      if (usesDirectDrawingPointerInput(activeDrawing)
+        && drawingMousePointerActive && !param.drawingPointerInput) return;
+      if (!param.point) {
+        drawingManager.hidePreviewCursor(contextId);
+        return;
+      }
 
       // lightweight-charts re-applies cursor:crosshair on every crosshair event.
       // Enforce the correct cursor here every frame so it doesn't flicker back.
@@ -4294,35 +4470,31 @@ export const TradingChart = React.memo(function TradingChart({
 
       if (param.point && seriesRef.current) {
         // Project time if undefined (hovering in future blank margin)
+        const drawingLogical = coordinateToFractionalLogical(param.point.x)
+          ?? chart.timeScale().coordinateToLogical(param.point.x);
         let time = param.time;
         if (!time && param.point) {
-          const logical = chart.timeScale().coordinateToLogical(param.point.x);
-          if (logical !== null && candlesRef.current.length > 0) {
-            const lastCandle = candlesRef.current[candlesRef.current.length - 1];
-            const lastIndex = candlesRef.current.length - 1;
-            const tfSec = getTimeframeSeconds(timeframe as AggTimeframe);
-            time = lastCandle.time + (logical - lastIndex) * tfSec;
-          }
+          time = projectDrawingTimeAtLogical(
+            seriesRef.current,
+            chart.timeScale(),
+            drawingLogical,
+            getTimeframeSeconds(drawingContext.timeframe as AggTimeframe),
+          );
         }
 
         if (time) {
           const price = seriesRef.current.coordinateToPrice(param.point.y);
           if (price !== null) {
-            // Bind the active chart panel on mouse hover interaction
-            drawingManager.setChart(
-              chart,
-              seriesRef.current,
-              symbol,
-              1,
-              overlayRef.current,
-              timeframe,
-              activeChartSourceId,
-              drawingRuntimeContextRef.current.accountScope,
-              getDrawingSeriesData,
-            );
+            if (!bindDrawingManagerToChart()) return;
 
-            if (isDrawingFreehand) {
-              drawingManager.addPoint(time, price, undefined, activeChartSourceId);
+            if (isDrawingContinuous) {
+              drawingManager.addPoint(
+                time,
+                price,
+                undefined,
+                contextId,
+                drawingLogical ?? undefined,
+              );
             } else {
               if (activeDrawing && activeDrawing.type === 'vline') {
                 const rawX = (param.sourceEvent && containerRef.current)
@@ -4335,10 +4507,16 @@ export const TradingChart = React.memo(function TradingChart({
                   time,
                   price,
                   pixOff,
-                  activeChartSourceId,
+                  contextId,
                 );
               } else {
-                drawingManager.updatePreviewPoint(time, price, activeChartSourceId);
+                drawingManager.updatePreviewPoint(
+                  time,
+                  price,
+                  contextId,
+                  drawingLogical ?? undefined,
+                  Boolean(param.sourceEvent?.shiftKey),
+                );
               }
             }
           }
@@ -4348,6 +4526,66 @@ export const TradingChart = React.memo(function TradingChart({
     };
     chart.subscribeCrosshairMove(crosshairHandler);
 
+    const handleDrawingPointerMove = (e: PointerEvent) => {
+      const contextId = drawingRuntimeContextRef.current.contextId;
+      if (drawingCommandTargetRef.current !== contextId) return;
+      const drawing = drawingManager.getActiveDrawing(contextId);
+      const container = containerRef.current;
+      if (!usesDirectDrawingPointerInput(drawing) || !container) return;
+      if (drawing?.type === 'freehand') {
+        if (!isDrawingContinuous || e.pointerId !== continuousPointerId || drawing.id !== continuousDrawingId) return;
+        if (!bindDrawingManagerToChart()) return;
+        const rect = container.getBoundingClientRect();
+        const samples = e.getCoalescedEvents?.() ?? [];
+        // Include the dispatched event as well as coalesced pen samples: it
+        // contains the final release position on pointerup.
+        for (const sample of [...samples, e]) {
+          const x = sample.clientX - rect.left;
+          const y = sample.clientY - rect.top;
+          if (x < 0 || y < 0 || x >= container.clientWidth - chart.priceScale('right').width()
+            || y >= container.clientHeight - chart.timeScale().height()) continue;
+          drawingManager.addFreehandPoint(x, y, contextId, e.type === 'pointerup');
+        }
+        return;
+      }
+      if (e.pointerType !== 'mouse') return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      if (x < 0 || y < 0
+        || x >= container.clientWidth - chart.priceScale('right').width()
+        || y >= container.clientHeight - chart.timeScale().height()) {
+        drawingManager.hidePreviewCursor(contextId);
+        return;
+      }
+      drawingMousePointerActive = true;
+      crosshairHandler({
+        point: { x, y },
+        time: chart.timeScale().coordinateToTime(x),
+        sourceEvent: e,
+        drawingPointerInput: true,
+      });
+    };
+    containerRef.current?.addEventListener('pointermove', handleDrawingPointerMove);
+    const handleDrawingPointerLeave = () => {
+      drawingManager.hidePreviewCursor(drawingRuntimeContextRef.current.contextId);
+    };
+    containerRef.current?.addEventListener('pointerleave', handleDrawingPointerLeave);
+
+    const handleDrawingShiftChange = (event: KeyboardEvent) => {
+      const currentContext = drawingRuntimeContextRef.current.contextId;
+      const active = drawingManager.getActiveDrawing(currentContext);
+      const editable = event.target instanceof Element && Boolean(event.target.closest('input, textarea, select, [contenteditable="true"]'));
+      if (!editable && event.type === 'keydown' && drawingCommandTargetRef.current === currentContext && active?.type === 'shapes') {
+        if (event.key === 'Enter' && ['path', 'polyline'].includes(active.subtype!)) { event.preventDefault(); drawingManager.finishDrawing(currentContext); return; }
+        if (event.key === 'Escape') { event.preventDefault(); drawingManager.cancelDrawing(currentContext); return; }
+      }
+      const contextId = drawingRuntimeContextRef.current.contextId;
+      if (event.key !== 'Shift' || drawingCommandTargetRef.current !== contextId) return;
+      drawingManager.setPreviewShiftPressed(event.type === 'keydown', contextId);
+    };
+    window.addEventListener('keydown', handleDrawingShiftChange);
+    window.addEventListener('keyup', handleDrawingShiftChange);
 
     setTimeout(() => {
       if (!activeToolRef.current && containerRef.current) {
@@ -4372,6 +4610,8 @@ export const TradingChart = React.memo(function TradingChart({
     (chart as any)._cleanupDrawings = () => {
       chart.unsubscribeClick(clickHandler);
       chart.unsubscribeCrosshairMove(crosshairHandler);
+      containerRef.current?.removeEventListener('pointermove', handleDrawingPointerMove);
+      containerRef.current?.removeEventListener('pointerleave', handleDrawingPointerLeave);
       try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(timeRangeHandler); } catch { }
       unregisterDrawingScrollLock();
       if (drawingRenderFrame !== null) {
@@ -4379,9 +4619,13 @@ export const TradingChart = React.memo(function TradingChart({
         drawingRenderFrame = null;
       }
       if (containerRef.current) {
+        containerRef.current.removeEventListener('click', handleGhostFeedClickCapture, true);
         containerRef.current.removeEventListener('pointerdown', handlePointerDown as EventListener);
       }
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerCancel);
+      window.removeEventListener('keydown', handleDrawingShiftChange);
+      window.removeEventListener('keyup', handleDrawingShiftChange);
     };
 
     // Re-render drawings on every zoom/pan so they stay pinned to the chart
@@ -4803,6 +5047,12 @@ export const TradingChart = React.memo(function TradingChart({
             time: c.time as Time, value: displayVolume,
             color: c.close >= c.open ? theme.volumeUp : theme.volumeDown,
           });
+        }
+        updateDrawingCandle(lastRenderedCandlesRef.current, c);
+        const drawingContext = drawingRuntimeContextRef.current;
+        // Coalesce frequent ticks without repeatedly cancelling the two-frame render.
+        if (drawingRenderFrameRef.current === null && drawingRenderSettledFrameRef.current === null) {
+          scheduleDrawingRenderAfterChartData(drawingContext.symbol, drawingContext.timeframe as Timeframe);
         }
         updateLegendDOM(c.open, c.high, c.low, c.close, getDisplayVolume(c, chartSettingsRef.current));
         if (isNewCandle) {
@@ -5921,6 +6171,7 @@ export const TradingChart = React.memo(function TradingChart({
 
   // Handle SELECT_TOOL command — bridge toolbar buttons to drawingManager
   useEffect(() => {
+    const drawingInteractionContainer = containerRef.current;
     console.log('[TradingChart] ✅ SELECT_TOOL subscriber REGISTERED, chartRef=', !!chartRef.current, 'containerRef=', !!containerRef.current);
     
     const handleSaved = (event: Event) => {
@@ -5928,9 +6179,19 @@ export const TradingChart = React.memo(function TradingChart({
       const savedContextId = (event as CustomEvent<{ contextId?: string }>).detail?.contextId;
       if (savedContextId && savedContextId !== contextId) return;
       if (drawingCommandTargetRef.current !== contextId) return;
-      console.log('[TradingChart] Self-heal: drawing saved, returning to cursor mode');
+      const completed = (event as CustomEvent<{ type?: string; subtype?: string; color?: string; lineWidth?: number; lineStyle?: 'solid' | 'dashed' | 'dotted'; fillColor?: string; fillOpacity?: number }>).detail;
+      if (event.type === 'drawing:saved' && completed?.type === 'freehand' && activeToolRef.current === 'freehand') {
+        if (!bindDrawingManagerToChart()) return;
+        drawingManager.startDrawing('freehand', completed.color, { subtype: completed.subtype });
+        drawingManager.updateActiveDrawing({ lineWidth: completed.lineWidth, lineStyle: completed.lineStyle,
+          fillColor: completed.fillColor, fillOpacity: completed.fillOpacity });
+        return;
+      }
+      console.log('[TradingChart] Drawing interaction ended, returning to cursor mode');
       activeToolRef.current = null;
       drawingCommandTargetRef.current = null;
+      setTrendDrawingInputActive(containerRef.current, false);
+      if (containerRef.current) containerRef.current.style.touchAction = '';
       if (chartRef.current) {
         chartRef.current.applyOptions({
           handleScroll: TRADING_VIEW_HANDLE_SCROLL,
@@ -5949,6 +6210,12 @@ export const TradingChart = React.memo(function TradingChart({
     };
 
     window.addEventListener('drawing:saved', handleSaved);
+    window.addEventListener('drawing:cancelled', handleSaved);
+    const cancelBrushOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || activeToolRef.current !== 'freehand') return;
+      drawingManager.cancelDrawing(drawingRuntimeContextRef.current.contextId);
+    };
+    window.addEventListener('keydown', cancelBrushOnEscape);
 
     const unsubSelectTool = commandBus.subscribe('SELECT_TOOL', (payload) => {
       const tool = payload.tool;
@@ -5960,6 +6227,8 @@ export const TradingChart = React.memo(function TradingChart({
         if (drawingCommandTargetRef.current === contextId) {
           drawingCommandTargetRef.current = null;
           activeToolRef.current = null;
+          if (containerRef.current) containerRef.current.style.touchAction = '';
+          setTrendDrawingInputActive(containerRef.current, false);
           setTextInputOverlay(null);
           if (chartRef.current) {
             chartRef.current.applyOptions({
@@ -5986,7 +6255,9 @@ export const TradingChart = React.memo(function TradingChart({
 
       // Track tool in ref (accessible in closures without re-creating handlers)
       activeToolRef.current = tool === 'cursor' ? null : tool;
+      if (containerRef.current) containerRef.current.style.touchAction = tool === 'freehand' ? 'none' : '';
       drawingCommandTargetRef.current = tool === 'cursor' ? null : contextId;
+      setTrendDrawingInputActive(containerRef.current, false);
 
       if (tool === 'cursor') {
         // Cursor mode: restore pan/scroll, hide crosshair lines (MT5 behaviour)
@@ -6014,17 +6285,23 @@ export const TradingChart = React.memo(function TradingChart({
           chartRef.current.applyOptions({
             handleScroll: DRAWING_LOCK_HANDLE_SCROLL,
             handleScale: DRAWING_LOCK_HANDLE_SCALE,
-            // Show crosshair so user can precisely place drawing points
-            ...(!crosshairEnabledRef.current && { crosshair: { vertLine: { visible: true }, horzLine: { visible: true } } }),
+            // Drawing previews still follow crosshair-move events, but visible
+            // crosshair guides belong exclusively to explicit Crosshair mode.
+            ...(!crosshairEnabledRef.current && {
+              crosshair: {
+                vertLine: { visible: false, labelVisible: false },
+                horzLine: { visible: false, labelVisible: false },
+              },
+            }),
           });
         }
         if (containerRef.current && !crosshairEnabledRef.current) {
-          containerRef.current.style.cursor = 'crosshair';
+          containerRef.current.style.cursor = 'default';
           containerRef.current.querySelectorAll('canvas').forEach((c) => {
-            (c as HTMLCanvasElement).style.cursor = 'crosshair';
+            (c as HTMLCanvasElement).style.cursor = 'default';
           });
           const wrapper = containerRef.current.parentElement;
-          if (wrapper) wrapper.setAttribute('data-cursor', 'draw');
+          if (wrapper) wrapper.setAttribute('data-cursor', 'select');
         }
 
         const validDrawingTypes = ['trendline', 'hline', 'vline', 'text', 'channel', 'fibonacci', 'shapes', 'rectangle', 'ellipse', 'fib_extension', 'measure', 'freehand', 'callout', 'stamp'];
@@ -6036,6 +6313,9 @@ export const TradingChart = React.memo(function TradingChart({
             subtype ? { subtype } : undefined,
           );
           const activeAfter = drawingManager.getActiveDrawing(contextId);
+          setTrendDrawingInputActive(containerRef.current, Boolean(
+            usesDirectDrawingPointerInput(activeAfter),
+          ));
           console.log(`[Chart] Tool: ${tool} — drawing started, activeDrawing=${!!activeAfter}, type=${activeAfter?.type}`);
         } else {
           console.log(`[Chart] Tool: ${tool} — not a drawing tool`);
@@ -6046,6 +6326,10 @@ export const TradingChart = React.memo(function TradingChart({
     return () => {
       unsubSelectTool();
       window.removeEventListener('drawing:saved', handleSaved);
+      window.removeEventListener('drawing:cancelled', handleSaved);
+      window.removeEventListener('keydown', cancelBrushOnEscape);
+      setTrendDrawingInputActive(drawingInteractionContainer, false);
+      if (drawingInteractionContainer) drawingInteractionContainer.style.touchAction = '';
     };
   }, []);
 
@@ -6115,7 +6399,7 @@ export const TradingChart = React.memo(function TradingChart({
   const TRADE_HISTORY_LOSS_COLOR = '#ff5a67';
   const TRADE_HISTORY_LIGHT_PROFIT_COLOR = '#007a55';
   const TRADE_HISTORY_LIGHT_LOSS_COLOR = '#c6283d';
-  const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v3-clean';
+  const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v6-thin-candle-connectors';
   // MT5-style entry lines: dotted blue for BUY, dotted red for SELL.
   const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';
   const TRADE_ENTRY_LINE_SELL_COLOR = '#ef4444';
@@ -6824,7 +7108,7 @@ export const TradingChart = React.memo(function TradingChart({
       const pnl = trade.profit ?? (
         trade.side === 'BUY' ? trade.exitPrice - trade.entryPrice : trade.entryPrice - trade.exitPrice
       );
-      return pnl >= 0 ? getHistoryProfitColor() : getHistoryLossColor();
+      return pnl >= 0 ? chartThemeRef.current.candleUp : chartThemeRef.current.candleDown;
     };
     const requestTradeHistoryRefresh = () => {
       const login = Number.parseInt(String(useAppStore.getState().accountId ?? ''), 10);
@@ -7022,8 +7306,10 @@ export const TradingChart = React.memo(function TradingChart({
     };
 
     const createArrowSvg = (side: TradeSide, color: string, emphasized: boolean) => {
-      const width = 20;
-      const height = emphasized ? 24 : 26;
+      const width = emphasized ? 12 : 20;
+      const height = emphasized ? 15 : 26;
+      const viewBoxWidth = 20;
+      const viewBoxHeight = emphasized ? 24 : 26;
       const path = emphasized
         ? side === 'BUY'
           ? 'M10 1.5L18.5 10H14V22.5H6V10H1.5L10 1.5Z'
@@ -7033,7 +7319,7 @@ export const TradingChart = React.memo(function TradingChart({
           : 'M10 24.5L1.5 16H6V1.5H14V16H18.5L10 24.5Z';
       const outline = isChartSurfaceLight() ? '#0f172a' : '#f8fafc';
       const strokeWidth = emphasized ? 1.75 : 1.15;
-      return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="${path}" fill="${color}" stroke="${outline}" stroke-width="${strokeWidth}" stroke-linejoin="round"/></svg>`;
+      return `<svg width="${width}" height="${height}" viewBox="0 0 ${viewBoxWidth} ${viewBoxHeight}" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="${path}" fill="${color}" stroke="${outline}" stroke-width="${strokeWidth}" stroke-linejoin="round"/></svg>`;
     };
 
     const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer, opacity = 1, resolveTime?: () => number | null, lifecycle: 'open' | 'close' = 'open', historyPositionSide: TradeSide = side, executionTime = time) => {
@@ -7042,8 +7328,8 @@ export const TradingChart = React.memo(function TradingChart({
       marker.dataset.tradeLifecycle = lifecycle;
       if (layer === 'active') marker.title = title;
       const isHistoryMarker = layer === 'history';
-      const markerWidth = 20;
-      const markerHeight = isHistoryMarker ? 24 : 26;
+      const markerWidth = isHistoryMarker ? 12 : 20;
+      const markerHeight = isHistoryMarker ? 15 : 26;
       marker.innerHTML = createArrowSvg(side, color, isHistoryMarker);
       marker.style.cssText = `position:absolute;display:none;width:${markerWidth}px;height:${markerHeight}px;z-index:${isHistoryMarker ? 20 : 16};pointer-events:none;opacity:${opacity};filter:drop-shadow(0 1px 1px rgba(0,0,0,0.72));`;
       appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side, resolveTime }, layer);
@@ -7123,7 +7409,7 @@ export const TradingChart = React.memo(function TradingChart({
       const line = document.createElement('div');
       line.className = layer === 'history' ? 'rtx-trade-history-line' : 'rtx-trade-active-segment';
       const isHistoryLine = layer === 'history';
-      const thickness = isHistoryLine ? 2 : lineStyle === 'solid' ? 2 : 1;
+      const thickness = isHistoryLine ? 1 : lineStyle === 'solid' ? 2 : 1;
       const safeOpacity = clampAlpha(opacity);
       const historyVisualOpacity = safeOpacity > 0 ? 0.78 + safeOpacity * 0.22 : 0;
       const background = lineStyle === 'solid'
@@ -9117,6 +9403,10 @@ export const TradingChart = React.memo(function TradingChart({
     const handlePointerDown = (e: PointerEvent) => {
       cancelQueuedTradeHover();
       setTradeHoverCursor(false);
+
+      // Drawing clicks belong to the canvas, including clicks near a trade
+      // level whose DOM hit target is temporarily disabled by scoped CSS.
+      if (isTrendDrawingInputActive(container)) return;
 
       // Trade levels get first priority when the pointer is actually on/near one.
       if (e.button !== 0 || !seriesRef.current) return;

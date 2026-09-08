@@ -312,6 +312,13 @@ describe('useCrosshair dirty rendering', () => {
     const container = view.getByTestId('container');
 
     expect(container.style.cursor).toBe('crosshair');
+    expect(fixture.chart.applyOptions).toHaveBeenCalledWith({
+      crosshair: {
+        mode: 0,
+        vertLine: { visible: false, labelVisible: false },
+        horzLine: { visible: false, labelVisible: false },
+      },
+    });
     expect(requestFrame).not.toHaveBeenCalled();
     fireEvent.pointerMove(container, { clientX: 50, clientY: 70 });
     fireEvent(window, new Event('scroll'));

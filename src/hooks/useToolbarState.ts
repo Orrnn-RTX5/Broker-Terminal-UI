@@ -3,6 +3,7 @@ import type { ToolbarAction } from '../store/toolbarState';
 import { toolbarReducer, initialToolbarState } from '../store/toolbarState';
 import { useCommandBus } from './useCommandBus';
 import type { Command } from '../types/commands';
+import { getActiveChartSource } from '../services/activeChartSource';
 
 export function useToolbarState() {
   const [state, dispatchLocal] = useReducer(toolbarReducer, initialToolbarState);
@@ -10,6 +11,7 @@ export function useToolbarState() {
   // Track which command types we just dispatched ourselves, so we don't re-apply them
   const selfDispatchedRef = useRef<Set<string>>(new Set());
   const stateRef = useRef(state);
+  const drawingTargetContextRef = useRef<string | null>(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -26,6 +28,9 @@ export function useToolbarState() {
       // Map commands to toolbar actions
       switch (cmd.type) {
         case 'SELECT_TOOL':
+          drawingTargetContextRef.current = cmd.payload.tool === 'cursor'
+            ? null
+            : cmd.payload.targetContextId ?? getActiveChartSource()?.id ?? null;
           dispatchLocal({ type: 'SELECT_TOOL', tool: cmd.payload.tool, subtype: cmd.payload.subtype });
           break;
 
@@ -73,6 +78,23 @@ export function useToolbarState() {
     return unsubscribe;
   }, [subscribe]);
 
+  useEffect(() => {
+    const handleDrawingSaved = (event: Event) => {
+      const contextId = (event as CustomEvent<{ contextId?: string }>).detail?.contextId;
+      const activeContextId = getActiveChartSource()?.id;
+      const targetContextId = drawingTargetContextRef.current;
+      if (contextId && targetContextId && contextId !== targetContextId) return;
+      if (contextId && activeContextId && contextId !== activeContextId) return;
+
+      // Completion already restores chart interaction in TradingChart. Reset
+      // only the tool highlight: SELECT_TOOL cursor would deselect the drawing.
+      drawingTargetContextRef.current = null;
+      dispatchLocal({ type: 'SELECT_TOOL', tool: 'cursor' });
+    };
+    window.addEventListener('drawing:saved', handleDrawingSaved);
+    return () => window.removeEventListener('drawing:saved', handleDrawingSaved);
+  }, []);
+
   // Wrapper to dispatch both locally and to command bus
   const dispatch = useCallback((action: ToolbarAction) => {
     // Update local state
@@ -82,6 +104,9 @@ export function useToolbarState() {
     // Note: Not all ToolbarActions map to Commands - some are internal only
     switch (action.type) {
       case 'SELECT_TOOL':
+        drawingTargetContextRef.current = action.tool && action.tool !== 'cursor'
+          ? getActiveChartSource()?.id ?? null
+          : null;
         selfDispatchedRef.current.add('SELECT_TOOL');
         dispatchCommand({
           type: 'SELECT_TOOL',

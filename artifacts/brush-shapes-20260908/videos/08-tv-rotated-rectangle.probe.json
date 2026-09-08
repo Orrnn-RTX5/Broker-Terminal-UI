@@ -1,0 +1,34 @@
+{
+  "capture": "08-tv-rotated-rectangle",
+  "method": "Browser screenshot sequence with original timestamps. See capture.json for the capture method. Sequential captures omit motion between UI actions; this is not a continuous native screen recording.",
+  "source_frames": 6,
+  "encoded_frames": 8,
+  "source_duration_ms": 65189,
+  "encoded_duration_ms": 65189,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    233,
+    17881,
+    29639,
+    43395,
+    63067,
+    64187
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    233,
+    17881,
+    29639,
+    43395,
+    63067,
+    64187,
+    65188
+  ],
+  "initial_first_sample_hold_ms": 233,
+  "timing_verified": true,
+  "video": "videos\\08-tv-rotated-rectangle.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\08-tv-rotated-rectangle.jpg",
+  "capture_errors": []
+}

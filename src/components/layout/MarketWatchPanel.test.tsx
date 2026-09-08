@@ -20,6 +20,22 @@ interface MockMarketInstrument {
   trading_enabled?: boolean;
 }
 
+const closedDailyChangeHook = vi.hoisted(() => ({
+  values: new Map<string, number>(),
+  useHook: vi.fn(),
+}));
+
+vi.mock('../../hooks/useClosedMarketDailyChanges', () => ({
+  useClosedMarketDailyChanges: (options: unknown) => {
+    closedDailyChangeHook.useHook(options);
+    return closedDailyChangeHook.values;
+  },
+}));
+
+vi.mock('../../hooks/useBrokerAccountSessionScope', () => ({
+  useBrokerAccountSessionScope: () => 'authenticated|test-account|test-broker|https://broker.test',
+}));
+
 const marketHooks = vi.hoisted(() => ({
   activeSymbols: ['BTCUSD', 'XAUUSD', 'GBPUSD', 'SOLUSD', 'EURUSD', 'ETHUSD', '0001.HK'],
   instrumentSymbols: ['BTCUSD', 'XAUUSD', 'GBPUSD', 'SOLUSD', 'EURUSD', 'ETHUSD', '0001.HK'] as Array<
@@ -143,6 +159,8 @@ describe('MarketWatchPanel symbol visibility', () => {
     });
     marketHooks.useLiveQuotes.mockClear();
     marketHooks.useLiveQuotes.mockReturnValue({ loading: false, error: null });
+    closedDailyChangeHook.values.clear();
+    closedDailyChangeHook.useHook.mockClear();
     act(() => {
       useAppStore.setState({ isAuthenticated: false });
       useAppStore.getState().setTicks({
@@ -207,6 +225,66 @@ describe('MarketWatchPanel symbol visibility', () => {
       const missingDailyChange = screen.getByText('EURUSD').closest('tr')
         ?.querySelector('.rtx-market-watch__daily');
       expect(missingDailyChange).toHaveTextContent('—');
+    } finally {
+      if (offsetWidthDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
+      } else {
+        delete (HTMLElement.prototype as Partial<HTMLElement>).offsetWidth;
+      }
+    }
+  });
+
+  it('shows the saved closing Daily Change for inactive non-crypto rows', async () => {
+    const offsetWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get: () => 379,
+    });
+
+    marketHooks.activeSymbols = [];
+    closedDailyChangeHook.values.set('XAUUSD', -0.42);
+    closedDailyChangeHook.values.set('EURUSD', 0);
+    act(() => {
+      useAppStore.setState({ isAuthenticated: true });
+      useAppStore.getState().setTicks({
+        XAUUSD: { symbol: 'XAUUSD', bid: 4431.07, ask: 4431.24, spread: 0.17, timestamp: Date.now() },
+        BTCUSD: { symbol: 'BTCUSD', bid: 79609.52, ask: 79624.52, spread: 15, timestamp: Date.now() },
+        EURUSD: { symbol: 'EURUSD', bid: 1.1613, ask: 1.16132, spread: 0.00002, timestamp: Date.now() },
+      });
+    });
+
+    try {
+      render(
+        <MarketWatchPanel
+          allSymbols={DEFAULT_SYMBOLS}
+          selectedSymbol="BTCUSD"
+          onSymbolSelect={vi.fn()}
+        />,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const options = closedDailyChangeHook.useHook.mock.calls.at(-1)?.[0] as {
+        symbols?: string[];
+      } | undefined;
+      expect(options?.symbols).toEqual(expect.arrayContaining(['XAUUSD', 'EURUSD']));
+      expect(options?.symbols).not.toContain('BTCUSD');
+
+      const inactiveXauRow = screen.getByText('XAUUSD').closest('tr');
+      expect(inactiveXauRow?.querySelector('.rtx-market-watch__daily'))
+        .toHaveTextContent('-0.42%');
+      for (const valueSelector of [
+        '.rtx-market-watch__price--bid',
+        '.rtx-market-watch__price--ask',
+        '.rtx-market-watch__daily',
+      ]) {
+        expect(inactiveXauRow?.querySelector(valueSelector)?.closest('td')).toHaveStyle({ opacity: '1' });
+      }
+      expect(screen.getByText('EURUSD').closest('tr')?.querySelector('.rtx-market-watch__daily'))
+        .toHaveTextContent('0.00%');
+      expect(screen.getByText('BTCUSD').closest('tr')?.querySelector('.rtx-market-watch__daily'))
+        .toHaveTextContent('—');
     } finally {
       if (offsetWidthDescriptor) {
         Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidthDescriptor);
@@ -317,6 +395,8 @@ describe('MarketWatchPanel symbol visibility', () => {
         color: 'var(--text-primary)',
         fontSize: '12px',
         fontWeight: '500',
+        textAlign: 'left',
+        padding: '3px 8px 3px 19px',
       });
       expect(screen.getByRole('columnheader', { name: 'Bid' })).toHaveStyle({ fontSize: '12px', fontWeight: '500', textAlign: 'center' });
       expect(screen.getByRole('columnheader', { name: 'Ask' })).toHaveStyle({ textAlign: 'center' });
@@ -527,7 +607,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(staleBtcRow).toHaveAttribute('aria-disabled', 'true');
     expect(staleBtcRow).not.toHaveStyle({ opacity: '0.72' });
     expect(staleBtcRow?.querySelector('.rtx-market-watch__symbol')).toHaveStyle({ color: 'var(--text-primary)' });
-    expect(staleBtcRow?.querySelector('.rtx-market-watch__price--bid')?.closest('td')).toHaveStyle({ opacity: '0.72' });
+    expect(staleBtcRow?.querySelector('.rtx-market-watch__price--bid')?.closest('td')).toHaveStyle({ opacity: '1' });
     expect(staleBtcRow).not.toHaveTextContent('STALE');
     expect(staleBtcRow?.querySelector('.rtx-market-watch__status')).toBeNull();
     expect(staleBtcRow).toHaveTextContent('65000');
@@ -1054,13 +1134,23 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(container.querySelectorAll('tbody tr[aria-disabled="false"]')).toHaveLength(0);
   });
 
-  it('labels rows as loading before feed status and the catalog settle', () => {
+  it('does not show a loading label beside the symbol while feed status and the catalog settle', () => {
     marketHooks.activeSymbols = [...DEFAULT_SYMBOLS];
     marketHooks.activeSymbolsLoading = false;
     marketHooks.activeSymbolsSettled = false;
     marketHooks.activeSymbolsCurrent = false;
     setMarketCatalog(DEFAULT_SYMBOLS, []);
     marketHooks.instrumentsLoading = true;
+    act(() => {
+      useAppStore.getState().setTick('BTCUSD', {
+        symbol: 'BTCUSD',
+        bid: 65000,
+        ask: 65001,
+        spread: 1,
+        dailyChange: 0.19,
+        timestamp: Date.now() - (14 * 60 * 60 * 1000),
+      });
+    });
 
     const { container } = render(
       <MarketWatchPanel
@@ -1070,7 +1160,11 @@ describe('MarketWatchPanel symbol visibility', () => {
       />,
     );
 
-    expect(screen.getByText('BTCUSD').closest('tr')).toHaveTextContent('LOADING');
+    const btcRow = screen.getByText('BTCUSD').closest('tr');
+    expect(btcRow).not.toHaveTextContent('LOADING');
+    expect(btcRow?.querySelector('.rtx-market-watch__status')).toBeNull();
+    expect(btcRow?.querySelector('td')).toHaveTextContent(/^BTCUSD$/);
+    expect(btcRow).toHaveTextContent('65000');
     expect(container.querySelectorAll('tbody tr[aria-disabled="false"]')).toHaveLength(0);
     expect(screen.queryByText('UNAVAILABLE')).not.toBeInTheDocument();
   });

@@ -1,0 +1,30 @@
+{
+  "capture": "06-tv-arrow-mark-down",
+  "method": "Browser screenshot sequence with original timestamps. See capture.json for the capture method. Sequential captures omit motion between UI actions; this is not a continuous native screen recording.",
+  "source_frames": 4,
+  "encoded_frames": 6,
+  "source_duration_ms": 71191,
+  "encoded_duration_ms": 71191,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    34508,
+    47925,
+    69918,
+    70178
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    34508,
+    47925,
+    69918,
+    70178,
+    71190
+  ],
+  "initial_first_sample_hold_ms": 34508,
+  "timing_verified": true,
+  "video": "videos\\06-tv-arrow-mark-down.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\06-tv-arrow-mark-down.jpg",
+  "capture_errors": []
+}

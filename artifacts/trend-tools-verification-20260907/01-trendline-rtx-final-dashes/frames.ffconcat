@@ -1,0 +1,10 @@
+ffconcat version 1.0
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-rtx-final-dashes/00000.png'
+option framerate 1000
+duration 0.333000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-rtx-final-dashes/00001.png'
+option framerate 1000
+duration 0.100000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-rtx-final-dashes/00001.png'
+option framerate 1000
+duration 0.001000

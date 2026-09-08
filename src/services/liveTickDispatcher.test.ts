@@ -5,13 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const workerMocks = vi.hoisted(() => ({
   aggregateMultipleTimeframes: vi.fn(),
 }));
+const dailyChangeCacheMocks = vi.hoisted(() => ({
+  flushMarketWatchDailyChangeCache: vi.fn(),
+  rememberCurrentMarketWatchDailyChange: vi.fn(),
+}));
 vi.mock('./aggregationWorkerManager', () => ({
   getWorkerManager: () => workerMocks,
 }));
+vi.mock('./marketWatchDailyChangeCache', () => dailyChangeCacheMocks);
 
 import {
   enqueueLiveTick,
   isLiveMarketDataFrozen,
+  resetLiveMarketDataSession,
   resetLiveTickDispatcherForTests,
   setLiveMarketDataFrozen,
   type LiveTick,
@@ -36,6 +42,8 @@ describe('liveTickDispatcher market data freeze', () => {
   beforeEach(() => {
     resetLiveTickDispatcherForTests();
     workerMocks.aggregateMultipleTimeframes.mockReset();
+    dailyChangeCacheMocks.flushMarketWatchDailyChangeCache.mockReset();
+    dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange.mockReset();
     window.rtxTickCache = new Map();
     useMarketDataStore.setState({ updateTicksBatch: originalMarketBatch });
     useAppStore.setState({ setTicksBatch: originalAppBatch });
@@ -99,6 +107,59 @@ describe('liveTickDispatcher market data freeze', () => {
     enqueueLiveTick('GBPUSD', tick('GBPUSD', 1.3351));
 
     expect(window.rtxTickCache.get('GBPUSD')?.bid).toBe(1.3351);
+  });
+
+  it('remembers an accepted authoritative Daily Change, including zero, under the exact symbol', () => {
+    const timestamp = 1_788_176_700_123;
+
+    enqueueLiveTick('eurusd.r', {
+      ...tick('ignored', 1.125, timestamp),
+      dailyChange: 0,
+    });
+
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).toHaveBeenCalledOnce();
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).toHaveBeenCalledWith(
+      'EURUSD.R',
+      0,
+      timestamp,
+      'quote',
+    );
+  });
+
+  it('does not remember Daily Change from rejected, duplicate, or non-finite ticks', () => {
+    const timestamp = 1_788_176_700_000;
+    const accepted = {
+      ...tick('XAUUSD', 4_431, timestamp),
+      dailyChange: -0.42,
+    };
+    enqueueLiveTick('XAUUSD', accepted);
+    dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange.mockClear();
+
+    enqueueLiveTick('XAUUSD', {
+      ...tick('XAUUSD', 4_400, timestamp - 1),
+      dailyChange: 99,
+    });
+    enqueueLiveTick('XAUUSD', accepted);
+    enqueueLiveTick('GBPUSD', {
+      ...tick('GBPUSD', 1.33, timestamp + 1),
+      dailyChange: Number.NaN,
+    });
+
+    expect(dailyChangeCacheMocks.rememberCurrentMarketWatchDailyChange).not.toHaveBeenCalled();
+  });
+
+  it('flushes pending Daily Change persistence before clearing session quote state', () => {
+    window.rtxTickCache.set('XAUUSD', tick('XAUUSD', 4_431));
+    let cacheSizeDuringFlush = -1;
+    dailyChangeCacheMocks.flushMarketWatchDailyChangeCache.mockImplementation(() => {
+      cacheSizeDuringFlush = window.rtxTickCache.size;
+      return true;
+    });
+
+    resetLiveMarketDataSession();
+
+    expect(cacheSizeDuringFlush).toBe(1);
+    expect(window.rtxTickCache.size).toBe(0);
   });
 
   it('keeps the freshest in-frame tick and preserves a reentrant tick for one next frame', () => {

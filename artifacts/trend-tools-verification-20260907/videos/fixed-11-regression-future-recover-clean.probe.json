@@ -1,0 +1,27 @@
+{
+  "capture": "fixed-11-regression-future-recover-clean",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 3,
+  "encoded_frames": 4,
+  "source_duration_ms": 5971,
+  "encoded_duration_ms": 5971,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    0,
+    4101,
+    5656
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    4101,
+    5656,
+    5970
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\fixed-11-regression-future-recover-clean.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\fixed-11-regression-future-recover-clean.jpg",
+  "capture_errors": []
+}

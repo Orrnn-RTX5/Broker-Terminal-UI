@@ -1,0 +1,33 @@
+{
+  "capture": "tv-ghost-feed-completion",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 6,
+  "encoded_frames": 7,
+  "source_duration_ms": 3153,
+  "encoded_duration_ms": 3153,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    655,
+    1234,
+    2144,
+    2541,
+    2918
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    655,
+    1234,
+    2144,
+    2541,
+    2918,
+    3152
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\tv-ghost-feed-completion.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\tv-ghost-feed-completion.jpg",
+  "capture_errors": []
+}

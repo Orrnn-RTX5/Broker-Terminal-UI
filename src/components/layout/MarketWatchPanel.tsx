@@ -12,6 +12,8 @@ import {
   useRemoteWatchlistSync,
   type MarketInstrumentsSnapshot,
 } from '../../hooks/useLiveMarketData';
+import { useBrokerAccountSessionScope } from '../../hooks/useBrokerAccountSessionScope';
+import { useClosedMarketDailyChanges } from '../../hooks/useClosedMarketDailyChanges';
 import { useVisibleSymbolRows } from '../../hooks/useVisibleSymbolRows';
 import {
   getHiddenSymbols,
@@ -23,7 +25,11 @@ import {
 import { MARKET_WATCH_PROFILE_RESTORED_EVENT } from '../../services/localWorkspaceProfiles';
 import { getInstrumentSymbolName, getUniqueSymbolNames } from '../../utils/symbolEligibility';
 import { getFallbackSymbolDescription } from '../../utils/symbolDescription';
-import { buildMarketWatchSymbolGroups, selectDefaultMarketWatchSymbols } from '../../utils/marketWatchGroups';
+import {
+  buildMarketWatchSymbolGroups,
+  resolveMarketWatchSymbolGroup,
+  selectDefaultMarketWatchSymbols,
+} from '../../utils/marketWatchGroups';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import {
   getMarketWatchDisplayErrors,
@@ -61,6 +67,12 @@ interface ScopedManualSymbols {
 }
 
 const normalizeSymbol = (value: unknown): string => String(value ?? '').trim().toUpperCase();
+
+const readFiniteDailyChange = (value: unknown): number | null => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const TWO_DECIMAL_MARKET_WATCH_SYMBOLS = new Set([
   'JPN225-F',
@@ -173,9 +185,10 @@ const MarketWatchRow: React.FC<{
   contextMenuItems: ContextMenuItemConfig[];
   showAsk: boolean;
   showDailyChange: boolean;
+  closedDailyChange?: number | null;
   symbolUniverse: readonly string[];
   rowRef?: (node: HTMLTableRowElement | null) => void;
-}> = ({ symbol, isSelected, isLive, isAvailable, isStatusLoading, isStatusSettled, isStatusCurrent, isCatalogLoading, isChartOpenable, now, onClick, contextMenuItems, showAsk, showDailyChange, symbolUniverse, rowRef }) => {
+}> = ({ symbol, isSelected, isLive, isAvailable, isStatusLoading, isStatusSettled, isStatusCurrent, isCatalogLoading, isChartOpenable, now, onClick, contextMenuItems, showAsk, showDailyChange, closedDailyChange, symbolUniverse, rowRef }) => {
   const displaySymbol = getMarketWatchSymbolLabel(symbol, symbolUniverse);
   const cachedTick = useTick(symbol);
   const tick = cachedTick;
@@ -184,12 +197,10 @@ const MarketWatchRow: React.FC<{
   const askDirection = tick?.askDirection ?? 'none';
   const bid = tick?.bid ?? 0;
   const ask = tick?.ask ?? 0;
-  const rawDaily = tick?.dailyChange;
-  const normalizedDaily = Number(rawDaily);
-  const dailyPct: number | null =
-    rawDaily !== undefined && rawDaily !== null && Number.isFinite(normalizedDaily)
-      ? normalizedDaily
-      : null;
+  // The current quote remains authoritative. Closed-market history is only a
+  // display fallback when the broker no longer publishes Daily Change.
+  const dailyPct = readFiniteDailyChange(tick?.dailyChange)
+    ?? readFiniteDailyChange(closedDailyChange);
 
   const hasData = tick && (tick.bid > 0 || tick.ask > 0);
   const hasDailyData = dailyPct !== null;
@@ -214,6 +225,7 @@ const MarketWatchRow: React.FC<{
   const dailyPositive = hasDailyData && dailyPct! > 0;
   const dailyNegative = hasDailyData && dailyPct! < 0;
   const quoteDataOpacity = isLive ? 1 : hasData ? 0.72 : 0.45;
+  const dailyDataOpacity = isLive ? 1 : hasDailyData ? 0.72 : 0.45;
 
   return (
     <ContextMenu items={contextMenuItems}>
@@ -270,7 +282,7 @@ const MarketWatchRow: React.FC<{
             }}>
               {displaySymbol}
             </span>
-            {statusLabel && statusLabel !== 'STALE' && (
+            {statusLabel && statusLabel !== 'STALE' && statusLabel !== 'LOADING' && (
               <span
                 className="rtx-market-watch__status"
                 aria-label={`${displaySymbol} ${statusLabel.toLowerCase()}${quoteAge ? `, last quote ${quoteAge} ago` : ''}`}
@@ -289,7 +301,7 @@ const MarketWatchRow: React.FC<{
         </td>
 
         {/* Bid — most important: bright, large, tabular */}
-        <td style={{ padding: '3px 4px', textAlign: 'center', opacity: quoteDataOpacity }}>
+        <td style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
           <span className={`rtx-market-watch__price rtx-market-watch__price--bid${bidPriceDirection ? ` rtx-market-watch__price--${bidPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
             display: 'inline-block',
             fontSize: 13,
@@ -312,7 +324,7 @@ const MarketWatchRow: React.FC<{
 
         {/* Ask — secondary, slightly softer */}
         {showAsk && (
-          <td style={{ padding: '3px 4px', textAlign: 'center', opacity: quoteDataOpacity }}>
+          <td style={{ padding: '3px 4px', textAlign: 'center', opacity: hasData ? 1 : quoteDataOpacity }}>
             <span className={`rtx-market-watch__price rtx-market-watch__price--ask${askPriceDirection ? ` rtx-market-watch__price--${askPriceDirection}` : ''}${!hasData ? ' rtx-market-watch__price--empty' : ''}`} style={{
               display: 'inline-block',
               fontSize: 13,
@@ -335,22 +347,23 @@ const MarketWatchRow: React.FC<{
 
         {/* MetaTrader-style Daily Change follows Ask without changing its session-close semantics. */}
         {showDailyChange && (
-          <td style={{ padding: '3px 4px', textAlign: 'center', opacity: quoteDataOpacity }}>
-            <span className={`rtx-market-watch__daily${!hasData ? ' rtx-market-watch__daily--empty' : ''}${dailyPositive ? ' rtx-market-watch__daily--up' : ''}${dailyNegative ? ' rtx-market-watch__daily--down' : ''}`} style={{
+          <td style={{ padding: '3px 4px', textAlign: 'center', opacity: hasDailyData ? 1 : dailyDataOpacity }}>
+            <span className={`rtx-market-watch__daily${!hasDailyData ? ' rtx-market-watch__daily--empty' : ''}${dailyPositive ? ' rtx-market-watch__daily--up' : ''}${dailyNegative ? ' rtx-market-watch__daily--down' : ''}`} style={{
               fontSize: 13,
               fontWeight: 500,
-              color: !hasData ? '#36363e'
-                : !hasDailyData ? '#50505a'
-                  : dailyPositive ? MARKET_WATCH_QUOTE_UP_COLOR
-                    : dailyNegative ? MARKET_WATCH_QUOTE_DOWN_COLOR
-                      : 'var(--text-primary)',
+              color: !hasDailyData
+                ? '#50505a'
+                : dailyPositive
+                  ? MARKET_WATCH_QUOTE_UP_COLOR
+                  : dailyNegative
+                    ? MARKET_WATCH_QUOTE_DOWN_COLOR
+                    : 'var(--text-primary)',
               letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',
             }}>
-              {!hasData ? '—'
-                : hasDailyData
-                  ? `${dailyPct!.toFixed(2)}%`
-                  : <span style={{ color: '#50505a' }}>—</span>
+              {hasDailyData
+                ? `${dailyPct!.toFixed(2)}%`
+                : <span style={{ color: '#50505a' }}>—</span>
               }
             </span>
           </td>
@@ -377,6 +390,13 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     // complete tick map redrew the entire panel for every freshness timestamp.
     const liveTickCount = useAppStore(selectTickCount);
     const isAuthenticated = useAppStore((state) => state.isAuthenticated);
+    const brokerAccountScopeKey = useBrokerAccountSessionScope();
+    const brokerAccountScopeParts = brokerAccountScopeKey.split('|');
+    const dailyChangeScopeKey = isAuthenticated
+      && brokerAccountScopeParts[0] === 'authenticated'
+      && Boolean(brokerAccountScopeParts[1])
+      ? brokerAccountScopeKey
+      : null;
     const {
       symbols: marketInstruments,
       authorizedSymbols: authenticatedMarketSymbols = [],
@@ -575,6 +595,43 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       [...allSymbols, ...marketInstruments],
       rows,
     ), [allSymbols, marketInstruments, rows, searchUniverse]);
+    const symbolGroupKeyByName = useMemo(() => {
+      const groupsBySymbol = new Map<string, string>();
+      symbolGroups.forEach((group) => {
+        group.symbols.forEach((symbol) => groupsBySymbol.set(symbol, group.key));
+      });
+      return groupsBySymbol;
+    }, [symbolGroups]);
+    const utcDay = new Date().getUTCDay();
+    const isTraditionalMarketWeekend = utcDay === 0 || utcDay === 6;
+    const canIdentifyClosedSymbols = activeSymbolsSettled && activeSymbolsCurrent;
+    const closedDailyChangeSymbols = useMemo(() => {
+      if (!dailyChangeScopeKey || (!canIdentifyClosedSymbols && !isTraditionalMarketWeekend)) return [];
+      // Re-evaluate after the initial REST quote batch populates the tick store.
+      void liveTickCount;
+
+      return visibleRowSymbols.filter((symbol) => {
+        if (canIdentifyClosedSymbols && activeSymbolSet.has(symbol)) return false;
+        if (readFiniteDailyChange(getTickSnapshot(symbol)?.dailyChange) !== null) return false;
+        const groupKey = symbolGroupKeyByName.get(symbol)
+          ?? resolveMarketWatchSymbolGroup(symbol).key;
+        return groupKey !== 'crypto';
+      });
+    }, [
+      activeSymbolSet,
+      canIdentifyClosedSymbols,
+      dailyChangeScopeKey,
+      isTraditionalMarketWeekend,
+      liveTickCount,
+      symbolGroupKeyByName,
+      visibleRowSymbols,
+    ]);
+    const closedDailyChanges = useClosedMarketDailyChanges({
+      enabled: Boolean(dailyChangeScopeKey)
+        && (canIdentifyClosedSymbols || isTraditionalMarketWeekend),
+      scopeKey: dailyChangeScopeKey,
+      symbols: closedDailyChangeSymbols,
+    });
     const selectedSymbolGroup = useMemo(
       () => symbolGroups.find((group) => group.key === selectedSymbolGroupKey) ?? null,
       [selectedSymbolGroupKey, symbolGroups],
@@ -773,14 +830,15 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
     const handleExport = useCallback(() => {
       const data = rows.map(sym => {
         const tick = getTickSnapshot(sym);
-        const dailyChange = Number(tick?.dailyChange);
-        const dailyChangeDisplay = tick?.dailyChange !== undefined && Number.isFinite(dailyChange)
+        const dailyChange = readFiniteDailyChange(tick?.dailyChange)
+          ?? readFiniteDailyChange(closedDailyChanges.get(sym));
+        const dailyChangeDisplay = dailyChange !== null
           ? `${dailyChange.toFixed(2)}%`
           : '-';
         return `${sym}\t${tick?.bid ?? '-'}\t${tick?.ask ?? '-'}\t${dailyChangeDisplay}`;
       }).join('\n');
       navigator.clipboard.writeText(`Symbol\tBid\tAsk\tDaily Change\n${data}`);
-    }, [rows]);
+    }, [closedDailyChanges, rows]);
 
     const getContextMenuItems = useCallback((symbol: string): ContextMenuItemConfig[] => {
       const tradeDisabled = !actionableSymbolSet.has(symbol);
@@ -1448,7 +1506,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                   </colgroup>
                   <thead>
                     <tr style={{ borderBottom: 'none' }}>
-                      <th className="rtx-market-watch__column-heading rtx-market-watch__column-heading--symbol" style={{ textAlign: 'left', padding: '3px 8px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Symbol</th>
+                      <th className="rtx-market-watch__column-heading rtx-market-watch__column-heading--symbol" style={{ textAlign: 'left', padding: '3px 8px 3px 19px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Symbol</th>
                       <th className="rtx-market-watch__column-heading" style={{ textAlign: 'center', padding: '3px 4px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Bid</th>
                       {showAsk && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'center', padding: '3px 4px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Ask</th>}
                       {showDailyChange && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'center', padding: '3px 4px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, whiteSpace: 'nowrap' }}>Daily Change</th>}
@@ -1473,6 +1531,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                           contextMenuItems={getContextMenuItems(symbol)}
                           showAsk={showAsk}
                           showDailyChange={showDailyChange}
+                          closedDailyChange={closedDailyChanges.get(symbol)}
                           symbolUniverse={quoteEligibleSymbols}
                           rowRef={marketWatchRowRefCallbacks.get(symbol)}
                         />

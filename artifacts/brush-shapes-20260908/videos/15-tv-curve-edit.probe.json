@@ -1,0 +1,28 @@
+{
+  "capture": "15-tv-curve-edit",
+  "method": "Browser screenshot sequence with original timestamps. See capture.json for the capture method. Sequential captures omit motion between UI actions; this is not a continuous native screen recording.",
+  "source_frames": 3,
+  "encoded_frames": 5,
+  "source_duration_ms": 31919,
+  "encoded_duration_ms": 31919,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    8190,
+    30431,
+    30914
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    8190,
+    30431,
+    30914,
+    31918
+  ],
+  "initial_first_sample_hold_ms": 8190,
+  "timing_verified": true,
+  "video": "videos\\15-tv-curve-edit.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\15-tv-curve-edit.jpg",
+  "capture_errors": []
+}

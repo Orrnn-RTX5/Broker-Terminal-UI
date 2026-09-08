@@ -1,0 +1,36 @@
+{
+  "method": "Continuously sampled browser screenshots during native UI actions; OS pointer not captured",
+  "durationMs": 3943,
+  "complete": true,
+  "frames": [
+    {
+      "file": "00000.png",
+      "ms": 0
+    },
+    {
+      "file": "00001.png",
+      "ms": 395
+    },
+    {
+      "file": "00002.png",
+      "ms": 1136
+    },
+    {
+      "file": "00003.png",
+      "ms": 1663
+    },
+    {
+      "file": "00004.png",
+      "ms": 1944
+    },
+    {
+      "file": "00005.png",
+      "ms": 2348
+    },
+    {
+      "file": "00006.png",
+      "ms": 3834
+    }
+  ],
+  "errors": []
+}

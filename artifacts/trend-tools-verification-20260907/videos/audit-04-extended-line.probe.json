@@ -1,0 +1,42 @@
+{
+  "capture": "audit-04-extended-line",
+  "method": "Continuously sampled browser screenshots, variable approximately 1-3 fps with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 11,
+  "encoded_frames": 12,
+  "source_duration_ms": 4738,
+  "encoded_duration_ms": 4738,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    0,
+    1051,
+    1596,
+    1940,
+    2154,
+    2851,
+    3224,
+    3753,
+    4103,
+    4354,
+    4618
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    1051,
+    1596,
+    1940,
+    2154,
+    2851,
+    3224,
+    3753,
+    4103,
+    4354,
+    4618,
+    4737
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\audit-04-extended-line.mp4",
+  "contact_sheet": "contact-sheets\\audit-04-extended-line.jpg",
+  "capture_errors": []
+}

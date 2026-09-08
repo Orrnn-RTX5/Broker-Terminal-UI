@@ -1,0 +1,41 @@
+{
+  "capture": "18-rtx-cancel-boundaries-final",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 10,
+  "encoded_frames": 11,
+  "source_duration_ms": 2510,
+  "encoded_duration_ms": 2510,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    0,
+    365,
+    553,
+    830,
+    1171,
+    1554,
+    1795,
+    2006,
+    2200,
+    2414
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    365,
+    553,
+    830,
+    1171,
+    1554,
+    1795,
+    2006,
+    2200,
+    2414,
+    2509
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\18-rtx-cancel-boundaries-final.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\18-rtx-cancel-boundaries-final.jpg",
+  "capture_errors": []
+}

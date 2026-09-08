@@ -86,6 +86,7 @@ describe('OneClickTrading market status', () => {
     expect(volumeInput).toHaveClass('rtx-oct-lot-input');
     expect(volumeInput.style.borderStyle).toBe('none');
     expect(volumeInput).toHaveStyle({ borderRadius: '0px', appearance: 'none' });
+    expect(volumeInput).toHaveStyle({ background: 'transparent', outline: 'none' });
     expect(rowChildren[0]).toHaveAttribute('data-side', 'sell');
     expect(rowChildren[1]).toBe(volumeControl);
     expect(rowChildren[2]).toHaveAttribute('data-side', 'buy');
@@ -95,6 +96,7 @@ describe('OneClickTrading market status', () => {
     expect((rowChildren[0] as HTMLElement).style.background).not.toContain('rgba');
     expect((rowChildren[2] as HTMLElement).style.background).not.toContain('rgba');
     expect((volumeControl as HTMLElement).style.background).not.toContain('rgba');
+    expect((volumeControl as HTMLElement).style.background).toContain('linear-gradient');
     expect(volumeControl).toHaveStyle({ width: '110px', height: '34px' });
     expect(volumeInput).toHaveStyle({ width: '48px', height: '24px' });
     expect(volumeInput.style.background).not.toContain('rgba');

@@ -1,0 +1,39 @@
+{
+  "capture": "rtx-post-long-historical-and-stop",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 9,
+  "encoded_frames": 10,
+  "source_duration_ms": 11705,
+  "encoded_duration_ms": 11705,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    3739,
+    4813,
+    5197,
+    5880,
+    9540,
+    10332,
+    10577,
+    11603
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    3739,
+    4813,
+    5197,
+    5880,
+    9540,
+    10332,
+    10577,
+    11603,
+    11704
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\rtx-post-long-historical-and-stop.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\rtx-post-long-historical-and-stop.jpg",
+  "capture_errors": []
+}

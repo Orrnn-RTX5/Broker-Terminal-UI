@@ -1,0 +1,324 @@
+[
+  {
+    "label": "Fib channel",
+    "slug": "fib-channel",
+    "capture": {
+      "name": "rtx-post-fib-channel",
+      "frames": 17,
+      "durationMs": 22648,
+      "errors": []
+    },
+    "values": [
+      "0 (4472.29)",
+      "0.236 (4472.58)",
+      "0.382 (4472.76)",
+      "0.5 (4472.90)",
+      "0.618 (4473.04)",
+      "0.786 (4473.25)",
+      "1 (4473.51)",
+      "1.618 (4474.27)",
+      "2.618 (4475.49)",
+      "3.618 (4476.72)",
+      "4472.29",
+      "3 Sep 2026 13:57",
+      "4466.17",
+      "3 Sep 2026 14:12",
+      "4473.51",
+      "3 Sep 2026 14:18"
+    ]
+  },
+  {
+    "label": "Fib speed resistance fan",
+    "slug": "fib-speed-resistance-fan",
+    "capture": {
+      "name": "rtx-post-fib-speed-resistance-fan",
+      "frames": 13,
+      "durationMs": 23312,
+      "errors": []
+    },
+    "values": [
+      "1",
+      "1",
+      "0.75",
+      "0.75",
+      "0.618",
+      "0.618",
+      "0.5",
+      "0.5",
+      "0.382",
+      "0.382",
+      "0.25",
+      "0.25",
+      "0",
+      "0",
+      "4398.33",
+      "8 Sep 2026 09:06",
+      "4395.87",
+      "8 Sep 2026 09:21"
+    ],
+    "broker": "TEST 200001",
+    "timeframe": "M1"
+  },
+  {
+    "label": "Gann fan",
+    "slug": "gann-fan",
+    "capture": {
+      "name": "rtx-post-gann-fan",
+      "frames": 15,
+      "durationMs": 13490,
+      "errors": []
+    },
+    "values": [
+      "8/1",
+      "4/1",
+      "3/1",
+      "2/1",
+      "1/1",
+      "1/2",
+      "1/3",
+      "1/4",
+      "1/8",
+      "4398.33",
+      "8 Sep 2026 09:06",
+      "4395.87",
+      "8 Sep 2026 09:21"
+    ],
+    "broker": "TEST 200001",
+    "timeframe": "M1"
+  },
+  {
+    "label": "Fib wedge",
+    "slug": "fib-wedge",
+    "capture": {
+      "name": "rtx-post-fib-wedge",
+      "frames": 23,
+      "durationMs": 11711,
+      "errors": []
+    },
+    "values": [
+      "0.236",
+      "0.382",
+      "0.5",
+      "0.618",
+      "0.786",
+      "1",
+      "4398.33",
+      "8 Sep 2026 09:06",
+      "4395.87",
+      "8 Sep 2026 09:21",
+      "4398.70",
+      "8 Sep 2026 09:22"
+    ],
+    "broker": "TEST 200001",
+    "timeframe": "M1"
+  },
+  {
+    "label": "Sector",
+    "slug": "sector",
+    "capture": {
+      "name": "rtx-post-sector",
+      "frames": 20,
+      "durationMs": 12905,
+      "errors": []
+    },
+    "values": [],
+    "broker": "TEST 200001",
+    "timeframe": "M1"
+  },
+  {
+    "label": "Anchored VWAP",
+    "slug": "anchored-vwap",
+    "capture": {
+      "name": "rtx-post-anchored-vwap",
+      "frames": 12,
+      "durationMs": 17843,
+      "errors": []
+    },
+    "values": [
+      "4398.49"
+    ],
+    "broker": "TEST 200001",
+    "timeframe": "M1"
+  },
+  {
+    "label": "Fixed range volume profile",
+    "slug": "fixed-range-volume-profile",
+    "capture": {
+      "name": "rtx-post-fixed-range-volume-profile",
+      "frames": 16,
+      "durationMs": 31423,
+      "errors": []
+    },
+    "values": [
+      "POC 4395.81OHLCV estimate"
+    ],
+    "broker": "TEST 200001",
+    "timeframe": "M1"
+  },
+  {
+    "label": "Anchored volume profile",
+    "slug": "anchored-volume-profile",
+    "capture": {
+      "name": "rtx-post-anchored-volume-profile-complete",
+      "frames": 5,
+      "durationMs": 29880,
+      "errors": []
+    },
+    "values": [
+      "POC 4395.76OHLCV estimate"
+    ],
+    "broker": "TEST 200001",
+    "timeframe": "M1"
+  },
+  {
+    "label": "Position forecast",
+    "slug": "position-forecast",
+    "capture": {
+      "name": "rtx-post-position-forecast",
+      "frames": 15,
+      "durationMs": 12867,
+      "errors": []
+    },
+    "values": [
+      "4398.808 Sep 2026 09:04",
+      "\u22122.62 (-0.06%) in 15m4396.18 @ 8 Sep 2026 09:19",
+      "SUCCESS"
+    ],
+    "broker": "TEST 200001",
+    "timeframe": "M1"
+  },
+  {
+    "label": "Date and price range",
+    "slug": "date-price-range",
+    "capture": {
+      "name": "rtx-post-date-price-range",
+      "frames": 18,
+      "durationMs": 10785,
+      "errors": []
+    },
+    "values": [
+      "-2.62 (-0.06%) -262",
+      "15 bars, 15mVol 702"
+    ],
+    "broker": "TEST 200001",
+    "timeframe": "M1"
+  },
+  {
+    "label": "Fib retracement Alt + F",
+    "slug": "fib-retracement",
+    "capture": {
+      "name": "rtx-post-fib-retracement-zoom",
+      "frames": 13,
+      "durationMs": 26553,
+      "errors": []
+    },
+    "before": [
+      "0 (78512.29)",
+      "0.236 (78535.89)",
+      "0.382 (78550.49)",
+      "0.5 (78562.29)",
+      "0.618 (78574.09)",
+      "0.786 (78590.89)",
+      "1 (78612.29)",
+      "1.618 (78674.09)",
+      "2.618 (78774.09)",
+      "3.618 (78874.10)",
+      "4.236 (78935.90)",
+      "78612.29",
+      "8 Sep 2026 09:23",
+      "78512.29",
+      "8 Sep 2026 09:39"
+    ],
+    "after": [
+      "0 (78512.29)",
+      "0.236 (78535.89)",
+      "0.382 (78550.49)",
+      "0.5 (78562.29)",
+      "0.618 (78574.09)",
+      "0.786 (78590.89)",
+      "1 (78612.29)",
+      "1.618 (78674.09)",
+      "2.618 (78774.09)",
+      "3.618 (78874.10)",
+      "4.236 (78935.90)",
+      "78612.29",
+      "8 Sep 2026 09:23",
+      "78512.29",
+      "8 Sep 2026 09:39"
+    ],
+    "broker": "TEST 200001",
+    "symbol": "BTCUSD",
+    "timeframe": "M1",
+    "stable": true
+  },
+  {
+    "label": "Trendline Alt + T",
+    "slug": "trendline",
+    "capture": {
+      "name": "rtx-post-trendline-zoom",
+      "frames": 14,
+      "durationMs": 35580,
+      "errors": []
+    },
+    "before": [
+      "78618.82",
+      "8 Sep 2026 09:23",
+      "78507.19",
+      "8 Sep 2026 09:39"
+    ],
+    "after": [
+      "78618.82",
+      "8 Sep 2026 09:23",
+      "78507.19",
+      "8 Sep 2026 09:39"
+    ],
+    "broker": "TEST 200001",
+    "symbol": "BTCUSD",
+    "timeframe": "M1",
+    "stable": true
+  },
+  {
+    "label": "Fib time zone",
+    "slug": "fib-time-zone",
+    "capture": {
+      "name": "rtx-post-fib-time-zone",
+      "frames": 12,
+      "durationMs": 22121,
+      "errors": []
+    },
+    "values": [
+      "0",
+      "1",
+      "2",
+      "3",
+      "5",
+      "8",
+      "13",
+      "21",
+      "34",
+      "55",
+      "89",
+      "78626.10",
+      "8 Sep 2026 09:23",
+      "78501.49",
+      "8 Sep 2026 09:26"
+    ],
+    "broker": "TEST 200001",
+    "timeframe": "M1",
+    "symbol": "BTCUSD"
+  },
+  {
+    "label": "Trend-based fib time",
+    "slug": "trend-based-fib-time",
+    "capture": {
+      "name": "rtx-post-trend-based-fib-time",
+      "frames": 19,
+      "durationMs": 26940,
+      "errors": []
+    },
+    "broker": "TEST 200001",
+    "symbol": "BTCUSD",
+    "timeframe": "M1",
+    "review": "Completed capture reviewed from saved frames after control connection timed out. A 09:23, B 09:26, C 09:39; unit interval equals 3 bars and 3 minutes from C."
+  }
+]

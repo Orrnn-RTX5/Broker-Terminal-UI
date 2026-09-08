@@ -1,0 +1,43 @@
+{
+  "capture": "02-fib-zoom",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 11,
+  "encoded_frames": 12,
+  "source_duration_ms": 6305,
+  "encoded_duration_ms": 6305,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    894,
+    1601,
+    2663,
+    3115,
+    4227,
+    5270,
+    5509,
+    5730,
+    5965,
+    6185
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    894,
+    1601,
+    2663,
+    3115,
+    4227,
+    5270,
+    5509,
+    5730,
+    5965,
+    6185,
+    6304
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\02-fib-zoom.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\02-fib-zoom.jpg",
+  "capture_errors": []
+}

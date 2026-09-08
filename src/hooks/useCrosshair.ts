@@ -71,8 +71,8 @@ export function useCrosshair({
       chartRef.current?.applyOptions({
         crosshair: {
           mode: 0,
-          vertLine: { visible: true, labelVisible: true },
-          horzLine: { visible: true, labelVisible: true },
+          vertLine: { visible: false, labelVisible: false },
+          horzLine: { visible: false, labelVisible: false },
         },
       });
       return;

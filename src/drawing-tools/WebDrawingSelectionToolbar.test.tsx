@@ -137,6 +137,26 @@ describe('WebDrawingSelectionToolbar', () => {
     ]);
   });
 
+  it('keeps the Info line measurements clear above or below the toolbar', () => {
+    vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(1920);
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(920);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0, y: 0, left: 0, top: 0, right: 260, bottom: 40,
+      width: 260, height: 40, toJSON: () => ({}),
+    } as DOMRect);
+    render(<WebDrawingSelectionToolbar />);
+    const selectInfo = (top: number, bottom: number, anchor: number) => act(() => {
+      window.dispatchEvent(new CustomEvent('drawing:selected', {
+        detail: { ...drawingSelection, type: 'trendline', subtype: 'info_line',
+          anchorClientY: anchor, annotationClientBounds: { top, bottom } },
+      }));
+    });
+    selectInfo(203, 297, 250);
+    expect(screen.getByRole('toolbar')).toHaveStyle({ top: '151px' });
+    selectInfo(10, 104, 30);
+    expect(screen.getByRole('toolbar')).toHaveStyle({ top: '116px' });
+  });
+
   it('deletes the selected drawing from its owning context', () => {
     render(<WebDrawingSelectionToolbar />);
     dispatchSelected();

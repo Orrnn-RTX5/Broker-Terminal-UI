@@ -1,0 +1,16 @@
+ffconcat version 1.0
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-tradingview-dotted/00000.png'
+option framerate 1000
+duration 0.537000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-tradingview-dotted/00001.png'
+option framerate 1000
+duration 0.381000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-tradingview-dotted/00002.png'
+option framerate 1000
+duration 0.573000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-tradingview-dotted/00003.png'
+option framerate 1000
+duration 0.211000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/01-trendline-tradingview-dotted/00003.png'
+option framerate 1000
+duration 0.001000

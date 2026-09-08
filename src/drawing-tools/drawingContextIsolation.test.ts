@@ -97,6 +97,33 @@ describe('drawing session context isolation', () => {
     ]);
   });
 
+  it('lets placement pass through existing drawings only in the owning chart', () => {
+    const manager = new DrawingManager();
+    const first = createChartHarness();
+    const second = createChartHarness();
+    manager.setChart(first.chart, first.series, 'XAUUSD', 1, first.container, 'M1', 'chart-a', 'account-primary');
+    manager.startDrawing('fibonacci', '#3b82f6', { subtype: 'fib_retracement' });
+    manager.addPoint(150, 100, undefined, 'chart-a');
+    manager.addPoint(210, 108, undefined, 'chart-a');
+    manager.selectDrawing(manager.getDrawings('chart-a')[0].id, false, 'chart-a');
+    manager.setChart(second.chart, second.series, 'EURUSD', 1, second.container, 'M5', 'chart-b', 'account-primary');
+    manager.startDrawing('hline');
+    manager.addPoint(150, 100, undefined, 'chart-b');
+    manager.setChart(first.chart, first.series, 'XAUUSD', 1, first.container, 'M1', 'chart-a', 'account-primary');
+    manager.startDrawing('fib_extension', '#3b82f6', { subtype: 'fib_channel' });
+
+    const originalGroup = first.container.querySelector<SVGGElement>('g[data-id]')!;
+    expect(originalGroup.style.pointerEvents).toBe('none');
+    originalGroup.querySelectorAll<SVGElement>('*').forEach(element => {
+      expect(element.style.pointerEvents).toBe('none');
+    });
+    expect(second.container.querySelector<SVGGElement>('g[data-id]')?.style.pointerEvents).not.toBe('none');
+
+    manager.cancelDrawing('chart-a');
+    expect(first.container.querySelector<SVGGElement>('g[data-id]')?.style.pointerEvents).not.toBe('none');
+    expect(first.container.querySelector('[data-geometry-hit-for]')?.getAttribute('pointer-events')).toBe('all');
+  });
+
   it('routes undo, redo, delete, and clear operations to an explicit chart context', () => {
     const manager = new DrawingManager();
     const first = createChartHarness();
@@ -113,21 +140,18 @@ describe('drawing session context isolation', () => {
     const secondId = manager.getDrawings()[0].id;
 
     manager.undo('chart-a');
-    expect(manager.getDrawings()).toHaveLength(0);
-    manager.setChart(second.chart, second.series, 'EURUSD', 1, second.container, 'M5', 'chart-b', 'account-primary');
-    expect(manager.getDrawings()).toEqual([expect.objectContaining({ id: secondId })]);
+    expect(manager.getDrawings('chart-a')).toHaveLength(0);
+    expect(manager.getDrawings('chart-b')).toEqual([expect.objectContaining({ id: secondId })]);
 
     manager.redo('chart-a');
-    expect(manager.getDrawings()).toEqual([expect.objectContaining({ id: firstId })]);
-    manager.selectDrawing(firstId);
-    manager.setChart(second.chart, second.series, 'EURUSD', 1, second.container, 'M5', 'chart-b', 'account-primary');
+    expect(manager.getDrawings('chart-a')).toEqual([expect.objectContaining({ id: firstId })]);
+    manager.selectDrawing(firstId, false, 'chart-a');
     manager.deleteSelected('chart-a');
-    expect(manager.getDrawings()).toHaveLength(0);
-    manager.setChart(second.chart, second.series, 'EURUSD', 1, second.container, 'M5', 'chart-b', 'account-primary');
-    expect(manager.getDrawings()).toEqual([expect.objectContaining({ id: secondId })]);
+    expect(manager.getDrawings('chart-a')).toHaveLength(0);
+    expect(manager.getDrawings('chart-b')).toEqual([expect.objectContaining({ id: secondId })]);
 
     manager.clearAllDrawings(true, 'chart-b');
-    expect(manager.getDrawings()).toHaveLength(0);
+    expect(manager.getDrawings('chart-b')).toHaveLength(0);
   });
 
   it('removes a disposed chart context and keeps scroll locking owned by the dragged chart', () => {

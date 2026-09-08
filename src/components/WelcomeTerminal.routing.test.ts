@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   findBrokerForRuntimeDomain,
   findBrokerForWebRuntime,
+  buildConfiguredRuntimeBroker,
+  LAST_AUTHENTICATED_BROKER_ID_KEY,
   pickDiscoveryBroker,
   type BrokerServerItem,
 } from './WelcomeTerminal';
@@ -24,6 +26,7 @@ describe('WelcomeTerminal broker runtime selection', () => {
   beforeEach(() => {
     delete runtimeWindow.RUNTIME_CONFIG;
     delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+    localStorage.clear();
   });
 
   it('matches Achiever from custom webterminal domain identity fields', () => {
@@ -124,6 +127,19 @@ describe('WelcomeTerminal broker runtime selection', () => {
     expect(pickDiscoveryBroker(brokers)?.broker_name).toBe('FX Trust TEST');
   });
 
+  it('gives the configured TEST broker its canonical broker-directory logo', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      DISCOVERY_BASE_URL: 'https://fxtrustsuperbackned.orrnn.com',
+      BROKER_ID: 'TEST',
+    };
+
+    expect(buildConfiguredRuntimeBroker()?.logo_url).toBe(
+      'https://fxtrustsuperbackned.orrnn.com/api/v1/brokers/TEST/logo',
+    );
+  });
+
   it('selects the TEST row whose server URL matches the local FXTrust runtime', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
@@ -146,5 +162,59 @@ describe('WelcomeTerminal broker runtime selection', () => {
     ];
 
     expect(findBrokerForWebRuntime(brokers, '127.0.0.1')?.broker_id).toBe('TEST');
+  });
+
+  it('does not let localhost discovery replace the explicitly configured TEST broker', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      BROKER_ID: 'TEST',
+    };
+
+    const brokers = [
+      broker({
+        broker_id: 'localdemo',
+        broker_name: 'Local Demo Broker',
+        webterminal_domain: '127.0.0.1',
+        server_url: 'https://127.0.0.1:8090',
+      }),
+    ];
+
+    expect(findBrokerForWebRuntime(brokers, '127.0.0.1')?.broker_id).toBe('localdemo');
+    expect(pickDiscoveryBroker(brokers)?.broker_id).toBe('TEST');
+  });
+
+  it('ignores a stale saved broker that was never authenticated successfully', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      BROKER_ID: 'TEST',
+    };
+
+    const brokers = [
+      broker({ broker_id: 'localdemo', broker_name: 'Local Demo Broker' }),
+      broker({ broker_id: 'TEST', broker_name: 'FX Trust TEST' }),
+    ];
+
+    expect(pickDiscoveryBroker(brokers, { savedBrokerId: 'localdemo' })?.broker_id).toBe('TEST');
+  });
+
+  it('restores a saved broker only when it is marked by a successful login', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
+      BROKER_ID: 'TEST',
+    };
+
+    const brokers = [
+      broker({ broker_id: 'localdemo', broker_name: 'Local Demo Broker' }),
+      broker({ broker_id: 'TEST', broker_name: 'FX Trust TEST' }),
+    ];
+    localStorage.setItem(LAST_AUTHENTICATED_BROKER_ID_KEY, 'localdemo');
+
+    expect(pickDiscoveryBroker(brokers, {
+      savedBrokerId: 'localdemo',
+      lastAuthenticatedBrokerId: localStorage.getItem(LAST_AUTHENTICATED_BROKER_ID_KEY),
+    })?.broker_id).toBe('localdemo');
   });
 });

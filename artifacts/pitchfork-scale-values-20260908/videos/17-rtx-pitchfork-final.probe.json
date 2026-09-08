@@ -1,0 +1,43 @@
+{
+  "capture": "17-rtx-pitchfork-final",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 11,
+  "encoded_frames": 12,
+  "source_duration_ms": 2974,
+  "encoded_duration_ms": 2974,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    0,
+    373,
+    723,
+    926,
+    1181,
+    1594,
+    1926,
+    2132,
+    2392,
+    2648,
+    2874
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    373,
+    723,
+    926,
+    1181,
+    1594,
+    1926,
+    2132,
+    2392,
+    2648,
+    2874,
+    2973
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\17-rtx-pitchfork-final.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\17-rtx-pitchfork-final.jpg",
+  "capture_errors": []
+}

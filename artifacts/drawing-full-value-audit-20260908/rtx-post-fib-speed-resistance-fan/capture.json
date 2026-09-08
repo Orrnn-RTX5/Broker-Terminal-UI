@@ -1,0 +1,60 @@
+{
+  "method": "Continuously sampled browser screenshots during native UI actions; OS pointer not captured",
+  "durationMs": 23304,
+  "complete": true,
+  "frames": [
+    {
+      "file": "00000.png",
+      "ms": 0
+    },
+    {
+      "file": "00001.png",
+      "ms": 971
+    },
+    {
+      "file": "00002.png",
+      "ms": 7208
+    },
+    {
+      "file": "00003.png",
+      "ms": 8096
+    },
+    {
+      "file": "00004.png",
+      "ms": 8852
+    },
+    {
+      "file": "00005.png",
+      "ms": 9310
+    },
+    {
+      "file": "00006.png",
+      "ms": 9739
+    },
+    {
+      "file": "00007.png",
+      "ms": 10457
+    },
+    {
+      "file": "00008.png",
+      "ms": 17846
+    },
+    {
+      "file": "00009.png",
+      "ms": 19452
+    },
+    {
+      "file": "00010.png",
+      "ms": 20137
+    },
+    {
+      "file": "00011.png",
+      "ms": 20571
+    },
+    {
+      "file": "00012.png",
+      "ms": 20864
+    }
+  ],
+  "errors": []
+}

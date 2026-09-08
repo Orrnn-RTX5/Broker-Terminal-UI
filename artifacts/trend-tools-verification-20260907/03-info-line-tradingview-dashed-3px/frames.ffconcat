@@ -1,0 +1,13 @@
+ffconcat version 1.0
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/03-info-line-tradingview-dashed-3px/00000.png'
+option framerate 1000
+duration 0.683000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/03-info-line-tradingview-dashed-3px/00001.png'
+option framerate 1000
+duration 3.091000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/03-info-line-tradingview-dashed-3px/00002.png'
+option framerate 1000
+duration 0.575000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/03-info-line-tradingview-dashed-3px/00002.png'
+option framerate 1000
+duration 0.001000

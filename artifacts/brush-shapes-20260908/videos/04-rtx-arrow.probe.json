@@ -1,0 +1,32 @@
+{
+  "capture": "04-rtx-arrow",
+  "method": "Browser screenshot sequence with original timestamps. See capture.json for the capture method. Sequential captures omit motion between UI actions; this is not a continuous native screen recording.",
+  "source_frames": 5,
+  "encoded_frames": 7,
+  "source_duration_ms": 52163,
+  "encoded_duration_ms": 52163,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    6703,
+    14481,
+    32151,
+    50983,
+    51154
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    6703,
+    14481,
+    32151,
+    50983,
+    51154,
+    52162
+  ],
+  "initial_first_sample_hold_ms": 6703,
+  "timing_verified": true,
+  "video": "videos\\04-rtx-arrow.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\04-rtx-arrow.jpg",
+  "capture_errors": []
+}

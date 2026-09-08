@@ -131,7 +131,13 @@ export const registerActiveChartSource = (
     }
   }
 
-  return () => unregisterActiveChartSource(source.id);
+  return () => {
+    // A remount can register a replacement under the same id before the older
+    // effect cleans up. Only the registration that still owns the id may
+    // unregister it; otherwise the stale cleanup would delete the replacement.
+    if (sources.get(source.id) !== source) return;
+    unregisterActiveChartSource(source.id);
+  };
 };
 
 export const activateActiveChartSource = (id: string): ResolvedActiveChartSource | null => {

@@ -257,9 +257,23 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-footer {
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer > div,
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-inner {
   min-height: 26px;
+  gap: 0 !important;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer-metrics {
   gap: 16px !important;
   padding-left: 8px;
   padding-right: 8px;
+}
+
+/* Profit and close are the final two table columns, so no footer padding or
+   sibling gap may be inserted between their matching fixed-width cells. */
+.rtx-trade-footer > .rtx-trade-footer-inner {
+  gap: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-status,
@@ -298,6 +312,30 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-footer-floating {
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-currency {
   color: inherit;
   margin-left: 4px;
+}
+
+/* Keep the amount exactly centered beneath Profit, then place the account
+   currency immediately after it without letting the currency shift its center. */
+.rtx-trade-footer-floating--profit {
+  column-gap: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.rtx-trade-footer-floating--profit > :not(.rtx-trade-footer-currency) {
+  grid-column: 2;
+  justify-self: center;
+}
+
+.rtx-trade-footer-currency {
+  display: inline-block;
+  margin-left: 4px;
+  position: static;
+}
+
+.rtx-trade-footer-floating--profit > .rtx-trade-footer-currency {
+  grid-column: 3;
+  justify-self: start;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-trade-footer-actions {
@@ -809,13 +847,16 @@ html.rtx-skin-untitled-light .rtx-journal-toolbar .rtx-journal-auto[aria-pressed
 
 /* Force arrow cursor when in cursor/select mode.
    lightweight-charts hardcodes cursor:crosshair on its canvas — this overrides it. */
-[data-cursor="select"] canvas {
-  cursor: default !important;
+[data-trend-drawing-active="true"] .rtx-trade-level-hit-area,
+[data-trend-drawing-active="true"] .rtx-trade-level-badge,
+[data-trend-drawing-active="true"] .rtx-trade-level-badge *,
+[data-trend-drawing-active="true"] .rtx-trade-marker-hover-target,
+[data-trend-drawing-active="true"] .rtx-trade-marker-hover-target * {
+  pointer-events: none !important;
 }
 
-/* Force crosshair-style cell cursor in any drawing mode */
-[data-cursor="draw"] canvas {
-  cursor: cell !important;
+[data-cursor="select"] canvas {
+  cursor: default !important;
 }
 
 .chart-drawing {

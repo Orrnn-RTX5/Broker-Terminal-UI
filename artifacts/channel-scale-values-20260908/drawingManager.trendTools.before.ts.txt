@@ -1,0 +1,881 @@
+// @vitest-environment jsdom
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
+import { formatTradingChartCrosshairLabel } from '../utils/chartTimeFormat';
+import { TREND_LINE_TOOLS } from '../drawing-tools/toolCatalog';
+
+vi.mock('./drawingApi', () => ({
+  drawingApi: {
+    loadDrawings: vi.fn().mockResolvedValue([]),
+    saveDrawing: vi.fn().mockResolvedValue('server-drawing'),
+    deleteDrawing: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+import {
+  DrawingManager,
+  type DrawingSeriesDataPoint,
+  type DrawingSeriesDataProvider,
+  type DrawingType,
+} from './drawingManager';
+
+const DEFAULT_SERIES_DATA: readonly DrawingSeriesDataPoint[] = [
+  { time: 150, open: 99, high: 103, low: 98, close: 100 },
+  { time: 180, open: 100, high: 106, low: 99, close: 104 },
+  { time: 210, open: 104, high: 108, low: 103, close: 106 },
+  { time: 240, open: 106, high: 110, low: 105, close: 109 },
+];
+
+interface RenderHarnessOptions {
+  includeSeriesData?: boolean;
+  seriesData?: readonly DrawingSeriesDataPoint[];
+  seriesDataProvider?: DrawingSeriesDataProvider;
+  pricePrecision?: number;
+  minMove?: number;
+  timeToCoordinate?: (time: number) => number;
+  coordinateToLogical?: (coordinate: number) => number;
+}
+
+const createRenderHarness = async (options: RenderHarnessOptions = {}) => {
+  const pricePrecision = options.pricePrecision ?? 2;
+  const minMove = options.minMove ?? 0.01;
+  const timeScale = {
+    timeToCoordinate: options.timeToCoordinate ?? ((time: number) => Number(time) - 100),
+    coordinateToTime: (coordinate: number) => coordinate + 100,
+    logicalToCoordinate: (logical: number) => logical,
+    coordinateToLogical: options.coordinateToLogical ?? ((coordinate: number) => coordinate),
+    height: () => 20,
+  };
+  const chart = {
+    timeScale: () => timeScale,
+    priceScale: () => ({ width: () => 40 }),
+  } as unknown as IChartApi;
+  const seriesShape: Record<string, unknown> = {
+    priceToCoordinate: (price: number) => 220 - price,
+    coordinateToPrice: (coordinate: number) => 220 - coordinate,
+    options: () => ({ priceFormat: { precision: pricePrecision, minMove } }),
+    priceFormatter: () => ({ format: (price: number) => price.toFixed(pricePrecision) }),
+  };
+  if (options.includeSeriesData !== false) {
+    seriesShape.data = () => options.seriesData ?? DEFAULT_SERIES_DATA;
+  }
+  const series = seriesShape as unknown as ISeriesApi<'Candlestick'>;
+  const container = document.createElement('div');
+  Object.defineProperty(container, 'clientWidth', { value: 500 });
+  Object.defineProperty(container, 'clientHeight', { value: 300 });
+  document.body.appendChild(container);
+  const manager = new DrawingManager();
+  manager.setChart(
+    chart,
+    series,
+    'TEST',
+    1,
+    container,
+    'M1',
+    'chart-test-m1',
+    'account-test',
+    options.seriesDataProvider,
+  );
+  await Promise.resolve();
+  return { manager, container, chart, series };
+};
+
+const completeDrawing = (
+  manager: DrawingManager,
+  type: DrawingType,
+  subtype: string,
+  points: readonly { time: number; price: number }[],
+): void => {
+  manager.startDrawing(type, '#3b82f6', { subtype });
+  points.forEach(point => manager.addPoint(point.time, point.price));
+};
+
+const numberAttribute = (element: Element, name: string): number =>
+  Number(element.getAttribute(name));
+
+describe('DrawingManager trend tool lifecycle', () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    window.localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ['horizontal_ray', 'hline', 1],
+    ['crossline', 'vline', 1],
+    ['trendline', 'trendline', 2],
+    ['ray', 'trendline', 2],
+    ['info_line', 'trendline', 2],
+    ['extended_line', 'trendline', 2],
+    ['trend_angle', 'trendline', 2],
+    ['regression_trend', 'channel', 2],
+    ['parallel_channel', 'channel', 3],
+    ['flat_top_bottom', 'channel', 3],
+    ['disjoint_channel', 'channel', 3],
+    ['pitchfork', 'channel', 3],
+    ['schiff_pitchfork', 'channel', 3],
+    ['modified_schiff_pitchfork', 'channel', 3],
+    ['inside_pitchfork', 'channel', 3],
+  ] as const)('%s uses %s and commits after %i anchors', (subtype, type, requiredPoints) => {
+    const manager = new DrawingManager();
+    manager.startDrawing(type, '#3b82f6', { subtype });
+
+    for (let index = 0; index < requiredPoints; index += 1) {
+      const completed = manager.addPoint(1_700_000_000 + index * 60, 100 + index);
+      expect(completed).toBe(index === requiredPoints - 1);
+    }
+
+    expect(manager.getActiveDrawing()).toBeNull();
+  });
+
+  it('retains the selected subtype in the saved drawing event', () => {
+    const manager = new DrawingManager();
+    const saved = vi.fn();
+    window.addEventListener('drawing:saved', saved, { once: true });
+    manager.startDrawing('channel', '#3b82f6', { subtype: 'pitchfork' });
+    manager.addPoint(1, 10);
+    manager.addPoint(2, 11);
+    manager.addPoint(3, 12);
+
+    expect(saved).toHaveBeenCalledOnce();
+    expect((saved.mock.calls[0][0] as CustomEvent).detail).toMatchObject({
+      type: 'channel',
+      subtype: 'pitchfork',
+      points: expect.arrayContaining([
+        expect.objectContaining({ time: 1, price: 10 }),
+      ]),
+    });
+  });
+
+  it.each(TREND_LINE_TOOLS.filter(tool => tool.group === 'Pitchforks'))(
+    '$label shows committed prices and a moving price throughout construction',
+    async ({ id }) => {
+      const { manager, container } = await createRenderHarness({ pricePrecision: 3 });
+      const prices = () => Array.from(container.querySelectorAll(
+        'text[data-geometry-role$="price-scale-label-text"]',
+      )).map(label => label.textContent);
+      const handles = () => container.querySelectorAll('[data-geometry-role^="construction-anchor-"]');
+      manager.startDrawing('channel', '#2962ff', { subtype: id });
+      manager.updatePreviewPoint(150, 100.125);
+      expect(prices()).toEqual(['100.125']);
+      expect(handles()).toHaveLength(0);
+
+      manager.addPoint(150, 100.125);
+      expect(prices()).toEqual(['100.125']);
+      expect(handles()).toHaveLength(1);
+      manager.updatePreviewPoint(240, 109.875);
+      expect(prices()).toEqual(['100.125', '109.875']);
+      manager.addPoint(240, 109.875);
+      expect(prices()).toEqual(['100.125', '109.875']);
+      expect(handles()).toHaveLength(2);
+      manager.updatePreviewPoint(180, 92.625);
+      expect(prices()).toEqual(['100.125', '109.875', '92.625']);
+      expect(container.querySelectorAll('rect[data-geometry-role$="time-scale-label"]')).toHaveLength(3);
+
+      // Only the uncommitted cursor price changes as the third point moves.
+      manager.updatePreviewPoint(200, 95.375);
+      expect(prices()).toEqual(['100.125', '109.875', '95.375']);
+      const cursor = container.querySelector('[data-geometry-role="cursor-price-scale-label"]')!;
+      expect(numberAttribute(cursor, 'x')).toBe(460);
+      expect(numberAttribute(cursor, 'y')).toBeCloseTo(220 - 95.375 - 9);
+      expect(cursor.getAttribute('fill')).not.toBe('#2962ff');
+      expect(handles()).toHaveLength(2);
+      expect(manager.getDrawings()).toHaveLength(0);
+
+      manager.addPoint(200, 95.375);
+      expect(handles()).toHaveLength(0);
+      expect(container.querySelector('[data-geometry-role="cursor-price-scale-label"]')).toBeNull();
+      expect(prices()).toEqual(['100.125', '109.875', '95.375']);
+      expect(container.querySelectorAll('[data-geometry-role^="selection-anchor-"]')).toHaveLength(3);
+      const drawingId = manager.getDrawings()[0].id;
+      manager.unselectDrawing(drawingId);
+      expect(prices()).toEqual([]);
+      manager.selectDrawing(drawingId);
+      expect(prices()).toEqual(['100.125', '109.875', '95.375']);
+    },
+  );
+
+  it('keeps pitchfork preview values in their owning chart and clears them on cancellation', async () => {
+    const { manager, container, chart, series } = await createRenderHarness();
+    const sibling = document.createElement('div');
+    Object.defineProperty(sibling, 'clientWidth', { value: 500 });
+    Object.defineProperty(sibling, 'clientHeight', { value: 300 });
+    document.body.appendChild(sibling);
+    manager.setChart(chart, series, 'SIBLING', 1, sibling, 'M1', 'chart-sibling', 'account-test');
+    await Promise.resolve();
+    manager.setChart(chart, series, 'TEST', 1, container, 'M1', 'chart-test-m1', 'account-test');
+    manager.startDrawing('channel', '#2962ff', { subtype: 'pitchfork' });
+    manager.addPoint(150, 100);
+    manager.addPoint(240, 109);
+    manager.updatePreviewPoint(180, 92);
+    const cursorLabel = () => container.querySelector('[data-geometry-role="cursor-price-scale-label"]');
+    expect(sibling.querySelector('[data-id$="-construction"]')).toBeNull();
+    manager.hidePreviewCursor('chart-sibling');
+    expect(cursorLabel()).not.toBeNull();
+    manager.hidePreviewCursor('chart-test-m1');
+    expect(cursorLabel()).toBeNull();
+    expect(container.querySelectorAll('[data-geometry-role^="construction-anchor-"]')).toHaveLength(2);
+    expect(container.querySelector('[data-id$="-preview"]')).not.toBeNull();
+    manager.updatePreviewPoint(190, 95, 'chart-test-m1');
+    expect(cursorLabel()).not.toBeNull();
+    manager.cancelDrawing('chart-test-m1');
+    expect(container.querySelector('[data-id$="-construction"]')).toBeNull();
+    expect(container.querySelector('[data-id$="-preview"]')).toBeNull();
+    expect(manager.getDrawings()).toHaveLength(0);
+  });
+
+  it.each(['trendline', 'ray', 'info_line'])('keeps the committed %s anchor visible during preview until completion', async (subtype) => {
+    const { manager, container } = await createRenderHarness();
+    manager.startDrawing('trendline', '#2962ff', { subtype });
+    manager.addPoint(150, 100);
+
+    const first = container.querySelector('[data-geometry-role="construction-anchor-1"]')!;
+    expect(first).not.toBeNull();
+    expect(numberAttribute(first, 'cx')).toBe(50);
+    expect(numberAttribute(first, 'cy')).toBe(120);
+    expect(first.getAttribute('pointer-events')).toBe('none');
+    expect(container.querySelector('[data-geometry-role="construction-anchor-2"]')).toBeNull();
+
+    manager.updatePreviewPoint(240, 109);
+    expect(container.querySelectorAll('[data-geometry-role^="construction-anchor-"]')).toHaveLength(1);
+    expect(numberAttribute(container.querySelector('[data-geometry-role="construction-anchor-1"]')!, 'cx')).toBe(50);
+
+    manager.addPoint(240, 109);
+    expect(container.querySelector('[data-geometry-role^="construction-anchor-"]')).toBeNull();
+    expect(container.querySelectorAll('[data-geometry-role^="selection-anchor-"]')).toHaveLength(2);
+  });
+
+  it.each(['trendline', 'ray', 'info_line'])('removes the unfinished %s anchor when placement is cancelled', async (subtype) => {
+    const { manager, container } = await createRenderHarness();
+    manager.startDrawing('trendline', '#2962ff', { subtype });
+    manager.addPoint(150, 100);
+    expect(container.querySelector('[data-geometry-role="construction-anchor-1"]')).not.toBeNull();
+    manager.cancelDrawing();
+    expect(container.querySelector('[data-geometry-role="construction-anchor-1"]')).toBeNull();
+  });
+
+  it.each(TREND_LINE_TOOLS)('clears old selection only in the chart arming $id and does not restore it on cancellation', async ({ id: subtype, drawingType }) => {
+    const { manager, container, chart, series } = await createRenderHarness();
+    completeDrawing(manager, 'trendline', 'trendline', [
+      { time: 150, price: 100 }, { time: 250, price: 60 },
+    ]);
+    const sibling = document.createElement('div');
+    Object.defineProperty(sibling, 'clientWidth', { value: 500 });
+    Object.defineProperty(sibling, 'clientHeight', { value: 300 });
+    document.body.appendChild(sibling);
+    manager.setChart(chart, series, 'SIBLING', 1, sibling, 'M1', 'chart-sibling', 'account-test');
+    await Promise.resolve();
+    completeDrawing(manager, 'trendline', 'trendline', [
+      { time: 170, price: 90 }, { time: 270, price: 50 },
+    ]);
+    manager.setChart(chart, series, 'TEST', 1, container, 'M1', 'chart-test-m1', 'account-test');
+    const cleared = vi.fn();
+    window.addEventListener('drawing:selection-cleared', cleared);
+    try {
+      manager.startDrawing(drawingType, '#2962ff', { subtype });
+      expect(manager.getActiveDrawing('chart-test-m1')?.points).toEqual([]);
+      expect(manager.getDrawings('chart-test-m1')[0].selected).toBe(false);
+      expect(container.querySelector('[data-geometry-role^="selection-anchor-"]')).toBeNull();
+      expect(cleared).toHaveBeenCalledOnce();
+      expect((cleared.mock.calls[0][0] as CustomEvent).detail.contextId).toBe('chart-test-m1');
+      expect(manager.getDrawings('chart-sibling')[0].selected).toBe(true);
+      expect(manager.getDrawings('chart-test-m1')).toHaveLength(1);
+      expect(manager.getDrawings('chart-sibling')).toHaveLength(1);
+      expect(sibling.querySelectorAll('[data-geometry-role^="selection-anchor-"]')).toHaveLength(2);
+
+      manager.cancelDrawing('chart-test-m1');
+      expect(manager.getDrawings('chart-test-m1')[0].selected).toBe(false);
+      expect(container.querySelector('[data-geometry-role^="selection-anchor-"]')).toBeNull();
+      expect(manager.getDrawings('chart-sibling')[0].selected).toBe(true);
+    } finally {
+      window.removeEventListener('drawing:selection-cleared', cleared);
+    }
+  });
+
+  it('emits cancellation only for the active drawing owner after state is cleared', async () => {
+    const { manager, container, chart, series } = await createRenderHarness();
+    const sibling = document.createElement('div');
+    Object.defineProperty(sibling, 'clientWidth', { value: 500 });
+    Object.defineProperty(sibling, 'clientHeight', { value: 300 });
+    document.body.appendChild(sibling);
+    manager.setChart(chart, series, 'SIBLING', 1, sibling, 'M5', 'chart-sibling', 'account-test');
+    await Promise.resolve();
+    completeDrawing(manager, 'trendline', 'trendline', [
+      { time: 150, price: 100 }, { time: 250, price: 60 },
+    ]);
+    manager.setChart(chart, series, 'TEST', 1, container, 'M1', 'chart-test-m1', 'account-test');
+    manager.startDrawing('channel', '#2962ff', { subtype: 'parallel_channel' });
+    manager.addPoint(180, 95, undefined, 'chart-test-m1');
+    manager.setChart(chart, series, 'SIBLING', 1, sibling, 'M5', 'chart-sibling', 'account-test');
+    const cancelled = vi.fn((event: Event) => {
+      expect(manager.getActiveDrawing((event as CustomEvent).detail.contextId)).toBeNull();
+    });
+    window.addEventListener('drawing:cancelled', cancelled);
+    try {
+      manager.cancelDrawing('chart-sibling');
+      expect(cancelled).not.toHaveBeenCalled();
+      expect(manager.getActiveDrawing('chart-test-m1')?.points).toHaveLength(1);
+
+      manager.cancelDrawing('chart-test-m1');
+      expect(cancelled).toHaveBeenCalledOnce();
+      expect((cancelled.mock.calls[0][0] as CustomEvent).detail).toEqual({
+        contextId: 'chart-test-m1', symbol: 'TEST', timeframe: 'M1', accountScope: 'account-test',
+      });
+      expect(manager.getDrawings('chart-sibling')[0].selected).toBe(true);
+      expect(sibling.querySelectorAll('[data-geometry-role^="selection-anchor-"]')).toHaveLength(2);
+
+      manager.cancelDrawing('chart-test-m1');
+      manager.cancelDrawing();
+      expect(cancelled).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener('drawing:cancelled', cancelled);
+    }
+  });
+
+  it.each([undefined, 'trendline', 'ray', 'info_line'])('constrains %s preview and completion, and restores the stationary raw preview on Shift release', async (subtype) => {
+    const { manager, container } = await createRenderHarness();
+    manager.startDrawing('trendline', '#2962ff', subtype ? { subtype } : undefined);
+    manager.addPoint(150, 100);
+    manager.updatePreviewPoint(350, 60, 'chart-test-m1', undefined, true);
+    const previewLine = () => container.querySelector('g[data-id$="-preview"] line')!;
+    expect(numberAttribute(previewLine(), 'y1')).toBe(120);
+    expect(numberAttribute(previewLine(), 'y2')).toBe(120);
+
+    manager.setPreviewShiftPressed(false, 'chart-other');
+    expect(numberAttribute(previewLine(), 'y2')).toBe(120);
+    manager.setPreviewShiftPressed(false, 'chart-test-m1');
+    expect(numberAttribute(previewLine(), 'x2')).toBeCloseTo(subtype === 'ray' ? 460 : 250, 8);
+    expect(numberAttribute(previewLine(), 'y2')).toBeCloseTo(subtype === 'ray' ? 202 : 160, 8);
+    manager.setPreviewShiftPressed(true, 'chart-test-m1');
+    expect(numberAttribute(previewLine(), 'y2')).toBe(120);
+
+    expect(manager.addPoint(350, 60, undefined, 'chart-test-m1', undefined, true)).toBe(true);
+    const points = manager.getDrawings('chart-test-m1')[0].points;
+    expect(points[1].price).toBe(points[0].price);
+    expect(container.querySelector('g[data-id$="-preview"]')).toBeNull();
+    expect(container.querySelectorAll('[data-geometry-role^="selection-anchor-"]')).toHaveLength(2);
+  });
+
+  it.each(['trendline', 'ray', 'info_line'])('creates vertical and 45-degree %s with Shift, retaining the selected time/price anchors', async (subtype) => {
+    const { manager, chart, series } = await createRenderHarness();
+    manager.startDrawing('trendline', '#2962ff', { subtype });
+    manager.addPoint(150, 100);
+    manager.addPoint(160, -100, undefined, 'chart-test-m1', undefined, true);
+    expect(manager.getDrawings('chart-test-m1')[0].points[1].time).toBe(150);
+
+    manager.startDrawing('trendline', '#2962ff', { subtype });
+    manager.addPoint(150, 100);
+    manager.addPoint(270, 10, undefined, 'chart-test-m1', undefined, true);
+    const [first, second] = manager.getDrawings('chart-test-m1')[1].points;
+    const dx = Number(chart.timeScale().timeToCoordinate(second.time as Time))
+      - Number(chart.timeScale().timeToCoordinate(first.time as Time));
+    const dy = Number(series.priceToCoordinate(second.price)) - Number(series.priceToCoordinate(first.price));
+    expect(dx).toBeCloseTo(dy, 8);
+    expect(dx).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['trendline', 0], ['trendline', 1], ['ray', 0], ['ray', 1], ['info_line', 0], ['info_line', 1],
+  ] as const)('constrains %s endpoint %i around its fixed opposite anchor and releases on the next pointer move', async (subtype, nodeIndex) => {
+    const { manager, container, chart, series } = await createRenderHarness();
+    completeDrawing(manager, 'trendline', subtype, [
+      { time: 150, price: 100 }, { time: 250, price: 60 },
+    ]);
+    const initial = manager.getDrawings('chart-test-m1')[0].points.map(point => ({ ...point }));
+    const handle = container.querySelector(`[data-geometry-role="selection-anchor-${nodeIndex + 1}"]`)!;
+    const start = nodeIndex === 0 ? { x: 50, y: 120 } : { x: 150, y: 160 };
+    const destination = nodeIndex === 0 ? { x: 30, y: 55 } : { x: 210, y: 240 };
+    handle.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: start.x, clientY: start.y }));
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: destination.x, clientY: destination.y, shiftKey: true }));
+    const points = manager.getDrawings('chart-test-m1')[0].points;
+    const moved = points[nodeIndex];
+    const fixed = points[nodeIndex === 0 ? 1 : 0];
+    expect(fixed).toEqual(initial[nodeIndex === 0 ? 1 : 0]);
+    const dx = Number(chart.timeScale().timeToCoordinate(moved.time as Time))
+      - Number(chart.timeScale().timeToCoordinate(fixed.time as Time));
+    const dy = Number(series.priceToCoordinate(moved.price)) - Number(series.priceToCoordinate(fixed.price));
+    expect(Math.abs(dx)).toBeCloseTo(Math.abs(dy), 8);
+
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: destination.x, clientY: destination.y, shiftKey: false }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    const released = manager.getDrawings('chart-test-m1')[0].points[nodeIndex];
+    expect(Number(chart.timeScale().timeToCoordinate(released.time as Time))).toBe(destination.x);
+    expect(Number(series.priceToCoordinate(released.price))).toBe(destination.y);
+  });
+
+  it.each(['extended_line', 'trend_angle'])('keeps %s placement unchanged while Shift is held', async (subtype) => {
+    const { manager } = await createRenderHarness();
+    manager.startDrawing('trendline', '#2962ff', { subtype });
+    manager.addPoint(150, 100);
+    manager.updatePreviewPoint(350, 60, 'chart-test-m1', undefined, true);
+    manager.addPoint(350, 60, undefined, 'chart-test-m1', undefined, true);
+    expect(manager.getDrawings('chart-test-m1')[0].points[1]).toEqual({ time: 350, price: 60 });
+  });
+
+  it.each([
+    ['ray', 'trendline', 2, 'line', 2],
+    ['info_line', 'trendline', 2, 'rect', 1],
+    ['trend_angle', 'trendline', 2, 'text', 1],
+    ['horizontal_ray', 'hline', 1, 'line', 2],
+    ['crossline', 'vline', 1, 'line', 4],
+    ['parallel_channel', 'channel', 3, 'polygon', 1],
+    ['regression_trend', 'channel', 2, 'polygon', 1],
+    ['pitchfork', 'channel', 3, 'line', 7],
+    ['inside_pitchfork', 'channel', 3, 'line', 11],
+  ] as const)('renders committed %s SVG geometry', async (subtype, type, pointCount, selector, minimumCount) => {
+    const { manager, container } = await createRenderHarness();
+    manager.startDrawing(type, '#3b82f6', { subtype });
+    const points = [
+      { time: 150, price: 100 },
+      { time: 240, price: 109 },
+      { time: 180, price: 92 },
+    ];
+    points.slice(0, pointCount).forEach((point) => manager.addPoint(point.time, point.price));
+
+    const drawingGroup = container.querySelector('svg g[data-id]');
+    expect(drawingGroup).not.toBeNull();
+    expect(drawingGroup!.querySelectorAll(selector).length).toBeGreaterThanOrEqual(minimumCount);
+  });
+
+  it.each(['trendline', 'ray', 'info_line'])('scales %s dash and dot spacing with the selected line width', async (subtype) => {
+    const { manager, container } = await createRenderHarness();
+    completeDrawing(manager, 'trendline', subtype, [{ time: 150, price: 100 }, { time: 240, price: 109 }]);
+    const id = manager.getDrawings()[0].id;
+    for (const lineWidth of [1, 3, 4]) {
+      manager.updateDrawingProperties(id, { lineStyle: 'dashed', lineWidth });
+      const dashed = container.querySelector('svg g[data-id] line')!;
+      expect(dashed.getAttribute('stroke-dasharray')).toBe(`${lineWidth * 5} ${lineWidth * 6}`);
+      expect(dashed.getAttribute('stroke-linecap')).toBe('butt');
+      manager.updateDrawingProperties(id, { lineStyle: 'dotted' });
+      expect(container.querySelector('svg g[data-id] line')!.getAttribute('stroke-dasharray')).toBe(`${lineWidth} ${lineWidth * 3}`);
+    }
+    manager.updateDrawingProperties(id, { lineStyle: 'solid' });
+    expect(container.querySelector('svg g[data-id] line')!.hasAttribute('stroke-dasharray')).toBe(false);
+  });
+
+  it('renders the Arrow stamp exposed by the drawing rail', async () => {
+    const { manager, container } = await createRenderHarness();
+    completeDrawing(manager, 'stamp', 'arrow', [{ time: 150, price: 100 }]);
+
+    const arrowPath = container.querySelector<SVGPathElement>('svg g[data-id] path');
+    expect(arrowPath).not.toBeNull();
+    expect(arrowPath?.getAttribute('d')).toBe('M5 12h14M13 6l6 6-6 6');
+  });
+
+  it('renders the Info Line as three measurement rows using runtime precision and min-move', async () => {
+    const { manager, container } = await createRenderHarness({
+      pricePrecision: 3,
+      minMove: 0.01,
+      timeToCoordinate: time => 50 + ((time - 150) / 60),
+      coordinateToLogical: coordinate => coordinate,
+    });
+    completeDrawing(manager, 'trendline', 'info_line', [
+      { time: 150, price: 100 },
+      { time: 1_830, price: 103.194 },
+    ]);
+
+    const group = container.querySelector('svg g[data-id]')!;
+    const firstRow = group.querySelector('[data-geometry-role="measurement-row-1"]');
+    const secondRow = group.querySelector('[data-geometry-role="measurement-row-2"]');
+    const thirdRow = group.querySelector('[data-geometry-role="measurement-row-3"]');
+
+    expect(group.querySelector('[data-geometry-role="measurement-panel"]')).not.toBeNull();
+    expect(group.querySelectorAll('[data-geometry-role^="measurement-row-"]')).toHaveLength(3);
+    expect(firstRow?.textContent).toBe('3.194 (3.19%), 319.4');
+    expect(secondRow?.textContent).toBe('28 bars (28m), distance: 28 px');
+    expect(thirdRow?.textContent).toBe(
+      `${(Math.atan2(3.194, 28) * (180 / Math.PI)).toFixed(1)}\u00b0`,
+    );
+  });
+
+  it('renders Trend Angle with a short dotted reference and an inline degree label', async () => {
+    const { manager, container } = await createRenderHarness();
+    completeDrawing(manager, 'trendline', 'trend_angle', [
+      { time: 150, price: 100 },
+      { time: 210, price: 160 },
+    ]);
+
+    const reference = container.querySelector<SVGLineElement>(
+      '[data-geometry-role="angle-reference"]',
+    )!;
+    const label = container.querySelector<SVGTextElement>(
+      '[data-geometry-role="angle-label"]',
+    )!;
+
+    expect(reference).not.toBeNull();
+    expect(reference.getAttribute('stroke-dasharray')).toBe('2 2');
+    expect(numberAttribute(reference, 'x1')).toBe(50);
+    expect(numberAttribute(reference, 'x2')).toBe(78);
+    expect(numberAttribute(reference, 'y1')).toBe(120);
+    expect(numberAttribute(reference, 'y2')).toBe(120);
+    expect(numberAttribute(reference, 'x2') - numberAttribute(reference, 'x1')).toBeLessThan(60);
+    expect(label.textContent).toBe('45.00\u00b0');
+    expect(numberAttribute(label, 'x')).toBe(86);
+    expect(numberAttribute(label, 'y')).toBe(123);
+  });
+
+  it.each([
+    ['horizontal_line', 'hline', true, false],
+    ['horizontal_ray', 'hline', true, false],
+    ['vertical_line', 'vline', false, true],
+    ['crossline', 'vline', true, true],
+  ] as const)(
+    '%s renders the expected price/time scale labels',
+    async (subtype, type, hasPriceLabel, hasTimeLabel) => {
+      const { manager, container } = await createRenderHarness({ pricePrecision: 3 });
+      completeDrawing(manager, type, subtype, [{ time: 150, price: 100.125 }]);
+      const group = container.querySelector('svg g[data-id]')!;
+      const priceLabel = group.querySelector('[data-geometry-role="price-scale-label"]');
+      const priceText = group.querySelector('[data-geometry-role="price-scale-label-text"]');
+      const timeLabel = group.querySelector('[data-geometry-role="time-scale-label"]');
+      const timeText = group.querySelector('[data-geometry-role="time-scale-label-text"]');
+
+      expect(priceLabel !== null).toBe(hasPriceLabel);
+      expect(priceText !== null).toBe(hasPriceLabel);
+      expect(timeLabel !== null).toBe(hasTimeLabel);
+      expect(timeText !== null).toBe(hasTimeLabel);
+      if (hasPriceLabel) expect(priceText?.textContent).toBe('100.125');
+      if (hasTimeLabel) {
+        expect(timeText?.textContent).toMatch(/^\w{3} \d{2} \w{3} '\d{2} \d{2}:\d{2}$/);
+      }
+    },
+  );
+
+  it.each([
+    [0, '7 Sep 2026 11:37'],
+    [7200, '7 Sep 2026 13:37'],
+  ] as const)('formats selected anchor times using the chart broker offset of %i seconds', async (brokerOffset, expected) => {
+    const timestamp = Date.UTC(2026, 8, 7, 11, 37) / 1000;
+    const { manager, container, chart } = await createRenderHarness({
+      timeToCoordinate: time => time - timestamp + 50,
+    });
+    Object.assign(chart, {
+      options: () => ({
+        localization: {
+          timeFormatter: (time: Time) => formatTradingChartCrosshairLabel(time, 'M1', brokerOffset),
+        },
+      }),
+    });
+
+    completeDrawing(manager, 'trendline', 'trendline', [
+      { time: timestamp, price: 100 },
+      { time: timestamp + 60, price: 105 },
+    ]);
+
+    expect(container.querySelector('[data-geometry-role="endpoint-1-time-scale-label-text"]')?.textContent)
+      .toBe(expected);
+  });
+
+  it('keeps fallback selected anchor times in UTC instead of the machine timezone', async () => {
+    const timestamp = Date.UTC(2026, 8, 7, 11, 37) / 1000;
+    const { manager, container } = await createRenderHarness({
+      timeToCoordinate: time => time - timestamp + 50,
+    });
+    completeDrawing(manager, 'trendline', 'trendline', [
+      { time: timestamp, price: 100 },
+      { time: timestamp + 60, price: 105 },
+    ]);
+
+    expect(container.querySelector('[data-geometry-role="endpoint-1-time-scale-label-text"]')?.textContent)
+      .toMatch(/^Mon 07 Sept? '26 11:37$/);
+  });
+
+  it.each([
+    ['horizontal_line', 'hline', 'x', 448],
+    ['vertical_line', 'vline', 'y', 268],
+  ] as const)(
+    '%s exposes its source-style square edge control and Add text prompt',
+    async (subtype, type, edgeAttribute, expectedEdge) => {
+      const { manager, container } = await createRenderHarness();
+      completeDrawing(manager, type, subtype, [{ time: 150, price: 100 }]);
+      const group = container.querySelector('svg g[data-id]')!;
+      const handle = group.querySelector<SVGRectElement>(
+        'rect[data-geometry-role="selection-anchor-1"]',
+      )!;
+
+      expect(handle).not.toBeNull();
+      expect(handle.getAttribute('width')).toBe(handle.getAttribute('height'));
+      expect(numberAttribute(handle, edgeAttribute)).toBe(expectedEdge);
+      expect(group.querySelector('[data-geometry-role="drawing-add-text-prompt"]')?.textContent)
+        .toBe('+ Add text');
+    },
+  );
+
+  it('keeps Parallel Channel boundaries on the A/B span and renders its middle level', async () => {
+    const points = [
+      { time: 150, price: 100 },
+      { time: 240, price: 109 },
+      { time: 180, price: 92 },
+    ] as const;
+    const parallelHarness = await createRenderHarness();
+    completeDrawing(parallelHarness.manager, 'channel', 'parallel_channel', points);
+    const parallelGroup = parallelHarness.container.querySelector('svg g[data-id]')!;
+    const baseline = parallelGroup.querySelector('[data-geometry-role="channel-baseline"]')!;
+    const boundary = parallelGroup.querySelector('[data-geometry-role="channel-boundary"]')!;
+    const middle = parallelGroup.querySelector('[data-geometry-role="channel-middle-level"]')!;
+
+    expect([numberAttribute(baseline, 'x1'), numberAttribute(baseline, 'x2')]).toEqual([50, 140]);
+    expect([numberAttribute(boundary, 'x1'), numberAttribute(boundary, 'x2')]).toEqual([50, 140]);
+    expect([numberAttribute(middle, 'x1'), numberAttribute(middle, 'x2')]).toEqual([50, 140]);
+    expect(numberAttribute(middle, 'y1')).toBeCloseTo(
+      (numberAttribute(baseline, 'y1') + numberAttribute(boundary, 'y1')) / 2,
+      8,
+    );
+
+    const disjointHarness = await createRenderHarness();
+    completeDrawing(disjointHarness.manager, 'channel', 'disjoint_channel', points);
+    const disjointId = disjointHarness.manager.getDrawings()
+      .find(drawing => drawing.subtype === 'disjoint_channel')!.id;
+    const disjointGroup = disjointHarness.container.querySelector(`svg g[data-id="${disjointId}"]`)!;
+    const disjointBoundary = disjointGroup.querySelector('[data-geometry-role="channel-boundary"]')!;
+
+    expect([numberAttribute(disjointBoundary, 'x1'), numberAttribute(disjointBoundary, 'x2')])
+      .toEqual([50, 140]);
+    expect(disjointGroup.querySelector('[data-geometry-role="channel-middle-level"]')).toBeNull();
+    expect(disjointBoundary.getAttribute('x1')).toBe(boundary.getAttribute('x1'));
+  });
+
+  it('uses the final setChart series-data provider for split Regression Trend geometry', async () => {
+    const seriesDataProvider = vi.fn<() => readonly DrawingSeriesDataPoint[]>(() => [
+      { time: 150, open: 99, high: 103, low: 98, close: 100 },
+      { time: 180, open: 102, high: 106, low: 100, close: 104 },
+      { time: 210, open: 105, high: 108, low: 103, close: 106 },
+      { time: 240, open: 108, high: 111, low: 106, close: 109 },
+    ]);
+    const { manager, container, series } = await createRenderHarness({
+      includeSeriesData: false,
+      seriesDataProvider,
+    });
+    expect((series as unknown as { data?: unknown }).data).toBeUndefined();
+    completeDrawing(manager, 'channel', 'regression_trend', [
+      { time: 150, price: 100 },
+      { time: 240, price: 109 },
+    ]);
+
+    const group = container.querySelector('svg g[data-id]')!;
+    expect(seriesDataProvider).toHaveBeenCalled();
+    expect(group.querySelector('polygon[data-geometry-role="regression-upper-fill"]')).not.toBeNull();
+    expect(group.querySelector('polygon[data-geometry-role="regression-lower-fill"]')).not.toBeNull();
+    expect(group.querySelector('line[data-geometry-role="regression-upper"]')).not.toBeNull();
+    expect(group.querySelector('line[data-geometry-role="regression-center"]')).not.toBeNull();
+    expect(group.querySelector('line[data-geometry-role="regression-lower"]')).not.toBeNull();
+    expect(group.querySelector('[data-geometry-role="regression-pearson"]')?.textContent)
+      .toMatch(/^Pearson's R = 0\.\d{6}$/);
+  });
+
+  it.each([
+    'pitchfork',
+    'schiff_pitchfork',
+    'modified_schiff_pitchfork',
+    'inside_pitchfork',
+  ] as const)('%s renders semantic 0, 0.5, and 1 rays without duplicates', async (subtype) => {
+    const { manager, container } = await createRenderHarness();
+    completeDrawing(manager, 'channel', subtype, [
+      { time: 150, price: 100 },
+      { time: 240, price: 109 },
+      { time: 180, price: 92 },
+    ]);
+    const group = container.querySelector('svg g[data-id]')!;
+    const expectedRoles = [
+      'pitchfork-median-0',
+      'pitchfork-upper-level-0.5',
+      'pitchfork-lower-level-0.5',
+      'pitchfork-upper-level-1',
+      'pitchfork-lower-level-1',
+    ];
+    const rays = expectedRoles.map((role) => {
+      const ray = group.querySelector<SVGLineElement>(`line[data-geometry-role="${role}"]`);
+      expect(ray, role).not.toBeNull();
+      return ray!;
+    });
+    const segmentKeys = rays.map(ray => [
+      ray.getAttribute('x1'),
+      ray.getAttribute('y1'),
+      ray.getAttribute('x2'),
+      ray.getAttribute('y2'),
+    ].join(':'));
+
+    expect(group.querySelectorAll('line[data-geometry-role^="pitchfork-"]:not([data-geometry-role$="-hit"])'))
+      .toHaveLength(subtype === 'pitchfork' ? 6 : 7);
+    expect(new Set(segmentKeys).size).toBe(segmentKeys.length);
+    expect(group.querySelectorAll('polygon[data-geometry-role^="upper-band"], polygon[data-geometry-role^="lower-band"]'))
+      .toHaveLength(4);
+    expect(rays[0].hasAttribute('stroke-dasharray')).toBe(false);
+  });
+
+  it.each([
+    ['pitchfork', [
+      [140, 111, 80, 128],
+    ]],
+    ['schiff_pitchfork', [
+      [50, 120, 140, 111],
+      [140, 111, 80, 128],
+    ]],
+    ['modified_schiff_pitchfork', [
+      [50, 120, 140, 111],
+      [140, 111, 80, 128],
+    ]],
+    ['inside_pitchfork', [
+      [50, 120, 140, 111],
+      [140, 111, 80, 128],
+    ]],
+  ] as const)(
+    '%s renders the source construction scaffold before its median ray',
+    async (subtype, expectedSegments) => {
+      const { manager, container } = await createRenderHarness();
+      completeDrawing(manager, 'channel', subtype, [
+        { time: 150, price: 100 },
+        { time: 240, price: 109 },
+        { time: 180, price: 92 },
+      ]);
+      const group = container.querySelector('svg g[data-id]')!;
+      const constructionSegments = Array.from(group.querySelectorAll<SVGLineElement>(
+        'line[data-geometry-role^="pitchfork-construction-"]',
+      )).map(line => [
+        numberAttribute(line, 'x1'),
+        numberAttribute(line, 'y1'),
+        numberAttribute(line, 'x2'),
+        numberAttribute(line, 'y2'),
+      ]);
+
+      expect(constructionSegments).toEqual(expectedSegments);
+      expect(group.querySelector('line[data-geometry-role="pitchfork-median-0"]')).not.toBeNull();
+    },
+  );
+
+  it.each([
+    ['parallel_channel', 3, 4, 2],
+    ['regression_trend', 2, 4, 0],
+    ['flat_top_bottom', 3, 4, 0],
+    ['disjoint_channel', 3, 3, 1],
+  ] as const)(
+    '%s exposes the source selection controls',
+    async (subtype, pointCount, expectedCircleCount, expectedSquareCount) => {
+      const { manager, container } = await createRenderHarness();
+      completeDrawing(manager, 'channel', subtype, [
+        { time: 150, price: 100 },
+        { time: 240, price: 109 },
+        { time: 180, price: 92 },
+      ].slice(0, pointCount));
+      const group = container.querySelector('svg g[data-id]')!;
+      const circles = group.querySelectorAll<SVGCircleElement>(
+        'circle[data-geometry-role^="selection-anchor-"]',
+      );
+      const squares = group.querySelectorAll<SVGRectElement>(
+        'rect[data-geometry-role^="selection-anchor-"]',
+      );
+
+      expect(circles).toHaveLength(expectedCircleCount);
+      expect(squares).toHaveLength(expectedSquareCount);
+      circles.forEach((control) => expect(control.getAttribute('pointer-events')).toBe('all'));
+      squares.forEach((control) => {
+        expect(control.getAttribute('width')).toBe(control.getAttribute('height'));
+        expect(control.getAttribute('pointer-events')).toBe('all');
+      });
+    },
+  );
+
+  it.each([
+    'trendline',
+    'ray',
+    'info_line',
+    'extended_line',
+    'trend_angle',
+  ] as const)(
+    'selected %s exposes price and time chips for both endpoints',
+    async (subtype) => {
+      const { manager, container } = await createRenderHarness({ pricePrecision: 3 });
+      completeDrawing(manager, 'trendline', subtype, [
+        { time: 150, price: 100.125 },
+        { time: 240, price: 109.875 },
+      ]);
+      const group = container.querySelector('svg g[data-id]')!;
+      const priceChips = group.querySelectorAll<SVGRectElement>(
+        'rect[data-geometry-role*="price-scale-label"]',
+      );
+      const priceTexts = Array.from(group.querySelectorAll<SVGTextElement>(
+        'text[data-geometry-role*="price-scale-label"]',
+      )).map(label => label.textContent);
+      const timeChips = group.querySelectorAll<SVGRectElement>(
+        'rect[data-geometry-role*="time-scale-label"]',
+      );
+      const timeTexts = Array.from(group.querySelectorAll<SVGTextElement>(
+        'text[data-geometry-role*="time-scale-label"]',
+      )).map(label => label.textContent);
+
+      expect(priceChips).toHaveLength(2);
+      expect(priceTexts).toEqual(['100.125', '109.875']);
+      expect(timeChips).toHaveLength(2);
+      expect(timeTexts).toHaveLength(2);
+      expect(timeTexts.every(Boolean)).toBe(true);
+      expect(new Set(timeTexts).size).toBe(2);
+    },
+  );
+
+  it.each([
+    ['trendline', 'trendline', 2, 2],
+    ['inside_pitchfork', 'channel', 3, 3],
+  ] as const)(
+    'selects a newly committed %s and renders semantic circle handles',
+    async (subtype, type, pointCount, handleCount) => {
+      const { manager, container } = await createRenderHarness();
+      completeDrawing(manager, type, subtype, [
+        { time: 150, price: 100 },
+        { time: 240, price: 109 },
+        { time: 180, price: 92 },
+      ].slice(0, pointCount));
+
+      expect(manager.getDrawings()).toEqual([
+        expect.objectContaining({ subtype, selected: true }),
+      ]);
+      const handles = container.querySelectorAll<SVGCircleElement>(
+        'svg g[data-id] circle[data-geometry-role^="selection-anchor-"]',
+      );
+      expect(handles).toHaveLength(handleCount);
+      handles.forEach((handle) => {
+        expect(handle.getAttribute('r')).toBe('5');
+        expect(handle.getAttribute('pointer-events')).toBe('all');
+      });
+    },
+  );
+
+  it.each([
+    ['parallel_channel', 'channel-boundary'],
+    ['flat_top_bottom', 'channel-boundary'],
+    ['disjoint_channel', 'channel-boundary'],
+    ['pitchfork', 'pitchfork-median-0'],
+    ['schiff_pitchfork', 'pitchfork-median-0'],
+    ['modified_schiff_pitchfork', 'pitchfork-median-0'],
+    ['inside_pitchfork', 'pitchfork-median-0'],
+  ] as const)(
+    '%s previews through the third anchor without emitting drawing:saved early',
+    async (subtype, finalPreviewRole) => {
+      const { manager, container } = await createRenderHarness();
+      const saved = vi.fn();
+      window.addEventListener('drawing:saved', saved);
+      try {
+        manager.startDrawing('channel', '#3b82f6', { subtype });
+        expect(manager.addPoint(150, 100)).toBe(false);
+        manager.updatePreviewPoint(240, 109);
+        expect(container.querySelector('g[data-id$="-preview"]')).not.toBeNull();
+        expect(saved).not.toHaveBeenCalled();
+
+        expect(manager.addPoint(240, 109)).toBe(false);
+        manager.updatePreviewPoint(180, 92);
+        expect(container.querySelector(
+          `g[data-id$="-preview"] [data-geometry-role="${finalPreviewRole}"]`,
+        )).not.toBeNull();
+        expect(saved).not.toHaveBeenCalled();
+        expect(manager.getDrawings()).toHaveLength(0);
+
+        expect(manager.addPoint(180, 92)).toBe(true);
+        expect(saved).toHaveBeenCalledOnce();
+        expect(container.querySelector('g[data-id$="-preview"]')).toBeNull();
+        expect(manager.getDrawings()).toHaveLength(1);
+      } finally {
+        window.removeEventListener('drawing:saved', saved);
+      }
+    },
+  );
+});

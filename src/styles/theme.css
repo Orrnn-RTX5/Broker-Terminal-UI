@@ -758,10 +758,26 @@ textarea {
   justify-content: center;
 }
 
-.rtx-application-menu__root-item:hover .rtx-application-menu__root-icon,
-.rtx-application-menu__root-item:focus-visible .rtx-application-menu__root-icon,
-.rtx-application-menu__root-item.is-active .rtx-application-menu__root-icon {
-  color: var(--text-primary);
+/* Neutral icons follow each row's label in every state; semantic accent classes
+   remain free to override the inherited color. */
+.rtx-application-menu :is(
+  .rtx-application-menu__root-icon,
+  .rtx-application-menu__chevron,
+  .rtx-menu-row__icon,
+  .rtx-menu-row__chevron,
+  .rtx-menu-icon--neutral
+) {
+  color: inherit;
+}
+
+.rtx-application-menu :is(
+  .rtx-application-menu__root-icon svg,
+  .rtx-application-menu__chevron,
+  .rtx-menu-row__icon svg,
+  .rtx-menu-row__chevron,
+  .rtx-file-menu svg
+) {
+  stroke-width: 1.75;
 }
 
 .rtx-application-menu__chevron,
@@ -1041,7 +1057,7 @@ tr:hover {
   white-space: nowrap;
 }
 
-.rtx-oct input[type='number'] {
+.rtx-oct .rtx-oct-lot-input {
   background: transparent !important;
   background-color: transparent !important;
   border: none !important;
@@ -1058,9 +1074,17 @@ tr:hover {
   margin: 0;
 }
 
-.rtx-oct .rtx-oct-volume-control :is(button, input):focus-visible {
+.rtx-oct .rtx-oct-volume-control button:focus-visible {
   outline: 2px solid #93c5fd !important;
   outline-offset: -2px;
+}
+
+.rtx-oct .rtx-oct-lot-input:focus,
+.rtx-oct .rtx-oct-lot-input:focus-visible {
+  background: transparent !important;
+  background-color: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .rtx-oct .rtx-oct-trade-button:focus-visible {
@@ -1157,9 +1181,9 @@ tr:hover {
   border-right: none !important;
 }
 
-.theme-light .rtx-oct input[type='number'] {
+.theme-light .rtx-oct .rtx-oct-lot-input {
   flex: 1 1 auto;
-  background-color: #ffffff !important;
+  background-color: transparent !important;
   border: none !important;
   border-radius: 0 !important;
   color: #1c1c1c !important;
@@ -1189,7 +1213,7 @@ tr:hover {
   color: #a7b0b8 !important;
 }
 
-.theme-light .rtx-oct .rtx-oct-volume-control :is(button, input):focus-visible {
+.theme-light .rtx-oct .rtx-oct-volume-control button:focus-visible {
   outline-color: #1d4ed8 !important;
 }
 

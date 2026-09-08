@@ -1,0 +1,13 @@
+ffconcat version 1.0
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/fixed-11-regression-future-recover-clean/00000.png'
+option framerate 1000
+duration 4.101000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/fixed-11-regression-future-recover-clean/00001.png'
+option framerate 1000
+duration 1.555000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/fixed-11-regression-future-recover-clean/00002.png'
+option framerate 1000
+duration 0.314000
+file 'C:/Users/ADMIN/rtx5-broker-webterminal-ui/artifacts/trend-tools-verification-20260907/fixed-11-regression-future-recover-clean/00002.png'
+option framerate 1000
+duration 0.001000

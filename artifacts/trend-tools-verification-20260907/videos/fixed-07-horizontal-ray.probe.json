@@ -1,0 +1,24 @@
+{
+  "capture": "fixed-07-horizontal-ray",
+  "method": "Continuously sampled browser screenshots, variable approximately 1-3 fps with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 2,
+  "encoded_frames": 3,
+  "source_duration_ms": 9675,
+  "encoded_duration_ms": 9675,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    0,
+    9501
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    9501,
+    9674
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\fixed-07-horizontal-ray.mp4",
+  "contact_sheet": "contact-sheets\\fixed-07-horizontal-ray.jpg",
+  "capture_errors": []
+}

@@ -179,7 +179,7 @@ const NewChartMenuItemRenderer: React.FC<{ item: NewChartMenuItem; activePair?: 
             >
                 <span className="w-3 text-[10px] flex-none">{isActive ? '✓' : ''}</span>
                 <span className="flex-1 font-mono">{item.label}</span>
-                {hasChildren && <Icon name="chevron-right" size="xs" className="text-zinc-500 [.rtx-advanced-view_&]:text-gray-400 group-hover:text-white [.rtx-advanced-view_&]:group-hover:text-gray-700" />}
+                {hasChildren && <Icon name="chevron-right" size="xs" className="rtx-menu-icon--neutral" />}
             </button>
             {hasChildren && (
                 <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[200px] py-1 z-[102] max-h-[400px] overflow-y-auto no-scrollbar">
@@ -597,7 +597,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                             <Icon name="history" size="sm" />
                         </div>
                         <span className="flex-1">{t('menu.file.openDeleted')}</span>
-                        {recentlyClosedCharts.length > 0 && <Icon name="chevron-right" size="xs" className="text-zinc-500" />}
+                        {recentlyClosedCharts.length > 0 && <Icon name="chevron-right" size="xs" className="rtx-menu-icon--neutral" />}
                     </button>
                     {recentlyClosedCharts.length > 0 && (
                         <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[190px] max-w-[280px] py-1 z-[101]">
@@ -609,7 +609,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                     className="w-full flex min-h-[30px] items-center gap-2 px-3 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default"
                                     title={`Restore ${panel.title || panel.props?.symbol || 'chart'}`}
                                 >
-                                    <Icon name="candlestick" size="sm" className="shrink-0 text-zinc-400" />
+                                    <Icon name="candlestick" size="sm" className="rtx-menu-icon--neutral shrink-0" />
                                     <span className="truncate">{panel.title || String(panel.props?.symbol || 'Chart')}</span>
                                 </button>
                             ))}
@@ -623,11 +623,11 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default"
                         title="Load profile configurations"
                     >
-                        <div className="w-4 flex items-center justify-center text-zinc-400">
+                        <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                             <Icon name="layout" size="sm" />
                         </div>
                         <span className="flex-1">{t('menu.file.profiles')}</span>
-                        <Icon name="chevron-right" size="xs" className="text-zinc-500" />
+                        <Icon name="chevron-right" size="xs" className="rtx-menu-icon--neutral" />
                     </button>
                     <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[180px] py-1 z-[101]">
                         {workspaceProfiles.map(profile => (
@@ -638,7 +638,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                 className="w-full flex min-h-[30px] items-center gap-3 px-3 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default"
                                 title={`Restore workspace ${profile.name}`}
                             >
-                                <Icon name="layout" size="sm" className="shrink-0 text-zinc-400" />
+                                <Icon name="layout" size="sm" className="rtx-menu-icon--neutral shrink-0" />
                                 <span className="truncate">{profile.name}</span>
                             </button>
                         ))}
@@ -656,7 +656,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Close current chart"
                 >
-                    <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
+                    <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="x-close" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.close')}</span>
@@ -671,7 +671,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Save workspace configuration"
                 >
-                    <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
+                    <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="save" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.save')}</span>
@@ -684,7 +684,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Export chart as image"
                 >
-                    <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
+                    <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="image" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.saveAsPicture')}</span>
@@ -701,7 +701,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'}`}
                     title={onOpenDataFolder ? 'Open application data directory' : 'Available in the desktop app'}
                 >
-                    <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
+                    <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="folder-open" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.openDataFolder')}</span>
@@ -732,7 +732,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Print chart"
                 >
-                    <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
+                    <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="print" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.print')}</span>
@@ -745,7 +745,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Preview before printing"
                 >
-                    <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
+                    <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="file-text" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.printPreview')}</span>
@@ -757,7 +757,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
                     title="Configure print settings"
                 >
-                    <div className="w-4 flex items-center justify-center text-zinc-400 group-hover:text-zinc-200">
+                    <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="settings" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.printSetup')}</span>

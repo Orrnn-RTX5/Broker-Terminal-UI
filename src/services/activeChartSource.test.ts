@@ -67,6 +67,47 @@ describe('activeChartSource registry', () => {
     });
   });
 
+  it('does not let stale same-id cleanup remove a replacement registration', () => {
+    const oldContainer = document.createElement('div');
+    const oldCanvas = document.createElement('canvas');
+    oldContainer.appendChild(oldCanvas);
+    const replacementContainer = document.createElement('div');
+    const replacementCanvas = document.createElement('canvas');
+    replacementContainer.appendChild(replacementCanvas);
+    document.body.append(oldContainer, replacementContainer);
+
+    const unregisterOld = registerActiveChartSource({
+      id: 'chart-remount',
+      getCanvas: () => oldCanvas,
+      getContainer: () => oldContainer,
+      getSymbol: () => 'XAUUSD',
+    });
+    const unregisterReplacement = registerActiveChartSource({
+      id: 'chart-remount',
+      getCanvas: () => replacementCanvas,
+      getContainer: () => replacementContainer,
+      getSymbol: () => 'BTCUSD',
+    });
+
+    expect(activateActiveChartSource('chart-remount')).toMatchObject({
+      canvas: replacementCanvas,
+      container: replacementContainer,
+      symbol: 'BTCUSD',
+    });
+
+    unregisterOld();
+
+    expect(getActiveChartSource()).toMatchObject({
+      id: 'chart-remount',
+      canvas: replacementCanvas,
+      container: replacementContainer,
+      symbol: 'BTCUSD',
+    });
+
+    unregisterReplacement();
+    expect(getActiveChartSource()).toBeNull();
+  });
+
   it('ignores a mounted but hidden chart tab without unregistering it', () => {
     const hiddenLayer = document.createElement('div');
     hiddenLayer.dataset.dockTabContent = 'panel-hidden';

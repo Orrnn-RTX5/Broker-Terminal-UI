@@ -20,19 +20,27 @@
  * - Dragging updates individual points and re-renders
  */
 
-import type { IChartApi, ISeriesApi } from 'lightweight-charts';
+import { MismatchDirection, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import {
   buildDrawingContextKey,
   buildDrawingStorageKey,
   type DrawingContextIdentity,
 } from '../drawing-tools/contextKey';
 import { getTrendLineToolFromDrawing } from '../drawing-tools/toolCatalog';
+import { getGannFibonacciTool } from '../drawing-tools/gannFibonacciToolCatalog';
+import { getBrushShapeTool } from '../drawing-tools/brushShapeToolCatalog';
+import { arrowLinePath, arrowMarkerPath, arrowMarkUpPath, arrowMarkDownPath, rectanglePath, rectangleHandles, rotatedRectangle, multiPointPath, circlePath, ellipseGeometry, arcGeometry, curvePath, defaultCurveBend, doubleCurvePath, defaultDoubleCurveBends } from '../drawing-tools/brushShapeGeometry';
+import { appendInfoLinePanel as renderInfoLinePanel } from '../drawing-tools/infoLinePanel';
+import { drawingLogicalToCoordinate } from '../drawing-tools/geometry/drawingCoordinates';
+import { projectDrawingTimeAtLogical } from '../drawing-tools/geometry/drawingTimeProjection';
+import { freehandPath, freehandPointAt, projectFreehandPoint } from '../drawing-tools/geometry/freehandGeometry';
 import {
   getTrendToolRuntimeDefaults,
   type RegressionSource,
 } from '../drawing-tools/toolDefaults';
 import {
   clipLineToViewport,
+  constrainPointTo45DegreeAngle,
   screenAngleDegrees,
   type ScreenSegment,
 } from '../drawing-tools/geometry/trendToolGeometry';
@@ -45,7 +53,18 @@ import {
   type PitchforkBand,
   type PitchforkRay,
 } from '../drawing-tools/geometry/tradingViewTrendGeometry';
+import {
+  projectFibWedgeBoundaryPoint,
+  renderGannFibonacciDrawing,
+} from '../drawing-tools/gannFibonacciRenderer';
+import { getForecastingMeasurementTool } from '../drawing-tools/forecastingMeasurementToolCatalog';
+import {
+  projectSectorBoundaryPoint,
+  renderForecastingMeasurementDrawing,
+  type ForecastingBar,
+} from '../drawing-tools/forecastingMeasurementRenderer';
 import { drawingApi, type ClientDrawing } from './drawingApi';
+import type { PositionSizing } from '../drawing-tools/positionDrawingValues';
 
 // ──────────────────────────────────────────────
 // Types
@@ -70,16 +89,20 @@ export interface DrawingPoint {
   time: number;   // unix timestamp (seconds) — anchors bar after pan/zoom
   price: number;
   logicalIndex?: number;  // kept for backward compat with saved drawings
+  barOffset?: number; // freehand: fractional bar distance from the durable time anchor
   pixelXOffset?: number;  // vline only: pixel offset from timeToCoordinate(time), sub-bar precise
 }
 
-export interface DrawingSeriesDataPoint {
+export interface DrawingSeriesDataPoint extends ForecastingBar {
   time: number;
   open?: number;
   high?: number;
   low?: number;
   close?: number;
   value?: number;
+  volume?: number;
+  tickVolume?: number;
+  realVolume?: number;
 }
 
 export type DrawingSeriesDataProvider = () => readonly DrawingSeriesDataPoint[];
@@ -104,6 +127,8 @@ export interface Drawing {
   color?: string;
   lineWidth?: number;
   lineStyle?: 'solid' | 'dashed' | 'dotted';
+  fillColor?: string;
+  fillOpacity?: number;
   selected?: boolean;
   locked?: boolean;
   serverId?: string;
@@ -117,6 +142,14 @@ export interface Drawing {
   regressionLowerDeviation?: number;
   showRegressionPearson?: boolean;
   pitchforkLevels?: number[];
+  /** Independently adjustable Long/Short Position levels. */
+  positionTargetPrice?: number;
+  positionStopPrice?: number;
+  positionEndTime?: number;
+  positionEndLogicalIndex?: number;
+  positionSizing?: PositionSizing;
+  /** Immutable source candles captured by tools such as Bars Pattern. */
+  seriesSnapshot?: DrawingSeriesDataPoint[];
 }
 
 export type DrawingCollectionChangeReason =
@@ -188,7 +221,11 @@ const REQUIRED_POINTS: Record<DrawingType, number> = {
 };
 
 const requiredPointsForDrawing = (drawing: Pick<Drawing, 'type' | 'subtype'>): number =>
-  getTrendLineToolFromDrawing(drawing.type, drawing.subtype)?.requiredPoints
+  getBrushShapeTool(drawing)?.requiredPoints
+  ?? getTrendLineToolFromDrawing(drawing.type, drawing.subtype)?.requiredPoints
+  ?? (drawing.type === 'measure'
+    ? getForecastingMeasurementTool(drawing.subtype)?.requiredPoints
+    : undefined)
   ?? REQUIRED_POINTS[drawing.type];
 
 interface StampIconDef {
@@ -218,6 +255,10 @@ const STAMP_ICONS: Record<string, StampIconDef> = {
     path: 'M12 5v14M19 12l-7 7-7-7',
     color: '#ef4444', size: 24,
   },
+  arrow: {
+    path: 'M5 12h14M13 6l6 6-6 6',
+    color: '#3b82f6', size: 24,
+  },
   stopSign: {
     path: 'M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z',
     color: '#ef4444', size: 24,
@@ -242,18 +283,6 @@ const STAMP_ICONS: Record<string, StampIconDef> = {
   },
 };
 
-// Fibonacci standard levels
-const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-const FIB_COLORS: Record<string, string> = {
-  '0': '#888888',
-  '0.236': '#2196F3',
-  '0.382': '#4CAF50',
-  '0.5': '#FF9800',
-  '0.618': '#F44336',
-  '0.786': '#9C27B0',
-  '1': '#888888',
-};
-
 // ──────────────────────────────────────────────
 // Class
 // ──────────────────────────────────────────────
@@ -264,6 +293,8 @@ export class DrawingManager {
   private activeDrawing: Drawing | null = null;
   private activeDrawingOwner: DrawingContextIdentity | null = null;
   private previewPoint: DrawingPoint | null = null;
+  private previewCursorVisible = false;
+  private rawTrendlinePreviewPoint: DrawingPoint | null = null;
   private magnetEnabled = false;
 
   private chartContexts: Map<HTMLElement, ChartContext> = new Map();
@@ -275,6 +306,7 @@ export class DrawingManager {
   private currentSymbol: string | null = null;
   private currentTimeframe: string = 'M1'; // default matches app default timeframe
   private currentAccountScope: string | undefined;
+  private renderSeriesDataCache: DrawingSeriesDataPoint[] | null = null;
 
   private get currentContextIdentity(): DrawingContextIdentity | null {
     if (!this.currentSymbol) return null;
@@ -414,24 +446,49 @@ export class DrawingManager {
 
   private activateDrawingOwner(identity: DrawingContextIdentity | null): boolean {
     if (!identity) return false;
-    for (const [container, context] of this.chartContexts.entries()) {
-      if (
-        context.contextId === identity.contextId
-        && buildDrawingContextKey(context) === buildDrawingContextKey(identity)
-      ) {
-        this.activateContext(container, context);
-        return true;
+    const targetEntry = this.resolveTargetContextEntry(identity.contextId, identity);
+    if (!targetEntry) return false;
+    this.activateContext(targetEntry[0], targetEntry[1]);
+    return true;
+  }
+
+  /**
+   * Resolve duplicate registrations deterministically. React remounts can leave
+   * an older container registered briefly, so insertion-order-first lookup may
+   * target a detached chart that happens to share the same context id.
+   */
+  private resolveTargetContextEntry(
+    contextId: string,
+    expectedIdentity?: DrawingContextIdentity,
+  ): [HTMLElement, ChartContext] | null {
+    const matches = (context: ChartContext) => (
+      context.contextId === contextId
+      && (
+        !expectedIdentity
+        || buildDrawingContextKey(context) === buildDrawingContextKey(expectedIdentity)
+      )
+    );
+    if (this.activeContainer) {
+      const activeContext = this.chartContexts.get(this.activeContainer);
+      if (activeContext && matches(activeContext)) {
+        return [this.activeContainer, activeContext];
       }
     }
-    return false;
+
+    let latestMatch: [HTMLElement, ChartContext] | null = null;
+    let latestConnectedMatch: [HTMLElement, ChartContext] | null = null;
+    for (const entry of this.chartContexts.entries()) {
+      if (!matches(entry[1])) continue;
+      latestMatch = entry;
+      if (entry[0].isConnected) latestConnectedMatch = entry;
+    }
+    return latestConnectedMatch ?? latestMatch;
   }
 
   private resolveTargetContextIdentity(contextId?: string): DrawingContextIdentity | null {
     if (!contextId) return this.currentContextIdentity;
-    for (const context of this.chartContexts.values()) {
-      if (context.contextId === contextId) return this.identityForContext(context);
-    }
-    return null;
+    const targetEntry = this.resolveTargetContextEntry(contextId);
+    return targetEntry ? this.identityForContext(targetEntry[1]) : null;
   }
 
   /**
@@ -448,13 +505,7 @@ export class DrawingManager {
       return identity ? operation(identity) : undefined;
     }
 
-    let targetEntry: [HTMLElement, ChartContext] | null = null;
-    for (const entry of this.chartContexts.entries()) {
-      if (entry[1].contextId === targetContextId) {
-        targetEntry = entry;
-        break;
-      }
-    }
+    const targetEntry = this.resolveTargetContextEntry(targetContextId);
     if (!targetEntry) return undefined;
 
     const previous = {
@@ -736,6 +787,16 @@ export class DrawingManager {
         : undefined,
     };
     if (meta?.subtype) this.activeDrawing.subtype = meta.subtype;
+    if (type === 'shapes' && meta?.subtype === 'arrow_mark_up') this.activeDrawing.color = '#089981';
+    if (getBrushShapeTool(this.activeDrawing)?.background && getBrushShapeTool(this.activeDrawing)?.defaultFill !== false) {
+      this.activeDrawing.fillColor = color;
+      this.activeDrawing.fillOpacity = .2;
+    }
+    if (type === 'shapes' && meta?.subtype === 'arrow_mark_down') this.activeDrawing.color = '#f23645';
+    if (type === 'freehand' && meta?.subtype === 'highlighter') {
+      this.activeDrawing.lineWidth = 20;
+      this.activeDrawing.fillOpacity = .3;
+    }
     this.activeDrawingOwner = this.currentContextIdentity
       ? { ...this.currentContextIdentity }
       : {
@@ -744,22 +805,44 @@ export class DrawingManager {
         timeframe: this.currentTimeframe,
       };
     this.previewPoint = null;
+    this.rawTrendlinePreviewPoint = null;
+    if (
+      getTrendLineToolFromDrawing(this.activeDrawing.type, this.activeDrawing.subtype)
+      && this.getDrawingsFor(this.activeDrawingOwner).some(drawing => drawing.selected)
+    ) {
+      this.unselectAll(this.activeDrawingOwner.contextId);
+    }
+    this.renderAll();
     return id;
   }
 
   cancelDrawing(contextId?: string): void {
     if (contextId && this.activeDrawingOwner?.contextId !== contextId) return;
+    const cancelledOwner = this.activeDrawingOwner;
     this.activeDrawing = null;
     this.activeDrawingOwner = null;
     this.previewPoint = null;
+    this.rawTrendlinePreviewPoint = null;
     this.renderAll();
+    if (cancelledOwner) {
+      window.dispatchEvent(new CustomEvent('drawing:cancelled', {
+        detail: { ...cancelledOwner },
+      }));
+    }
   }
 
   /**
    * Called on every chart click while a drawing tool is active.
    * Returns true when the drawing is complete.
    */
-  addPoint(time: number, price: number, seriesData?: any, contextId?: string): boolean {
+  addPoint(
+    time: number,
+    price: number,
+    seriesData?: any,
+    contextId?: string,
+    logicalIndex?: number,
+    shiftPressed = false,
+  ): boolean {
     if (!this.activeDrawing) return false;
     if (contextId && this.activeDrawingOwner?.contextId !== contextId) return false;
 
@@ -779,10 +862,93 @@ export class DrawingManager {
       }
     }
 
-    this.activeDrawing.points.push({ time, price: finalPrice });
+    let finalTime = time;
+    let finalLogicalIndex = Number.isFinite(logicalIndex) ? logicalIndex : undefined;
+    if (shiftPressed && this.canConstrainTrendline(this.activeDrawing)) {
+      const projected = this.projectTrendlinePoint(this.activeDrawing, {
+        time: finalTime,
+        price: finalPrice,
+        ...(finalLogicalIndex !== undefined ? { logicalIndex: finalLogicalIndex } : {}),
+      });
+      finalTime = projected.time;
+      finalPrice = projected.price;
+      finalLogicalIndex = projected.logicalIndex;
+    }
+    if (this.activeDrawing.type === 'measure' && this.activeDrawing.subtype === 'sector') {
+      const pointIndex = this.activeDrawing.points.length;
+      const origin = this.activeDrawing.points[0];
+      const radiusPoint = this.activeDrawing.points[1];
+      if (pointIndex === 2 && origin && radiusPoint) {
+        // Click three selects the angle. TradingView projects it onto the exact
+        // circular radius established by click two while retaining that angle.
+        const projected = this.projectSectorPoint(this.activeDrawing, {
+          time: finalTime,
+          price: finalPrice,
+          ...(finalLogicalIndex !== undefined ? { logicalIndex: finalLogicalIndex } : {}),
+        });
+        finalTime = projected.time;
+        finalPrice = projected.price;
+        finalLogicalIndex = projected.logicalIndex;
+      }
+    }
 
+    if (
+      this.activeDrawing.subtype === 'fib_wedge'
+      && this.activeDrawing.points.length === 2
+    ) {
+      const projected = this.projectFibWedgePoint(this.activeDrawing, {
+        time: finalTime,
+        price: finalPrice,
+        ...(finalLogicalIndex !== undefined ? { logicalIndex: finalLogicalIndex } : {}),
+      });
+      finalTime = projected.time;
+      finalPrice = projected.price;
+      finalLogicalIndex = projected.logicalIndex;
+    }
+
+    const nextShapePoint = this.anchorShapePoint(this.activeDrawing, this.clampRegressionPoint(this.activeDrawing, {
+      time: finalTime,
+      price: finalPrice,
+      ...(finalLogicalIndex !== undefined ? { logicalIndex: finalLogicalIndex } : {}),
+    }, this.activeDrawingOwner));
+    if (getBrushShapeTool(this.activeDrawing)?.requiredPoints === 0 && this.activeDrawing.points.length) {
+      const previous = this.px(this.activeDrawing.points.at(-1)!);
+      const next = this.px(nextShapePoint);
+      // The second press of a double-click must not create a duplicate vertex.
+      if (previous && next && Math.hypot(previous.x - next.x, previous.y - next.y) < 1) return false;
+    }
+    this.activeDrawing.points.push(nextShapePoint);
+    this.rawTrendlinePreviewPoint = null;
+    if (
+      this.activeDrawing.type === 'measure'
+      && this.activeDrawing.subtype === 'bars_pattern'
+      && this.activeDrawing.points.length === 2
+    ) {
+      // Freeze the selected candles as soon as the source range is complete.
+      // The third click only positions that already-captured pattern.
+      this.refreshBarsPatternSnapshot(this.activeDrawing);
+    }
     const required = requiredPointsForDrawing(this.activeDrawing);
+    // A preview sampled before this click belongs to the previous phase. Keep
+    // continuous drawings visible by using the just-recorded point as their
+    // live endpoint. Info line also shows zero measurements at its first click.
+    const showInitialInfoMetrics = this.activeDrawing.type === 'trendline'
+      && this.activeDrawing.subtype === 'info_line'
+      && this.activeDrawing.points.length === 1;
+    this.previewPoint = required === 0 || showInitialInfoMetrics
+      ? { ...this.activeDrawing.points[this.activeDrawing.points.length - 1] }
+      : null;
     if (required > 0 && this.activeDrawing.points.length >= required) {
+      if (this.activeDrawing.type === 'shapes' && ['curve', 'double_curve'].includes(this.activeDrawing.subtype!) && this.activeDrawing.points.length === 2 && this.chart && this.series) {
+        const [a, b] = this.activeDrawing.points.map(point => this.px(point));
+        if (a && b) {
+          const bends = this.activeDrawing.subtype === 'curve' ? [defaultCurveBend(a, b)] : defaultDoubleCurveBends(a, b);
+          bends.forEach(bend => {
+            const anchor = freehandPointAt(this.chart!, this.series!, bend.x, bend.y);
+            if (anchor) this.activeDrawing!.points.push(anchor);
+          });
+        }
+      }
       return this._completeDrawing() !== null;
     }
 
@@ -813,7 +979,13 @@ export class DrawingManager {
    * Called on every crosshair move while a drawing tool is active.
    * Always stores the latest cursor position so renderAll can draw the ghost preview.
    */
-  updatePreviewPoint(time: number, price: number, contextId?: string): void {
+  updatePreviewPoint(
+    time: number,
+    price: number,
+    contextId?: string,
+    logicalIndex?: number,
+    shiftPressed = false,
+  ): void {
     if (contextId && this.activeDrawingOwner?.contextId !== contextId) return;
     if (!this.activeDrawing) {
       if (this.previewPoint) {
@@ -823,8 +995,59 @@ export class DrawingManager {
       return;
     }
     // Always update — both before first click (ghost preview) and after
-    this.previewPoint = { time, price };
+    const candidatePreview: DrawingPoint = this.anchorShapePoint(this.activeDrawing, {
+      time,
+      price,
+      ...(Number.isFinite(logicalIndex) ? { logicalIndex } : {}),
+    });
+    this.previewCursorVisible = true;
+    this.rawTrendlinePreviewPoint = this.canConstrainTrendline(this.activeDrawing)
+      ? candidatePreview
+      : null;
+    this.previewPoint = this.activeDrawing.points.length === 2
+      && this.activeDrawing.subtype === 'fib_wedge'
+      ? this.projectFibWedgePoint(this.activeDrawing, candidatePreview)
+      : this.activeDrawing.points.length === 2
+        && this.activeDrawing.type === 'measure'
+        && this.activeDrawing.subtype === 'sector'
+        ? this.projectSectorPoint(this.activeDrawing, candidatePreview)
+        : shiftPressed && this.canConstrainTrendline(this.activeDrawing)
+          ? this.projectTrendlinePoint(this.activeDrawing, candidatePreview)
+          : this.clampRegressionPoint(this.activeDrawing, candidatePreview, this.activeDrawingOwner);
     this.renderAll();
+  }
+
+  /** Raw pointer samples bypass candle snapping and chart crosshair throttling. */
+  addFreehandPoint(x: number, y: number, contextId: string, force = false): boolean {
+    const drawing = this.getActiveDrawing(contextId);
+    if (drawing?.type !== 'freehand' || !this.chart || !this.series) return false;
+    const point = freehandPointAt(this.chart, this.series, x, y);
+    if (!point) return false;
+    const last = drawing.points.at(-1);
+    const previous = last ? projectFreehandPoint(this.chart, this.series, last) : null;
+    if (previous && Math.hypot(x - previous.x, y - previous.y) < (force ? .001 : .75)) return false;
+    drawing.points.push(point);
+    this.previewPoint = point;
+    this.renderAll();
+    return true;
+  }
+
+  /** Hide the moving coordinate labels without discarding unfinished geometry. */
+  hidePreviewCursor(contextId?: string): void {
+    if (contextId && this.activeDrawingOwner?.contextId !== contextId) return;
+    if (!this.activeDrawing || !this.previewCursorVisible) return;
+    this.previewCursorVisible = false;
+    this.renderAll();
+  }
+
+  /** Refresh a stationary Trendline/Ray/Info line preview when Shift changes. */
+  setPreviewShiftPressed(shiftPressed: boolean, contextId?: string): void {
+    if (contextId && this.activeDrawingOwner?.contextId !== contextId) return;
+    if (!this.activeDrawing || !this.canConstrainTrendline(this.activeDrawing)) return;
+    if (this.activeDrawing.points.length === 0 || !this.rawTrendlinePreviewPoint) return;
+    this.activateDrawingOwner(this.activeDrawingOwner);
+    const raw = this.rawTrendlinePreviewPoint;
+    this.updatePreviewPoint(raw.time, raw.price, contextId, raw.logicalIndex, shiftPressed);
   }
 
   /** Like updatePreviewPoint but also stores pixelXOffset for vline pixel-precise ghost. */
@@ -847,6 +1070,18 @@ export class DrawingManager {
     if (!owner) return null;
 
     const completed: Drawing = { ...this.activeDrawing, selected: true };
+
+    Object.assign(completed, this.resolvePositionDefaults(completed));
+
+    if (
+      completed.type === 'measure'
+      && completed.subtype === 'bars_pattern'
+      && completed.seriesSnapshot === undefined
+    ) {
+      // Compatibility fallback for callers that complete a legacy/injected
+      // active drawing without passing through the normal second-click path.
+      this.refreshBarsPatternSnapshot(completed);
+    }
 
     // Legacy/equidistant and parallel channels retain a zoom-invariant price offset.
     if (
@@ -896,6 +1131,7 @@ export class DrawingManager {
     this.activeDrawing = null;
     this.activeDrawingOwner = null;
     this.previewPoint = null;
+    this.rawTrendlinePreviewPoint = null;
 
     this.getUndoStackFor(owner).push({ action: 'add', drawing: JSON.parse(JSON.stringify(completed)) });
     this.redoStacksByContext.set(buildDrawingContextKey(owner), []);
@@ -925,7 +1161,8 @@ export class DrawingManager {
     identity: DrawingContextIdentity | null,
   ): void {
     const screenPoints = drawing.points
-      .map(point => this.px(point))
+      .map(point => drawing.type === 'freehand' && this.chart && this.series
+        ? projectFreehandPoint(this.chart, this.series, point) : this.px(point))
       .filter((point): point is { x: number; y: number } => point !== null);
     const containerRect = this.overlayContainer?.getBoundingClientRect();
     const centerX = screenPoints.length > 0
@@ -934,6 +1171,16 @@ export class DrawingManager {
     const topY = screenPoints.length > 0
       ? Math.min(...screenPoints.map(point => point.y))
       : 0;
+    const drawingGroup = Array.from(this.overlayContainer?.querySelectorAll('g[data-id]') ?? [])
+      .find(group => group.getAttribute('data-id') === drawing.id);
+    const annotationRects = Array.from(drawingGroup?.querySelectorAll(
+      '[data-geometry-role="info-line-panel"], [data-geometry-role$="-background"]',
+    ) ?? []).map(element => element.getBoundingClientRect()).filter(rect => rect.height > 0
+      && (!containerRect || (rect.bottom > containerRect.top && rect.top < containerRect.bottom)));
+    const annotationBounds = annotationRects.length ? {
+      top: Math.min(...annotationRects.map(rect => rect.top)),
+      bottom: Math.max(...annotationRects.map(rect => rect.bottom)),
+    } : undefined;
     window.dispatchEvent(new CustomEvent('drawing:selected', {
       detail: {
         drawingId: drawing.id,
@@ -943,9 +1190,14 @@ export class DrawingManager {
         color: drawing.color,
         lineWidth: drawing.lineWidth,
         lineStyle: drawing.lineStyle,
+        fillColor: drawing.fillColor,
+        fillOpacity: drawing.fillOpacity,
         locked: drawing.locked,
         anchorClientX: (containerRect?.left ?? 0) + centerX,
         anchorClientY: (containerRect?.top ?? 0) + topY,
+        ...(annotationBounds ? {
+          annotationClientBounds: annotationBounds,
+        } : {}),
       },
     }));
   }
@@ -1074,6 +1326,12 @@ export class DrawingManager {
       if (!drawing) return false;
       const previous = JSON.parse(JSON.stringify(drawing)) as Drawing;
       Object.assign(drawing, properties, { id: drawing.id, type: drawing.type });
+      const active = this.getActiveDrawing(identity.contextId);
+      if (drawing.type === 'freehand' && active?.type === 'freehand' && active.subtype === drawing.subtype && active.points.length === 0) {
+        for (const key of ['color', 'lineWidth', 'lineStyle', 'fillColor', 'fillOpacity'] as const) {
+          if (key in properties) Object.assign(active, { [key]: properties[key] });
+        }
+      }
       if (JSON.stringify(previous) === JSON.stringify(drawing)) return true;
       this.getUndoStackFor(identity).push({
         action: 'modify',
@@ -1162,21 +1420,372 @@ export class DrawingManager {
     this.renderAll();
   }
 
+  private anchorShapePoint(drawing: Drawing, point: DrawingPoint): DrawingPoint {
+    if (!getBrushShapeTool(drawing) || !this.chart || !this.series || point.logicalIndex === undefined) return point;
+    const x = drawingLogicalToCoordinate(this.chart.timeScale(), point.logicalIndex);
+    const y = this.series.priceToCoordinate(point.price);
+    if (drawing.subtype === 'arc' && drawing.points.length === 2 && x !== null && y !== null) {
+      const a = this.px(drawing.points[0]), b = this.px(drawing.points[1]);
+      if (a && b) {
+        const bend = arcGeometry(a, b, { x, y }).bend;
+        return freehandPointAt(this.chart, this.series, bend.x, bend.y) ?? point;
+      }
+    }
+    return x !== null && y !== null ? freehandPointAt(this.chart, this.series, x, y) ?? point : point;
+  }
+
+  private shapeLabelTime(point: DrawingPoint, x: number): number {
+    if (!this.chart || !this.series || point.barOffset === undefined) return point.time;
+    const scale = this.chart.timeScale();
+    const visibleTime = scale.coordinateToTime(x);
+    if (typeof visibleTime === 'number') return visibleTime;
+    const anchor = scale.timeToIndex(point.time as Time, false);
+    const logical = anchor === null ? point.logicalIndex : Number(anchor) + point.barOffset;
+    return projectDrawingTimeAtLogical(this.series, scale, logical ?? null, this.timeframeSeconds()) ?? point.time;
+  }
+
+  private shapeAnchorScreen(drawing: Drawing, index: number): { x: number; y: number } | null {
+    const point = this.px(drawing.points[index]);
+    if (!point || index !== 2 || !['arc', 'ellipse', 'rotated_rectangle'].includes(drawing.subtype!)) return point;
+    const a = this.px(drawing.points[0]), b = this.px(drawing.points[1]);
+    if (!a || !b) return point;
+    if (drawing.subtype === 'arc') return arcGeometry(a, b, point).bend;
+    if (drawing.subtype === 'ellipse') return ellipseGeometry(a, b, point).handles[0];
+    return rotatedRectangle(a, b, point).corners[1];
+  }
+
   private px(point: DrawingPoint): { x: number; y: number } | null {
     if (!this.chart || !this.series) return null;
-    let x = null;
-    if (point.logicalIndex !== undefined) {
-      x = this.chart.timeScale().logicalToCoordinate(point.logicalIndex as any);
-    }
+    if (point.barOffset !== undefined) return projectFreehandPoint(this.chart, this.series, point);
+    // Time remains the durable anchor. A captured logical index is only a
+    // fallback for points placed in lightweight-charts' future blank margin,
+    // where timeToCoordinate() is null until that candle exists.
+    let x: number | null = this.chart.timeScale().timeToCoordinate(point.time as any);
     if (x === null) {
-      x = this.chart.timeScale().timeToCoordinate(point.time as any);
+      x = point.logicalIndex !== undefined
+        ? drawingLogicalToCoordinate(this.chart.timeScale(), point.logicalIndex)
+        : null;
     }
     const y = this.series.priceToCoordinate(point.price);
     if (x === null || y === null) return null;
     return { x, y };
   }
 
-  private toDashArray(style?: string): string {
+  private pointX(point: DrawingPoint): number | null {
+    if (!this.chart) return null;
+    const timeScale = this.chart.timeScale();
+    const byTime = timeScale.timeToCoordinate(point.time as any);
+    if (byTime !== null && Number.isFinite(Number(byTime))) return Number(byTime);
+    if (point.logicalIndex === undefined) return null;
+    const byLogical = drawingLogicalToCoordinate(timeScale, point.logicalIndex);
+    return byLogical !== null && Number.isFinite(Number(byLogical))
+      ? Number(byLogical)
+      : null;
+  }
+
+  private canConstrainTrendline(drawing: Drawing): boolean {
+    return drawing.type === 'trendline'
+      && (!drawing.subtype || drawing.subtype === 'trendline' || drawing.subtype === 'ray' || drawing.subtype === 'info_line');
+  }
+
+  private isRegressionTrend(drawing: Drawing): boolean {
+    return drawing.type === 'channel' && drawing.subtype === 'regression_trend';
+  }
+
+  /** A regression range ends at real data, even when its handle is placed in future space. */
+  private clampRegressionPoint(
+    drawing: Drawing,
+    candidate: DrawingPoint,
+    owner: DrawingContextIdentity | null,
+  ): DrawingPoint {
+    if (!this.isRegressionTrend(drawing)) return candidate;
+    const context = owner ? this.resolveTargetContextEntry(owner.contextId, owner)?.[1] : null;
+    const series = context?.series ?? (owner ? null : this.series);
+    if (!series) return candidate;
+    try {
+      // Read the rendered series directly so a live-appended candle can be the
+      // boundary before a full-render provider snapshot has caught up.
+      const latest = typeof series.dataByIndex === 'function'
+        ? series.dataByIndex(Number.MAX_SAFE_INTEGER, MismatchDirection.NearestLeft)
+        : (context?.seriesDataProvider?.() ?? series.data?.())?.at(-1);
+      if (!latest || typeof latest.time !== 'number' || !Number.isFinite(latest.time)) return candidate;
+      if (candidate.time <= latest.time) return candidate;
+      return { ...candidate, time: latest.time, logicalIndex: undefined };
+    } catch {
+      return candidate;
+    }
+  }
+
+  private projectTrendlinePoint(
+    drawing: Drawing,
+    candidate: DrawingPoint,
+    anchorIndex = 0,
+    rawScreen?: { x: number; y: number },
+  ): DrawingPoint {
+    if (!this.chart || !this.series || !this.canConstrainTrendline(drawing)) return candidate;
+    const anchor = drawing.points[anchorIndex] ? this.px(drawing.points[anchorIndex]) : null;
+    const candidateScreen = rawScreen ?? this.px(candidate);
+    if (!anchor || !candidateScreen) return candidate;
+    const projected = constrainPointTo45DegreeAngle(anchor, candidateScreen);
+    const projectedTime = this.resolveDraggedPointTime(candidate, candidateScreen.x, projected.x);
+    const projectedPrice = this.series.coordinateToPrice(projected.y);
+    if (!projectedTime || projectedPrice === null) return candidate;
+    const result = { ...projectedTime, price: Number(projectedPrice) };
+    const horizontalSpan = projected.x - anchor.x;
+    const verticalSpan = projected.y - anchor.y;
+    if (Math.abs(horizontalSpan) > 0.000001 && Math.abs(verticalSpan) > 0.000001) {
+      // Candle time coordinates snap horizontally. Keep the rendered diagonal
+      // at 45 degrees after that snap instead of leaving a small angle error.
+      const actualX = this.pointX(result);
+      if (actualX !== null) {
+        const actualPrice = this.series.coordinateToPrice(
+          anchor.y + ((actualX - anchor.x) * verticalSpan / horizontalSpan),
+        );
+        if (actualPrice !== null) result.price = Number(actualPrice);
+      }
+    }
+    return result;
+  }
+
+  /** Keep Fib Wedge's angular P3 control on the radius established by P2. */
+  private projectFibWedgePoint(drawing: Drawing, candidate: DrawingPoint): DrawingPoint {
+    if (!this.chart || !this.series || drawing.subtype !== 'fib_wedge') return candidate;
+    const origin = drawing.points[0] ? this.px(drawing.points[0]) : null;
+    const radiusPoint = drawing.points[1] ? this.px(drawing.points[1]) : null;
+    const candidateScreen = this.px(candidate);
+    if (!origin || !radiusPoint || !candidateScreen) return candidate;
+
+    const projected = projectFibWedgeBoundaryPoint(origin, radiusPoint, candidateScreen);
+    const projectedPrice = this.series.coordinateToPrice(projected.y);
+    const projectedTime = this.resolveDraggedPointTime(
+      candidate,
+      candidateScreen.x,
+      projected.x,
+    );
+    if (projectedPrice === null || !projectedTime) return candidate;
+    return { ...projectedTime, price: projectedPrice };
+  }
+
+  private constrainFibWedge(drawing: Drawing): void {
+    if (drawing.subtype !== 'fib_wedge' || drawing.points.length < 3) return;
+    drawing.points[2] = this.projectFibWedgePoint(drawing, drawing.points[2]);
+  }
+
+  /** Keep Sector click three on the circular boundary established by click two. */
+  private projectSectorPoint(drawing: Drawing, candidate: DrawingPoint): DrawingPoint {
+    if (!this.chart || !this.series || drawing.subtype !== 'sector') return candidate;
+    const origin = drawing.points[0] ? this.px(drawing.points[0]) : null;
+    const radiusPoint = drawing.points[1] ? this.px(drawing.points[1]) : null;
+    const candidateScreen = this.px(candidate);
+    if (!origin || !radiusPoint || !candidateScreen) return candidate;
+
+    const projected = projectSectorBoundaryPoint(origin, radiusPoint, candidateScreen);
+    const projectedPrice = this.series.coordinateToPrice(projected.y);
+    const projectedTime = this.resolveDraggedPointTime(
+      candidate,
+      candidateScreen.x,
+      projected.x,
+    );
+    if (projectedPrice === null || !projectedTime) return candidate;
+    return { ...projectedTime, price: projectedPrice };
+  }
+
+  private constrainSector(drawing: Drawing): void {
+    if (drawing.type !== 'measure' || drawing.subtype !== 'sector' || drawing.points.length < 2) return;
+    if (drawing.points.length >= 3) {
+      drawing.points[2] = this.projectSectorPoint(drawing, drawing.points[2]);
+    }
+  }
+
+  /** Resolve a saved position end without allowing prepended history to shift its duration. */
+  private positionEndX(drawing: Drawing, anchor = drawing.points[0]): number | null {
+    if (!this.chart || !anchor) return null;
+    const timeScale = this.chart.timeScale();
+    if (drawing.positionEndTime !== undefined) {
+      const byTime = timeScale.timeToCoordinate(drawing.positionEndTime as any);
+      if (byTime !== null && Number.isFinite(Number(byTime))) return Number(byTime);
+    }
+    if (drawing.positionEndLogicalIndex === undefined) return null;
+
+    const rawEnd = drawingLogicalToCoordinate(timeScale, drawing.positionEndLogicalIndex);
+    if (rawEnd === null || !Number.isFinite(Number(rawEnd))) return null;
+    const anchorX = this.pointX(anchor);
+    if (anchorX === null || anchor.logicalIndex === undefined) return Number(rawEnd);
+    const rawAnchor = drawingLogicalToCoordinate(timeScale, anchor.logicalIndex);
+    return rawAnchor !== null && Number.isFinite(Number(rawAnchor))
+      ? anchorX + (Number(rawEnd) - Number(rawAnchor))
+      : Number(rawEnd);
+  }
+
+  private offsetCoordinateByLogicalBars(x: number, bars: number): number {
+    if (!this.chart) return x + Math.sign(bars || 1);
+    const timeScale = this.chart.timeScale();
+    const logical = timeScale.coordinateToLogical(x);
+    if (logical !== null) {
+      const shifted = drawingLogicalToCoordinate(timeScale, Number(logical) + bars);
+      if (shifted !== null && Number.isFinite(Number(shifted))) return Number(shifted);
+    }
+    return x + Math.sign(bars || 1);
+  }
+
+  /** Keep the time anchor durable and a relative logical fallback for future whitespace. */
+  private syncPositionEndFromCoordinate(drawing: Drawing, endX: number): void {
+    if (!this.chart || !drawing.points[0]) return;
+    const timeScale = this.chart.timeScale();
+    const anchor = drawing.points[0];
+    const anchorX = this.pointX(anchor);
+    const anchorLogical = anchorX !== null ? timeScale.coordinateToLogical(anchorX) : null;
+    const endLogical = timeScale.coordinateToLogical(endX);
+    const exactTime = timeScale.coordinateToTime(endX);
+
+    if (typeof exactTime === 'number' && Number.isFinite(exactTime)) {
+      drawing.positionEndTime = exactTime;
+    } else if (anchorLogical !== null && endLogical !== null) {
+      drawing.positionEndTime = anchor.time
+        + ((Number(endLogical) - Number(anchorLogical)) * this.timeframeSeconds());
+    }
+
+    if (anchorLogical !== null && endLogical !== null) {
+      // Both indices are deliberately stored as a pair. If history is
+      // prepended later, their delta still represents the exact duration.
+      anchor.logicalIndex = Number(anchorLogical);
+      drawing.positionEndLogicalIndex = Number(endLogical);
+    } else {
+      drawing.positionEndLogicalIndex = undefined;
+    }
+  }
+
+  private getSeriesDataForActiveContext(): DrawingSeriesDataPoint[] {
+    if (this.renderSeriesDataCache) return this.renderSeriesDataCache;
+    try {
+      // renderAll() temporarily swaps chart/series/context fields while walking
+      // every registered panel, but intentionally leaves activeContainer alone.
+      // Resolve by the currently-rendered identity first so studies never borrow
+      // candles from a sibling panel.
+      const context = Array.from(this.chartContexts.values()).find((candidate) => (
+        candidate.contextId === this.currentContextId
+        && candidate.symbol === this.currentSymbol
+        && candidate.timeframe === this.currentTimeframe
+        && candidate.accountScope === this.currentAccountScope
+      )) ?? (this.activeContainer ? this.chartContexts.get(this.activeContainer) : undefined);
+      const source = context?.seriesDataProvider?.() ?? (this.series as any)?.data?.();
+      const normalized = Array.isArray(source)
+        ? source
+          .filter((point) => point && Number.isFinite(Number(point.time)))
+          .map((point) => ({ ...point, time: Number(point.time) }))
+        : [];
+      this.renderSeriesDataCache = normalized;
+      return normalized;
+    } catch {
+      return [];
+    }
+  }
+
+  private refreshBarsPatternSnapshot(drawing: Drawing): void {
+    if (
+      drawing.type !== 'measure'
+      || drawing.subtype !== 'bars_pattern'
+      || drawing.points.length < 2
+    ) return;
+
+    const [first, second] = drawing.points;
+    const startTime = Math.min(first.time, second.time);
+    const endTime = Math.max(first.time, second.time);
+    drawing.seriesSnapshot = this.getSeriesDataForActiveContext()
+      .filter((point) => point.time >= startTime && point.time <= endTime)
+      .sort((left, right) => left.time - right.time)
+      .map((point) => ({ ...point }));
+  }
+
+  private timeframeSeconds(): number {
+    const normalized = String(this.currentTimeframe || 'M1').trim().toUpperCase();
+    if (normalized === 'MN' || normalized === '1MN') return 30 * 24 * 60 * 60;
+    const match = normalized.match(/^([MHDW])(\d+)$/);
+    if (!match) return 60;
+    const amount = Math.max(1, Number(match[2]) || 1);
+    const unitSeconds = match[1] === 'W'
+      ? 7 * 24 * 60 * 60
+      : match[1] === 'D'
+        ? 24 * 60 * 60
+        : match[1] === 'H'
+          ? 60 * 60
+          : 60;
+    return amount * unitSeconds;
+  }
+
+  /** Use identical viewport-sized defaults for the moving preview and saved position. */
+  private resolvePositionDefaults(drawing: Drawing): Pick<Drawing,
+    'positionTargetPrice' | 'positionStopPrice' | 'positionEndTime' | 'positionEndLogicalIndex'> {
+    const anchor = drawing.points[0];
+    if (drawing.type !== 'measure' || !anchor
+      || (drawing.subtype !== 'long_position' && drawing.subtype !== 'short_position')) return {};
+    const risk = this.defaultPositionRisk(anchor.price);
+    const direction = drawing.subtype === 'long_position' ? 1 : -1;
+    return {
+      positionTargetPrice: drawing.positionTargetPrice ?? anchor.price + direction * risk,
+      positionStopPrice: drawing.positionStopPrice ?? anchor.price - direction * risk,
+      positionEndTime: drawing.positionEndTime ?? anchor.time + 40 * this.timeframeSeconds(),
+      positionEndLogicalIndex: drawing.positionEndLogicalIndex
+        ?? (anchor.logicalIndex === undefined ? undefined : anchor.logicalIndex + 40),
+    };
+  }
+
+  /** TradingView seeds one-click positions at roughly one fifth of the plot height. */
+  private defaultPositionRisk(entry: number): number {
+    const minMove = Math.max(this.getSeriesPriceFormat().minMove, 0.000001);
+    if (!this.series) return Math.max(minMove, Math.abs(entry) * 0.01);
+    const entryY = this.series.priceToCoordinate(entry);
+    if (entryY === null || !Number.isFinite(Number(entryY))) {
+      return Math.max(minMove, Math.abs(entry) * 0.01);
+    }
+    const plotHeight = Math.max(
+      1,
+      (this.activeContainer?.clientHeight ?? 0) - (this.chart?.timeScale().height() ?? 0),
+    );
+    const screenDistance = Math.max(24, plotHeight * .19);
+    const upper = this.series.coordinateToPrice(Number(entryY) - screenDistance);
+    const lower = this.series.coordinateToPrice(Number(entryY) + screenDistance);
+    const candidates = [upper, lower]
+      .map((price) => price === null ? null : Number(price))
+      .filter((price): price is number => price !== null && Number.isFinite(price))
+      .map(price => Math.abs(price - entry));
+    return Math.max(minMove, candidates.length ? candidates.reduce((sum, value) => sum + value, 0) / candidates.length : Math.abs(entry) * 0.01);
+  }
+
+  private resolveDraggedPointTime(
+    initialPoint: DrawingPoint,
+    initialX: number,
+    targetX: number,
+  ): Pick<DrawingPoint, 'time' | 'logicalIndex'> | null {
+    if (!this.chart) return null;
+    const timeScale = this.chart.timeScale();
+    const exactTime = timeScale.coordinateToTime(targetX);
+    if (exactTime !== null && typeof exactTime === 'number' && Number.isFinite(exactTime)) {
+      // Once an actual candle time exists, discard the positional fallback so
+      // subsequent history prepends cannot shift this anchor.
+      return { time: exactTime };
+    }
+
+    const targetLogical = timeScale.coordinateToLogical(targetX);
+    if (targetLogical === null) return null;
+    // Prefer the current coordinate-derived index. Saved absolute logical
+    // indices become stale whenever older chart history is prepended.
+    const initialLogical = timeScale.coordinateToLogical(initialX)
+      ?? initialPoint.logicalIndex;
+    if (initialLogical === null) return null;
+
+    return {
+      time: initialPoint.time
+        + ((Number(targetLogical) - Number(initialLogical)) * this.timeframeSeconds()),
+      logicalIndex: Number(targetLogical),
+    };
+  }
+
+  private toDashArray(style?: string, lineWidth?: number): string {
+    if (lineWidth !== undefined) {
+      if (style === 'dashed') return `${5 * lineWidth} ${6 * lineWidth}`;
+      if (style === 'dotted') return `${lineWidth} ${3 * lineWidth}`;
+    }
     if (style === 'dashed') return '8 4';
     if (style === 'dotted') return '3 3';
     return 'none';
@@ -1225,6 +1834,7 @@ export class DrawingManager {
   }
 
   private renderContextContents(container: HTMLElement, context: ChartContext): void {
+    this.renderSeriesDataCache = null;
     this.ensureSvgOverlayForContainer(container, context);
     const svg = context.svgOverlay;
     if (!svg) return;
@@ -1266,7 +1876,12 @@ export class DrawingManager {
     // Only draw the active/preview drawings on the active container if it matches this context!
     if (this.contextOwnsActiveDrawing(context) && this.activeDrawing && this.activeDrawing.points.length === 0 && this.previewPoint) {
       const type = this.activeDrawing.type;
-      if (type === 'vline' || type === 'hline' || type === 'stamp') {
+      if (
+        type === 'vline'
+        || type === 'hline'
+        || type === 'stamp'
+        || requiredPointsForDrawing(this.activeDrawing) === 1
+      ) {
         const ghost: Drawing = {
           ...this.activeDrawing,
           id: this.activeDrawing.id + '-ghost',
@@ -1289,6 +1904,99 @@ export class DrawingManager {
       };
       this.renderDrawing(svg, preview, W, H, true);
     }
+
+    // Coordinates belong to the construction as well as the completed drawing.
+    const activeTrendGroup = this.activeDrawing
+      && getTrendLineToolFromDrawing(this.activeDrawing.type, this.activeDrawing.subtype)?.group;
+    const isPitchfork = activeTrendGroup === 'Pitchforks';
+    const isChannel = activeTrendGroup === 'Channels';
+    const isFibonacci = Boolean(this.activeDrawing && getGannFibonacciTool(this.activeDrawing.subtype));
+    const isBrushShape = Boolean(getBrushShapeTool(this.activeDrawing));
+    // Keep committed anchors visible even before the next pointer move.
+    // Construction handles are visual only; clicks still reach the chart.
+    if (
+      this.contextOwnsActiveDrawing(context)
+      && this.activeDrawing
+      && (this.canConstrainTrendline(this.activeDrawing) || isChannel || isPitchfork || isFibonacci || isBrushShape)
+      && (this.activeDrawing.points.length > 0 || ((isPitchfork || isChannel || isFibonacci || isBrushShape) && this.previewPoint))
+    ) {
+      const construction = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      construction.setAttribute('data-id', `${this.activeDrawing.id}-construction`);
+      construction.setAttribute('pointer-events', 'none');
+      const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
+      const plotH = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
+      const appendCoordinates = (point: DrawingPoint, role: string, accent: string) => {
+        const screen = this.px(point);
+        if (!screen) return;
+        if (screen.y >= 0 && screen.y <= plotH) {
+          this.appendPriceScaleLabel(construction, plotW, screen.y, point.price, accent, `${role}-price-scale-label`);
+        }
+        if (screen.x >= 0 && screen.x <= plotW) {
+          this.appendTimeScaleLabel(construction, screen.x, plotH, isBrushShape ? this.shapeLabelTime(point, screen.x) : point.time, accent, `${role}-time-scale-label`);
+        }
+      };
+      this.activeDrawing.points.forEach((point, index) => {
+        const screen = this.px(point);
+        if (!screen) return;
+        const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        handle.setAttribute('cx', String(screen.x));
+        handle.setAttribute('cy', String(screen.y));
+        handle.setAttribute('r', '5');
+        handle.setAttribute('fill', this.getThemeToken('--bg-primary', '#0d0d11'));
+        handle.setAttribute('stroke', this.activeDrawing!.color || '#2962ff');
+        handle.setAttribute('stroke-width', '2');
+        handle.setAttribute('data-geometry-role', `construction-anchor-${index + 1}`);
+        handle.setAttribute('pointer-events', 'none');
+        construction.appendChild(handle);
+        if (isPitchfork || isFibonacci || isBrushShape) {
+          appendCoordinates(point, `anchor-${index + 1}`, this.activeDrawing!.color || '#2962ff');
+        }
+      });
+      if ((isPitchfork || isFibonacci || isBrushShape) && this.previewPoint && this.previewCursorVisible) {
+        appendCoordinates(this.previewPoint, 'cursor', '#131722');
+      }
+      if (isChannel) {
+        this.appendChannelScaleLabels(construction, this.activeDrawing, plotW, plotH, true);
+      }
+      if (getBrushShapeTool(this.activeDrawing)?.requiredPoints === 0) {
+        const hint = this.svgText(16, Math.max(20, plotH - 16), 'Double-click or press Enter to finish', this.activeDrawing.color || '#2962ff', 12);
+        hint.setAttribute('data-geometry-role', 'shape-finish-hint');
+        construction.appendChild(hint);
+      }
+      svg.appendChild(construction);
+    }
+
+    // Three-click tools have meaningful committed construction geometry after
+    // point two. Keep it visible during the brief interval before the pointer
+    // supplies the third-point preview.
+    if (
+      this.contextOwnsActiveDrawing(context)
+      && (
+        (
+          this.activeDrawing?.type === 'measure'
+          && (this.activeDrawing.subtype === 'bars_pattern' || this.activeDrawing.subtype === 'sector')
+        )
+        || this.activeDrawing?.subtype === 'fib_wedge'
+        || Boolean(getBrushShapeTool(this.activeDrawing))
+      )
+      && this.activeDrawing.points.length >= 2
+      && !this.previewPoint
+    ) {
+      this.renderDrawing(svg, {
+        ...this.activeDrawing,
+        id: `${this.activeDrawing.id}-stage`,
+        selected: false,
+      }, W, H, true);
+    }
+    // Existing fills, strokes, and handles must let anchor clicks reach the
+    // chart while placing another tool. Setting only the group's attribute
+    // does not override descendants with their own pointer-events values.
+    if (this.contextOwnsActiveDrawing(context)) {
+      svg.querySelectorAll<SVGElement>('g[data-id], g[data-id] *').forEach(element => {
+        element.style.pointerEvents = 'none';
+      });
+    }
+    this.renderSeriesDataCache = null;
   }
 
 
@@ -1324,13 +2032,73 @@ export class DrawingManager {
   ): void {
     const color = d.color || '#2196F3';
     const lw = d.lineWidth || 2;
-    const dash = this.toDashArray(d.lineStyle);
+    const usesScaledLineStyle = d.type === 'trendline'
+      && (!d.subtype || d.subtype === 'trendline' || d.subtype === 'ray' || d.subtype === 'info_line');
+    const dash = this.toDashArray(d.lineStyle, usesScaledLineStyle ? lw : undefined);
     const opacity = isPreview ? '0.7' : '1';
 
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('data-id', d.id);
 
     switch (d.type) {
+
+      case 'shapes': {
+        const tool = getBrushShapeTool(d);
+        if (!tool || d.points.length < Math.min(2, tool.requiredPoints || 2)) break;
+        const a = this.px(d.points[0]), b = this.px(d.points[1] ?? d.points[0]);
+        if (!a || !b) break;
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('data-geometry-role', d.subtype!);
+        const isLine = d.subtype === 'arrow' || tool.group === 'Shapes';
+        path.setAttribute('d', d.subtype === 'rectangle' ? rectanglePath(a, b) : d.subtype === 'arrow_mark_down' ? arrowMarkDownPath(a) : d.subtype === 'arrow_mark_up' ? arrowMarkUpPath(a) : isLine ? arrowLinePath(a, b, lw) : arrowMarkerPath(a, b));
+        if (d.subtype === 'rotated_rectangle') path.setAttribute('d', rotatedRectangle(a, b, this.px(d.points[2] ?? d.points[1]) ?? b).path);
+        if (d.subtype === 'circle') path.setAttribute('d', circlePath(a, b));
+        if (d.subtype === 'ellipse') path.setAttribute('d', ellipseGeometry(a, b, this.px(d.points[2] ?? d.points[1]) ?? b).path);
+        if (d.subtype === 'arc') path.setAttribute('d', arcGeometry(a, b, this.px(d.points[2] ?? d.points[1]) ?? b).path);
+        if (d.subtype === 'curve') path.setAttribute('d', curvePath(a, b, d.points[2] ? this.px(d.points[2]) ?? undefined : undefined));
+        if (d.subtype === 'double_curve') {
+          const c = d.points[2] && this.px(d.points[2]), e = d.points[3] && this.px(d.points[3]);
+          path.setAttribute('d', doubleCurvePath(a, b, c && e ? [c, e] : undefined));
+        }
+        if (d.subtype === 'path' || d.subtype === 'polyline') path.setAttribute('d', multiPointPath(d.points.map(point => this.px(point)).filter((point): point is { x: number; y: number } => point !== null), d.subtype === 'path', lw));
+        if (d.subtype === 'triangle') path.setAttribute('d', multiPointPath(d.points.map(point => this.px(point)).filter((point): point is { x: number; y: number } => point !== null)) + ' Z');
+        const clip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+        clip.id = `shape-clip-${this.currentContextId}-${d.id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const bounds = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bounds.setAttribute('width', String(Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0))));
+        bounds.setAttribute('height', String(Math.max(0, H - (this.chart?.timeScale().height() ?? 0))));
+        clip.appendChild(bounds);
+        g.appendChild(clip);
+        path.setAttribute('clip-path', `url(#${clip.id})`);
+        path.setAttribute('fill', tool.background ? d.fillColor || 'none' : isLine ? 'none' : color);
+        if (tool.background) path.setAttribute('fill-opacity', String(d.fillOpacity ?? .2));
+        path.setAttribute('stroke', color);
+        path.setAttribute('stroke-width', isLine ? String(lw) : '1');
+        if (isLine && dash !== 'none') path.setAttribute('stroke-dasharray', dash);
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.style.opacity = opacity;
+        if (!isPreview) {
+          if (isLine) {
+            const hit = path.cloneNode(false) as SVGPathElement;
+            hit.setAttribute('data-geometry-role', 'arrow-hit');
+            hit.setAttribute('stroke', 'transparent');
+            hit.setAttribute('fill', 'none');
+            hit.setAttribute('stroke-width', String(Math.max(12, lw + 8)));
+            hit.removeAttribute('stroke-dasharray');
+            hit.setAttribute('pointer-events', 'stroke');
+            hit.style.cursor = d.locked ? 'default' : 'move';
+            hit.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+            g.appendChild(hit);
+          }
+          path.setAttribute('pointer-events', 'all');
+          path.style.cursor = d.locked ? 'default' : 'move';
+          path.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+          path.addEventListener('contextmenu', event => this.onContextMenu(event, d.id));
+        }
+        g.appendChild(path);
+        break;
+      }
 
       // ─── Horizontal Line ─────────────────────────────────────────
       case 'hline': {
@@ -1373,7 +2141,7 @@ export class DrawingManager {
           if (barX !== null) x = barX + pt.pixelXOffset;
         } else if (pt.logicalIndex !== undefined) {
           // Backward compat: old saved drawings that used logicalIndex
-          x = this.chart!.timeScale().logicalToCoordinate(pt.logicalIndex as any);
+          x = drawingLogicalToCoordinate(this.chart!.timeScale(), pt.logicalIndex);
         } else {
           // Absolute fallback — snaps to bar centre
           x = this.chart!.timeScale().timeToCoordinate(pt.time as any);
@@ -1447,6 +2215,8 @@ export class DrawingManager {
         line.style.opacity = opacity;
         g.appendChild(line);
 
+        if (usesScaledLineStyle && dash !== 'none') line.setAttribute('stroke-linecap', 'butt');
+
         if (d.subtype === 'info_line' || d.subtype === 'trend_angle') {
           const angle = screenAngleDegrees(p1, p2);
           if (d.subtype === 'trend_angle') {
@@ -1470,11 +2240,15 @@ export class DrawingManager {
             g.appendChild(angleLabel);
           } else {
             const timeScale = this.chart!.timeScale();
-            const startLogical = d.points[0].logicalIndex
+            // Counts follow the rendered candle anchors. Raw click fractions
+            // can span 13.2 bars while their snapped candle times span 14.
+            const startLogical = timeScale.timeToIndex?.(d.points[0].time as Time, false)
               ?? timeScale.coordinateToLogical(p1.x)
+              ?? d.points[0].logicalIndex
               ?? 0;
-            const endLogical = d.points[1].logicalIndex
+            const endLogical = timeScale.timeToIndex?.(d.points[1].time as Time, false)
               ?? timeScale.coordinateToLogical(p2.x)
+              ?? d.points[1].logicalIndex
               ?? startLogical;
             const priceFormat = this.getSeriesPriceFormat();
             const metrics = buildInfoLineMetrics({
@@ -1488,8 +2262,9 @@ export class DrawingManager {
               endLogical,
               minMove: priceFormat.minMove,
               pricePrecision: priceFormat.precision,
+              anglePrecision: 1,
             });
-            this.appendInfoLinePanel(g, p1, p2, metrics.display, plotW, plotH);
+            this.appendInfoLinePanel(g, p1, p2, metrics.display, plotW, plotH, d, isPreview);
           }
         }
 
@@ -1687,71 +2462,163 @@ export class DrawingManager {
       }
 
      
-      case 'fibonacci': {
-        if (d.points.length < 2) break;
-        const p1 = this.px(d.points[0]);
-        const p2 = this.px(d.points[1]);
-        if (!p1 || !p2) break;
-
-        const priceHi = Math.max(d.points[0].price, d.points[1].price);
-        const priceLo = Math.min(d.points[0].price, d.points[1].price);
-        const priceRange = priceHi - priceLo;
-        const xLeft = Math.min(p1.x, p2.x);
-        const xRight = Math.max(p1.x, p2.x);
-
-        FIB_LEVELS.forEach(level => {
-          const levelPrice = priceLo + priceRange * (1 - level);
-          const yLevel = this.series!.priceToCoordinate(levelPrice);
-          if (yLevel === null) return;
-
-          const fibColor = FIB_COLORS[level.toString()] || color;
-          const l = this.svgLine(xLeft - 200, yLevel, W + 200, yLevel, fibColor, 1, 'none');
-          l.style.opacity = opacity;
-          g.appendChild(l);
-
-          // Level label
-          const lbl = this.svgText(xRight + 4, yLevel - 3, `${level.toFixed(3)} (${levelPrice.toFixed(5)})`, fibColor, 10);
-          g.appendChild(lbl);
-        });
-
-        // Diagonal reference line
-        const diag = this.svgLine(p1.x, p1.y, p2.x, p2.y, '#888', 1, 'dashed');
-        g.appendChild(diag);
-        break;
-      }
-
-     
+      case 'fibonacci':
       case 'fib_extension': {
-        if (d.points.length < 2) break;
-        const p1 = this.px(d.points[0]);
-        const p2 = this.px(d.points[1]);
-        const p3 = d.points[2] ? this.px(d.points[2]) : null;
-        if (!p1 || !p2) break;
-
-        // Draw the AB segment
-        g.appendChild(this.svgLine(p1.x, p1.y, p2.x, p2.y, color, lw, dash));
-
-        if (p3) {
-          // Extension levels from p3 using AB height
-          const abDiff = d.points[1].price - d.points[0].price;
-          const extLevels = [0, 0.382, 0.618, 1, 1.272, 1.618, 2, 2.618];
-
-          extLevels.forEach(level => {
-            const extPrice = d.points[2].price + abDiff * level;
-            const yExt = this.series!.priceToCoordinate(extPrice);
-            if (yExt === null) return;
-            const l = this.svgLine(-200, yExt, W + 200, yExt, color, 1, level === 0 ? 'solid' : 'dashed');
-            g.appendChild(l);
-            g.appendChild(this.svgText(p3.x + 4, yExt - 3, level.toFixed(3), color, 10));
+        const screenPoints = d.points.map((point) => this.px(point));
+        if (!screenPoints[0] || !screenPoints[1]) break;
+        renderGannFibonacciDrawing({
+          group: g,
+          subtype: d.subtype
+            ?? (d.type === 'fib_extension' ? 'trend_based_fib_extension' : 'fib_retracement'),
+          dataPoints: d.points,
+          screenPoints,
+          plotWidth: Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0)),
+          plotHeight: Math.max(0, H - (this.chart?.timeScale().height() ?? 0)),
+          color,
+          lineWidth: lw,
+          dash,
+          opacity,
+          priceToCoordinate: (price) => this.series!.priceToCoordinate(price),
+          formatPrice: (price) => this.formatPrice(price),
+        });
+        if (!isPreview) {
+          g.querySelectorAll<SVGElement>('[data-geometry-role]').forEach((geometry) => {
+            const tagName = geometry.tagName.toLowerCase();
+            if (tagName === 'text') return;
+            const role = geometry.getAttribute('data-geometry-role');
+            const hitTarget = geometry.cloneNode(false) as SVGElement;
+            hitTarget.removeAttribute('data-geometry-role');
+            if (role) hitTarget.setAttribute('data-geometry-hit-for', role);
+            hitTarget.setAttribute('fill', 'transparent');
+            hitTarget.setAttribute('stroke', 'transparent');
+            hitTarget.style.opacity = '1';
+            hitTarget.style.cursor = 'move';
+            if (tagName === 'rect' || tagName === 'polygon') {
+              hitTarget.setAttribute('pointer-events', 'all');
+            } else {
+              hitTarget.setAttribute('stroke-width', '12');
+              hitTarget.setAttribute('pointer-events', 'stroke');
+            }
+            hitTarget.addEventListener('pointerdown', (event) => {
+              this.beginDrag(event as PointerEvent, d.id, null);
+            });
+            hitTarget.addEventListener('contextmenu', (event) => this.onContextMenu(event, d.id));
+            g.appendChild(hitTarget);
           });
-
-          g.appendChild(this.svgLine(p2.x, p2.y, p3.x, p3.y, '#888', 1, 'dashed'));
         }
         break;
       }
 
       // ─── Measure ─────────────────────────────────────────────────
       case 'measure': {
+        const forecastingTool = getForecastingMeasurementTool(d.subtype);
+        if (forecastingTool) {
+          const screenPoints = d.points.map((point) => this.px(point));
+          const needsSeriesData = d.subtype === 'anchored_vwap'
+            || d.subtype === 'long_position'
+            || d.subtype === 'short_position'
+            || d.subtype === 'fixed_range_volume_profile'
+            || d.subtype === 'anchored_volume_profile'
+            || d.subtype === 'position_forecast'
+            || d.subtype === 'date_range'
+            || d.subtype === 'date_and_price_range'
+            || (d.subtype === 'bars_pattern' && d.seriesSnapshot === undefined);
+          const seriesData = needsSeriesData ? this.getSeriesDataForActiveContext() : [];
+          const latestBar = seriesData[seriesData.length - 1];
+          const latestPrice = latestBar
+            ? [latestBar.close, latestBar.value, latestBar.open]
+              .find((value): value is number => typeof value === 'number' && Number.isFinite(value))
+            : undefined;
+          renderForecastingMeasurementDrawing({
+            group: g,
+            subtype: forecastingTool.id,
+            points: d.points,
+            screenPoints,
+            plot: {
+              width: Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0)),
+              height: Math.max(0, H - (this.chart?.timeScale().height() ?? 0)),
+            },
+            series: seriesData,
+            seriesSnapshot: d.seriesSnapshot,
+            latestPrice,
+            currentPrice: latestPrice,
+            positionSizing: d.positionSizing,
+            ...this.resolvePositionDefaults(d),
+            selected: Boolean(d.selected) && !isPreview,
+            timeToCoordinate: (time) => this.chart!.timeScale().timeToCoordinate(time as any),
+            logicalToCoordinate: (logical) => drawingLogicalToCoordinate(this.chart!.timeScale(), logical),
+            priceToCoordinate: (price) => this.series!.priceToCoordinate(price),
+            formatPrice: (price) => this.formatPrice(price),
+            formatTime: (time) => this.formatTimeScaleValue(time),
+            color,
+            lineWidth: lw,
+            dash,
+            opacity: Number(opacity),
+            tickSize: this.getSeriesPriceFormat().minMove,
+          });
+
+          if (d.subtype === 'long_position' || d.subtype === 'short_position') {
+            const defaults = this.resolvePositionDefaults(d);
+            const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
+            for (const [role, price, labelColor] of [
+              ['entry', d.points[0]?.price, color],
+              ['target', defaults.positionTargetPrice, '#089981'],
+              ['stop', defaults.positionStopPrice, '#f23645'],
+            ] as const) {
+              if (price === undefined) continue;
+              const y = this.series!.priceToCoordinate(price);
+              if (y !== null) this.appendPriceScaleLabel(g, plotW, y, price, labelColor, `position-${role}-price-scale-label`);
+            }
+          }
+
+          if (!isPreview) {
+            g.querySelectorAll<SVGElement>('[data-geometry-role]').forEach((geometry) => {
+              const tagName = geometry.tagName.toLowerCase();
+              const role = geometry.getAttribute('data-geometry-role');
+              if (
+                tagName === 'text'
+                || role?.startsWith('bars-pattern-candle')
+                || role?.startsWith('ghost-feed-candle')
+              ) return;
+              const hitTarget = geometry.cloneNode(false) as SVGElement;
+              hitTarget.removeAttribute('data-geometry-role');
+              if (role) hitTarget.setAttribute('data-geometry-hit-for', role);
+              hitTarget.setAttribute('fill', 'transparent');
+              hitTarget.setAttribute('stroke', 'transparent');
+              hitTarget.style.opacity = '1';
+              hitTarget.style.cursor = 'move';
+              const isFilledArea = ['rect', 'polygon', 'circle', 'ellipse'].includes(tagName)
+                || (tagName === 'path' && geometry.getAttribute('fill') !== 'none');
+              if (isFilledArea) {
+                hitTarget.setAttribute('pointer-events', 'all');
+              } else {
+                hitTarget.setAttribute('stroke-width', '12');
+                hitTarget.setAttribute('pointer-events', 'stroke');
+              }
+              const dragNodeIndex = role?.startsWith('bars-pattern-candle')
+                || role === 'bars-pattern-ghost-path'
+                ? 2
+                : role?.endsWith('-target')
+                  || role?.endsWith('-target-handle')
+                  || role?.includes('-target-label')
+                  ? -10
+                  : role?.endsWith('-stop')
+                    || role?.endsWith('-stop-handle')
+                    || role?.includes('-stop-label')
+                    ? -11
+                    : role?.endsWith('-duration-edge') || role?.endsWith('-width-handle')
+                      ? -12
+                      : null;
+              hitTarget.addEventListener('pointerdown', (event) => {
+                this.beginDrag(event as PointerEvent, d.id, dragNodeIndex);
+              });
+              hitTarget.addEventListener('contextmenu', (event) => this.onContextMenu(event, d.id));
+              g.appendChild(hitTarget);
+            });
+          }
+          break;
+        }
+
         if (d.points.length < 2) break;
         const p1 = this.px(d.points[0]);
         const p2 = this.px(d.points[1]);
@@ -1851,20 +2718,45 @@ export class DrawingManager {
 
       // ─── Freehand ────────────────────────────────────────────────
       case 'freehand': {
-        if (d.points.length < 2) break;
-        const pts = d.points.map(p => this.px(p)).filter((p): p is { x: number; y: number } => p !== null);
-        if (pts.length < 2) break;
+        if (!this.chart || !this.series || !d.points.length) break;
+        const pts = d.points.map(p => projectFreehandPoint(this.chart!, this.series!, p)).filter((p): p is { x: number; y: number } => p !== null);
+        if (!pts.length) break;
 
-        const pathData = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+        const pathData = freehandPath(pts);
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('data-geometry-role', 'brush-stroke');
         path.setAttribute('d', pathData);
         path.setAttribute('stroke', color);
         path.setAttribute('stroke-width', String(lw));
-        path.setAttribute('fill', 'none');
+        path.setAttribute('fill', d.fillColor || 'none');
+        if (d.subtype === 'highlighter') path.setAttribute('stroke-opacity', String(d.fillOpacity ?? .3));
+        path.setAttribute('fill-opacity', String(d.fillOpacity ?? .2));
         path.setAttribute('stroke-linecap', 'round');
         path.setAttribute('stroke-linejoin', 'round');
+        if (d.lineStyle === 'dashed') path.setAttribute('stroke-dasharray', '8 4');
+        if (d.lineStyle === 'dotted') path.setAttribute('stroke-dasharray', '2 4');
         path.style.opacity = opacity;
+        const clip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+        clip.id = `brush-clip-${this.currentContextId}-${d.id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const bounds = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bounds.setAttribute('width', String(Math.max(0, W - this.chart.priceScale('right').width())));
+        bounds.setAttribute('height', String(Math.max(0, H - this.chart.timeScale().height())));
+        clip.appendChild(bounds);
+        g.appendChild(clip);
+        path.setAttribute('clip-path', `url(#${clip.id})`);
         g.appendChild(path);
+        if (!isPreview) {
+          const hit = path.cloneNode(false) as SVGPathElement;
+          hit.setAttribute('data-geometry-role', 'brush-hit');
+          hit.setAttribute('stroke', 'transparent');
+          hit.setAttribute('fill', 'none');
+          hit.setAttribute('stroke-width', String(Math.max(12, lw + 8)));
+          hit.removeAttribute('stroke-dasharray');
+          hit.setAttribute('pointer-events', 'stroke');
+          hit.style.cursor = d.locked ? 'default' : 'move';
+          hit.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+          g.appendChild(hit);
+        }
         break;
       }
 
@@ -2036,12 +2928,44 @@ export class DrawingManager {
     // ─── Selection handles & drag on completed drawings ──────────
     // Channel handles are rendered inline in the channel case above (3 handles: anchor1, anchor2, width)
     if (!isPreview && d.selected && Array.isArray(d.points) && d.type !== 'channel') {
-      const trendTool = getTrendLineToolFromDrawing(d.type, d.subtype);
-      if (trendTool) {
+      const trendTool = getTrendLineToolFromDrawing(d.type, d.subtype) ?? getGannFibonacciTool(d.subtype);
+      if (d.type === 'freehand' && this.chart && this.series) {
+        const indices = d.points.length > 1 ? [0, d.points.length - 1] : [0];
+        indices.forEach((index, endpoint) => {
+          const screen = projectFreehandPoint(this.chart!, this.series!, d.points[index]);
+          if (screen) this.appendTrendSelectionHandle(g, d, screen, null, `brush-endpoint-${endpoint + 1}`);
+        });
+      } else if (getBrushShapeTool(d)) {
         const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
         const plotH = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
-        const hasTwoPointCoordinates = trendTool.drawingType === 'trendline'
-          && trendTool.requiredPoints === 2;
+        if (d.subtype === 'rectangle' && d.points.length === 2) {
+          const a = this.px(d.points[0]), b = this.px(d.points[1]);
+          if (a && b) rectangleHandles(a, b).forEach((handle, index) =>
+            this.appendTrendSelectionHandle(g, d, handle, -100 - index, `rectangle-handle-${index}`, index % 2 ? 'square' : 'circle'));
+        }
+        if (d.subtype === 'rotated_rectangle' && d.points.length === 3) {
+          const [a, b, c] = d.points.map(point => this.px(point));
+          if (a && b && c) rotatedRectangle(a, b, c).corners.forEach((handle, index) =>
+            this.appendTrendSelectionHandle(g, d, handle, -200 - index, `rotated-rectangle-width-${index}`));
+        }
+        if (d.subtype === 'ellipse' && d.points.length === 3) {
+          const [a, b, c] = d.points.map(point => this.px(point));
+          if (a && b && c) ellipseGeometry(a, b, c).handles.forEach((handle, index) =>
+            this.appendTrendSelectionHandle(g, d, handle, -200 - index * 2, `ellipse-width-${index}`));
+        }
+        d.points.forEach((point, index) => {
+          const screen = this.shapeAnchorScreen(d, index);
+          if (!screen) return;
+          if (d.subtype !== 'rectangle' && !(['rotated_rectangle', 'ellipse'].includes(d.subtype!) && index === 2)) this.appendTrendSelectionHandle(g, d, screen, d.subtype === 'circle' && index === 0 ? null : index, `shape-anchor-${index + 1}`);
+          this.appendPriceScaleLabel(g, plotW, screen.y, Number(this.series?.coordinateToPrice(screen.y) ?? point.price), color, `shape-anchor-${index + 1}-price`);
+          const labelPoint = this.chart && this.series ? freehandPointAt(this.chart, this.series, screen.x, screen.y) ?? point : point;
+          this.appendTimeScaleLabel(g, screen.x, plotH, this.shapeLabelTime(labelPoint, screen.x), color, `shape-anchor-${index + 1}-time`);
+        });
+      } else if (trendTool) {
+        const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
+        const plotH = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
+        const hasAnchorCoordinates = (trendTool.drawingType === 'trendline' && trendTool.requiredPoints === 2)
+          || Boolean(getGannFibonacciTool(d.subtype));
 
         d.points.forEach((point, index) => {
           const screenPoint = this.px(point);
@@ -2092,7 +3016,7 @@ export class DrawingManager {
             `selection-anchor-${index + 1}`,
           );
 
-          if (hasTwoPointCoordinates) {
+          if (hasAnchorCoordinates) {
             this.appendPriceScaleLabel(
               g,
               plotW,
@@ -2112,7 +3036,15 @@ export class DrawingManager {
           }
         });
       } else {
-        d.points.forEach((point, index) => {
+        const selectionPoints = d.type === 'measure'
+          && d.subtype === 'ghost_feed'
+          && d.points.length > 2
+          ? [
+            { point: d.points[0], index: 0 },
+            { point: d.points[d.points.length - 1], index: d.points.length - 1 },
+          ]
+          : d.points.map((point, index) => ({ point, index }));
+        selectionPoints.forEach(({ point, index }) => {
           const screenPoint = this.px(point);
           if (!screenPoint) return;
           const handle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -2123,6 +3055,7 @@ export class DrawingManager {
           handle.setAttribute('fill', '#ef4444');
           handle.setAttribute('stroke', '#fff');
           handle.setAttribute('stroke-width', '1');
+          handle.setAttribute('data-geometry-role', `selection-anchor-${index + 1}`);
           handle.style.cursor = 'crosshair';
           handle.setAttribute('pointer-events', 'all');
           handle.addEventListener('pointerdown', event => this.beginDrag(event, d.id, index));
@@ -2134,6 +3067,11 @@ export class DrawingManager {
     // Channel-specific anchor handles (rendered separately so they appear on top of hit zones)
     if (!isPreview && d.selected && d.type === 'channel' && d.points.length >= 2) {
       const trendTool = getTrendLineToolFromDrawing(d.type, d.subtype);
+      if (trendTool?.group === 'Channels') {
+        const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
+        const plotH = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
+        this.appendChannelScaleLabels(g, d, plotW, plotH, false);
+      }
       if (trendTool && d.subtype === 'regression_trend') {
         const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
         const plotH = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
@@ -2143,6 +3081,13 @@ export class DrawingManager {
           this.appendTrendSelectionHandle(g, d, regression.center.end, 1, 'selection-anchor-end');
           this.appendTrendSelectionHandle(g, d, regression.upper.start, 0, 'selection-anchor-upper-start');
           this.appendTrendSelectionHandle(g, d, regression.upper.end, 1, 'selection-anchor-upper-end');
+        } else {
+          // Keep a zero-sample/single-sample range editable. Its clicked price
+          // positions remain the source handles until an actual fit exists.
+          const start = this.px(d.points[0]);
+          const end = this.px(d.points[1]);
+          if (start) this.appendTrendSelectionHandle(g, d, start, 0, 'selection-anchor-start');
+          if (end) this.appendTrendSelectionHandle(g, d, end, 1, 'selection-anchor-end');
         }
       } else if (
         trendTool
@@ -2153,27 +3098,8 @@ export class DrawingManager {
         )
         && d.points.length >= 3
       ) {
-        const first = this.px(d.points[0]);
-        const second = this.px(d.points[1]);
-        const rawThird = this.px(d.points[2]);
-        if (first && second && rawThird) {
-          let controlPoint = rawThird;
-          if (d.subtype === 'parallel_channel' && Number.isFinite(d.channelOffset)) {
-            const offsetY = this.series?.priceToCoordinate(
-              d.points[0].price + (d.channelOffset as number),
-            );
-            if (offsetY !== null && offsetY !== undefined) {
-              controlPoint = { x: first.x, y: offsetY };
-            }
-          }
-
-          const channel = createChannelGeometry(
-            d.subtype,
-            first,
-            second,
-            controlPoint,
-            { midpointRatio: d.channelMidpointRatio },
-          );
+        {
+          const channel = this.getTrendChannelGeometry(d, true);
           if (channel) {
             if (d.subtype === 'parallel_channel') {
               this.appendTrendSelectionHandle(g, d, channel.baseline.start, 0, 'selection-anchor-baseline-start');
@@ -2204,7 +3130,7 @@ export class DrawingManager {
             } else {
               this.appendTrendSelectionHandle(g, d, channel.baseline.start, 0, 'selection-anchor-baseline-start');
               this.appendTrendSelectionHandle(g, d, channel.baseline.end, 1, 'selection-anchor-baseline-end');
-              this.appendTrendSelectionHandle(g, d, rawThird, 2, 'selection-anchor-source-third');
+              this.appendTrendSelectionHandle(g, d, channel.boundary.start, 2, 'selection-anchor-boundary-start');
               this.appendTrendSelectionHandle(
                 g,
                 d,
@@ -2258,6 +3184,7 @@ export class DrawingManager {
           handle.setAttribute('fill', '#ef4444');
           handle.setAttribute('stroke', '#fff');
           handle.setAttribute('stroke-width', '1');
+          handle.setAttribute('data-geometry-role', `selection-anchor-${index + 1}`);
           handle.style.cursor = 'crosshair';
           handle.setAttribute('pointer-events', 'all');
           handle.addEventListener('pointerdown', event => this.beginDrag(event, d.id, index));
@@ -2346,7 +3273,19 @@ export class DrawingManager {
   private formatTimeScaleValue(timestampSeconds: number): string {
     const date = new Date(timestampSeconds * 1000);
     if (Number.isNaN(date.getTime())) return '';
+    try {
+      // Match this chart's timezone and timeframe, including its broker offset.
+      // The browser's local timezone must not shift a drawing away from its tick.
+      const formatter = this.chart?.options?.().localization?.timeFormatter;
+      if (typeof formatter === 'function') {
+        const formatted = formatter(timestampSeconds as Time);
+        if (formatted) return formatted;
+      }
+    } catch {
+      // Detached/disposed charts retain the same UTC fallback as chart ticks.
+    }
     const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'UTC',
       weekday: 'short',
       day: '2-digit',
       month: 'short',
@@ -2442,6 +3381,96 @@ export class DrawingManager {
     };
   }
 
+  /** Share the same projected corners between the fill, handles and axis values. */
+  private getTrendChannelGeometry(drawing: Drawing, useStoredOffset: boolean): ReturnType<typeof createChannelGeometry> {
+    const subtype = drawing.subtype;
+    if (subtype !== 'parallel_channel' && subtype !== 'flat_top_bottom' && subtype !== 'disjoint_channel') return null;
+    const first = drawing.points[0] && this.px(drawing.points[0]);
+    const second = drawing.points[1] && this.px(drawing.points[1]);
+    let third = drawing.points[2] && this.px(drawing.points[2]);
+    if (!first || !second || !third) return null;
+    if (subtype === 'parallel_channel' && useStoredOffset && Number.isFinite(drawing.channelOffset)) {
+      const offsetY = this.series?.priceToCoordinate(drawing.points[0].price + drawing.channelOffset!);
+      if (offsetY !== null && offsetY !== undefined) third = { x: first.x, y: offsetY };
+    }
+    return createChannelGeometry(subtype, first, second, third, { midpointRatio: drawing.channelMidpointRatio });
+  }
+
+  private appendChannelScaleLabels(
+    group: SVGGElement,
+    drawing: Drawing,
+    plotW: number,
+    plotH: number,
+    isPreview: boolean,
+  ): void {
+    const cursor = isPreview && this.previewCursorVisible ? this.previewPoint : null;
+    const points = cursor ? [...drawing.points, cursor] : drawing.points;
+    const color = drawing.color || '#2962ff';
+    const prices: { y: number; price: number; accent: string; role: string }[] = [];
+    const times: { x: number; time: number; accent: string; role: string }[] = [];
+    const addPrice = (point: { y: number }, role: string, accent = color, value?: number) => {
+      const price = value ?? this.series?.coordinateToPrice(point.y);
+      if (price === null || price === undefined || !Number.isFinite(price) || point.y < 0 || point.y > plotH) return;
+      // Flat boundaries share a price; the moving cursor takes precedence at
+      // an identical value instead of painting two labels over one another.
+      const duplicate = prices.findIndex(entry => this.formatPrice(entry.price) === this.formatPrice(price));
+      if (duplicate >= 0) prices.splice(duplicate, 1);
+      prices.push({ y: point.y, price, accent, role });
+    };
+    const addTime = (x: number, time: number, role: string, accent = color) => {
+      if (x < 0 || x > plotW || !Number.isFinite(x)) return;
+      const duplicate = times.findIndex(entry => entry.time === time);
+      if (duplicate >= 0) times.splice(duplicate, 1);
+      times.push({ x, time, accent, role });
+    };
+    const regression = !isPreview && drawing.subtype === 'regression_trend'
+      ? this.getRegressionSegments(drawing, plotW, plotH)
+      : null;
+    const channel = this.getTrendChannelGeometry({ ...drawing, points }, !isPreview);
+    if (regression) {
+      addPrice(regression.center.start, 'regression-start');
+      addPrice(regression.center.end, 'regression-end');
+      addTime(regression.center.start.x, regression.startTime, 'range-start');
+      addTime(regression.center.end.x, regression.endTime, 'range-end');
+    } else if (!isPreview || drawing.points.length > 0) {
+      if (channel) {
+        addPrice(channel.baseline.start, 'baseline-start');
+        addPrice(channel.baseline.end, 'baseline-end');
+        addPrice(channel.boundary.start, 'boundary-start');
+        addPrice(channel.boundary.end, 'boundary-end');
+      }
+      points.slice(0, 2).forEach((point, index) => {
+        const screen = this.px(point);
+        if (!screen) return;
+        if (!channel) addPrice(screen, `anchor-${index + 1}`, color, point.price);
+        addTime(screen.x, point.time, `anchor-${index + 1}`);
+      });
+    }
+    if (cursor) {
+      const screen = this.px(cursor);
+      if (screen) {
+        addPrice(screen, 'cursor', '#131722', cursor.price);
+        addTime(screen.x, cursor.time, 'cursor', '#131722');
+      }
+    }
+
+    // Keep nearby corner values readable without changing the stored prices.
+    const ordered = [...prices].sort((a, b) => a.y - b.y);
+    const spacing = Math.min(18, Math.max(0, (plotH - 18) / Math.max(1, ordered.length - 1)));
+    ordered.forEach((entry, index) => {
+      entry.y = Math.max(9, entry.y, index > 0 ? ordered[index - 1].y + spacing : 9);
+    });
+    for (let index = ordered.length - 1; index >= 0; index -= 1) {
+      ordered[index].y = Math.min(ordered[index].y, index === ordered.length - 1 ? plotH - 9 : ordered[index + 1].y - spacing);
+    }
+    prices.forEach(entry => this.appendPriceScaleLabel(
+      group, plotW, entry.y, entry.price, entry.accent, `${entry.role}-price-scale-label`,
+    ));
+    times.forEach(entry => this.appendTimeScaleLabel(
+      group, entry.x, plotH, entry.time, entry.accent, `${entry.role}-time-scale-label`,
+    ));
+  }
+
   private appendDrawingAddTextPrompt(
     group: SVGGElement,
     x: number,
@@ -2529,65 +3558,20 @@ export class DrawingManager {
     display: InfoLineMetricDisplay,
     plotWidth: number,
     plotHeight: number,
+    drawing: Drawing,
+    isPreview: boolean,
   ): void {
-    let firstRow = display.priceChange;
-    if (display.percentChange !== null) firstRow += ` (${display.percentChange}%)`;
-    if (display.priceSteps !== null) firstRow += `, ${display.priceSteps}`;
-    const rows = [
-      firstRow,
-      `${display.bars} (${display.elapsed}), distance: ${display.pixelDistance}`,
-      display.angle,
-    ];
-    const width = Math.max(190, Math.min(270, Math.max(...rows.map(row => row.length)) * 6.25 + 24));
-    const rowHeight = 26;
-    const height = rows.length * rowHeight + 8;
-    const midpointX = (start.x + end.x) / 2;
-    const midpointY = (start.y + end.y) / 2;
-    const left = Math.max(4, Math.min(midpointX + 12, Math.max(4, plotWidth - width - 4)));
-    const preferredTop = midpointY + 13;
-    const top = preferredTop + height <= plotHeight - 4
-      ? preferredTop
-      : Math.max(4, midpointY - height - 13);
-
-    const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    background.setAttribute('x', String(left));
-    background.setAttribute('y', String(top));
-    background.setAttribute('width', String(width));
-    background.setAttribute('height', String(height));
-    background.setAttribute('rx', '4');
-    background.setAttribute('fill', this.getThemeToken('--bg-elevated', '#2a2a30'));
-    background.setAttribute('fill-opacity', '0.96');
-    background.setAttribute('data-geometry-role', 'measurement-panel');
-    background.setAttribute('pointer-events', 'none');
-    group.appendChild(background);
-
-    rows.forEach((row, index) => {
-      if (index > 0) {
-        const separator = this.svgLine(
-          left,
-          top + (index * rowHeight) + 4,
-          left + width,
-          top + (index * rowHeight) + 4,
-          this.getThemeToken('--border-secondary', '#3d3d43'),
-          1,
-          'none',
-        );
-        separator.setAttribute('data-geometry-role', 'measurement-separator');
-        separator.setAttribute('pointer-events', 'none');
-        group.appendChild(separator);
-      }
-      const label = this.svgText(
-        left + 12,
-        top + 19 + (index * rowHeight),
-        row,
-        this.getThemeToken('--text-primary', '#f5f7fb'),
-        11,
-      );
-      label.setAttribute('font-family', 'var(--font-sans), sans-serif');
-      label.setAttribute('font-weight', '600');
-      label.setAttribute('data-geometry-role', `measurement-row-${index + 1}`);
-      group.appendChild(label);
+    const background = renderInfoLinePanel(group, start, end, display, plotWidth, plotHeight, {
+      background: this.getThemeToken('--bg-elevated', '#2a2a30'),
+      text: this.getThemeToken('--text-primary', '#f5f7fb'),
     });
+    // A locked Info panel lets the canvas receive chart-pan gestures.
+    // Its line still supplies the existing selection and context-menu targets.
+    if (isPreview || drawing.locked) return;
+    background.setAttribute('pointer-events', 'all');
+    background.style.cursor = 'move';
+    background.addEventListener('pointerdown', event => this.beginDrag(event, drawing.id, null));
+    background.addEventListener('contextmenu', event => this.onContextMenu(event, drawing.id));
   }
 
   private appendInteractiveSegment(
@@ -2721,8 +3705,26 @@ export class DrawingManager {
 
     if (subtype === 'regression_trend') {
       if (!second) return true;
+      if (isPreview) {
+        // The two cursor prices select the time range. Fitted prices become
+        // authoritative only when the range is committed, as on TradingView.
+        this.appendInteractiveSegment(group, drawing, { start: first, end: second }, color, lineWidth, dash, opacity, true);
+        const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        handle.setAttribute('cx', String(second.x));
+        handle.setAttribute('cy', String(second.y));
+        handle.setAttribute('r', '5');
+        handle.setAttribute('fill', this.getThemeToken('--bg-primary', '#0d0d11'));
+        handle.setAttribute('stroke', color);
+        handle.setAttribute('stroke-width', '2');
+        handle.setAttribute('data-geometry-role', 'regression-preview-anchor');
+        handle.setAttribute('pointer-events', 'none');
+        group.appendChild(handle);
+        return true;
+      }
       const regression = this.getRegressionSegments(drawing, plotW, plotH);
-      if (!regression) return true;
+      if (!regression) {
+        return true;
+      }
       const lossColor = this.getThemeToken('--color-loss', '#ff4d4f');
       this.appendInteractivePolygon(
         group,
@@ -2819,20 +3821,7 @@ export class DrawingManager {
       || subtype === 'flat_top_bottom'
       || subtype === 'disjoint_channel'
     ) {
-      let controlPoint = third;
-      if (
-        subtype === 'parallel_channel'
-        && !isPreview
-        && Number.isFinite(drawing.channelOffset)
-      ) {
-        const offsetY = this.series!.priceToCoordinate(
-          drawing.points[0].price + (drawing.channelOffset as number),
-        );
-        if (offsetY !== null) controlPoint = { x: first.x, y: offsetY };
-      }
-      const channel = createChannelGeometry(subtype, first, second, controlPoint, {
-        midpointRatio: drawing.channelMidpointRatio,
-      });
+      const channel = this.getTrendChannelGeometry(drawing, !isPreview);
       if (!channel) return true;
       const channelFill = this.appendChannelFill(
         group,
@@ -2964,22 +3953,15 @@ export class DrawingManager {
     lower: ScreenSegment;
     pearsonCorrelation: number | null;
     sampleCount: number;
+    startTime: number;
+    endTime: number;
   } | null {
     if (drawing.points.length < 2) return null;
     const anchorA = this.px(drawing.points[0]);
     const anchorB = this.px(drawing.points[1]);
     if (!anchorA || !anchorB) return null;
 
-    let rawData: any[] = [];
-    try {
-      const context = this.activeContainer
-        ? this.chartContexts.get(this.activeContainer)
-        : undefined;
-      const data = context?.seriesDataProvider?.() ?? (this.series as any)?.data?.();
-      if (Array.isArray(data)) rawData = data;
-    } catch {
-      return null;
-    }
+    const rawData = this.getSeriesDataForActiveContext();
 
     const minTime = Math.min(drawing.points[0].time, drawing.points[1].time);
     const maxTime = Math.max(drawing.points[0].time, drawing.points[1].time);
@@ -3033,6 +4015,8 @@ export class DrawingManager {
       lower: { start: { x: startX, y: lowerStartY! }, end: { x: endX, y: lowerEndY! } },
       pearsonCorrelation: calculated.pearsonCorrelation,
       sampleCount: calculated.sampleCount,
+      startTime: selectedSamples[0].time,
+      endTime: selectedSamples[selectedSamples.length - 1].time,
     };
   }
 
@@ -3079,7 +4063,68 @@ export class DrawingManager {
     const dy = e.clientY - this.dragStartY;
 
     // ── Channel parallel-offset drag (sentinel nodeIndex = -1) ─────────
-    if (this.draggingNodeIndex === -1 && drawing.type === 'channel') {
+    const isPositionDrawing = drawing.type === 'measure'
+      && (drawing.subtype === 'long_position' || drawing.subtype === 'short_position');
+
+    // Long/Short Position target and stop levels move independently.
+    if (drawing.type === 'shapes' && ['rotated_rectangle', 'ellipse', 'arc'].includes(drawing.subtype!) && this.draggingNodeIndex !== null) {
+      const [a, b, c] = this.dragInitialPoints.map(point => this.px(point));
+      if (a && b && c) {
+        const geometry = rotatedRectangle(a, b, c);
+        let first = a, second = b, width = geometry.width;
+        if (this.draggingNodeIndex === 0) first = { x: a.x + dx, y: a.y + dy };
+        if (this.draggingNodeIndex === 1) second = { x: b.x + dx, y: b.y + dy };
+        if (this.draggingNodeIndex <= -200) width += (geometry.nx * dx + geometry.ny * dy) * (-200 - this.draggingNodeIndex < 2 ? 1 : -1);
+        if (drawing.subtype === 'arc' && this.draggingNodeIndex === 2) width += geometry.nx * dx + geometry.ny * dy;
+        const axis = rotatedRectangle(first, second, second);
+        const origin = drawing.subtype === 'arc' ? { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 } : second;
+        drawing.points = [first, second, { x: origin.x + axis.nx * width, y: origin.y + axis.ny * width }].map((point, index) =>
+          freehandPointAt(this.chart!, this.series!, point.x, point.y) ?? this.dragInitialPoints[index]);
+      }
+    } else if (drawing.type === 'shapes' && drawing.subtype === 'rectangle' && this.draggingNodeIndex !== null && this.draggingNodeIndex <= -100) {
+      const a = this.px(this.dragInitialPoints[0]), b = this.px(this.dragInitialPoints[1]);
+      if (a && b) {
+        const handle = rectangleHandles(a, b)[-100 - this.draggingNodeIndex];
+        if (handle) drawing.points = [a, b].map((point, index) =>
+          freehandPointAt(this.chart!, this.series!, point.x + (handle.xAnchor === index ? dx : 0), point.y + (handle.yAnchor === index ? dy : 0)) ?? this.dragInitialPoints[index]);
+      }
+    } else if (isPositionDrawing && (this.draggingNodeIndex === -10 || this.draggingNodeIndex === -11)) {
+      const svgRect = this.svgOverlay?.getBoundingClientRect();
+      const cursorY = e.clientY - (svgRect?.top ?? 0);
+      const cursorPrice = this.series.coordinateToPrice(cursorY);
+      const entry = drawing.points[0]?.price;
+      if (cursorPrice !== null && entry !== undefined) {
+        const minMove = Math.max(this.getSeriesPriceFormat().minMove, 0.000001);
+        const isLong = drawing.subtype === 'long_position';
+        if (this.draggingNodeIndex === -10) {
+          drawing.positionTargetPrice = isLong
+            ? Math.max(entry + minMove, cursorPrice)
+            : Math.min(entry - minMove, cursorPrice);
+        } else {
+          drawing.positionStopPrice = isLong
+            ? Math.min(entry - minMove, cursorPrice)
+            : Math.max(entry + minMove, cursorPrice);
+        }
+      }
+    } else if (isPositionDrawing && this.draggingNodeIndex === -12 && drawing.points[0]) {
+      const svgRect = this.svgOverlay?.getBoundingClientRect();
+      const cursorX = e.clientX - (svgRect?.left ?? 0);
+      const timeScale = this.chart.timeScale();
+      const anchor = drawing.points[0];
+      const anchorX = timeScale.timeToCoordinate(anchor.time as any)
+        ?? (anchor.logicalIndex !== undefined
+          ? drawingLogicalToCoordinate(timeScale, anchor.logicalIndex)
+          : null);
+      const anchorLogical = anchorX !== null
+        ? timeScale.coordinateToLogical(anchorX)
+        : anchor.logicalIndex;
+      const cursorLogical = timeScale.coordinateToLogical(cursorX);
+      if (anchorLogical !== null && cursorLogical !== null) {
+        const endLogical = Math.max(Number(anchorLogical) + 1, Number(cursorLogical));
+        const endX = drawingLogicalToCoordinate(timeScale, endLogical) ?? cursorX;
+        this.syncPositionEndFromCoordinate(drawing, endX);
+      }
+    } else if (this.draggingNodeIndex === -1 && drawing.type === 'channel') {
       // Only update channelOffset — main line stays fixed
       const svgRect = this.svgOverlay?.getBoundingClientRect();
       const cursorY = e.clientY - (svgRect?.top ?? 0);
@@ -3099,7 +4144,11 @@ export class DrawingManager {
       // ── Single node drag ──────────────────────────────────────────────
       const init = this.dragInitialPoints[this.draggingNodeIndex];
 
-      if (init.pixelXOffset !== undefined) {
+      if (init.barOffset !== undefined && getBrushShapeTool(drawing)) {
+        const origin = this.px(init);
+        const next = origin ? freehandPointAt(this.chart, this.series, origin.x + dx, origin.y + dy) : null;
+        if (next) drawing.points[this.draggingNodeIndex] = next;
+      } else if (init.pixelXOffset !== undefined) {
         // VLINE: pixel-perfect horizontal drag
         const newOffset = init.pixelXOffset + dx;
         const barX = this.chart.timeScale().timeToCoordinate(init.time as any);
@@ -3116,25 +4165,66 @@ export class DrawingManager {
         };
       } else {
         // Non-vline nodes
-        const ox = init.logicalIndex !== undefined
-          ? this.chart.timeScale().logicalToCoordinate(init.logicalIndex as any)
-          : this.chart.timeScale().timeToCoordinate(init.time as any);
+        const ox = this.chart.timeScale().timeToCoordinate(init.time as any)
+          ?? (init.logicalIndex !== undefined
+            ? drawingLogicalToCoordinate(this.chart.timeScale(), init.logicalIndex)
+            : null);
         const oy = this.series.priceToCoordinate(init.price);
         if (ox === null || oy === null) return;
-        const nt = this.chart.timeScale().coordinateToTime(ox + dx);
-        const nl = this.chart.timeScale().coordinateToLogical(ox + dx);
+        let targetX = ox + dx;
+        const isSector = drawing.type === 'measure' && drawing.subtype === 'sector';
+        const fixedPositionEndX = isPositionDrawing && this.draggingNodeIndex === 0
+          && this.dragInitialDrawingCopy
+          ? this.positionEndX(this.dragInitialDrawingCopy, init)
+          : null;
+        if (fixedPositionEndX !== null) {
+          targetX = Math.min(
+            this.offsetCoordinateByLogicalBars(fixedPositionEndX, -1),
+            targetX,
+          );
+        }
+        const resolvedTime = this.resolveDraggedPointTime(init, ox, targetX);
         const np = this.series.coordinateToPrice(oy + dy);
-        if (nt !== null && np !== null) {
-          drawing.points[this.draggingNodeIndex] = {
-            time: nt as number,
-            price: np,
-            logicalIndex: init.logicalIndex !== undefined ? (nl ?? undefined) : undefined,
-          };
+        if (resolvedTime && np !== null) {
+          let nextPrice = Number(np);
+          if (isPositionDrawing && this.draggingNodeIndex === 0) {
+            const minMove = Math.max(this.getSeriesPriceFormat().minMove, 0.000001);
+            const target = drawing.positionTargetPrice;
+            const stop = drawing.positionStopPrice;
+            if (target !== undefined && stop !== undefined) {
+              nextPrice = drawing.subtype === 'long_position'
+                ? Math.max(stop + minMove, Math.min(target - minMove, nextPrice))
+                : Math.max(target + minMove, Math.min(stop - minMove, nextPrice));
+            }
+          }
+          drawing.points[this.draggingNodeIndex] = this.clampRegressionPoint(drawing, {
+            ...resolvedTime,
+            price: nextPrice,
+          }, this.draggingOwner);
+          if (e.shiftKey && this.canConstrainTrendline(drawing)) {
+            drawing.points[this.draggingNodeIndex] = this.projectTrendlinePoint(
+              drawing,
+              drawing.points[this.draggingNodeIndex],
+              this.draggingNodeIndex === 0 ? 1 : 0,
+              { x: targetX, y: oy + dy },
+            );
+          }
+          if (isSector) {
+            this.constrainSector(drawing);
+          }
+          if (fixedPositionEndX !== null) {
+            this.syncPositionEndFromCoordinate(drawing, fixedPositionEndX);
+          }
+          this.constrainFibWedge(drawing);
         }
       }
     } else {
       // ── Whole drawing drag ────────────────────────────────────────────
       drawing.points = this.dragInitialPoints.map(pt => {
+        if (drawing.type === 'freehand' || getBrushShapeTool(drawing)) {
+          const origin = projectFreehandPoint(this.chart!, this.series!, pt);
+          return origin ? freehandPointAt(this.chart!, this.series!, origin.x + dx, origin.y + dy) ?? pt : pt;
+        }
         if (pt.pixelXOffset !== undefined) {
           // VLINE: pure pixel offset addition
           const newOffset = pt.pixelXOffset + dx;
@@ -3152,23 +4242,72 @@ export class DrawingManager {
           };
         }
         // Non-vline fallback
-        const ox = pt.logicalIndex !== undefined
-          ? this.chart!.timeScale().logicalToCoordinate(pt.logicalIndex as any)
-          : this.chart!.timeScale().timeToCoordinate(pt.time as any);
+        const ox = this.chart!.timeScale().timeToCoordinate(pt.time as any)
+          ?? (pt.logicalIndex !== undefined
+            ? drawingLogicalToCoordinate(this.chart!.timeScale(), pt.logicalIndex)
+            : null);
         const oy = this.series!.priceToCoordinate(pt.price);
         if (ox === null || oy === null) return pt;
-        const nt = this.chart!.timeScale().coordinateToTime(ox + dx);
-        const nl = this.chart!.timeScale().coordinateToLogical(ox + dx);
+        const resolvedTime = this.resolveDraggedPointTime(pt, ox, ox + dx);
         const np = this.series!.coordinateToPrice(oy + dy);
-        if (nt !== null && np !== null) {
+        if (resolvedTime && np !== null) {
           return {
-            time: nt as number,
+            ...resolvedTime,
             price: np,
-            logicalIndex: pt.logicalIndex !== undefined ? (nl ?? undefined) : undefined,
           };
         }
         return pt;
       });
+
+      if (
+        isPositionDrawing
+        && this.dragInitialDrawingCopy
+        && this.dragInitialPoints[0]
+        && drawing.points[0]
+      ) {
+        const initialEndX = this.positionEndX(
+          this.dragInitialDrawingCopy,
+          this.dragInitialPoints[0],
+        );
+        const initialEntry = this.dragInitialPoints[0].price;
+        const priceDelta = drawing.points[0].price - initialEntry;
+        const minMove = Math.max(this.getSeriesPriceFormat().minMove, 0.000001);
+        const initialRisk = Math.max(this.defaultPositionRisk(initialEntry), minMove);
+        const direction = drawing.subtype === 'long_position' ? 1 : -1;
+        const initialTarget = this.dragInitialDrawingCopy.positionTargetPrice
+          ?? initialEntry + (direction * initialRisk);
+        const initialStop = this.dragInitialDrawingCopy.positionStopPrice
+          ?? initialEntry - (direction * initialRisk);
+        drawing.positionTargetPrice = initialTarget + priceDelta;
+        drawing.positionStopPrice = initialStop + priceDelta;
+        if (initialEndX !== null) {
+          this.syncPositionEndFromCoordinate(drawing, initialEndX + dx);
+        } else {
+          const timeDelta = drawing.points[0].time - this.dragInitialPoints[0].time;
+          drawing.positionEndTime = (
+            this.dragInitialDrawingCopy.positionEndTime
+            ?? this.dragInitialPoints[0].time + (40 * this.timeframeSeconds())
+          ) + timeDelta;
+          drawing.positionEndLogicalIndex = undefined;
+        }
+      }
+    }
+
+    this.constrainSector(drawing);
+
+    if (
+      drawing.type === 'measure'
+      && drawing.subtype === 'bars_pattern'
+      && (
+        this.draggingNodeIndex === 0
+        || this.draggingNodeIndex === 1
+        || this.draggingNodeIndex === null
+      )
+    ) {
+      // Source-anchor edits intentionally define a new frozen candle range.
+      // The destination anchor (index 2) never reaches this branch, so moving
+      // the copied pattern cannot mutate its source snapshot.
+      this.refreshBarsPatternSnapshot(drawing);
     }
 
     this.renderAll();
@@ -3192,6 +4331,9 @@ export class DrawingManager {
           if (this.draggingOwner) {
             this.persistLocalFor(this.draggingOwner, this.getDrawingsFor(this.draggingOwner));
             this.dispatchDrawingsChanged(this.draggingOwner, 'updated');
+          }
+          if (drawing.subtype === 'info_line' || drawing.type === 'freehand' || getBrushShapeTool(drawing)) {
+            this.dispatchDrawingSelection(drawing, this.draggingOwner);
           }
         }
       }
@@ -3231,9 +4373,11 @@ export class DrawingManager {
 
   /** Persist one registered chart context without relying on the last active panel. */
   persistCurrentContext(targetContextId?: string): boolean {
+    const targetEntry = targetContextId
+      ? this.resolveTargetContextEntry(targetContextId)
+      : null;
     const identity = targetContextId
-      ? Array.from(this.chartContexts.values())
-        .find(context => context.contextId === targetContextId)
+      ? (targetEntry ? this.identityForContext(targetEntry[1]) : null)
       : this.currentContextIdentity;
     if (!identity) return false;
     this.persistLocalFor(identity, this.getDrawingsFor(identity));
@@ -3310,6 +4454,8 @@ export class DrawingManager {
           text: drawing.text,
           color: drawing.color,
           lineWidth: drawing.lineWidth,
+          fillColor: drawing.fillColor,
+          fillOpacity: drawing.fillOpacity,
           lineStyle: drawing.lineStyle,
           selected: false as const,
           locked: drawing.locked ?? false,
@@ -3321,6 +4467,12 @@ export class DrawingManager {
           regressionLowerDeviation: drawing.regressionLowerDeviation,
           showRegressionPearson: drawing.showRegressionPearson,
           pitchforkLevels: drawing.pitchforkLevels,
+          positionTargetPrice: drawing.positionTargetPrice,
+          positionStopPrice: drawing.positionStopPrice,
+          positionEndTime: drawing.positionEndTime,
+          positionEndLogicalIndex: drawing.positionEndLogicalIndex,
+          positionSizing: drawing.positionSizing,
+          seriesSnapshot: drawing.seriesSnapshot,
           serverId: drawing.serverId ?? undefined,
         } as Drawing));
         this.drawingsBySymbol.set(drawingContextKey, loadedDrawings);
@@ -3453,6 +4605,13 @@ export class DrawingManager {
   /** Public alias — TradingChart.tsx calls this to finish freehand drawings */
   finishDrawing(contextId?: string): Drawing | null {
     if (contextId && this.activeDrawingOwner?.contextId !== contextId) return null;
+    const shape = getBrushShapeTool(this.activeDrawing);
+    if (shape && this.activeDrawing!.points.length < (shape.requiredPoints || shape.minimumPoints || 2)) return null;
+    if (
+      this.activeDrawing?.type === 'measure'
+      && this.activeDrawing.subtype === 'ghost_feed'
+      && this.activeDrawing.points.length < 2
+    ) return null;
     return this._completeDrawing();
   }
 

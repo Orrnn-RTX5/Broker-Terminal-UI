@@ -1,0 +1,31 @@
+{
+  "method": "Browser screenshot stream captured continuously during native browser actions; OS cursor is not included",
+  "durationMs": 3200,
+  "frames": [
+    {
+      "file": "00000.png",
+      "ms": 0
+    },
+    {
+      "file": "00001.png",
+      "ms": 634
+    },
+    {
+      "file": "00002.png",
+      "ms": 1392
+    },
+    {
+      "file": "00003.png",
+      "ms": 1903
+    },
+    {
+      "file": "00004.png",
+      "ms": 2409
+    },
+    {
+      "file": "00005.png",
+      "ms": 3200
+    }
+  ],
+  "errors": []
+}

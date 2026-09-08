@@ -1,0 +1,41 @@
+{
+  "capture": "tv-long-position",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 10,
+  "encoded_frames": 11,
+  "source_duration_ms": 4934,
+  "encoded_duration_ms": 4934,
+  "width": 1920,
+  "height": 864,
+  "source_timestamps_ms": [
+    0,
+    468,
+    1166,
+    1757,
+    2508,
+    2946,
+    3284,
+    3825,
+    4367,
+    4702
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    468,
+    1166,
+    1757,
+    2508,
+    2946,
+    3284,
+    3825,
+    4367,
+    4702,
+    4933
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\tv-long-position.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\tv-long-position.jpg",
+  "capture_errors": []
+}

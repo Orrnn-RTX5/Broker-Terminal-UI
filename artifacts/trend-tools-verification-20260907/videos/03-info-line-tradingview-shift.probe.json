@@ -1,0 +1,39 @@
+{
+  "capture": "03-info-line-tradingview-shift",
+  "method": "Continuously sampled browser screenshots with variable sampling intervals with possible longer capture gaps. Original timestamps are preserved. OS pointer is not captured. This is not a native 60 fps screen recording.",
+  "source_frames": 9,
+  "encoded_frames": 10,
+  "source_duration_ms": 13188,
+  "encoded_duration_ms": 13188,
+  "width": 1920,
+  "height": 920,
+  "source_timestamps_ms": [
+    0,
+    929,
+    1704,
+    2254,
+    7804,
+    11173,
+    11583,
+    12001,
+    12527
+  ],
+  "encoded_timestamps_ms": [
+    0,
+    929,
+    1704,
+    2254,
+    7804,
+    11173,
+    11583,
+    12001,
+    12527,
+    13187
+  ],
+  "initial_first_sample_hold_ms": 0,
+  "timing_verified": true,
+  "video": "videos\\03-info-line-tradingview-shift.mp4",
+  "capture_complete": true,
+  "contact_sheet": "contact-sheets\\03-info-line-tradingview-shift.jpg",
+  "capture_errors": []
+}
