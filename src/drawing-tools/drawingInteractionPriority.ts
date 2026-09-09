@@ -1,17 +1,20 @@
 import type { Drawing } from '../services/drawingManager';
 import { getTrendLineToolFromDrawing } from './toolCatalog';
 import { getBrushShapeTool } from './brushShapeToolCatalog';
+import { getChartPatternTool } from './chartPatternToolCatalog';
+import { getForecastingMeasurementTool } from './forecastingMeasurementToolCatalog';
 
 /** Anchor tools must retain mouse presses even when movement cancels a chart click. */
 export const usesDirectDrawingPointerInput = (drawing: Pick<Drawing, 'type' | 'subtype'> | null | undefined): boolean =>
   Boolean(drawing && (
     getTrendLineToolFromDrawing(drawing.type, drawing.subtype)
     || getBrushShapeTool(drawing)
+    || getChartPatternTool(drawing)
     || drawing.type === 'freehand'
     || drawing.type === 'fibonacci'
     || drawing.type === 'fib_extension'
     || (drawing.type === 'measure'
-      && (drawing.subtype === 'long_position' || drawing.subtype === 'short_position'))
+      && getForecastingMeasurementTool(drawing.subtype))
   ));
 
 const getChartWrapper = (container: HTMLElement | null): HTMLElement | null =>

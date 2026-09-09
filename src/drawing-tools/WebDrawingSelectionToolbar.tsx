@@ -1,3 +1,4 @@
+import { getChartPatternTool } from './chartPatternToolCatalog';
 import { Lock, Settings2, Trash2, Unlock } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -93,7 +94,7 @@ export function WebDrawingSelectionToolbar() {
   }, [selection]);
 
   if (!selection) return null;
-  const backgroundLabel = selection.type === 'freehand' ? 'Brush background' : 'Shape background';
+  const backgroundLabel = selection.type === 'freehand' ? 'Brush background' : selection.type === 'pattern' ? 'Pattern background' : 'Shape background';
 
   const update = (properties: Partial<Drawing>) => {
     drawingManager.updateDrawingProperties(
@@ -109,7 +110,7 @@ export function WebDrawingSelectionToolbar() {
       ref={toolbarRef}
       className="web-drawing-selection-toolbar"
       role="toolbar"
-      aria-label={`Edit ${selection.subtype || selection.type}`}
+      aria-label={`Edit ${getChartPatternTool(selection)?.label || selection.subtype || selection.type}`}
       style={position
         ? { left: position.left, top: position.top }
         : { left: 0, top: 0, visibility: 'hidden' }}
@@ -151,7 +152,7 @@ export function WebDrawingSelectionToolbar() {
       {selection.subtype === 'highlighter' && <input type="range" aria-label="Highlighter opacity" min="5" max="100"
         value={Math.round((selection.fillOpacity ?? .3) * 100)}
         onChange={event => update({ fillOpacity: Number(event.target.value) / 100 })} style={{ width: 65 }} />}
-      {((selection.type === 'freehand' && selection.subtype !== 'highlighter') || getBrushShapeTool(selection)?.background) && <>
+      {((selection.type === 'freehand' && selection.subtype !== 'highlighter') || getBrushShapeTool(selection)?.background || getChartPatternTool(selection)?.background) && <>
         <label title={backgroundLabel}>
           <input type="checkbox" aria-label={backgroundLabel} checked={Boolean(selection.fillColor)}
             onChange={event => update({ fillColor: event.target.checked ? selection.color || '#2962ff' : '', fillOpacity: selection.fillOpacity ?? .2 })} />

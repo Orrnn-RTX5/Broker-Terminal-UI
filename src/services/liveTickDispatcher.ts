@@ -274,7 +274,7 @@ export const flushLiveTicks = (): void => {
   scheduleRetry(appRetry);
 };
 
-/** Clear every quote owner at a broker/account/token boundary. */
+/** Clear every quote owner at a broker/account ownership boundary. */
 export const resetLiveMarketDataSession = (): void => {
   // FIX: Source timestamps are comparable only within one broker session. Old
   // queues/caches would otherwise reject or briefly repaint the new session.
@@ -295,7 +295,9 @@ export const resetLiveTickDispatcherForTests = (): void => {
   clearDispatcherRuntime();
 };
 
-// FIX: Central registration makes login, logout, account switch, broker switch,
-// and token rotation share one atomic stale-market-data invalidation path.
-onSessionChange(() => resetLiveMarketDataSession());
+// Renewing credentials does not change the owner or event-time ordering of
+// accepted quotes. Keep the display continuous while sockets reauthenticate.
+onSessionChange((reason) => {
+  if (reason !== 'token_rotation') resetLiveMarketDataSession();
+});
 

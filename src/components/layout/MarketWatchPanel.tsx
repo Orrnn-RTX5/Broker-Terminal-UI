@@ -272,6 +272,8 @@ const MarketWatchRow: React.FC<{
               <span style={{ width: 7, flexShrink: 0, display: 'inline-block' }} />
             )}
             <span aria-label={displaySymbol} className="rtx-market-watch__symbol" style={{
+              flex: 1,
+              minWidth: 0,
               fontSize: 13,
               fontWeight: 500,
               color: 'var(--text-primary)',
@@ -286,16 +288,15 @@ const MarketWatchRow: React.FC<{
               <span
                 className="rtx-market-watch__status"
                 aria-label={`${displaySymbol} ${statusLabel.toLowerCase()}${quoteAge ? `, last quote ${quoteAge} ago` : ''}`}
+                title={`${displaySymbol} ${statusLabel.toLowerCase()}${quoteAge ? `, last quote ${quoteAge} ago` : ''}`}
                 style={{
                   flexShrink: 0,
-                  fontSize: 10,
-                  fontWeight: 400,
-                  color: '#6b6b73',
-                  letterSpacing: '0.04em',
+                  width: 5,
+                  height: 5,
+                  borderRadius: '50%',
+                  background: '#6b6b73',
                 }}
-              >
-                {statusLabel}{quoteAge ? ` · ${quoteAge}` : ''}
-              </span>
+              />
             )}
           </div>
         </td>

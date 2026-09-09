@@ -1,3 +1,5 @@
+import { CHART_PATTERN_GROUPS, CHART_PATTERN_TOOLS } from './chartPatternToolCatalog';
+import { ChartPatternToolIcon } from './ChartPatternToolIcon';
 import { ChevronRight, PanelLeftClose } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -43,6 +45,7 @@ type DrawingCommandTool = PayloadFor<'SELECT_TOOL'>['tool'];
 type RailMenuId =
   | 'trend'
   | 'fibonacci'
+  | 'patterns'
   | 'forecasting'
   | 'shapes'
   | 'annotations'
@@ -518,6 +521,8 @@ export function WebDrawingToolsRail({ selectedSymbol }: WebDrawingToolsRailProps
     ? 'Lines, channels, and pitchforks'
     : menuOpen === 'fibonacci'
       ? 'Gann and Fibonacci tools'
+      : menuOpen === 'patterns'
+        ? 'Chart patterns'
       : menuOpen === 'forecasting'
         ? 'Forecasting and measurement tools'
         : menuOpen === 'shapes'
@@ -532,6 +537,7 @@ export function WebDrawingToolsRail({ selectedSymbol }: WebDrawingToolsRailProps
     <div
       ref={menuRef}
       className="web-drawing-tools-menu"
+      data-menu={menuOpen}
       role="menu"
       aria-label={menuLabel}
       style={menuPosition
@@ -610,6 +616,21 @@ export function WebDrawingToolsRail({ selectedSymbol }: WebDrawingToolsRailProps
           {groupIndex < groupedGannFibonacciTools.length - 1 ? (
             <div className="web-drawing-tools-menu__separator" />
           ) : null}
+        </section>
+      ))}
+
+      {menuOpen === 'patterns' && CHART_PATTERN_GROUPS.map((group, groupIndex) => (
+        <section className="web-drawing-tools-menu__group" aria-label={group} key={group}>
+          <div className="web-drawing-tools-menu__heading">{group}</div>
+          {CHART_PATTERN_TOOLS.filter(tool => tool.group === group).map(tool => {
+            const selected = visibleActiveTool?.tool === 'pattern' && visibleActiveTool.subtype === tool.id;
+            return <button className="web-drawing-tools-menu__item" data-tool-id={tool.id}
+              data-selected={selected ? 'true' : 'false'} role="menuitemradio" aria-checked={selected}
+              key={tool.id} type="button" onClick={() => dispatchDrawingTool('pattern', tool.id)}>
+              <ChartPatternToolIcon id={tool.id} /><span className="web-drawing-tools-menu__label">{tool.label}</span>
+            </button>;
+          })}
+          {groupIndex < CHART_PATTERN_GROUPS.length - 1 && <div className="web-drawing-tools-menu__separator" />}
         </section>
       ))}
 
@@ -805,6 +826,13 @@ export function WebDrawingToolsRail({ selectedSymbol }: WebDrawingToolsRailProps
         >
           <Icon name="fibonacci" size={20} />
           <ChevronRight className="web-drawing-tools-rail__flyout-mark" aria-hidden="true" size={7} />
+        </button>
+
+        <button className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
+          data-active={visibleActiveTool?.tool === 'pattern' ? 'true' : 'false'} type="button"
+          aria-label="Chart patterns" aria-haspopup="menu" aria-expanded={menuOpen === 'patterns'}
+          onClick={event => openRailMenu('patterns', event.currentTarget)} {...tooltipProps('patterns', 'Chart patterns')}>
+          <ChartPatternToolIcon /><ChevronRight className="web-drawing-tools-rail__flyout-mark" aria-hidden="true" size={7} />
         </button>
 
         <button

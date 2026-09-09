@@ -1,3 +1,4 @@
+import { getChartPatternTool } from '../../drawing-tools/chartPatternToolCatalog';
 import React, {
   useCallback,
   useEffect,
@@ -50,6 +51,7 @@ const TYPE_LABELS: Record<DrawingType, string> = {
   ellipse: 'Ellipse',
   shapes: 'Shape',
   stamp: 'Stamp',
+  pattern: 'Chart pattern',
 };
 
 const STAMP_LABELS: Record<string, string> = {
@@ -72,6 +74,8 @@ const humanizeSubtype = (value: string): string => value
   .replace(/^./, character => character.toUpperCase());
 
 export const getChartObjectDisplayName = (drawing: Pick<Drawing, 'type' | 'subtype'>): string => {
+  const pattern = getChartPatternTool(drawing);
+  if (pattern) return pattern.label;
   const trendTool = getTrendLineToolFromDrawing(drawing.type, drawing.subtype);
   if (trendTool) return trendTool.label;
   if (drawing.type === 'stamp' && drawing.subtype) {

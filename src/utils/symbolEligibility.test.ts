@@ -70,4 +70,15 @@ describe('symbol eligibility helpers', () => {
       'ETHUSD',
     )).toBe('ETHUSD');
   });
+
+  it('keeps the open chart selected across feed changes after initial restoration', () => {
+    const authorized = ['XAUUSD', 'BTCUSD'];
+    for (const live of [['BTCUSD'], [], ['XAUUSD', 'BTCUSD'], ['BTCUSD']]) {
+      expect(pickPreferredChartSymbol(authorized, live, 'XAUUSD', false)).toBe('XAUUSD');
+    }
+  });
+
+  it('still replaces an unauthorized selection after initial restoration', () => {
+    expect(pickPreferredChartSymbol(['EURUSD', 'BTCUSD'], ['BTCUSD'], 'XAUUSD', false)).toBe('BTCUSD');
+  });
 });

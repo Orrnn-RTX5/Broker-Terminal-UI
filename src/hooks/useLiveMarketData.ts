@@ -944,6 +944,10 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
     () => getApiSessionDescriptor(accountId || 'public').apiRootBaseUrl,
     [accountId, sessionRevision],
   );
+  // Quote display survives a refresh of the same catalog. Never reuse another
+  // broker/account's catalog, and keep trade authorization independently gated.
+  const catalogScope = `${publicApiRootBaseUrl}|${getStoredBrokerId()}|${isAuthenticated ? accountId || 'authenticated' : 'public'}`;
+  const retainedCatalogRef = useRef<{ scope: string; symbols: MarketInstrument[] } | null>(null);
 
   const reload = useCallback(async () => {
     const requestGeneration = ++requestGenerationRef.current;
@@ -952,7 +956,14 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
 
     const controller = new AbortController();
     requestAbortRef.current = controller;
-    setLoading(true);
+    const retainedCatalog = retainedCatalogRef.current?.scope === catalogScope
+      ? retainedCatalogRef.current.symbols
+      : [];
+    if (retainedCatalog.length === 0) {
+      retainedCatalogRef.current = null;
+      setSymbols([]);
+    }
+    setLoading(retainedCatalog.length === 0);
     setError(null);
     // Never retain trade authorization from the previous request/session while
     // the current authenticated catalog is still being verified.
@@ -977,6 +988,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
         throw new ApiError(0, 'No symbols returned by /api/v1/market/symbols');
       }
 
+      retainedCatalogRef.current = { scope: catalogScope, symbols: publicCatalog };
       setSymbols(publicCatalog);
       upsertInstrumentTickSnapshots(publicCatalog);
       // The public catalog is sufficient for Market Watch rows and chart data.
@@ -1029,7 +1041,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
       }
     } catch (err) {
       if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
-      setSymbols([]);
+      setSymbols(retainedCatalog);
       setAuthorizedInstruments([]);
       setAuthorizedSymbols([]);
       setDisabledSymbols([]);
@@ -1041,7 +1053,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
         setLoading(false);
       }
     }
-  }, [isAuthenticated, publicApiRootBaseUrl, requestSession]);
+  }, [catalogScope, isAuthenticated, publicApiRootBaseUrl, requestSession]);
 
   useEffect(() => {
     void reload();

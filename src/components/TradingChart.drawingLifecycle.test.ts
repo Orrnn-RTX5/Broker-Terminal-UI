@@ -5,7 +5,8 @@ import { resolve } from 'node:path';
 import ts from 'typescript';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { projectDrawingTimeAtLogical } from '../drawing-tools/geometry/drawingTimeProjection';
-import { getTimeframeSeconds } from '../utils/timeframeBoundary';
+import { CANDLE_TIMEFRAMES, getTimeframeSeconds } from '../utils/timeframeBoundary';
+import { CHART_PATTERN_TOOLS } from '../drawing-tools/chartPatternToolCatalog';
 import { TREND_LINE_TOOLS } from '../drawing-tools/toolCatalog';
 import { GANN_FIBONACCI_TOOLS } from '../drawing-tools/gannFibonacciToolCatalog';
 import { FORECASTING_MEASUREMENT_TOOLS } from '../drawing-tools/forecastingMeasurementToolCatalog';
@@ -141,6 +142,46 @@ describe('retained drawing listeners after chart context changes', () => {
     sessionStorage.clear();
   });
 
+  const patternSymbols = ['XAUUSD', 'EURUSD', 'BTCUSD', '0168.HK', 'CUSTOM.US-PERP'];
+  const patternContexts = CANDLE_TIMEFRAMES.flatMap((timeframe, index) =>
+    CHART_PATTERN_TOOLS.map(tool => ({ timeframe, symbol: patternSymbols[index % patternSymbols.length], tool })));
+
+  it.each(patternContexts)('$tool.label places and restores on $symbol $timeframe after switching the active chart', async ({ timeframe, symbol, tool }) => {
+    const { manager, bars, listeners, switchContext, preview, container } = await createFixture();
+    await switchContext({ timeframe, symbol });
+    manager.startDrawing('pattern', '#2962ff', { subtype: tool.id });
+    const anchors = Array.from({ length: tool.requiredPoints }, (_, i) => [80 + i * 40, i % 2 ? 120 : 240]);
+    // The final anchor is in future chart space, where interval projection matters.
+    anchors[anchors.length - 1][0] = 455;
+    for (const [index, [x, y]] of anchors.entries()) {
+      listeners.handlePointerDown({ isPrimary: true, button: 0, pointerType: 'mouse', pointerId: 1,
+        clientX: x, clientY: y, preventDefault: vi.fn() });
+      listeners.handlePointerUp({ pointerId: 1 });
+      if (index < anchors.length - 1) {
+        expect(manager.getActiveDrawing('chart-main')?.points).toHaveLength(index + 1);
+        preview(...anchors[index + 1] as [number, number]);
+        expect(container.querySelector('g[data-id$="-preview"]')).not.toBeNull();
+      }
+    }
+    const drawing = manager.getDrawings('chart-main')[0];
+    expect(drawing).toMatchObject({ type: 'pattern', subtype: tool.id });
+    expect(drawing.points.at(-1)).toMatchObject({
+      time: bars.at(-1)!.time + 3.75 * getTimeframeSeconds(timeframe), logicalIndex: 22.75,
+    });
+    expect(container.querySelector(`g[data-id="${drawing.id}"] path`)).not.toBeNull();
+    expect(container.querySelector('svg')!.innerHTML).not.toMatch(/NaN|Infinity/);
+    expect(localStorage.getItem(`drawings-account-main-${symbol}-${timeframe}`)).toContain(tool.id);
+    await switchContext({ symbol: `${symbol}-OTHER` });
+    expect(manager.getDrawings('chart-main')).toHaveLength(0);
+    expect(container.querySelector(`g[data-id="${drawing.id}"]`)).toBeNull();
+    await switchContext({ symbol, timeframe: timeframe === 'H4' ? 'M1' : 'H4' });
+    expect(manager.getDrawings('chart-main')).toHaveLength(0);
+    await switchContext({ timeframe });
+    expect(manager.getDrawings('chart-main')[0]).toMatchObject({ id: drawing.id, points: drawing.points });
+    expect(container.querySelector(`g[data-id="${drawing.id}"] path`)).not.toBeNull();
+    manager.setChart(null, null, null, 1, container);
+  });
+
   it('hides the pitchfork cursor value at chart boundaries and restores it on reentry', async () => {
     const { manager, container, listeners, preview, click } = await createFixture();
     manager.startDrawing('channel', '#2962ff', { subtype: 'pitchfork' });
@@ -182,7 +223,7 @@ describe('retained drawing listeners after chart context changes', () => {
   });
 
   it.each([...TREND_LINE_TOOLS, ...GANN_FIBONACCI_TOOLS,
-    ...FORECASTING_MEASUREMENT_TOOLS.filter(tool => tool.id === 'long_position' || tool.id === 'short_position')])('$label records mouse presses even when movement prevents a native click', async tool => {
+    ...FORECASTING_MEASUREMENT_TOOLS.filter(tool => tool.requiredPoints > 0)])('$label records mouse presses even when movement prevents a native click', async tool => {
     const { manager, listeners, preview, click, container, activeToolRef } = await createFixture();
     manager.startDrawing(tool.drawingType, '#2962ff', { subtype: tool.id });
     const anchors = [[80, 180], [260, 200], [200, 260]];
@@ -285,6 +326,74 @@ describe('retained drawing listeners after chart context changes', () => {
     expect(drawing.type).toBe('freehand');
     expect(drawing.points.map(point => point.time)).toEqual([bars.at(-1)!.time, bars.at(-1)!.time]);
     expect(drawing.points.map(point => point.barOffset)).toEqual([2.5, 3.5]);
+  });
+
+  it.each(FORECASTING_MEASUREMENT_TOOLS)('$label shows live cursor coordinates and keeps them until the pointer leaves', async tool => {
+    const { manager, listeners, container, preview } = await createFixture();
+    manager.startDrawing('measure', '#2962ff', { subtype: tool.id });
+    preview(81, 180);
+    const cursorPrice = () => container.querySelector('[data-geometry-role="cursor-price-scale-label-text"]');
+    const cursorTime = () => container.querySelector('[data-geometry-role="cursor-time-scale-label"]');
+    expect(cursorPrice()).not.toBeNull();
+    expect(cursorTime()).not.toBeNull();
+    const originalPrice = cursorPrice()!.textContent;
+    preview(121, 160);
+    expect(cursorPrice()!.textContent).not.toBe(originalPrice);
+    listeners.crosshairHandler({});
+    expect(cursorPrice()).not.toBeNull();
+    listeners.handleDrawingPointerLeave();
+    expect(cursorPrice()).toBeNull();
+    expect(cursorTime()).toBeNull();
+    preview(121, 160);
+    expect(cursorPrice()).not.toBeNull();
+    listeners.handlePointerDown({ isPrimary: true, button: 0, pointerType: 'mouse',
+      clientX: 121, clientY: 160, preventDefault: vi.fn() });
+    if (tool.requiredPoints !== 1) {
+      expect(container.querySelector('[data-geometry-role="construction-anchor-1"]')).not.toBeNull();
+    }
+  });
+
+  it('finishes Ghost Feed on double-click without recording a duplicate final mouse press', async () => {
+    const { manager, listeners, click, container } = await createFixture();
+    manager.startDrawing('measure', '#2962ff', { subtype: 'ghost_feed' });
+    const press = (x: number, y: number) => {
+      listeners.handlePointerDown({ isPrimary: true, button: 0, pointerType: 'mouse',
+        clientX: x, clientY: y, preventDefault: vi.fn() });
+      listeners.handlePointerUp({ pointerId: 1 });
+      click(x, y);
+    };
+    press(81, 180);
+    expect(manager.getActiveDrawing('chart-main')?.points).toHaveLength(1);
+    expect(container.querySelector('[data-geometry-role="forecast-finish-hint"]')?.textContent).toContain('Enter');
+    press(161, 160);
+    press(241, 190);
+    press(241, 190); // Second press arrives before native click.detail === 2.
+    expect(manager.getActiveDrawing('chart-main')?.points).toHaveLength(3);
+    listeners.handleGhostFeedClickCapture({ detail: 2 });
+    expect(manager.getActiveDrawing('chart-main')).toBeNull();
+    expect(manager.getDrawings('chart-main')[0].points).toHaveLength(3);
+    expect(container.querySelector('[data-geometry-role="ghost-feed-path"]')).not.toBeNull();
+  });
+
+  it('finishes Ghost Feed with Enter and cancels unfinished measurements with Escape outside text inputs', async () => {
+    const { manager, listeners, click } = await createFixture();
+    manager.startDrawing('measure', '#2962ff', { subtype: 'ghost_feed' });
+    click(81, 180);
+    const enter = { type: 'keydown', key: 'Enter', target: document.body, preventDefault: vi.fn() };
+    listeners.handleDrawingShiftChange(enter);
+    expect(manager.getActiveDrawing('chart-main')).not.toBeNull(); // Requires two anchors.
+    click(161, 160);
+    listeners.handleDrawingShiftChange(enter);
+    expect(manager.getActiveDrawing('chart-main')).toBeNull();
+    expect(manager.getDrawings('chart-main')).toHaveLength(1);
+    manager.startDrawing('measure', '#2962ff', { subtype: 'price_range' });
+    click(81, 180);
+    const escape = { type: 'keydown', key: 'Escape', target: document.createElement('input'), preventDefault: vi.fn() };
+    listeners.handleDrawingShiftChange(escape);
+    expect(manager.getActiveDrawing('chart-main')).not.toBeNull();
+    listeners.handleDrawingShiftChange({ ...escape, target: document.body });
+    expect(manager.getActiveDrawing('chart-main')).toBeNull();
+    expect(manager.getDrawings('chart-main')).toHaveLength(1);
   });
 
   it('labels a future shape anchor with its projected chart time instead of the stored candle anchor', async () => {

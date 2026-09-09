@@ -1,3 +1,4 @@
+import { CHART_PATTERN_GROUPS, CHART_PATTERN_TOOLS } from './chartPatternToolCatalog';
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom';
@@ -121,6 +122,7 @@ describe('WebDrawingToolsRail', () => {
       'Cursor',
       'Trendline — Trend Line Tools',
       'Fib retracement - Gann and Fibonacci Tools',
+      'Chart patterns',
       'Forecasting and measurement tools',
       'Brush tools',
       'Annotation Tools',
@@ -448,7 +450,7 @@ describe('WebDrawingToolsRail', () => {
 
     fireEvent.click(showButton);
     expect(rail).toHaveAttribute('data-expanded', 'true');
-    expect(within(rail).getAllByRole('button')).toHaveLength(11);
+    expect(within(rail).getAllByRole('button')).toHaveLength(12);
     expect(screen.getByRole('button', { name: /Ray — Trend Line Tools$/i })).toHaveAttribute('data-active', 'true');
     expect(commandBus.getHistory()).toHaveLength(1);
   });
@@ -693,4 +695,15 @@ describe('WebDrawingToolsRail', () => {
 
     document.removeEventListener('keydown', documentCapture, { capture: true });
   });
+});
+
+
+it.each(CHART_PATTERN_TOOLS)('Chart Patterns menu arms $label on the active chart', tool => {
+  render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+  const menu = openRailMenu('Chart patterns', 'Chart patterns');
+  expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(14);
+  CHART_PATTERN_GROUPS.forEach(group => expect(within(menu).getByRole('region', { name: group })).toBeInTheDocument());
+  fireEvent.click(within(menu).getByRole('menuitemradio', { name: tool.label }));
+  expect(commandBus.getHistory().at(-1)).toMatchObject({ type: 'SELECT_TOOL', payload: { tool: 'pattern', subtype: tool.id, targetContextId: 'chart-xauusd-m1' } });
+  expect(screen.queryByRole('menu', { name: 'Chart patterns' })).not.toBeInTheDocument();
 });

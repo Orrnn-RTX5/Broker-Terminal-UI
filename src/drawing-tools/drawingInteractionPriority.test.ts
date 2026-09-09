@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TREND_LINE_TOOLS } from './toolCatalog';
 import { GANN_FIBONACCI_TOOLS } from './gannFibonacciToolCatalog';
+import { CHART_PATTERN_TOOLS } from './chartPatternToolCatalog';
 import { FORECASTING_MEASUREMENT_TOOLS } from './forecastingMeasurementToolCatalog';
 import { isTrendDrawingInputActive, setTrendDrawingInputActive, usesDirectDrawingPointerInput } from './drawingInteractionPriority';
 
@@ -113,7 +114,8 @@ describe('trend drawing input priority', () => {
     expect(panel.container.style.touchAction).toBe('');
   });
   it.each([...TREND_LINE_TOOLS, ...GANN_FIBONACCI_TOOLS,
-    ...FORECASTING_MEASUREMENT_TOOLS.filter(tool => tool.id === 'long_position' || tool.id === 'short_position')])('$label arms only its chart and restores input after completion', tool => {
+    ...CHART_PATTERN_TOOLS.map(tool => ({ ...tool, drawingType: 'pattern' })),
+    ...FORECASTING_MEASUREMENT_TOOLS])('$label arms only its chart and restores input after completion', tool => {
     const owner = installCommandLifecycle('chart-owner');
     const sibling = installCommandLifecycle('chart-sibling');
     owner.dispatch({ tool: tool.drawingType, subtype: tool.id, targetContextId: 'chart-owner' });
@@ -144,6 +146,19 @@ describe('trend drawing input priority', () => {
     arm();
     panel.cleanup();
     expect(isTrendDrawingInputActive(panel.container)).toBe(false);
+  });
+
+  it.each(FORECASTING_MEASUREMENT_TOOLS)('Cursor cancels $label and restores chart input', tool => {
+    const panel = installCommandLifecycle('chart-owner');
+    panel.dispatch({ tool: 'measure', subtype: tool.id, targetContextId: 'chart-owner' });
+    expect(isTrendDrawingInputActive(panel.container)).toBe(true);
+    panel.dispatch({ tool: 'cursor', targetContextId: 'chart-owner' });
+    expect(panel.manager.getActiveDrawing()).toBeNull();
+    expect(panel.manager.unselectAll).toHaveBeenCalledOnce();
+    expect(panel.activeToolRef.current).toBeNull();
+    expect(panel.drawingCommandTargetRef.current).toBeNull();
+    expect(isTrendDrawingInputActive(panel.container)).toBe(false);
+    expect(panel.container.style.cursor).toBe('default');
   });
 
   it('makes all actual trade hit-target types pass through only in the armed panel', () => {

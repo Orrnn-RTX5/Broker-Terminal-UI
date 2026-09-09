@@ -52,13 +52,14 @@ export const resolveAuthorizedChartSymbol = (
 
 /**
  * Pick the chart symbol that can actually render right now.
- * A saved/requested symbol wins only when it is currently live. Otherwise
- * use the first live broker-catalog symbol rather than a hardcoded product pair.
+ * During initial restoration, prefer a live broker-catalog symbol. Once that
+ * preference is applied, keep an authorized selection even if its feed drops.
  */
 export const pickPreferredChartSymbol = (
   authorizedSymbols: unknown[],
   liveFeedSymbols: unknown[] = [],
   requestedSymbol?: unknown,
+  preferLiveSymbol = true,
 ): string => {
   const authorized = getUniqueSymbolNames(authorizedSymbols);
   const live = getUniqueSymbolNames(liveFeedSymbols).filter((symbol) => (
@@ -66,7 +67,7 @@ export const pickPreferredChartSymbol = (
   ));
   const requested = resolveAuthorizedChartSymbol(requestedSymbol, authorized.length > 0 ? authorized : live);
 
-  if (requested && (live.length === 0 || live.includes(requested))) {
+  if (requested && (!preferLiveSymbol || live.length === 0 || live.includes(requested))) {
     return requested;
   }
 

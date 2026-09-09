@@ -2923,6 +2923,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       chartEligibleSymbolNames,
       liveSymbols,
       selectedSymbol,
+      // Feed refreshes must not fight the active dock chart's selection after
+      // the initial live-symbol preference has already been applied.
+      applyLivePreference,
     ) || getChartEligibleSymbol(selectedSymbol) || chartEligibleSymbolNames[0] || '';
 
     if (applyLivePreference) {

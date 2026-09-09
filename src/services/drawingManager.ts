@@ -28,6 +28,8 @@ import {
 } from '../drawing-tools/contextKey';
 import { getTrendLineToolFromDrawing } from '../drawing-tools/toolCatalog';
 import { getGannFibonacciTool } from '../drawing-tools/gannFibonacciToolCatalog';
+import { getChartPatternTool } from '../drawing-tools/chartPatternToolCatalog';
+import { renderChartPattern } from '../drawing-tools/chartPatternRenderer';
 import { getBrushShapeTool } from '../drawing-tools/brushShapeToolCatalog';
 import { arrowLinePath, arrowMarkerPath, arrowMarkUpPath, arrowMarkDownPath, rectanglePath, rectangleHandles, rotatedRectangle, multiPointPath, circlePath, ellipseGeometry, arcGeometry, curvePath, defaultCurveBend, doubleCurvePath, defaultDoubleCurveBends } from '../drawing-tools/brushShapeGeometry';
 import { appendInfoLinePanel as renderInfoLinePanel } from '../drawing-tools/infoLinePanel';
@@ -83,7 +85,8 @@ export type DrawingType =
   | 'rectangle'
   | 'ellipse'
   | 'shapes'
-  | 'stamp';
+  | 'stamp'
+  | 'pattern';
 
 export interface DrawingPoint {
   time: number;   // unix timestamp (seconds) — anchors bar after pan/zoom
@@ -209,6 +212,7 @@ const REQUIRED_POINTS: Record<DrawingType, number> = {
   text: 1,
   shapes: 1,
   stamp: 1,
+  pattern: 5,
   trendline: 2,
   channel: 2,
   fibonacci: 2,
@@ -221,7 +225,8 @@ const REQUIRED_POINTS: Record<DrawingType, number> = {
 };
 
 const requiredPointsForDrawing = (drawing: Pick<Drawing, 'type' | 'subtype'>): number =>
-  getBrushShapeTool(drawing)?.requiredPoints
+  getChartPatternTool(drawing)?.requiredPoints
+  ?? getBrushShapeTool(drawing)?.requiredPoints
   ?? getTrendLineToolFromDrawing(drawing.type, drawing.subtype)?.requiredPoints
   ?? (drawing.type === 'measure'
     ? getForecastingMeasurementTool(drawing.subtype)?.requiredPoints
@@ -787,6 +792,11 @@ export class DrawingManager {
         : undefined,
     };
     if (meta?.subtype) this.activeDrawing.subtype = meta.subtype;
+    const patternTool = getChartPatternTool(this.activeDrawing);
+    if (patternTool?.background) {
+      this.activeDrawing.fillColor = color;
+      this.activeDrawing.fillOpacity = patternTool.id === 'time_cycles' ? .3 : .12;
+    }
     if (type === 'shapes' && meta?.subtype === 'arrow_mark_up') this.activeDrawing.color = '#089981';
     if (getBrushShapeTool(this.activeDrawing)?.background && getBrushShapeTool(this.activeDrawing)?.defaultFill !== false) {
       this.activeDrawing.fillColor = color;
@@ -911,11 +921,16 @@ export class DrawingManager {
       price: finalPrice,
       ...(finalLogicalIndex !== undefined ? { logicalIndex: finalLogicalIndex } : {}),
     }, this.activeDrawingOwner));
-    if (getBrushShapeTool(this.activeDrawing)?.requiredPoints === 0 && this.activeDrawing.points.length) {
+    const isOpenEnded = getBrushShapeTool(this.activeDrawing)?.requiredPoints === 0
+      || (this.activeDrawing.type === 'measure' && this.activeDrawing.subtype === 'ghost_feed');
+    if (isOpenEnded && this.activeDrawing.points.length) {
       const previous = this.px(this.activeDrawing.points.at(-1)!);
       const next = this.px(nextShapePoint);
       // The second press of a double-click must not create a duplicate vertex.
       if (previous && next && Math.hypot(previous.x - next.x, previous.y - next.y) < 1) return false;
+    }
+    if (this.activeDrawing.type === 'pattern' && this.activeDrawing.subtype === 'time_cycles' && this.activeDrawing.points[0]) {
+      nextShapePoint.price = this.activeDrawing.points[0].price;
     }
     this.activeDrawing.points.push(nextShapePoint);
     this.rawTrendlinePreviewPoint = null;
@@ -1000,6 +1015,9 @@ export class DrawingManager {
       price,
       ...(Number.isFinite(logicalIndex) ? { logicalIndex } : {}),
     });
+    if (this.activeDrawing.type === 'pattern' && this.activeDrawing.subtype === 'time_cycles' && this.activeDrawing.points[0]) {
+      candidatePreview.price = this.activeDrawing.points[0].price;
+    }
     this.previewCursorVisible = true;
     this.rawTrendlinePreviewPoint = this.canConstrainTrendline(this.activeDrawing)
       ? candidatePreview
@@ -1911,14 +1929,17 @@ export class DrawingManager {
     const isPitchfork = activeTrendGroup === 'Pitchforks';
     const isChannel = activeTrendGroup === 'Channels';
     const isFibonacci = Boolean(this.activeDrawing && getGannFibonacciTool(this.activeDrawing.subtype));
-    const isBrushShape = Boolean(getBrushShapeTool(this.activeDrawing));
+    const isBrushShape = Boolean(getBrushShapeTool(this.activeDrawing) || getChartPatternTool(this.activeDrawing));
+    const isForecasting = this.activeDrawing?.type === 'measure'
+      && Boolean(getForecastingMeasurementTool(this.activeDrawing.subtype));
+    const showAnchorCoordinates = isPitchfork || isFibonacci || isBrushShape || isForecasting;
     // Keep committed anchors visible even before the next pointer move.
     // Construction handles are visual only; clicks still reach the chart.
     if (
       this.contextOwnsActiveDrawing(context)
       && this.activeDrawing
-      && (this.canConstrainTrendline(this.activeDrawing) || isChannel || isPitchfork || isFibonacci || isBrushShape)
-      && (this.activeDrawing.points.length > 0 || ((isPitchfork || isChannel || isFibonacci || isBrushShape) && this.previewPoint))
+      && (this.canConstrainTrendline(this.activeDrawing) || isChannel || showAnchorCoordinates)
+      && (this.activeDrawing.points.length > 0 || ((isChannel || showAnchorCoordinates) && this.previewPoint))
     ) {
       const construction = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       construction.setAttribute('data-id', `${this.activeDrawing.id}-construction`);
@@ -1932,7 +1953,7 @@ export class DrawingManager {
           this.appendPriceScaleLabel(construction, plotW, screen.y, point.price, accent, `${role}-price-scale-label`);
         }
         if (screen.x >= 0 && screen.x <= plotW) {
-          this.appendTimeScaleLabel(construction, screen.x, plotH, isBrushShape ? this.shapeLabelTime(point, screen.x) : point.time, accent, `${role}-time-scale-label`);
+          this.appendTimeScaleLabel(construction, screen.x, plotH, isBrushShape || isForecasting ? this.shapeLabelTime(point, screen.x) : point.time, accent, `${role}-time-scale-label`);
         }
       };
       this.activeDrawing.points.forEach((point, index) => {
@@ -1948,11 +1969,11 @@ export class DrawingManager {
         handle.setAttribute('data-geometry-role', `construction-anchor-${index + 1}`);
         handle.setAttribute('pointer-events', 'none');
         construction.appendChild(handle);
-        if (isPitchfork || isFibonacci || isBrushShape) {
+        if (showAnchorCoordinates) {
           appendCoordinates(point, `anchor-${index + 1}`, this.activeDrawing!.color || '#2962ff');
         }
       });
-      if ((isPitchfork || isFibonacci || isBrushShape) && this.previewPoint && this.previewCursorVisible) {
+      if (showAnchorCoordinates && this.previewPoint && this.previewCursorVisible) {
         appendCoordinates(this.previewPoint, 'cursor', '#131722');
       }
       if (isChannel) {
@@ -1961,6 +1982,11 @@ export class DrawingManager {
       if (getBrushShapeTool(this.activeDrawing)?.requiredPoints === 0) {
         const hint = this.svgText(16, Math.max(20, plotH - 16), 'Double-click or press Enter to finish', this.activeDrawing.color || '#2962ff', 12);
         hint.setAttribute('data-geometry-role', 'shape-finish-hint');
+        construction.appendChild(hint);
+      }
+      if (isForecasting && this.activeDrawing.subtype === 'ghost_feed') {
+        const hint = this.svgText(16, Math.max(20, plotH - 16), 'Double-click or press Enter to finish', this.activeDrawing.color || '#2962ff', 12);
+        hint.setAttribute('data-geometry-role', 'forecast-finish-hint');
         construction.appendChild(hint);
       }
       svg.appendChild(construction);
@@ -1977,7 +2003,7 @@ export class DrawingManager {
           && (this.activeDrawing.subtype === 'bars_pattern' || this.activeDrawing.subtype === 'sector')
         )
         || this.activeDrawing?.subtype === 'fib_wedge'
-        || Boolean(getBrushShapeTool(this.activeDrawing))
+        || Boolean(getBrushShapeTool(this.activeDrawing) || getChartPatternTool(this.activeDrawing))
       )
       && this.activeDrawing.points.length >= 2
       && !this.previewPoint
@@ -2041,6 +2067,38 @@ export class DrawingManager {
     g.setAttribute('data-id', d.id);
 
     switch (d.type) {
+
+      case 'pattern': {
+        const plotWidth = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
+        const plotHeight = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
+        const geometry = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const clip = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+        clip.id = `pattern-clip-${d.id}`;
+        const bounds = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bounds.setAttribute('width', String(plotWidth));
+        bounds.setAttribute('height', String(plotHeight));
+        clip.appendChild(bounds);
+        g.appendChild(clip);
+        geometry.setAttribute('clip-path', `url(#${clip.id})`);
+        geometry.style.opacity = opacity;
+        renderChartPattern(geometry, d, d.points.map(point => this.px(point)), plotWidth, plotHeight);
+        if (!isPreview) geometry.querySelectorAll<SVGPathElement>('path').forEach(path => {
+          const hit = path.cloneNode(false) as SVGPathElement;
+          hit.setAttribute('stroke', 'transparent');
+          hit.setAttribute('stroke-width', String(Math.max(12, lw + 8)));
+          hit.setAttribute('fill', 'none');
+          hit.removeAttribute('stroke-dasharray');
+          hit.setAttribute('pointer-events', 'stroke');
+          hit.setAttribute('data-geometry-role', 'pattern-hit');
+          for (const target of [path, hit]) {
+            target.style.cursor = d.locked ? 'default' : 'move';
+            target.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+          }
+          geometry.insertBefore(hit, path);
+        });
+        g.appendChild(geometry);
+        break;
+      }
 
       case 'shapes': {
         const tool = getBrushShapeTool(d);
@@ -2934,6 +2992,14 @@ export class DrawingManager {
         indices.forEach((index, endpoint) => {
           const screen = projectFreehandPoint(this.chart!, this.series!, d.points[index]);
           if (screen) this.appendTrendSelectionHandle(g, d, screen, null, `brush-endpoint-${endpoint + 1}`);
+        });
+      } else if (getChartPatternTool(d)) {
+        d.points.forEach((point, index) => {
+          const screen = this.px(point);
+          if (!screen) return;
+          this.appendTrendSelectionHandle(g, d, screen, index, `pattern-anchor-${index + 1}`);
+          this.appendPriceScaleLabel(g, Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0)), screen.y, point.price, color, `pattern-anchor-${index + 1}-price`);
+          this.appendTimeScaleLabel(g, screen.x, Math.max(0, H - (this.chart?.timeScale().height() ?? 0)), point.time, color, `pattern-anchor-${index + 1}-time`);
         });
       } else if (getBrushShapeTool(d)) {
         const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
@@ -4215,6 +4281,10 @@ export class DrawingManager {
           if (fixedPositionEndX !== null) {
             this.syncPositionEndFromCoordinate(drawing, fixedPositionEndX);
           }
+          if (drawing.type === 'pattern' && drawing.subtype === 'time_cycles') {
+            const baseline = this.draggingNodeIndex === 0 ? nextPrice : drawing.points[0].price;
+            drawing.points.forEach(point => { point.price = baseline; });
+          }
           this.constrainFibWedge(drawing);
         }
       }
@@ -4332,7 +4402,7 @@ export class DrawingManager {
             this.persistLocalFor(this.draggingOwner, this.getDrawingsFor(this.draggingOwner));
             this.dispatchDrawingsChanged(this.draggingOwner, 'updated');
           }
-          if (drawing.subtype === 'info_line' || drawing.type === 'freehand' || getBrushShapeTool(drawing)) {
+          if (drawing.subtype === 'info_line' || drawing.type === 'freehand' || getBrushShapeTool(drawing) || getChartPatternTool(drawing)) {
             this.dispatchDrawingSelection(drawing, this.draggingOwner);
           }
         }
@@ -4605,6 +4675,8 @@ export class DrawingManager {
   /** Public alias — TradingChart.tsx calls this to finish freehand drawings */
   finishDrawing(contextId?: string): Drawing | null {
     if (contextId && this.activeDrawingOwner?.contextId !== contextId) return null;
+    const pattern = getChartPatternTool(this.activeDrawing);
+    if (pattern && this.activeDrawing!.points.length < pattern.requiredPoints) return null;
     const shape = getBrushShapeTool(this.activeDrawing);
     if (shape && this.activeDrawing!.points.length < (shape.requiredPoints || shape.minimumPoints || 2)) return null;
     if (

@@ -4317,9 +4317,9 @@ export const TradingChart = React.memo(function TradingChart({
       }
     };
     // lightweight-charts intentionally omits MouseEvent.detail from its
-    // sourceEvent payload. Capture the native second click first: click one of
-    // a double-click records the final Ghost Feed anchor through clickHandler;
-    // detail >= 2 completes it before the chart can record the point again.
+    // sourceEvent payload. Capture the native second click to complete open
+    // paths. Mouse anchors are already recorded on pointerdown; the manager
+    // ignores the duplicate final press. Touch retains chart-click placement.
     const handleGhostFeedClickCapture = (event: MouseEvent) => {
       const contextId = drawingRuntimeContextRef.current.contextId;
       if (event.detail < 2) return;
@@ -4578,6 +4578,10 @@ export const TradingChart = React.memo(function TradingChart({
       const editable = event.target instanceof Element && Boolean(event.target.closest('input, textarea, select, [contenteditable="true"]'));
       if (!editable && event.type === 'keydown' && drawingCommandTargetRef.current === currentContext && active?.type === 'shapes') {
         if (event.key === 'Enter' && ['path', 'polyline'].includes(active.subtype!)) { event.preventDefault(); drawingManager.finishDrawing(currentContext); return; }
+        if (event.key === 'Escape') { event.preventDefault(); drawingManager.cancelDrawing(currentContext); return; }
+      }
+      if (!editable && event.type === 'keydown' && drawingCommandTargetRef.current === currentContext && active?.type === 'measure') {
+        if (event.key === 'Enter' && active.subtype === 'ghost_feed') { event.preventDefault(); drawingManager.finishDrawing(currentContext); return; }
         if (event.key === 'Escape') { event.preventDefault(); drawingManager.cancelDrawing(currentContext); return; }
       }
       const contextId = drawingRuntimeContextRef.current.contextId;
@@ -6304,7 +6308,7 @@ export const TradingChart = React.memo(function TradingChart({
           if (wrapper) wrapper.setAttribute('data-cursor', 'select');
         }
 
-        const validDrawingTypes = ['trendline', 'hline', 'vline', 'text', 'channel', 'fibonacci', 'shapes', 'rectangle', 'ellipse', 'fib_extension', 'measure', 'freehand', 'callout', 'stamp'];
+        const validDrawingTypes = ['trendline', 'hline', 'vline', 'text', 'channel', 'fibonacci', 'shapes', 'rectangle', 'ellipse', 'fib_extension', 'measure', 'freehand', 'callout', 'stamp', 'pattern'];
         if (validDrawingTypes.includes(tool)) {
           const subtype = payload.subtype;
           drawingManager.startDrawing(
