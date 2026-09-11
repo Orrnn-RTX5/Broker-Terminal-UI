@@ -1,6 +1,7 @@
 import { useAppStore } from '../store/useAppStore';
 import { accountV2Api, authV2Api, marketV2Api, tradingV2Api } from '../api/trade';
 import { getStoredBrokerServer } from './brokerServers';
+import { brokerDisplayName } from './brokerDisplayName';
 
 const toFinite = (v: unknown, fallback = 0): number => {
   const n = Number(v);
@@ -63,14 +64,15 @@ export async function bootstrapApp(login: number): Promise<void> {
     setOrders(normalizedOrders);
 
     // Populate saved accounts dynamically from fetched accounts or profile
-    const serverName = localStorage.getItem('broker_id') || getStoredBrokerServer();
+    const rawServer = activeAccount?.server || activeAccount?.broker_name || localStorage.getItem('broker_name') || localStorage.getItem('broker_id') || getStoredBrokerServer();
+    const serverName = brokerDisplayName(rawServer, activeAccount?.broker_name, localStorage.getItem('broker_name'));
     let mappedAccounts: any[] = [];
     if (activeAccount) {
       const loginNum = parseInt(activeAccount.login ?? activeAccount.account_login, 10);
       mappedAccounts = [{
         login: isNaN(loginNum) ? login : loginNum,
         name: activeAccount.name || activeAccount.username || '',
-        server: activeAccount.server || activeAccount.broker_name || serverName,
+        server: serverName,
         isLive: activeAccount.isLive !== false,
         lastUsed: Date.now(),
       }];

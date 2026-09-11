@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * Indicator Navigator
  * Dialog for browsing and adding technical indicators
@@ -160,6 +161,7 @@ const INDICATOR_CATEGORIES = {
 };
 
 export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCategory }: IndicatorNavigatorProps) {
+    const tr = useUiTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory ?? null);
 
@@ -188,7 +190,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
       <div className="bg-zinc-900 rounded-lg shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col border border-zinc-800">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-800">
-          <h2 className="text-lg font-semibold text-zinc-100">Indicators</h2>
+          <h2 className="text-lg font-semibold text-zinc-100">{tr("Indicators")}</h2>
           <button
             onClick={onClose}
             className="p-1.5 hover:bg-zinc-800 rounded transition-colors text-zinc-400 hover:text-zinc-100"
@@ -203,7 +205,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
             <Icon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input
               type="text"
-              placeholder="Search indicators..."
+              placeholder={tr("Search indicators...")}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
@@ -220,8 +222,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
                 : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'
               }`}
           >
-            All
-          </button>
+            {tr("All")}</button>
           {Object.keys(INDICATOR_CATEGORIES).map(category => (
             <button
               key={category}
@@ -260,7 +261,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
                         if (isIndicatorSupported(indicator.id)) handleAddIndicator(category, indicator);
                       }}
                       aria-disabled={!isIndicatorSupported(indicator.id)}
-                      title={isIndicatorSupported(indicator.id) ? undefined : 'This indicator is not available in the current chart engine'}
+                      title={isIndicatorSupported(indicator.id) ? undefined : tr("This indicator is not available in the current chart engine")}
                       className={`p-3 rounded-lg border transition-all group ${isIndicatorSupported(indicator.id)
                         ? 'bg-zinc-800/50 hover:bg-zinc-800 border-zinc-700/50 hover:border-emerald-500/50 cursor-pointer'
                         : 'bg-zinc-800/25 border-zinc-800 cursor-not-allowed opacity-55'
@@ -297,9 +298,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
                           disabled={!isIndicatorSupported(indicator.id)}
                           className="ml-2 px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs rounded transition-colors disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed"
                         >
-                          {!isIndicatorSupported(indicator.id)
-                            ? 'Unavailable'
-                            : indicator.id === 'volume' ? 'Enable' : 'Add'}
+                          {!isIndicatorSupported(indicator.id) ? tr("Unavailable") : indicator.id === 'volume' ? tr("Enable") : tr("Add")}
                         </button>
                       </div>
                     </div>
@@ -311,7 +310,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
           {filteredCategories.length === 0 && (
             <div className="text-center py-12 text-zinc-500">
               <Icon name="activity" size="xl" className="mx-auto mb-4 opacity-50" />
-              <p>No indicators found matching "{searchTerm}"</p>
+              <p>{tr("No indicators found matching \"")}{searchTerm}"</p>
             </div>
           )}
         </div>
@@ -319,8 +318,7 @@ export function IndicatorNavigator({ isOpen, onClose, onAddIndicator, initialCat
         {/* Footer */}
         <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
           <p className="text-xs text-zinc-500 text-center">
-            Double-click or press "Add" to insert an available indicator
-          </p>
+            {tr("Double-click or press \"Add\" to insert an available indicator")}</p>
         </div>
       </div>
     </div>

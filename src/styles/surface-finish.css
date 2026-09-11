@@ -1,0 +1,130 @@
+/* A restrained, static finish shared by terminal surfaces in both themes.
+   Small highlights sit on the existing opaque colors; chart canvases and
+   semantic Buy/Sell/Profit/Loss fills keep their own rendering. */
+:root {
+  --rtx-panel-sheen: linear-gradient(180deg, rgb(255 255 255 / 2.8%), rgb(255 255 255 / 0.8%) 72px, transparent 180px);
+  --rtx-control-sheen: linear-gradient(180deg, rgb(255 255 255 / 4%), transparent);
+  --rtx-finish-edge: rgb(255 255 255 / 7%);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light,
+.theme-light {
+  --rtx-panel-sheen: linear-gradient(180deg, rgb(255 255 255 / 24%), rgb(255 255 255 / 8%) 72px, transparent 180px);
+  --rtx-control-sheen: linear-gradient(180deg, rgb(255 255 255 / 28%), transparent);
+  --rtx-finish-edge: rgb(255 255 255 / 55%);
+}
+
+/* Match the skin selectors so their opaque background shorthands do not
+   erase this finish when panels and portaled dialogs mount independently. */
+html,
+html.rtx-advanced-view.rtx-skin-untitled-light,
+html.rtx-desktop-shell-active {
+  :is(
+    .rtx-market-watch,
+    .rtx-market-watch__grid,
+    .navigator-panel__body,
+    .rtx-bottom-dock__content,
+    .rtx-bottom-dock__content > [aria-hidden] > div,
+    .rtx-bottom-dock__content .virtualized-list,
+    .rtx-trade-scroll,
+    .rtx-history-tab,
+    .rtx-exposure-tab,
+    .rtx-history-downloader,
+    .rtx-history-download-panel,
+    .rtx-calendar-tab,
+    .rtx-articles-tab,
+    .rtx-codebase-tab,
+    .rtx-experts-tab,
+    .last-symbol-card,
+    .rtx-login-dialog,
+    .rtx-order-dialog,
+    .rtx-dom-dialog,
+    .rtx-modify-dialog,
+    .rtx-shortcut-dialog,
+    .rtx-oad-shell,
+    .rtx-cp-shell,
+    .rtx-cp-content,
+    .rtx-confirm-dialog,
+    .rtx-confirm-dialog__content,
+    .rtx-options-dialog,
+    .rtx-chart-template-dialog,
+    .rtx-symbols-dialog,
+    [role='dialog']:not([class*='backdrop']):not(.inset-0)
+  ) {
+    background-image: var(--rtx-panel-sheen) !important;
+    background-repeat: no-repeat !important;
+  }
+
+  :is(
+    .dock-panel__header,
+    .dock-tabs,
+    [data-dock-tab-bar],
+    .rtx-market-watch__search,
+    .rtx-market-watch__column-heading,
+    .rtx-market-watch__footer,
+    .rtx-bottom-dock__tabs,
+    .rtx-trade-footer,
+    .rtx-exposure-account-bar,
+    .rtx-status-bar,
+    .rtx-history-downloader__header,
+    .rtx-history-symbols__toolbar,
+    .rtx-history-tasks__header,
+    .rtx-journal-toolbar,
+    .last-symbol-header,
+    .rtx-order-dialog__header,
+    .rtx-cp-header,
+    .rtx-cp-footer,
+    .rtx-confirm-dialog__header,
+    .rtx-confirm-dialog__footer
+  ),
+  .rtx-app-shell th:not(.tv-lightweight-charts *) {
+    background-image: var(--rtx-chrome-sheen) !important;
+    box-shadow: inset 0 1px 0 var(--rtx-finish-edge) !important;
+  }
+
+  :is(
+    .rtx-application-menu,
+    .rtx-menu-surface,
+    .rtx-file-menu,
+    .web-drawing-tools-menu,
+    .web-drawing-tools-tooltip,
+    .web-drawing-selection-toolbar,
+    .rtx-chart-text-input-popover,
+    .rtx-desktop-quick-menu,
+    .rtx-drawing-operations__menu
+  ) {
+    background-image: var(--rtx-chrome-sheen) !important;
+  }
+
+  .web-drawing-tools-rail {
+    background-image: var(--rtx-panel-sheen) !important;
+    box-shadow: inset 1px 0 0 var(--rtx-finish-edge);
+  }
+
+  /* Inline desktop tools share the command row's surface. The sidebar's
+     vertical highlight otherwise looks like a divider after the timeframes. */
+  .rtx-desktop-inline-drawings .web-drawing-tools-rail[data-orientation='horizontal'] {
+    background: transparent !important;
+    border: 0;
+    box-shadow: none;
+  }
+
+  :is(.rtx-cp-btn, .rtx-history-seg-btn, .rtx-journal-control, .last-symbol-icon-button):not(:disabled) {
+    background-image: var(--rtx-control-sheen) !important;
+  }
+
+  :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), textarea):not(:focus):not(:disabled) {
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 5%), inset 0 1px 0 var(--rtx-finish-edge) !important;
+  }
+}
+
+@media (prefers-contrast: more), (forced-colors: active), print {
+  html,
+  html.rtx-advanced-view.rtx-skin-untitled-light,
+  html.rtx-desktop-shell-active {
+    --rtx-panel-sheen: none;
+    --rtx-control-sheen: none;
+    --rtx-chrome-sheen: none;
+    --rtx-finish-edge: transparent;
+  }
+}

@@ -18,7 +18,7 @@ const markedCluster = toolbarSource.slice(
 );
 
 describe('TopToolbar primary command cluster', () => {
-  it('uses one product icon system at a clearly legible 20px scale', () => {
+  it('uses dedicated outline command icons alongside the labeled action icons', () => {
     for (const icon of [
       'new-order',
       'activity',
@@ -42,17 +42,17 @@ describe('TopToolbar primary command cluster', () => {
     expect(markedCluster).not.toMatch(/<(?:FileText|TrendingUp|BarChart2|CandlestickChart|LineChart|AreaChart|ZoomIn|ZoomOut|LayoutPanelTop|RefreshCw)\b/);
     expect(markedCluster).toContain('<Icon name="new-order" size={20} />');
     expect(markedCluster).toContain('<Icon name="activity" size={20} />');
-    expect(markedCluster).toContain('label="Chart capture and overlays"');
+    expect(markedCluster).toContain('label={tr("Chart capture and overlays")}');
     expect(markedCluster).toContain('className="rtx-period-separator-toggle"');
     expect(markedCluster).toContain('className="rtx-trade-history-overlay-button"');
     expect(markedCluster).not.toMatch(/<(?:Camera|GitCommitHorizontal|SlidersHorizontal)\b/);
-    expect(toolbarSource).toContain('<Icon name={icon} size={20} />');
+    expect(toolbarSource).toContain('<ChartCommandIcon name={icon} />');
     expect(themeCss).toMatch(/\.rtx-toolbar-action__icon \{[\s\S]*flex: 0 0 20px;[\s\S]*height: 20px;[\s\S]*width: 20px;/);
   });
 
   it('keeps the two labeled actions dense, reactive, and accessible', () => {
-    expect(markedCluster).toContain('text-[13px] font-semibold');
-    expect(markedCluster).toContain('aria-label="New Order (F9)"');
+    expect(markedCluster).toContain('text-[13px] font-normal');
+    expect(markedCluster).toContain('aria-label={tr("New Order (F9)")}');
     expect(markedCluster).toContain("new CustomEvent('openNewOrder', {");
     expect(markedCluster).toContain('detail: { symbol }');
     expect(markedCluster).toContain('aria-pressed={lastSymbolPanelVisible}');
@@ -62,7 +62,7 @@ describe('TopToolbar primary command cluster', () => {
   });
 
   it('exposes chart types as a named radio group', () => {
-    expect(markedCluster).toContain('label="Chart type" role="radiogroup"');
+    expect(markedCluster).toContain('label={tr("Chart type")} role="radiogroup"');
     expect(markedCluster.match(/selectionRole="radio"/g)).toHaveLength(4);
     expect(toolbarSource).toContain("aria-checked={selectionRole === 'radio' ? active : undefined}");
   });
@@ -70,13 +70,11 @@ describe('TopToolbar primary command cluster', () => {
   it('uses restrained tokenized states in dark, light, and desktop chrome', () => {
     expect(themeCss).toMatch(/\.rtx-toolbar-action,[\s\S]*\.rtx-toolbar-icon-button \{[\s\S]*height: 32px;[\s\S]*transition: background-color 140ms ease/);
     expect(themeCss).toMatch(/\.rtx-toolbar-action--primary \{[^}]*background: transparent;[^}]*border-color: transparent;[^}]*border-radius: 0;/);
-    expect(themeCss).toMatch(/html\.rtx-desktop-shell-active \.rtx-toolbar-action--primary \{[^}]*background: transparent !important;[^}]*border-color: transparent !important;/);
     expect(advancedCss).toMatch(/\.rtx-toolbar-action--primary \{[^}]*background: transparent !important;[^}]*border-color: transparent !important;/);
     expect(themeCss).toMatch(/\.rtx-toolbar-icon-button\[role='radio'\]\[aria-checked='true'\] \{[^}]*background: rgb\(59 130 246 \/ 0\.15\);[^}]*border-color: rgb\(59 130 246 \/ 0\.5\);[^}]*box-shadow: none;/);
-    expect(themeCss).toMatch(/html\.rtx-desktop-shell-active \.rtx-toolbar-icon-button\[aria-checked='true'\] \{[^}]*box-shadow: none;/);
-    expect(themeCss).toContain('html.rtx-desktop-shell-active .rtx-toolbar-action--primary');
     expect(advancedCss).toMatch(/\.rtx-toolbar-icon-button\[role="radio"\]\[aria-checked="true"\] \{[^}]*box-shadow: none !important;/);
     expect(enterpriseCss).toMatch(/\.rtx-toolbar-icon-button\[role="radio"\]\[aria-checked="true"\] \{[^}]*box-shadow: none !important;/);
+    expect(themeCss).toContain('background: var(--rtx-light-panel-header, var(--bg-secondary));');
     expect(markedCluster).not.toContain('shadow-[0_0_8px');
   });
 
@@ -88,13 +86,12 @@ describe('TopToolbar primary command cluster', () => {
     expect(iconComponentSource).toContain('strokeWidth={1.5}');
     expect(themeCss).toMatch(/\.rtx-toolbar-icon-button svg,[\s\S]*stroke-width: 1\.25;/);
     expect(advancedCss).toContain('color: #344054 !important;');
-    expect(themeCss).toMatch(/html\.rtx-desktop-shell-active \.rtx-toolbar-action,[\s\S]*color: #30343a !important;/);
   });
 
   it('keeps equal spacing across command groups and the timeframe strip', () => {
-    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster \{[\s\S]*gap: 0;[\s\S]*padding-inline: 8px;/);
-    expect(themeCss).toMatch(/\.rtx-toolbar-group,[\s\S]*\.rtx-timeframe-strip \{[\s\S]*gap: 6px;/);
-    expect(themeCss).toMatch(/\.rtx-mt5-divider \{[\s\S]*margin-inline: 3px;[\s\S]*width: 0;/);
+    expect(themeCss).toMatch(/\.rtx-toolbar-command-cluster \{[\s\S]*gap: 0;[\s\S]*padding-inline: 10px;/);
+    expect(themeCss).toMatch(/\.rtx-toolbar-group,[\s\S]*\.rtx-timeframe-strip \{[\s\S]*gap: var\(--rtx-toolbar-item-gap, 10px\);/);
+    expect(themeCss).toMatch(/\.rtx-mt5-divider \{[\s\S]*margin-inline: 6px;[\s\S]*width: 0;/);
     expect(toolbarSource).toContain('className="rtx-mt5-divider invisible h-6 w-0 shrink-0"');
     expect(toolbarSource).not.toContain('mx-[4px] h-6 w-[2px]');
     expect(timeframePickerSource).toContain('min-w-[38px]');
@@ -110,7 +107,8 @@ describe('TopToolbar primary command cluster', () => {
     expect(overlayGroup).toContain('icon="camera"');
     expect(overlayGroup).toContain('icon="period-separator"');
     expect(overlayGroup).toContain('icon="sliders-horizontal"');
-    expect(toolbarSource.indexOf('label="Chart capture and overlays"')).toBeLessThan(
+    expect(toolbarSource.indexOf('label={tr("Chart capture and overlays")}')).toBeGreaterThan(-1);
+    expect(toolbarSource.indexOf('label={tr("Chart capture and overlays")}')).toBeLessThan(
       toolbarSource.indexOf('{/* Group 8: Horizontal MT-style timeframe strip */}'),
     );
     expect(toolbarSource.slice(

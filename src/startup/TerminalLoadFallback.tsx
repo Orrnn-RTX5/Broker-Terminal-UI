@@ -1,9 +1,11 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 interface TerminalLoadFallbackProps {
   sessionRestorePending?: boolean;
 }
 
 /** Data-free visual shell used while authenticated code or session validation finishes. */
 export function TerminalLoadFallback({ sessionRestorePending = false }: TerminalLoadFallbackProps) {
+    const tr = useUiTranslation();
   return (
     <div
       className="rtx-instant-terminal"
@@ -11,14 +13,14 @@ export function TerminalLoadFallback({ sessionRestorePending = false }: Terminal
       data-session-restore-pending={sessionRestorePending ? 'true' : undefined}
       aria-hidden="true"
     >
-      <div className="rtx-instant-titlebar">RTX 5 Web Terminal</div>
+      <div className="rtx-instant-titlebar">{tr("RTX 5 Web Terminal")}</div>
       <div className="rtx-instant-toolbar">
-        <span>File</span><span>View</span><span>Insert</span><span>Charts</span><span>Tools</span><span>Window</span><span>Help</span>
+        <span>{tr("File")}</span><span>{tr("View")}</span><span>{tr("Insert")}</span><span>{tr("Charts")}</span><span>{tr("Tools")}</span><span>{tr("Window")}</span><span>{tr("Help")}</span>
       </div>
       <div className="rtx-instant-workspace">
         <div className="rtx-instant-sidebar">
-          <div>MARKET WATCH</div>
-          <div>NAVIGATOR</div>
+          <div>{tr("MARKET WATCH")}</div>
+          <div>{tr("NAVIGATOR")}</div>
         </div>
         <div className="rtx-instant-main">
           <div className="rtx-instant-chart" />

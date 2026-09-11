@@ -1,3 +1,7 @@
+import { createChartDataSnapshot, type ChartDataSnapshot } from '../services/chartDataSnapshot';
+import { ChartSymbolTrigger } from './ChartSymbolDropdown';
+import { useUiTranslation } from '../hooks/useUiTranslation';
+import i18n from '../i18n';
 /**
  * Clean MT5-Style Trading Chart
  * - Loads historical OHLC from Swagger candle endpoints
@@ -7,6 +11,8 @@
  */
 
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo, useId } from 'react';
+import { getAnnotationTool } from '../drawing-tools/annotationToolCatalog';
+import { createChartRuler, rulerMetrics } from '../drawing-tools/chartRuler';
 import {
   createChart,
   createSeriesMarkers,
@@ -69,6 +75,7 @@ import { PriceDisplay } from './ui/PriceDisplay';
 import { getSymbolDigits } from '../utils/symbolUtils';
 import {
   computeMinimumVisiblePriceSpan,
+  formatChartAxisPrice,
   getPricePointFromDigits,
   resolveSymbolPriceDigits,
 } from '../utils/chartPriceScale';
@@ -128,6 +135,11 @@ import {
   type ChartProperties,
 } from '../store/useChartSettingsStore';
 import {
+  defaultChartObjectState,
+  getChartObjectState,
+  useChartObjectStateStore,
+} from '../store/useChartObjectStateStore';
+import {
   getTradingChartDefaultVisibleBars,
   getTradingChartInitialLogicalRange,
   getTradingChartShiftRightOffset,
@@ -154,6 +166,7 @@ import {
 } from '../utils/tradeLevelDrag';
 import {
   computeSignedPips,
+  bindChartUiTranslation,
   createDockedLevelChip,
   createEntryTradeControlBar,
   createTradeLevelControlBar,
@@ -161,6 +174,7 @@ import {
   estimateTradeMoneyAtPrice,
   formatMoneyLabel,
   formatPipsLabel,
+  refreshChartUiTranslations,
 } from '../utils/chartTradeControls';
 import {
   buildTradeHistoryBadgeText,
@@ -173,8 +187,13 @@ import {
   getSharedChartTrade,
 } from '../utils/tradeShareLink';
 import { computePriceAxisDragRange } from '../utils/priceAxisDragZoom';
+import { applyChartTimeZoom } from '../utils/chartTimeZoom';
+import { bindChartKeyboardScroll } from '../utils/chartKeyboardScroll';
+import { isChartLegendPainted, paintChartLegend } from '../utils/chartLegend';
+import { useChartZoomStore } from '../store/useChartZoomStore';
 import {
   activateActiveChartSource,
+  bindActiveChartSourceInteractions,
   findLargestChartCanvas,
   getActiveChartSource,
   registerActiveChartSource,
@@ -399,8 +418,8 @@ const waitForProgressiveHistoryIdleTurn = (signal: AbortSignal): Promise<void> =
 const isAbortError = (error: unknown): boolean => (
   typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError'
 ) || (
-  error instanceof Error && error.name === 'AbortError'
-);
+    error instanceof Error && error.name === 'AbortError'
+  );
 
 const getInitialHistoryCount = (timeframe: Timeframe): number => (
   getChartInitialHistoryCount(timeframe, INITIAL_HISTORY_COUNT)
@@ -552,7 +571,7 @@ type ChartColorPalette = ChartProperties['colors'];
 const MINUTE_SEPARATOR_PIXEL_DEDUP_DISTANCE = 10;
 
 const CHART_AXIS_FONT_FAMILY = '"Inter", "Segoe UI", Tahoma, Arial, sans-serif';
-const CHART_AXIS_FONT_SIZE = 11;
+const CHART_AXIS_FONT_SIZE = 12;
 
 const clampAlpha = (alpha: number): number => Math.max(0, Math.min(1, alpha));
 
@@ -631,7 +650,7 @@ const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingV
     text: colors.foreground || '#ffffff',
     axisText: backgroundIsDark
       ? colorWithAlpha(colors.foreground, 0.72, 'rgba(226, 232, 240, 0.72)')
-      : colorWithAlpha(colors.foreground, 0.7, 'rgba(71, 84, 103, 0.7)'),
+      : (colors.foreground || '#25313c'),
     gridVertical: gridLines.vertical,
     gridHorizontal: gridLines.horizontal,
     scaleBorder: colorWithAlpha(colors.foreground, 0.24, 'rgba(255, 255, 255, 0.24)'),
@@ -721,6 +740,8 @@ interface PriceLevelOptions {
   role?: TradeLevelRole;
   badgeOffsetIndex?: number;
   title?: string;
+  getTitle?: () => string;
+  getLabel?: () => string;
   labelVariant?: 'badge' | 'lineText' | 'none';
   lineColor?: string;
   lineWidthPx?: number;
@@ -753,6 +774,7 @@ export const TradingChart = React.memo(function TradingChart({
   maxVolume,
   volumeStep,
 }: TradingChartProps) {
+    const tr = useUiTranslation();
   const resolvedPriceDigits = resolveSymbolPriceDigits(symbol, priceDigits);
   const resolvedPricePoint = getPricePointFromDigits(resolvedPriceDigits);
   const resolvedPriceDigitsRef = useRef(resolvedPriceDigits);
@@ -787,6 +809,9 @@ export const TradingChart = React.memo(function TradingChart({
     localIndicatorManagerRef.current = new IndicatorManager();
   }
   const localIndicatorManager = localIndicatorManagerRef.current;
+  const chartObjectState = useChartObjectStateStore((state) => (
+    state.byContext[activeChartSourceId] ?? defaultChartObjectState
+  ));
   const indicatorStorageScope = useMemo(() => (
     [
       brokerAccountSessionScope || 'default-account',
@@ -962,30 +987,33 @@ export const TradingChart = React.memo(function TradingChart({
     chartExportMetadataRef.current = { symbol, timeframe: activeTimeframe };
   }, [activeTimeframe, symbol]);
 
+  const dataWindowReaderRef = useRef<() => ChartDataSnapshot | null>(() => null);
+  const dataWindowHoverTimeRef = useRef<number | null>(null);
+
   useEffect(() => {
     const unregister = registerActiveChartSource({
       id: activeChartSourceId,
+      getDataWindowData: () => dataWindowReaderRef.current(),
       getContainer: () => containerRef.current,
       getCanvas: () => findLargestChartCanvas(containerRef.current),
       getSymbol: () => chartExportMetadataRef.current.symbol,
       getTimeframe: () => chartExportMetadataRef.current.timeframe,
+      getDateRange: () => {
+        const range = chartRef.current?.timeScale().getVisibleRange();
+        if (!range) return undefined;
+        const toDate = (time: typeof range.from) => typeof time === 'number'
+          ? new Date(time * 1000)
+          : typeof time === 'string' ? new Date(time)
+            : new Date(Date.UTC(time.year, time.month - 1, time.day));
+        return { from: toDate(range.from), to: toDate(range.to) };
+      },
     });
 
-    const activate = () => activateActiveChartSource(activeChartSourceId);
     const container = containerRef.current;
-
-    if (container) {
-      container.addEventListener('pointerenter', activate);
-      container.addEventListener('pointerdown', activate);
-      container.addEventListener('focusin', activate);
-    }
+    const unbind = container ? bindActiveChartSourceInteractions(activeChartSourceId, container) : undefined;
 
     return () => {
-      if (container) {
-        container.removeEventListener('pointerenter', activate);
-        container.removeEventListener('pointerdown', activate);
-        container.removeEventListener('focusin', activate);
-      }
+      unbind?.();
       unregister();
     };
   }, [activeChartSourceId]);
@@ -1000,6 +1028,10 @@ export const TradingChart = React.memo(function TradingChart({
   const ohlcLowRef = useRef<HTMLSpanElement>(null);
   const ohlcCloseRef = useRef<HTMLSpanElement>(null);
   const ohlcVolumeRef = useRef<HTMLSpanElement>(null);
+  const legendRefs = useMemo(() => ({
+    open: ohlcOpenRef, high: ohlcHighRef, low: ohlcLowRef,
+    close: ohlcCloseRef, volume: ohlcVolumeRef,
+  }), []);
   const legendRenderFrameRef = useRef<number | null>(null);
   const pendingLegendRenderRef = useRef<{
     signature: string;
@@ -1028,7 +1060,7 @@ export const TradingChart = React.memo(function TradingChart({
     // a single browser frame. Paint only the latest values, and do no DOM work
     // when those formatted strings are already visible.
     if (legendRenderFrameRef.current !== null) return;
-    if (renderedLegendSignatureRef.current === pending.signature) {
+    if (renderedLegendSignatureRef.current === pending.signature && isChartLegendPainted(legendRefs, pending)) {
       pendingLegendRenderRef.current = null;
       return;
     }
@@ -1037,14 +1069,10 @@ export const TradingChart = React.memo(function TradingChart({
       legendRenderFrameRef.current = null;
       const next = pendingLegendRenderRef.current;
       pendingLegendRenderRef.current = null;
-      if (!next || renderedLegendSignatureRef.current === next.signature) return;
+      if (!next || (renderedLegendSignatureRef.current === next.signature && isChartLegendPainted(legendRefs, next))) return;
 
-      if (ohlcOpenRef.current) ohlcOpenRef.current.textContent = next.open;
-      if (ohlcHighRef.current) ohlcHighRef.current.textContent = next.high;
-      if (ohlcLowRef.current) ohlcLowRef.current.textContent = next.low;
-      if (ohlcCloseRef.current) ohlcCloseRef.current.textContent = next.close;
-      if (ohlcVolumeRef.current) ohlcVolumeRef.current.textContent = next.volume;
-      renderedLegendSignatureRef.current = next.signature;
+      // Hidden/unmounted labels must never be recorded as successfully painted.
+      if (paintChartLegend(legendRefs, next)) renderedLegendSignatureRef.current = next.signature;
     };
 
     if (typeof window === 'undefined') {
@@ -1052,7 +1080,7 @@ export const TradingChart = React.memo(function TradingChart({
       return;
     }
     legendRenderFrameRef.current = window.requestAnimationFrame(flushLegendDOM);
-  }, []);
+  }, [legendRefs]);
 
   useEffect(() => {
     renderedLegendSignatureRef.current = null;
@@ -1071,16 +1099,16 @@ export const TradingChart = React.memo(function TradingChart({
   const [loadingMessageIdx, setLoadingMessageIdx] = useState(0);
   const loadingMessages = useMemo(() => (
     loadingPhase === 'connecting'
-      ? ['Connecting to market data…']
+      ? [tr('Connecting to market data…')]
       : [
-        `Loading ${symbol} ${activeTimeframe} history…`,
-        'Aggregating M1 candles…',
-        'Preparing chart…',
+        `${symbol} ${activeTimeframe} · ${tr('Loading…')}`,
+        tr('Aggregating M1 candles…'),
+        tr('Preparing chart…'),
       ]
-  ), [activeTimeframe, loadingPhase, symbol]);
+  ), [activeTimeframe, loadingPhase, symbol, tr]);
   const [showOneClick, setShowOneClick] = useState(
     initialChartSettingsSnapshot.symbolProperties[symbol]?.showQuickTradingButtons
-      ?? initialChartSettingsSnapshot.globalProperties.showQuickTradingButtons,
+    ?? initialChartSettingsSnapshot.globalProperties.showQuickTradingButtons,
   );
   const [apiError, setApiError] = useState<string | null>(null);
   // Inline text-input overlay for the text drawing tool (replaces browser prompt)
@@ -1135,6 +1163,14 @@ export const TradingChart = React.memo(function TradingChart({
 
   const candlesRef = useRef<Candle[]>([]);
   const currentCandleRef = useRef<Candle | null>(null);
+  dataWindowReaderRef.current = () => {
+    const hoverTime = dataWindowHoverTimeRef.current;
+    const candle = hoverTime === null ? (currentCandleRef.current ?? candlesRef.current.at(-1) ?? null) :
+      candlesRef.current.find(item => item.time === hoverTime) ?? currentCandleRef.current;
+    return createChartDataSnapshot(candle, symbol, activeTimeframe, resolvedPriceDigitsRef.current, brokerTimeOffsetSecRef.current);
+  };
+  useEffect(() => { dataWindowHoverTimeRef.current = null; }, [symbol, activeTimeframe, brokerAccountSessionScope]);
+
   const liveCandleMutationGenerationRef = useRef(0);
   const liveCandleMutationGenerationByTimeRef = useRef(new Map<number, number>());
   const prevPriceRef = useRef<number | null>(null);
@@ -1144,8 +1180,6 @@ export const TradingChart = React.memo(function TradingChart({
   // Tracks the last completed M1 candle time (seconds) received from the server store.
   // Shared between the 100ms poll interval and loadHistory so both stay in sync.
   const lastStoreCandleSecRef = useRef(0);
-  // Tracks current bar spacing (px/bar) for toolbar zoom commands.
-  const pixelsPerBarRef = useRef(2);
   const resetVisibleRangeOnNextDataRef = useRef(true);
   const lastVisibleLogicalRangeRef = useRef<LogicalRangeLike | null>(null);
   const isLoadingMoreRef = useRef(false);
@@ -1157,11 +1191,15 @@ export const TradingChart = React.memo(function TradingChart({
   const latestCandleJumpPendingRef = useRef(false);
 
   const refreshCurrentIndicators = useCallback(() => {
-    setCurrentIndicators(localIndicatorManager.getIndicators().map(indicator => ({
+    const indicators = localIndicatorManager.getIndicators().map(indicator => ({
       ...indicator,
       parameters: { ...indicator.parameters },
-    })));
-  }, [localIndicatorManager]);
+    }));
+    setCurrentIndicators(indicators);
+    window.dispatchEvent(new CustomEvent('indicators:changed', {
+      detail: { contextId: activeChartSourceId, count: indicators.length },
+    }));
+  }, [activeChartSourceId, localIndicatorManager]);
 
   const persistCurrentIndicators = useCallback(() => {
     localIndicatorManager.saveToStorage(
@@ -1213,6 +1251,19 @@ export const TradingChart = React.memo(function TradingChart({
     refreshCurrentIndicators();
     persistCurrentIndicators();
   }, [localIndicatorManager, persistCurrentIndicators, refreshCurrentIndicators]);
+
+  useEffect(() => {
+    localIndicatorManager.setHidden(chartObjectState.indicatorsHidden);
+  }, [chartObjectState.indicatorsHidden, localIndicatorManager]);
+
+  useEffect(() => {
+    drawingManager.setDrawingsVisible(activeChartSourceId, !chartObjectState.drawingsHidden);
+  }, [activeChartSourceId, chartObjectState.drawingsHidden]);
+
+  useEffect(() => drawingManager.registerMagnetSnapSource(
+    activeChartSourceId,
+    (time) => localIndicatorManager.getSnapValuesAt(time),
+  ), [activeChartSourceId, localIndicatorManager]);
 
   // Broker/source time remains authoritative across timeframe changes. A symbol
   // switch must wait for that instrument's own first source timestamp before
@@ -1355,11 +1406,9 @@ export const TradingChart = React.memo(function TradingChart({
     timeScale.setVisibleLogicalRange(initialRange);
     rememberVisibleLogicalRange(initialRange);
 
-    const chartWidth = Math.max(
-      200,
-      (containerRef.current?.offsetWidth || 1400) - (chart.priceScale('right').width() || 60),
-    );
-    pixelsPerBarRef.current = chartWidth / Math.max(1, initialRange.to - initialRange.from);
+    // Range changes are applied on the chart's next frame. Capture the baseline
+    // from the live scale at the first zoom command, after this reset settles.
+    useChartZoomStore.getState().clearContext(drawingRuntimeContextRef.current.contextId);
 
     return true;
   }, [rememberVisibleLogicalRange]);
@@ -1529,7 +1578,7 @@ export const TradingChart = React.memo(function TradingChart({
     badge.style.background = overlayColors.badgeBackground;
     badge.style.color = overlayColors.badgeTextColor;
     if (livePriceValueRef.current) {
-      livePriceValueRef.current.textContent = livePrice.toFixed(digits);
+      livePriceValueRef.current.textContent = formatChartAxisPrice(livePrice, digits);
     }
     badge.style.display = 'block';
   }, [applyStableLivePriceHorizontalGeometry, getLivePriceDirectionalColor]);
@@ -1982,8 +2031,8 @@ export const TradingChart = React.memo(function TradingChart({
     );
   }, [rememberVisibleLogicalRange]);
   const formatCrosshairTime = useCallback(
-    (time: Time) => formatTradingChartCrosshairLabel(time, timeframe, brokerTimeOffsetSec),
-    [brokerTimeOffsetSec, timeframe],
+    (time: Time) => formatTradingChartCrosshairLabel(time, timeframe, brokerTimeOffsetSec, i18n.resolvedLanguage || 'en'),
+    [brokerTimeOffsetSec, timeframe, tr],
   );
   const formatTimeScaleTick = useCallback(
     (time: Time, tickMarkType: TickMarkType) => {
@@ -1999,10 +2048,10 @@ export const TradingChart = React.memo(function TradingChart({
         timeframe,
         tickMarkType,
         brokerTimeOffsetSec,
-        { forceDateLabel },
+        { forceDateLabel, locale: i18n.resolvedLanguage || 'en' },
       );
     },
-    [brokerTimeOffsetSec, normalizeChartTimeToUnixSeconds, timeframe],
+    [brokerTimeOffsetSec, normalizeChartTimeToUnixSeconds, timeframe, tr],
   );
 
   const suppressVisibleRangeHistoryLoad = useCallback((durationMs = HISTORY_VISIBLE_RANGE_SUPPRESSION_MS) => {
@@ -2883,8 +2932,9 @@ export const TradingChart = React.memo(function TradingChart({
       document.addEventListener('visibilitychange', handleDocumentVisibilityChange);
     } // end if (chartContainer)
 
-    // Crosshair move for legend
+    // Crosshair move for legend and the active chart Data Window.
     const crosshairHandler = (param: any) => {
+      dataWindowHoverTimeRef.current = typeof param.time === 'number' ? param.time : null;
       if (param.time && seriesRef.current) {
         const data = param.seriesData.get(seriesRef.current) as any;
         const volData = volumeRef.current ? param.seriesData.get(volumeRef.current) as any : null;
@@ -2908,6 +2958,14 @@ export const TradingChart = React.memo(function TradingChart({
 
     // Infinite scroll range handler
     const logicalRangeHandler = (logicalRange: any) => {
+      const contextId = drawingRuntimeContextRef.current.contextId;
+      const zoomStore = useChartZoomStore.getState();
+      if (logicalRange && zoomStore.byContext[contextId]) {
+        zoomStore.syncSpacing(
+          contextId,
+          chart.timeScale().options().barSpacing,
+        );
+      }
       // Kinetic scrolling can keep changing the visible range after pointerup.
       // Re-arm the idle window until the final range change has settled.
       interactionOwnership.noteRangeActivity();
@@ -2934,6 +2992,7 @@ export const TradingChart = React.memo(function TradingChart({
       localIndicatorManager.clearAll();
       localIndicatorManager.setChart(null);
       isDisposedRef.current = true;
+      useChartZoomStore.getState().clearContext(drawingRuntimeContextRef.current.contextId);
       visibleRangeHistoryUserInitiatedRef.current = false;
       isChartInteractionActiveRef.current = false;
       isChartUserInteractingRef.current = false;
@@ -3058,6 +3117,15 @@ export const TradingChart = React.memo(function TradingChart({
       params: payload.params,
     });
   }), [addLocalIndicator, isChartCommandTarget, symbol]);
+
+  useEffect(() => commandBus.subscribe('REMOVE_ALL_INDICATORS', payload => {
+    if (!isChartCommandTarget(payload)) return;
+    if (getChartObjectState(
+      useChartObjectStateStore.getState().byContext,
+      drawingRuntimeContextRef.current.contextId,
+    ).indicatorsLocked) return;
+    clearLocalIndicators();
+  }), [clearLocalIndicators, isChartCommandTarget]);
 
   // Update chart with candles helper
   const updateChartData = useCallback((candles: Candle[], currentChartType?: ChartType, request: ChartDataRenderRequest = {}) => {
@@ -3610,7 +3678,7 @@ export const TradingChart = React.memo(function TradingChart({
 
           currentCandleRef.current = { ...last, time: normalizedTime };
           updateLegendDOM(last.open, last.high, last.low, last.close, getDisplayVolume(last, chartSettingsRef.current));
-        console.log(`[Chart] Last candle time: ${last.time} → normalized to TF boundary: ${normalizedTime} (${activeTf})`);
+          console.log(`[Chart] Last candle time: ${last.time} → normalized to TF boundary: ${normalizedTime} (${activeTf})`);
 
           // Advance the store candle cursor so the 100ms poll doesn't re-process
           // candles that were already loaded from the REST API.
@@ -3621,11 +3689,11 @@ export const TradingChart = React.memo(function TradingChart({
 
           prevPriceRef.current = last.close;
 
-        // Kick the boundary timer now that currentCandleRef is populated.
-        // Without this, if the timer fired while history was still loading
-        // (currentCandleRef was null), rollover() silently bailed and the chart
-        // would stay frozen until the NEXT minute boundary — i.e. it only worked
-        // after a page refresh because history was served instantly from cache.
+          // Kick the boundary timer now that currentCandleRef is populated.
+          // Without this, if the timer fired while history was still loading
+          // (currentCandleRef was null), rollover() silently bailed and the chart
+          // would stay frozen until the NEXT minute boundary — i.e. it only worked
+          // after a page refresh because history was served instantly from cache.
           if (scheduleBoundaryTimerRef.current) {
             scheduleBoundaryTimerRef.current();
           }
@@ -4270,11 +4338,13 @@ export const TradingChart = React.memo(function TradingChart({
           const clientX = rect ? rect.left + param.point.x : param.point.x;
           const clientY = rect ? rect.top + param.point.y : param.point.y;
 
-          // Text tool: show input on first click (before any point placed)
-          if (activeDrawing.type === 'text' && activeDrawing.points.length === 0) {
-            setTextInputOverlay({ x: clientX, y: clientY, time: time as number, price });
-            setTextInputValue('');
-            return; // Wait for text submission
+          // Each annotation opens its editor after its own anchor sequence completes.
+          if (activeDrawing.type === 'text') {
+            const annotationTool = getAnnotationTool(activeDrawing);
+            drawingManager.updateActiveDrawing({ text: annotationTool?.editOnCreate ? annotationTool.label : '' });
+            const complete = drawingManager.addPoint(time as number, price, undefined, contextId);
+            if (complete && annotationTool?.editOnCreate) drawingManager.editAnnotation(activeDrawing.id, contextId, true);
+            return;
           }
 
           // Callout tool: place first point normally, show text input on second click
@@ -4711,6 +4781,7 @@ export const TradingChart = React.memo(function TradingChart({
 
     chartRef.current.applyOptions({
       localization: {
+        priceFormatter: price => formatChartAxisPrice(price, resolvedPriceDigitsRef.current),
         timeFormatter: formatCrosshairTime,
       },
       timeScale: {
@@ -5838,36 +5909,42 @@ export const TradingChart = React.memo(function TradingChart({
 
   // Native autoSize handles resizing internally
 
-  // Handle ZOOM_IN / ZOOM_OUT commands from toolbar buttons only (no mouse wheel zoom)
+  // Keyboard navigation retains the user's viewport while live prices update.
+  useEffect(() => bindChartKeyboardScroll({
+    getChart: () => isDisposedRef.current || !isActiveRef.current ? null : chartRef.current,
+    isTarget: isChartCommandTarget,
+    beforeScroll: () => {
+      autoScrollEnabledRef.current = false;
+      latestCandleJumpPendingRef.current = false;
+      visibleRangeHistoryUserInitiatedRef.current = true;
+      setCtxAutoScroll(false);
+      settleAutoScrollPolicyRef.current();
+      useChartSettingsStore.getState().updateSymbolProperty(prevSymbolRef.current || symbol, 'chartAutoScroll', false);
+    },
+    onScrolled: (range) => {
+      rememberVisibleLogicalRange(range);
+      leftVisibleTimeRef.current = getLeftVisibleTimeFromLogicalRange(lastRenderedCandlesRef.current, range);
+      schedulePeriodSeparatorRender();
+    },
+  }), [isChartCommandTarget, rememberVisibleLogicalRange, schedulePeriodSeparatorRender, symbol]);
+
+  // All zoom buttons use the chart's live time scale, shared by candles and volume.
   useEffect(() => {
-    const handleZoomIn = (payload: { targetContextId?: string; panelId?: string }) => {
+    const handleZoom = (payload: { targetContextId?: string; panelId?: string }, direction: 'in' | 'out') => {
       if (!isChartCommandTarget(payload)) return;
       if (isDisposedRef.current || !chartRef.current) return;
       try {
-        const newSpacing = Math.min(pixelsPerBarRef.current * 1.2, 30);
-        pixelsPerBarRef.current = newSpacing;
-        chartRef.current.timeScale().applyOptions({
-          ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
-          barSpacing: newSpacing,
-        });
+        const chart = chartRef.current;
+        if (!chart.timeScale().getVisibleLogicalRange()) return;
+        const contextId = drawingRuntimeContextRef.current.contextId;
+        const { syncSpacing } = useChartZoomStore.getState();
+        syncSpacing(contextId, chart.timeScale().options().barSpacing);
+        applyChartTimeZoom(chart, direction);
       } catch (e) { /* disposed */ }
     };
 
-    const handleZoomOut = (payload: { targetContextId?: string; panelId?: string }) => {
-      if (!isChartCommandTarget(payload)) return;
-      if (isDisposedRef.current || !chartRef.current) return;
-      try {
-        const newSpacing = Math.max(pixelsPerBarRef.current / 1.2, 1);
-        pixelsPerBarRef.current = newSpacing;
-        chartRef.current.timeScale().applyOptions({
-          ...TRADING_CHART_TIME_SCALE_LIVE_SHIFT_OPTIONS,
-          barSpacing: newSpacing,
-        });
-      } catch (e) { /* disposed */ }
-    };
-
-    const unsub1 = commandBus.subscribe('ZOOM_IN', handleZoomIn);
-    const unsub2 = commandBus.subscribe('ZOOM_OUT', handleZoomOut);
+    const unsub1 = commandBus.subscribe('ZOOM_IN', (payload) => handleZoom(payload, 'in'));
+    const unsub2 = commandBus.subscribe('ZOOM_OUT', (payload) => handleZoom(payload, 'out'));
 
     let resetChartViewport: (() => Promise<void>) | null = null;
 
@@ -5982,9 +6059,9 @@ export const TradingChart = React.memo(function TradingChart({
             const resetBufferedLiveCandles = (
               liveCandleMutationGenerationRef.current > resetHistoryLiveGenerationAtRequestStart
             ) ? selectCandlesMutatedAfterGeneration(mergeCandleCollections(
-                getCandlesForFullRender(),
-                currentCandleRef.current ? [currentCandleRef.current] : [],
-              ), liveCandleMutationGenerationByTimeRef.current, resetHistoryLiveGenerationAtRequestStart) : [];
+              getCandlesForFullRender(),
+              currentCandleRef.current ? [currentCandleRef.current] : [],
+            ), liveCandleMutationGenerationByTimeRef.current, resetHistoryLiveGenerationAtRequestStart) : [];
             // FIX: Replace the backend-covered interval first, then replay only
             // ticks that arrived after this request began. Reversing this order
             // allowed the REST page to erase a genuinely newer forming candle.
@@ -6177,18 +6254,21 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     const drawingInteractionContainer = containerRef.current;
     console.log('[TradingChart] ✅ SELECT_TOOL subscriber REGISTERED, chartRef=', !!chartRef.current, 'containerRef=', !!containerRef.current);
-    
+
     const handleSaved = (event: Event) => {
       const contextId = drawingRuntimeContextRef.current.contextId;
       const savedContextId = (event as CustomEvent<{ contextId?: string }>).detail?.contextId;
       if (savedContextId && savedContextId !== contextId) return;
       if (drawingCommandTargetRef.current !== contextId) return;
       const completed = (event as CustomEvent<{ type?: string; subtype?: string; color?: string; lineWidth?: number; lineStyle?: 'solid' | 'dashed' | 'dotted'; fillColor?: string; fillOpacity?: number }>).detail;
-      if (event.type === 'drawing:saved' && completed?.type === 'freehand' && activeToolRef.current === 'freehand') {
+      // Desktop drawings are single-use, including Brush and Highlighter.
+      if (!window.electron?.window && event.type === 'drawing:saved' && completed?.type === 'freehand' && activeToolRef.current === 'freehand') {
         if (!bindDrawingManagerToChart()) return;
         drawingManager.startDrawing('freehand', completed.color, { subtype: completed.subtype });
-        drawingManager.updateActiveDrawing({ lineWidth: completed.lineWidth, lineStyle: completed.lineStyle,
-          fillColor: completed.fillColor, fillOpacity: completed.fillOpacity });
+        drawingManager.updateActiveDrawing({
+          lineWidth: completed.lineWidth, lineStyle: completed.lineStyle,
+          fillColor: completed.fillColor, fillOpacity: completed.fillOpacity
+        });
         return;
       }
       console.log('[TradingChart] Drawing interaction ended, returning to cursor mode');
@@ -6215,11 +6295,17 @@ export const TradingChart = React.memo(function TradingChart({
 
     window.addEventListener('drawing:saved', handleSaved);
     window.addEventListener('drawing:cancelled', handleSaved);
-    const cancelBrushOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || activeToolRef.current !== 'freehand') return;
-      drawingManager.cancelDrawing(drawingRuntimeContextRef.current.contextId);
+    const cancelDrawingOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !activeToolRef.current) return;
+      const contextId = drawingRuntimeContextRef.current.contextId;
+      if (window.electron?.window) {
+        if (getActiveChartSource()?.id !== contextId) return;
+        commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'cursor', targetContextId: contextId } });
+      } else if (activeToolRef.current === 'freehand') {
+        drawingManager.cancelDrawing(contextId);
+      }
     };
-    window.addEventListener('keydown', cancelBrushOnEscape);
+    window.addEventListener('keydown', cancelDrawingOnEscape);
 
     const unsubSelectTool = commandBus.subscribe('SELECT_TOOL', (payload) => {
       const tool = payload.tool;
@@ -6259,7 +6345,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       // Track tool in ref (accessible in closures without re-creating handlers)
       activeToolRef.current = tool === 'cursor' ? null : tool;
-      if (containerRef.current) containerRef.current.style.touchAction = tool === 'freehand' ? 'none' : '';
+      if (containerRef.current) containerRef.current.style.touchAction = tool === 'freehand' || tool === 'ruler' ? 'none' : '';
       drawingCommandTargetRef.current = tool === 'cursor' ? null : contextId;
       setTrendDrawingInputActive(containerRef.current, false);
 
@@ -6331,11 +6417,74 @@ export const TradingChart = React.memo(function TradingChart({
       unsubSelectTool();
       window.removeEventListener('drawing:saved', handleSaved);
       window.removeEventListener('drawing:cancelled', handleSaved);
-      window.removeEventListener('keydown', cancelBrushOnEscape);
+      window.removeEventListener('keydown', cancelDrawingOnEscape);
       setTrendDrawingInputActive(drawingInteractionContainer, false);
       if (drawingInteractionContainer) drawingInteractionContainer.style.touchAction = '';
     };
   }, []);
+
+  // Ruler measurements are temporary and never enter the drawing manager's
+  // persistence or undo history. Keep the interaction owned by this chart.
+  useEffect(() => {
+    const container = containerRef.current, chart = chartRef.current;
+    if (!container || !chart) return;
+    const contextId = drawingRuntimeContextRef.current.contextId;
+    const select = () => commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'ruler', targetContextId: contextId } });
+    const finish = () => commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'cursor', targetContextId: contextId } });
+    const ruler = createChartRuler({
+      container,
+      select,
+      finish,
+      canStartShortcut: () => getActiveChartSource()?.id === contextId && !activeToolRef.current && !drawingManager.getActiveDrawing(contextId),
+      point: (x, y) => {
+        const series = seriesRef.current, scale = chart.timeScale();
+        if (!series) return null;
+        const logical = scale.coordinateToLogical(x), price = series.coordinateToPrice(y);
+        if (logical === null || price === null || !Number.isFinite(price)) return null;
+        const index = Math.round(logical);
+        const actualTime = series.dataByIndex(index)?.time;
+        const time = typeof actualTime === 'number' ? actualTime : projectDrawingTimeAtLogical(series, scale, index, getTimeframeSeconds(drawingRuntimeContextRef.current.timeframe as AggTimeframe));
+        if (time === null || !Number.isFinite(time)) return null;
+        return { logical: index, time, price: Number(price.toFixed(resolvedPriceDigitsRef.current)) };
+      },
+      resolve: point => {
+        const scale = chart.timeScale();
+        const exact = scale.timeToIndex(point.time as Time, false);
+        if (exact !== null) return { ...point, logical: exact };
+        const nearest = scale.timeToIndex(point.time as Time, true);
+        const anchorTime = nearest === null ? null : seriesRef.current?.dataByIndex(nearest)?.time;
+        if (nearest !== null && typeof anchorTime === 'number') {
+          return { ...point, logical: nearest + Math.round((point.time - anchorTime) / getTimeframeSeconds(drawingRuntimeContextRef.current.timeframe as AggTimeframe)) };
+        }
+        return point;
+      },
+      geometry: () => {
+        const series = seriesRef.current;
+        if (!series || isDisposedRef.current) return null;
+        return {
+          width: container.clientWidth - chart.priceScale('right').width(),
+          height: container.clientHeight - chart.timeScale().height(),
+          totalWidth: container.clientWidth, totalHeight: container.clientHeight,
+          x: index => chart.timeScale().logicalToCoordinate(index as any),
+          y: price => series.priceToCoordinate(price),
+          formatPrice: price => series.priceFormatter().format(price),
+          formatTime: time => formatTradingChartCrosshairLabel(time as Time, drawingRuntimeContextRef.current.timeframe, brokerTimeOffsetSecRef.current),
+        };
+      },
+      metrics: (start, end) => rulerMetrics(start, end, lastRenderedCandlesRef.current, resolvedPriceDigitsRef.current, getPricePointFromDigits(resolvedPriceDigitsRef.current)),
+    });
+    const unsubscribe = commandBus.subscribe('SELECT_TOOL', payload => {
+      ruler.select(payload.tool === 'ruler' && (payload.targetContextId ?? getActiveChartSource()?.id) === contextId);
+    });
+    chart.timeScale().subscribeVisibleLogicalRangeChange(ruler.refresh);
+    // Price autoscaling and live volume can change without a logical-range event.
+    const timer = window.setInterval(ruler.refresh, 250);
+    return () => {
+      unsubscribe(); window.clearInterval(timer);
+      try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(ruler.refresh); } catch { /* Chart has been disposed. */ }
+      ruler.destroy();
+    };
+  }, [symbol, activeTimeframe, drawingAccountScope]);
 
   // Handle UNDO / REDO / DELETE commands from toolbar
   useEffect(() => {
@@ -6385,8 +6534,9 @@ export const TradingChart = React.memo(function TradingChart({
     if (!isActive) return;
 
     // Listen for toggle-one-click-trading event from dashboard toolbar
-    const handleToggleOneClick = () => {
+    const handleToggleOneClick = (event: Event) => {
       if (!isActiveRef.current) return;
+      if (!isChartCommandTarget((event as CustomEvent).detail)) return;
       toggleOneClickTrading();
     };
     window.addEventListener('toggle-one-click-trading', handleToggleOneClick);
@@ -6394,7 +6544,7 @@ export const TradingChart = React.memo(function TradingChart({
     return () => {
       window.removeEventListener('toggle-one-click-trading', handleToggleOneClick);
     };
-  }, [isActive, toggleOneClickTrading]);
+  }, [isActive, isChartCommandTarget, toggleOneClickTrading]);
 
   // ─── Trade Annotations on Chart (MT5-style entry/exit markers + live trails) ───
   const TRADE_BUY_COLOR = '#22c55e';
@@ -6403,7 +6553,7 @@ export const TradingChart = React.memo(function TradingChart({
   const TRADE_HISTORY_LOSS_COLOR = '#ff5a67';
   const TRADE_HISTORY_LIGHT_PROFIT_COLOR = '#007a55';
   const TRADE_HISTORY_LIGHT_LOSS_COLOR = '#c6283d';
-  const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v6-thin-candle-connectors';
+  const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v7-exact-line-opacity';
   // MT5-style entry lines: dotted blue for BUY, dotted red for SELL.
   const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';
   const TRADE_ENTRY_LINE_SELL_COLOR = '#ef4444';
@@ -7358,8 +7508,12 @@ export const TradingChart = React.memo(function TradingChart({
       hoverTarget.dataset.hoverPrice = title;
       hoverTarget.dataset.hoverTime = timeLabel;
       hoverTarget.dataset.positionSide = historyPositionSide;
+      hoverTarget.dataset.historyAccessibleLabel = accessibleLabel;
       hoverTarget.setAttribute('role', 'img');
-      hoverTarget.setAttribute('aria-label', accessibleLabel);
+      hoverTarget.setAttribute('aria-label', accessibleLabel.replace(
+        `${historyPositionSide} ${lifecycleLabel}`,
+        `${tr(historyPositionSide)} ${tr(lifecycle === 'open' ? 'Open' : 'Close')}`,
+      ));
       hoverTarget.tabIndex = 0;
       hoverTarget.style.cssText = 'position:absolute;display:none;width:32px;height:36px;z-index:22;pointer-events:auto;cursor:help;background:transparent;';
 
@@ -7374,7 +7528,7 @@ export const TradingChart = React.memo(function TradingChart({
 
       const tooltipHeader = document.createElement('span');
       tooltipHeader.className = 'rtx-trade-marker__tooltip-header';
-      tooltipHeader.textContent = `${historyPositionSide} ${lifecycleLabel}`;
+      tooltipHeader.textContent = `${tr(historyPositionSide)} ${tr(lifecycle === 'open' ? 'Open' : 'Close')}`;
       tooltipHeader.style.cssText = `display:block;padding:3px 8px;border-bottom:1px solid ${colorWithAlpha(palette.border, 0.5, palette.border)};background:${palette.background};color:${palette.text};font-size:10px;font-weight:800;letter-spacing:0.075em;`;
 
       const tooltipDetails = document.createElement('span');
@@ -7383,7 +7537,8 @@ export const TradingChart = React.memo(function TradingChart({
       const detailLabelColor = lightSurface ? '#667085' : '#98a2b3';
       const appendTooltipDetail = (labelText: string, valueText: string) => {
         const label = document.createElement('span');
-        label.textContent = labelText;
+        label.dataset.chartUiLabel = labelText;
+        label.textContent = tr(labelText);
         label.style.cssText = `color:${detailLabelColor};font-weight:600;`;
         const value = document.createElement('span');
         value.textContent = valueText;
@@ -7415,11 +7570,10 @@ export const TradingChart = React.memo(function TradingChart({
       const isHistoryLine = layer === 'history';
       const thickness = isHistoryLine ? 1 : lineStyle === 'solid' ? 2 : 1;
       const safeOpacity = clampAlpha(opacity);
-      const historyVisualOpacity = safeOpacity > 0 ? 0.78 + safeOpacity * 0.22 : 0;
       const background = lineStyle === 'solid'
         ? color
         : `repeating-linear-gradient(to right, ${color} 0 6px, transparent 6px 10px)`;
-      const renderedOpacity = isHistoryLine ? historyVisualOpacity : safeOpacity;
+      const renderedOpacity = safeOpacity;
       const segmentZIndex = isHistoryLine ? 17 : lineStyle === 'solid' ? 13 : 9;
       line.style.cssText = `position:absolute;display:none;height:${thickness}px;background:${background};border:0;border-radius:999px;z-index:${segmentZIndex};pointer-events:none;opacity:${renderedOpacity};transform-origin:0 50%;will-change:transform,width;`;
       appendOverlayNode(line, { kind: 'segment', price, time, endPrice, endTime, resolveEndPrice, resolveEndTime }, layer);
@@ -7441,7 +7595,7 @@ export const TradingChart = React.memo(function TradingChart({
         hitArea.className = 'rtx-trade-level-hit-area';
         hitArea.dataset.tradeKey = options.tradeKey;
         hitArea.dataset.role = options.role;
-        if (options.title) hitArea.title = options.title;
+        bindChartUiTranslation(hitArea, () => { hitArea.title = options.getTitle?.() ?? options.title ?? ''; });
         hitArea.style.cssText = `position:absolute;display:none;height:${TRADE_LEVEL_HIT_AREA_PX}px;transform:translateY(-50%);z-index:15;pointer-events:auto;cursor:grab;background:transparent;touch-action:none;`;
         appendActiveInteractionNode(hitArea, { kind: 'price-hit-area', price });
       }
@@ -7451,9 +7605,11 @@ export const TradingChart = React.memo(function TradingChart({
       if (options.labelVariant === 'none') return;
 
       const badge = document.createElement('div');
-      badge.textContent = labelText;
+      bindChartUiTranslation(badge, () => {
+        badge.textContent = options.getLabel?.() ?? labelText;
+        badge.title = options.getTitle?.() ?? options.title ?? '';
+      });
       badge.className = 'rtx-trade-level-badge';
-      if (options.title) badge.title = options.title;
       if (options.tradeKey && options.role) {
         badge.dataset.tradeKey = options.tradeKey;
         badge.dataset.role = options.role;
@@ -7486,6 +7642,16 @@ export const TradingChart = React.memo(function TradingChart({
       const currency = String(useAppStore.getState().account?.currency || '').trim().toUpperCase();
       return currency || 'USD';
     };
+
+    const getLocalizedTradeTitle = (trade: ActiveTradeSnapshot, role?: 'SL' | 'TP', price?: number) => [
+      tr(trade.side),
+      tr('{{value0}} lots', { value0: trade.volume }),
+      tr('Ticket: {{value0}}', { value0: getTradeTicketLabel(trade.key) || trade.key }),
+      role
+        ? tr(role === 'SL' ? 'Stop Loss: {{value0}}' : 'Take Profit: {{value0}}', { value0: price ? formatTradeLevelBadgePrice(price) : '—' })
+        : tr('Open price: {{value0}}', { value0: formatTradeLevelBadgePrice(trade.entryPrice) }),
+      tr(role ? 'Modify Position' : 'Add stop loss and take profit'),
+    ].join(' · ');
 
     const getTradeTicket = (tradeKey: string): number => {
       const ticket = Number.parseInt(tradeKey.replace(/^trade:/, ''), 10);
@@ -7652,12 +7818,13 @@ export const TradingChart = React.memo(function TradingChart({
           void copyTextToClipboard(shareUrl).then((copied) => {
             window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
               detail: copied
-                ? { message: `Share link for ${ticketLabel || trade.symbol} copied to clipboard`, type: 'success' }
-                : { message: 'Could not copy the share link to the clipboard', type: 'error' },
+                ? { message: `${tr('Copied')} · ${tr('Trade')} URL: ${ticketLabel || trade.symbol}`, type: 'success' }
+                : { message: `${tr('Copy')} · ${tr('Failed')}`, type: 'error' },
             }));
           });
         },
       });
+      bindChartUiTranslation(controlBar.root, () => { controlBar.root.title = getLocalizedTradeTitle(trade); });
       // The bar sits exactly on the entry line so bar, dashed line and the
       // right-scale price box always share one horizontal line — overlapping
       // bars from same-price trades are expected (cTrader behaviour).
@@ -7697,6 +7864,7 @@ export const TradingChart = React.memo(function TradingChart({
           leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
           title: `Drag to set Stop Loss for ${ticketLabel || trade.key}`,
         });
+        bindChartUiTranslation(slChip, () => { slChip.title = getLocalizedTradeTitle(trade, 'SL'); });
         appendOverlayNode(slChip, { kind: 'price-badge', price: trade.entryPrice, pixelOffsetY: slDockOffset }, 'active');
       }
       if (!(levels.tp > 0)) {
@@ -7708,6 +7876,7 @@ export const TradingChart = React.memo(function TradingChart({
           leftInset: TRADE_LEVEL_BADGE_LEFT_INSET_PX,
           title: `Drag to set Take Profit for ${ticketLabel || trade.key}`,
         });
+        bindChartUiTranslation(tpChip, () => { tpChip.title = getLocalizedTradeTitle(trade, 'TP'); });
         appendOverlayNode(tpChip, { kind: 'price-badge', price: trade.entryPrice, pixelOffsetY: -slDockOffset }, 'active');
       }
     };
@@ -7738,6 +7907,7 @@ export const TradingChart = React.memo(function TradingChart({
           { sl: levels.sl || 0, tp: levels.tp || 0 },
         ),
       });
+      bindChartUiTranslation(levelBar, () => { levelBar.title = getLocalizedTradeTitle(trade, role, levelPrice); });
       appendOverlayNode(levelBar, { kind: 'price-badge', price: levelPrice }, 'active');
       addTradeAxisPriceLine(
         `${trade.key}:${role.toLowerCase()}`,
@@ -7776,7 +7946,11 @@ export const TradingChart = React.memo(function TradingChart({
 
       const chartProperties = useChartSettingsStore.getState().symbolProperties[symbol]
         || useChartSettingsStore.getState().globalProperties;
-      const showTradeLevels = chartProperties.showTradeLevels !== false;
+      const showTradeLevels = chartProperties.showTradeLevels !== false
+        && !getChartObjectState(
+          useChartObjectStateStore.getState().byContext,
+          drawingRuntimeContextRef.current.contextId,
+        ).tradesHidden;
       const showTradeHistory = chartProperties.showTradeHistory !== false;
       const showTradeHistoryArrows = chartProperties.showTradeHistoryArrows !== false;
       const showAnyTradeHistoryOverlay = showTradeHistory || showTradeHistoryArrows;
@@ -8102,19 +8276,19 @@ export const TradingChart = React.memo(function TradingChart({
         .sort((a, b) => a.key.localeCompare(b.key));
       const activeSignature = showTradeLevels
         ? sortedActiveSnapshots.map((trade) => {
-            const levels = nextActiveSnapshots.has(trade.key) || visuallyRetainedActiveTradeKeys.has(trade.key)
-              ? resolveTradeLevels(trade)
-              : { sl: 0, tp: 0 };
-            return [
-              trade.key,
-              trade.side,
-              trade.volume,
-              trade.entryTime,
-              formatSignaturePrice(trade.entryPrice),
-              formatSignaturePrice(levels.sl),
-              formatSignaturePrice(levels.tp),
-            ].join(':');
-          }).join('|')
+          const levels = nextActiveSnapshots.has(trade.key) || visuallyRetainedActiveTradeKeys.has(trade.key)
+            ? resolveTradeLevels(trade)
+            : { sl: 0, tp: 0 };
+          return [
+            trade.key,
+            trade.side,
+            trade.volume,
+            trade.entryTime,
+            formatSignaturePrice(trade.entryPrice),
+            formatSignaturePrice(levels.sl),
+            formatSignaturePrice(levels.tp),
+          ].join(':');
+        }).join('|')
         : '';
       const closedSignature = showAnyTradeHistoryOverlay
         ? Array.from(closedTrades.values())
@@ -8212,6 +8386,8 @@ export const TradingChart = React.memo(function TradingChart({
                 role: isLiveActiveTrade ? 'ENTRY' : undefined,
                 badgeOffsetIndex: showTradeControls ? 0 : entryStackIndex,
                 title: isLiveActiveTrade ? `${markerTitle}. Drag above/below to create TP or SL.` : markerTitle,
+                getTitle: () => getLocalizedTradeTitle(trade),
+                getLabel: () => `${tr(trade.side)} ${ticketLabel} ${tr('{{value0}} lots', { value0: trade.volume })} @ ${entryPriceLabel}`,
                 // The control bar replaces the plain text label.
                 labelVariant: showTradeControls ? 'none' : 'lineText',
                 lineColor: getEntryLineColor(trade.side),
@@ -8239,6 +8415,8 @@ export const TradingChart = React.memo(function TradingChart({
                 title: isVisuallyRetainedTrade
                   ? `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}. Waiting for position refresh.`
                   : `Stop Loss for ${ticketLabel || trade.key} @ ${stopLossPriceLabel}`,
+                getTitle: () => `${getLocalizedTradeTitle(trade, 'SL', levels.sl)}${isVisuallyRetainedTrade ? ` · ${tr('Loading open positions...')}` : ''}`,
+                getLabel: () => `${tr('SL')} ${ticketLabel} ${stopLossPriceLabel}`,
                 labelVariant: showTradeControls ? 'none' : 'lineText',
               });
               if (showTradeControls) {
@@ -8255,6 +8433,8 @@ export const TradingChart = React.memo(function TradingChart({
                 title: isVisuallyRetainedTrade
                   ? `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}. Waiting for position refresh.`
                   : `Take Profit for ${ticketLabel || trade.key} @ ${takeProfitPriceLabel}`,
+                getTitle: () => `${getLocalizedTradeTitle(trade, 'TP', levels.tp)}${isVisuallyRetainedTrade ? ` · ${tr('Loading open positions...')}` : ''}`,
+                getLabel: () => `${tr('TP')} ${ticketLabel} ${takeProfitPriceLabel}`,
                 labelVariant: showTradeControls ? 'none' : 'lineText',
               });
               if (showTradeControls) {
@@ -8373,6 +8553,16 @@ export const TradingChart = React.memo(function TradingChart({
       }
     });
 
+    const unsubscribeChartObjectState = useChartObjectStateStore.subscribe((state, previousState) => {
+      const contextId = drawingRuntimeContextRef.current.contextId;
+      if (
+        getChartObjectState(state.byContext, contextId).tradesHidden
+        !== getChartObjectState(previousState.byContext, contextId).tradesHidden
+      ) {
+        renderTradeOverlay(true);
+      }
+    });
+
     const handleForceRefresh = () => {
       window.setTimeout(() => {
         renderTradeOverlay();
@@ -8458,6 +8648,7 @@ export const TradingChart = React.memo(function TradingChart({
     return () => {
       unsubscribeAppStore();
       unsubscribeChartSettings();
+      unsubscribeChartObjectState();
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
       window.removeEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
       window.removeEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
@@ -8466,6 +8657,28 @@ export const TradingChart = React.memo(function TradingChart({
       clearTradeOverlayVisualRuntime();
     };
   }, [brokerTimeOffsetSec, clearTradeOverlayLayer, clearTradeOverlayVisualRuntime, getNearestCandleByTime, hydrateTradeLevelOverrides, isLivePriceSafeForCandles, persistTradeLevelOverrides, resolvedPriceDigits, symbol, timeframe, TRADE_HISTORY_PRESENTATION_VERSION, updateLabelPositions]);
+
+  // Relabel existing overlays in place. Changing the interface language must
+  // not recreate the chart, reset its viewport, or interrupt a level drag.
+  useEffect(() => {
+    const host = overlayRef.current?.parentElement ?? overlayRef.current;
+    if (!host) return;
+    refreshChartUiTranslations(host);
+    host.querySelectorAll<HTMLElement>('[data-chart-ui-label]').forEach(label => {
+      label.textContent = tr(label.dataset.chartUiLabel || '');
+    });
+    host.querySelectorAll<HTMLElement>('.rtx-trade-marker-hover-target').forEach(marker => {
+      const side = marker.dataset.positionSide;
+      const lifecycle = marker.dataset.tradeLifecycle;
+      if (!side || !lifecycle) return;
+      const sourceHeader = `${side} ${lifecycle === 'open' ? 'OPEN' : 'CLOSE'}`;
+      const translatedHeader = `${tr(side)} ${tr(lifecycle === 'open' ? 'Open' : 'Close')}`;
+      const header = marker.querySelector<HTMLElement>('.rtx-trade-marker__tooltip-header');
+      if (header) header.textContent = translatedHeader;
+      const accessibleLabel = marker.dataset.historyAccessibleLabel;
+      if (accessibleLabel) marker.setAttribute('aria-label', accessibleLabel.replace(sourceHeader, translatedHeader));
+    });
+  }, [tr]);
 
   useEffect(() => {
     if (candlesLoadedRev <= 0) return;
@@ -9109,8 +9322,8 @@ export const TradingChart = React.memo(function TradingChart({
   };
 
   const handleCtxOpenNewOrder = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('openNewOrder'));
-  }, []);
+    window.dispatchEvent(new CustomEvent('openNewOrder', { detail: { symbol, targetContextId: activeChartSourceId } }));
+  }, [activeChartSourceId, symbol]);
 
   const handleCtxOpenDOM = useCallback(() => {
     window.dispatchEvent(new CustomEvent('openDepthOfMarket', { detail: { symbol } }));
@@ -9577,7 +9790,10 @@ export const TradingChart = React.memo(function TradingChart({
           contractSize: Number(previewPositionRaw?.contractSize ?? previewPositionRaw?.contract_size) || undefined,
         });
         const previewCurrency = String(previewState.account?.currency || 'USD').trim().toUpperCase() || 'USD';
-        dragBadgeOverlay.textContent = `${role} ${price.toFixed(digits)}  Pips: ${formatPipsLabel(previewPips)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;
+        const previewBadge = dragBadgeOverlay;
+        bindChartUiTranslation(previewBadge, () => {
+          previewBadge.textContent = `${tr(role)} ${price.toFixed(digits)}  ${tr('pips')}: ${formatPipsLabel(previewPips)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;
+        });
         dragBadgeOverlay.style.transform = `translateY(calc(-50% + ${drawY}px))`;
         return;
       }
@@ -9777,6 +9993,8 @@ export const TradingChart = React.memo(function TradingChart({
   return (
     <div
       className="rtx-chart-wrapper relative w-full h-full bg-[#0d0d0d]"
+      data-chart-context-id={activeChartSourceId}
+      dir="ltr"
       data-cursor="select"
       onContextMenu={handleContextMenu}
     >
@@ -9794,7 +10012,7 @@ export const TradingChart = React.memo(function TradingChart({
             minWidth: 180,
           }}
         >
-          <div className="text-xs text-zinc-400 mb-1">Enter text label</div>
+          <div className="text-xs text-zinc-400 mb-1">{tr("Enter text label")}</div>
           <input
             autoFocus
             type="text"
@@ -9836,7 +10054,7 @@ export const TradingChart = React.memo(function TradingChart({
               }
             }}
             className="px-2 py-1 rounded text-sm text-white bg-zinc-800 border border-zinc-600 outline-none focus:border-blue-500"
-            placeholder="Type and press Enter"
+            placeholder={tr("Type and press Enter")}
           />
           <div className="flex gap-1">
             <button
@@ -9869,8 +10087,7 @@ export const TradingChart = React.memo(function TradingChart({
               }}
               className="flex-1 px-2 py-1 rounded text-xs bg-blue-600 hover:bg-blue-500 text-white"
             >
-              OK
-            </button>
+              {tr("OK")}</button>
             <button
               onClick={() => {
                 const contextId = drawingRuntimeContextRef.current.contextId;
@@ -9884,8 +10101,7 @@ export const TradingChart = React.memo(function TradingChart({
               }}
               className="flex-1 px-2 py-1 rounded text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300"
             >
-              Cancel
-            </button>
+              {tr("Cancel")}</button>
           </div>
         </div>
       )}
@@ -9915,7 +10131,7 @@ export const TradingChart = React.memo(function TradingChart({
               key={loadingMessageIdx}
               className="text-sm tracking-wide transition-opacity duration-300"
             >
-              {loadingPhase === 'ready' ? 'Ready' : (loadingMessages[loadingMessageIdx] ?? loadingMessages[0])}
+              {loadingPhase === 'ready' ? tr("Ready") : (loadingMessages[loadingMessageIdx] ?? loadingMessages[0])}
             </div>
           </div>
         </div>
@@ -9936,7 +10152,7 @@ export const TradingChart = React.memo(function TradingChart({
               fontWeight: 400, color: '#7f56d9',
               background: 'rgba(127, 86, 217, 0.10)',
               padding: '2px 8px', borderRadius: '4px',
-            }}>{symbol}, {timeframe}</span>
+            }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
           )}
           {chartSettings.showOHLC && (
             <>
@@ -9980,7 +10196,7 @@ export const TradingChart = React.memo(function TradingChart({
           textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px'
         }}>
           {chartSettings.showTicker && (
-            <span style={{ fontWeight: 500, color: chartTheme.text }}>{symbol}, {timeframe}</span>
+            <span style={{ fontWeight: 500, color: chartTheme.text }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
           )}
           {chartSettings.showOHLC && (
             <>
@@ -10087,14 +10303,14 @@ export const TradingChart = React.memo(function TradingChart({
           position: 'absolute',
           top: -9999,
           right: 0,
-          padding: '2px 6px 4px',
+          padding: '2px 5px',
           background: initialLivePriceOverlayColors.badgeBackground,
           color: initialLivePriceOverlayColors.badgeTextColor,
-          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
+          fontFamily: CHART_AXIS_FONT_FAMILY,
           whiteSpace: 'nowrap',
           pointerEvents: 'none',
           zIndex: 9,
-          borderRadius: 2,
+          borderRadius: 0,
           transform: `translateY(-${LIVE_PRICE_BADGE_PRICE_ROW_OFFSET_PX}px)`,
           letterSpacing: 0,
           textAlign: 'center',
@@ -10105,7 +10321,7 @@ export const TradingChart = React.memo(function TradingChart({
           ref={livePriceValueRef}
           style={{
             display: 'block',
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 600,
             lineHeight: '16px',
             fontVariantNumeric: 'tabular-nums',
@@ -10117,10 +10333,10 @@ export const TradingChart = React.memo(function TradingChart({
           aria-hidden="true"
           style={{
             display: 'none',
-            fontSize: 11,
-            fontWeight: 600,
+            fontSize: 12,
+            fontWeight: 500,
             lineHeight: '14px',
-            letterSpacing: '0.04em',
+            letterSpacing: 0,
             fontVariantNumeric: 'tabular-nums',
             opacity: 1,
           }}
@@ -10171,7 +10387,10 @@ export const TradingChart = React.memo(function TradingChart({
         onToggleTradeHistory={handleCtxToggleTradeHistory}
         onOpenProperties={handleCtxOpenProperties}
         onSaveAsPicture={handleCtxSaveAsPicture}
-        onPrintChart={() => window.print()}
+        onPrintChart={() => {
+          activateActiveChartSource(activeChartSourceId);
+          window.dispatchEvent(new CustomEvent('printChart'));
+        }}
         onRefresh={handleCtxRefresh}
         onZoomIn={handleCtxZoomIn}
         onZoomOut={handleCtxZoomOut}

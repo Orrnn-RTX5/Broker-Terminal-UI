@@ -3,20 +3,23 @@
  * Registers all MT5-compatible global shortcuts
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcut';
 import { ShortcutFeedback } from './ShortcutFeedback';
 import { ShortcutHelpDialog } from './ShortcutHelpDialog';
-import { SHORTCUT_CATEGORIES } from '../services/keyboardShortcutManager';
+import { SHORTCUT_CATEGORIES, keyboardShortcutManager, isShortcutOverlay, type ShortcutDefinition } from '../services/keyboardShortcutManager';
+import { TERMINAL_SHORTCUTS, runTerminalShortcutAction } from '../services/shortcutCatalog';
 import { commandBus } from '../services/commandBus';
 import { getActiveChartSource } from '../services/activeChartSource';
+import { getPanelIdFromChartContextId } from '../services/chartCommandTarget';
 import { useAppStore } from '../store/useAppStore';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
+import { resolveExactBrokerSymbolValue } from '../utils/exactBrokerSymbol';
 
 interface GlobalShortcutsProps {
   onOpenOrderPanel: (symbol: string, price: { bid: number; ask: number }) => void;
   onQuickBuy: () => void;
-  onQuickSell: () => void;
+  onQuickSell: (symbol?: string) => void;
   onSaveWorkspace: () => void;
   onOpenDataFolder: () => void;
   onPrintChart: () => void;
@@ -77,6 +80,12 @@ export function GlobalShortcuts({
   const [feedbackText, setFeedbackText] = useState<string | null>(null);
   const [showHelpDialog, setShowHelpDialog] = useState(false);
 
+  useEffect(() => {
+    const openHelp = () => setShowHelpDialog(true);
+    window.addEventListener('open-shortcut-help', openHelp);
+    return () => window.removeEventListener('open-shortcut-help', openHelp);
+  }, []);
+
   const showFeedback = (text: string | null) => {
     setFeedbackText(text);
   };
@@ -84,7 +93,7 @@ export function GlobalShortcuts({
   // Get the tick for the command target, which may differ from Market Watch.
   const getCurrentTick = (symbol = selectedSymbol) => {
     const ticks = useAppStore.getState().ticks;
-    return ticks[symbol] || { bid: 0, ask: 0 };
+    return resolveExactBrokerSymbolValue(ticks, symbol) || { bid: 0, ask: 0 };
   };
 
   const dispatchDrawingShortcut = (eventName: string) => {
@@ -94,7 +103,12 @@ export function GlobalShortcuts({
     }));
   };
 
-  useKeyboardShortcuts([
+  const changeTimeframe = (timeframe: string) => {
+    const targetContextId = getActiveChartSource()?.id;
+    commandBus.dispatch({ type: 'SET_TIMEFRAME', payload: { timeframe, targetContextId, panelId: getPanelIdFromChartContextId(targetContextId) } });
+  };
+
+  const existingShortcuts: ShortcutDefinition[] = [
     // File menu shortcuts
     {
       id: 'file.save',
@@ -110,13 +124,14 @@ export function GlobalShortcuts({
     },
     {
       id: 'file.close-chart',
-      key: 'w',
-      ctrl: true,
+      key: 'q',
+      alt: true,
+      shift: true,
       description: 'Close active chart',
       category: SHORTCUT_CATEGORIES.FILE,
       priority: 100,
       handler: () => {
-        showFeedback('Close Active Chart (Ctrl+W)');
+        showFeedback('Close Active Chart (Alt+Shift+Q)');
         window.dispatchEvent(new CustomEvent('close-active-chart'));
       }
     },
@@ -143,21 +158,6 @@ export function GlobalShortcuts({
       handler: () => {
         showFeedback('Print Chart (Ctrl+P)');
         onPrintChart();
-      }
-    },
-    {
-      id: 'file.exit',
-      key: 'F4',
-      alt: true,
-      description: 'Exit application',
-      category: SHORTCUT_CATEGORIES.FILE,
-      priority: 100,
-      allowInInput: true,
-      handler: () => {
-        if (confirm('Are you sure you want to exit?')) {
-          showFeedback('Exit (Alt+F4)');
-          window.close();
-        }
       }
     },
 
@@ -206,20 +206,6 @@ export function GlobalShortcuts({
         onOpenOrderPanel(target.symbol, { bid: tick.bid, ask: tick.ask });
       }
     },
-    {
-      id: 'tools.new-order-alt',
-      key: 'n',
-      ctrl: true,
-      description: 'New Order (Alt)',
-      category: SHORTCUT_CATEGORIES.TOOLS,
-      priority: 100,
-      handler: () => {
-        const target = resolveActiveChartTarget(selectedSymbol);
-        const tick = getCurrentTick(target.symbol);
-        showFeedback(`New Order - ${target.symbol} (Ctrl+N)`);
-        onOpenOrderPanel(target.symbol, { bid: tick.bid, ask: tick.ask });
-      }
-    },
 
     {
       id: 'view.depth-of-market',
@@ -241,20 +227,23 @@ export function GlobalShortcuts({
       description: 'Quick Sell',
       category: SHORTCUT_CATEGORIES.TRADING,
       priority: 95,
-      handler: () => {
-        showFeedback(`Quick Sell - ${selectedSymbol} (Alt+S)`);
-        onQuickSell();
+      handler: (event) => {
+        if (isShortcutOverlay(event)) return;
+        const target = resolveActiveChartTarget(selectedSymbol);
+        showFeedback(`Quick Sell - ${target.symbol} (Alt+S)`);
+        onQuickSell(target.symbol);
       }
     },
     {
       id: 'trading.toggle-one-click',
       key: 't',
       alt: true,
+      shift: true,
       description: 'Toggle One-Click Trading (Buy/Sell)',
       category: SHORTCUT_CATEGORIES.TRADING,
       priority: 95,
       handler: () => {
-        showFeedback('Toggle One-Click Trading (Alt+T)');
+        showFeedback('Toggle One-Click Trading (Alt+Shift+T)');
         window.dispatchEvent(new CustomEvent('toggle-one-click-trading'));
       }
     },
@@ -399,7 +388,7 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Timeframe: M1 (Alt+4)');
-        window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: 'M1' } }));
+        changeTimeframe('M1');
       }
     },
     {
@@ -411,7 +400,7 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Timeframe: M5 (Alt+5)');
-        window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: 'M5' } }));
+        changeTimeframe('M5');
       }
     },
     {
@@ -423,7 +412,7 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Timeframe: M15 (Alt+6)');
-        window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: 'M15' } }));
+        changeTimeframe('M15');
       }
     },
     {
@@ -435,7 +424,7 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Timeframe: M30 (Alt+7)');
-        window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: 'M30' } }));
+        changeTimeframe('M30');
       }
     },
     {
@@ -447,7 +436,7 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Timeframe: H1 (Alt+8)');
-        window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: 'H1' } }));
+        changeTimeframe('H1');
       }
     },
     {
@@ -459,7 +448,7 @@ export function GlobalShortcuts({
       priority: 90,
       handler: () => {
         showFeedback('Timeframe: H4 (Alt+9)');
-        window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: 'H4' } }));
+        changeTimeframe('H4');
       }
     },
 
@@ -495,7 +484,7 @@ export function GlobalShortcuts({
       }
     },
     {
-      id: 'charts.toggle-grid',
+      id: 'charts.toggle-grid-alt',
       key: 'g',
       alt: true,
       description: 'Toggle Grid',
@@ -531,7 +520,7 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 80,
       handler: () => {
-        window.dispatchEvent(new CustomEvent('chart-scroll', { detail: { direction: 'left' } }));
+        window.dispatchEvent(new CustomEvent('chart-scroll', { detail: { direction: 'left', targetContextId: getActiveChartSource()?.id } }));
       }
     },
     {
@@ -541,7 +530,7 @@ export function GlobalShortcuts({
       category: SHORTCUT_CATEGORIES.CHARTS,
       priority: 80,
       handler: () => {
-        window.dispatchEvent(new CustomEvent('chart-scroll', { detail: { direction: 'right' } }));
+        window.dispatchEvent(new CustomEvent('chart-scroll', { detail: { direction: 'right', targetContextId: getActiveChartSource()?.id } }));
       }
     },
     {
@@ -652,6 +641,30 @@ export function GlobalShortcuts({
         setShowHelpDialog(true);
       }
     }
+  ];
+  const desktop = typeof window !== 'undefined' && Boolean(window.electron);
+  const existingIds = new Set(existingShortcuts.map(shortcut => shortcut.id));
+  const additions: ShortcutDefinition[] = TERMINAL_SHORTCUTS
+    .filter(shortcut => !existingIds.has(shortcut.id))
+    .map(shortcut => ({
+      ...shortcut,
+      priority: 90,
+      handler: () => {
+        runTerminalShortcutAction(shortcut.id);
+        showFeedback(`${shortcut.description} (${keyboardShortcutManager.formatShortcut(shortcut as ShortcutDefinition)})`);
+      },
+    }));
+  const desktopAliases: ShortcutDefinition[] = desktop ? [
+    { id: 'view.symbols-desktop', key: 'u', ctrl: true, description: 'Search Symbols', category: 'View', handler: () => runTerminalShortcutAction('view.symbols') },
+    { id: 'view.navigator-desktop', key: 'n', ctrl: true, description: 'Navigator', category: 'View', handler: () => runTerminalShortcutAction('view.navigator') },
+    { id: 'view.terminal-desktop', key: 't', ctrl: true, description: 'Terminal', category: 'View', handler: () => runTerminalShortcutAction('view.terminal') },
+    { id: 'file.close-chart-desktop', key: 'F4', ctrl: true, description: 'Close active chart', category: 'File', handler: () => runTerminalShortcutAction('file.close-chart') },
+  ] : [];
+
+  useKeyboardShortcuts([
+    ...existingShortcuts.filter(shortcut => desktop || !['file.open-data-folder', 'charts.toggle-volume'].includes(shortcut.id)),
+    ...additions,
+    ...desktopAliases,
   ], [
     selectedSymbol,
     onOpenOrderPanel,

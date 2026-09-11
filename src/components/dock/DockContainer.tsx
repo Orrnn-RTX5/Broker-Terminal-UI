@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 /**
  * DockContainer Component
  * MT5-style docking with compass rose indicator and blue preview
@@ -12,7 +13,9 @@ import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { DockContainer as DockContainerType, DockPanelConfig } from '../../services/dockManager';
 import { DockPanel } from './DockPanel';
 import { DockResizeHandle } from './DockResizeHandle';
+import { activateActiveChartSource } from '../../services/activeChartSource';
 import { X } from 'lucide-react';
+import { StableChartHosts, StableChartSlot, useHasStableChartHosts } from './StableChartHosts';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -35,13 +38,28 @@ const dockIntent = {
 };
 
 const CHART_FOCUS_COMPONENTS = new Set(['Chart', 'EmptyChartArea']);
-const HEADERLESS_DOCK_COMPONENTS = new Set(['EmptyChartArea', 'Chart', 'MarketWatch']);
+const HEADERLESS_DOCK_COMPONENTS = new Set(['EmptyChartArea', 'MarketWatch']);
 
 const showsDockPanelHeader = (component: string): boolean => !HEADERLESS_DOCK_COMPONENTS.has(component);
 
 const isDockContainerNode = (
   node: DockContainerType | DockPanelConfig
 ): node is DockContainerType => 'children' in node;
+
+const isMinimizedChartGroup = (node: DockContainerType | DockPanelConfig): boolean => (
+  isDockContainerNode(node)
+    ? node.children.length > 0 && node.children.every(isMinimizedChartGroup)
+    : node.component === 'Chart' && node.minimized === true
+);
+
+const minimizedChartGroupSize = (node: DockContainerType | DockPanelConfig): { width: number; height: number } => {
+  if (!isDockContainerNode(node)) return { width: 180, height: 30 };
+  const sizes = node.children.map(minimizedChartGroupSize);
+  if (node.type === 'tabs') return { width: 180, height: 62 };
+  return node.direction === 'horizontal'
+    ? { width: sizes.reduce((sum, size) => sum + size.width, 0), height: Math.max(30, ...sizes.map(size => size.height)) + 16 }
+    : { width: Math.max(180, ...sizes.map(size => size.width)), height: sizes.reduce((sum, size) => sum + size.height, 0) };
+};
 
 const getDockComponentName = (component: string): string => component.trim().toLowerCase();
 
@@ -198,13 +216,21 @@ const DockPreview: React.FC<{ direction: string | null; isGlobal?: boolean }> = 
 
 // ─── Main DockContainer ─────────────────────────────────────────────
 
-export const DockContainer: React.FC<DockContainerProps> = ({
+export const DockContainer: React.FC<DockContainerProps> = (props) => {
+  const hasStableHosts = useHasStableChartHosts();
+  return props.isRoot && !hasStableHosts
+    ? <StableChartHosts renderPanel={props.renderPanel} rootContainer={props.container}><DockContainerContent {...props} /></StableChartHosts>
+    : <DockContainerContent {...props} />;
+};
+
+const DockContainerContent: React.FC<DockContainerProps> = ({
   container,
   isRoot = false,
   className,
   style,
   renderPanel,
 }) => {
+    const tr = useUiTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const focusChartEnabled = useAdvancedFocusChartEnabled();
 
@@ -438,6 +464,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
   // ─── Render split container ─────────────────────────────────────
   if (currentContainer.type === 'split') {
     const isHorizontal = currentContainer.direction === 'horizontal';
+    const hasCollapsedChildren = currentContainer.children.some(isMinimizedChartGroup);
     const hasChartFocusPanel = containerHasChartFocusPanel(currentContainer);
     const fallbackRatio = currentContainer.children.length > 0
       ? 1 / currentContainer.children.length
@@ -461,13 +488,15 @@ export const DockContainer: React.FC<DockContainerProps> = ({
           isHorizontal ? 'flex-row' : 'flex-col',
           className
         )}
-        style={style}
+        style={{ ...style, ...(isHorizontal && hasCollapsedChildren ? { overflowX: 'auto' } : {}) }}
       >
         {currentContainer.children.map((child, index) => {
           const isContainer = isDockContainerNode(child);
           const childContainer = isContainer ? child : null;
           const childPanel = isContainer ? null : child;
           const childItem = child;
+          const isCollapsed = isMinimizedChartGroup(child);
+          const collapsedSize = isCollapsed ? minimizedChartGroupSize(child) : null;
           // Split ratios are relative weights. A closed sibling can leave their
           // persisted sum below 1; passing that directly to CSS flex reserves
           // blank space instead of allowing the remaining panels to fill it.
@@ -487,9 +516,10 @@ export const DockContainer: React.FC<DockContainerProps> = ({
                 data-dock-child-has-focus-chart={childHasChartFocusPanel ? 'true' : 'false'}
                 className="flex flex-col overflow-hidden min-h-0 min-w-0"
                 style={{
-                  flex: ratio,
-                  minWidth: isHorizontal ? 40 : undefined,
-                  minHeight: !isHorizontal ? 24 : undefined,
+                  flex: collapsedSize ? `0 ${isHorizontal ? 1 : 0} ${isHorizontal ? collapsedSize.width : collapsedSize.height}px` : ratio,
+                  minWidth: isHorizontal ? (collapsedSize ? Math.min(collapsedSize.width, 96) : 40) : undefined,
+                  minHeight: !isHorizontal ? (collapsedSize?.height ?? 24) : undefined,
+                  ...(collapsedSize && isHorizontal ? { height: collapsedSize.height, alignSelf: 'flex-start' } : {}),
                 }}
               >
                 {childContainer !== null ? (
@@ -514,7 +544,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
                 )}
               </div>
 
-              {index < currentContainer.children.length - 1 && (
+              {index < currentContainer.children.length - 1 && !isCollapsed && !isMinimizedChartGroup(currentContainer.children[index + 1]) && (
                 <DockResizeHandle
                   direction={isHorizontal ? 'vertical' : 'horizontal'}
                   onResize={(delta) => {
@@ -606,7 +636,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
                   window.addEventListener('mouseup', onUp);
                 }}
               >
-                <span className="truncate max-w-[120px]">{panel.title}</span>
+                <span className="truncate max-w-[120px]">{tr(panel.title)}</span>
                 {panel.closable !== false && (
                   <button
                     onClick={(e) => {
@@ -683,7 +713,7 @@ export const DockContainer: React.FC<DockContainerProps> = ({
     >
       {currentContainer.children.length === 0 ? (
         <div className="flex items-center justify-center h-full text-zinc-500">
-          <p className="text-sm">Empty — drag panels here</p>
+          <p className="text-sm">{tr("Empty — drag panels here")}</p>
         </div>
       ) : currentContainer.children.length === 1 && !isDockContainerNode(currentContainer.children[0]) ? (
         <PanelSlot
@@ -761,6 +791,7 @@ const PanelSlot: React.FC<PanelSlotProps> = ({
   className,
 }) => {
   const isDropTarget = isDragging && dropTargetId === panel.id;
+  const setPanelMinimized = useDockLayoutStore(state => state.setPanelMinimized);
   const showCompass = isDropTarget;
   const showPreview = isDropTarget && compassDir !== null;
   const isFocusChartPanel = isChartFocusPanel(panel);
@@ -769,6 +800,7 @@ const PanelSlot: React.FC<PanelSlotProps> = ({
     <div
       data-dock-panel={panel.id}
       data-dock-panel-component={getDockComponentName(panel.component)}
+      data-dock-minimized={panel.minimized ? 'true' : 'false'}
       data-dock-focus-chart-panel={isFocusChartPanel ? 'true' : 'false'}
       className={cn('h-full relative', className)}
     >
@@ -780,8 +812,12 @@ const PanelSlot: React.FC<PanelSlotProps> = ({
         onClose={onClose}
         onFloat={onFloat}
         onDragStart={onDragStart}
+        onMinimizedChange={minimized => setPanelMinimized(panel.id, minimized)}
+        onActivate={panel.component === 'Chart' ? () => activateActiveChartSource(`trading-chart:${panel.id}`) : undefined}
       >
-        {renderPanel ? renderPanel(panel, isActive, false) : null}
+        {panel.component === 'Chart'
+          ? <StableChartSlot panel={panel} active={isActive && !panel.minimized} renderPanel={renderPanel} />
+          : renderPanel?.(panel, isActive && !panel.minimized, false)}
       </DockPanel>
 
       {/* Blue preview highlight */}
@@ -804,6 +840,14 @@ const PanelSlot: React.FC<PanelSlotProps> = ({
 export const FloatingPanelsLayer: React.FC<{
   renderPanel?: (panel: DockPanelConfig, isActive: boolean, isFloating?: boolean) => React.ReactNode;
 }> = ({ renderPanel }) => {
+  const hasStableHosts = useHasStableChartHosts();
+  return hasStableHosts ? <FloatingPanelsContent renderPanel={renderPanel} />
+    : <StableChartHosts renderPanel={renderPanel}><FloatingPanelsContent renderPanel={renderPanel} /></StableChartHosts>;
+};
+
+const FloatingPanelsContent: React.FC<{
+  renderPanel?: (panel: DockPanelConfig, isActive: boolean, isFloating?: boolean) => React.ReactNode;
+}> = ({ renderPanel }) => {
   const {
     layout,
     removePanel,
@@ -811,6 +855,8 @@ export const FloatingPanelsLayer: React.FC<{
     updateFloatingPosition,
     updateFloatingSize,
     startDrag,
+    setPanelMinimized,
+    bringFloatingToFront,
   } = useDockLayoutStore();
 
   // 8-directional resize
@@ -822,8 +868,8 @@ export const FloatingPanelsLayer: React.FC<{
     const startY = e.clientY;
     const startW = floating.size?.width || 400;
     const startH = floating.size?.height || 300;
-    const startPX = floating.position?.x || 100;
-    const startPY = floating.position?.y || 100;
+    const startPX = floating.position?.x ?? 100;
+    const startPY = floating.position?.y ?? 100;
 
     let curW = startW, curH = startH, curX = startPX, curY = startPY;
 
@@ -860,8 +906,8 @@ export const FloatingPanelsLayer: React.FC<{
   // Floating drag
   const handleFloatingDrag = (floating: any, panel: DockPanelConfig) => (e: React.MouseEvent) => {
     const startMX = e.clientX, startMY = e.clientY;
-    const startPX = floating.position?.x || 100;
-    const startPY = floating.position?.y || 100;
+    const startPX = floating.position?.x ?? 100;
+    const startPY = floating.position?.y ?? 100;
 
     startDrag(panel.id, panel.title, startMX, startMY, true);
 
@@ -895,29 +941,36 @@ export const FloatingPanelsLayer: React.FC<{
             key={floating.id}
             data-dock-panel={panel.id}
             data-dock-floating-panel="true"
+            data-dock-minimized={panel.minimized ? 'true' : 'false'}
             data-dock-panel-component={getDockComponentName(panel.component)}
             data-dock-focus-chart-panel={isFocusChartPanel ? 'true' : 'false'}
             className="fixed z-50"
+            onMouseDown={() => bringFloatingToFront(panel.id)}
             style={{
-              left: floating.position?.x || 100,
-              top: floating.position?.y || 100,
-              width: floating.size?.width || 400,
-              height: floating.size?.height || 300,
+              left: floating.position?.x ?? 100,
+              top: floating.position?.y ?? 100,
+              width: panel.minimized ? (floating.iconWidth ?? Math.min(240, floating.size?.width ?? 400)) : (floating.size?.width ?? 400),
+              height: panel.minimized ? 30 : (floating.size?.height ?? 300),
             }}
           >
             <DockPanel
               panel={panel}
               isActive={true}
               isFloating={true}
-              showHeader={showsDockPanelHeader(panel.component)}
+              showHeader={true}
               onClose={() => removePanel(panel.id)}
               onFloat={() => dockPanel(panel.id, 'root', 'center')}
               onDragStart={handleFloatingDrag(floating, panel)}
+              onMinimizedChange={minimized => setPanelMinimized(panel.id, minimized)}
+              onActivate={panel.component === 'Chart' ? () => activateActiveChartSource(`trading-chart:${panel.id}`) : undefined}
             >
-              {renderPanel?.(panel, true, true)}
+              {panel.component === 'Chart'
+                ? <StableChartSlot panel={panel} active={!panel.minimized} floating renderPanel={renderPanel} />
+                : renderPanel?.(panel, !panel.minimized, true)}
             </DockPanel>
 
             {/* 8 resize handles */}
+            {!panel.minimized && <>
             <div data-dock-floating-resize-handle="true" className="absolute top-0 left-6 right-6 h-2 cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 'n')} />
             <div data-dock-floating-resize-handle="true" className="absolute bottom-0 left-6 right-6 h-2 cursor-ns-resize z-20" onMouseDown={(e) => startResize(e, floating, 's')} />
             <div data-dock-floating-resize-handle="true" className="absolute top-6 bottom-6 left-0 w-2 cursor-ew-resize z-20" onMouseDown={(e) => startResize(e, floating, 'w')} />
@@ -926,6 +979,7 @@ export const FloatingPanelsLayer: React.FC<{
             <div data-dock-floating-resize-handle="true" className="absolute top-0 right-0 w-5 h-5 cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'ne')} />
             <div data-dock-floating-resize-handle="true" className="absolute bottom-0 left-0 w-5 h-5 cursor-nesw-resize z-30" onMouseDown={(e) => startResize(e, floating, 'sw')} />
             <div data-dock-floating-resize-handle="true" className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-30" onMouseDown={(e) => startResize(e, floating, 'se')} />
+            </>}
           </div>
         );
       })}

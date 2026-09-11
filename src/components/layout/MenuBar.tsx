@@ -1,4 +1,6 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
+import { useUiTranslation } from '../../hooks/useUiTranslation';
+import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Menu as MenuIcon } from 'lucide-react';
 import { Icon, type IconName } from '../ui/Icon';
@@ -14,7 +16,13 @@ import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import type { PayloadFor } from '../../types/commands';
 import { STAMP_OPTIONS } from './stampOptions';
 import { openWebTrader } from '../../services/webTrader';
-import { getActiveChartCommandTarget } from '../../services/chartCommandTarget';
+import { getActiveChartCommandTarget, getPanelIdFromChartContextId } from '../../services/chartCommandTarget';
+import { getChartPanelCount, MAX_CHART_PANELS } from '../../services/dockManager';
+import { useDrawingSidebarStore } from '../../store/useDrawingSidebarStore';
+import { lockedTerminalTool } from '../../config/terminalToolAvailability';
+import { supportedLanguages } from '../../config/supportedLanguages';
+import { changeInterfaceLanguage } from '../../i18n';
+import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
 
 // Local interface definition to avoid export issues
 interface MenuItem {
@@ -26,6 +34,8 @@ interface MenuItem {
     checkRole?: 'checkbox' | 'radio';
     divider?: boolean;
     disabled?: boolean;
+    unavailableReason?: string;
+    translateLabel?: boolean;
     action?: () => void;
     scrollableChildren?: boolean;
 }
@@ -39,6 +49,7 @@ interface MenuSymbol {
 interface ApplicationLauncherItem {
     id: string;
     label: string;
+    translateLabel?: boolean;
     icon: IconName;
     children?: MenuItem[];
     opensFileMenu?: boolean;
@@ -75,7 +86,13 @@ export const MenuBar = ({
     onSetFocusChart,
     onLogout,
 }: MenuBarProps = {}) => {
+    const tr = useUiTranslation();
+    const desktopUpdater = useDesktopUpdater();
     const { t, i18n } = useTranslation();
+    const drawingSidebarVisible = useDrawingSidebarStore((state) => state.visible);
+    const canArrangeIcons = useDockLayoutStore(state => state.layout.floatingPanels.some(container =>
+        container.children.some(child => !('children' in child) && child.minimized === true)));
+    const chartCount = useDockLayoutStore(state => getChartPanelCount(state.layout));
     const isElectronDesktop = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -94,19 +111,22 @@ export const MenuBar = ({
         setActiveMenu(null);
     }, []);
 
-    // Open the canonical Symbols dialog from either Alt+U or the desktop quick action.
+    const terminalShortcut = (id: Parameters<typeof runTerminalShortcutAction>[0]): Pick<MenuItem, 'shortcut' | 'action'> => ({
+        shortcut: getTerminalShortcutHint(id),
+        action: () => { runTerminalShortcutAction(id); closeMenu(); },
+    });
+
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.altKey && (e.key.toLowerCase() === 'u' || e.code === 'KeyU')) {
-                e.preventDefault();
-                setIsSymbolsOpen(v => !v);
-            }
-        };
+        const openOptions = () => { closeMenu(); setIsOptionsOpen(true); };
+        window.addEventListener('open-terminal-options', openOptions);
+        return () => window.removeEventListener('open-terminal-options', openOptions);
+    }, [closeMenu]);
+
+    // Shared shortcuts and desktop quick actions open the same Symbols dialog.
+    useEffect(() => {
         const handleOpenSymbolsDialog = () => setIsSymbolsOpen(true);
-        window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('openSymbolsDialog', handleOpenSymbolsDialog);
         return () => {
-            window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('openSymbolsDialog', handleOpenSymbolsDialog);
         };
     }, []);
@@ -116,6 +136,7 @@ export const MenuBar = ({
         const handleClickOutside = (event: MouseEvent) => {
             if (isFileDialogOpen) return;
             const target = event.target as Node;
+            if (target instanceof Element && target.closest('[data-rtx-desktop-submenu]')) return;
             if (!menuRef.current?.contains(target) && !menuPopupRef.current?.contains(target)) {
                 closeMenu();
             }
@@ -188,37 +209,19 @@ export const MenuBar = ({
         fetchSymbols();
     }, [isAuthenticated]);
 
-    const languageList: MenuItem[] = [
-        // Western / Latin - Fully Translated
-        { label: 'English', action: () => i18n.changeLanguage('en'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'en' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Deutsch', action: () => i18n.changeLanguage('de'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'de' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Français', action: () => i18n.changeLanguage('fr'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'fr' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Español', action: () => i18n.changeLanguage('es'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'es' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Italiano', action: () => i18n.changeLanguage('it'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'it' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Português (BR)', action: () => i18n.changeLanguage('pt-BR'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'pt-BR' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Nederlands', action: () => i18n.changeLanguage('nl'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'nl' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Polski', action: () => i18n.changeLanguage('pl'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'pl' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Türkçe', action: () => i18n.changeLanguage('tr'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'tr' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { divider: true, label: '' },
-
-        // Cyrillic - Fully Translated
-        { label: 'Русский', action: () => i18n.changeLanguage('ru'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'ru' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { divider: true, label: '' },
-
-        // Asian - Fully Translated
-        { label: '简体中文', action: () => i18n.changeLanguage('zh-CN'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'zh-CN' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: '繁體中文', action: () => i18n.changeLanguage('zh-TW'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'zh-TW' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: '日本語', action: () => i18n.changeLanguage('ja'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'ja' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: '한국어', action: () => i18n.changeLanguage('ko'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'ko' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Bahasa Indonesia', action: () => i18n.changeLanguage('id'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'id' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'Tiếng Việt', action: () => i18n.changeLanguage('vi'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'vi' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'ภาษาไทย', action: () => i18n.changeLanguage('th'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'th' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { divider: true, label: '' },
-
-        // Middle Eastern / Indic - Fully Translated
-        { label: 'العربية', action: () => i18n.changeLanguage('ar'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'ar' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> },
-        { label: 'हिंदी', action: () => i18n.changeLanguage('hi'), icon: <div className={`w-1.5 h-1.5 rounded-full ${i18n.language === 'hi' ? 'bg-zinc-600' : 'bg-transparent'}`}></div> }
-    ];
+    const languageList: MenuItem[] = supportedLanguages.map(({ code, name }) => ({
+        label: name,
+        translateLabel: false,
+        checkRole: 'radio',
+        checked: (i18n.resolvedLanguage || i18n.language) === code,
+        action: () => {
+            void changeInterfaceLanguage(code).catch(() => {
+                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                    detail: { message: tr('Unable to change language. Please try again.'), type: 'error' },
+                }));
+            });
+        },
+    }));
 
     const resolveChartTarget = () => getActiveChartCommandTarget(chartSymbol);
 
@@ -258,17 +261,6 @@ export const MenuBar = ({
         setActiveMenu(null);
     };
 
-    const openDepthOfMarket = () => {
-        const target = resolveChartTarget();
-        window.dispatchEvent(new CustomEvent('openDepthOfMarket', {
-            detail: {
-                symbol: target.symbol,
-                targetContextId: target.targetContextId,
-            },
-        }));
-        setActiveMenu(null);
-    };
-
     const menuChartTarget = getActiveChartCommandTarget(chartSymbol);
     const menuChartProperties = menuChartTarget.symbol
         ? (symbolChartProperties[menuChartTarget.symbol] || globalChartProperties)
@@ -282,7 +274,7 @@ export const MenuBar = ({
                 : 'candlestick';
 
     const toggleOneClickTrading = () => {
-        window.dispatchEvent(new CustomEvent('toggle-one-click-trading'));
+        runTerminalShortcutAction('trading.toggle-one-click');
     };
 
     const openEconomicCalendar = () => {
@@ -290,7 +282,7 @@ export const MenuBar = ({
     };
 
     const openShortcutHelp = () => {
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', code: 'F1', bubbles: true }));
+        runTerminalShortcutAction('help.shortcuts');
     };
 
     const fontSizeMenuItem: MenuItem = {
@@ -378,7 +370,7 @@ export const MenuBar = ({
             },
             { label: t('menu.file.openDeleted'), disabled: true },
             { label: t('menu.file.profiles'), children: [{ label: 'Default' }, { label: 'Euro' }, { label: 'Market' }] },
-            { label: t('menu.file.close'), shortcut: 'Ctrl+F4', action: () => window.dispatchEvent(new CustomEvent('close-active-chart')) },
+            { label: t('menu.file.close'), ...terminalShortcut('file.close-chart') },
             { divider: true, label: '' },
             { label: t('menu.file.save'), icon: <Icon name="save" size="sm" />, shortcut: 'Ctrl+S' },
             { label: t('menu.file.saveAsPicture'), icon: <Icon name="file-text" size="sm" /> },
@@ -427,12 +419,12 @@ export const MenuBar = ({
             { label: t('menu.view.chartsBar'), icon: <Icon name="layers" size="sm" /> },
             { divider: true, label: '' },
             { label: 'Search Symbols', shortcut: 'Alt+U', icon: <Icon name="search" size="sm" />, action: () => { setIsSymbolsOpen(true); setActiveMenu(null); } },
-            { label: t('menu.view.depthOfMarket'), shortcut: 'Alt+B', action: openDepthOfMarket },
-            { label: t('menu.view.marketWatch'), shortcut: 'Ctrl+M', icon: <Icon name="monitor" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'MarketWatch' })); setActiveMenu(null); } },
-            { label: t('menu.view.dataWindow'), shortcut: 'Ctrl+D', action: () => { window.dispatchEvent(new CustomEvent('openDataWindow')); setActiveMenu(null); } },
-            { label: t('menu.view.navigator'), shortcut: 'Ctrl+N', action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
-            { label: t('menu.view.toolbox'), shortcut: 'Ctrl+T', action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Terminal' })); setActiveMenu(null); } },
-            { label: t('menu.view.strategyTester'), shortcut: 'Ctrl+R', action: () => { window.dispatchEvent(new CustomEvent('toolbox-action', { detail: { action: 'strategy-tester' } })); setActiveMenu(null); } },
+            { label: t('menu.view.depthOfMarket'), ...terminalShortcut('view.depth-of-market') },
+            { label: t('menu.view.marketWatch'), icon: <Icon name="monitor" size="sm" />, ...terminalShortcut('view.market-watch') },
+            { label: t('menu.view.dataWindow'), ...terminalShortcut('view.data-window') },
+            { label: t('menu.view.navigator'), ...terminalShortcut('view.navigator') },
+            { label: t('menu.view.toolbox'), ...terminalShortcut('view.terminal') },
+            { label: t('menu.view.strategyTester'), ...lockedTerminalTool('strategyTester') },
             { divider: true, label: '' },
             { label: t('menu.view.fullScreen'), shortcut: 'F11', action: () => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => { }); } else { document.exitFullscreen().catch(() => { }); } setActiveMenu(null); } }
         ],
@@ -505,8 +497,8 @@ export const MenuBar = ({
             { label: t('menu.insert.scripts'), icon: <Icon name="code" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('togglePanel', { detail: 'Navigator' })); setActiveMenu(null); } },
         ],
         Charts: [
-            { label: t('menu.charts.depthOfMarket'), shortcut: 'Alt+B', icon: <Icon name="box" size="sm" />, action: openDepthOfMarket },
-            { label: t('menu.charts.indicatorList'), shortcut: 'Ctrl+I', icon: <Icon name="line-chart" size="sm" />, action: () => openIndicatorList() },
+            { label: t('menu.charts.depthOfMarket'), icon: <Icon name="box" size="sm" />, ...terminalShortcut('view.depth-of-market') },
+            { label: t('menu.charts.indicatorList'), icon: <Icon name="line-chart" size="sm" />, ...terminalShortcut('charts.indicator-list') },
             {
                 label: 'Crosshair',
                 shortcut: 'C',
@@ -519,7 +511,7 @@ export const MenuBar = ({
                 label: t('menu.charts.objects'),
                 children: [
                     // Management
-                    { label: 'Object List', shortcut: 'Ctrl+B', icon: <Icon name="layout-list" size="sm" />, action: () => { const target = resolveChartTarget(); window.dispatchEvent(new CustomEvent('open-object-list', { detail: target })); setActiveMenu(null); } },
+                    { label: 'Object List', icon: <Icon name="layout-list" size="sm" />, ...terminalShortcut('charts.object-list') },
                     { divider: true, label: '' },
 
                     // Destructive Actions (Muted Red)
@@ -535,10 +527,10 @@ export const MenuBar = ({
                 ]
             },
             { divider: true, label: '' },
-            { label: t('menu.charts.barChart'), shortcut: 'Alt+1', icon: <Icon name="bar-chart" size="sm" />, checked: menuChartType === 'bar', checkRole: 'radio', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'bar', targetContextId } }); setActiveMenu(null); } },
-            { label: t('menu.charts.candlesticks'), shortcut: 'Alt+2', icon: <Icon name="candlestick" size="sm" />, checked: menuChartType === 'candlestick', checkRole: 'radio', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'candlestick', targetContextId } }); setActiveMenu(null); } },
-            { label: t('menu.charts.lineChart'), shortcut: 'Alt+3', icon: <Icon name="line-chart" size="sm" />, checked: menuChartType === 'line', checkRole: 'radio', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'line', targetContextId } }); setActiveMenu(null); } },
-            { label: t('menu.charts.areaChart'), icon: <Icon name="area-chart" size="sm" />, checked: menuChartType === 'area', checkRole: 'radio', action: () => { const { targetContextId } = resolveChartTarget(); commandBus.dispatch({ type: 'SET_CHART_TYPE', payload: { chartType: 'area', targetContextId } }); setActiveMenu(null); } },
+            { label: t('menu.charts.barChart'), icon: <Icon name="bar-chart" size="sm" />, checked: menuChartType === 'bar', checkRole: 'radio', ...terminalShortcut('charts.bar-chart') },
+            { label: t('menu.charts.candlesticks'), icon: <Icon name="candlestick" size="sm" />, checked: menuChartType === 'candlestick', checkRole: 'radio', ...terminalShortcut('charts.candlestick') },
+            { label: t('menu.charts.lineChart'), icon: <Icon name="line-chart" size="sm" />, checked: menuChartType === 'line', checkRole: 'radio', ...terminalShortcut('charts.line-chart') },
+            { label: t('menu.charts.areaChart'), icon: <Icon name="area-chart" size="sm" />, checked: menuChartType === 'area', checkRole: 'radio', ...terminalShortcut('charts.area-chart') },
             { divider: true, label: '' },
             { label: t('menu.charts.grid'), shortcut: 'Ctrl+G', icon: <Icon name="grid-3x3" size="sm" />, checked: menuChartProperties.showGrid, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; updateActiveChartProperty('showGrid', !current.showGrid, target.symbol); setActiveMenu(null); } },
             { label: t('menu.charts.autoScroll'), icon: <Icon name="auto-scroll" size="sm" />, checked: menuChartProperties.chartAutoScroll, checkRole: 'checkbox', action: () => { const target = resolveChartTarget(); const s = useChartSettingsStore.getState(); const current = target.symbol ? (s.symbolProperties[target.symbol] || s.globalProperties) : s.globalProperties; const enabled = !current.chartAutoScroll; updateActiveChartProperty('chartAutoScroll', enabled, target.symbol); commandBus.dispatch({ type: 'SET_AUTO_SCROLL', payload: { enabled, targetContextId: target.targetContextId } }); setActiveMenu(null); } },
@@ -553,93 +545,88 @@ export const MenuBar = ({
         Tools: [
             // Primary Trading
             {
-                label: t('menu.tools.newOrder'), shortcut: 'F9',
+                label: t('menu.tools.newOrder'),
                 icon: <Icon name="plus" size="sm" className="text-emerald-500" />,
-                action: () => { window.dispatchEvent(new CustomEvent('openNewOrder')); setActiveMenu(null); }
+                ...terminalShortcut('tools.new-order'),
             },
             { divider: true, label: '' },
 
             // Development & Automation (RTX5 Rebranded)
             {
-                label: t('menu.tools.strategyTester'), shortcut: 'Ctrl+R',
+                label: t('menu.tools.strategyTester'),
                 icon: <Icon name="activity" size="sm" />,
-                action: () => { window.dispatchEvent(new CustomEvent('toolbox-action', { detail: { action: 'strategy-tester' } })); setActiveMenu(null); }
+                ...lockedTerminalTool('strategyTester'),
             },
             {
-                label: t('menu.tools.scriptEditor'), shortcut: 'F4',
+                label: t('menu.tools.scriptEditor'),
                 icon: <Icon name="credit-card" size="sm" />,
-                action: () => { window.dispatchEvent(new CustomEvent('toolbox-action', { detail: { action: 'script-editor' } })); setActiveMenu(null); }
+                ...lockedTerminalTool('scriptEditor'),
             },
             {
-                label: t('menu.tools.agentsManager'), shortcut: 'F6',
+                label: t('menu.tools.agentsManager'),
                 icon: <Icon name="cpu" size="sm" />,
-                action: () => { window.dispatchEvent(new CustomEvent('toolbox-action', { detail: { action: 'agents-manager' } })); setActiveMenu(null); }
+                ...lockedTerminalTool('agentsManager'),
             },
             { divider: true, label: '' },
 
             // System & Monitoring
             {
-                label: t('menu.tools.taskManager'), shortcut: 'F2',
+                label: t('menu.tools.taskManager'),
                 icon: <Icon name="server" size="sm" />,
-                action: () => { window.dispatchEvent(new CustomEvent('toolbox-action', { detail: { action: 'task-manager' } })); setActiveMenu(null); }
+                ...lockedTerminalTool('taskManager'),
             },
             {
-                label: t('menu.tools.globalVariables'), shortcut: 'F3',
+                label: t('menu.tools.globalVariables'),
                 icon: <Icon name="globe" size="sm" />,
-                action: () => { window.dispatchEvent(new CustomEvent('toolbox-action', { detail: { action: 'global-variables' } })); setActiveMenu(null); }
+                ...lockedTerminalTool('globalVariables'),
             },
             { divider: true, label: '' },
 
             // RTX5 Services
-            { label: t('menu.tools.marketplace'), icon: <Icon name="box" size="sm" className="text-blue-400" /> },
-            { label: t('menu.tools.signalsHub'), icon: <Icon name="activity" size="sm" className="text-emerald-400" /> },
-            { label: t('menu.tools.cloudHosting'), icon: <Icon name="shield" size="sm" className="text-purple-400" /> },
+            { label: t('menu.tools.marketplace'), icon: <Icon name="box" size="sm" />, ...lockedTerminalTool('marketplace') },
+            { label: t('menu.tools.signalsHub'), icon: <Icon name="activity" size="sm" />, ...lockedTerminalTool('signalsHub') },
+            { label: t('menu.tools.cloudHosting'), icon: <Icon name="shield" size="sm" />, ...lockedTerminalTool('cloudHosting') },
             { divider: true, label: '' },
 
             // Settings
-            { label: t('menu.tools.options'), shortcut: 'Ctrl+O', icon: <Icon name="settings" size="sm" />, action: () => setIsOptionsOpen(true) }
+            { label: t('menu.tools.options'), icon: <Icon name="settings" size="sm" />, ...terminalShortcut('tools.options') }
         ],
 
         Window: [
-            { label: t('menu.window.tileWindows'), shortcut: 'Alt+R', icon: <Icon name="grid" size="sm" />, action: () => { window.dispatchEvent(new CustomEvent('tileWindows')); setActiveMenu(null); } },
-            { label: t('menu.window.cascade'), icon: <Icon name="layers" size="sm" /> },
-            { label: t('menu.window.tileHorizontally'), icon: <Icon name="layout" size="sm" /> },
-            { label: t('menu.window.tileVertically'), icon: <Icon name="layout" size="sm" /> },
-            { label: t('menu.window.arrangeIcons'), icon: <Icon name="grid" size="sm" /> },
+            { label: 'Add chart', icon: <Icon name="plus" size="sm" />, ...terminalShortcut('window.add-chart'), disabled: chartCount >= MAX_CHART_PANELS, unavailableReason: chartCount >= MAX_CHART_PANELS ? tr('Maximum {{limit}} charts are open', { limit: MAX_CHART_PANELS }) : undefined },
+            { label: t('menu.window.tileWindows'), icon: <Icon name="grid" size="sm" />, ...terminalShortcut('window.tile') },
+            { label: t('menu.window.cascade'), icon: <Icon name="layers" size="sm" />, ...terminalShortcut('window.cascade') },
+            { label: t('menu.window.tileHorizontally'), icon: <Icon name="layout" size="sm" />, ...terminalShortcut('window.tile-horizontal') },
+            { label: t('menu.window.tileVertically'), icon: <Icon name="layout" size="sm" />, ...terminalShortcut('window.tile-vertical') },
+            { label: t('menu.window.arrangeIcons'), icon: <Icon name="grid" size="sm" />, ...terminalShortcut('window.arrange-icons'), disabled: !canArrangeIcons, unavailableReason: canArrangeIcons ? undefined : 'Minimize a floating window before arranging icons' },
             { divider: true, label: '' },
-            { label: 'Reset Windows', shortcut: 'Ctrl+Shift+R', icon: <Icon name="refresh" size="sm" className="text-emerald-500" />, action: () => { window.dispatchEvent(new CustomEvent('resetLayout')); setActiveMenu(null); } },
+            { label: 'Reset Windows', icon: <Icon name="refresh" size="sm" className="text-emerald-500" />, ...terminalShortcut('window.reset') },
             { divider: true, label: '' },
             {
                 label: t('menu.window.resolution'),
                 icon: <Icon name="monitor" size="sm" />,
-                children: [
-                    { label: '2160p', shortcut: '3840x2160' },
-                    { label: '1440p', shortcut: '2560x1440' },
-                    { label: '1080p', shortcut: '1920x1080' },
-                    { label: '720p', shortcut: '1280x720' },
-                    { label: '480p', shortcut: '854x480' },
-                    { label: '360p', shortcut: '640x360' }
-                ]
+                disabled: true,
+                unavailableReason: 'Display resolution is controlled by your operating system',
             }
         ],
         Help: [
-            { label: t('menu.help.helpTopics'), shortcut: 'F1', icon: <Icon name="help-circle" size="sm" /> },
+            { label: t('menu.help.helpTopics'), icon: <Icon name="help-circle" size="sm" />, ...terminalShortcut('help.shortcuts') },
             { label: t('menu.help.whatsNew'), icon: <Icon name="zap" size="sm" className="text-yellow-400" /> },
             { label: t('menu.help.telegramChannel'), icon: <Icon name="arrow-right" size="sm" className="text-blue-400" /> },
             { label: t('menu.help.videoGuides'), icon: <Icon name="play" size="sm" />, children: [{ label: 'Getting Started' }, { label: 'Trading' }, { label: 'Analysis' }] },
             { divider: true, label: '' },
             { label: t('menu.help.webTrader'), icon: <Icon name="globe" size="sm" /> },
-            { label: t('menu.help.documentation'), icon: <Icon name="book-open" size="sm" /> },
+            { label: t('menu.help.documentation'), icon: <Icon name="book-open" size="sm" />, disabled: true, unavailableReason: 'Documentation is not configured for this deployment' },
             { label: t('menu.help.algoBook'), icon: <Icon name="book-open" size="sm" className="text-amber-400" /> },
             { label: t('menu.help.neuroBook'), icon: <Icon name="cpu" size="sm" className="text-purple-400" /> },
             { label: t('menu.help.articles'), icon: <Icon name="file-text" size="sm" /> },
             { label: t('menu.help.codeBase'), icon: <Icon name="code" size="sm" /> },
             { label: t('menu.help.jobs'), icon: <Icon name="briefcase" size="sm" /> },
-            { label: t('menu.help.marketplace'), icon: <Icon name="box" size="sm" className="text-blue-400" /> },
-            { label: t('menu.help.signals'), icon: <Icon name="signal" size="sm" className="text-emerald-400" /> },
+            { label: t('menu.help.marketplace'), icon: <Icon name="box" size="sm" />, ...lockedTerminalTool('marketplace') },
+            { label: t('menu.help.signals'), icon: <Icon name="signal" size="sm" />, ...lockedTerminalTool('signalsHub') },
             { label: t('menu.help.quotes'), icon: <Icon name="trending-up" size="sm" /> },
             { label: t('menu.help.forum'), icon: <Icon name="callout" size="sm" /> },
-            { label: t('menu.help.cloudHosting'), icon: <Icon name="globe" size="sm" className="rtx-menu-icon--neutral" /> },
+            { label: t('menu.help.cloudHosting'), icon: <Icon name="globe" size="sm" className="rtx-menu-icon--neutral" />, ...lockedTerminalTool('cloudHosting') },
             { divider: true, label: '' },
             {
                 label: t('menu.help.mobile'),
@@ -684,7 +671,7 @@ export const MenuBar = ({
     };
 
     const colorTemplateItems: MenuItem[] = (
-        ['Green on Black', 'Black on White', 'Yellow on Black'] as const
+        ['Green on Black', 'Blue on Black', 'Black on White', 'Yellow on Black'] as const
     ).map((scheme) => ({
         label: scheme,
         checked: menuChartProperties.colorScheme === scheme,
@@ -692,24 +679,49 @@ export const MenuBar = ({
         action: () => applyActiveColorTemplate(scheme),
     }));
 
+    const toggleDrawingTools = () => {
+        useDrawingSidebarStore.getState().toggle();
+        closeMenu();
+    };
+    const drawingToolsVisibilityLabel = drawingSidebarVisible ? 'Hide drawing tools' : 'Show drawing tools';
+
     const desktopMenuItems: Record<(typeof DESKTOP_MENU_KEYS)[number], MenuItem[]> = {
         File: menuItems.File,
         View: [
-            ...menuItems.View.slice(0, -2),
+            {
+                label: drawingToolsVisibilityLabel,
+                icon: <Icon name="paintbrush" size="sm" />,
+                action: toggleDrawingTools,
+            },
+            { divider: true, label: '' },
+            ...menuItems.View.slice(0, -2).filter(item => item.label !== t('menu.view.statusBar')),
             {
                 label: 'Economic Calendar',
                 icon: <Icon name="calendar" size="sm" />,
                 action: openEconomicCalendar,
             },
             ...menuItems.View.slice(-2),
+            { divider: true, label: '' },
+            { label: `Version ${window.electron?.appVersion || '1.0.0'}`, icon: <Icon name="info" size="sm" />, disabled: true },
+            {
+                label: desktopUpdater.updateLabel,
+                icon: <Icon name="download" size="sm" />,
+                disabled: desktopUpdater.updateButtonDisabled,
+                unavailableReason: desktopUpdater.hasUpdater ? undefined : 'Updates are available in the installed desktop app',
+                action: () => { void desktopUpdater.handleUpdateClick(); },
+            },
         ],
         Insert: menuItems.Insert,
-        Charts: menuItems.Charts,
+        Charts: [
+            { label: 'Color Templates', icon: <Icon name="palette" size="sm" />, children: colorTemplateItems },
+            { divider: true, label: '' },
+            ...menuItems.Charts,
+        ],
         Tools: [
             menuItems.Tools[0],
             {
                 label: 'One Click Trading',
-                shortcut: 'Alt+T',
+                shortcut: getTerminalShortcutHint('trading.toggle-one-click'),
                 icon: <Icon name="cursor" size="sm" />,
                 action: toggleOneClickTrading,
             },
@@ -719,7 +731,7 @@ export const MenuBar = ({
         Help: [
             {
                 label: 'Shortcuts',
-                shortcut: 'F1',
+                shortcut: getTerminalShortcutHint('help.shortcuts'),
                 icon: <Icon name="help-circle" size="sm" />,
                 action: openShortcutHelp,
             },
@@ -732,7 +744,7 @@ export const MenuBar = ({
         <FileMenu
             accountId={accountId}
             onDialogOpenChange={setIsFileDialogOpen}
-            onLogout={!isElectronDesktop && onLogout ? () => {
+            onLogout={onLogout ? () => {
                 onLogout();
                 closeMenu();
             } : undefined}
@@ -747,7 +759,10 @@ export const MenuBar = ({
             }}
             onCloseActiveChart={() => {
                 const activeTarget = getActiveChartCommandTarget(chartSymbol);
-                const closed = useDockLayoutStore.getState().closeActiveChart(activeTarget.symbol || chartSymbol);
+                const closed = useDockLayoutStore.getState().closeActiveChart(
+                    activeTarget.symbol || chartSymbol,
+                    getPanelIdFromChartContextId(activeTarget.targetContextId) || undefined,
+                );
                 window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
                     detail: closed
                         ? { message: 'Chart closed. Use Open Deleted to restore it.', type: 'success' }
@@ -775,11 +790,9 @@ export const MenuBar = ({
                 window.dispatchEvent(new CustomEvent('openDataFolder'));
                 closeMenu();
             } : undefined}
-            onPrint={(chartData, preferences) => {
-                console.log('[MenuBar] Print triggered');
-                window.dispatchEvent(new CustomEvent('printChart', {
-                    detail: { chartData, preferences },
-                }));
+            onPrint={async (chartData, preferences) => {
+                const { chartPrinter } = await import('../../services/chartPrinter');
+                await chartPrinter.printChart(chartData, preferences);
                 closeMenu();
             }}
             onPrintPreview={() => {
@@ -833,6 +846,12 @@ export const MenuBar = ({
                 toggleOneClickTrading();
                 closeMenu();
             },
+        },
+        {
+            id: 'drawing-sidebar',
+            label: drawingToolsVisibilityLabel,
+            icon: 'paintbrush',
+            action: toggleDrawingTools,
         },
         {
             id: 'theme',
@@ -918,6 +937,7 @@ export const MenuBar = ({
 
     return (
         <>
+            {React.cloneElement(fileMenu, { shortcutsOnly: true })}
             {isElectronDesktop && (
                 <div
                     ref={menuRef}
@@ -926,7 +946,7 @@ export const MenuBar = ({
                 >
                     <div
                         role="menubar"
-                        aria-label="Desktop application menu"
+                        aria-label={tr("Desktop application menu")}
                         className="rtx-desktop-menu-items flex h-full shrink-0 items-center gap-px"
                         onKeyDown={(event) => {
                             const target = event.target as HTMLButtonElement;
@@ -1000,14 +1020,14 @@ export const MenuBar = ({
                                         }}
                                         className={`rtx-application-menu-trigger flex h-[23px] items-center border border-transparent px-2.5 leading-none outline-none transition-colors ${isActive ? 'is-open' : ''}`}
                                     >
-                                        {menuKey}
+                                        {tr(menuKey)}
                                     </button>
 
                                     {isActive && (
                                         <div
                                             className="absolute left-0 top-full z-[10000] mt-px"
                                             role="menu"
-                                            aria-label={`${menuKey} menu`}
+                                            aria-label={tr("{{value0}} menu", { value0: tr(menuKey) })}
                                         >
                                             {menuKey === 'File' ? (
                                                 fileMenu
@@ -1034,10 +1054,10 @@ export const MenuBar = ({
                 <button
                     ref={menuButtonRef}
                     type="button"
-                    aria-label="Open application menu"
+                    aria-label={tr("Open application menu")}
                     aria-haspopup="menu"
                     aria-expanded={isMenuOpen}
-                    title="Application menu"
+                    title={tr("Application menu")}
                     onClick={() => {
                         if (isMenuOpen) {
                             closeMenu();
@@ -1046,7 +1066,7 @@ export const MenuBar = ({
                             setIsMenuOpen(true);
                         }
                     }}
-                    className={`rtx-application-menu-trigger flex h-[36px] w-[40px] items-center justify-center border border-transparent transition-colors outline-none ${isMenuOpen ? 'is-open' : ''}`}
+                    className={`rtx-application-menu-trigger flex h-[36px] w-[56px] items-center justify-center border border-transparent transition-colors outline-none ${isMenuOpen ? 'is-open' : ''}`}
                 >
                     <MenuIcon size={23} strokeWidth={1.8} aria-hidden="true" />
                 </button>
@@ -1058,7 +1078,7 @@ export const MenuBar = ({
                     className="rtx-application-menu fixed z-[9999] w-[256px] text-[14px] font-normal"
                     style={{ top: menuPosition.top, left: menuPosition.left }}
                     role="menu"
-                    aria-label="Application menu"
+                    aria-label={tr("Application menu")}
                     onKeyDown={(event) => {
                         const target = event.target as HTMLElement;
                         if (target.dataset.rootMenuItem !== 'true') return;
@@ -1128,7 +1148,7 @@ export const MenuBar = ({
                                             <span className="rtx-application-menu__root-icon" aria-hidden="true">
                                                 <Icon name={item.icon} size={18} />
                                             </span>
-                                            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                                            <span className="min-w-0 flex-1 truncate">{item.translateLabel === false ? item.label : tr(item.label)}</span>
                                             {hasSubmenu && (
                                                 <Icon name="chevron-right" size="xs" className="rtx-application-menu__chevron" />
                                             )}
@@ -1144,7 +1164,7 @@ export const MenuBar = ({
                                                     ),
                                                 }}
                                                 role="menu"
-                                                aria-label={`${item.label} menu`}
+                                                aria-label={tr("{{value0}} menu", { value0: item.label })}
                                             >
                                                 {item.opensFileMenu ? (
                                                     fileMenu
@@ -1211,23 +1231,59 @@ const MenuItem = ({
     onToggleSubmenu: (open: boolean) => void;
     onClose?: () => void;
 }) => {
+    const tr = useUiTranslation();
     const submenuRef = useRef<HTMLDivElement>(null);
+    const anchorRef = useRef<HTMLDivElement>(null);
+    const desktop = Boolean(window.electron?.window);
+    const [position, setPosition] = useState({ left: 0, top: 0 });
+    useLayoutEffect(() => {
+        if (!desktop || !isSubmenuOpen) return;
+        const place = () => {
+            const anchor = anchorRef.current?.getBoundingClientRect();
+            const submenu = submenuRef.current?.getBoundingClientRect();
+            if (!anchor || !submenu) return;
+            const left = anchor.right + submenu.width <= window.innerWidth - 8
+                ? anchor.right - 2 : Math.max(8, anchor.left - submenu.width + 2);
+            setPosition({ left, top: Math.max(8, Math.min(anchor.top, window.innerHeight - submenu.height - 8)) });
+        };
+        place();
+        window.addEventListener('resize', place);
+        window.addEventListener('scroll', place, true);
+        return () => {
+            window.removeEventListener('resize', place);
+            window.removeEventListener('scroll', place, true);
+        };
+    }, [desktop, isSubmenuOpen, item.label]);
+
+    const submenu = item.children && isSubmenuOpen ? (
+        <div ref={submenuRef} role="menu" aria-label={tr("{{value0}} menu", { value0: item.label })}
+            data-rtx-desktop-submenu={desktop ? 'true' : undefined}
+            className={`rtx-menu-surface min-w-[200px] py-1 ${desktop ? 'fixed z-[10010]' : 'absolute left-full top-0 ml-[-2px] z-[101]'} ${item.scrollableChildren ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}`}
+            style={desktop ? { ...position, maxHeight: Math.min(400, window.innerHeight - 16), maxWidth: 'calc(100vw - 16px)', overflowY: 'auto' } : undefined}>
+            <MenuList items={item.children} onClose={onClose} />
+        </div>
+    ) : null;
+
 
     if (item.divider) {
         return <div className="rtx-menu-divider" role="separator" />;
     }
 
     return (
-        <div className="relative px-1">
+        <div ref={anchorRef} className="relative px-1">
             <button
                 type="button"
                 disabled={item.disabled}
-                aria-label={item.label}
+                aria-disabled={item.disabled || undefined}
+                aria-label={item.translateLabel === false ? item.label : tr(item.label)}
+                aria-description={tr(item.unavailableReason)}
+                title={tr(item.unavailableReason)}
                 role={item.checkRole === 'radio' ? 'menuitemradio' : item.checkRole === 'checkbox' ? 'menuitemcheckbox' : 'menuitem'}
                 aria-checked={item.checkRole ? Boolean(item.checked) : undefined}
                 aria-haspopup={item.children ? 'menu' : undefined}
                 aria-expanded={item.children ? isSubmenuOpen : undefined}
                 onClick={() => {
+                    if (item.disabled) return;
                     if (item.children) {
                         onToggleSubmenu(!isSubmenuOpen);
                         return;
@@ -1245,10 +1301,14 @@ const MenuItem = ({
                 </div>
 
                 {/* Label */}
-                <span className="flex-1 font-segoe">{item.label}</span>
+                <span className="flex-1 font-segoe">{item.translateLabel === false ? item.label : tr(item.label)}</span>
 
                 {/* Shortcut or Submenu Arrow */}
-                {item.children ? (
+                {item.unavailableReason ? (
+                    <span className="rtx-menu-row__lock" aria-hidden="true">
+                        <Icon name="lock" size="xs" />
+                    </span>
+                ) : item.children ? (
                     <Icon name="chevron-right" size="xs" className="rtx-menu-row__chevron" />
                 ) : (
                     <span className="flex items-center gap-2">
@@ -1262,14 +1322,8 @@ const MenuItem = ({
                 )}
             </button>
 
-            {/* Nested sections are click-driven and sibling-exclusive. */}
-            {item.children && isSubmenuOpen && (
-                <div ref={submenuRef} role="menu" aria-label={`${item.label} menu`} className={`rtx-menu-surface absolute left-full top-0 ml-[-2px] mt-0 min-w-[200px] py-1 z-[101]
-                    ${item.scrollableChildren ? 'max-h-[400px] overflow-y-auto no-scrollbar' : ''}
-                 `}>
-                    <MenuList items={item.children} onClose={onClose} />
-                </div>
-            )}
+            {/* Portals escape the desktop root menu's scrolling/clipping boundary. */}
+            {desktop && submenu ? ReactDOM.createPortal(submenu, document.body) : submenu}
         </div>
     );
 };

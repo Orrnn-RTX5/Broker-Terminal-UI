@@ -8,6 +8,7 @@ import { TREND_LINE_TOOLS } from './toolCatalog';
 import { GANN_FIBONACCI_TOOLS } from './gannFibonacciToolCatalog';
 import { CHART_PATTERN_TOOLS } from './chartPatternToolCatalog';
 import { FORECASTING_MEASUREMENT_TOOLS } from './forecastingMeasurementToolCatalog';
+import { getPictographStamp } from './pictographCatalog';
 import { isTrendDrawingInputActive, setTrendDrawingInputActive, usesDirectDrawingPointerInput } from './drawingInteractionPriority';
 
 const source = readFileSync(resolve(process.cwd(), 'src/components/TradingChart.tsx'), 'utf8');
@@ -82,7 +83,10 @@ const installCommandLifecycle = (contextId: string) => {
     usesDirectDrawingPointerInput, setTrendDrawingInputActive,
     TRADING_VIEW_HANDLE_SCROLL: {}, TRADING_VIEW_HANDLE_SCALE: {},
     DRAWING_LOCK_HANDLE_SCROLL: {}, DRAWING_LOCK_HANDLE_SCALE: {},
-    commandBus: { subscribe: (_type: string, listener: typeof dispatch) => { dispatch = listener; return () => undefined; } },
+    commandBus: {
+      subscribe: (_type: string, listener: typeof dispatch) => { dispatch = listener; return () => undefined; },
+      dispatch: (command: { payload: Parameters<typeof dispatch>[0] }) => dispatch(command.payload),
+    },
   });
   cleanups.push(cleanup);
   return { wrapper, container, manager, activeToolRef, drawingCommandTargetRef, dispatch, cleanup };
@@ -96,6 +100,29 @@ afterEach(() => {
 });
 
 describe('trend drawing input priority', () => {
+  it.each(['freehand', 'trendline', 'stamp'])('restores desktop cursor interaction after %s completes without deselecting it', type => {
+    const previous = window.electron;
+    Object.defineProperty(window, 'electron', { configurable: true, value: { window: {} } });
+    try {
+      const panel = installCommandLifecycle('desktop-chart');
+      panel.dispatch({ tool: type, targetContextId: 'desktop-chart' });
+      window.dispatchEvent(new CustomEvent('drawing:saved', { detail: { contextId: 'desktop-chart', type } }));
+      expect(panel.activeToolRef.current).toBeNull();
+      expect(panel.drawingCommandTargetRef.current).toBeNull();
+      expect(panel.container.style.touchAction).toBe('');
+      expect(panel.container.style.cursor).toBe('default');
+      expect(isTrendDrawingInputActive(panel.container)).toBe(false);
+      expect(panel.manager.unselectAll).not.toHaveBeenCalled();
+      expect(panel.manager.updateActiveDrawing).not.toHaveBeenCalled();
+      panel.dispatch({ tool: type, targetContextId: 'desktop-chart' });
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(panel.activeToolRef.current).toBeNull();
+      expect(panel.manager.getActiveDrawing()).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'electron', { configurable: true, value: previous });
+    }
+  });
+
   it.each([undefined, 'highlighter'])('keeps freehand %s armed after release with its styles, and Escape restores cursor input', subtype => {
     const panel = installCommandLifecycle('chart-brush');
     panel.dispatch({ tool: 'freehand', subtype, targetContextId: 'chart-brush' });
@@ -115,6 +142,9 @@ describe('trend drawing input priority', () => {
   });
   it.each([...TREND_LINE_TOOLS, ...GANN_FIBONACCI_TOOLS,
     ...CHART_PATTERN_TOOLS.map(tool => ({ ...tool, drawingType: 'pattern' })),
+    ...['emoji:1f600', 'sticker:1f602', 'icon:arrow-up'].map(subtype => ({
+      id: subtype, label: getPictographStamp(subtype)!.label, drawingType: 'stamp',
+    })),
     ...FORECASTING_MEASUREMENT_TOOLS])('$label arms only its chart and restores input after completion', tool => {
     const owner = installCommandLifecycle('chart-owner');
     const sibling = installCommandLifecycle('chart-sibling');

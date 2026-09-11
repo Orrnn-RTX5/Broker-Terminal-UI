@@ -1,7 +1,8 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useUiTranslation } from '../../hooks/useUiTranslation';
+import { useState, useEffect } from 'react';
 import { Icon } from '../ui/Icon';
 import { ConnectionStatus } from '../ConnectionStatus';
-import type { UpdateStatusPayload } from '../../types/trading';
+import { useDesktopUpdater } from '../../hooks/useDesktopUpdater';
 import { useDesktopRelease } from '../../hooks/useDesktopRelease';
 import {
     getDesktopReleaseButtonTitle,
@@ -25,6 +26,7 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketStatus }: StatusBarProps) {
+    const tr = useUiTranslation();
     const brokerInfo = useTerminalBrokerInfo();
     const [currentTime, setCurrentTime] = useState(new Date());
     useEffect(() => {
@@ -54,77 +56,7 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
     const showDesktopDownload = !window.electron || !window.electron.isPackaged;
     const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload });
     const desktopReleaseVersionLabel = getDesktopReleaseVersionLabel(desktopReleaseState.release);
-    const [updatePhase, setUpdatePhase] = useState<UpdateStatusPayload['status'] | 'idle'>('idle');
-    const [updateLabel, setUpdateLabel] = useState(hasUpdater ? 'Check updates' : '');
-    const [actionPending, setActionPending] = useState(false);
-
-    useEffect(() => {
-        if (!window.electron?.updater?.isSupported) return;
-
-        const cleanup = window.electron.updater.onStatus((data: UpdateStatusPayload) => {
-            setUpdatePhase(data.status);
-            switch (data.status) {
-                case 'checking':
-                    setUpdateLabel('Checking...');
-                    break;
-                case 'available':
-                    setUpdateLabel('Download update');
-                    setActionPending(false);
-                    break;
-                case 'downloading':
-                    setUpdateLabel(`Downloading ${data.percent}%`);
-                    break;
-                case 'downloaded':
-                    setUpdateLabel('Install update');
-                    setActionPending(false);
-                    break;
-                case 'not-available':
-                    setUpdateLabel('Check updates');
-                    setUpdatePhase('idle');
-                    setActionPending(false);
-                    break;
-                case 'error':
-                    setUpdateLabel('Retry update');
-                    setActionPending(false);
-                    break;
-                default:
-                    break;
-            }
-        });
-
-        return cleanup;
-    }, []);
-
-    const handleUpdateClick = useCallback(async () => {
-        if (!window.electron?.updater || actionPending) return;
-        if (updatePhase === 'checking' || updatePhase === 'downloading') return;
-
-        if (updatePhase === 'available') {
-            setActionPending(true);
-            const result = await window.electron.updater.downloadNow();
-            if (!result.ok) {
-                setUpdatePhase('error');
-                setUpdateLabel('Retry update');
-            }
-            setActionPending(false);
-            return;
-        }
-
-        if (updatePhase === 'downloaded') {
-            window.electron.updater.installNow();
-            return;
-        }
-
-        setActionPending(true);
-        const result = await window.electron.updater.checkForUpdates();
-        if (!result.ok) {
-            setUpdatePhase('error');
-            setUpdateLabel('Retry update');
-        }
-        setActionPending(false);
-    }, [actionPending, updatePhase]);
-
-    const updateButtonDisabled = actionPending || updatePhase === 'checking' || updatePhase === 'downloading';
+    const { updatePhase, updateLabel, updateButtonDisabled, handleUpdateClick } = useDesktopUpdater();
     const updateButtonTone =
         updatePhase === 'available' ? 'text-sky-300 hover:text-sky-100 border-sky-500/50 bg-sky-500/10 [.rtx-advanced-view_&]:text-sky-700 [.rtx-advanced-view_&]:hover:text-sky-900 [.rtx-advanced-view_&]:border-sky-400/60 [.rtx-advanced-view_&]:bg-sky-100/60'
             : updatePhase === 'downloaded' ? 'text-emerald-300 hover:text-emerald-100 border-emerald-500/50 bg-emerald-500/10 [.rtx-advanced-view_&]:text-emerald-700 [.rtx-advanced-view_&]:hover:text-emerald-900 [.rtx-advanced-view_&]:border-emerald-400/60 [.rtx-advanced-view_&]:bg-emerald-100/60'
@@ -144,7 +76,7 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                         className="h-4 w-4 shrink-0 rounded-sm object-contain"
                         onError={() => setLogoError(true)}
                     />
-                    <span className="rtx-status-bar__metric truncate whitespace-nowrap font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black">{statusText}</span>
+                    <span className="rtx-status-bar__metric truncate whitespace-nowrap font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black">{tr(statusText)}</span>
                 </div>
             </div>
             <div className="flex shrink-0 items-center gap-4">
@@ -157,7 +89,7 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                                 title={getDesktopReleaseButtonTitle(desktopReleaseState.release)}
                             >
                                 <Icon name="download" size="xs" className="text-zinc-400 [.rtx-advanced-view_&]:text-zinc-500" />
-                                <span>Desktop App</span>
+                                <span>{tr("Desktop App")}</span>
                                 {desktopDownloadVersionLabel && (
                                     <span className="font-mono text-[12px] font-normal leading-none text-zinc-500 [.rtx-advanced-view_&]:text-zinc-600">
                                         {desktopDownloadVersionLabel}
@@ -178,9 +110,9 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                             onClick={handleUpdateClick}
                             disabled={updateButtonDisabled}
                             className={`h-[18px] rounded border px-1.5 text-[12px] font-normal leading-none transition-colors disabled:cursor-default disabled:opacity-70 ${updateButtonTone}`}
-                            title="Check for desktop app updates"
+                            title={tr("Check for desktop app updates")}
                         >
-                            {updateLabel}
+                            {tr(updateLabel)}
                         </button>
                     )}
                     <span className="rtx-status-bar__metric text-zinc-500 font-mono text-[13px] font-normal [.rtx-advanced-view_&]:text-zinc-500">

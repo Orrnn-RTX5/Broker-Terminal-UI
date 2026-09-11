@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 /**
  * JournalTab — MT5-style server journal panel
  * Fetches broker/account-scoped logs from GET /api/v1/journal.
@@ -346,6 +347,7 @@ const JournalLogTable = React.memo(function JournalLogTable({
     autoScroll,
     onAutoScrollChange,
 }: JournalLogTableProps) {
+    const tr = useUiTranslation();
     const scrollViewportRef = useRef<HTMLDivElement>(null);
     const [viewport, setViewport] = useState({
         scrollTop: 0,
@@ -436,12 +438,12 @@ const JournalLogTable = React.memo(function JournalLogTable({
             >
                 <thead className="rtx-journal-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-normal text-[12px] uppercase tracking-normal border-y border-zinc-700/70 select-none">
                     <tr className="h-[30px]">
-                        <th className="px-1.5 py-[3px] w-36 whitespace-nowrap">Time</th>
-                        <th className="px-1.5 py-[3px] w-16">Code</th>
-                        <th className="px-1.5 py-[3px] w-20">Type</th>
-                        <th className="px-1.5 py-[3px] w-28">Source</th>
-                        <th className="px-1.5 py-[3px] w-24 whitespace-nowrap">Latency</th>
-                        <th className="px-1.5 py-[3px] text-left">Message</th>
+                        <th className="px-1.5 py-[3px] w-36 whitespace-nowrap">{tr("Time")}</th>
+                        <th className="px-1.5 py-[3px] w-16">{tr("Code")}</th>
+                        <th className="px-1.5 py-[3px] w-20">{tr("Type")}</th>
+                        <th className="px-1.5 py-[3px] w-28">{tr("Source")}</th>
+                        <th className="px-1.5 py-[3px] w-24 whitespace-nowrap">{tr("Latency")}</th>
+                        <th className="px-1.5 py-[3px] text-left">{tr("Message")}</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/90 text-zinc-100 text-[13px] leading-[19.5px] font-normal">
@@ -509,6 +511,7 @@ type JournalTabSurfaceProps = {
 };
 
 function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceProps) {
+    const tr = useUiTranslation();
     const [lastTradeLatency, setLastTradeLatency] = useState<ScopedTradeLatency | null>(() => (
         getLatestTerminalTradeLatency(getTradeOrderLatencySamples(), sessionScope)
     ));
@@ -780,30 +783,30 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
 
                 {/* Type filter */}
                 <div className="rtx-journal-advanced-control flex items-center gap-1.5 shrink-0">
-                    <span className="rtx-journal-toolbar__label text-[13px] font-medium text-zinc-400 uppercase tracking-[0.02em]">Type</span>
+                    <span className="rtx-journal-toolbar__label text-[13px] font-medium text-zinc-400 uppercase tracking-[0.02em]">{tr("Type")}</span>
                     <select
-                        aria-label="Journal type"
+                        aria-label={tr("Journal type")}
                         value={logType}
                         onChange={e => setLogType(Number(e.target.value))}
                         className="rtx-journal-control h-7 min-w-[94px] cursor-pointer border border-zinc-600 bg-zinc-800 px-2 py-0 text-[13px] font-medium text-zinc-200 outline-none hover:border-zinc-500"
                     >
                         {LOG_TYPES.map(t => (
-                            <option key={t.value} value={t.value}>{t.label}</option>
+                            <option key={t.value} value={t.value}>{tr(t.label)}</option>
                         ))}
                     </select>
                 </div>
 
                 {/* Mode filter */}
                 <div className="rtx-journal-advanced-control flex items-center gap-1.5 shrink-0">
-                    <span className="rtx-journal-toolbar__label text-[13px] font-medium text-zinc-400 uppercase tracking-[0.02em]">Mode</span>
+                    <span className="rtx-journal-toolbar__label text-[13px] font-medium text-zinc-400 uppercase tracking-[0.02em]">{tr("Mode")}</span>
                     <select
-                        aria-label="Journal mode"
+                        aria-label={tr("Journal mode")}
                         value={logMode}
                         onChange={e => setLogMode(Number(e.target.value))}
                         className="rtx-journal-control h-7 min-w-[112px] cursor-pointer border border-zinc-600 bg-zinc-800 px-2 py-0 text-[13px] font-medium text-zinc-200 outline-none hover:border-zinc-500"
                     >
                         {LOG_MODES.map(m => (
-                            <option key={m.value} value={m.value}>{m.label}</option>
+                            <option key={m.value} value={m.value}>{tr(m.label)}</option>
                         ))}
                     </select>
                 </div>
@@ -812,7 +815,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                 <div className="rtx-journal-periods flex items-center gap-1 shrink-0">
                     {TIME_RANGES.map(t => (
                         <button
-                            key={t.label}
+                            key={tr(t.label)}
                             type="button"
                             aria-pressed={timeRange === t.hours}
                             onClick={() => setTimeRange(t.hours)}
@@ -821,7 +824,7 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                                 : 'text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-200'
                                 }`}
                         >
-                            {t.label}
+                            {tr(t.label)}
                         </button>
                     ))}
                 </div>
@@ -830,8 +833,8 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                     type="button"
                     onClick={() => { void copyFilteredJournal(); }}
                     disabled={!ownsCurrentRequest || filteredLogs.length === 0}
-                    aria-label="Copy filtered journal"
-                    title={`Copy ${filteredLogs.length} filtered journal ${filteredLogs.length === 1 ? 'entry' : 'entries'}`}
+                    aria-label={tr("Copy filtered journal")}
+                    title={tr("Copy {{value0}} filtered journal {{value1}}", { value0: filteredLogs.length, value1: filteredLogs.length === 1 ? tr('entry') : tr('entries') })}
                     className={`rtx-journal-control rtx-journal-primary-action flex h-[22px] min-w-[72px] shrink-0 items-center justify-center gap-1.5 border px-2 py-0 text-[12px] font-normal transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${copyStatus === 'copied'
                         ? 'border-emerald-700 text-emerald-400'
                         : copyStatus === 'error'
@@ -840,14 +843,10 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                         }`}
                 >
                     <Icon name={copyStatus === 'copied' ? 'check' : 'copy'} size="sm" />
-                    {copyStatus === 'copied' ? 'Copied' : copyStatus === 'error' ? 'Failed' : 'Copy'}
+                    {copyStatus === 'copied' ? tr("Copied") : copyStatus === 'error' ? tr("Failed") : tr("Copy")}
                 </button>
                 <span role="status" aria-live="polite" className="sr-only">
-                    {copyStatus === 'copied'
-                        ? `${filteredLogs.length} filtered journal ${filteredLogs.length === 1 ? 'entry' : 'entries'} copied`
-                        : copyStatus === 'error'
-                            ? 'Unable to copy the filtered journal'
-                            : ''}
+                    {copyStatus === 'copied' ? tr("{{value0}} filtered journal {{value1}} copied", { value0: filteredLogs.length, value1: filteredLogs.length === 1 ? tr('entry') : tr('entries') }) : copyStatus === 'error' ? tr("Unable to copy the filtered journal") : ''}
                 </span>
 
                 <button
@@ -856,18 +855,17 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
                     onClick={() => setShowAdvancedFilters(current => !current)}
                     className="rtx-journal-control h-[22px] border border-transparent px-2 text-[12px] font-normal text-zinc-500 hover:bg-zinc-800/70 hover:text-zinc-200"
                 >
-                    Filters
-                </button>
+                    {tr("Filters")}</button>
 
                 {/* Text search */}
                 <div className="rtx-journal-advanced-control relative h-7 min-w-[220px] max-w-[400px] flex-[1_1_260px]">
                     <Icon name="search" size="sm" className="pointer-events-none absolute left-2 top-1/2 z-[1] -translate-y-1/2 text-zinc-500" />
                     <input
                         type="text"
-                        aria-label="Filter journal messages"
+                        aria-label={tr("Filter journal messages")}
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        placeholder="Filter messages…"
+                        placeholder={tr("Filter messages…")}
                         className="rtx-journal-control h-7 w-full border border-zinc-600 bg-zinc-800 py-0 pl-7 pr-2 text-[13px] font-normal text-zinc-200 outline-none placeholder:text-zinc-500 hover:border-zinc-500"
                     />
                 </div>
@@ -876,41 +874,39 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
 
                 {/* Log count */}
                 <span className="min-w-[88px] text-right text-[13px] font-normal text-zinc-400 whitespace-nowrap">
-                    {filteredLogs.length} records
-                </span>
+                    {filteredLogs.length} {tr(" records")}</span>
 
                 <span
                     data-testid="last-trade-latency"
                     role="status"
                     aria-live="polite"
                     className="rtx-journal-advanced-control min-w-[196px] border-l border-zinc-700/50 pl-3 text-[13px] font-normal text-zinc-400 whitespace-nowrap"
-                    title="Latest locally measured total order-attempt time for this broker and account"
+                    title={tr("Latest locally measured total order-attempt time for this broker and account")}
                 >
-                    Last trade latency: {formatLatencyMs(scopedLastTradeLatency)}
+                    {tr("Last trade latency: ")}{formatLatencyMs(scopedLastTradeLatency)}
                 </span>
 
                 <button
                     type="button"
                     onClick={() => setAutoScroll(current => !current)}
                     aria-pressed={autoScroll}
-                    title="Toggle auto-follow newest entries"
+                    title={tr("Toggle auto-follow newest entries")}
                     className={`rtx-journal-control rtx-journal-advanced-control rtx-journal-auto h-7 min-w-[68px] border px-2.5 py-0 text-[13px] font-medium transition-colors ${autoScroll
                         ? 'border-zinc-600 bg-blue-950/30 text-blue-400'
                         : 'border-zinc-700 text-zinc-500 hover:border-zinc-500'
                         }`}
                 >
-                    ↑ Auto
-                </button>
+                    {tr("↑ Auto")}</button>
 
                 <button
                     type="button"
                     onClick={refreshJournal}
                     disabled={!isAuthenticated || isFilterSettling || isLoading || isRefreshing}
-                    aria-label="Refresh journal"
+                    aria-label={tr("Refresh journal")}
                     className="rtx-journal-control rtx-journal-refresh flex h-[22px] items-center justify-center gap-1 border border-transparent bg-zinc-800 px-2 py-0 text-[12px] font-normal text-zinc-300 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     <Icon name="refresh" size="sm" className={isLoading || isRefreshing ? 'animate-spin' : ''} />
-                    {isLoading ? 'Loading…' : isRefreshing ? 'Refreshing…' : 'Refresh'}
+                    {isLoading ? tr("Loading…") : isRefreshing ? tr("Refreshing…") : tr("Refresh")}
                 </button>
                 </div>
             </div>
@@ -918,40 +914,35 @@ function JournalTabSurface({ isAuthenticated, sessionScope }: JournalTabSurfaceP
             {/* ── Status rows ──────────────────────────────────────────────── */}
             {!isAuthenticated && (
                 <div className="flex flex-1 items-center justify-center text-xs text-zinc-500">
-                    Sign in to view the server journal
-                </div>
+                    {tr("Sign in to view the server journal")}</div>
             )}
 
             {isAuthenticated && scopeHasLoaded && scopeFetchError && (
                 <div role="status" className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-900/60 bg-amber-950/30 px-3 py-1 text-[12px] font-normal text-amber-300">
-                    <span>Refresh failed. Showing the latest response for this account.</span>
+                    <span>{tr("Refresh failed. Showing the latest response for this account.")}</span>
                     <button type="button" onClick={refreshJournal} className="underline underline-offset-2 hover:text-amber-100">
-                        Retry
-                    </button>
+                        {tr("Retry")}</button>
                 </div>
             )}
 
             {isAuthenticated && !scopeHasLoaded && (isLoading || !scopeFetchError) && (
                 <div role="status" className="flex flex-1 items-center justify-center gap-2 text-xs text-zinc-500">
                     <Icon name="refresh" size="sm" className="animate-spin" />
-                    Loading server journal…
-                </div>
+                    {tr("Loading server journal…")}</div>
             )}
 
             {isAuthenticated && !scopeHasLoaded && !isLoading && scopeFetchError && (
                 <div role="alert" className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
-                    <span className="text-xs text-red-400">Unable to load the server journal</span>
-                    <span className="max-w-xl text-[12px] font-normal text-zinc-500">{scopeFetchError}</span>
+                    <span className="text-xs text-red-400">{tr("Unable to load the server journal")}</span>
+                    <span className="max-w-xl text-[12px] font-normal text-zinc-500">{tr(scopeFetchError)}</span>
                     <button type="button" onClick={refreshJournal} className="rounded bg-zinc-700 px-3 py-1 text-[12px] font-normal text-zinc-200 hover:bg-zinc-600">
-                        Retry
-                    </button>
+                        {tr("Retry")}</button>
                 </div>
             )}
 
             {isAuthenticated && scopeHasLoaded && filteredLogs.length === 0 && (
                 <div className="flex-1 flex items-center justify-center text-zinc-600 text-xs italic">
-                    No journal entries for the selected filters
-                </div>
+                    {tr("No journal entries for the selected filters")}</div>
             )}
 
             {/* ── Log table ────────────────────────────────────────────────── */}

@@ -142,8 +142,8 @@ describe('TradingChart interaction-priority contract', () => {
     const timeframeCommand = source.slice(commandStart, commandEnd);
 
     expect(source).toContain("loadingPhase === 'connecting'");
-    expect(source).toContain("? ['Connecting to market data…']");
-    expect(source).toContain('`Loading ${symbol} ${activeTimeframe} history…`');
+    expect(source).toContain("? [tr('Connecting to market data…')]");
+    expect(source).toContain("`${symbol} ${activeTimeframe} · ${tr('Loading…')}`");
     expect(timeframeCommand).toContain("setLoadingPhase('receiving')");
     expect(timeframeCommand).not.toContain("setLoadingPhase('connecting')");
     expect(source.slice(
@@ -240,12 +240,12 @@ describe('TradingChart interaction-priority contract', () => {
     expect(badgeMarkup).toContain('aria-hidden="true"');
     expect(badgeMarkup).toContain('lineHeight: \'16px\'');
     expect(badgeMarkup).toContain('lineHeight: \'14px\'');
-    expect(badgeMarkup).toContain('fontSize: 11');
+    expect(badgeMarkup).toContain('fontSize: 12');
     expect(badgeMarkup).toContain("opacity: 1");
     expect(badgeMarkup).toContain("textAlign: 'center'");
     expect(badgeMarkup).toContain('transform: `translateY(-${LIVE_PRICE_BADGE_PRICE_ROW_OFFSET_PX}px)`');
 
-    expect(paint).toContain('livePriceValueRef.current.textContent = livePrice.toFixed(digits)');
+    expect(paint).toContain('livePriceValueRef.current.textContent = formatChartAxisPrice(livePrice, digits)');
     expect(paint).not.toContain('badge.textContent =');
     expect(hide).not.toContain('livePriceBadgeRef.current.textContent =');
     expect(hide).toContain("livePriceCountdownRef.current.style.display = 'none'");

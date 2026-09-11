@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * Account Management Panel
  * Comprehensive account management sidebar for traders
@@ -23,6 +24,7 @@ interface Transaction {
 }
 
 export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnection }) => {
+    const tr = useUiTranslation();
   const { account, accountId } = useAppStore();
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -98,7 +100,7 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
         <div className="flex min-h-[30px] items-center justify-between px-4 py-1 border-b border-zinc-800 bg-[#252525]">
           <div className="flex items-center gap-2">
             <Icon name="credit-card" size="sm" className="w-4 h-4 text-blue-400" />
-            <h2 className="text-[14px] leading-[21px] font-normal text-zinc-200">Account Management</h2>
+            <h2 className="text-[14px] leading-[21px] font-normal text-zinc-200">{tr("Account Management")}</h2>
           </div>
           <button
             onClick={onClose}
@@ -112,31 +114,31 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {/* Section 1: Account Summary */}
           <div className="p-4 border-b border-zinc-800">
-            <h3 className="text-[12px] leading-[18px] font-normal text-zinc-500 uppercase tracking-normal mb-3">Account Summary</h3>
+            <h3 className="text-[12px] leading-[18px] font-normal text-zinc-500 uppercase tracking-normal mb-3">{tr("Account Summary")}</h3>
 
             {/* Account Info */}
             <div className="bg-[#252525] rounded-lg p-3 mb-3 border border-zinc-800">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[14px] leading-[21px] font-normal text-zinc-500">Account</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-500">{tr("Account")}</span>
                 <span className="text-[14px] leading-[21px] font-mono text-zinc-300 font-normal">{accountInfo.accountNumber}</span>
               </div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[14px] leading-[21px] font-normal text-zinc-500">Type</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-500">{tr("Type")}</span>
                 <span className="text-[14px] leading-[21px] text-blue-400 font-normal">{accountInfo.accountType}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[14px] leading-[21px] font-normal text-zinc-500">Leverage</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-500">{tr("Leverage")}</span>
                 <span className="text-[14px] leading-[21px] text-zinc-300 font-normal">1:{accountInfo.leverage}</span>
               </div>
             </div>
 
             {/* Balance Info */}
             <div className="space-y-2">
-              <BalanceRow label="Balance" value={account?.balance || 0} currency={account?.currency || 'USD'} />
-              <BalanceRow label="Equity" value={account?.equity || 0} currency={account?.currency || 'USD'} valueColor="text-emerald-400" />
-              <BalanceRow label="Free Margin" value={account?.freeMargin || 0} currency={account?.currency || 'USD'} />
+              <BalanceRow label={tr("Balance")} value={account?.balance || 0} currency={account?.currency || 'USD'} />
+              <BalanceRow label={tr("Equity")} value={account?.equity || 0} currency={account?.currency || 'USD'} valueColor="text-emerald-400" />
+              <BalanceRow label={tr("Free Margin")} value={account?.freeMargin || 0} currency={account?.currency || 'USD'} />
               <BalanceRow
-                label="Margin Level"
+                label={tr("Margin Level")}
                 value={account?.marginLevel || 0}
                 suffix="%"
                 valueColor={getMarginLevelColor(account?.marginLevel || 0)}
@@ -150,43 +152,38 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
               <button
                 type="button"
                 disabled
-                title="Deposits are not supported by the trade-facing API contract"
+                title={tr("Deposits are not supported by the trade-facing API contract")}
                 onClick={() => handleUnsupportedAccountAction('Deposit')}
                 className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/50 border border-zinc-700 rounded-lg text-zinc-500 text-[14px] leading-[21px] font-normal cursor-not-allowed"
               >
                 <Icon name="trending-up" size="sm" className="w-4 h-4" />
-                Deposit
-              </button>
+                {tr("Deposit")}</button>
               <button
                 type="button"
                 disabled
-                title="Withdrawals are not supported by the trade-facing API contract"
+                title={tr("Withdrawals are not supported by the trade-facing API contract")}
                 onClick={() => handleUnsupportedAccountAction('Withdrawal')}
                 className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800/50 border border-zinc-700 rounded-lg text-zinc-500 text-[14px] leading-[21px] font-normal cursor-not-allowed"
               >
                 <Icon name="trending-up" size="sm" className="w-4 h-4 rotate-180" />
-                Withdraw
-              </button>
+                {tr("Withdraw")}</button>
             </div>
           </div>
 
           {/* Section 3: Transaction History */}
           <div className="p-4 border-b border-zinc-800">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[12px] leading-[18px] font-normal text-zinc-500 uppercase tracking-normal">Transaction History</h3>
+              <h3 className="text-[12px] leading-[18px] font-normal text-zinc-500 uppercase tracking-normal">{tr("Transaction History")}</h3>
               <button className="text-[12px] leading-[18px] text-blue-400 hover:text-zinc-300 transition-colors font-normal">
-                View All
-              </button>
+                {tr("View All")}</button>
             </div>
 
             {isLoadingTransactions ? (
               <div className="text-center py-6 text-zinc-600 text-[14px] leading-[21px] font-normal">
-                Loading transactions...
-              </div>
+                {tr("Loading transactions...")}</div>
             ) : transactions.length === 0 ? (
               <div className="text-center py-6 text-zinc-600 text-[14px] leading-[21px] font-normal">
-                No transactions yet
-              </div>
+                {tr("No transactions yet")}</div>
             ) : (
               <div className="space-y-2">
                 {transactions.map((transaction) => (
@@ -198,17 +195,17 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
 
           {/* Section 4: Account Settings */}
           <div className="p-4">
-            <h3 className="text-[12px] leading-[18px] font-normal text-zinc-500 uppercase tracking-normal mb-3">Account Settings</h3>
+            <h3 className="text-[12px] leading-[18px] font-normal text-zinc-500 uppercase tracking-normal mb-3">{tr("Account Settings")}</h3>
 
             <div className="space-y-3">
               {/* Leverage Selector */}
               <div className="flex items-center justify-between py-2">
-                <span className="text-[14px] leading-[21px] font-normal text-zinc-400">Leverage</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-400">{tr("Leverage")}</span>
                 <select
                   value={leverage}
                   disabled
                   onChange={() => undefined}
-                  title="Leverage changes are not supported by the trade API"
+                  title={tr("Leverage changes are not supported by the trade API")}
                   className="bg-[#252525] border border-zinc-700 rounded px-2 py-1 text-[14px] leading-[21px] font-normal text-zinc-500 focus:outline-none cursor-not-allowed"
                 >
                   <option value={50}>1:50</option>
@@ -222,24 +219,24 @@ export const AccountPanel: React.FC<AccountPanelProps> = ({ onClose, wsConnectio
               <button
                 type="button"
                 disabled
-                title="Password changes are not supported by the trade-facing API contract"
+                title={tr("Password changes are not supported by the trade-facing API contract")}
                 onClick={() => handleUnsupportedAccountAction('Password changes')}
                 className="w-full flex items-center justify-between px-3 py-2 bg-[#252525] border border-zinc-700 rounded-lg text-[14px] leading-[21px] font-normal text-zinc-500 cursor-not-allowed"
               >
                 <div className="flex items-center gap-2">
                   <Icon name="lock" size="sm" className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>Change Password</span>
+                  <span>{tr("Change Password")}</span>
                 </div>
                 <Icon name="chevron-right" size="sm" className="w-3.5 h-3.5 text-zinc-600" />
               </button>
 
               {/* One-Click Trading Toggle */}
               <div className="flex items-center justify-between py-2">
-                <span className="text-[14px] leading-[21px] font-normal text-zinc-400">One-Click Trading</span>
+                <span className="text-[14px] leading-[21px] font-normal text-zinc-400">{tr("One-Click Trading")}</span>
                 <button
                   type="button"
                   disabled
-                  title="One-click trading settings are not supported by the trade-facing API contract"
+                  title={tr("One-click trading settings are not supported by the trade-facing API contract")}
                   onClick={() => handleUnsupportedAccountAction('One-click trading settings')}
                   className={`relative w-10 h-5 rounded-full transition-colors cursor-not-allowed opacity-60 ${oneClickTrading ? 'bg-emerald-500' : 'bg-zinc-700'
                     }`}
@@ -272,6 +269,7 @@ interface BalanceRowProps {
 }
 
 const BalanceRow: React.FC<BalanceRowProps> = ({ label, value, currency, suffix, valueColor = 'text-zinc-200' }) => {
+    const tr = useUiTranslation();
   const prevRef = useRef(value);
   const [color, setColor] = useState(valueColor);
 
@@ -288,7 +286,7 @@ const BalanceRow: React.FC<BalanceRowProps> = ({ label, value, currency, suffix,
 
   return (
     <div className="flex items-center justify-between py-1.5 border-b border-zinc-800/50">
-      <span className="text-[14px] leading-[21px] font-normal text-zinc-500">{label}</span>
+      <span className="text-[14px] leading-[21px] font-normal text-zinc-500">{tr(label)}</span>
       <span className={`text-[14px] leading-[21px] font-semibold font-mono px-0.5 rounded-sm inline-block ${color}`}>
         {currency && `${currency} `}
         {value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -342,6 +340,7 @@ interface PaymentModalProps {
 }
 
 const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
+    const tr = useUiTranslation();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('card');
   const [loading, setLoading] = useState(false);
@@ -362,7 +361,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]" onClick={onClose}>
       <div className="bg-[#131316] border border-zinc-800 rounded-lg shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] leading-[24px] font-semibold text-zinc-200">{title}</h3>
+          <h3 className="text-[16px] leading-[24px] font-semibold text-zinc-200">{tr(title)}</h3>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
             <Icon name="x-close" size="sm" className="w-5 h-5" />
           </button>
@@ -376,14 +375,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
               </svg>
             </div>
             <p className="text-[14px] leading-[21px] text-zinc-300 font-normal">
-              {type === 'deposit' ? 'Deposit' : 'Withdrawal'} request submitted successfully!
-            </p>
+              {type === 'deposit' ? tr("Deposit") : tr("Withdrawal")} {tr(" request submitted successfully!")}</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Amount Input */}
             <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">Amount (USD)</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("Amount (USD)")}</label>
               <input
                 type="number"
                 value={amount}
@@ -398,15 +396,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
 
             {/* Payment Method */}
             <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">Payment Method</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("Payment Method")}</label>
               <select
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
                 className="w-full px-3 py-2 bg-[#252525] border border-zinc-700 rounded text-[14px] leading-[21px] font-normal text-zinc-300 focus:outline-none focus:border-zinc-600"
               >
-                <option value="card">Credit/Debit Card</option>
-                <option value="bank">Bank Transfer</option>
-                <option value="crypto">Cryptocurrency</option>
+                <option value="card">{tr("Credit/Debit Card")}</option>
+                <option value="bank">{tr("Bank Transfer")}</option>
+                <option value="crypto">{tr("Cryptocurrency")}</option>
               </select>
             </div>
 
@@ -423,7 +421,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ type, onClose }) => {
               disabled={loading || !amount}
               className={`w-full py-2.5 ${buttonColor} text-white text-[14px] leading-[21px] font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              {loading ? 'Processing...' : `Submit ${type === 'deposit' ? 'Deposit' : 'Withdrawal'}`}
+              {loading ? tr("Processing...") : tr("Submit {{value0}}", { value0: type === 'deposit' ? 'Deposit' : 'Withdrawal' })}
             </button>
           </form>
         )}
@@ -440,6 +438,7 @@ interface PasswordModalProps {
 }
 
 const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
+    const tr = useUiTranslation();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -469,7 +468,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999]" onClick={onClose}>
       <div className="bg-[#131316] border border-zinc-800 rounded-lg shadow-2xl w-96 p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] leading-[24px] font-semibold text-zinc-200">Change Password</h3>
+          <h3 className="text-[16px] leading-[24px] font-semibold text-zinc-200">{tr("Change Password")}</h3>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
             <Icon name="x-close" size="sm" className="w-5 h-5" />
           </button>
@@ -482,12 +481,12 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-[14px] leading-[21px] text-zinc-300 font-normal">Password changed successfully!</p>
+            <p className="text-[14px] leading-[21px] text-zinc-300 font-normal">{tr("Password changed successfully!")}</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">Current Password</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("Current Password")}</label>
               <input
                 type="password"
                 value={currentPassword}
@@ -498,7 +497,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
             </div>
 
             <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">New Password</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("New Password")}</label>
               <input
                 type="password"
                 value={newPassword}
@@ -509,7 +508,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
             </div>
 
             <div>
-              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">Confirm New Password</label>
+              <label className="block text-[12px] leading-[18px] font-normal text-zinc-500 mb-1.5">{tr("Confirm New Password")}</label>
               <input
                 type="password"
                 value={confirmPassword}
@@ -530,7 +529,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({ onClose }) => {
               disabled={loading}
               className="w-full py-2.5 bg-zinc-700 hover:bg-zinc-600 text-white text-[14px] leading-[21px] font-semibold rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Updating...' : 'Change Password'}
+              {loading ? tr("Updating...") : tr("Change Password")}
             </button>
           </form>
         )}

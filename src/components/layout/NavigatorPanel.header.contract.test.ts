@@ -22,8 +22,8 @@ describe('Navigator panel header', () => {
   });
 
   it('keeps the dock title and close action in the retained outer header', () => {
-    expect(dockPanelSource).toContain('{panel.title}');
-    expect(dockPanelSource).toContain('title="Close"');
+    expect(dockPanelSource).toContain('{tr(panel.title)}');
+    expect(dockPanelSource).toContain('title={tr("Close")}');
     expect(dockPanelSource).toContain('onClose?.();');
     expect(dockPanelSource).toContain('<X className="w-3 h-3" />');
   });

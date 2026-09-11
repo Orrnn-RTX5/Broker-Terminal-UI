@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * MT5-Style Login Dialog
  * Modal dialog for switching accounts / logging in
@@ -41,6 +42,7 @@ const getErrorMessage = (err: unknown, fallback: string): string =>
     err instanceof Error ? err.message : fallback;
 
 export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = '', initialServer }: LoginDialogProps) {
+    const tr = useUiTranslation();
     const [login, setLogin] = useState('');
     const [password, setPassword] = useState('');
     const [brokerList, setBrokerList] = useState<BrokerServerItem[]>([]);
@@ -306,13 +308,13 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 <div className="flex items-center justify-between bg-[#353847] px-3 py-2 border-b border-[#555]">
                     <div className="flex items-center gap-2">
                         <User size={16} className="text-blue-400" />
-                        <span className="text-[14px] font-semibold text-zinc-200">Login</span>
+                        <span className="text-[14px] font-semibold text-zinc-200">{tr("Login")}</span>
                     </div>
                     <div className="flex items-center gap-1">
-                        <button className="p-1 hover:bg-white/10 rounded transition-colors" title="Help">
+                        <button className="p-1 hover:bg-white/10 rounded transition-colors" title={tr("Help")}>
                             <HelpCircle size={14} className="text-zinc-400" />
                         </button>
-                        <button onClick={onClose} className="p-1 hover:bg-red-500/80 rounded transition-colors" title="Close">
+                        <button onClick={onClose} className="p-1 hover:bg-red-500/80 rounded transition-colors" title={tr("Close")}>
                             <X size={14} className="text-zinc-400 hover:text-white" />
                         </button>
                     </div>
@@ -326,40 +328,39 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             <User size={22} className="text-blue-400" />
                         </div>
                         <p className="text-[12px] font-normal leading-relaxed text-zinc-400">
-                            Authorization allows to get access to the trade account
-                        </p>
+                            {tr("Authorization allows to get access to the trade account")}</p>
                     </div>
 
                     {/* Login Field */}
                     <div className="flex items-center gap-3 mb-3">
-                        <label className="w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Login:</label>
+                        <label className="w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Login:")}</label>
                         <input
                             ref={loginInputRef}
                             type="text"
                             value={login}
                             onChange={(e) => setLogin(e.target.value)}
                             className="h-[28px] flex-1 rounded border border-zinc-600/60 bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
-                            placeholder="Account ID"
+                            placeholder={tr("Account ID")}
                             autoFocus
                         />
                     </div>
 
                     {/* Password Field */}
                     <div className="flex items-center gap-3 mb-3">
-                        <label className="w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Password:</label>
+                        <label className="w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Password:")}</label>
                         <input
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             className="h-[28px] flex-1 rounded border border-[#555] bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
-                            placeholder="Password"
+                            placeholder={tr("Password")}
                             onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
                         />
                     </div>
 
                     {/* Server / Broker Dropdown */}
                     <div className="flex items-start gap-3 mb-4">
-                        <label className="mt-1.5 w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Server:</label>
+                        <label className="mt-1.5 w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Server:")}</label>
                         <div className="flex-1 relative" ref={dropdownRef}>
                             <div className="relative flex h-[28px] w-full items-center rounded border border-[#555] bg-[#1a1c26] text-[14px] font-normal text-zinc-100 transition-colors focus-within:border-zinc-600">
                                 {selectedBroker?.logo_url && (
@@ -382,7 +383,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                         paddingLeft: selectedBroker?.logo_url ? '28px' : '8px',
                                         paddingRight: '32px',
                                     }}
-                                    placeholder="Search broker..."
+                                    placeholder={tr("Search broker...")}
                                 />
                                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
                                     {healthStatus === 'checking' && (
@@ -402,7 +403,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             {dropdownOpen && (
                                 <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#1e2030] border border-zinc-600/60 rounded shadow-xl max-h-[180px] overflow-y-auto flex flex-col font-sans">
                                     {filteredBrokers.length === 0 ? (
-                                        <div className="px-3 py-3 text-[12px] font-normal text-zinc-500">No brokers found</div>
+                                        <div className="px-3 py-3 text-[12px] font-normal text-zinc-500">{tr("No brokers found")}</div>
                                     ) : (
                                         filteredBrokers.map(item => (
                                             <button
@@ -443,7 +444,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                         <line x1="12" y1="9" x2="12" y2="13" />
                                         <line x1="12" y1="17" x2="12.01" y2="17" />
                                     </svg>
-                                    <span>Broker temporarily unavailable</span>
+                                    <span>{tr("Broker temporarily unavailable")}</span>
                                 </div>
                             )}
                         </div>
@@ -463,7 +464,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             disabled={loading}
                             className="h-[30px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] font-semibold text-zinc-200 transition-colors hover:bg-[#4a4e5f] disabled:opacity-50"
                         >
-                            {loading ? 'Connecting...' : 'OK'}
+                            {loading ? tr("Connecting...") : tr("OK")}
                         </button>
                         <button
                             type="button"
@@ -471,8 +472,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             disabled={loading}
                             className="h-[30px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] font-normal text-zinc-200 transition-colors hover:bg-[#4a4e5f]"
                         >
-                            Cancel
-                        </button>
+                            {tr("Cancel")}</button>
                     </div>
                 </form>
             </div>

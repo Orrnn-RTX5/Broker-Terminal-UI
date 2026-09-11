@@ -4,6 +4,12 @@ set -eu
 html_dir="${NGINX_HTML_DIR:-/usr/share/nginx/html}"
 runtime_config="${html_dir}/runtime-config.js"
 
+# An image built with .env.web already contains its selected broker. Only an
+# explicit deployment broker/backend should replace that generated selection.
+if [ -f "${runtime_config}" ] && [ -z "${BROKER_ID:-}${VITE_BROKER_ID:-}${FEED_BROKER_ID:-}${VITE_FEED_BROKER_ID:-}${API_HOST:-}${VITE_API_HOST:-}${VITE_API_URL:-}${VITE_BACKEND_URL:-}" ]; then
+  exit 0
+fi
+
 resolve_backend_target() {
   if [ -n "${BACKEND_TARGET:-}" ]; then
     printf '%s' "${BACKEND_TARGET}"
@@ -40,7 +46,8 @@ ws_host="${WS_HOST:-${VITE_WS_HOST:-${VITE_WS_URL:-wss://backend.orrnn.com}}}"
 default_mt5_server="${DEFAULT_MT5_SERVER:-${VITE_DEFAULT_MT5_SERVER:-backend.orrnn.com:443}}"
 shared_discovery_base_url="${SHARED_DISCOVERY_BASE_URL:-${VITE_SHARED_DISCOVERY_BASE_URL:-https://superbackend.orrnn.com}}"
 discovery_base_url="${DISCOVERY_BASE_URL:-${VITE_DISCOVERY_BASE_URL:-${VITE_BROKER_DISCOVERY_URL:-$shared_discovery_base_url}}}"
-feed_broker_id="${FEED_BROKER_ID:-${VITE_FEED_BROKER_ID:-${BROKER_ID:-${VITE_BROKER_ID:-}}}}"
+broker_id="${BROKER_ID:-${VITE_BROKER_ID:-${FEED_BROKER_ID:-${VITE_FEED_BROKER_ID:-}}}}"
+feed_broker_id="${FEED_BROKER_ID:-${VITE_FEED_BROKER_ID:-$broker_id}}"
 feed_broker_token="${FEED_BROKER_TOKEN:-${VITE_FEED_BROKER_TOKEN:-${BROKER_FEED_TOKEN:-${VITE_BROKER_FEED_TOKEN:-${WS_FEED_TOKEN:-${VITE_WS_FEED_TOKEN:-}}}}}}"
 if [ "$(trim_url "$discovery_base_url")" = "$(trim_url "$api_host")" ] || [ "$(trim_url "$discovery_base_url")" = "$(trim_url "$api_host_ext")" ]; then
   discovery_base_url="$shared_discovery_base_url"
@@ -50,6 +57,8 @@ use_mock_discovery="${USE_MOCK_DISCOVERY:-${VITE_USE_MOCK_DISCOVERY:-false}}"
 mkdir -p "${html_dir}"
 cat > "${runtime_config}" <<EOF
 (function () {
+  if ((window.electron && window.electron.window) || window.electronAPI
+      || window.location.protocol === 'file:' || navigator.userAgent.indexOf('Electron') !== -1) return;
   var config = {
     BACKEND_TARGET: '$(js_string "$backend_target")',
     API_HOST: '$(js_string "$api_host")',
@@ -57,6 +66,8 @@ cat > "${runtime_config}" <<EOF
     WS_HOST: '$(js_string "$ws_host")',
     DEFAULT_MT5_SERVER: '$(js_string "$default_mt5_server")',
     DISCOVERY_BASE_URL: '$(js_string "$discovery_base_url")',
+    BROKER_ID: '$(js_string "$broker_id")',
+    VITE_BROKER_ID: '$(js_string "$broker_id")',
     FEED_BROKER_ID: '$(js_string "$feed_broker_id")',
     FEED_BROKER_TOKEN: '$(js_string "$feed_broker_token")',
     USE_MOCK_DISCOVERY: $(js_bool "$use_mock_discovery")

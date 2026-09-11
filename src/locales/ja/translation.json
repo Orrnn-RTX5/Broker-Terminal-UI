@@ -56,7 +56,8 @@
       "tickVolumes": "ティック出来高",
       "zoomIn": "拡大",
       "zoomOut": "縮小",
-      "properties": "プロパティ"
+      "properties": "プロパティ",
+      "areaChart": "面グラフ"
     },
     "tools": {
       "label": "ツール",
@@ -86,10 +87,10 @@
       "whatsNew": "新機能",
       "telegramChannel": "RTX5 Telegramチャンネル",
       "videoGuides": "ビデオガイド",
-      "webTrader": "RTX5 Web Trader",
+      "webTrader": "RTX5ウェブトレーダー",
       "documentation": "RTX5 ドキュメント",
-      "algoBook": "RTX5 AlgoBook",
-      "neuroBook": "RTX5 NeuroBook",
+      "algoBook": "RTX5 アルゴブック",
+      "neuroBook": "RTX5ニューロブック",
       "articles": "RTX5 記事",
       "codeBase": "RTX5 コードベース",
       "jobs": "RTX5 求人",
@@ -99,8 +100,8 @@
       "forum": "RTX5 フォーラム",
       "cloudHosting": "RTX5 クラウドホスティング",
       "mobile": "モバイル",
-      "mac": "RTX5 for Mac",
-      "linux": "RTX5 for Linux",
+      "mac": "Mac?RTX5",
+      "linux": "Linux用RTX5",
       "checkForUpdates": "アップデートを確認",
       "about": "バージョン情報"
     }

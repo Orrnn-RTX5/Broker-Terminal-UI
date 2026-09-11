@@ -4,6 +4,9 @@
  */
 
 import type { IChartApi } from 'lightweight-charts';
+import { getActiveChartSource } from './activeChartSource';
+import i18n from '../i18n';
+import { translateUi as tr } from '../hooks/useUiTranslation';
 
 export type PageSize = 'A4' | 'Letter' | 'Legal' | 'A3';
 export type PageOrientation = 'portrait' | 'landscape';
@@ -35,11 +38,12 @@ export interface PrintPreferencesSaveResult {
 export interface ChartPrintData {
   symbol: string;
   timeframe: string;
-  dateRange: {
+  dateRange?: {
     from: Date;
     to: Date;
   };
   chartCanvas?: HTMLCanvasElement;
+  capturedAt?: Date;
   indicators: Array<{
     name: string;
     parameters: Record<string, unknown>;
@@ -68,12 +72,15 @@ export const DEFAULT_PRINT_PREFERENCES: PrintPreferences = {
 };
 
 // Page dimensions in pixels (at 96 DPI)
-const PAGE_DIMENSIONS = {
-  A4: { width: 794, height: 1123 },
-  Letter: { width: 816, height: 1056 },
-  Legal: { width: 816, height: 1344 },
-  A3: { width: 1123, height: 1587 },
+const PAGE_DIMENSIONS_MM = {
+  A4: { width: 210, height: 297 },
+  Letter: { width: 215.9, height: 279.4 },
+  Legal: { width: 215.9, height: 355.6 },
+  A3: { width: 297, height: 420 },
 };
+const escapeHTML = (value: unknown): string => String(value).replace(/[&<>"']/g, character => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[character]!);
 
 const PRINT_PREFERENCES_STORAGE_PREFIX = 'rtx5:print-preferences:';
 
@@ -263,266 +270,141 @@ class ChartPrinterService {
     return { ...preferences };
   }
 
-  /**
-   * Generate printable HTML from chart data
-   */
-  generatePrintableHTML(data: ChartPrintData, preferences: PrintPreferences): string {
-    const { width, height } = this.getPageDimensions(preferences);
-    const margins = this.getMargins(preferences);
-
-    const contentWidth = width - margins.left - margins.right;
-    const contentHeight = height - margins.top - margins.bottom;
-
-    let html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Chart Print - ${data.symbol} ${data.timeframe}</title>
-  <style>
-    @page {
-      size: ${preferences.pageSize} ${preferences.orientation};
-      margin: 0;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      ${preferences.colorMode === 'grayscale' ? 'filter: grayscale(100%);' : ''}
-      background: white;
-      padding: ${margins.top}px ${margins.right}px ${margins.bottom}px ${margins.left}px;
-    }
-
-    .page {
-      width: ${contentWidth}px;
-      height: ${contentHeight}px;
-      position: relative;
-      page-break-after: always;
-    }
-
-    .header {
-      padding: 10px 0;
-      border-bottom: 2px solid #333;
-      margin-bottom: 15px;
-    }
-
-    .header-title {
-      font-size: 18px;
-      font-weight: bold;
-      color: #333;
-    }
-
-    .header-info {
-      font-size: 12px;
-      color: #666;
-      margin-top: 5px;
-    }
-
-    .chart-container {
-      width: 100%;
-      height: calc(100% - ${preferences.includeHeader ? '80px' : '0px'} - ${preferences.includeFooter ? '40px' : '0px'});
-      position: relative;
-      border: 1px solid #ddd;
-      background: #fff;
-    }
-
-    .chart-image {
-      width: 100%;
-      height: 100%;
-      object-fit: ${preferences.scaleToFit ? 'contain' : 'cover'};
-    }
-
-    .indicators-legend {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background: rgba(255, 255, 255, 0.9);
-      padding: 10px;
-      border-radius: 4px;
-      font-size: 11px;
-      border: 1px solid #ddd;
-    }
-
-    .indicator-item {
-      margin: 3px 0;
-      color: #333;
-    }
-
-    .drawings-legend {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(255, 255, 255, 0.9);
-      padding: 10px;
-      border-radius: 4px;
-      font-size: 11px;
-      border: 1px solid #ddd;
-    }
-
-    .drawing-item {
-      margin: 3px 0;
-      color: #333;
-    }
-
-    .footer {
-      padding: 10px 0;
-      border-top: 1px solid #ddd;
-      margin-top: 15px;
-      font-size: 10px;
-      color: #666;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .footer-left {
-      flex: 1;
-    }
-
-    .footer-right {
-      text-align: right;
-    }
-
-    @media print {
-      body {
-        print-color-adjust: exact;
-        -webkit-print-color-adjust: exact;
-      }
-
-      .page {
-        page-break-inside: avoid;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="page">
-`;
-
-    // Header
-    if (preferences.includeHeader) {
-      const dateRange = `${this.formatDate(data.dateRange.from)} - ${this.formatDate(data.dateRange.to)}`;
-      html += `
-    <div class="header">
-      <div class="header-title">${preferences.headerText || `${data.symbol} - ${data.timeframe}`}</div>
-      <div class="header-info">
-        Date Range: ${dateRange} | Generated: ${this.formatDateTime(new Date())}
-      </div>
-    </div>
-`;
-    }
-
-    // Chart container
-    html += `
-    <div class="chart-container">
-`;
-
-    // Chart image (if provided)
-    if (data.chartCanvas) {
-      const imageData = data.chartCanvas.toDataURL('image/png');
-      html += `      <img src="${imageData}" alt="Chart" class="chart-image" />
-`;
-    }
-
-    // Indicators legend
-    if (preferences.includeIndicators && data.indicators.length > 0) {
-      html += `
-      <div class="indicators-legend">
-        <strong>Indicators:</strong>
-`;
-      data.indicators.forEach(indicator => {
-        const params = Object.entries(indicator.parameters)
-          .map(([key, value]) => `${key}:${value}`)
-          .join(', ');
-        html += `        <div class="indicator-item">${indicator.name} (${params})</div>
-`;
-      });
-      html += `      </div>
-`;
-    }
-
-    // Drawings legend
-    if (preferences.includeDrawings && data.drawings.length > 0) {
-      html += `
-      <div class="drawings-legend">
-        <strong>Drawings:</strong>
-`;
-      data.drawings.forEach((drawing, index) => {
-        const label = drawing.label ? `${drawing.type} - ${drawing.label}` : `${drawing.type} ${index + 1}`;
-        html += `        <div class="drawing-item">${label}</div>
-`;
-      });
-      html += `      </div>
-`;
-    }
-
-    html += `    </div>
-`;
-
-    // Footer
-    if (preferences.includeFooter) {
-      html += `
-    <div class="footer">
-      <div class="footer-left">
-        ${preferences.footerText || 'Trading Chart'}
-      </div>
-      <div class="footer-right">
-        Page 1 of 1
-      </div>
-    </div>
-`;
-    }
-
-    html += `
-  </div>
-</body>
-</html>
-`;
-
-    return html;
+  /** Apply Print Setup to this session without changing the saved default. */
+  setPreferences(preferences: PrintPreferences, accountId?: string): void {
+    const normalized = this.normalizePreferences(preferences);
+    if (accountId?.trim()) this.rememberPreferences(accountId.trim(), normalized);
+    else this.preferences = normalized;
   }
 
-  /**
-   * Open print preview
-   */
+  /** Capture the selected chart, including its axes, volume panes and SVG drawings. */
+  async captureActiveChartData(): Promise<ChartPrintData> {
+    const source = getActiveChartSource();
+    if (!source?.container || !source.symbol || !source.timeframe) {
+      throw new Error('Open a chart before printing.');
+    }
+    const { container, symbol, timeframe, dateRange } = source;
+    const bounds = container.getBoundingClientRect();
+    if (bounds.width < 1 || bounds.height < 1 || !container.querySelector('canvas')) {
+      throw new Error('The chart is not ready. Wait for it to load, then try again.');
+    }
+    const { default: render } = await import('html2canvas-pro');
+    if (!container.isConnected || getActiveChartSource()?.id !== source.id) {
+      throw new Error('The active chart changed. Open Print Preview again.');
+    }
+    const canvas = await render(container, {
+      backgroundColor: getComputedStyle(container).backgroundColor,
+      scale: Math.min(window.devicePixelRatio || 1, 2),
+      useCORS: true,
+      logging: false,
+      width: bounds.width,
+      height: bounds.height,
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight,
+      ignoreElements: element => element.matches('button, [role="menu"], [data-print-exclude]'),
+    });
+    if (!container.isConnected || getActiveChartSource()?.symbol !== symbol
+      || getActiveChartSource()?.timeframe !== timeframe) {
+      throw new Error('The active chart changed. Open Print Preview again.');
+    }
+    return { symbol, timeframe, dateRange, chartCanvas: canvas, capturedAt: new Date(), indicators: [], drawings: [] };
+  }
+
+  /** Physical paper dimensions shared by the print document and preview. */
+  getPageDimensions(preferences: PrintPreferences): { width: number; height: number } {
+    const prefs = this.normalizePreferences(preferences);
+    const page = PAGE_DIMENSIONS_MM[prefs.pageSize];
+    const width = prefs.orientation === 'landscape' ? page.height : page.width;
+    const height = prefs.orientation === 'landscape' ? page.width : page.height;
+    return { width: width * 96 / 25.4, height: height * 96 / 25.4 };
+  }
+
+  generatePrintableHTML(data: ChartPrintData, preferences: PrintPreferences): string {
+    const prefs = this.normalizePreferences(preferences);
+    const page = PAGE_DIMENSIONS_MM[prefs.pageSize];
+    const width = prefs.orientation === 'landscape' ? page.height : page.width;
+    const height = prefs.orientation === 'landscape' ? page.width : page.height;
+    const title = escapeHTML(prefs.headerText || `${data.symbol} - ${data.timeframe}`);
+    const range = data.dateRange
+      ? `${escapeHTML(tr('Date range'))}: ${escapeHTML(this.formatDate(data.dateRange.from))} - ${escapeHTML(this.formatDate(data.dateRange.to))} | `
+      : '';
+    const capturedAt = escapeHTML(this.formatDateTime(data.capturedAt ?? new Date()));
+    const indicators = prefs.includeIndicators && data.indicators.length
+      ? `<div class="indicators-legend"><strong>${escapeHTML(tr('Indicators'))}:</strong> ${data.indicators.map(indicator =>
+        `${escapeHTML(indicator.name)} (${Object.entries(indicator.parameters).map(([key, value]) =>
+          `${escapeHTML(key)}:${escapeHTML(value)}`).join(', ')})`).join('; ')}</div>` : '';
+    const drawings = prefs.includeDrawings && data.drawings.length
+      ? `<div class="drawings-legend"><strong>${escapeHTML(tr('Drawing tools'))}:</strong> ${data.drawings.map(drawing =>
+        `${escapeHTML(drawing.type)}${drawing.label ? ` - ${escapeHTML(drawing.label)}` : ''}`).join('; ')}</div>` : '';
+    return `<!DOCTYPE html>
+<html lang="${escapeHTML(i18n.resolvedLanguage || 'en')}" dir="${i18n.dir()}"><head><meta charset="UTF-8"><title>${escapeHTML(tr('Print'))} - ${escapeHTML(data.symbol)} ${escapeHTML(data.timeframe)}</title>
+<style>
+@page { size: ${prefs.pageSize} ${prefs.orientation}; margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #fff; color: #182230; }
+body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.page { width: ${width}mm; height: ${height}mm; padding: ${prefs.marginTop}mm ${prefs.marginRight}mm ${prefs.marginBottom}mm ${prefs.marginLeft}mm; display: flex; flex-direction: column; gap: 4mm; overflow: hidden; break-inside: avoid; }
+.header { flex: 0 0 auto; border-bottom: 1px solid #cbd2da; padding-bottom: 3mm; overflow-wrap: anywhere; }
+.header-title { font-size: 16px; font-weight: 600; }
+.header-info { margin-top: 5px; font-size: 11px; color: #526070; }
+.chart-container { flex: 1 1 0; min-height: 0; min-width: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.chart-image { display: block; width: ${prefs.scaleToFit ? '100%' : 'auto'}; height: ${prefs.scaleToFit ? '100%' : 'auto'}; max-width: 100%; max-height: 100%; object-fit: contain; ${prefs.colorMode === 'grayscale' ? 'filter: grayscale(100%);' : ''} }
+.legend { flex: 0 0 auto; max-height: 15%; overflow: hidden; font-size: 10px; color: #526070; overflow-wrap: anywhere; }
+.footer { flex: 0 0 auto; display: flex; justify-content: space-between; gap: 4mm; border-top: 1px solid #cbd2da; padding-top: 3mm; font-size: 10px; color: #526070; overflow-wrap: anywhere; }
+.footer-left { min-width: 0; } .footer-right { white-space: nowrap; }
+@media print { html, body { width: ${width}mm; height: ${height}mm; } }
+</style></head><body><main class="page">
+${prefs.includeHeader ? `<header class="header"><div class="header-title">${title}</div><div class="header-info">${range}${escapeHTML(tr('Time'))}: ${capturedAt}</div></header>` : ''}
+<div class="chart-container" dir="ltr">${data.chartCanvas ? `<img src="${data.chartCanvas.toDataURL('image/png')}" alt="${escapeHTML(data.symbol)} ${escapeHTML(data.timeframe)} ${escapeHTML(tr('Chart'))}" class="chart-image">` : `<p>${escapeHTML(tr('No chart image is available. Open a chart and try again.'))}</p>`}</div>
+${indicators || drawings ? `<section class="legend">${indicators}${drawings}</section>` : ''}
+${prefs.includeFooter ? `<footer class="footer"><span class="footer-left">${escapeHTML(prefs.footerText || `RTX5 | ${tr('Chart')}`)}</span><span class="footer-right">${escapeHTML(tr('Page 1 of 1 |').replace(/\s*\|\s*$/, ''))}</span></footer>` : ''}
+</main></body></html>`;
+  }
+
+  private printInProgress = false;
+
+  /** Keep the document alive until the native print dialog has closed. */
   async printChart(data: ChartPrintData, preferences?: PrintPreferences): Promise<void> {
+    if (this.printInProgress) throw new Error('A print dialog is already open. Close it before printing again.');
+    if (!data.chartCanvas?.width || !data.chartCanvas.height) throw new Error('No chart image is available to print. Open Print Preview again.');
     const prefs = preferences || this.preferences;
     const html = this.generatePrintableHTML(data, prefs);
-
-    // Create a hidden iframe for printing
+    this.printInProgress = true;
     const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      throw new Error('Failed to create print iframe');
+    iframe.title = 'Chart print document';
+    iframe.setAttribute('aria-hidden', 'true');
+    const dimensions = this.getPageDimensions(prefs);
+    Object.assign(iframe.style, { position: 'fixed', left: '-10000px', top: '0',
+      width: `${dimensions.width}px`, height: `${dimensions.height}px`, border: '0' });
+    const cleanup = () => { iframe.remove(); this.printInProgress = false; };
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = window.setTimeout(() => reject(new Error('The print document could not load. Please try again.')), 15000);
+        iframe.onload = () => { window.clearTimeout(timeout); resolve(); };
+        iframe.onerror = () => { window.clearTimeout(timeout); reject(new Error('The print document could not load.')); };
+        iframe.srcdoc = html;
+        document.body.appendChild(iframe);
+      });
+      const target = iframe.contentWindow;
+      const doc = iframe.contentDocument;
+      if (!target || !doc) throw new Error('The browser could not open the print document.');
+      await doc.fonts?.ready;
+      await Promise.all(Array.from(doc.images).map(image => {
+        if (image.complete) {
+          if (!image.naturalWidth) throw new Error('The chart image could not load for printing.');
+          return Promise.resolve();
+        }
+        return image.decode();
+      }));
+      target.addEventListener('afterprint', cleanup, { once: true });
+      target.focus();
+      target.print();
+      // Browser printing can be non-blocking. Cleanup belongs to afterprint,
+      // not a timer or the return from print().
+    } catch (error) {
+      cleanup();
+      throw error;
     }
-
-    doc.open();
-    doc.write(html);
-    doc.close();
-
-    // Wait for content to load
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Trigger print
-    iframe.contentWindow?.print();
-
-    // Clean up after a delay
-    setTimeout(() => {
-      document.body.removeChild(iframe);
-    }, 1000);
   }
 
   /**
@@ -544,26 +426,7 @@ class ChartPrinterService {
    */
   captureChartCanvas(chartApi: IChartApi): HTMLCanvasElement | null {
     try {
-      // Get the chart container
-      const container = chartApi.chartElement?.() as HTMLElement;
-      if (!container) return null;
-
-      // Find the canvas element
-      const canvas = container.querySelector('canvas');
-      if (!canvas) return null;
-
-      // Create a new canvas with the same dimensions
-      const capturedCanvas = document.createElement('canvas');
-      capturedCanvas.width = canvas.width;
-      capturedCanvas.height = canvas.height;
-
-      // Copy the content
-      const ctx = capturedCanvas.getContext('2d');
-      if (!ctx) return null;
-
-      ctx.drawImage(canvas, 0, 0);
-
-      return capturedCanvas;
+      return chartApi.takeScreenshot(true, false);
     } catch (error) {
       console.error('Failed to capture chart canvas:', error);
       return null;
@@ -571,33 +434,10 @@ class ChartPrinterService {
   }
 
   /**
-   * Get page dimensions based on preferences
-   */
-  private getPageDimensions(preferences: PrintPreferences): { width: number; height: number } {
-    const dims = PAGE_DIMENSIONS[preferences.pageSize];
-    if (preferences.orientation === 'landscape') {
-      return { width: dims.height, height: dims.width };
-    }
-    return dims;
-  }
-
-  /**
-   * Get margins based on preferences
-   */
-  private getMargins(preferences: PrintPreferences) {
-    return {
-      top: preferences.marginTop,
-      right: preferences.marginRight,
-      bottom: preferences.marginBottom,
-      left: preferences.marginLeft,
-    };
-  }
-
-  /**
    * Format date for display
    */
   private formatDate(date: Date): string {
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString(i18n.resolvedLanguage || 'en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -608,7 +448,7 @@ class ChartPrinterService {
    * Format date and time for display
    */
   private formatDateTime(date: Date): string {
-    return date.toLocaleString('en-US', {
+    return date.toLocaleString(i18n.resolvedLanguage || 'en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 /**
  * Save Workspace Dialog
  * Confirmation dialog for saving workspace with overwrite prompt
@@ -28,6 +29,7 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
     workspaceData,
     accountId = ''
 }) => {
+    const tr = useUiTranslation();
     const [workspaceName, setWorkspaceName] = useState(existingWorkspace || 'Default');
     const [showOverwriteWarning, setShowOverwriteWarning] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -132,13 +134,13 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                     <div className="flex items-center gap-2">
                         <Icon name="save" size="md" className="text-blue-400 [.rtx-advanced-view_&]:text-indigo-600" />
                         <h2 className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">
-                            {showOverwriteWarning ? 'Overwrite Workspace' : 'Save Workspace'}
+                            {showOverwriteWarning ? tr("Overwrite Workspace") : tr("Save Workspace")}
                         </h2>
                     </div>
                     <button
                         onClick={onCancel}
                         className="text-zinc-400 hover:text-zinc-100 [.rtx-advanced-view_&]:text-gray-500 [.rtx-advanced-view_&]:hover:text-gray-900 transition-colors p-1 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded"
-                        aria-label="Close"
+                        aria-label={tr("Close")}
                     >
                         <Icon name="x-close" size="md" />
                     </button>
@@ -150,8 +152,8 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                         <div className="flex items-start gap-3 p-3 bg-rose-500/10 [.rtx-advanced-view_&]:bg-rose-50 border border-rose-500/30 [.rtx-advanced-view_&]:border-rose-200 rounded">
                             <Icon name="alert-triangle" size="lg" className="text-rose-400 [.rtx-advanced-view_&]:text-rose-600 flex-shrink-0 mt-0.5" />
                             <div className="text-xs space-y-2">
-                                <p className="text-rose-200 [.rtx-advanced-view_&]:text-rose-800 font-medium">Error</p>
-                                <p className="text-zinc-300 [.rtx-advanced-view_&]:text-rose-700">{error}</p>
+                                <p className="text-rose-200 [.rtx-advanced-view_&]:text-rose-800 font-medium">{tr("Error")}</p>
+                                <p className="text-zinc-300 [.rtx-advanced-view_&]:text-rose-700">{tr(error)}</p>
                             </div>
                         </div>
                     )}
@@ -159,21 +161,18 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                     {!showOverwriteWarning ? (
                         <>
                             <p className="text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-600">
-                                Enter a name for your workspace configuration. This will save your current layout,
-                                charts, and settings.
-                            </p>
+                                {tr("Enter a name for your workspace configuration. This will save your current layout, charts, and settings.")}</p>
 
                             <div>
                                 <label htmlFor="workspace-name" className="block text-xs text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 mb-2">
-                                    Workspace Name
-                                </label>
+                                    {tr("Workspace Name")}</label>
                                 <input
                                     id="workspace-name"
                                     type="text"
                                     value={workspaceName}
                                     onChange={(e) => setWorkspaceName(e.target.value)}
                                     className="w-full bg-[#252528] [.rtx-advanced-view_&]:bg-white border border-zinc-700 [.rtx-advanced-view_&]:border-gray-300 rounded px-3 py-2 text-sm text-zinc-100 [.rtx-advanced-view_&]:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 [.rtx-advanced-view_&]:focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
-                                    placeholder="Enter workspace name"
+                                    placeholder={tr("Enter workspace name")}
                                     autoFocus
                                     disabled={isSaving}
                                     onKeyDown={(e) => {
@@ -188,11 +187,9 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                             <Icon name="alert-triangle" size="lg" className="text-amber-400 [.rtx-advanced-view_&]:text-amber-600 flex-shrink-0 mt-0.5" />
                             <div className="text-xs space-y-2">
                                 <p className="text-amber-200 [.rtx-advanced-view_&]:text-amber-800 font-medium">
-                                    Workspace "{workspaceName}" already exists
-                                </p>
+                                    {tr("Workspace \"")}{workspaceName}{tr("\" already exists")}</p>
                                 <p className="text-zinc-300 [.rtx-advanced-view_&]:text-amber-700">
-                                    Do you want to overwrite the existing workspace with your current configuration?
-                                </p>
+                                    {tr("Do you want to overwrite the existing workspace with your current configuration?")}</p>
                             </div>
                         </div>
                     )}
@@ -207,8 +204,7 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                                 disabled={isSaving}
                                 className="px-4 py-1.5 text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors disabled:opacity-50"
                             >
-                                Cancel
-                            </button>
+                                {tr("Cancel")}</button>
                             <button
                                 onClick={handleSave}
                                 disabled={!workspaceName.trim() || isSaving}
@@ -217,13 +213,11 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                                 {isSaving ? (
                                     <>
                                         <div className="animate-spin rounded-full h-3 w-3 border-t border-b border-white"></div>
-                                        Saving...
-                                    </>
+                                        {tr("Saving...")}</>
                                 ) : (
                                     <>
                                         <Icon name="save" size="xs" />
-                                        Save
-                                    </>
+                                        {tr("Save")}</>
                                 )}
                             </button>
                         </>
@@ -234,8 +228,7 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                                 disabled={isSaving}
                                 className="px-4 py-1.5 text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors disabled:opacity-50"
                             >
-                                Back
-                            </button>
+                                {tr("Back")}</button>
                             <button
                                 onClick={handleOverwriteConfirm}
                                 disabled={isSaving}
@@ -244,13 +237,11 @@ export const SaveWorkspaceDialog: React.FC<SaveWorkspaceDialogProps> = ({
                                 {isSaving ? (
                                     <>
                                         <div className="animate-spin rounded-full h-3 w-3 border-t border-b border-white"></div>
-                                        Saving...
-                                    </>
+                                        {tr("Saving...")}</>
                                 ) : (
                                     <>
                                         <Icon name="alert-triangle" size="xs" />
-                                        Overwrite
-                                    </>
+                                        {tr("Overwrite")}</>
                                 )}
                             </button>
                         </>

@@ -1,8 +1,14 @@
+import { useTerminalBrokerInfo } from './hooks/useTerminalTitle';
+import { brokerDisplayName } from './services/brokerDisplayName';
+import { ChartSymbolDropdown, type ChartSymbolAnchor } from './components/ChartSymbolDropdown';
+import { translateUi, useUiTranslation } from './hooks/useUiTranslation';
+import { feedbackLabel, feedbackValue, feedbackSymbol, formatUiMessage, type UiMessage, type UiMessagePart } from './utils/uiFeedback';
 import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { WelcomeTerminal } from './components/WelcomeTerminal';
 
 import { DockWorkspace } from './components/dock/DockWorkspace';
 import { useDockLayoutStore } from './store/useDockLayoutStore';
+import { useDrawingSidebarStore } from './store/useDrawingSidebarStore';
 import type { ChartType, Timeframe } from './components/TradingChart';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AlertsContainer } from './components/AlertsContainer';
@@ -65,10 +71,11 @@ import type { DepthOrderRequest } from './components/DepthOfMarket';
 
 // Layout Components
 import { TopToolbar } from './components/layout/TopToolbar';
+import { AnnotationEditor } from './drawing-tools/AnnotationEditor';
+import { AnnotationTableCellEditor } from './drawing-tools/AnnotationTableCellEditor';
 import {
   WebDrawingSelectionToolbar,
   WebDrawingToolsRail,
-  isWebDrawingToolsRuntime,
 } from './drawing-tools';
 import { StatusBar } from './components/layout/StatusBar';
 import { UpdateBanner } from './components/layout/UpdateBanner';
@@ -84,6 +91,10 @@ import {
   getActiveChartCommandTarget,
   getPanelIdFromChartContextId,
 } from './services/chartCommandTarget';
+import { applyChartTimeframeCommand } from './services/chartTimeframeCommand';
+import { getDockPanelChartType } from './services/chartTypeCommand';
+import { activateChartPanel, changeChartPanelSymbol, findChartPanelById, getActiveDockChartPanel, getChartPanels, getChartPanelSymbolUpdates, requestActiveChartSymbolChange } from './services/chartPanelNavigation';
+import { SymbolsDialog } from './components/SymbolsDialog';
 
 // Services
 import { windowManager, type LayoutMode } from './services/windowManager';
@@ -124,16 +135,19 @@ const ORDER_FEEDBACK_EVENT = 'rtx:order-feedback';
 
 type OrderFeedbackDetail = {
   message: string;
+  messageParts?: UiMessagePart[];
   type: 'success' | 'error';
 };
 
 const publishOrderFeedback = (
-  message: string,
+  message: UiMessage,
   type: OrderFeedbackDetail['type'] = 'error',
 ): void => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent<OrderFeedbackDetail>(ORDER_FEEDBACK_EVENT, {
-    detail: { message, type },
+    // Keep the string contract for other listeners, and retain source labels
+    // separately so an already visible toast can follow a language change.
+    detail: { message: formatUiMessage(message), messageParts: typeof message === 'string' ? [feedbackLabel(message)] : message, type },
   }));
 };
 
@@ -159,35 +173,6 @@ const toSettingsChartType = (chartType: ChartType) => {
   if (chartType === 'line') return 'Line' as const;
   if (chartType === 'area') return 'Area' as const;
   return 'Candlesticks' as const;
-};
-
-const getDockPanelChartType = (
-  layout: any,
-  targetContextId: string | undefined,
-  fallback: ChartType,
-): ChartType => {
-  const panelId = getPanelIdFromChartContextId(targetContextId);
-  if (!panelId || !layout) return fallback;
-
-  const find = (node: any): ChartType | undefined => {
-    if (!node) return undefined;
-    if (node.id === panelId && !Array.isArray(node.children)) {
-      const candidate = node.props?.chartType;
-      return ['candlestick', 'bar', 'line', 'area'].includes(candidate)
-        ? candidate as ChartType
-        : undefined;
-    }
-
-    for (const child of node.children || []) {
-      const found = find(child);
-      if (found) return found;
-    }
-    return undefined;
-  };
-
-  return find(layout.root)
-    ?? (layout.floatingPanels || []).map(find).find(Boolean)
-    ?? fallback;
 };
 
 // Helper to get auth headers for fetch
@@ -795,6 +780,8 @@ interface AppProps {
 }
 
 function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
+  const tr = useUiTranslation();
+  const drawingSidebarVisible = useDrawingSidebarStore((state) => state.visible);
   const DEFAULT_CHART_TIMEFRAME: Timeframe = 'M5';
   const TIMEFRAME_MIGRATION_KEY = 'rtx5_timeframe_default_v2';
 
@@ -1552,14 +1539,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     return resolveAuthorizedChartSymbol(symbol, chartEligibleSymbolNames);
   }, [chartEligibleSymbolNames, hasLoadedChartSymbols]);
 
-  // Symbol select handler: dispatch openChart event for consistent MT5 behavior
+  // Market Watch replaces the last clicked pane and retains its timeframe/type.
   const handleSymbolSelect = useCallback((symbol: string) => {
     const chartSymbol = getChartEligibleSymbol(symbol);
     if (!chartSymbol) return;
     setSelectedSymbol(chartSymbol);
-    // Dispatch openChart. If the symbol already has a tab, we switch to it.
-    // If not, we add it as a new tab.
-    window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: chartSymbol, newTab: true } }));
+    requestActiveChartSymbolChange(chartSymbol);
   }, [getChartEligibleSymbol]);
 
   // A `#share=` deep link opens the shared trade's chart: switch to its
@@ -1627,11 +1612,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       }
     });
     const unsub2 = commandBus.subscribe('SET_TIMEFRAME' as any, (payload: any) => {
-      const tf = payload?.timeframe;
-      if (tf) {
-        console.log('[App] Command bus SET_TIMEFRAME ->', tf);
-        setTimeframe(tf as Timeframe);
-      }
+      applyChartTimeframeCommand(payload, setTimeframe);
     });
     const unsub3 = commandBus.subscribe('OPEN_INDICATOR_LIST' as any, (payload: any) => {
       const activeTarget = getActiveChartCommandTarget();
@@ -1690,27 +1671,18 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     return () => window.removeEventListener('close-modal', handleCloseModal);
   }, [orderPanelOpen]);
 
-  // Handle Close Active Chart (File > Close menu and Ctrl+F4 shortcut)
+  // Menus and registered keyboard shortcuts share the active chart action.
   useEffect(() => {
     const handleCloseActiveChart = () => {
-      const currentSymbol = useAppStore.getState().selectedSymbol;
-      useDockLayoutStore.getState().closeActiveChart(currentSymbol);
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+F4 - Close active chart
-      if (e.ctrlKey && e.key === 'F4') {
-        e.preventDefault();
-        handleCloseActiveChart();
-      }
+      const activeSource = getActiveChartSource();
+      const currentSymbol = activeSource?.symbol || useAppStore.getState().selectedSymbol;
+      useDockLayoutStore.getState().closeActiveChart(currentSymbol, getPanelIdFromChartContextId(activeSource?.id) || undefined);
     };
 
     window.addEventListener('close-active-chart', handleCloseActiveChart);
-    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       window.removeEventListener('close-active-chart', handleCloseActiveChart);
-      window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
@@ -1984,7 +1956,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     try {
       const closed = await handleClosePosition(ticket);
       if (!closed) {
-        publishOrderFeedback('Reverse cancelled: the position could not be closed.');
+        publishOrderFeedback([feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Failed'), feedbackValue(' · '), feedbackLabel(reverseSide === 'buy' ? 'Buy Market' : 'Sell Market'), feedbackValue(': '), feedbackLabel('cancelled')]);
         return;
       }
       await api.orders.placeMarketOrder({
@@ -1994,13 +1966,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         login,
       }, { intentAtMs });
       publishOrderFeedback(
-        `Reversed #${ticket}: now ${reverseSide.toUpperCase()} ${positionVolume} ${positionSymbol}`,
+        [feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Completed'), feedbackValue(' · '), feedbackLabel(reverseSide.toUpperCase()), feedbackValue(` ${positionVolume} ${positionSymbol}`)],
         'success',
       );
       window.dispatchEvent(new Event('rtx:force-refresh-positions'));
     } catch (err) {
       console.error('[Chart] Reverse position failed:', err);
-      publishOrderFeedback(`Position closed, but the reverse order failed: ${formatOrderError(err)}`);
+      publishOrderFeedback([feedbackLabel('Close position'), feedbackValue(` #${ticket}: `), feedbackLabel('Completed'), feedbackValue(' · '), feedbackLabel(reverseSide === 'buy' ? 'Buy Market' : 'Sell Market'), feedbackValue(': '), feedbackLabel('Order failed'), feedbackValue(` — ${formatOrderError(err)}`)]);
       window.dispatchEvent(new Event('rtx:force-refresh-positions'));
     } finally {
       chartPositionActionBusyRef.current.delete(ticket);
@@ -2027,7 +1999,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         login,
       }, { intentAtMs });
       publishOrderFeedback(
-        `Doubled #${ticket}: +${position.volume} ${position.symbol} ${position.side}`,
+        [feedbackValue(`#${ticket} · `), feedbackLabel(position.side), feedbackValue(` +${position.volume} ${position.symbol} · `), feedbackLabel('Completed')],
         'success',
       );
       window.dispatchEvent(new Event('rtx:force-refresh-positions'));
@@ -2061,7 +2033,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   }, []);
 
   const handleCancelOrder = async (orderId: string) => {
-    if (!(await useConfirmStore.getState().showConfirm('Confirm Action', 'Cancel this order?'))) return;
+    if (!(await useConfirmStore.getState().showConfirm(translateUi('Cancel'), `${translateUi('pending order')} #${orderId}?`))) return;
     try {
       const loginId = getLiveTradingLogin();
       if (!loginId) return;
@@ -2159,8 +2131,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         if (closeResult.authoritativeSnapshotError) throw closeResult.authoritativeSnapshotError;
         publishOrderFeedback(
           closeResult.skippedTicketIds.length > 0
-            ? 'Matching positions are already closing.'
-            : 'No open positions matched this close action.',
+            ? [feedbackLabel('Close positions'), feedbackValue(': '), feedbackLabel('Closing positions')]
+            : [feedbackLabel('Close positions'), feedbackValue(': '), feedbackLabel('No matches found')],
         );
         refreshPositions(accId, { allowWsCommit: true });
         return;
@@ -2178,11 +2150,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         const failureMessage = formatOrderError(failedReasons[0]);
         console.error(`Bulk close failed for ${failedTicketIds.length} position(s):`, failedReasons[0]);
         publishOrderFeedback(
-          `Closed ${confirmedTicketIds.length} of ${closeResult.attemptedTicketIds.length} positions. ${failedTicketIds.length} failed: ${failureMessage}`,
+          [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length} · `), feedbackLabel('Failed'), feedbackValue(`: ${failedTicketIds.length} — ${failureMessage}`)],
         );
       } else {
         publishOrderFeedback(
-          `Closed ${confirmedTicketIds.length} position${confirmedTicketIds.length === 1 ? '' : 's'}.`,
+          [feedbackLabel('Positions'), feedbackValue(': '), feedbackLabel('closed'), feedbackValue(` ${confirmedTicketIds.length}`)],
           'success',
         );
       }
@@ -2713,7 +2685,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const submitSymbol = getAllowedSymbol(requestedOrderSymbol);
       if (!submitSymbol) {
         publishOrderFeedback(
-          `${requestedOrderSymbol || 'Selected symbol'} has no current tradable quote. Order was not sent.`,
+          [feedbackSymbol(requestedOrderSymbol), feedbackValue(': '), feedbackLabel('Live tradable quote unavailable - order not sent')],
         );
         return;
       }
@@ -2772,15 +2744,15 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
       const submitSymbol = getAllowedSymbol(normalizeSymbolName(domSymbol));
       if (!submitSymbol) {
-        publishOrderFeedback(`${domSymbol || 'Selected symbol'} has no current tradable quote. Order was not sent.`);
+        publishOrderFeedback([feedbackSymbol(domSymbol), feedbackValue(': '), feedbackLabel('Live tradable quote unavailable - order not sent')]);
         return;
       }
       if (!Number.isFinite(request.price) || request.price <= 0) {
-        publishOrderFeedback('The selected depth price is invalid. Order was not sent.');
+        publishOrderFeedback([feedbackLabel('Invalid price'), feedbackValue(`: ${request.price} · `), feedbackLabel('Order failed')]);
         return;
       }
       if (!Number.isFinite(request.volume) || request.volume <= 0) {
-        publishOrderFeedback('The selected order volume is invalid. Order was not sent.');
+        publishOrderFeedback([feedbackLabel('Invalid volume'), feedbackValue(`: ${request.volume} · `), feedbackLabel('Order failed')]);
         return;
       }
       if (!ensureMarketOpenForOrder(submitSymbol)) return;
@@ -2798,7 +2770,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       });
 
       publishOrderFeedback(
-        `${request.side} limit order placed for ${request.volume} ${submitSymbol} at ${request.price}.`,
+        [feedbackLabel(request.side === 'BUY' ? 'Buy Limit' : 'Sell Limit'), feedbackValue(` · ${submitSymbol} · `), feedbackLabel('Volume'), feedbackValue(`: ${request.volume} · `), feedbackLabel('Price'), feedbackValue(`: ${request.price} · `), feedbackLabel('request submitted successfully!')],
         'success',
       );
       refreshOrdersAndHistory(loginId).catch((error) => {
@@ -2821,7 +2793,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const submitSymbol = getAllowedSymbol(requestedOrderPanelSymbol);
       if (!submitSymbol) {
         publishOrderFeedback(
-          `${requestedOrderPanelSymbol || 'Selected symbol'} has no current tradable quote. Order was not sent.`,
+          [feedbackSymbol(requestedOrderPanelSymbol), feedbackValue(': '), feedbackLabel('Live tradable quote unavailable - order not sent')],
         );
         return;
       }
@@ -2940,44 +2912,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     const store = useDockLayoutStore.getState();
     const layout = store.layout;
-    const updates: Array<{ id: string; props: Record<string, unknown>; title: string }> = [];
-    const liveSet = new Set(liveSymbols);
-
-    const collectInvalidChartPanels = (container: any) => {
-      if (!container?.children) return;
-      for (const child of container.children) {
-        if (child?.children) {
-          collectInvalidChartPanels(child);
-          continue;
-        }
-
-        if (child?.component !== 'Chart') continue;
-        const requestedChartSymbol = child.props?.symbol ?? child.title?.split(',')[0];
-        const chartSymbol = getChartEligibleSymbol(requestedChartSymbol);
-        const requestedIsPlaceholder = !chartSymbol
-          || normalizeSymbolName(requestedChartSymbol) === 'CHART';
-        const requestedIsStale = applyLivePreference
-          && liveSet.size > 0
-          && Boolean(chartSymbol)
-          && !liveSet.has(chartSymbol);
-        if (chartSymbol && chartSymbol === normalizeSymbolName(requestedChartSymbol) && !requestedIsStale) {
-          continue;
-        }
-
-        const nextTimeframe = child.props?.timeframe || timeframe;
-        const nextSymbol = requestedIsStale || requestedIsPlaceholder
-          ? fallbackSymbol
-          : (chartSymbol || fallbackSymbol);
-        updates.push({
-          id: child.id,
-          props: { ...child.props, symbol: nextSymbol, timeframe: nextTimeframe },
-          title: `${nextSymbol},${nextTimeframe}`,
-        });
-      }
-    };
-
-    collectInvalidChartPanels(layout.root);
-    layout.floatingPanels?.forEach(collectInvalidChartPanels);
+    // Feed status may arrive with only one live instrument before the broker
+    // catalog. It can render a preview, but cannot invalidate saved symbols.
+    const updates = getChartPanelSymbolUpdates(layout, getChartEligibleSymbol, fallbackSymbol, timeframe,
+      marketInstrumentsSnapshot.chartCatalogCurrent === true && isAuthenticated
+      && Boolean(accountId) && restoredLayoutAccountId === accountId);
 
     updates.forEach(update => {
       store.updatePanelProps(update.id, {
@@ -3015,6 +2954,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     restoredLayoutAccountId,
     selectedSymbol,
     timeframe,
+    marketInstrumentsSnapshot.chartCatalogCurrent,
   ]);
 
   const chartSelectionReadiness = useMemo(() => getChartSelectionReadinessSnapshot({
@@ -3070,16 +3010,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     };
   }, []);
 
-  // Dynamic window title — mirrors MT5: "AccountID - Server - Hedge/Netting - BrokerName - SYMBOL,TF"
-  const brokerConfigRef = useRef<{ brokerName: string; marginMode: string } | null>(null);
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    if (!brokerConfigRef.current) {
-      api.config.getConfig()
-        .then((cfg) => { brokerConfigRef.current = cfg; })
-        .catch(() => { brokerConfigRef.current = { brokerName: 'RTX', marginMode: 'HEDGING' }; });
-    }
-  }, [isAuthenticated]);
+  const terminalBrokerInfo = useTerminalBrokerInfo();
 
   useEffect(() => {
     if (!isAuthenticated || !accountId) return;
@@ -3088,10 +3019,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       '1m': 'M1', '5m': 'M5', '15m': 'M15', '30m': 'M30',
       '1h': 'H1', '4h': 'H4', '1d': 'D1',
     };
-    const server     = useAppStore.getState().savedAccounts.find((a) => a.login === Number(accountId))?.server
-                       || localStorage.getItem('rtx_broker_server') || 'RTX-Server';
-    const marginMode = brokerConfigRef.current?.marginMode === 'NETTING' ? 'Netting' : 'Hedge';
-    const broker     = brokerConfigRef.current?.brokerName || 'RTX Terminal';
+    const server = brokerDisplayName(terminalBrokerInfo.brokerName, terminalBrokerInfo.serverName);
+    const marginMode = terminalBrokerInfo.marginMode;
+    const broker = 'RTX Terminal';
     const tf         = tfLabel[timeframe] ?? timeframe.toUpperCase();
     // FIX: Browser/Electron chrome follows the rendered active dock tab, not a
     // stale Market Watch or pre-restore selection.
@@ -3099,7 +3029,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     document.title = title;
     window.electron?.window?.setTitle(title);
-  }, [isAuthenticated, accountId, desktopToolbarSymbol, timeframe]);
+  }, [isAuthenticated, accountId, desktopToolbarSymbol, timeframe, terminalBrokerInfo.brokerName, terminalBrokerInfo.marginMode]);
 
   // TODO: Replace with API call to /api/notifications
   // Fetch real notifications from backend
@@ -3117,13 +3047,19 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
   // Workspace dialog state
   const [showSaveWorkspaceDialog, setShowSaveWorkspaceDialog] = useState(false);
+  const [chartSymbolPicker, setChartSymbolPicker] = useState<{ panelId: string; sessionScope: string; anchor?: ChartSymbolAnchor } | null>(null);
+  const chartPickerInstruments = useMemo(() => chartEligibleSymbolNames.map(symbol => (
+    allSymbols.find(instrument => normalizeSymbolName(typeof instrument === 'object' && instrument ? (instrument as any).symbol ?? (instrument as any).name : instrument) === symbol)
+      ?? { symbol }
+  )), [allSymbols, chartEligibleSymbolNames]);
+  useEffect(() => { setChartSymbolPicker(null); }, [isAuthenticated, accountId]);
   const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
+  const [toastMessage, setToastMessage] = useState<UiMessage>('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
   const toastHideTimerRef = useRef<number | null>(null);
 
   // Toast notification handler
-  const displayToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+  const displayToast = useCallback((message: UiMessage, type: 'success' | 'error' = 'success') => {
     setToastMessage(message);
     setToastType(type);
     setShowToast(true);
@@ -3140,7 +3076,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const handleOrderFeedback = (event: Event) => {
       const detail = (event as CustomEvent<OrderFeedbackDetail>).detail;
       if (!detail?.message) return;
-      displayToast(detail.message, detail.type || 'error');
+      displayToast(detail.messageParts ?? detail.message, detail.type || 'error');
     };
 
     window.addEventListener(ORDER_FEEDBACK_EVENT, handleOrderFeedback);
@@ -3168,7 +3104,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);
 
     if (!dialogSymbol) {
-      publishOrderFeedback(`${targetSymbol || 'Selected symbol'} is not available for a new order.`);
+      publishOrderFeedback([feedbackSymbol(targetSymbol), feedbackValue(' · '), feedbackLabel('New Order'), feedbackValue(': '), feedbackLabel('Unavailable')]);
       return false;
     }
 
@@ -3190,9 +3126,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     }
   }, [selectedSymbol, placeOrder]);
 
-  const handleQuickSell = useCallback(() => {
-    if (selectedSymbol) {
-      placeOrder('SELL');
+  const handleQuickSell = useCallback((requestedSymbol?: string) => {
+    const targetSymbol = requestedSymbol || getActiveChartCommandTarget().symbol || selectedSymbol;
+    if (targetSymbol) {
+      placeOrder('SELL', targetSymbol);
     }
   }, [selectedSymbol, placeOrder]);
 
@@ -3224,14 +3161,14 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const handleConfirmSaveWorkspace = useCallback((workspaceName?: string) => {
     console.log('[App] Workspace saved:', workspaceName);
     setShowSaveWorkspaceDialog(false);
-    displayToast(`Workspace "${workspaceName}" saved successfully!`, 'success');
+    displayToast([feedbackLabel('Save Workspace'), feedbackValue(`: ${workspaceName ?? ''} · `), feedbackLabel('Completed')], 'success');
   }, [displayToast]);
 
   const handleOpenDataFolder = useCallback(async () => {
     console.log('[App] Open data folder');
     const openDataFolder = window.electron?.shell?.openDataFolder;
     if (!openDataFolder) {
-      displayToast('Open Data Folder is available in the desktop app.', 'error');
+      displayToast([feedbackLabel('Open Data Folder'), feedbackValue(': '), feedbackLabel('Available in the desktop app')], 'error');
       return;
     }
 
@@ -3240,7 +3177,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       if (errorMessage) throw new Error(errorMessage);
     } catch (error) {
       console.error('[App] Failed to open data folder:', error);
-      displayToast('The application data folder could not be opened.', 'error');
+      displayToast([feedbackLabel('Open Data Folder'), feedbackValue(': '), feedbackLabel('Failed')], 'error');
     }
   }, [displayToast]);
 
@@ -3250,45 +3187,16 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       // Import dynamically to avoid circular dependencies
       const { chartPrinter } = await import('./services/chartPrinter');
 
-      let chartData = request.chartData;
-      if (!chartData) {
-        const activeSource = getActiveChartSource();
-        const chartContainer = activeSource?.container
-          || document.querySelector('.tv-lightweight-charts');
-        const canvas = activeSource?.canvas || chartContainer?.querySelector('canvas');
-        let chartCanvas: HTMLCanvasElement | undefined;
-
-        if (canvas) {
-          const copiedCanvas = document.createElement('canvas');
-          copiedCanvas.width = canvas.width;
-          copiedCanvas.height = canvas.height;
-          const ctx = copiedCanvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(canvas, 0, 0);
-            chartCanvas = copiedCanvas;
-          }
-        }
-
-        chartData = {
-          symbol: activeSource?.symbol || selectedSymbol,
-          timeframe: activeSource?.timeframe || timeframe as string || 'M1',
-          dateRange: {
-            from: new Date(Date.now() - 24 * 60 * 60 * 1000),
-            to: new Date(),
-          },
-          chartCanvas,
-          indicators: [],
-          drawings: [],
-        };
-      }
+      const chartData = request.chartData || await chartPrinter.captureActiveChartData();
 
       const preferences = request.preferences
         || chartPrinter.getPreferences(accountId || undefined);
       await chartPrinter.printChart(chartData, preferences);
     } catch (error) {
       console.error('[App] Failed to print:', error);
+      displayToast(error instanceof Error ? error.message : 'The chart could not be printed.', 'error');
     }
-  }, [accountId, selectedSymbol, timeframe]);
+  }, [accountId, displayToast]);
 
   const handleToggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -3313,121 +3221,58 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     };
 
     // 2. Chart & Navigation Handlers
+    const addChart = (requestedSymbol?: string) => {
+      const active = getActiveChartCommandTarget(selectedSymbol, timeframe);
+      const symbol = getChartEligibleSymbol(requestedSymbol || active.symbol)
+        || getChartEligibleSymbol(selectedSymbol) || chartEligibleSymbolNames[0];
+      if (!symbol) return;
+      const result = useDockLayoutStore.getState().addChartPanel({
+        symbol,
+        timeframe: active.timeframe || timeframe,
+        chartType: getDockPanelChartType(useDockLayoutStore.getState().layout, active.targetContextId, chartType),
+      });
+      if (result.status === 'limit-reached') {
+        displayToast(translateUi('Maximum {{limit}} charts are open', { limit: result.limit }), 'error');
+        return;
+      }
+      setSelectedSymbol(symbol);
+    };
+
+    const handleAddChartPanel = () => addChart();
+
+    const handleRequestChartSymbolChange = (event: CustomEvent<{ panelId?: unknown; anchor?: ChartSymbolAnchor }>) => {
+      const panel = findChartPanelById(useDockLayoutStore.getState().layout, event.detail?.panelId);
+      if (!panel) return;
+      activateChartPanel(panel.id);
+      setChartSymbolPicker({
+        panelId: panel.id,
+        anchor: event.detail?.anchor,
+        sessionScope: getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()),
+      });
+    };
+
     const handleOpenChart = (e: CustomEvent) => {
       const symbol = getChartEligibleSymbol(e.detail?.symbol);
       if (!symbol) return;
-      const newTab = e.detail?.newTab === true;
       const store = useDockLayoutStore.getState();
-      const layout = store.layout;
-      const currentTimeframe = timeframe;
-
-      const findChartPanel = (container: any): any => {
-        if (!container) return null;
-        for (const child of (container.children || [])) {
-          if (child.component === 'Chart') return child;
-          if (child.children) {
-            const found = findChartPanel(child);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-
-      const findActiveChartPanel = (container: any): any => {
-        if (!container) return null;
-        if (container.type === 'tabs') {
-          const activeId = container.activeTab;
-          const activeChild = (container.children || []).find((c: any) => c.id === activeId);
-          if (activeChild?.component === 'Chart') return activeChild;
-        }
-        for (const child of (container.children || [])) {
-          if (child.children) {
-            const found = findActiveChartPanel(child);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-
-      if (newTab) {
-        // MT5 behavior: If this symbol is already open as a chart tab, switch to it
-        const findChartForSymbol = (container: any): any => {
-          if (!container) return null;
-          for (const child of (container.children || [])) {
-            if (child.component === 'Chart' && child.props?.symbol === symbol) return child;
-            if (child.children) {
-              const found = findChartForSymbol(child);
-              if (found) return found;
-            }
-          }
-          return null;
-        };
-        const existingChart = findChartForSymbol(layout.root);
-        if (existingChart) {
-          // Switch to existing tab for this symbol
-          const parent = store.layout;
-          const findTabsContainer = (container: any): any => {
-            if (!container) return null;
-            if (container.type === 'tabs' && (container.children || []).some((c: any) => c.id === existingChart.id)) return container;
-            for (const child of (container.children || [])) {
-              if (child.children) {
-                const found = findTabsContainer(child);
-                if (found) return found;
-              }
-            }
-            return null;
-          };
-          const tabsContainer = findTabsContainer(parent.root);
-          if (tabsContainer) {
-            store.setActiveTab(tabsContainer.id, existingChart.id);
-          }
-          setSelectedSymbol(symbol);
-          window.dispatchEvent(new CustomEvent('chartSymbolChanged', { detail: { symbol } }));
-          return;
-        }
+      const requestedPanelId = typeof e.detail?.panelId === 'string' ? e.detail.panelId : undefined;
+      if (requestedPanelId) {
+        if (changeChartPanelSymbol(requestedPanelId, symbol, chartEligibleSymbolNames, timeframe)) setSelectedSymbol(symbol);
+        return;
+      }
+      if (e.detail?.newTab === true) {
+        // Navigation can reuse a root, tabbed, or floating chart; the + action
+        // always creates a new independent chart through the bounded store API.
+        const existing = getChartPanels(store.layout).find(panel => normalizeSymbolName(panel.props?.symbol) === symbol);
+        if (existing) { activateChartPanel(existing.id); setSelectedSymbol(symbol); return; }
       } else {
-        // newTab: false — just update the active chart
-        const targetChart = findActiveChartPanel(layout.root) || findChartPanel(layout.root);
-        if (targetChart) {
-          store.updatePanelProps(targetChart.id, {
-            props: { symbol, timeframe: currentTimeframe },
-            title: `${symbol},${currentTimeframe}`,
-          });
+        const activePanel = getActiveDockChartPanel();
+        if (activePanel && changeChartPanelSymbol(activePanel.id, symbol, chartEligibleSymbolNames, timeframe)) {
           setSelectedSymbol(symbol);
-          window.dispatchEvent(new CustomEvent('chartSymbolChanged', { detail: { symbol } }));
           return;
         }
       }
-
-      const findChartHostContainer = (container: any): any => {
-        if (!container) return null;
-        if (container.type === 'tabs' && (container.children || []).some((c: any) => c.component === 'Chart')) return container;
-        for (const child of (container.children || [])) {
-          if (child.children) {
-            const found = findChartHostContainer(child);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-
-      const hostContainer = findChartHostContainer(layout.root);
-      const activeChart = findActiveChartPanel(layout.root) || findChartPanel(layout.root);
-
-      let targetId = hostContainer?.id;
-      if (!targetId && activeChart) targetId = activeChart.id;
-      if (!targetId) targetId = 'center-main';
-
-      store.addPanel({
-        id: `chart-${Date.now()}`,
-        title: `${symbol},${currentTimeframe}`,
-        component: 'Chart',
-        props: { symbol, timeframe: currentTimeframe },
-        closable: true,
-        floatable: true,
-        resizable: true,
-      }, targetId, 'tab' as any);
-      setSelectedSymbol(symbol);
+      addChart(symbol);
     };
 
     const handleOpenOrderDialog = (event: CustomEvent<{ symbol?: unknown }>) => {
@@ -3595,6 +3440,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     window.addEventListener('printChart', handlePrintChartEvent);
     window.addEventListener('tileWindows', handleTileWindows);
     window.addEventListener('openChart', handleOpenChart as EventListener);
+    window.addEventListener('add-chart-panel', handleAddChartPanel);
+    window.addEventListener('request-chart-symbol-change', handleRequestChartSymbolChange as EventListener);
     window.addEventListener('openOrderDialog', handleOpenOrderDialog as EventListener);
     window.addEventListener('openNewOrder', handleOpenNewOrder as EventListener);
     window.addEventListener('openDepthOfMarket', handleOpenDOM as EventListener);
@@ -3624,6 +3471,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       window.removeEventListener('printChart', handlePrintChartEvent);
       window.removeEventListener('tileWindows', handleTileWindows);
       window.removeEventListener('openChart', handleOpenChart as EventListener);
+      window.removeEventListener('add-chart-panel', handleAddChartPanel);
+      window.removeEventListener('request-chart-symbol-change', handleRequestChartSymbolChange as EventListener);
       window.removeEventListener('openOrderDialog', handleOpenOrderDialog as EventListener);
       window.removeEventListener('openNewOrder', handleOpenNewOrder as EventListener);
       window.removeEventListener('openDepthOfMarket', handleOpenDOM as EventListener);
@@ -3641,7 +3490,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       window.removeEventListener('quickTrade', handleQuickTrade as EventListener);
     };
   }, [
-    selectedSymbol, timeframe, placeOrder, handleOpenDOM, 
+    selectedSymbol, timeframe, chartType, chartEligibleSymbolNames, displayToast, placeOrder, handleOpenDOM,
     handleSaveWorkspace, handleOpenDataFolder, handlePrintChart, getAllowedSymbol, getChartEligibleSymbol,
     openOrderPanelForSymbol
   ]);
@@ -3695,6 +3544,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             marketStatus={desktopToolbarMarketStatus}
             feedStatus={activeMarketSnapshot}
             onRefreshConnection={refreshDesktopConnection}
+            desktopDrawingTools={drawingSidebarVisible && Boolean(window.electron?.window) ? (
+              <WebDrawingToolsRail selectedSymbol={desktopToolbarSymbol} orientation="horizontal" />
+            ) : undefined}
             onLoadTemplate={(template) => {
               // Apply chart settings from template
               if (template.chartType) setChartType(template.chartType);
@@ -3706,15 +3558,14 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             }}
           />
 
+
           {/* 2. Main Workspace (Full Area Managed by DockManager) */}
           <div className="flex-1 flex overflow-hidden relative">
-            {isWebDrawingToolsRuntime() && (
-              <>
-                {/* FIX: Drawing chrome labels the same active symbol targeted by its commands. */}
-                <WebDrawingToolsRail selectedSymbol={desktopToolbarSymbol} />
-                <WebDrawingSelectionToolbar />
-              </>
-            )}
+            <AnnotationEditor />
+            <AnnotationTableCellEditor />
+            {/* Both runtimes share the full tool set; desktop places it above the workspace. */}
+            {drawingSidebarVisible && !window.electron?.window && <WebDrawingToolsRail selectedSymbol={desktopToolbarSymbol} />}
+            <WebDrawingSelectionToolbar />
             {/* Center Content: Chart + DOM + Account Panel */}
             <div className="flex-1 flex bg-[#0d0d11] relative min-w-0 overflow-hidden">
               {/* Chart Area */}
@@ -3872,13 +3723,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
           {/* 4. Status Bar */}
           {/* FIX: Status chrome must identify the chart the user can actually see. */}
-          <StatusBar
+          {!window.electron?.window && <StatusBar
             wsRef={wsRef}
             reconnectCallback={reconnectCallbackRef.current || undefined}
             symbol={desktopToolbarSymbol}
             timeframe={timeframe}
             marketStatus={desktopToolbarMarketStatus}
-          />
+          />} 
 
           {/* OTA Update Banner (fixed overlay, top-right) */}
           <UpdateBanner />
@@ -3916,6 +3767,38 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             />
           )}
 
+          {chartSymbolPicker && (chartSymbolPicker.anchor ? (
+            <ChartSymbolDropdown
+              symbols={chartEligibleSymbolNames}
+              currentSymbol={findChartPanelById(dockLayout, chartSymbolPicker.panelId)?.props?.symbol}
+              anchor={chartSymbolPicker.anchor}
+              onClose={() => setChartSymbolPicker(null)}
+              onSelect={symbol => {
+                const sessionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+                if (sessionScope !== chartSymbolPicker.sessionScope) return;
+                if (changeChartPanelSymbol(chartSymbolPicker.panelId, symbol, chartEligibleSymbolNames, timeframe)) {
+                  setSelectedSymbol(normalizeSymbolName(symbol));
+                }
+              }}
+            />
+          ) : (
+            <SymbolsDialog
+              isOpen
+              title="Change chart symbol"
+              chartActionLabel="Apply"
+              instruments={chartPickerInstruments}
+              initialSymbol={findChartPanelById(dockLayout, chartSymbolPicker.panelId)?.props?.symbol}
+              onClose={() => setChartSymbolPicker(null)}
+              onOpenChart={symbol => {
+                const sessionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+                if (sessionScope !== chartSymbolPicker.sessionScope) return;
+                if (changeChartPanelSymbol(chartSymbolPicker.panelId, symbol, chartEligibleSymbolNames, timeframe)) {
+                  setSelectedSymbol(normalizeSymbolName(symbol));
+                }
+              }}
+            />
+          ))}
+
           {/* Non-blocking workspace and order feedback */}
           {showToast && (
             <div
@@ -3937,7 +3820,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   )}
-                  <span className="text-sm font-medium">{toastMessage}</span>
+                  <span className="text-sm font-medium">{formatUiMessage(toastMessage, tr)}</span>
                 </div>
               </div>
             </div>

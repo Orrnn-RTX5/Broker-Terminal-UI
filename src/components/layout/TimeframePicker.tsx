@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useCallback, useRef } from 'react';
 import type { Timeframe } from '../TradingChart';
 
@@ -29,6 +30,7 @@ export const TimeframePicker: React.FC<TimeframePickerProps> = ({
   advancedViewEnabled,
   onSelect,
 }) => {
+    const tr = useUiTranslation();
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const focusAndSelect = useCallback((index: number) => {
@@ -62,7 +64,7 @@ export const TimeframePicker: React.FC<TimeframePickerProps> = ({
   return (
     <div
       role="radiogroup"
-      aria-label="Chart timeframes"
+      aria-label={tr("Chart timeframes")}
       aria-orientation="horizontal"
       className="rtx-timeframe-picker rtx-timeframe-strip flex h-[32px] min-w-0 max-w-full flex-nowrap items-center overflow-x-auto overflow-y-hidden no-scrollbar"
     >
@@ -71,7 +73,7 @@ export const TimeframePicker: React.FC<TimeframePickerProps> = ({
         const optionClassName = selected
           ? advancedViewEnabled
             ? 'border-[#7E57C2] bg-[#F3E5F5] text-[#6941C6]'
-            : 'border-blue-500/50 bg-blue-500/15 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.12)]'
+            : 'border-blue-500/50 bg-blue-500/15 text-blue-300'
           : advancedViewEnabled
             ? 'border-transparent bg-transparent text-[#667085] hover:border-[#d0d5dd] hover:bg-[#f9fafb] hover:text-[#344054]'
             : 'border-transparent bg-transparent text-zinc-200 hover:border-zinc-700 hover:bg-zinc-800/70 hover:text-zinc-100';
@@ -85,12 +87,12 @@ export const TimeframePicker: React.FC<TimeframePickerProps> = ({
             type="button"
             role="radio"
             aria-checked={selected}
-            aria-label={`Timeframe: ${option.label}`}
-            title={`Timeframe: ${option.label}`}
+            aria-label={tr("Timeframe: {{value0}}", { value0: tr(option.label) })}
+            title={tr("Timeframe: {{value0}}", { value0: tr(option.label) })}
             tabIndex={selected ? 0 : -1}
             onClick={() => onSelect(option.value)}
             onKeyDown={(event) => handleKeyDown(event, optionIndex)}
-            className={`rtx-timeframe-option flex h-[32px] min-w-[38px] shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border px-2.5 text-[14px] font-normal font-segoe leading-none transition-colors focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 ${optionClassName}`}
+            className={`rtx-timeframe-option flex h-[32px] min-w-[38px] shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border px-2.5 text-[13px] font-normal font-segoe leading-none transition-colors focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 ${optionClassName}`}
           >
             {option.value}
           </button>

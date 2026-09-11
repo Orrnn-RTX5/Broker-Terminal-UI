@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { resolveTickFromLookup, selectTickCount, useAppStore, useTick } from '../../store/useAppStore';
 import { useWatchlistStore } from '../../store/useWatchlistStore';
@@ -75,6 +76,7 @@ const readFiniteDailyChange = (value: unknown): number | null => {
 };
 
 const TWO_DECIMAL_MARKET_WATCH_SYMBOLS = new Set([
+  'JPN225',
   'JPN225-F',
   'WHEAT',
   'GOLD-PERP',
@@ -189,6 +191,7 @@ const MarketWatchRow: React.FC<{
   symbolUniverse: readonly string[];
   rowRef?: (node: HTMLTableRowElement | null) => void;
 }> = ({ symbol, isSelected, isLive, isAvailable, isStatusLoading, isStatusSettled, isStatusCurrent, isCatalogLoading, isChartOpenable, now, onClick, contextMenuItems, showAsk, showDailyChange, closedDailyChange, symbolUniverse, rowRef }) => {
+    const tr = useUiTranslation();
   const displaySymbol = getMarketWatchSymbolLabel(symbol, symbolUniverse);
   const cachedTick = useTick(symbol);
   const tick = cachedTick;
@@ -240,7 +243,8 @@ const MarketWatchRow: React.FC<{
           e.dataTransfer.setData('text/plain', symbol);
           e.dataTransfer.effectAllowed = 'copyMove';
         }}
-        onClick={onClick}
+        tabIndex={isSelected ? 0 : -1}
+        onClick={(event) => { event.currentTarget.focus({ preventScroll: true }); onClick(); }}
         style={{
           height: 36,
           cursor: 'pointer',
@@ -252,7 +256,7 @@ const MarketWatchRow: React.FC<{
         className={`${!isSelected ? 'mw-row ' : ''}rtx-market-watch__row${isSelected ? ' rtx-market-watch__row--selected' : ''}${!isLive ? ' rtx-market-watch__row--stale' : ''}`}
         aria-selected={isSelected}
         aria-disabled={!isChartOpenable}
-        title={!isChartOpenable ? `${displaySymbol} chart is currently unavailable` : undefined}
+        title={!isChartOpenable ? tr("{{value0}} chart is currently unavailable", { value0: displaySymbol }) : undefined}
       >
         {/* Symbol */}
         <td style={{ padding: '3px 8px', whiteSpace: 'nowrap', maxWidth: 0 }}>
@@ -362,9 +366,7 @@ const MarketWatchRow: React.FC<{
               letterSpacing: 'normal',
               fontVariantNumeric: 'tabular-nums',
             }}>
-              {hasDailyData
-                ? `${dailyPct!.toFixed(2)}%`
-                : <span style={{ color: '#50505a' }}>—</span>
+              {hasDailyData ? `${dailyPct!.toFixed(2)}%` : <span style={{ color: '#50505a' }}>—</span>
               }
             </span>
           </td>
@@ -387,6 +389,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
   activeMarketSnapshot,
   marketInstrumentsSnapshot,
 }) => {
+    const tr = useUiTranslation();
     // This panel only needs to know whether any quote exists. Subscribing to the
     // complete tick map redrew the entire panel for every freshness timestamp.
     const liveTickCount = useAppStore(selectTickCount);
@@ -767,8 +770,8 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
       onSymbolSelect(next);
       scrollSymbolIntoView(next);
 
-      // Automatically open chart for the newly searched/selected pair as a NEW TAB
-      window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: next, newTab: true } }));
+      // The shared selection callback owns chart navigation for rows and search.
+      // Do not dispatch a second request that could open or select another pane.
     }, [
       activeWatchlist,
       hiddenSymbolSet,
@@ -952,28 +955,17 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
 
     useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
-        const target = e.target instanceof Element ? e.target : null;
-        const isEditingTarget = Boolean(target?.closest(
-          'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
-        ));
-        if (e.key === 'Delete' && selectedSymbol && !isEditingTarget) {
-          handleHideSymbol(selectedSymbol);
-        }
-        if (e.ctrlKey && e.key === 'u') {
-          e.preventDefault();
-          setSearch('');
-          setSelectedSymbolGroupKey(null);
-          setHighlightIndex(-1);
-          inputRef.current?.focus();
-          setShowSymbolsPanel(true);
-        }
-        if (e.key === 'F9') {
+        if (shouldIgnoreShortcutEvent(e) || isShortcutInput(e) || isShortcutLocalScope(e) || isShortcutOverlay(e)) return;
+        if (!containerRef.current?.contains(getShortcutEventTarget(e))) return;
+        // The global manager owns these commands. This scoped fallback serves
+        // a standalone Market Watch only when the event was not already used.
+        if (e.key === 'F9' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
           e.preventDefault();
           if (actionableSymbolSet.has(normalizeSymbol(selectedSymbol))) {
             window.dispatchEvent(new CustomEvent('openNewOrder'));
           }
         }
-        if (e.altKey && e.key === 'b') {
+        if (e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey && e.key.toLowerCase() === 'b') {
           e.preventDefault();
           if (actionableSymbolSet.has(normalizeSymbol(selectedSymbol))) {
             window.dispatchEvent(new CustomEvent('openDepthOfMarket', { detail: { symbol: selectedSymbol } }));
@@ -1103,7 +1095,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
         .rtx-market-watch .mw-row { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
         .rtx-market-watch .rtx-market-watch__price .price-big { font-size: inherit !important; font-weight: inherit !important; }
         .rtx-market-watch .rtx-market-watch__column-heading--symbol { color: var(--text-primary) !important; }
-        .rtx-market-watch .mw-input::placeholder { color: var(--text-secondary); }
+        .rtx-market-watch .mw-input::placeholder { color: var(--text-primary); opacity: 1; }
         .rtx-market-watch .mw-input:focus { border-color: transparent !important; box-shadow: none !important; background: transparent !important; }
         .rtx-market-watch .rtx-market-watch__search-bar:focus-within { box-shadow: inset 0 -1px 0 var(--border-secondary); }
         .rtx-market-watch .rtx-market-watch__explorer-option:hover { background: var(--bg-quaternary) !important; }
@@ -1117,6 +1109,14 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
 
         <div
           ref={containerRef}
+          onKeyDown={(event) => {
+            if (event.key !== 'Delete' || event.ctrlKey || event.altKey || event.shiftKey || event.metaKey || !selectedSymbol) return;
+            if (shouldIgnoreShortcutEvent(event.nativeEvent) || isShortcutInput(event.nativeEvent) || isShortcutLocalScope(event.nativeEvent) || isShortcutOverlay(event.nativeEvent)) return;
+            // Handle the focused row before document-level drawing deletion.
+            event.preventDefault();
+            event.stopPropagation();
+            handleHideSymbol(selectedSymbol);
+          }}
           className={`rtx-market-watch ${className ?? ''}`}
           style={{
             display: 'flex',
@@ -1154,7 +1154,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                   left: 13,
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  color: 'var(--text-secondary)',
+                  color: 'var(--text-primary)',
                   pointerEvents: 'none',
                 }}
               />
@@ -1177,14 +1177,14 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                   outline: 'none',
                   fontFamily: 'inherit',
                 }}
-                aria-label="Add symbol"
+                aria-label={tr("Add symbol")}
                 role="combobox"
                 aria-autocomplete="list"
                 aria-expanded={showSymbolsPanel}
                 aria-controls={showSymbolsPanel ? searchListboxId : undefined}
                 aria-activedescendant={activeSearchOptionId}
                 autoComplete="off"
-                placeholder="Search symbol"
+                placeholder={tr("Search symbol")}
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
@@ -1192,8 +1192,8 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               />
               <button
                 type="button"
-                aria-label={showSymbolsPanel ? 'Close symbol search' : 'Close Market Watch'}
-                title={showSymbolsPanel ? 'Close symbol search' : 'Close'}
+                aria-label={showSymbolsPanel ? tr("Close symbol search") : tr("Close Market Watch")}
+                title={showSymbolsPanel ? tr("Close symbol search") : tr("Close")}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={handleSearchBarClose}
                 className="rtx-market-watch__close"
@@ -1230,20 +1230,18 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               >
                 {isSymbolListLoading && symbolGroups.length === 0 ? (
                   <div style={{ padding: '12px 13px', fontSize: 12, color: 'var(--text-tertiary)' }}>
-                    Loading symbols…
-                  </div>
+                    {tr("Loading symbols…")}</div>
                 ) : showingSymbolGroups ? (
                   <div
                     id={searchListboxId}
                     role="listbox"
-                    aria-label="Symbol groups"
+                    aria-label={tr("Symbol groups")}
                     className="rtx-market-watch__group-list mw-scrollbar"
                     style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}
                   >
                     {symbolGroups.length === 0 ? (
                       <div style={{ padding: '12px 13px', fontSize: 12, color: 'var(--text-tertiary)' }}>
-                        No symbols available
-                      </div>
+                        {tr("No symbols available")}</div>
                     ) : symbolGroups.map((group, index) => (
                       <button
                         key={group.key}
@@ -1251,7 +1249,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                         type="button"
                         role="option"
                         aria-selected={index === highlightIndex}
-                        aria-label={`${group.label} ${group.visibleCount} of ${group.symbols.length}`}
+                        aria-label={tr("{{value0}} {{value1}} of {{value2}}", { value0: group.label, value1: group.visibleCount, value2: group.symbols.length })}
                         onMouseDown={(event) => event.preventDefault()}
                         onMouseEnter={() => setHighlightIndex(index)}
                         onClick={() => {
@@ -1277,7 +1275,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                         }}
                       >
                         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {group.label}
+                          {tr(group.label)}
                         </span>
                         <span style={{ flexShrink: 0, color: 'var(--text-secondary)', fontWeight: 400, fontVariantNumeric: 'tabular-nums' }}>
                           {group.visibleCount}/{group.symbols.length}
@@ -1290,7 +1288,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                     {selectedSymbolGroup && !search.trim() && (
                       <button
                         type="button"
-                        aria-label="Back to symbol groups"
+                        aria-label={tr("Back to symbol groups")}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => {
                           setSelectedSymbolGroupKey(null);
@@ -1327,7 +1325,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                       ref={symbolExplorerScrollRef}
                       id={searchListboxId}
                       role="listbox"
-                      aria-label={search.trim() ? 'Symbol search results' : `${selectedSymbolGroup?.label ?? ''} symbols`}
+                      aria-label={search.trim() ? tr("Symbol search results") : tr("{{value0}} symbols", { value0: selectedSymbolGroup?.label ?? '' })}
                       data-testid="market-watch-symbol-scroll"
                       onScroll={handleSymbolExplorerScroll}
                       className="rtx-market-watch__symbol-list mw-scrollbar"
@@ -1335,7 +1333,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                     >
                       {filteredSymbols.length === 0 ? (
                         <div style={{ padding: '12px 13px', fontSize: 12, color: 'var(--text-tertiary)' }}>
-                          {search.trim() ? 'No matches found' : 'No symbols in this group'}
+                          {search.trim() ? tr("No matches found") : tr("No symbols in this group")}
                         </div>
                       ) : (
                         <>
@@ -1434,8 +1432,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                                     }}
                                   >
                                     <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'currentColor' }} />
-                                    Subscribed
-                                  </span>
+                                    {tr("Subscribed")}</span>
                                 )}
                               </button>
                             );
@@ -1455,14 +1452,6 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
           {/* ── Table & Column Headers ───────────────────────────── */}
           {!showSymbolsPanel && (
             <div
-              aria-hidden="true"
-              className="rtx-market-watch__search-table-gap"
-              style={{ height: 6, flex: '0 0 6px', background: 'var(--bg-secondary)' }}
-            />
-          )}
-
-          {!showSymbolsPanel && (
-            <div
               ref={setMarketWatchViewportRef}
               style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minWidth: 0 }}
               className="rtx-market-watch__table mw-scrollbar"
@@ -1476,7 +1465,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                     <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
                   </svg>
                   <span className="rtx-market-watch__empty-text" style={{ fontSize: 11, color: '#50505a' }}>
-                    {isSymbolListLoading ? 'Loading symbols...' : 'No live symbols'}
+                    {isSymbolListLoading ? tr("Loading symbols...") : tr("No live symbols")}
                   </span>
                   {!isSymbolListLoading && quoteEligibleSymbols.length > 0 && (
                     <button
@@ -1493,8 +1482,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                         padding: '4px 8px',
                       }}
                     >
-                      Show all symbols
-                    </button>
+                      {tr("Show all symbols")}</button>
                   )}
                 </div>
               ) : (
@@ -1507,10 +1495,10 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
                   </colgroup>
                   <thead>
                     <tr style={{ borderBottom: 'none' }}>
-                      <th className="rtx-market-watch__column-heading rtx-market-watch__column-heading--symbol" style={{ textAlign: 'left', padding: '3px 8px 3px 19px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Symbol</th>
-                      <th className="rtx-market-watch__column-heading" style={{ textAlign: 'center', padding: '3px 4px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Bid</th>
-                      {showAsk && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'center', padding: '3px 4px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>Ask</th>}
-                      {showDailyChange && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'center', padding: '3px 4px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, whiteSpace: 'nowrap' }}>Daily Change</th>}
+                      <th className="rtx-market-watch__column-heading rtx-market-watch__column-heading--symbol" style={{ textAlign: 'left', padding: '3px 8px 3px 19px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>{tr("Symbol")}</th>
+                      <th className="rtx-market-watch__column-heading" style={{ textAlign: 'center', padding: '3px 4px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>{tr("Bid")}</th>
+                      {showAsk && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'center', padding: '3px 4px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, textTransform: 'uppercase' as const, whiteSpace: 'nowrap' }}>{tr("Ask")}</th>}
+                      {showDailyChange && <th className="rtx-market-watch__column-heading" style={{ textAlign: 'center', padding: '3px 4px', fontSize: 12, fontWeight: 500, lineHeight: '16px', color: 'var(--text-primary)', letterSpacing: 'normal', background: 'transparent', position: 'sticky', top: 0, zIndex: 10, whiteSpace: 'nowrap' }}>{tr("Daily Change")}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -1547,7 +1535,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
           {!showSymbolsPanel && (
             <>
               {marketWatchErrors.length > 0 && (
-                <div role="alert" aria-label="Market Watch errors" style={{
+                <div role="alert" aria-label={tr("Market Watch errors")} style={{
                   padding: '5px 10px',
                   borderTop: '1px solid rgba(248,113,113,0.16)',
                   color: '#f87171',
@@ -1562,8 +1550,7 @@ const MarketWatchPanelContent: React.FC<MarketWatchPanelBaseProps & {
               )}
               {(quotesLoading || watchlistLoading) && rows.length > 0 && liveTickCount === 0 && (
                 <div style={{ padding: '4px 10px', color: '#606068', fontSize: 10 }}>
-                  Loading quotes...
-                </div>
+                  {tr("Loading quotes...")}</div>
               )}
             </>
           )}
@@ -1641,3 +1628,4 @@ export const MarketWatchPanel: React.FC<MarketWatchPanelProps> = ({
 };
 
 export default MarketWatchPanel;
+import { getShortcutEventTarget, isShortcutInput, isShortcutLocalScope, isShortcutOverlay, shouldIgnoreShortcutEvent } from '../../services/keyboardShortcutManager';

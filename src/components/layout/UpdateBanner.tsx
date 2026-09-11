@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 /**
  * UpdateBanner renders the Electron OTA update prompt.
  *
@@ -13,6 +14,7 @@ const getVersionLabel = (data: UpdateStatusPayload): string =>
     data.version ? `v${data.version}` : data.message || 'new version';
 
 export function UpdateBanner() {
+    const tr = useUiTranslation();
     const [phase, setPhase] = useState<BannerPhase>('idle');
     const [percent, setPercent] = useState(0);
     const [message, setMessage] = useState('');
@@ -100,10 +102,10 @@ export function UpdateBanner() {
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
                                 <div className="h-2 w-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.5)]" />
-                                <span className="text-[12px] font-semibold text-sky-200">Update available</span>
+                                <span className="text-[12px] font-semibold text-sky-200">{tr("Update available")}</span>
                             </div>
-                            <div className="mt-1 truncate text-[11px] text-zinc-400" title={message}>
-                                {versionLabel}
+                            <div className="mt-1 truncate text-[11px] text-zinc-400" title={tr(message)}>
+                                {tr(versionLabel)}
                             </div>
                         </div>
                         <button
@@ -111,8 +113,7 @@ export function UpdateBanner() {
                             onClick={() => setDismissed(true)}
                             className="text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
                         >
-                            Later
-                        </button>
+                            {tr("Later")}</button>
                     </div>
                     <button
                         type="button"
@@ -120,7 +121,7 @@ export function UpdateBanner() {
                         disabled={actionPending}
                         className="h-8 w-full rounded-md bg-sky-600 text-[12px] font-semibold text-white transition-colors hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        {actionPending ? 'Starting download...' : 'Download update'}
+                        {actionPending ? tr("Starting download...") : tr("Download update")}
                     </button>
                 </div>
             )}
@@ -130,7 +131,7 @@ export function UpdateBanner() {
                     <div className="mb-2 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
-                            <span className="text-[12px] font-medium text-blue-200">Downloading update</span>
+                            <span className="text-[12px] font-medium text-blue-200">{tr("Downloading update")}</span>
                         </div>
                         <span className="font-mono text-[11px] text-blue-300 tabular-nums">{percent}%</span>
                     </div>
@@ -149,10 +150,10 @@ export function UpdateBanner() {
                         <div className="min-w-0">
                             <div className="flex items-center gap-2">
                                 <div className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" />
-                                <span className="text-[12px] font-semibold text-emerald-300">Update ready</span>
+                                <span className="text-[12px] font-semibold text-emerald-300">{tr("Update ready")}</span>
                             </div>
-                            <div className="mt-1 truncate text-[11px] text-zinc-400" title={message}>
-                                {versionLabel}
+                            <div className="mt-1 truncate text-[11px] text-zinc-400" title={tr(message)}>
+                                {tr(versionLabel)}
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -161,15 +162,13 @@ export function UpdateBanner() {
                                 onClick={() => setDismissed(true)}
                                 className="px-1.5 text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
                             >
-                                Later
-                            </button>
+                                {tr("Later")}</button>
                             <button
                                 type="button"
                                 onClick={handleRestart}
                                 className="rounded-md bg-emerald-600 px-3 py-1 text-[11px] font-semibold text-white shadow-[0_0_12px_rgba(52,211,153,0.3)] transition-all duration-200 hover:bg-emerald-500 hover:shadow-[0_0_20px_rgba(52,211,153,0.5)]"
                             >
-                                Install
-                            </button>
+                                {tr("Install")}</button>
                         </div>
                     </div>
                 </div>
@@ -179,9 +178,9 @@ export function UpdateBanner() {
                 <div className="min-w-[300px] rounded-lg border border-red-500/30 bg-[#1a1d23] px-4 py-3 shadow-2xl shadow-red-500/10 backdrop-blur-sm">
                     <div className="flex items-center gap-2">
                         <div className="h-2 w-2 rounded-full bg-red-400" />
-                        <span className="text-[12px] font-medium text-red-300">Update failed</span>
-                        <span className="max-w-[170px] truncate text-[10px] text-red-500" title={message}>
-                            {message}
+                        <span className="text-[12px] font-medium text-red-300">{tr("Update failed")}</span>
+                        <span className="max-w-[170px] truncate text-[10px] text-red-500" title={tr(message)}>
+                            {tr(message)}
                         </span>
                     </div>
                 </div>

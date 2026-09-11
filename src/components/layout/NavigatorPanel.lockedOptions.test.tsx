@@ -63,6 +63,13 @@ describe('Navigator locked placeholder sections', () => {
     brokerApiMocks.getBrokers.mockReset().mockResolvedValue({ brokers: [], count: 0 });
   });
 
+  it('shows the full directory broker name even when no logo exists', async () => {
+    brokerApiMocks.getServers.mockResolvedValue([{ server_url: 'https://test-broker.example', broker_name: 'Example Financial Services' }]);
+    render(<NavigatorPanel />);
+    expect(await screen.findByText('Example Financial Services')).toBeInTheDocument();
+    expect(screen.queryByText('https://test-broker.example')).not.toBeInTheDocument();
+  });
+
   it('keeps Accounts interactive while all non-functional sections stay visibly locked and closed', async () => {
     render(<NavigatorPanel />);
 
@@ -77,12 +84,12 @@ describe('Navigator locked placeholder sections', () => {
     expect(accountsRow).toHaveClass('cursor-pointer');
     expect(accountsLabel).toHaveClass('text-[14px]', 'font-normal');
     expect(accountsRow.querySelector('.navigator-tree-item__lock')).toBeNull();
-    expect(screen.getByText('https://test-broker.example')).toBeInTheDocument();
+    expect(screen.getByText('Broker')).toBeInTheDocument();
 
     fireEvent.click(accountsRow);
-    expect(screen.queryByText('https://test-broker.example')).not.toBeInTheDocument();
+    expect(screen.queryByText('Broker')).not.toBeInTheDocument();
     fireEvent.click(accountsRow);
-    expect(screen.getByText('https://test-broker.example')).toBeInTheDocument();
+    expect(screen.getByText('Broker')).toBeInTheDocument();
 
     lockedSections.forEach(({ label, child }) => {
       const row = getTreeRow(label);

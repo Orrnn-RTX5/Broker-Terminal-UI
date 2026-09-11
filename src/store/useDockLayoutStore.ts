@@ -6,7 +6,11 @@
 
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
-import { DockManager, dockManager, DockLayout, DockPanelConfig, DropZone, DockDirection } from '../services/dockManager';
+import { DockManager, dockManager, DockLayout, DockPanelConfig, DropZone, DockDirection, MAX_CHART_PANELS, getChartPanelCount, type ChartArrangement, type AddChartPanelOptions, type AddChartPanelResult } from '../services/dockManager';
+import { runOutsideChartFocus } from '../utils/advancedViewRootClasses';
+import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
+import { getActiveChartSource } from '../services/activeChartSource';
+import { getPanelIdFromChartContextId } from '../services/chartCommandTarget';
 
 export type DragState = 'idle' | 'dragging' | 'dropping';
 
@@ -76,9 +80,12 @@ export interface DockState {
   setGhostPreview: (preview: DockState['ghostPreview']) => void;
 
   // Dock Actions
-  addPanel: (panel: DockPanelConfig, targetId?: string, direction?: DockDirection) => void;
+  addPanel: (panel: DockPanelConfig, targetId?: string, direction?: DockDirection) => boolean;
+  addChartPanel: (options?: AddChartPanelOptions) => AddChartPanelResult;
+  getChartCount: () => number;
+  canAddChart: () => boolean;
   removePanel: (panelId: string) => void;
-  closeActiveChart: (symbol?: string) => boolean;
+  closeActiveChart: (symbol?: string, panelId?: string) => boolean;
   restoreClosedChart: (panelId?: string) => boolean;
   dockPanel: (panelId: string, targetId: string, direction: DockDirection) => void;
   floatPanel: (panelId: string, position?: { x: number; y: number }) => void;
@@ -87,6 +94,8 @@ export interface DockState {
   moveToTab: (panelId: string, tabContainerId: string, insertIndex?: number) => void;
   updateContainerSize: (containerId: string, ratio: number) => void;
   updatePanelProps: (panelId: string, updates: { props?: Record<string, any>; title?: string }) => void;
+  setPanelMinimized: (panelId: string, minimized: boolean) => void;
+  bringFloatingToFront: (panelId: string) => void;
 
   // History Actions
   undo: () => void;
@@ -98,7 +107,10 @@ export interface DockState {
   saveLayout: (userId?: string) => void;
   loadLayout: (userId?: string) => boolean;
   resetToDefaultLayout: () => void;
+  resetWindows: () => void;
+  arrangeIcons: () => number;
   tileWindows: () => void;
+  arrangeCharts: (mode: ChartArrangement) => void;
 
   // Magnetic Snap Actions
   snapToWorkspaceEdge: (panelId: string, edge: 'top' | 'bottom' | 'left' | 'right' | 'center') => void;
@@ -108,6 +120,12 @@ const clonePanel = (panel: DockPanelConfig): DockPanelConfig => ({
   ...panel,
   props: panel.props ? { ...panel.props } : undefined,
 });
+
+const mergeOverflowCharts = (overflow: DockPanelConfig[], closed: DockPanelConfig[]): DockPanelConfig[] => {
+  if (!overflow.length) return closed;
+  const overflowIds = new Set(overflow.map(panel => panel.id));
+  return [...overflow.map(clonePanel), ...closed.filter(panel => !overflowIds.has(panel.id))].slice(0, 10);
+};
 
 const findPanel = (layout: DockLayout, panelId: string): DockPanelConfig | null => {
   const findInContainer = (container: DockLayout['root']): DockPanelConfig | null => {
@@ -192,6 +210,8 @@ const findChartHostId = (container: DockLayout['root']): string | null => {
   return null;
 };
 
+let currentSessionLayoutKey: string | undefined;
+
 const useDockLayoutStore = create<DockState>()(
   devtools(
     persist(
@@ -213,8 +233,11 @@ const useDockLayoutStore = create<DockState>()(
 
         // Layout Actions
         setLayout: (layout) => {
-          set({ layout });
           dockManager.setLayout(layout, true);
+          set({
+            layout: dockManager.getLayout(),
+            recentlyClosedCharts: mergeOverflowCharts(dockManager.takeOverflowCharts(), get().recentlyClosedCharts),
+          });
         },
 
         // Drag Actions
@@ -341,8 +364,22 @@ const useDockLayoutStore = create<DockState>()(
 
         // Dock Actions
         addPanel: (panel, targetId, direction = 'center') => {
-          dockManager.addPanel(panel, targetId, direction);
+          const added = dockManager.addPanel(panel, targetId, direction);
+          if (!added) return false;
           set({ layout: dockManager.getLayout() });
+          return true;
+        },
+        getChartCount: () => getChartPanelCount(get().layout),
+        canAddChart: () => getChartPanelCount(get().layout) < MAX_CHART_PANELS,
+        addChartPanel: (options) => {
+          const result = dockManager.addChartPanel(options);
+          if (result.status === 'added') {
+            // Grid creation uses layout ratios, not DOM measurements, so return
+            // the atomic result synchronously while revealing the divided view.
+            runOutsideChartFocus(() => {});
+            set({ layout: dockManager.getLayout() });
+          }
+          return result;
         },
 
         removePanel: (panelId) => {
@@ -360,9 +397,11 @@ const useDockLayoutStore = create<DockState>()(
           set(nextState);
         },
 
-        closeActiveChart: (symbol) => {
-          const panel = findActiveChart(get().layout, symbol);
-          if (!panel) return false;
+        closeActiveChart: (symbol, panelId) => {
+          const panel = panelId !== undefined
+            ? findPanel(get().layout, panelId)
+            : findActiveChart(get().layout, symbol);
+          if (!panel || panel.component !== 'Chart' || panel.closable === false) return false;
           get().removePanel(panel.id);
           return true;
         },
@@ -375,12 +414,15 @@ const useDockLayoutStore = create<DockState>()(
           if (!panel) return false;
 
           const currentLayout = get().layout;
-          const targetId = findChartHostId(currentLayout.root) || 'center-main';
+          const targetId = findChartHostId(currentLayout.root)
+            || listChartPanels(currentLayout)[0]?.id
+            || 'center-main';
           const restoredPanel = clonePanel({
             ...panel,
             id: `chart-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           });
-          dockManager.addPanel(restoredPanel, targetId, 'tab');
+          delete restoredPanel.minimized;
+          if (!dockManager.addPanel(restoredPanel, targetId, 'tab')) return false;
 
           const layoutWithChart = dockManager.getLayout();
           const placeholder = (() => {
@@ -446,18 +488,26 @@ const useDockLayoutStore = create<DockState>()(
           dockManager.updatePanelProps(panelId, updates);
           set({ layout: dockManager.getLayout() });
         },
+        setPanelMinimized: (panelId, minimized) => {
+          dockManager.setPanelMinimized(panelId, minimized);
+          set({ layout: dockManager.getLayout() });
+        },
+        bringFloatingToFront: (panelId) => {
+          dockManager.bringFloatingToFront(panelId);
+          set({ layout: dockManager.getLayout() });
+        },
 
         // History Actions
         undo: () => {
-          if (dockManager.undo()) {
-            set({ layout: dockManager.getLayout() });
-          }
+          runOutsideChartFocus(() => {
+            if (dockManager.undo()) set({ layout: dockManager.getLayout() });
+          });
         },
 
         redo: () => {
-          if (dockManager.redo()) {
-            set({ layout: dockManager.getLayout() });
-          }
+          runOutsideChartFocus(() => {
+            if (dockManager.redo()) set({ layout: dockManager.getLayout() });
+          });
         },
 
         canUndo: () => dockManager.canUndo(),
@@ -466,7 +516,17 @@ const useDockLayoutStore = create<DockState>()(
         // Persistence
         saveLayout: (userId?: string) => dockManager.saveToStorage(userId ? `dock-layout-${userId}` : 'dock-layout'),
         loadLayout: (userId?: string) => {
-          const loaded = dockManager.loadFromStorage(userId ? `dock-layout-${userId}` : 'dock-layout');
+          const layoutKey = userId ? `dock-layout-${userId}` : 'dock-layout';
+          // Closed-window snapshots belong to the selected account layout even
+          // when that account has no saved workspace to restore yet.
+          const sessionLayoutKey = JSON.stringify([
+            layoutKey, getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()),
+          ]);
+          if (sessionLayoutKey !== currentSessionLayoutKey) {
+            currentSessionLayoutKey = sessionLayoutKey;
+            set({ recentlyClosedCharts: [] });
+          }
+          const loaded = dockManager.loadFromStorage(layoutKey);
           if (loaded) {
             set({ layout: dockManager.getLayout() });
           }
@@ -477,8 +537,45 @@ const useDockLayoutStore = create<DockState>()(
           set({ layout: dockManager.getLayout() });
         },
         tileWindows: () => {
-          dockManager.tileWindows();
-          set({ layout: dockManager.getLayout() });
+          get().arrangeCharts('grid');
+        },
+        resetWindows: () => {
+          // Resolve the exact pane before leaving focus mode; several charts
+          // may share a symbol while using different timeframes and settings.
+          const currentLayout = get().layout;
+          const currentCharts = listChartPanels(currentLayout);
+          const source = getActiveChartSource();
+          const sourcePanelId = getPanelIdFromChartContextId(source?.id);
+          const activeChart = currentCharts.find(panel => panel.id === sourcePanelId)
+            || findActiveChart(currentLayout, source?.symbol);
+          runOutsideChartFocus(() => {
+            dockManager.resetWindows(activeChart?.id);
+            const layout = dockManager.getLayout();
+            const remainingIds = new Set(listChartPanels(layout).map(panel => panel.id));
+            const closedCharts = currentCharts.filter(panel => !remainingIds.has(panel.id));
+            const closedIds = new Set(closedCharts.map(panel => panel.id));
+            set({
+              layout,
+              recentlyClosedCharts: [
+                ...closedCharts.map(clonePanel),
+                ...get().recentlyClosedCharts.filter(panel => !closedIds.has(panel.id)),
+              ].slice(0, 10),
+            });
+          });
+        },
+        arrangeIcons: () => {
+          const count = get().layout.floatingPanels.filter(container => container.children.some(child => !('children' in child) && child.minimized)).length;
+          runOutsideChartFocus(() => {
+            dockManager.arrangeIcons();
+            set({ layout: dockManager.getLayout() });
+          });
+          return count;
+        },
+        arrangeCharts: (mode) => {
+          runOutsideChartFocus(() => {
+            dockManager.arrangeCharts(mode);
+            set({ layout: dockManager.getLayout() });
+          });
         },
 
         // Magnetic Snap - dock to workspace edge
@@ -508,7 +605,10 @@ let isUpdating = false;
 dockManager.subscribe((layout) => {
   if (!isUpdating) {
     isUpdating = true;
-    useDockLayoutStore.setState({ layout });
+    useDockLayoutStore.setState({
+      layout,
+      recentlyClosedCharts: mergeOverflowCharts(dockManager.takeOverflowCharts(), useDockLayoutStore.getState().recentlyClosedCharts),
+    });
     isUpdating = false;
   }
 });

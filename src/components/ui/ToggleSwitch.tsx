@@ -1,9 +1,11 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useId } from 'react';
 
 type ToggleSwitchProps = {
   checked: boolean;
   onChange: (checked: boolean) => void;
   label?: string;
+  ariaLabel?: string;
   disabled?: boolean;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
@@ -13,10 +15,12 @@ export function ToggleSwitch({
   checked,
   onChange,
   label,
+  ariaLabel,
   disabled = false,
   size = 'md',
   className = ''
 }: ToggleSwitchProps) {
+    const tr = useUiTranslation();
   const id = useId();
 
   const sizeClasses = {
@@ -44,6 +48,7 @@ export function ToggleSwitch({
         role="switch"
         aria-checked={checked}
         aria-labelledby={label ? id : undefined}
+        aria-label={label ? undefined : tr(ariaLabel)}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={`
@@ -70,7 +75,7 @@ export function ToggleSwitch({
           htmlFor={id}
           className={`text-sm ${disabled ? 'text-zinc-600' : 'text-zinc-300'} cursor-pointer`}
         >
-          {label}
+          {tr(label)}
         </label>
       )}
     </div>

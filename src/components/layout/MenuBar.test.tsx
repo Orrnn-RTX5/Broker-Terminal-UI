@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useDrawingSidebarStore } from '../../store/useDrawingSidebarStore';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { DockLayout } from '../../services/dockManager';
+import { activateActiveChartSource, registerActiveChartSource } from '../../services/activeChartSource';
 
-vi.mock('react-i18next', () => ({
+vi.mock('react-i18next', async (importOriginal) => ({
+    ...await importOriginal<typeof import('react-i18next')>(),
     useTranslation: () => ({
         t: (key: string) => key,
         i18n: { language: 'en', changeLanguage: vi.fn() },
@@ -34,16 +38,30 @@ const openWebTraderMock = vi.hoisted(() => vi.fn().mockResolvedValue({
     openedWith: 'browser',
 }));
 const closeActiveChartMock = vi.hoisted(() => vi.fn(() => true));
+const arrangeChartsMock = vi.hoisted(() => vi.fn());
+const dockStoreFixture = vi.hoisted(() => ({
+    layout: {
+        version: 'menu-test',
+        root: { id: 'root', type: 'split', ratio: 1, children: [
+            { id: 'chart-a', title: 'XAUUSD,M1', component: 'Chart', props: { symbol: 'XAUUSD', timeframe: 'M1' } },
+        ] },
+        floatingPanels: [],
+    } as DockLayout,
+    arrangeIcons: vi.fn(() => 1),
+    resetWindows: vi.fn(),
+    resetToDefaultLayout: vi.fn(),
+}));
 
 vi.mock('../../services/webTrader', () => ({
     openWebTrader: openWebTraderMock,
 }));
 
-vi.mock('../../store/useDockLayoutStore', () => ({
-    useDockLayoutStore: {
-        getState: () => ({ closeActiveChart: closeActiveChartMock }),
-    },
-}));
+vi.mock('../../store/useDockLayoutStore', () => {
+    const getState = () => ({ ...dockStoreFixture, closeActiveChart: closeActiveChartMock, arrangeCharts: arrangeChartsMock });
+    const useDockLayoutStore = (selector: (state: ReturnType<typeof getState>) => unknown) => selector(getState());
+    useDockLayoutStore.getState = getState;
+    return { useDockLayoutStore };
+});
 
 vi.mock('./FileMenu', () => ({
     FileMenu: ({
@@ -57,6 +75,7 @@ vi.mock('./FileMenu', () => ({
         onExit,
         accountId,
         onLogout,
+        shortcutsOnly,
     }: {
         onSave: (workspaceName?: string) => void;
         onCloseActiveChart?: () => void;
@@ -68,7 +87,8 @@ vi.mock('./FileMenu', () => ({
         onExit?: () => void;
         accountId?: string;
         onLogout?: () => void;
-    }) => (
+        shortcutsOnly?: boolean;
+    }) => shortcutsOnly ? null : (
         <div data-testid="file-menu">
             <button type="button" onClick={() => onSave('Default')}>Save workspace</button>
             {onCloseActiveChart && <button type="button" onClick={onCloseActiveChart}>Close current chart</button>}
@@ -85,7 +105,9 @@ vi.mock('./FileMenu', () => ({
 }));
 
 vi.mock('../settings/OptionsDialog', () => ({
-    OptionsDialog: () => null,
+    OptionsDialog: ({ isOpen }: { isOpen: boolean }) => (
+        isOpen ? <div role="dialog" aria-label="Options" /> : null
+    ),
 }));
 
 vi.mock('../SymbolsDialog', () => ({
@@ -124,6 +146,12 @@ const installElectronBridge = () => {
 
 afterEach(() => {
     cleanup();
+    closeActiveChartMock.mockClear();
+    dockStoreFixture.layout.floatingPanels = [];
+    dockStoreFixture.arrangeIcons.mockClear();
+    dockStoreFixture.resetWindows.mockClear();
+    dockStoreFixture.resetToDefaultLayout.mockClear();
+    useDrawingSidebarStore.setState({ visible: true });
     delete window.electron;
     useChartSettingsStore.setState({
         globalProperties: {
@@ -135,7 +163,69 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
+describe('unavailable terminal services', () => {
+    it.each(['web', 'desktop'])('locks unsupported Tools entries in the %s menu and keeps working actions available', (surface) => {
+        if (surface === 'desktop') installElectronBridge();
+        render(<MenuBar />);
+        const openTools = () => {
+            if (surface === 'desktop') {
+                fireEvent.click(screen.getByRole('menuitem', { name: 'Tools', exact: true }));
+            } else {
+                fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+                fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Algo Trading' }));
+            }
+        };
+        openTools();
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        for (const key of ['strategyTester', 'scriptEditor', 'agentsManager', 'taskManager', 'globalVariables', 'marketplace', 'signalsHub', 'cloudHosting']) {
+            const item = screen.getByRole('menuitem', { name: `menu.tools.${key}` });
+            expect(item).toBeDisabled();
+            expect(item).toHaveAttribute('aria-disabled', 'true');
+            expect(item.getAttribute('aria-description')).toContain('currently unavailable');
+            expect(item).toHaveAttribute('title', item.getAttribute('aria-description'));
+            expect(item.querySelector('.rtx-menu-row__lock')).toBeInTheDocument();
+            expect(item.querySelector('.rtx-menu-row__shortcut')).not.toBeInTheDocument();
+            fireEvent.click(item);
+            fireEvent.keyDown(item, { key: 'Enter' });
+            fireEvent.keyDown(item, { key: ' ' });
+        }
+        expect(dispatchSpy).not.toHaveBeenCalled();
+        const newOrder = screen.getByRole('menuitem', { name: 'menu.tools.newOrder' });
+        expect(newOrder).toBeEnabled();
+        fireEvent.click(newOrder);
+        expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'openNewOrder' }));
+        openTools();
+        const options = screen.getByRole('menuitem', { name: 'menu.tools.options' });
+        expect(options).toBeEnabled();
+        fireEvent.click(options);
+        expect(screen.getByRole('dialog', { name: 'Options' })).toBeInTheDocument();
+    });
+
+    it('also locks duplicate service entries under desktop View and Help', () => {
+        installElectronBridge();
+        render(<MenuBar />);
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View', exact: true }));
+        expect(screen.getByRole('menuitem', { name: 'menu.view.strategyTester' })).toBeDisabled();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Help', exact: true }));
+        for (const key of ['marketplace', 'signals', 'cloudHosting']) {
+            expect(screen.getByRole('menuitem', { name: `menu.help.${key}` })).toBeDisabled();
+        }
+    });
+});
+
 describe('MenuBar hamburger launcher', () => {
+    it('hides and restores the drawing sidebar from the application menu', () => {
+        render(<MenuBar />);
+        const launcher = screen.getByRole('button', { name: 'Open application menu' });
+        fireEvent.click(launcher);
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Hide drawing tools' }));
+        expect(useDrawingSidebarStore.getState().visible).toBe(false);
+        expect(launcher).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(launcher);
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Show drawing tools' }));
+        expect(useDrawingSidebarStore.getState().visible).toBe(true);
+    });
+
     it('places Area immediately after Line and dispatches the two chart types independently', () => {
         const dispatchSpy = vi.spyOn(commandBus, 'dispatch');
 
@@ -233,6 +323,26 @@ describe('MenuBar hamburger launcher', () => {
         expect(screen.queryByRole('menu', { name: 'Application menu' })).not.toBeInTheDocument();
     });
 
+    it('passes the exact active pane when closing one of several charts with the same symbol', () => {
+        const sourceElement = document.createElement('div');
+        document.body.appendChild(sourceElement);
+        const unregister = registerActiveChartSource({
+            id: 'trading-chart:chart-b', getContainer: () => sourceElement,
+            getSymbol: () => 'XAUUSD', getTimeframe: () => 'H4',
+        });
+        activateActiveChartSource('trading-chart:chart-b');
+        try {
+            render(<MenuBar chartSymbol="XAUUSD" />);
+            fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Trading accounts' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Close current chart' }));
+            expect(closeActiveChartMock).toHaveBeenCalledWith('XAUUSD', 'chart-b');
+        } finally {
+            unregister();
+            sourceElement.remove();
+        }
+    });
+
     it('wires chart close, restore, profile restore, and trade login to live application owners', () => {
         const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
         render(<MenuBar />);
@@ -322,6 +432,7 @@ describe('MenuBar hamburger launcher', () => {
         const colorTemplatesMenu = screen.getByRole('menu', { name: 'Color Templates menu' });
         expect(within(colorTemplatesMenu).getAllByRole('menuitemradio').map(item => item.textContent)).toEqual([
             'Green on Black',
+            'Blue on Black',
             'Black on White',
             'Yellow on Black',
         ]);
@@ -454,6 +565,37 @@ describe('MenuBar hamburger launcher', () => {
 });
 
 describe('MenuBar Electron desktop menubar', () => {
+    it('exposes the installed version and working updater in View without the removed status bar entry', async () => {
+        installElectronBridge();
+        let notify: (data: import('../../types/trading').UpdateStatusPayload) => void = () => {};
+        const checkForUpdates = vi.fn().mockResolvedValue({ ok: true });
+        const downloadNow = vi.fn().mockResolvedValue({ ok: true });
+        const installNow = vi.fn();
+        const unsubscribe = vi.fn();
+        Object.assign(window.electron!, {
+            appVersion: '1.0.24',
+            updater: { isSupported: true, checkForUpdates, downloadNow, installNow,
+                onStatus: (listener: typeof notify) => { notify = listener; return unsubscribe; } },
+        });
+        const view = render(<MenuBar />);
+        const openView = () => fireEvent.click(screen.getByRole('menuitem', { name: 'View', exact: true }));
+        openView();
+        expect(screen.getByText('Version 1.0.24')).toBeInTheDocument();
+        expect(screen.queryByText('menu.view.statusBar')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Check updates' }));
+        await waitFor(() => expect(checkForUpdates).toHaveBeenCalledTimes(1));
+        act(() => notify({ status: 'available', percent: 0, message: 'Available', version: '1.0.25' }));
+        openView();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Download update' }));
+        await waitFor(() => expect(downloadNow).toHaveBeenCalledTimes(1));
+        act(() => notify({ status: 'downloaded', percent: 100, message: 'Ready', version: '1.0.25' }));
+        openView();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Install update' }));
+        expect(installNow).toHaveBeenCalledTimes(1);
+        view.unmount();
+        expect(unsubscribe).toHaveBeenCalledTimes(1);
+    });
+
     it('renders the seven horizontal menus and keeps FileMenu behavior in the desktop shell', () => {
         installElectronBridge();
         render(<MenuBar />);
@@ -485,7 +627,7 @@ describe('MenuBar Electron desktop menubar', () => {
         expect(within(screen.getByRole('menu', { name: 'View menu' })).getByRole('menuitem', { name: 'Theme' })).toBeInTheDocument();
     });
 
-    it('leaves desktop Logout to the upper-right Account popup without duplicating it in File', () => {
+    it('logs out from the desktop File account header', () => {
         installElectronBridge();
         const onLogout = vi.fn();
         render(<MenuBar accountId="200002" onLogout={onLogout} />);
@@ -495,8 +637,9 @@ describe('MenuBar Electron desktop menubar', () => {
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'File' }));
         expect(screen.getByText('Current account 200002')).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'Log Out' })).not.toBeInTheDocument();
-        expect(onLogout).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Log Out' }));
+        expect(onLogout).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText('Current account 200002')).not.toBeInTheDocument();
     });
 
     it('reuses the canonical chart and drawing actions from the desktop root menus', () => {
@@ -527,7 +670,6 @@ describe('MenuBar Electron desktop menubar', () => {
     it('keeps the web-only launcher actions clickable from sensible desktop menus', () => {
         installElectronBridge();
         const windowDispatchSpy = vi.spyOn(window, 'dispatchEvent');
-        const documentDispatchSpy = vi.spyOn(document, 'dispatchEvent');
         render(<MenuBar />);
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'Tools' }));
@@ -545,11 +687,34 @@ describe('MenuBar Electron desktop menubar', () => {
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'Help' }));
         fireEvent.click(within(screen.getByRole('menu', { name: 'Help menu' })).getByRole('menuitem', { name: 'Shortcuts' }));
-        const shortcutEvent = documentDispatchSpy.mock.calls
+        const shortcutEvent = windowDispatchSpy.mock.calls
             .map(([event]) => event)
-            .find((event) => event.type === 'keydown') as KeyboardEvent | undefined;
-        expect(shortcutEvent).toMatchObject({ key: 'F1', code: 'F1', bubbles: true });
+            .find((event) => event.type === 'open-shortcut-help');
+        expect(shortcutEvent).toBeDefined();
         expect(screen.queryByRole('menu', { name: 'Help menu' })).not.toBeInTheDocument();
+    });
+
+    it('toggles the shared drawing toolbar and applies active-chart color templates from desktop menus', () => {
+        installElectronBridge();
+        const originalGlobal = useChartSettingsStore.getState().globalProperties;
+        render(<MenuBar chartSymbol="XAUUSD" />);
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Hide drawing tools' }));
+        expect(useDrawingSidebarStore.getState().visible).toBe(false);
+        expect(screen.queryByRole('menu', { name: 'View menu' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Show drawing tools' }));
+        expect(useDrawingSidebarStore.getState().visible).toBe(true);
+
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Charts' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Color Templates' }));
+        fireEvent.click(screen.getByRole('menuitemradio', { name: 'Yellow on Black' }));
+        const settings = useChartSettingsStore.getState();
+        expect(settings.globalProperties).toBe(originalGlobal);
+        expect(settings.symbolProperties.XAUUSD).toMatchObject({
+            colorScheme: 'Yellow on Black', colors: getPresetSchemeColors('Yellow on Black'),
+        });
+        expect(screen.queryByRole('menu', { name: 'Charts menu' })).not.toBeInTheDocument();
     });
 
     it('supports desktop menubar keyboard navigation and restores focus on Escape', () => {
@@ -569,5 +734,70 @@ describe('MenuBar Electron desktop menubar', () => {
         fireEvent.keyDown(window, { key: 'Escape' });
         expect(screen.queryByRole('menu', { name: 'View menu' })).not.toBeInTheDocument();
         expect(viewButton).toHaveFocus();
+    });
+
+    it('runs the real chart arrangement for each Window menu entry', () => {
+        installElectronBridge();
+        render(<MenuBar />);
+        for (const [label, mode, hint] of [
+            ['menu.window.tileWindows', 'grid', 'Alt+R'],
+            ['menu.window.cascade', 'cascade', 'Shift+Alt+C'],
+            ['menu.window.tileHorizontally', 'horizontal', 'Shift+Alt+H'],
+            ['menu.window.tileVertically', 'vertical', 'Shift+Alt+V'],
+        ]) {
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Window' }));
+            const item = screen.getByRole('menuitem', { name: label });
+            expect(item).toHaveTextContent(hint);
+            fireEvent.click(item);
+            expect(arrangeChartsMock).toHaveBeenLastCalledWith(mode);
+            expect(screen.queryByRole('menu', { name: 'Window menu' })).not.toBeInTheDocument();
+        }
+    });
+
+    it('opens Options through the shared command while the application menu is closed', () => {
+        render(<MenuBar />);
+        fireEvent(window, new CustomEvent('open-terminal-options'));
+        expect(screen.getByRole('dialog', { name: 'Options' })).toBeInTheDocument();
+    });
+
+    it.each(['web', 'desktop'])('enables Arrange Icons only for minimized floating windows in %s', surface => {
+        if (surface === 'desktop') installElectronBridge();
+        const { rerender } = render(<MenuBar />);
+        if (surface === 'desktop') {
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Window' }));
+        } else {
+            fireEvent.click(screen.getByRole('button', { name: 'Open application menu' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'RTX5 Terminal' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Window layout' }));
+        }
+        const disabled = screen.getByRole('menuitem', { name: 'menu.window.arrangeIcons' });
+        expect(disabled).toBeDisabled();
+        expect(disabled).toHaveAttribute('aria-description', 'Minimize a floating window before arranging icons');
+        fireEvent.click(disabled);
+        expect(dockStoreFixture.arrangeIcons).not.toHaveBeenCalled();
+        dockStoreFixture.layout.floatingPanels = [{
+            id: 'floating-chart', type: 'panel', ratio: 1, isFloating: true,
+            children: [{ id: 'chart-b', title: 'BTCUSD,MN', component: 'Chart', minimized: true }],
+        }];
+        rerender(<MenuBar />);
+        const enabled = screen.getByRole('menuitem', { name: 'menu.window.arrangeIcons' });
+        expect(enabled).toBeEnabled();
+        fireEvent.click(enabled);
+        expect(dockStoreFixture.arrangeIcons).toHaveBeenCalledOnce();
+    });
+
+    it('dispatches Reset Windows through the shared reset action and locks operating-system resolution', () => {
+        installElectronBridge();
+        render(<MenuBar />);
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Window' }));
+        const resolution = screen.getByRole('menuitem', { name: 'menu.window.resolution' });
+        expect(resolution).toBeDisabled();
+        expect(resolution).toHaveAttribute('aria-description', 'Display resolution is controlled by your operating system');
+        expect(resolution).not.toHaveAttribute('aria-haspopup');
+        fireEvent.click(resolution);
+        expect(screen.queryByText('2160p')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Reset Windows' }));
+        expect(dockStoreFixture.resetWindows).toHaveBeenCalledOnce();
+        expect(dockStoreFixture.resetToDefaultLayout).not.toHaveBeenCalled();
     });
 });

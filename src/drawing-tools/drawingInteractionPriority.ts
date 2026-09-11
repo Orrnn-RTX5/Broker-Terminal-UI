@@ -3,6 +3,7 @@ import { getTrendLineToolFromDrawing } from './toolCatalog';
 import { getBrushShapeTool } from './brushShapeToolCatalog';
 import { getChartPatternTool } from './chartPatternToolCatalog';
 import { getForecastingMeasurementTool } from './forecastingMeasurementToolCatalog';
+import { isPictographStamp } from './pictographCatalog';
 
 /** Anchor tools must retain mouse presses even when movement cancels a chart click. */
 export const usesDirectDrawingPointerInput = (drawing: Pick<Drawing, 'type' | 'subtype'> | null | undefined): boolean =>
@@ -13,6 +14,7 @@ export const usesDirectDrawingPointerInput = (drawing: Pick<Drawing, 'type' | 's
     || drawing.type === 'freehand'
     || drawing.type === 'fibonacci'
     || drawing.type === 'fib_extension'
+    || (drawing.type === 'stamp' && isPictographStamp(drawing.subtype))
     || (drawing.type === 'measure'
       && getForecastingMeasurementTool(drawing.subtype))
   ));

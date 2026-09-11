@@ -12,6 +12,19 @@ export interface AdvancedViewRootOptions {
 }
 
 export const RTX_ADVANCED_VIEW_CHANGE_EVENT = 'rtx:advanced-view-change';
+export const RTX_EXIT_CHART_FOCUS_EVENT = 'rtx:exit-chart-focus';
+
+/** Explicit window arrangements take precedence over the single-chart view. */
+export const runOutsideChartFocus = (action: () => void): void => {
+  if (typeof document === 'undefined' || typeof window === 'undefined') { action(); return; }
+  const wasFocused = document.documentElement.classList.contains('rtx-advanced-focus-chart');
+  document.documentElement.classList.remove('rtx-advanced-focus-chart');
+  window.dispatchEvent(new Event(RTX_EXIT_CHART_FOCUS_EVENT));
+  // DockContainer observes this class to reveal hidden tabs/panels. Let that
+  // render finish before cascade reads the available chart workspace bounds.
+  if (wasFocused) window.requestAnimationFrame(() => action());
+  else action();
+};
 
 const ADVANCED_VIEW_FONT_CLASSES = [
   'rtx-advanced-font-small',

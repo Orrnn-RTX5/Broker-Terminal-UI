@@ -1,4 +1,6 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { getChartPatternTool } from '../../drawing-tools/chartPatternToolCatalog';
+import { getPictographStamp } from '../../drawing-tools/pictographCatalog';
 import React, {
   useCallback,
   useEffect,
@@ -73,16 +75,25 @@ const humanizeSubtype = (value: string): string => value
   .replace(/([a-z])([A-Z])/g, '$1 $2')
   .replace(/^./, character => character.toUpperCase());
 
-export const getChartObjectDisplayName = (drawing: Pick<Drawing, 'type' | 'subtype'>): string => {
+export const getChartObjectDisplayName = (
+  drawing: Pick<Drawing, 'type' | 'subtype'>,
+  translate: (label: string) => string = label => label,
+): string => {
   const pattern = getChartPatternTool(drawing);
-  if (pattern) return pattern.label;
+  if (pattern) return translate(pattern.label);
   const trendTool = getTrendLineToolFromDrawing(drawing.type, drawing.subtype);
-  if (trendTool) return trendTool.label;
+  if (trendTool) return translate(trendTool.label);
   if (drawing.type === 'stamp' && drawing.subtype) {
-    return STAMP_LABELS[drawing.subtype] ?? humanizeSubtype(drawing.subtype);
+    const pictograph = getPictographStamp(drawing.subtype);
+    if (pictograph) {
+      const kind = pictograph.id.startsWith('emoji:') ? 'Emoji'
+        : pictograph.id.startsWith('sticker:') ? 'Sticker' : 'Icon';
+      return `${translate(kind)} ${pictograph.glyph}`;
+    }
+    return translate(STAMP_LABELS[drawing.subtype] ?? humanizeSubtype(drawing.subtype));
   }
-  if (drawing.subtype) return humanizeSubtype(drawing.subtype);
-  return TYPE_LABELS[drawing.type];
+  if (drawing.subtype) return translate(humanizeSubtype(drawing.subtype));
+  return translate(TYPE_LABELS[drawing.type]);
 };
 
 const cloneDrawingForView = (drawing: Drawing): Drawing => ({
@@ -118,6 +129,7 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
   onClose,
   drawingService = drawingManager,
 }) => {
+    const tr = useUiTranslation();
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -156,6 +168,7 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (shouldIgnoreShortcutEvent(event) || !isShortcutOwnedBy(event, dialogRef.current)) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -253,17 +266,16 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
             </div>
             <div className="min-w-0">
               <h2 id={titleId} className="truncate text-[16px] font-semibold">
-                Objects on {chartLabel || 'active chart'}
+                {tr("Objects on ")}{chartLabel || tr('active chart')}
               </h2>
               <p id={descriptionId} className="mt-0.5 text-[12px] text-[var(--text-secondary)]">
-                Select or remove drawings only from this chart.
-              </p>
+                {tr("Select or remove drawings only from this chart.")}</p>
             </div>
           </div>
           <button
             ref={closeButtonRef}
             type="button"
-            aria-label="Close chart objects"
+            aria-label={tr("Close chart objects")}
             onClick={onClose}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
@@ -273,8 +285,7 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)] px-5 py-3">
           <p className="text-[12px] text-[var(--text-secondary)]" aria-live="polite">
-            {drawings.length} {drawings.length === 1 ? 'object' : 'objects'} · {selectedCount} selected
-          </p>
+            {drawings.length} {drawings.length === 1 ? tr("object") : tr("objects")} · {selectedCount} {tr(" selected")}</p>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -283,24 +294,21 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
               className="flex h-8 items-center gap-1.5 rounded border border-[var(--border-secondary)] bg-[var(--bg-quaternary)] px-3 text-[11px] font-medium text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Icon name="refresh" size="xs" />
-              Refresh
-            </button>
+              {tr("Refresh")}</button>
             <button
               type="button"
               onClick={selectAll}
               disabled={!targetContextId || drawings.length === 0 || selectedCount === drawings.length}
               className="h-8 rounded border border-[var(--border-secondary)] bg-[var(--bg-quaternary)] px-3 text-[11px] font-medium text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:cursor-not-allowed disabled:opacity-45"
             >
-              Select all
-            </button>
+              {tr("Select all")}</button>
             <button
               type="button"
               onClick={unselectAll}
               disabled={!targetContextId || selectedCount === 0}
               className="h-8 rounded border border-[var(--border-secondary)] bg-[var(--bg-quaternary)] px-3 text-[11px] font-medium text-[var(--text-primary)] hover:border-[var(--color-info)] disabled:cursor-not-allowed disabled:opacity-45"
             >
-              Unselect all
-            </button>
+              {tr("Unselect all")}</button>
           </div>
         </div>
 
@@ -308,29 +316,30 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
           {!targetContextId ? (
             <div className="flex min-h-[260px] flex-col items-center justify-center gap-2 px-6 text-center text-[12px] text-[var(--text-secondary)]">
               <Icon name="chart-list" size="md" />
-              <p>No active chart context is available.</p>
+              <p>{tr("No active chart context is available.")}</p>
             </div>
           ) : drawings.length === 0 ? (
             <div className="flex min-h-[260px] flex-col items-center justify-center gap-2 px-6 text-center text-[12px] text-[var(--text-secondary)]">
               <Icon name="chart-list" size="md" />
-              <p>No drawing objects are attached to {chartLabel || 'this chart'}.</p>
+              <p>{tr("No drawing objects are attached to ")}{chartLabel || tr('this chart')}.</p>
             </div>
           ) : (
-            <table className="w-full border-collapse text-left text-[12px]" aria-label={`Drawing objects on ${chartLabel}`}>
+            <table className="w-full border-collapse text-left text-[12px]" aria-label={tr("Drawing objects on {{value0}}", { value0: chartLabel })}>
               <thead className="sticky top-0 z-[1] bg-[var(--bg-tertiary)] text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">
                 <tr>
                   <th scope="col" className="w-12 border-b border-[var(--border-primary)] px-4 py-2.5">
-                    <span className="sr-only">Selected</span>
+                    <span className="sr-only">{tr("Selected")}</span>
                   </th>
-                  <th scope="col" className="border-b border-[var(--border-primary)] px-3 py-2.5">Object</th>
-                  <th scope="col" className="border-b border-[var(--border-primary)] px-3 py-2.5">ID</th>
-                  <th scope="col" className="border-b border-[var(--border-primary)] px-3 py-2.5">Style</th>
-                  <th scope="col" className="w-20 border-b border-[var(--border-primary)] px-4 py-2.5 text-right">Action</th>
+                  <th scope="col" className="border-b border-[var(--border-primary)] px-3 py-2.5">{tr("Object")}</th>
+                  <th scope="col" className="border-b border-[var(--border-primary)] px-3 py-2.5">{tr("ID")}</th>
+                  <th scope="col" className="border-b border-[var(--border-primary)] px-3 py-2.5">{tr("Style")}</th>
+                  <th scope="col" className="w-20 border-b border-[var(--border-primary)] px-4 py-2.5 text-right">{tr("Action")}</th>
                 </tr>
               </thead>
               <tbody>
                 {drawings.map(drawing => {
-                  const displayName = getChartObjectDisplayName(drawing);
+                  const displayName = getChartObjectDisplayName(drawing, tr);
+                  const pictograph = drawing.type === 'stamp' ? getPictographStamp(drawing.subtype) : undefined;
                   return (
                     <tr
                       key={drawing.id}
@@ -341,7 +350,7 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
                         <input
                           type="checkbox"
                           checked={drawing.selected === true}
-                          aria-label={`Select ${displayName} ${shortDrawingId(drawing.id)}`}
+                          aria-label={tr("Select {{value0}} {{value1}}", { value0: displayName, value1: shortDrawingId(drawing.id) })}
                           onChange={event => selectDrawing(drawing, event.currentTarget.checked)}
                           className="h-3.5 w-3.5 accent-[var(--color-info)]"
                         />
@@ -349,27 +358,26 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
                       <th scope="row" className="px-3 py-3 font-medium text-[var(--text-primary)]">
                         <div>{displayName}</div>
                         <div className="mt-0.5 text-[10px] font-normal text-[var(--text-secondary)]">
-                          {drawing.points.length} {drawing.points.length === 1 ? 'anchor' : 'anchors'}
-                          {drawing.locked ? ' · Locked' : ''}
+                          {drawing.points.length} {drawing.points.length === 1 ? tr("anchor") : tr("anchors")}
+                          {drawing.locked ? tr(" · Locked") : ''}
                         </div>
                       </th>
                       <td className="px-3 py-3 font-mono text-[10px] text-[var(--text-secondary)]">
                         {shortDrawingId(drawing.id)}
                       </td>
                       <td className="px-3 py-3 text-[11px] text-[var(--text-secondary)]">
-                        <span className="inline-flex items-center gap-2">
+                        {pictograph ? <span>{pictograph.size}{tr("px")}</span> : <span className="inline-flex items-center gap-2">
                           <span
                             aria-hidden="true"
                             className="h-3 w-3 rounded-full border border-white/20"
                             style={{ backgroundColor: drawing.color || '#2196F3' }}
                           />
-                          {drawing.lineStyle ?? 'solid'} · {drawing.lineWidth ?? 2}px
-                        </span>
+                          {tr(drawing.lineStyle ?? 'solid')} · {drawing.lineWidth ?? 2}{tr("px")}</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
-                          aria-label={`Delete ${displayName} ${shortDrawingId(drawing.id)}`}
+                          aria-label={tr("Delete {{value0}} {{value1}}", { value0: displayName, value1: shortDrawingId(drawing.id) })}
                           onClick={() => deleteDrawing(drawing)}
                           className="inline-flex h-7 w-7 items-center justify-center rounded text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 focus:outline-none focus:ring-1 focus:ring-rose-400"
                         >
@@ -392,15 +400,14 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
             className="flex h-8 items-center gap-1.5 rounded border border-rose-500/40 bg-rose-500/10 px-3 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-45"
           >
             <Icon name="trash" size="xs" />
-            Delete selected ({selectedCount})
+            {tr("Delete selected (")}{selectedCount})
           </button>
           <button
             type="button"
             onClick={onClose}
             className="h-8 rounded border border-[var(--border-secondary)] bg-[var(--bg-quaternary)] px-4 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--color-info)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
-            Close
-          </button>
+            {tr("Close")}</button>
         </footer>
       </div>
     </div>,
@@ -409,3 +416,4 @@ export const ChartObjectsDialog: React.FC<ChartObjectsDialogProps> = ({
 };
 
 export default ChartObjectsDialog;
+import { isShortcutOwnedBy, shouldIgnoreShortcutEvent } from '../../services/keyboardShortcutManager';

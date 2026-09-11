@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import i18n, { i18nReady } from '../i18n';
 
 import {
   CHART_POSITION_ACTION_EVENT,
@@ -14,6 +15,7 @@ import {
   formatPipsLabel,
   formatVolumeLots,
   getPipSize,
+  refreshChartUiTranslations,
   THOUSANDS_SEPARATOR,
 } from './chartTradeControls';
 
@@ -162,6 +164,33 @@ describe('createEntryTradeControlBar', () => {
     onAction: onAction as never,
   });
 
+  it('changes language in place while preserving metric values and trading action IDs', async () => {
+    await i18nReady;
+    await i18n.changeLanguage('en');
+    const onAction = vi.fn();
+    const { root, setLiveMetrics } = buildBar(onAction);
+    document.body.appendChild(root);
+    setLiveMetrics(101.5, 1008);
+    const reverse = root.querySelector<HTMLButtonElement>('.rtx-trade-control-btn--reverse')!;
+    const moneyValue = root.querySelector('.rtx-trade-chip--money .rtx-trade-chip-value');
+    const originalMoney = moneyValue?.textContent;
+    try {
+      await i18n.changeLanguage('ko');
+      refreshChartUiTranslations(document.body);
+      expect(root.querySelector('.rtx-trade-chip--volume')?.textContent).toContain('1랏');
+      expect(reverse.title).toContain('새 주문');
+      expect(root.querySelector('.rtx-trade-control-btn--reverse')).toBe(reverse);
+      expect(root.querySelector('.rtx-trade-chip--money .rtx-trade-chip-value')).toBe(moneyValue);
+      expect(moneyValue?.textContent).toBe(originalMoney);
+      expect(root.dataset.tradeKey).toBe('trade:987');
+      expect(root.dataset.role).toBe('ENTRY');
+      reverse.click();
+      expect(onAction).toHaveBeenCalledWith('reverse');
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
   it('keeps the drag-badge contract classes and datasets on the bar root', () => {
     const { root } = buildBar();
     expect(root.classList.contains('rtx-trade-level-badge')).toBe(true);
@@ -173,14 +202,14 @@ describe('createEntryTradeControlBar', () => {
 
   it('renders volume, pips and money chips plus the three action buttons', () => {
     const { root, setLiveMetrics } = buildBar();
-    expect(root.querySelector('.rtx-trade-chip--volume')?.textContent).toContain('1 Lots');
+    expect(root.querySelector('.rtx-trade-chip--volume')?.textContent).toContain('1 lots');
     expect(root.querySelectorAll('.rtx-trade-control-btn')).toHaveLength(3);
     expect(root.querySelector('.rtx-trade-control-btn--reverse')).toBeTruthy();
     expect(root.querySelector('.rtx-trade-control-btn--double')).toBeTruthy();
     expect(root.querySelector('.rtx-trade-control-btn--close')).toBeTruthy();
 
     setLiveMetrics(101.5, 1008);
-    expect(root.querySelector('.rtx-trade-chip--pips')?.textContent).toBe('Pips:101.5');
+    expect(root.querySelector('.rtx-trade-chip--pips')?.textContent).toBe('pips:101.5');
     expect(root.querySelector('.rtx-trade-chip--money')?.textContent).toBe(grouped('USD:1 008.00'));
   });
 
@@ -292,7 +321,7 @@ describe('createTradeLevelControlBar', () => {
     expect(bar.dataset.role).toBe('SL');
     expect(bar.dataset.tradeKey).toBe('trade:987');
     expect(bar.classList.contains('rtx-trade-level-badge')).toBe(true);
-    expect(bar.querySelector('.rtx-trade-chip--pips')?.textContent).toBe('Pips:-723.5');
+    expect(bar.querySelector('.rtx-trade-chip--pips')?.textContent).toBe('pips:-723.5');
     expect(bar.querySelector('.rtx-trade-chip--money')?.textContent).toBe(grouped('USD:-7 242.00'));
     expect(bar.querySelector('.rtx-trade-chip--pips')).toHaveStyle({ backgroundColor: '#10151c', color: '#e6ecf5' });
     expect(bar.querySelector('.rtx-trade-chip--money')).toHaveStyle({ backgroundColor: '#10151c', color: '#e6ecf5' });
@@ -316,6 +345,6 @@ describe('createDockedLevelChip', () => {
     expect(chip.dataset.role).toBe('TP');
     expect(chip.dataset.tradeKey).toBe('trade:987');
     expect(chip.textContent).toContain('TP 2');
-    expect(chip.title).toContain('Take Profit');
+    expect(chip.title).toMatch(/take profit/i);
   });
 });

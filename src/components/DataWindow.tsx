@@ -1,25 +1,17 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * DataWindow — MT5-style floating Data Window panel
  * Shows OHLCV + Spread data for the candle under the crosshair.
- * Listens to 'chart:crosshair' CustomEvent dispatched by TradingChart.
+ * Reads the active chart's current or hovered candle through its registered source.
  * Toggled via Ctrl+D, View menu, or Charts menu.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 
-export interface CrosshairData {
-  symbol: string;
-  timeframe: string;
-  date: string;
-  time: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  tickVolume: number;
-  spread: number;
-}
+import { getActiveChartSource, subscribeActiveChartSource } from '../services/activeChartSource';
+import type { ChartDataSnapshot } from '../services/chartDataSnapshot';
+
+export type CrosshairData = ChartDataSnapshot;
 
 interface DataWindowProps {
   onClose: () => void;
@@ -32,7 +24,7 @@ const fmt = (n: number, digits = 5): string => {
   return n.toFixed(digits);
 };
 
-const DataRow = ({ label, value }: { label: string; value: string }) => (
+const DataRow = ({ label, value }: { label: string; value: string }) => { const tr = useUiTranslation(); return ((
   <div
     className="rtx-data-window__row"
     style={{
@@ -45,7 +37,7 @@ const DataRow = ({ label, value }: { label: string; value: string }) => (
     }}
   >
     <span className="rtx-data-window__label" style={{ color: '#999', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
-      {label}
+      {tr(label)}
     </span>
     <span
       className="rtx-data-window__value"
@@ -62,32 +54,27 @@ const DataRow = ({ label, value }: { label: string; value: string }) => (
       {value}
     </span>
   </div>
-);
+)); };
 
 export const DataWindow: React.FC<DataWindowProps> = ({
   onClose,
   initialPos = { x: 0, y: 0 },
   onDragHandleMouseDown,
 }) => {
+    const tr = useUiTranslation();
   const [data, setData] = useState<CrosshairData | null>(null);
 
-  // Listen to crosshair data from any TradingChart
+  // Pull only while the panel is open. The registered reader uses current candle
+  // refs, so opening after history loads does not depend on a missed event.
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<CrosshairData>).detail;
-      if (detail) setData(detail);
-    };
-    window.addEventListener('chart:crosshair', handler);
-    return () => window.removeEventListener('chart:crosshair', handler);
+    const refresh = () => setData(getActiveChartSource()?.getDataWindowData?.() ?? null);
+    refresh();
+    const unsubscribe = subscribeActiveChartSource(refresh);
+    const timer = window.setInterval(refresh, 200);
+    return () => { unsubscribe(); window.clearInterval(timer); };
   }, []);
 
-  const digits = data
-    ? data.symbol.includes('JPY') || data.symbol.includes('XAU')
-      ? 2
-      : data.symbol.includes('BTC') || data.symbol.includes('ETH')
-      ? 2
-      : 5
-    : 5;
+  const digits = data?.digits ?? 5;
 
   const header = data ? `${data.symbol},${data.timeframe}` : '—';
 
@@ -124,8 +111,7 @@ export const DataWindow: React.FC<DataWindowProps> = ({
         }}
       >
         <span className="rtx-data-window__title" style={{ color: '#c0c0c0', fontSize: 14, fontWeight: 400, lineHeight: '21px', fontFamily: 'var(--font-sans)' }}>
-          Data Window
-        </span>
+          {tr("Data Window")}</span>
         <button
           className="rtx-data-window__close"
           onClick={onClose}
@@ -140,7 +126,7 @@ export const DataWindow: React.FC<DataWindowProps> = ({
             display: 'flex',
             alignItems: 'center',
           }}
-          title="Close"
+          title={tr("Close")}
         >
           ✕
         </button>
@@ -164,21 +150,21 @@ export const DataWindow: React.FC<DataWindowProps> = ({
           <polyline points="1,9 4,5 7,7 11,1" />
         </svg>
         <span className="rtx-data-window__symbol-label" style={{ color: '#c8c8c8', fontSize: 14, lineHeight: '21px', fontFamily: 'var(--font-mono)', fontWeight: 400 }}>
-          {header}
+          {tr(header)}
         </span>
       </div>
 
       {/* Data Rows */}
       <div className="rtx-data-window__body" style={{ background: '#131316', paddingBottom: 2, overflowY: 'auto', flex: 1 }}>
-        <DataRow label="Date" value={data?.date ?? '—'} />
-        <DataRow label="Time" value={data?.time ?? '—'} />
-        <DataRow label="Open"  value={data ? fmt(data.open, digits)  : '—'} />
-        <DataRow label="High"  value={data ? fmt(data.high, digits)  : '—'} />
-        <DataRow label="Low"   value={data ? fmt(data.low, digits)   : '—'} />
-        <DataRow label="Close" value={data ? fmt(data.close, digits) : '—'} />
-        <DataRow label="Volume"      value={data ? String(data.volume ?? 0)      : '—'} />
-        <DataRow label="Tick Volume" value={data ? String(data.tickVolume ?? 0)  : '—'} />
-        <DataRow label="Spread"      value={data ? String(data.spread ?? 0)      : '—'} />
+        <DataRow label={tr("Date")} value={data?.date ?? '—'} />
+        <DataRow label={tr("Time")} value={data?.time ?? '—'} />
+        <DataRow label={tr("Open")}  value={data ? fmt(data.open, digits)  : '—'} />
+        <DataRow label={tr("High")}  value={data ? fmt(data.high, digits)  : '—'} />
+        <DataRow label={tr("Low")}   value={data ? fmt(data.low, digits)   : '—'} />
+        <DataRow label={tr("Close")} value={data ? fmt(data.close, digits) : '—'} />
+        <DataRow label={tr("Volume")}      value={data ? String(data.volume ?? 0)      : '—'} />
+        <DataRow label={tr("Tick Volume")} value={data ? (data.tickVolume == null ? '\u2014' : String(data.tickVolume))  : '—'} />
+        <DataRow label={tr("Spread")}      value={data ? (data.spread == null ? '\u2014' : String(data.spread))      : '—'} />
       </div>
     </div>
   );

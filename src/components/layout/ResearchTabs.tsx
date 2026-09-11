@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useState } from 'react';
 // --- TYPES ---
 
@@ -57,8 +58,9 @@ const EXPERTS_DATA: ExpertItem[] = [
 // --- COMPONENTS ---
 
 function ResearchRating({ value }: { value: number }) {
+    const tr = useUiTranslation();
     return (
-        <span className="rtx-research-rating rtx-articles-rating" data-rating={value} aria-label={`${value} of 5`}>
+        <span className="rtx-research-rating rtx-articles-rating" data-rating={value} aria-label={tr("{{value0}} of 5", { value0: value })}>
             {[1, 2, 3, 4, 5].map((star) => (
                 <span key={star} data-on={star <= value || undefined} />
             ))}
@@ -67,6 +69,7 @@ function ResearchRating({ value }: { value: number }) {
 }
 
 export function CodeBaseTab() {
+    const tr = useUiTranslation();
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
     return (
@@ -75,11 +78,11 @@ export function CodeBaseTab() {
                 <table className="rtx-codebase-tab__table">
                     <thead className="rtx-codebase-tab__head font-normal text-[12px] leading-[18px]">
                         <tr>
-                            <th className="rtx-codebase-tab__col--name">Name</th>
-                            <th className="rtx-codebase-tab__col--description">Description</th>
-                            <th className="rtx-codebase-tab__col--category">Category</th>
-                            <th className="rtx-codebase-tab__col--author">Author</th>
-                            <th className="rtx-codebase-tab__col--date">Date</th>
+                            <th className="rtx-codebase-tab__col--name">{tr("Name")}</th>
+                            <th className="rtx-codebase-tab__col--description">{tr("Description")}</th>
+                            <th className="rtx-codebase-tab__col--category">{tr("Category")}</th>
+                            <th className="rtx-codebase-tab__col--author">{tr("Author")}</th>
+                            <th className="rtx-codebase-tab__col--date">{tr("Date")}</th>
                         </tr>
                     </thead>
                     <tbody className="rtx-codebase-tab__body text-[13px] font-normal leading-[19.5px]">
@@ -90,9 +93,9 @@ export function CodeBaseTab() {
                                 data-selected={selectedId === item.id || undefined}
                                 onClick={() => setSelectedId(item.id)}
                             >
-                                <td className="rtx-codebase-tab__col--name">{item.name}</td>
-                                <td className="rtx-codebase-tab__col--description">{item.description}</td>
-                                <td className="rtx-codebase-tab__col--category">{item.category}</td>
+                                <td className="rtx-codebase-tab__col--name">{tr(item.name)}</td>
+                                <td className="rtx-codebase-tab__col--description">{tr(item.description)}</td>
+                                <td className="rtx-codebase-tab__col--category">{tr(item.category)}</td>
                                 <td className="rtx-codebase-tab__col--author">{item.author}</td>
                                 <td className="rtx-codebase-tab__col--date">{item.date}</td>
                             </tr>
@@ -105,6 +108,7 @@ export function CodeBaseTab() {
 }
 
 export function ArticlesTab() {
+    const tr = useUiTranslation();
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
     return (
@@ -113,11 +117,11 @@ export function ArticlesTab() {
                 <table className="rtx-articles-tab__table">
                     <thead className="rtx-articles-tab__head font-normal text-[12px] leading-[18px]">
                         <tr>
-                            <th className="rtx-articles-tab__col--name">Name</th>
-                            <th className="rtx-articles-tab__col--description">Description</th>
-                            <th className="rtx-articles-tab__col--author">Author</th>
-                            <th className="rtx-articles-tab__col--rating">Rating</th>
-                            <th className="rtx-articles-tab__col--date">Date</th>
+                            <th className="rtx-articles-tab__col--name">{tr("Name")}</th>
+                            <th className="rtx-articles-tab__col--description">{tr("Description")}</th>
+                            <th className="rtx-articles-tab__col--author">{tr("Author")}</th>
+                            <th className="rtx-articles-tab__col--rating">{tr("Rating")}</th>
+                            <th className="rtx-articles-tab__col--date">{tr("Date")}</th>
                         </tr>
                     </thead>
                     <tbody className="rtx-articles-tab__body text-[13px] font-normal leading-[19.5px]">
@@ -128,8 +132,8 @@ export function ArticlesTab() {
                                 data-selected={selectedId === item.id || undefined}
                                 onClick={() => setSelectedId(item.id)}
                             >
-                                <td className="rtx-articles-tab__col--name">{item.name}</td>
-                                <td className="rtx-articles-tab__col--description">{item.description}</td>
+                                <td className="rtx-articles-tab__col--name">{tr(item.name)}</td>
+                                <td className="rtx-articles-tab__col--description">{tr(item.description)}</td>
                                 <td className="rtx-articles-tab__col--author">{item.author}</td>
                                 <td className="rtx-articles-tab__col--rating">
                                     <ResearchRating value={item.rating} />
@@ -145,6 +149,7 @@ export function ArticlesTab() {
 }
 
 export function ExpertsTab() {
+    const tr = useUiTranslation();
     const [selectedId, setSelectedId] = useState<string | null>(null);
 
     return (
@@ -153,12 +158,12 @@ export function ExpertsTab() {
                 <table className="rtx-experts-tab__table">
                     <thead className="rtx-experts-tab__head font-normal text-[12px] leading-[18px]">
                         <tr>
-                            <th className="rtx-experts-tab__col--name">Name</th>
-                            <th className="rtx-experts-tab__col--description">Description</th>
-                            <th className="rtx-experts-tab__col--type">Type</th>
-                            <th className="rtx-experts-tab__col--rating">Rating</th>
-                            <th className="rtx-experts-tab__col--date">Date</th>
-                            <th className="rtx-experts-tab__col--price">Price</th>
+                            <th className="rtx-experts-tab__col--name">{tr("Name")}</th>
+                            <th className="rtx-experts-tab__col--description">{tr("Description")}</th>
+                            <th className="rtx-experts-tab__col--type">{tr("Type")}</th>
+                            <th className="rtx-experts-tab__col--rating">{tr("Rating")}</th>
+                            <th className="rtx-experts-tab__col--date">{tr("Date")}</th>
+                            <th className="rtx-experts-tab__col--price">{tr("Price")}</th>
                         </tr>
                     </thead>
                     <tbody className="rtx-experts-tab__body text-[13px] font-normal leading-[19.5px]">
@@ -169,15 +174,15 @@ export function ExpertsTab() {
                                 data-selected={selectedId === item.id || undefined}
                                 onClick={() => setSelectedId(item.id)}
                             >
-                                <td className="rtx-experts-tab__col--name">{item.name}</td>
-                                <td className="rtx-experts-tab__col--description">{item.description}</td>
-                                <td className="rtx-experts-tab__col--type">{item.type}</td>
+                                <td className="rtx-experts-tab__col--name">{tr(item.name)}</td>
+                                <td className="rtx-experts-tab__col--description">{tr(item.description)}</td>
+                                <td className="rtx-experts-tab__col--type">{tr(item.type)}</td>
                                 <td className="rtx-experts-tab__col--rating">
                                     <ResearchRating value={item.rating} />
                                 </td>
                                 <td className="rtx-experts-tab__col--date">{item.date}</td>
                                 <td className={`rtx-experts-tab__col--price ${item.price === 'Free' ? 'rtx-experts-price--free' : 'rtx-experts-price--paid'}`}>
-                                    {item.price}
+                                    {item.price === 'Free' ? tr('Free') : item.price}
                                 </td>
                             </tr>
                         ))}

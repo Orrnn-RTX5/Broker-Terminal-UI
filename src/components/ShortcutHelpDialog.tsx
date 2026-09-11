@@ -1,171 +1,180 @@
-/**
- * Keyboard Shortcut Help Dialog
- * Displays all available keyboard shortcuts organized by category
- */
-
-import { Icon } from './ui/Icon';
-import React from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { Keyboard, Search, X } from 'lucide-react';
 import { useKeyboardShortcutContext } from '../contexts/KeyboardShortcutContext';
-import { ShortcutBadge, parseShortcut } from './ShortcutHint';
-import { SHORTCUT_CATEGORIES } from '../services/keyboardShortcutManager';
-import { Keyboard } from 'lucide-react';
+import { useUiTranslation } from '../hooks/useUiTranslation';
+import { keyboardShortcutManager, SHORTCUT_CATEGORIES } from '../services/keyboardShortcutManager';
+import { getShortcutHelpEntries, type ShortcutHelpEntry } from '../services/shortcutCatalog';
+import './ShortcutHelpDialog.css';
 
 interface ShortcutHelpDialogProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+const normalizeSearch = (value: string) => value.toLocaleLowerCase().trim().replace(/\s*\+\s*/g, '+').replace(/\s+/g, ' ');
+const noAction = () => undefined;
+
+function shortcutKeys(entry: ShortcutHelpEntry): string[] {
+  if (Array.isArray(entry.displayKeys) && entry.displayKeys.length > 0
+    && entry.displayKeys.every(key => typeof key === 'string' && key.trim().length > 0)) {
+    return entry.displayKeys;
+  }
+  // The final '+' can itself be a key; splitting every plus loses Zoom In.
+  return keyboardShortcutManager.formatShortcut({ ...entry, handler: noAction }).split(/\+(?!$)/);
+}
+
 export function ShortcutHelpDialog({ isOpen, onClose }: ShortcutHelpDialogProps) {
-  const { getShortcutsByCategory, hasConflicts, getConflicts } = useKeyboardShortcutContext();
-  const [searchQuery, setSearchQuery] = React.useState('');
-  const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
+  const tr = useUiTranslation();
+  const { shortcuts } = useKeyboardShortcutContext();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const categoryRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const entries = useMemo(() => getShortcutHelpEntries(shortcuts), [shortcuts]);
+  const categories = useMemo(() => {
+    const present = new Set(entries.map(entry => entry.category || 'Tools'));
+    return [...Object.values(SHORTCUT_CATEGORIES), ...present].filter((category, index, all) =>
+      present.has(category) && all.indexOf(category) === index);
+  }, [entries]);
+  const currentCategory = selectedCategory && categories.includes(selectedCategory) ? selectedCategory : null;
+  const query = normalizeSearch(searchQuery);
+  const groups = useMemo(() => categories.flatMap(category => {
+    if (currentCategory && category !== currentCategory) return [];
+    const matches = entries.filter(entry => {
+      if ((entry.category || 'Tools') !== category) return false;
+      if (!query) return true;
+      const keys = shortcutKeys(entry);
+      const translatedKeys = keys.map(key => tr(key));
+      const namedKeys = [entry.ctrl && 'Ctrl', entry.shift && 'Shift', entry.alt && 'Alt', entry.meta && 'Cmd', entry.key].filter(Boolean);
+      const searchable = [entry.description, tr(entry.description), category, tr(category),
+        entry.scope || '', tr(entry.scope || ''), entry.key,
+        keys.join('+'), keys.join(' '), translatedKeys.join('+'), translatedKeys.join(' '), namedKeys.join('+'), namedKeys.join(' ')];
+      return searchable.some(value => normalizeSearch(value).includes(query));
+    });
+    return matches.length ? [{ category, entries: matches }] : [];
+  }), [categories, currentCategory, entries, query, tr]);
+  const resultCount = groups.reduce((count, group) => count + group.entries.length, 0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSearchQuery('');
+    setSelectedCategory(null);
+    searchRef.current?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, [isOpen]);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // This modal owns its input. F-keys and trading combinations must not
+    // reach the chart while someone is browsing the help list.
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('*') ?? [])
+      .filter(element => element.tabIndex >= 0 && !element.matches(':disabled'));
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current)) {
+      event.preventDefault();
+      first?.focus();
+    }
+  };
+
+  const navigateCategories = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const buttons = Array.from(categoryRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? []);
+    const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (currentIndex < 0) return;
+    event.preventDefault();
+    const step = (event.key === 'ArrowRight' ? 1 : -1) * (document.documentElement.dir === 'rtl' ? -1 : 1);
+    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+      : (currentIndex + step + buttons.length) % buttons.length;
+    setSelectedCategory(nextIndex === 0 ? null : categories[nextIndex - 1]);
+    buttons[nextIndex]?.focus();
+  };
 
   if (!isOpen) return null;
 
-  const categories = Object.values(SHORTCUT_CATEGORIES);
-  const conflicts = getConflicts();
-
-  // Filter shortcuts by search query
-  const filterShortcuts = (shortcuts: any[]) => {
-    if (!searchQuery) return shortcuts;
-    const query = searchQuery.toLowerCase();
-    return shortcuts.filter(s =>
-      s.description.toLowerCase().includes(query) ||
-      s.key.toLowerCase().includes(query)
-    );
-  };
-
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="rtx-shortcut-dialog bg-[#131316]/90 backdrop-blur-xl rounded-lg shadow-2xl border border-zinc-700 w-full max-w-4xl max-h-[80vh] flex flex-col animate-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700">
-          <div className="flex items-center gap-3">
-            <Keyboard className="text-blue-400" size={24} />
-            <h2 className="text-lg font-semibold text-zinc-100">Keyboard Shortcuts</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 hover:bg-zinc-700 rounded"
-          >
-            <Icon name="x-close" size="lg" />
+  return createPortal(
+    <div className="rtx-shortcut-backdrop" onPointerDown={event => event.stopPropagation()} onClick={event => {
+      event.stopPropagation();
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+        data-shortcut-scope="local" className="rtx-shortcut-dialog" onKeyDown={handleKeyDown}>
+        <header className="rtx-shortcut-dialog__header">
+          <div><Keyboard size={18} aria-hidden="true" /><h2 id={titleId}>{tr('Keyboard Shortcuts')}</h2></div>
+          <button type="button" className="rtx-shortcut-dialog__icon-button" onClick={onClose} aria-label={tr('Close')}>
+            <X size={17} aria-hidden="true" />
           </button>
-        </div>
+        </header>
 
-        {/* Search Bar */}
-        <div className="px-6 py-3 border-b border-zinc-800">
-          <div className="relative">
-            <Icon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-            <input
-              type="text"
-              placeholder="Search shortcuts..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-zinc-800 text-zinc-200 pl-10 pr-4 py-2 rounded-lg border border-zinc-700 focus:border-zinc-600 focus:ring-1 focus:ring-blue-500 outline-none text-sm"
-            />
-          </div>
-        </div>
-
-        {/* Conflict Warning */}
-        {hasConflicts() && (
-          <div className="px-6 py-3 bg-yellow-500/10 border-b border-yellow-500/20">
-            <div className="text-yellow-400 text-sm flex items-center gap-2">
-              <span className="font-semibold">⚠️ Warning:</span>
-              <span>{conflicts.length} shortcut conflict(s) detected</span>
-            </div>
-          </div>
-        )}
-
-        {/* Category Tabs */}
-        <div className="px-6 py-3 border-b border-zinc-800">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setSelectedCategory(null)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${selectedCategory === null
-                ? 'bg-blue-600 text-white'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
-                }`}
-            >
-              All
-            </button>
-            {categories.map((category) => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${selectedCategory === category
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
-                  }`}
-              >
-                {category}
+        <div className="rtx-shortcut-dialog__filters">
+          <label className="rtx-shortcut-dialog__search">
+            <Search size={16} aria-hidden="true" />
+            <input ref={searchRef} type="search" value={searchQuery} aria-label={tr('Search shortcuts...')}
+              placeholder={tr('Search shortcuts...')} onChange={event => setSearchQuery(event.target.value)} />
+          </label>
+          <div ref={categoryRef} role="toolbar" aria-label={tr('Category')}
+            className="rtx-shortcut-dialog__categories" onKeyDown={navigateCategories}>
+            {[null, ...categories].map(category => (
+              <button key={category || 'all-categories'} type="button" aria-pressed={currentCategory === category}
+                tabIndex={currentCategory === category ? 0 : -1} onClick={() => setSelectedCategory(category)}>
+                {tr(category || 'All')}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Shortcuts List */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {selectedCategory === null ? (
-            // Show all categories
-            categories.map((category) => {
-              const shortcuts = filterShortcuts(getShortcutsByCategory(category));
-              if (shortcuts.length === 0) return null;
-
-              return (
-                <div key={category} className="mb-6">
-                  <h3 className="text-sm font-semibold text-zinc-400 mb-3 uppercase tracking-wide">
-                    {category}
-                  </h3>
-                  <div className="space-y-2">
-                    {shortcuts.map((shortcut) => (
-                      <ShortcutRow key={shortcut.id} shortcut={shortcut} />
-                    ))}
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            // Show selected category
-            <div className="space-y-2">
-              {filterShortcuts(getShortcutsByCategory(selectedCategory)).map((shortcut) => (
-                <ShortcutRow key={shortcut.id} shortcut={shortcut} />
-              ))}
-            </div>
-          )}
+        <div className="rtx-shortcut-dialog__results" tabIndex={0} role="region" aria-label={tr('Shortcuts')}>
+          {groups.map(({ category, entries: matches }) => (
+            <section key={category} className="rtx-shortcut-dialog__group" aria-label={tr(category)}>
+              <h3>{tr(category)}</h3>
+              <dl>
+                {matches.map((entry, index) => {
+                  const keys = shortcutKeys(entry);
+                  const rowId = [entry.id, entry.ctrl, entry.shift, entry.alt, entry.meta, entry.key, entry.scope, index].join(':');
+                  return <div key={rowId} className="rtx-shortcut-dialog__row">
+                    <dt>
+                      <span>{tr(entry.description)}</span>
+                      {entry.scope && <small>{tr(entry.scope)}</small>}
+                      {entry.enabled === false && <small>{tr('(Disabled)')}</small>}
+                    </dt>
+                    <dd dir="ltr">{keys.map((key, keyIndex) => (
+                      <span className="rtx-shortcut-dialog__key-part" key={`${keyIndex}:${key}`}>
+                        {keyIndex > 0 && <span className="rtx-shortcut-dialog__key-separator" aria-hidden="true">+</span>}
+                        <kbd>{tr(key)}</kbd>
+                      </span>
+                    ))}</dd>
+                  </div>;
+                })}
+              </dl>
+            </section>
+          ))}
+          {resultCount === 0 && <div className="rtx-shortcut-dialog__empty">
+            <Search size={24} aria-hidden="true" />
+            <p>{tr('No matches found')}</p>
+            {searchQuery && <button type="button" onClick={() => { setSearchQuery(''); searchRef.current?.focus(); }}>
+              {tr('Clear search')}
+            </button>}
+          </div>}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-zinc-700 bg-zinc-900/50">
-          <div className="flex items-center justify-between text-xs text-zinc-500">
-            <span>Press <kbd className="bg-zinc-800 px-2 py-1 rounded border border-zinc-700">Esc</kbd> to close</span>
-            <span>MT5-compatible shortcuts</span>
-          </div>
-        </div>
+        <footer className="rtx-shortcut-dialog__footer">
+          <span role="status" aria-live="polite">{tr('{{value0}} shortcuts', { value0: resultCount })}</span>
+          <button type="button" onClick={onClose}>{tr('Close')}<kbd>Esc</kbd></button>
+        </footer>
       </div>
-    </div>
-  );
-}
-
-function ShortcutRow({ shortcut }: { shortcut: any }) {
-  const keys = React.useMemo(() => {
-    const parts: string[] = [];
-    if (shortcut.ctrl) parts.push('Ctrl');
-    if (shortcut.shift) parts.push('Shift');
-    if (shortcut.alt) parts.push('Alt');
-    if (shortcut.meta) parts.push('Cmd');
-    parts.push(shortcut.key.toUpperCase());
-    return parts;
-  }, [shortcut]);
-
-  return (
-    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-zinc-800/50 transition-colors group">
-      <div className="flex-1">
-        <div className="text-sm text-zinc-200 font-medium">{shortcut.description}</div>
-        {!shortcut.enabled && (
-          <div className="text-xs text-zinc-500 mt-0.5">(Disabled)</div>
-        )}
-      </div>
-      <ShortcutBadge keys={keys} size="md" />
-    </div>
+    </div>, document.body,
   );
 }

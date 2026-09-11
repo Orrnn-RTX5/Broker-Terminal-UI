@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -20,6 +20,33 @@ const unsavedChanges = {
 };
 
 describe('dialog components', () => {
+  it.each(['Close', 'Escape', 'Backdrop', 'OK'])('retains enabled OHLC after %s dismissal and reopening', async (dismissal) => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    useChartSettingsStore.setState({
+      globalProperties: { ...defaultChartProperties },
+      symbolProperties: {},
+    });
+    const props = { isOpen: true, onClose, symbol: 'XAUUSD', timeframe: 'M1' };
+    const { rerender } = render(<ChartPropertiesDialog {...props} />);
+    await user.click(screen.getByText('Show', { exact: true }));
+    await user.click(screen.getByLabelText('Show OHLC'));
+    if (dismissal === 'Close') await user.click(screen.getByLabelText('Close chart properties'));
+    else if (dismissal === 'Escape') await user.keyboard('{Escape}');
+    else if (dismissal === 'Backdrop') await user.click(document.querySelector('.rtx-cp-backdrop')!);
+    else await user.click(screen.getByText('OK', { exact: true }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useChartSettingsStore.getState().symbolProperties.XAUUSD.showOHLC).toBe(true);
+    expect(useChartSettingsStore.getState().globalProperties.showOHLC).toBe(false);
+    rerender(<ChartPropertiesDialog {...props} isOpen={false} />);
+    rerender(<ChartPropertiesDialog {...props} />);
+    expect(screen.getByLabelText('Show OHLC')).toBeChecked();
+    // An explicit Cancel still undoes changes made during this opening.
+    await user.click(screen.getByLabelText('Show OHLC'));
+    await user.click(screen.getByText('Cancel', { exact: true }));
+    expect(useChartSettingsStore.getState().symbolProperties.XAUUSD.showOHLC).toBe(true);
+  });
+
   it('renders SaveWorkspaceDialog and cancels', async () => {
     const user = userEvent.setup();
     const onCancel = vi.fn();
@@ -54,7 +81,10 @@ describe('dialog components', () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     const printSpy = vi.spyOn(chartPrinter, 'printChart').mockResolvedValue();
+    const canvas = document.createElement('canvas');
+    vi.spyOn(canvas, 'toDataURL').mockReturnValue('data:image/png;base64,test');
     const chartData = {
+      chartCanvas: canvas,
       symbol: 'BTCUSD',
       timeframe: '1m',
       dateRange: { from: new Date('2024-01-01'), to: new Date('2024-01-02') },
@@ -74,6 +104,8 @@ describe('dialog components', () => {
     );
 
     expect(await screen.findByText('Print Preview')).toBeInTheDocument();
+    fireEvent.load(screen.getByTitle('Print Preview'));
+    await user.click(screen.getByTitle('Actual size'));
     await user.click(screen.getByTitle('Zoom In'));
     expect(await screen.findByText('125%')).toBeInTheDocument();
 
@@ -82,7 +114,7 @@ describe('dialog components', () => {
     await waitFor(() => {
       expect(printSpy).toHaveBeenCalledTimes(1);
       expect(onPrint).toHaveBeenCalledTimes(1);
-      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onClose).not.toHaveBeenCalled();
     });
   });
 

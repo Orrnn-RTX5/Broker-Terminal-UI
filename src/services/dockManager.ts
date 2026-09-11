@@ -5,6 +5,20 @@
 
 export type DockDirection = 'left' | 'right' | 'top' | 'bottom' | 'center' | 'tab';
 export type DockContainerType = 'root' | 'split' | 'tabs' | 'panel';
+export type ChartArrangement = 'grid' | 'horizontal' | 'vertical' | 'cascade';
+export const MAX_CHART_PANELS = 6;
+
+export interface AddChartPanelOptions {
+  symbol?: string;
+  timeframe?: string;
+  chartType?: 'bar' | 'candlestick' | 'line' | 'area';
+}
+
+export type AddChartPanelResult = {
+  status: 'added'; panelId: string; count: number; limit: typeof MAX_CHART_PANELS;
+} | {
+  status: 'limit-reached'; count: number; limit: typeof MAX_CHART_PANELS;
+};
 
 export interface DropZone {
   id: string;
@@ -27,6 +41,7 @@ export interface DockPanelConfig {
   closable?: boolean;
   floatable?: boolean;
   resizable?: boolean;
+  minimized?: boolean;
   ratio?: number;
 }
 
@@ -40,6 +55,8 @@ export interface DockContainer {
   isFloating?: boolean;
   position?: { x: number; y: number };
   size?: { width: number; height: number };
+  restorePosition?: { x: number; y: number };
+  iconWidth?: number;
 }
 
 export interface DockLayout {
@@ -48,13 +65,81 @@ export interface DockLayout {
   version: string;
 }
 
+export const getChartPanelCount = (layout: DockLayout): number => {
+  const count = (container: DockContainer): number => container.children.reduce((total, child) => (
+    total + ('children' in child ? count(child) : child.component === 'Chart' ? 1 : 0)
+  ), 0);
+  return count(layout.root) + layout.floatingPanels.reduce((total, container) => total + count(container), 0);
+};
+
+/** Keep saved active tabs when reducing older workspaces to the current chart limit. */
+export const enforceChartPanelLimit = (layout: DockLayout): { layout: DockLayout; overflowCharts: DockPanelConfig[] } => {
+  if (getChartPanelCount(layout) <= MAX_CHART_PANELS) return { layout, overflowCharts: [] };
+  const bounded: DockLayout = JSON.parse(JSON.stringify(layout));
+  const charts: DockPanelConfig[] = [];
+  const activeIds = new Set<string>();
+  const collect = (container: DockContainer) => {
+    if (container.type === 'tabs' && container.activeTab) activeIds.add(container.activeTab);
+    container.children.forEach(child => {
+      if ('children' in child) collect(child);
+      else if (child.component === 'Chart') charts.push(child);
+    });
+  };
+  [bounded.root, ...bounded.floatingPanels].forEach(collect);
+  const retainedIds = new Set([
+    ...charts.filter(chart => activeIds.has(chart.id)),
+    ...charts.filter(chart => !activeIds.has(chart.id)),
+  ].slice(0, MAX_CHART_PANELS).map(chart => chart.id));
+  const overflowCharts = charts.filter(chart => !retainedIds.has(chart.id));
+  const prune = (container: DockContainer) => {
+    container.children = container.children.filter(child => {
+      if (!('children' in child)) return child.component !== 'Chart' || retainedIds.has(child.id);
+      const wasEmpty = child.children.length === 0;
+      prune(child);
+      return wasEmpty || child.children.length > 0 || child.id === 'center-main' || child.id === 'left-sidebar';
+    });
+    if (container.type === 'tabs' && !container.children.some(child => child.id === container.activeTab)) {
+      container.activeTab = container.children[0]?.id;
+    }
+  };
+  prune(bounded.root);
+  bounded.floatingPanels = bounded.floatingPanels.filter(container => {
+    const wasEmpty = container.children.length === 0;
+    prune(container);
+    return wasEmpty || container.children.length > 0;
+  });
+  return { layout: bounded, overflowCharts };
+};
+
 const MIN_PANEL_SIZE = 100;
 const DEFAULT_RATIO = 0.5;
 const DEFAULT_CHART_TIMEFRAME = 'M5';
 const DOCK_LAYOUT_M5_MIGRATION_PREFIX = 'dock-layout-m5-timeframe-v1:';
 const DOCK_LAYOUT_PREVIOUS_DESKTOP_DEFAULT_MIGRATION_PREFIX = 'dock-layout-desktop-mt5-v2:';
 const DOCK_LAYOUT_DESKTOP_WEB_PARITY_MIGRATION_PREFIX = 'dock-layout-desktop-web-parity-v3:';
+const DOCK_LAYOUT_SIX_CHART_BACKUP_PREFIX = 'dock-layout-six-chart-backup-v1:';
 const DESKTOP_WEB_PARITY_RATIOS = { sidebar: 0.20, chart: 0.75 } as const;
+
+const getChartWorkspaceBounds = () => {
+  const viewportWidth = typeof window === 'undefined' ? 1200 : window.innerWidth;
+  const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight;
+  const workspace = typeof document === 'undefined' ? null : (
+    document.querySelector('[data-dock-container="center-main"]')
+      || document.querySelector('.rtx-dock-workspace')
+  )?.getBoundingClientRect();
+  const terminal = typeof document === 'undefined' ? null : document.querySelector(
+    '[data-dock-panel-component="terminal" i]:not([data-dock-floating-panel="true"])',
+  )?.getBoundingClientRect();
+  const hasWorkspace = workspace && workspace.width > 0 && workspace.height > 0;
+  const right = Math.max(1, Math.min(viewportWidth - 8, hasWorkspace ? workspace.right - 8 : viewportWidth - 16));
+  const left = Math.max(0, Math.min(right - 1, hasWorkspace ? workspace.left + 8 : 48));
+  const workspaceBottom = hasWorkspace ? workspace.bottom - 8 : viewportHeight - 16;
+  const top = Math.max(0, Math.min(viewportHeight - 2, hasWorkspace ? workspace.top + 8 : 80));
+  const bottom = Math.max(top + 1, Math.min(viewportHeight - 8,
+    terminal && terminal.top > top && terminal.left <= right && terminal.right >= left
+      ? Math.min(workspaceBottom, terminal.top - 8) : workspaceBottom));
+  return { left, top, right, bottom, width: Math.max(1, right - left), height: Math.max(1, bottom - top) };
+};
 const PREVIOUS_DESKTOP_DEFAULT_RATIOS = {
   topMain: 0.657,
   toolbox: 0.343,
@@ -109,9 +194,26 @@ const getPreviousDesktopDefaultParts = (root: any): {
 export class DockManager {
   private layout: DockLayout;
   private listeners: Set<(layout: DockLayout) => void> = new Set();
+  private windowUndoLayouts: DockLayout[] = [];
+  private windowRedoLayouts: DockLayout[] = [];
+  private overflowCharts: DockPanelConfig[] = [];
 
   constructor(initialLayout?: DockLayout) {
-    this.layout = initialLayout || this.createDefaultLayout();
+    this.layout = this.applyChartLimit(initialLayout || this.createDefaultLayout());
+  }
+
+  private applyChartLimit(layout: DockLayout): DockLayout {
+    const bounded = enforceChartPanelLimit(layout);
+    const overflowIds = new Set(bounded.overflowCharts.map(chart => chart.id));
+    this.overflowCharts = [...bounded.overflowCharts, ...this.overflowCharts.filter(chart => !overflowIds.has(chart.id))];
+    return bounded.layout;
+  }
+
+  /** Let the workspace expose migrated chart configurations through Open Deleted. */
+  takeOverflowCharts(): DockPanelConfig[] {
+    const charts = this.overflowCharts;
+    this.overflowCharts = [];
+    return charts;
   }
 
   private createDefaultLayout(): DockLayout {
@@ -195,11 +297,108 @@ export class DockManager {
     return JSON.parse(JSON.stringify(this.layout));
   }
 
-  setLayout(layout: DockLayout, silent = false): void {
-    this.layout = JSON.parse(JSON.stringify(layout));
+  getChartCount(): number {
+    return getChartPanelCount(this.layout);
+  }
+
+  canAddChart(): boolean {
+    return this.getChartCount() < MAX_CHART_PANELS;
+  }
+
+  /** Add one independent chart and divide the workspace without resetting existing charts. */
+  addChartPanel(options: AddChartPanelOptions = {}): AddChartPanelResult {
+    const count = this.getChartCount();
+    if (count >= MAX_CHART_PANELS) return { status: 'limit-reached', count, limit: MAX_CHART_PANELS };
+    const findChart = (container: DockContainer): DockPanelConfig | undefined => {
+      for (const child of container.children) {
+        if ('children' in child) { const chart = findChart(child); if (chart) return chart; }
+        else if (child.component === 'Chart') return child;
+      }
+    };
+    const source = findChart(this.layout.root) || this.layout.floatingPanels.map(findChart).find(Boolean);
+    const symbol = options.symbol?.trim() || String(source?.props?.symbol || '').trim();
+    const timeframe = options.timeframe?.trim() || String(source?.props?.timeframe || DEFAULT_CHART_TIMEFRAME);
+    const chartType = options.chartType || source?.props?.chartType || 'candlestick';
+    const panelId = `chart-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
+    const panel: DockPanelConfig = {
+      id: panelId, title: `${symbol || 'Chart'},${timeframe}`, component: 'Chart',
+      props: { ...(symbol ? { symbol } : {}), timeframe, chartType },
+      ratio: 1, closable: true, floatable: true,
+    };
+    // Stage the new panel off-screen, then commit once. This also handles an
+    // empty/root-only workspace without relying on a particular tab host.
+    const staged = this.getLayout();
+    staged.floatingPanels.push({
+      id: `new-${panelId}`, type: 'panel', ratio: 1, isFloating: true, children: [panel],
+    });
+    const next = new DockManager(staged);
+    next.tileWindows('grid', { restoreMinimized: false });
+    this.setLayout(next.getLayout());
+    return { status: 'added', panelId, count: count + 1, limit: MAX_CHART_PANELS };
+  }
+
+  setLayout(layout: DockLayout, silent = false, preserveWindowHistory = false): void {
+    const bounded = this.applyChartLimit(layout);
+    if (!preserveWindowHistory && this.panelMembership(this.layout) !== this.panelMembership(bounded)) {
+      this.clearWindowHistory();
+    }
+    this.layout = JSON.parse(JSON.stringify(bounded));
     if (!silent) {
       this.notify();
     }
+  }
+
+  private panelMembership(layout: DockLayout): string {
+    const ids: string[] = [];
+    const collect = (container: DockContainer) => container.children.forEach(child => {
+      if ('children' in child) collect(child);
+      else ids.push(`${child.id}:${child.component}`);
+    });
+    collect(layout.root);
+    layout.floatingPanels.forEach(collect);
+    return ids.sort().join('\u0000');
+  }
+
+  private clearWindowHistory(): void {
+    this.windowUndoLayouts = [];
+    this.windowRedoLayouts = [];
+  }
+
+  private commitWindowArrangement(layout: DockLayout): void {
+    const geometry = (node: DockContainer | DockPanelConfig): unknown => 'children' in node ? {
+      type: node.type, direction: node.direction, ratio: node.ratio, activeTab: node.activeTab,
+      position: node.position, size: node.size, restorePosition: node.restorePosition, iconWidth: node.iconWidth,
+      children: node.children.map(geometry),
+    } : { id: node.id, component: node.component, ratio: node.ratio, minimized: node.minimized };
+    const signature = (value: DockLayout) => JSON.stringify([geometry(value.root), value.floatingPanels.map(geometry)]);
+    if (signature(layout) === signature(this.layout)) return;
+    this.windowUndoLayouts.push(this.getLayout());
+    if (this.windowUndoLayouts.length > 30) this.windowUndoLayouts.shift();
+    this.windowRedoLayouts = [];
+    this.setLayout(layout, false, true);
+  }
+
+  private restoreWindowArrangement(snapshot: DockLayout): void {
+    const latestPanels = new Map<string, DockPanelConfig>();
+    const collect = (container: DockContainer) => container.children.forEach(child => {
+      if ('children' in child) collect(child);
+      else latestPanels.set(child.id, child);
+    });
+    collect(this.layout.root);
+    this.layout.floatingPanels.forEach(collect);
+    const restored: DockLayout = JSON.parse(JSON.stringify(snapshot));
+    const preserveChartSettings = (container: DockContainer) => container.children.forEach(child => {
+      if ('children' in child) preserveChartSettings(child);
+      else {
+        const latest = latestPanels.get(child.id);
+        if (latest?.component !== child.component) return;
+        child.title = latest.title;
+        child.props = latest.props ? JSON.parse(JSON.stringify(latest.props)) : undefined;
+      }
+    });
+    preserveChartSettings(restored.root);
+    restored.floatingPanels.forEach(preserveChartSettings);
+    this.setLayout(restored, false, true);
   }
 
   subscribe(listener: (layout: DockLayout) => void): () => void {
@@ -213,8 +412,103 @@ export class DockManager {
   }
 
   resetToDefaultLayout(): void {
+    this.clearWindowHistory();
     this.layout = this.createDefaultLayout();
     this.notify();
+  }
+
+  /** Restore the standard workspace with one chart, keeping the selected chart's state. */
+  resetWindows(preferredChartId?: string): void {
+    const current = this.getLayout();
+    const panels: DockPanelConfig[] = [];
+    const collect = (container: DockContainer) => container.children.forEach(child => {
+      if ('children' in child) collect(child);
+      else if (child.component !== 'EmptyChartArea') {
+        delete child.minimized;
+        panels.push(child);
+      }
+    });
+    collect(current.root);
+    current.floatingPanels.forEach(collect);
+    const charts = panels.filter(panel => panel.component === 'Chart');
+    const retainedChart = charts.find(chart => chart.id === preferredChartId) || charts[0];
+    const restored = this.createDefaultLayout();
+    const sidebar = restored.root.children[0] as DockContainer;
+    const center = restored.root.children[1] as DockContainer;
+    const reused = new Set(charts.map(chart => chart.id));
+    const reusePanel = (fallback: DockPanelConfig): DockPanelConfig => {
+      const existing = panels.find(panel => panel.component === fallback.component && !reused.has(panel.id));
+      if (!existing) return fallback;
+      reused.add(existing.id);
+      return { ...existing, ratio: fallback.ratio };
+    };
+    sidebar.children = sidebar.children.map(panel => reusePanel(panel as DockPanelConfig));
+    center.children[1] = reusePanel(center.children[1] as DockPanelConfig);
+    if (retainedChart) center.children[0] = { ...retainedChart, ratio: 0.75 };
+    // Keep other open utilities available in a compact side tab group.
+    const extraPanels = panels.filter(panel => !reused.has(panel.id));
+    if (extraPanels.length) {
+      center.ratio = 0.6;
+      restored.root.children.push({
+        id: 'right-sidebar', type: 'tabs', ratio: 0.2, activeTab: extraPanels[0].id,
+        children: extraPanels.map(panel => ({ ...panel, ratio: 1 })),
+      });
+    }
+    // Reset closes the other chart panes. Older arrangement history must not
+    // resurrect those panes after the workspace has returned to one chart.
+    this.clearWindowHistory();
+    this.setLayout(restored);
+  }
+
+  setPanelMinimized(panelId: string, minimized: boolean): void {
+    const layout = this.getLayout();
+    const find = (container: DockContainer): DockPanelConfig | undefined => {
+      for (const child of container.children) {
+        if ('children' in child) { const match = find(child); if (match) return match; }
+        else if (child.id === panelId) return child;
+      }
+    };
+    const floating = layout.floatingPanels.find(container => Boolean(find(container)));
+    const panel = find(layout.root) || (floating && find(floating));
+    if (!panel || Boolean(panel.minimized) === minimized) return;
+    if (minimized) panel.minimized = true;
+    else {
+      delete panel.minimized;
+      if (floating?.restorePosition) {
+        floating.position = floating.restorePosition;
+        delete floating.restorePosition;
+      }
+      if (floating) delete floating.iconWidth;
+    }
+    this.setLayout(layout);
+  }
+
+  bringFloatingToFront(panelId: string): void {
+    const layout = this.getLayout();
+    const index = layout.floatingPanels.findIndex(container => container.children.some(child => child.id === panelId));
+    if (index < 0 || index === layout.floatingPanels.length - 1) return;
+    layout.floatingPanels.push(...layout.floatingPanels.splice(index, 1));
+    this.setLayout(layout);
+  }
+
+  /** Pack minimized floating title bars along the bottom of the chart workspace. */
+  arrangeIcons(): number {
+    const layout = this.getLayout();
+    const minimized = layout.floatingPanels.filter(container => container.children.some(child => !('children' in child) && child.minimized));
+    if (!minimized.length) return 0;
+    const bounds = getChartWorkspaceBounds();
+    const width = Math.min(240, bounds.width);
+    const columns = Math.max(1, Math.floor((bounds.width + 8) / (width + 8)));
+    minimized.forEach((container, index) => {
+      container.iconWidth = width;
+      container.restorePosition ??= container.position ? { ...container.position } : { x: bounds.left, y: bounds.top };
+      container.position = {
+        x: bounds.left + (index % columns) * (width + 8),
+        y: Math.max(bounds.top, bounds.bottom - 30 - Math.floor(index / columns) * 38),
+      };
+    });
+    this.commitWindowArrangement(layout);
+    return minimized.length;
   }
 
   /**
@@ -222,49 +516,55 @@ export class DockManager {
    * Finds all Chart components and recursively removes them from their current container.
    * Then repackages them into a clean tiled grid layout.
    */
-  tileWindows(): void {
+  tileWindows(mode: Exclude<ChartArrangement, 'cascade'> = 'grid', options: { restoreMinimized?: boolean } = {}): void {
     const layout = this.getLayout();
     
     // 1. Collect all chart panels and remove them from layout
     const charts: DockPanelConfig[] = [];
     
     const extractCharts = (container: DockContainer) => {
-       for (let i = container.children.length - 1; i >= 0; i--) {
-         const child = container.children[i];
+       container.children = container.children.filter(child => {
          if ('children' in child) {
             extractCharts(child as DockContainer);
          } else if ((child as DockPanelConfig).component === 'Chart') {
             charts.push(child as DockPanelConfig);
-            container.children.splice(i, 1);
+            return false;
          } else if ((child as DockPanelConfig).component === 'EmptyChartArea') {
             // Remove the empty placeholder since we are re-tiling real charts
-            container.children.splice(i, 1);
+            return false;
          }
+         return true;
+       });
+       if (container.type === 'tabs' && !container.children.some(child => child.id === container.activeTab)) {
+         container.activeTab = container.children[0]?.id;
        }
     };
     
     extractCharts(layout.root);
-    for (let i = layout.floatingPanels.length - 1; i >= 0; i--) {
-       extractCharts(layout.floatingPanels[i]);
-       if (layout.floatingPanels[i].children.length === 0) {
-          layout.floatingPanels.splice(i, 1);
-       }
-    }
+    layout.floatingPanels.forEach(container => {
+       extractCharts(container);
+       this.cleanupEmptyContainers(container);
+    });
+    layout.floatingPanels = layout.floatingPanels.filter(container => container.children.length > 0);
     
-    // Reverse so the order matches roughly what was collected originally
-    charts.reverse();
-    
-    if (charts.length === 0) {
-        this.cleanupEmptyContainers(layout.root);
-        this.setLayout(layout);
-        return;
-    }
+    if (charts.length === 0) return;
+    if (options.restoreMinimized !== false) charts.forEach(chart => { delete chart.minimized; });
     
     // 2. Build grid layout
     let chartsContainer: DockContainer | DockPanelConfig;
     
     if (charts.length === 1) {
        chartsContainer = { ...charts[0], ratio: 1 };
+    } else if (mode !== 'grid') {
+       // Horizontal tiling produces horizontal rows; vertical tiling produces
+       // vertical columns, matching the window-menu names.
+       chartsContainer = {
+          id: `chart-tile-${mode}`,
+          type: 'split',
+          direction: mode === 'horizontal' ? 'vertical' : 'horizontal',
+          ratio: 0.75,
+          children: charts.map(chart => ({ ...chart, ratio: 1 / charts.length })),
+       };
     } else if (charts.length === 2) {
        chartsContainer = {
           id: `grid-${Date.now()}`,
@@ -319,36 +619,23 @@ export class DockManager {
           chartsContainer = rowsContainer;
     }
     
-    // 3. Clean up the tree from empty containers caused by extraction
-    this.cleanupEmptyContainers(layout.root);
+    // Preserve the center column when Toolbox is closed and all charts are extracted.
+    this.cleanupEmptyContainers(layout.root, new Set(['center-main']));
 
     // 4. Determine insertion point
     const centerMain = this.findContainer(layout.root, 'center-main');
     if (centerMain && centerMain.type === 'split' && centerMain.direction === 'vertical') {
-       // Find the terminal/toolbox to preserve its custom height
-       let preservedToolboxRatio = 0.25;
-       // Since charts just got extracted, whatever remains in centerMain (the toolbox) still holds its preserved absolute ratio (ratio sum != 1 anymore)
-       if (centerMain.children.length > 0) {
-           const bottomChild = centerMain.children[centerMain.children.length - 1] as any;
-           if (bottomChild && bottomChild.ratio) {
-               preservedToolboxRatio = bottomChild.ratio;
-           }
-       }
+       // Preserve Toolbox and other utility heights when chart panels move.
+       const remainingRatio = centerMain.children.reduce((sum, child) => sum + (child.ratio ?? 0), 0);
        
-       const chartsRatio = 1 - preservedToolboxRatio;
+       const chartsRatio = remainingRatio < 1 ? 1 - remainingRatio : 0.75;
        chartsContainer.ratio = chartsRatio;
 
        // Center main expected order: charts on top, terminal on bottom
        // We insert charts at the beginning (top) so they don't break the layout.
        centerMain.children.unshift(chartsContainer);
        
-       // Ensure ratios are exactly balanced
-       if (centerMain.children.length === 2) {
-           (centerMain.children[0] as any).ratio = chartsRatio;
-           (centerMain.children[1] as any).ratio = preservedToolboxRatio;
-       } else {
-           this.normalizeRatios(centerMain);
-       }
+       if (remainingRatio >= 1) this.normalizeRatios(centerMain);
     } else {
        // Fallback to inserting at root level
        // Push adds it to the right/bottom instead of the left/top
@@ -360,7 +647,62 @@ export class DockManager {
        this.normalizeRatios(layout.root);
     }
     
-    this.setLayout(layout);
+    this.commitWindowArrangement(layout);
+  }
+
+  /** Arrange existing charts without creating, closing, or resetting panels. */
+  arrangeCharts(mode: ChartArrangement): void {
+    if (mode !== 'cascade') {
+      this.tileWindows(mode);
+      return;
+    }
+
+    const layout = this.getLayout();
+    const charts: DockPanelConfig[] = [];
+    let placeholderAdded = false;
+    const extractCharts = (container: DockContainer, isDocked: boolean) => {
+      container.children = container.children.flatMap<DockContainer | DockPanelConfig>(child => {
+        if ('children' in child) {
+          extractCharts(child, isDocked);
+          return [child];
+        }
+        if (child.component !== 'Chart') return [child];
+        charts.push(child);
+        if (!isDocked || placeholderAdded) return [];
+        placeholderAdded = true;
+        // Keep the chart region's geometry while the charts float above it.
+        // In particular, Toolbox must keep its existing height below the region.
+        return [{
+          id: 'cascade-chart-placeholder', title: '', component: 'EmptyChartArea',
+          ratio: child.ratio ?? 1, closable: false, floatable: false,
+        } as DockPanelConfig];
+      });
+      if (container.type === 'tabs' && !container.children.some(child => child.id === container.activeTab)) {
+        container.activeTab = container.children[0]?.id;
+      }
+    };
+    extractCharts(layout.root, true);
+    layout.floatingPanels.forEach(container => extractCharts(container, false));
+    if (charts.length === 0) return;
+    charts.forEach(chart => { delete chart.minimized; });
+    this.cleanupEmptyContainers(layout.root);
+    layout.floatingPanels.forEach(container => this.cleanupEmptyContainers(container));
+    layout.floatingPanels = layout.floatingPanels.filter(container => container.children.length > 0);
+
+    const { left, top, width: availableWidth, height: availableHeight } = getChartWorkspaceBounds();
+    const width = Math.min(availableWidth, Math.max(240, Math.round(availableWidth * 0.78)));
+    const height = Math.min(availableHeight, Math.max(180, Math.round(availableHeight * 0.75)));
+    const staggerCount = Math.min(charts.length, MAX_CHART_PANELS);
+    const step = staggerCount <= 1 ? 0
+      : Math.min(28, (availableWidth - width) / (staggerCount - 1), (availableHeight - height) / (staggerCount - 1));
+
+    charts.forEach((chart, index) => layout.floatingPanels.push({
+      id: `cascade-${chart.id}`, type: 'panel', ratio: 1, isFloating: true,
+      children: [{ ...chart, ratio: 1 }],
+      position: { x: Math.round(left + step * (index % staggerCount)), y: Math.round(top + step * (index % staggerCount)) },
+      size: { width, height },
+    }));
+    this.commitWindowArrangement(layout);
   }
 
   /**
@@ -417,25 +759,20 @@ export class DockManager {
   removePanel(panelId: string): boolean {
     const layout = this.getLayout();
     
-    // Check what kind of panel we are about to remove
-    let targetComponent = '';
-    const panelResult = this.findPanelAndParent(layout.root, panelId);
-    if (panelResult) targetComponent = panelResult.panel.component;
-
     const removed = this.removePanelFromLayout(layout, panelId);
     if (removed) {
-      this.cleanupEmptyContainers(layout.root);
+      this.cleanupEmptyContainers(layout.root, new Set(['center-main']));
 
       // Guard: if center-main lost all its charts, protect layout structure
       // by inserting a lightweight empty-chart placeholder to keep Toolbox position fixed.
       const centerMain = this.findContainer(layout.root, 'center-main');
       if (centerMain && centerMain.type === 'split' && centerMain.direction === 'vertical') {
-        const hasChart = centerMain.children.some((c: any) => {
-          if (c.component === 'Chart' || c.component === 'EmptyChartArea') return true;
-          if (c.children) return c.children.some((cc: any) => cc.component === 'Chart' || cc.component === 'EmptyChartArea');
-          return false;
-        });
-        const hasToolbox = centerMain.children.some((c: any) => c.component === 'Terminal');
+        const containsChartArea = (container: DockContainer): boolean => container.children.some(child => (
+          'children' in child ? containsChartArea(child)
+            : child.component === 'Chart' || child.component === 'EmptyChartArea'
+        ));
+        const hasChart = containsChartArea(centerMain);
+        const hasToolbox = centerMain.children.some(child => !('children' in child) && child.component === 'Terminal');
 
         // Always insert spacer when no charts/placeholders exist and toolbox is present
         // This keeps the Toolbox locked at its bottom position
@@ -444,14 +781,11 @@ export class DockManager {
             id: `charts-area-${Date.now()}`,
             title: '',
             component: 'EmptyChartArea',
-            ratio: 0.75,
+            ratio: Math.max(0.05, 1 - centerMain.children.reduce((sum, child) => sum + (child.ratio ?? 0), 0)),
             closable: false,
             floatable: false,
           };
           centerMain.children.unshift(placeholder);
-          // Ensure Toolbox stays at 25%
-          const toolboxChild = centerMain.children[centerMain.children.length - 1] as any;
-          if (toolboxChild) toolboxChild.ratio = 0.25;
         }
       }
 
@@ -571,7 +905,8 @@ export class DockManager {
   /**
    * Add a new panel to the layout
    */
-  addPanel(panel: DockPanelConfig, targetId?: string, direction: DockDirection = 'center'): void {
+  addPanel(panel: DockPanelConfig, targetId?: string, direction: DockDirection = 'center'): boolean {
+    if (panel.component === 'Chart' && !this.canAddChart()) return false;
     const layout = this.getLayout();
 
     // First try to find targetId as a container  
@@ -585,7 +920,7 @@ export class DockManager {
           this.dockPanelNextTo(result.parent, result.panelIndex, panel, direction);
           this.cleanupEmptyContainers(layout.root);
           this.setLayout(layout);
-          return;
+          return true;
         }
         target = result.parent;
       }
@@ -612,6 +947,7 @@ export class DockManager {
 
     this.cleanupEmptyContainers(layout.root);
     this.setLayout(layout);
+    return true;
   }
 
 
@@ -649,19 +985,25 @@ export class DockManager {
   }
 
   /**
-   * Undo last action (stub for compatibility)
+   * Undo one explicit arrangement; metadata and resize updates do not add steps.
    */
   undo(): boolean {
-    // History not implemented in simplified version
-    return false;
+    const previous = this.windowUndoLayouts.pop();
+    if (!previous) return false;
+    this.windowRedoLayouts.push(this.getLayout());
+    this.restoreWindowArrangement(previous);
+    return true;
   }
 
   /**
-   * Redo last undone action (stub for compatibility)
+   * Redo the last undone window arrangement.
    */
   redo(): boolean {
-    // History not implemented in simplified version
-    return false;
+    const next = this.windowRedoLayouts.pop();
+    if (!next) return false;
+    this.windowUndoLayouts.push(this.getLayout());
+    this.restoreWindowArrangement(next);
+    return true;
   }
 
   /**
@@ -688,17 +1030,17 @@ export class DockManager {
 
 
   /**
-   * Check if undo is available (stub for compatibility)
+   * Check whether a window arrangement can be undone.
    */
   canUndo(): boolean {
-    return false;
+    return this.windowUndoLayouts.length > 0;
   }
 
   /**
-   * Check if redo is available (stub for compatibility)
+   * Check whether a window arrangement can be redone.
    */
   canRedo(): boolean {
-    return false;
+    return this.windowRedoLayouts.length > 0;
   }
 
   /**
@@ -789,6 +1131,9 @@ export class DockManager {
   }
 
   loadFromStorage(key: string = 'dock-layout'): boolean {
+    // History belongs to the active workspace, including accounts without a saved layout.
+    this.clearWindowHistory();
+    this.overflowCharts = [];
     try {
       const stored = localStorage.getItem(key);
       if (stored) {
@@ -898,6 +1243,21 @@ export class DockManager {
           }
 
           localStorage.setItem(desktopMigrationKey, '1');
+        }
+
+        if (this.getChartCount() > MAX_CHART_PANELS) {
+          // Keep the complete old workspace recoverable, including its geometry.
+          // The store also makes overflow chart configurations available in Open Deleted.
+          const backupKey = `${DOCK_LAYOUT_SIX_CHART_BACKUP_PREFIX}${key}`;
+          let backedUp = false;
+          try {
+            if (!localStorage.getItem(backupKey)) localStorage.setItem(backupKey, stored);
+            backedUp = true;
+          } catch (error) {
+            console.warn('[DockManager] Could not back up the previous chart layout:', error);
+          }
+          this.layout = this.applyChartLimit(this.layout);
+          if (backedUp) this.saveToStorage(key);
         }
 
         this.notify();
@@ -1075,15 +1435,15 @@ export class DockManager {
     }
   }
 
-  private cleanupEmptyContainers(container: DockContainer): void {
+  private cleanupEmptyContainers(container: DockContainer, preserveEmptyIds: ReadonlySet<string> = new Set()): void {
     for (let i = container.children.length - 1; i >= 0; i--) {
       const child = container.children[i];
 
       if ('children' in child) {
         const childContainer = child as DockContainer;
-        this.cleanupEmptyContainers(childContainer);
+        this.cleanupEmptyContainers(childContainer, preserveEmptyIds);
 
-        if (childContainer.children.length === 0) {
+        if (childContainer.children.length === 0 && !preserveEmptyIds.has(childContainer.id)) {
           container.children.splice(i, 1);
         } else if (
           childContainer.children.length === 1 && 
@@ -1127,7 +1487,7 @@ export class DockManager {
         target.type = 'tabs';
         target.children = [...existingChildren, panel];
         target.activeTab = panel.id;
-      } else if (target.type === 'split') {
+      } else if (target.type === 'split' || target.type === 'root') {
         // For a split container, find the first panel child and group them as tabs
         const firstPanelIndex = target.children.findIndex(c => !('children' in c));
         if (firstPanelIndex >= 0) {

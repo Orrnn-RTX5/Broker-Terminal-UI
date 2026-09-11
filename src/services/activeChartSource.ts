@@ -1,9 +1,12 @@
+import type { ChartDataSnapshot } from './chartDataSnapshot';
 export interface ActiveChartSourceRegistration {
   id: string;
   getCanvas?: () => HTMLCanvasElement | null;
   getContainer?: () => HTMLElement | null;
   getSymbol?: () => string | undefined;
   getTimeframe?: () => string | undefined;
+  getDataWindowData?: () => ChartDataSnapshot | null;
+  getDateRange?: () => { from: Date; to: Date } | undefined;
 }
 
 export interface ResolvedActiveChartSource {
@@ -12,6 +15,8 @@ export interface ResolvedActiveChartSource {
   container: HTMLElement | null;
   symbol?: string;
   timeframe?: string;
+  getDataWindowData?: () => ChartDataSnapshot | null;
+  dateRange?: { from: Date; to: Date };
 }
 
 type LegacyChartSourceWindow = Window & {
@@ -21,6 +26,15 @@ type LegacyChartSourceWindow = Window & {
 
 const sources = new Map<string, ActiveChartSourceRegistration>();
 let activeSourceId: string | null = null;
+let publishedActiveSourceId: string | null = null;
+const activeSourceListeners = new Set<() => void>();
+
+export const getActiveChartSourceId = (): string | null => publishedActiveSourceId;
+
+export const subscribeActiveChartSource = (listener: () => void): (() => void) => {
+  activeSourceListeners.add(listener);
+  return () => { activeSourceListeners.delete(listener); };
+};
 
 const isConnectedElement = <T extends Element>(element: T | null | undefined): element is T => {
   return !!element && element.isConnected;
@@ -28,6 +42,9 @@ const isConnectedElement = <T extends Element>(element: T | null | undefined): e
 
 const isVisibleDockChartElement = (element: Element | null): boolean => {
   if (!element) return false;
+  // Minimized charts stay mounted to preserve their viewport and
+  // drawing state, but cannot own commands until their window is restored.
+  if (element.closest('[data-dock-minimized="true"]')) return false;
 
   const dockLayer = element.closest<HTMLElement>('[data-dock-tab-content]');
   if (!dockLayer) return true;
@@ -78,8 +95,10 @@ const resolveRegisteredSource = (
     id: source.id,
     canvas: connectedCanvas,
     container: connectedContainer,
+    getDataWindowData: source.getDataWindowData,
     symbol: source.getSymbol?.(),
     timeframe: source.getTimeframe?.(),
+    ...(source.getDateRange ? { dateRange: source.getDateRange() } : {}),
   };
 };
 
@@ -105,6 +124,11 @@ const resolveLegacyWindowSource = (): ResolvedActiveChartSource | null => {
 };
 
 const publishLegacyWindowSource = (source: ResolvedActiveChartSource | null): void => {
+  const nextSourceId = source?.id ?? null;
+  if (publishedActiveSourceId !== nextSourceId) {
+    publishedActiveSourceId = nextSourceId;
+    activeSourceListeners.forEach((listener) => listener());
+  }
   if (typeof window === 'undefined') return;
   const legacyWindow = window as LegacyChartSourceWindow;
 
@@ -163,6 +187,17 @@ export const activateActiveChartSource = (id: string): ResolvedActiveChartSource
   activeSourceId = id;
   publishLegacyWindowSource(resolved);
   return resolved;
+};
+
+/** Keep commands on the chart the user clicks or focuses, never a hovered sibling. */
+export const bindActiveChartSourceInteractions = (id: string, container: HTMLElement): (() => void) => {
+  const activate = () => { activateActiveChartSource(id); };
+  container.addEventListener('pointerdown', activate);
+  container.addEventListener('focusin', activate);
+  return () => {
+    container.removeEventListener('pointerdown', activate);
+    container.removeEventListener('focusin', activate);
+  };
 };
 
 export const unregisterActiveChartSource = (id: string): void => {

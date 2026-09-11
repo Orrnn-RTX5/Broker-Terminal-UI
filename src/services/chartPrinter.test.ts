@@ -230,7 +230,7 @@ describe('ChartPrinterService', () => {
       };
 
       const html = chartPrinter.generatePrintableHTML(mockChartData, prefs);
-      expect(html).toContain('padding: 30px 25px 20px 15px');
+      expect(html).toContain('padding: 30mm 25mm 20mm 15mm');
     });
   });
 

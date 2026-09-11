@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 /**
  * Print Setup Dialog
  * Allows users to configure print preferences before printing
@@ -28,6 +29,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
   onCancel,
   accountId,
 }) => {
+    const tr = useUiTranslation();
   const accountScope = accountId?.trim() || undefined;
   const [preferences, setPreferences] = useState<PrintPreferences>(() => (
     accountScope ? chartPrinter.getPreferences(accountScope) : DEFAULT_PRINT_PREFERENCES
@@ -110,12 +112,12 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 shrink-0">
                 <div className="flex items-center gap-2">
                     <Icon name="settings" size="md" className="text-blue-400 [.rtx-advanced-view_&]:text-indigo-600" />
-                    <h2 className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">Print Setup</h2>
+                    <h2 className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">{tr("Print Setup")}</h2>
                 </div>
                 <button
                     onClick={onCancel}
                     className="text-zinc-400 hover:text-zinc-100 [.rtx-advanced-view_&]:text-gray-500 [.rtx-advanced-view_&]:hover:text-gray-900 transition-colors p-1 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-100 rounded"
-                    aria-label="Close"
+                    aria-label={tr("Close")}
                 >
                     <Icon name="x-close" size="md" />
                 </button>
@@ -126,33 +128,32 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                 {/* Page Setup */}
                 <div className="space-y-3">
                     <h3 className={sectionTitleClass}>
-                        Page Setup
-                    </h3>
+                        {tr("Page Setup")}</h3>
 
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className={labelClass}>Orientation</label>
+                            <label className={labelClass}>{tr("Orientation")}</label>
                             <select
                                 value={preferences.orientation}
                                 onChange={(e) => handleChange('orientation', e.target.value as PageOrientation)}
                                 className={inputClass}
                             >
-                                <option value="portrait">Portrait</option>
-                                <option value="landscape">Landscape</option>
+                                <option value="portrait">{tr("Portrait")}</option>
+                                <option value="landscape">{tr("Landscape")}</option>
                             </select>
                         </div>
 
                         <div>
-                            <label className={labelClass}>Paper Size</label>
+                            <label className={labelClass}>{tr("Paper Size")}</label>
                             <select
                                 value={preferences.pageSize}
                                 onChange={(e) => handleChange('pageSize', e.target.value as PageSize)}
                                 className={inputClass}
                             >
-                                <option value="A4">A4 (210 × 297 mm)</option>
-                                <option value="Letter">Letter (8.5 × 11 in)</option>
-                                <option value="Legal">Legal (8.5 × 14 in)</option>
-                                <option value="A3">A3 (297 × 420 mm)</option>
+                                <option value="A4">{tr("A4 (210 × 297 mm)")}</option>
+                                <option value="Letter">{tr("Letter (8.5 × 11 in)")}</option>
+                                <option value="Legal">{tr("Legal (8.5 × 14 in)")}</option>
+                                <option value="A3">{tr("A3 (297 × 420 mm)")}</option>
                             </select>
                         </div>
                     </div>
@@ -161,12 +162,11 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                 {/* Margins */}
                 <div className="space-y-3">
                     <h3 className={sectionTitleClass}>
-                        Margins (mm)
-                    </h3>
+                        {tr("Margins (mm)")}</h3>
 
                     <div className="grid grid-cols-2 gap-3">
                         <div>
-                            <label className={labelClass}>Top</label>
+                            <label className={labelClass}>{tr("Top")}</label>
                             <input
                                 type="number"
                                 min="0"
@@ -178,7 +178,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         </div>
 
                         <div>
-                            <label className={labelClass}>Right</label>
+                            <label className={labelClass}>{tr("Right")}</label>
                             <input
                                 type="number"
                                 min="0"
@@ -190,7 +190,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         </div>
 
                         <div>
-                            <label className={labelClass}>Bottom</label>
+                            <label className={labelClass}>{tr("Bottom")}</label>
                             <input
                                 type="number"
                                 min="0"
@@ -202,7 +202,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         </div>
 
                         <div>
-                            <label className={labelClass}>Left</label>
+                            <label className={labelClass}>{tr("Left")}</label>
                             <input
                                 type="number"
                                 min="0"
@@ -218,8 +218,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                 {/* Print Options */}
                 <div className="space-y-3">
                     <h3 className={sectionTitleClass}>
-                        Print Options
-                    </h3>
+                        {tr("Print Options")}</h3>
 
                     <div className="space-y-2">
                         <label className="flex items-center gap-2 cursor-pointer">
@@ -229,13 +228,13 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                                 onChange={(e) => handleChange('includeHeader', e.target.checked)}
                                 className={checkboxClass}
                             />
-                            <span className={checkboxLabelClass}>Include Header</span>
+                            <span className={checkboxLabelClass}>{tr("Include Header")}</span>
                         </label>
 
                         {preferences.includeHeader && (
                           <input
                             type="text"
-                            placeholder="Header text (optional)"
+                            placeholder={tr("Header text (optional)")}
                             value={preferences.headerText || ''}
                             onChange={(e) => handleChange('headerText', e.target.value)}
                             className={`${inputClass} ml-5 w-[calc(100%-1.25rem)]`}
@@ -249,28 +248,20 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                                 onChange={(e) => handleChange('includeFooter', e.target.checked)}
                                 className={checkboxClass}
                             />
-                            <span className={checkboxLabelClass}>Include Footer</span>
+                            <span className={checkboxLabelClass}>{tr("Include Footer")}</span>
                         </label>
 
                         {preferences.includeFooter && (
                           <input
                             type="text"
-                            placeholder="Footer text (optional)"
+                            placeholder={tr("Footer text (optional)")}
                             value={preferences.footerText || ''}
                             onChange={(e) => handleChange('footerText', e.target.value)}
                             className={`${inputClass} ml-5 w-[calc(100%-1.25rem)]`}
                           />
                         )}
 
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={preferences.includeGrid}
-                                onChange={(e) => handleChange('includeGrid', e.target.checked)}
-                                className={checkboxClass}
-                            />
-                            <span className={checkboxLabelClass}>Include Grid Lines</span>
-                        </label>
+                        <p className="text-xs text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">{tr("The print captures the visible chart, including its grid, indicators and drawings.")}</p>
 
                         <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -279,7 +270,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                                 onChange={(e) => handleChange('includeIndicators', e.target.checked)}
                                 className={checkboxClass}
                             />
-                            <span className={checkboxLabelClass}>Include Indicators Legend</span>
+                            <span className={checkboxLabelClass}>{tr("Include Indicators Legend")}</span>
                         </label>
 
                         <label className="flex items-center gap-2 cursor-pointer">
@@ -289,7 +280,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                                 onChange={(e) => handleChange('includeDrawings', e.target.checked)}
                                 className={checkboxClass}
                             />
-                            <span className={checkboxLabelClass}>Include Drawings Legend</span>
+                            <span className={checkboxLabelClass}>{tr("Include Drawings Legend")}</span>
                         </label>
 
                         <label className="flex items-center gap-2 cursor-pointer">
@@ -299,20 +290,20 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                                 onChange={(e) => handleChange('scaleToFit', e.target.checked)}
                                 className={checkboxClass}
                             />
-                            <span className={checkboxLabelClass}>Scale to Fit Page</span>
+                            <span className={checkboxLabelClass}>{tr("Scale to Fit Page")}</span>
                         </label>
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 pt-2">
                         <div>
-                            <label className={labelClass}>Color Mode</label>
+                            <label className={labelClass}>{tr("Color Mode")}</label>
                             <select
                                 value={preferences.colorMode}
                                 onChange={(e) => handleChange('colorMode', e.target.value as ColorMode)}
                                 className={inputClass}
                             >
-                                <option value="color">Color</option>
-                                <option value="grayscale">Black & White</option>
+                                <option value="color">{tr("Color")}</option>
+                                <option value="grayscale">{tr("Black & White")}</option>
                             </select>
                         </div>
                     </div>
@@ -328,7 +319,7 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                         onChange={(e) => setSavePreferences(e.target.checked)}
                         className={checkboxClass}
                       />
-                      <span className={checkboxLabelClass}>Save these preferences as default</span>
+                      <span className={checkboxLabelClass}>{tr("Save these preferences as default")}</span>
                     </label>
                   </div>
                 )}
@@ -340,15 +331,14 @@ export const PrintSetupDialog: React.FC<PrintSetupDialogProps> = ({
                     onClick={onCancel}
                     className="px-4 py-1.5 text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors"
                 >
-                    Cancel
-                </button>
+                    {tr("Cancel")}</button>
                 <button
                     onClick={handlePrint}
                     disabled={isSaving}
                     className="px-4 py-1.5 text-xs bg-zinc-700 [.rtx-advanced-view_&]:bg-indigo-600 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-indigo-700 text-white rounded transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Icon name="print" size="xs" />
-                    {isSaving ? 'Saving...' : 'OK'}
+                    {isSaving ? tr("Saving...") : tr("OK")}
                 </button>
             </div>
         </div>

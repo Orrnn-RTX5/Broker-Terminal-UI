@@ -144,7 +144,7 @@ describe('GlobalShortcuts chart shortcut registration', () => {
     expect(activeRegistrationsFor('+')).toHaveLength(1);
     expect(activeRegistrationsFor('-')).toHaveLength(1);
     expect(activeRegistrationsFor('alt+g')).toHaveLength(1);
-    expect(activeRegistrationsFor('ctrl+l')).toHaveLength(1);
+    expect(activeRegistrationsFor('ctrl+l')).toHaveLength(0);
 
     const disposeRerenderedKeyboardListener = keyboardShortcutManager.initialize();
 
@@ -165,7 +165,7 @@ describe('GlobalShortcuts chart shortcut registration', () => {
     expect(useChartSettingsStore.getState().globalProperties.showGrid).toBe(true);
     expect(useChartSettingsStore.getState().symbolProperties.EURUSD.showGrid).toBe(true);
 
-    fireEvent.keyDown(document.body, { key: 'l', code: 'KeyL', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', ctrlKey: true });
     expect(useChartSettingsStore.getState().globalProperties).toMatchObject({
       showTickVolumes: false,
       showRealVolumes: false,
@@ -267,13 +267,9 @@ describe('GlobalShortcuts chart shortcut registration', () => {
       bid: 1.1234,
       ask: 1.1236,
     });
-    expect(props.onOpenOrderPanel).toHaveBeenNthCalledWith(2, 'EURUSD', {
-      bid: 1.1234,
-      ask: 1.1236,
-    });
+    expect(props.onOpenOrderPanel).toHaveBeenCalledTimes(1);
     expect(closeModalListener).toHaveBeenCalledTimes(1);
-    expect(escapedWindowListener).toHaveBeenCalledTimes(1);
-    expect(escapedWindowListener.mock.calls[0][0]).toMatchObject({ key: 'Escape' });
+    expect(escapedWindowListener.mock.calls.map(([event]) => event.key)).toEqual(['n', 'Escape']);
 
     disposeKeyboardListener();
     window.removeEventListener('open-object-list', objectListListener);
@@ -314,7 +310,7 @@ describe('GlobalShortcuts chart shortcut registration', () => {
     fireEvent.keyDown(document.body, { key: 'g', code: 'KeyG', altKey: true });
     expect(useChartSettingsStore.getState().symbolProperties.EURUSD.showGrid).toBe(false);
 
-    fireEvent.keyDown(document.body, { key: 'l', code: 'KeyL', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', ctrlKey: true });
     expect(useChartSettingsStore.getState().symbolProperties.EURUSD).toMatchObject({
       showTickVolumes: false,
       showRealVolumes: false,

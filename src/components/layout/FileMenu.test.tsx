@@ -6,7 +6,7 @@
 import React from 'react';
 import '@testing-library/jest-dom';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { FileMenu } from './FileMenu';
 import {
     clearActiveChartSources,
@@ -14,6 +14,7 @@ import {
 } from '../../services/activeChartSource';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { chartPrinter } from '../../services/chartPrinter';
+import { getTerminalShortcutHint, TERMINAL_SHORTCUTS } from '../../services/shortcutCatalog';
 
 const savePictureDialogMock = vi.hoisted(() => ({
     props: [] as any[],
@@ -25,7 +26,7 @@ const workspaceProfilesMock = vi.hoisted(() => ({
 }));
 
 // 1. Mock i18n translations
-vi.mock('react-i18next', () => {
+vi.mock('react-i18next', async (importOriginal) => {
     const mockTranslations: Record<string, string> = {
         'menu.file.newChart': 'New Chart',
         'menu.file.openDeleted': 'Open Deleted',
@@ -44,6 +45,7 @@ vi.mock('react-i18next', () => {
         'menu.file.exit': 'Exit',
     };
     return {
+        ...await importOriginal<typeof import('react-i18next')>(),
         useTranslation: () => ({
             t: (key: string) => mockTranslations[key] || key
         })
@@ -97,6 +99,8 @@ vi.mock('../../services/chartPrinter', () => ({
     chartPrinter: {
         getPreferences: vi.fn(() => ({})),
         printChart: vi.fn(),
+        setPreferences: vi.fn(),
+        captureActiveChartData: vi.fn(async () => ({ symbol: 'BTCUSD', timeframe: 'M1', chartCanvas: document.createElement('canvas'), indicators: [], drawings: [] })),
     }
 }));
 
@@ -206,8 +210,21 @@ describe('FileMenu Component', () => {
             render(<FileMenu {...mockHandlers} />);
 
             expect(screen.getByText('Ctrl+S')).toBeInTheDocument();
-            expect(screen.getByText('Ctrl+Shift+D')).toBeInTheDocument();
+            expect(screen.queryByText('Ctrl+Shift+D')).not.toBeInTheDocument();
             expect(screen.getByText('Ctrl+P')).toBeInTheDocument();
+        });
+
+        it.each([
+            ['Close', 'file.close-chart', 'Shift+Alt+Q'],
+            ['Save As Picture', 'file.save-picture', 'Ctrl+Shift+S'],
+            ['Print Preview', 'file.print-preview', 'Ctrl+Shift+P'],
+        ])('shows the executable catalog binding beside %s', (label, shortcutId, expectedHint) => {
+            render(<FileMenu {...mockHandlers} />);
+            expect(TERMINAL_SHORTCUTS.some(shortcut => shortcut.id === shortcutId)).toBe(true);
+            expect(getTerminalShortcutHint(shortcutId)).toBe(expectedHint);
+            const button = screen.getByText(label).closest('button')!;
+            expect(within(button).getByText(getTerminalShortcutHint(shortcutId))).toBeInTheDocument();
+            expect(within(button).queryByText('Ctrl+F4')).not.toBeInTheDocument();
         });
 
         it('disables unavailable items', () => {
@@ -379,13 +396,13 @@ describe('FileMenu Component', () => {
             expect(onLoginTrade).toHaveBeenCalledTimes(1);
         });
 
-        it('calls onPrint when Print is clicked', () => {
+        it('calls onPrint when Print is clicked', async () => {
             render(<FileMenu {...mockHandlers} />);
 
             const printBtn = screen.getByText('Print').closest('button');
             fireEvent.click(printBtn!);
 
-            expect(mockHandlers.onPrint).toHaveBeenCalledTimes(1);
+            await waitFor(() => expect(mockHandlers.onPrint).toHaveBeenCalledTimes(1));
         });
 
         it('uses the active account print preferences for direct printing', async () => {
@@ -410,6 +427,31 @@ describe('FileMenu Component', () => {
             await waitFor(() => {
                 expect(screen.getByTestId('save-workspace-dialog')).toBeInTheDocument();
             });
+        });
+
+        it('opens shortcut dialogs while the File menu is closed without rendering duplicate menu controls', async () => {
+            render(<FileMenu shortcutsOnly />);
+            expect(screen.queryByText('Print Preview')).not.toBeInTheDocument();
+            await act(async () => { window.dispatchEvent(new CustomEvent('open-print-preview')); });
+            expect(screen.getAllByTestId('print-preview-dialog')).toHaveLength(1);
+            expect(chartPrinter.captureActiveChartData).toHaveBeenCalledOnce();
+            fireEvent.click(screen.getByText('Close Preview'));
+
+            const container = document.createElement('div');
+            const canvas = document.createElement('canvas');
+            container.appendChild(canvas); document.body.appendChild(container);
+            const unregister = registerActiveChartSource({ id: 'shortcut-export', getContainer: () => container, getCanvas: () => canvas, getSymbol: () => 'EURUSD', getTimeframe: () => 'M5' });
+            act(() => { window.dispatchEvent(new CustomEvent('open-save-picture')); });
+            expect(screen.getByTestId('save-picture-dialog')).toBeInTheDocument();
+            expect(savePictureDialogMock.props.at(-1)).toMatchObject({ symbol: 'EURUSD', timeframe: 'M5', chartCanvas: canvas });
+            unregister(); container.remove();
+        });
+
+        it('does not handle the keyboard event a second time when the regular File submenu is mounted', async () => {
+            render(<><FileMenu shortcutsOnly /><FileMenu /></>);
+            await act(async () => { window.dispatchEvent(new CustomEvent('open-print-preview')); });
+            expect(screen.getAllByTestId('print-preview-dialog')).toHaveLength(1);
+            expect(chartPrinter.captureActiveChartData).toHaveBeenCalledOnce();
         });
 
         it('opens PrintPreviewDialog when Print Preview is clicked', async () => {

@@ -11,6 +11,21 @@
  */
 
 import { getExposureContractSize, parseExposureSymbol } from '../components/BottomDock.exposure';
+import { translateUi as tr } from '../hooks/useUiTranslation';
+
+// Presentation-only updates keep the original nodes and their trading action
+// listeners intact when the language changes. Detached overlays remain GC-able.
+const chartUiBindings = new WeakMap<HTMLElement, () => void>();
+export const bindChartUiTranslation = (element: HTMLElement, update: () => void): void => {
+  chartUiBindings.set(element, update);
+  element.dataset.chartUiBound = 'true';
+  update();
+};
+export const refreshChartUiTranslations = (host: ParentNode): void => {
+  host.querySelectorAll<HTMLElement>('[data-chart-ui-bound]').forEach(element => {
+    chartUiBindings.get(element)?.();
+  });
+};
 
 export type ChartTradeSide = 'BUY' | 'SELL';
 export type ChartTradeLevelRole = 'SL' | 'TP';
@@ -277,6 +292,9 @@ const createMetricChip = (
   chip.style.cssText = `display:inline-flex;align-items:center;gap:3px;padding:2px 6px;margin-left:-1px;background-color:${background};border:1px solid ${accentColor};color:${textColor};${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
   const labelEl = document.createElement('span');
   labelEl.textContent = label;
+  if (variant === 'pips') bindChartUiTranslation(labelEl, () => {
+    labelEl.textContent = `${tr('pips')}:`;
+  });
   labelEl.style.cssText = 'opacity:0.78;font-weight:600;';
   const valueEl = document.createElement('span');
   valueEl.className = 'rtx-trade-chip-value';
@@ -337,7 +355,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
   volumeChip.className = 'rtx-trade-chip rtx-trade-chip--volume';
   volumeChip.style.cssText = `display:inline-flex;align-items:center;gap:4px;padding:2px 7px;background:${sideColor};border:1px solid ${sideColor};color:#fff;${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
   const volumeText = document.createElement('span');
-  volumeText.textContent = `${formatVolumeLots(volume)} Lots`;
+  bindChartUiTranslation(volumeText, () => {
+    volumeText.textContent = tr('{{value0}} lots', { value0: formatVolumeLots(volume) });
+  });
   const volumeArrow = document.createElement('span');
   volumeArrow.style.cssText = 'display:inline-flex;align-items:center;';
   volumeArrow.innerHTML = sideArrowSvg(side);
@@ -370,6 +390,19 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
 
   root.appendChild(chipGroup);
   root.appendChild(buttonGroup);
+  const actionTitles = {
+    share: () => `${tr('Copy')} · ${tr('Trade')} URL`,
+    reverse: () => `${tr('Close position')} · ${tr('New Order')}: ${tr(side === 'BUY' ? 'SELL' : 'BUY')} ${tr('{{value0}} lots', { value0: formatVolumeLots(volume) })}`,
+    double: () => `${tr('New Order')}: ${tr(side)} ${tr('{{value0}} lots', { value0: formatVolumeLots(volume) })}`,
+    close: () => tr('Close position'),
+  };
+  for (const [action, getTitle] of Object.entries(actionTitles)) {
+    const button = buttonGroup.querySelector<HTMLButtonElement>(`.rtx-trade-control-btn--${action}`);
+    if (button) bindChartUiTranslation(button, () => {
+      button.title = getTitle();
+      button.setAttribute('aria-label', button.title);
+    });
+  }
 
   let lastPipsText = '';
   let lastMoneyText = '';
@@ -428,7 +461,7 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
   roleChip.className = 'rtx-trade-chip rtx-trade-chip--role';
   roleChip.style.cssText = `display:inline-flex;align-items:center;padding:2px 6px;background:${surface.chipBackground};border:1px solid ${sideColor};color:${surface.chipText};${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
   const roleText = document.createElement('span');
-  roleText.textContent = label;
+  bindChartUiTranslation(roleText, () => { roleText.textContent = tr(label); });
   roleChip.appendChild(roleText);
 
   const pipsChip = createMetricChip('pips', 'Pips:', formatPipsLabel(pips), surface, sideColor);
@@ -436,6 +469,10 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
 
   const removeTitle = role === 'SL' ? 'Remove Stop Loss' : 'Remove Take Profit';
   const removeButton = createControlButton('remove', removeTitle, closeSvg, sideColor, sideColor, onRemove);
+  bindChartUiTranslation(removeButton, () => {
+    removeButton.title = tr('Delete {{value0}}', { value0: tr(role === 'SL' ? 'Stop loss' : 'Take profit') });
+    removeButton.setAttribute('aria-label', removeButton.title);
+  });
   removeButton.style.width = '18px';
   removeButton.style.height = '18px';
   removeButton.style.marginLeft = '4px';
@@ -471,11 +508,13 @@ export const createDockedLevelChip = (options: DockedLevelChipOptions): HTMLDivE
   root.dataset.role = role;
   root.dataset.leftInset = String(leftInset);
   root.dataset.display = 'inline-flex';
-  root.title = title ?? (role === 'SL' ? 'Drag to set Stop Loss' : 'Drag to set Take Profit');
+  bindChartUiTranslation(root, () => {
+    root.title = title ?? `${tr('Add')} · ${tr(role === 'SL' ? 'Stop loss' : 'Take profit')}`;
+  });
   root.style.cssText = `position:absolute;left:${leftInset}px;display:none;align-items:center;padding:1px 7px;background:${surface.dockBackground};border:1px solid ${surface.dockBorder};color:${surface.dockText};${CHIP_FONT}white-space:nowrap;z-index:21;pointer-events:auto;cursor:grab;transform:translateY(-50%);width:max-content;box-sizing:border-box;user-select:none;touch-action:none;`;
 
   const text = document.createElement('span');
-  text.textContent = label;
+  bindChartUiTranslation(text, () => { text.textContent = label.replace(role, tr(role)); });
   root.appendChild(text);
   return root;
 };

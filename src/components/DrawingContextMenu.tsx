@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * ============================================================================
  * 🚫 AI FENCE: ISOLATED SYSTEM COMPONENT
@@ -104,6 +105,7 @@ interface DrawingContextMenuProps {
 type SubPanel = null | 'color' | 'style';
 
 export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose }) => {
+    const tr = useUiTranslation();
     const [menuState, setMenuState] = useState<{
         x: number;
         y: number;
@@ -254,7 +256,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                 {/* ─── Delete this specific drawing ─── */}
                 <MenuItem
                     icon={<DeleteThisIcon />}
-                    label={`Delete ${drawingLabel}`}
+                    label={tr("Delete {{value0}}", { value0: drawingLabel })}
                     onClick={handleDeleteThis}
                     danger
                 />
@@ -262,7 +264,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                 {/* ─── Delete all selected ─── */}
                 <MenuItem
                     icon={<DeleteSelectedIcon />}
-                    label="Delete All Selected"
+                    label={tr("Delete All Selected")}
                     shortcut="Del"
                     onClick={handleDeleteSelected}
                     danger
@@ -272,7 +274,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                 {/* ─── Delete all arrows/shapes ─── */}
                 <MenuItem
                     icon={<DeleteAllIcon />}
-                    label="Delete All Shapes"
+                    label={tr("Delete All Shapes")}
                     onClick={handleDeleteAllArrows}
                     danger
                 />
@@ -282,7 +284,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                 {/* ─── Change Color ─── */}
                 <MenuItem
                     icon={<ColorIcon color={localColor} />}
-                    label="Change Color"
+                    label={tr("Change Color")}
                     shortcut="›"
                     onClick={() => setSubPanel(subPanel === 'color' ? null : 'color')}
                     active={subPanel === 'color'}
@@ -291,7 +293,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                 {/* ─── Line Style ─── */}
                 <MenuItem
                     icon={<LineStyleIcon />}
-                    label="Line Style & Width"
+                    label={tr("Line Style & Width")}
                     shortcut="›"
                     onClick={() => setSubPanel(subPanel === 'style' ? null : 'style')}
                     active={subPanel === 'style'}
@@ -302,21 +304,21 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                 {/* ─── Object List ─── */}
                 <MenuItem
                     icon={<ObjectListIcon />}
-                    label="Object List"
+                    label={tr("Object List")}
                     shortcut="Ctrl+B"
                     onClick={handleObjectList}
                 />
 
                 {/* ─── Unselect ─── */}
-                <MenuItem label="Unselect" onClick={handleUnselect} />
-                <MenuItem label="Unselect All" onClick={handleUnselectAll} />
+                <MenuItem label={tr("Unselect")} onClick={handleUnselect} />
+                <MenuItem label={tr("Unselect All")} onClick={handleUnselectAll} />
 
                 <Separator />
 
                 {/* ─── Undo Delete ─── */}
                 <MenuItem
                     icon={<UndoIcon />}
-                    label="Undo Delete"
+                    label={tr("Undo Delete")}
                     shortcut="Ctrl+Z"
                     onClick={handleUndoDelete}
                 />
@@ -325,7 +327,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
             {/* ── Color Sub-Panel ──────────────────────────────────────────── */}
             {subPanel === 'color' && (
                 <div style={subPanelStyle}>
-                    <div style={subHeaderStyle}>Color</div>
+                    <div style={subHeaderStyle}>{tr("Color")}</div>
 
                     {/* Palette grid */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 5, padding: '0 12px 10px' }}>
@@ -370,7 +372,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                                     background: 'transparent',
                                     padding: 0,
                                 }}
-                                title="Custom colour"
+                                title={tr("Custom colour")}
                             />
                         </div>
                         <input
@@ -396,14 +398,14 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                                 outline: 'none',
                                 fontFamily: 'monospace',
                             }}
-                            placeholder="#rrggbb"
+                            placeholder={tr("#rrggbb")}
                         />
                     </div>
 
                     {/* Preview swatch */}
                     <div style={{ padding: '0 12px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <div style={{ width: 60, height: 3, background: localColor, borderRadius: 2, flex: 1 }} />
-                        <span style={{ fontSize: 12, fontWeight: 400, color: '#6b7280' }}>Preview</span>
+                        <span style={{ fontSize: 12, fontWeight: 400, color: '#6b7280' }}>{tr("Preview")}</span>
                     </div>
                 </div>
             )}
@@ -412,7 +414,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
             {subPanel === 'style' && (
                 <div style={subPanelStyle}>
                     {/* Line Style */}
-                    <div style={subHeaderStyle}>Line Style</div>
+                    <div style={subHeaderStyle}>{tr("Line Style")}</div>
                     <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {LINE_STYLES.map(opt => (
                             <button
@@ -459,7 +461,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                     <Separator />
 
                     {/* Line Width */}
-                    <div style={subHeaderStyle}>Line Width</div>
+                    <div style={subHeaderStyle}>{tr("Line Width")}</div>
                     <div style={{ padding: '0 12px 10px', display: 'flex', gap: 6 }}>
                         {LINE_WIDTHS.map(opt => (
                             <button
@@ -501,7 +503,7 @@ export const DrawingContextMenu: React.FC<DrawingContextMenuProps> = ({ onClose 
                     {/* Custom width slider */}
                     <div style={{ padding: '0 12px 12px' }}>
                         <div style={{ fontSize: 12, fontWeight: 400, color: '#6b7280', marginBottom: 4 }}>
-                            Custom: <span style={{ color: '#c8ccd4' }}>{localWidth}px</span>
+                            {tr("Custom: ")}<span style={{ color: '#c8ccd4' }}>{localWidth}{tr("px")}</span>
                         </div>
                         <input
                             type="range"
@@ -572,7 +574,7 @@ interface MenuItemProps {
     active?: boolean;
 }
 
-const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, onClick, danger, disabled, active }) => (
+const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, onClick, danger, disabled, active }) => { const tr = useUiTranslation(); return ((
     <div
         onClick={e => { e.stopPropagation(); if (!disabled) onClick(); }}
         style={{
@@ -595,7 +597,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, onClick, dan
             {icon || null}
         </span>
         <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {label}
+            {tr(label)}
         </span>
         {shortcut && (
             <span style={{ fontSize: 12, fontWeight: 400, color: '#4b5563', marginLeft: 16, whiteSpace: 'nowrap' }}>
@@ -603,7 +605,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, onClick, dan
             </span>
         )}
     </div>
-);
+)); };
 
 // ─── Separator ───────────────────────────────────────────────────────────────
 const Separator = () => (

@@ -14,15 +14,15 @@ const chartTypeGroup = toolbarSource.slice(
 
 describe('TopToolbar chart type controls', () => {
   it('keeps Line distinct and places Area immediately after it', () => {
-    const lineIndex = chartTypeGroup.indexOf('title="Line Chart"');
-    const areaIndex = chartTypeGroup.indexOf('title="Area Chart"');
+    const lineIndex = chartTypeGroup.indexOf('title={tr("Line Chart")}');
+    const areaIndex = chartTypeGroup.indexOf('title={tr("Area Chart")}');
 
     expect(lineIndex).toBeGreaterThanOrEqual(0);
     expect(areaIndex).toBeGreaterThan(lineIndex);
     expect(chartTypeGroup.slice(lineIndex, areaIndex)).toContain("active={toolbarState.chartType === 'line'}");
-    expect(chartTypeGroup.slice(lineIndex, areaIndex)).toContain("onChartTypeChange('line')");
+    expect(chartTypeGroup.slice(lineIndex, areaIndex)).toContain("dispatchTargetedChartType('line')");
     expect(chartTypeGroup.slice(areaIndex)).toContain("active={toolbarState.chartType === 'area'}");
-    expect(chartTypeGroup.slice(areaIndex)).toContain("onChartTypeChange('area')");
+    expect(chartTypeGroup.slice(areaIndex)).toContain("dispatchTargetedChartType('area')");
     expect(chartTypeGroup).not.toContain("chartType === 'line' || toolbarState.chartType === 'area'");
   });
 });

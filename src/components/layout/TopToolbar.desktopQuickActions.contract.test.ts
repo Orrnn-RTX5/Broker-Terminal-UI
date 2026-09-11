@@ -32,43 +32,37 @@ describe('Electron desktop quick-actions toolbar contract', () => {
         expect(desktopQuickActionsSource).toContain('rtx-desktop-command-actions');
         expect(desktopQuickActionsSource).toContain('data-rtx-desktop-toolbar-cluster="right"');
         expect(desktopQuickActionsSource).toContain('role="toolbar"');
-        expect(desktopQuickActionsSource).toContain('aria-label="Desktop quick actions"');
+        expect(desktopQuickActionsSource).toContain('aria-label={tr("Desktop quick actions")}');
     });
 
-    it('keeps the new full trend-tool rail browser-only and out of Electron', () => {
+    it('shares the complete drawing rail with a horizontal desktop arrangement', () => {
         expect(topToolbarSource).not.toContain("import { LeftDrawingToolbar } from './LeftDrawingToolbar';");
         expect(topToolbarSource).not.toContain('<LeftDrawingToolbar');
         expect(topToolbarSource).not.toContain('<WebDrawingToolsRail');
         expect(appSource).toContain('WebDrawingToolsRail,');
-        expect(appSource).toContain('isWebDrawingToolsRuntime,');
+        expect(appSource).not.toContain('isWebDrawingToolsRuntime,');
         expect(appSource).toContain('<WebDrawingToolsRail selectedSymbol={desktopToolbarSymbol} />');
+        expect(appSource).toContain('<WebDrawingToolsRail selectedSymbol={desktopToolbarSymbol} orientation="horizontal" />');
+        expect(appSource).toContain('<WebDrawingSelectionToolbar />');
     });
 
-    it('keeps the reference quick actions and Account-owned Logout reachable', () => {
+    it('keeps desktop search and Account-owned Logout separate from the full drawing toolbar', () => {
         for (const label of [
             'Search Symbols',
-            'Crosshair',
-            'Cursor',
-            'Trend Line',
-            'Horizontal Line',
-            'Vertical Line',
-            'Equidistant Channel',
-            'Fibonacci Retracement',
-            'Thumbs Up',
-            'Clear All Drawings',
             'Account',
             'Log out',
         ]) {
             expect(desktopQuickActionsSource).toContain(label);
         }
+        expect(desktopQuickActionsSource).not.toContain('QUICK_DRAWING_TOOLS');
     });
 
-    it('derives the badge and selected-symbol feed state instead of painting fixed values', () => {
+    it('derives the account badge without a duplicate toolbar connection indicator', () => {
         expect(topToolbarSource).not.toContain("symbol = 'BTCUSD'");
         expect(topToolbarSource).toContain('savedAccountCount={savedAccountCount}');
         expect(topToolbarSource).toContain('feedStatus={feedStatus}');
         expect(desktopQuickActionsSource).toContain('formatDesktopAccountBadge(savedAccountCount)');
-        expect(desktopQuickActionsSource).toContain('resolveDesktopToolbarStatus({');
+        expect(desktopQuickActionsSource).not.toContain('rtx-desktop-connection-button');
         expect(desktopStatusSource).toContain("feedState = 'live'");
         expect(themeSource).toContain('width: var(--rtx-desktop-feed-level, 0%);');
         expect(themeSource).not.toContain('width: 15%;');

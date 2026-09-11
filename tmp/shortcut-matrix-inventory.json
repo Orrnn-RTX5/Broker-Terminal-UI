@@ -1,0 +1,892 @@
+[
+  {
+    "id": "file.save",
+    "key": "s",
+    "ctrl": true,
+    "description": "Save workspace",
+    "category": "File",
+    "priority": 100,
+    "enabled": true,
+    "verification": "Mounted key to callback adapter; no live transaction"
+  },
+  {
+    "id": "file.close-chart",
+    "key": "q",
+    "alt": true,
+    "shift": true,
+    "description": "Close active chart",
+    "category": "File",
+    "priority": 100,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "file.print",
+    "key": "p",
+    "ctrl": true,
+    "description": "Print chart",
+    "category": "File",
+    "priority": 100,
+    "enabled": true,
+    "verification": "Mounted key to callback adapter; no live transaction"
+  },
+  {
+    "id": "view.fullscreen",
+    "key": "F11",
+    "description": "Full Screen",
+    "category": "View",
+    "priority": 100,
+    "allowInInput": true,
+    "enabled": true,
+    "verification": "Mounted key to callback adapter; no live transaction"
+  },
+  {
+    "id": "view.data-window",
+    "key": "d",
+    "ctrl": true,
+    "description": "Data Window",
+    "category": "View",
+    "priority": 95,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "tools.new-order",
+    "key": "F9",
+    "description": "New Order",
+    "category": "Trading",
+    "priority": 100,
+    "allowInInput": true,
+    "enabled": true,
+    "verification": "Mounted key to callback adapter; no live transaction"
+  },
+  {
+    "id": "view.depth-of-market",
+    "key": "b",
+    "alt": true,
+    "description": "Depth of Market",
+    "category": "Trading",
+    "priority": 95,
+    "enabled": true,
+    "verification": "Mounted key to callback adapter; no live transaction"
+  },
+  {
+    "id": "trading.quick-sell",
+    "key": "s",
+    "alt": true,
+    "description": "Quick Sell",
+    "category": "Trading",
+    "priority": 95,
+    "enabled": true,
+    "verification": "Mounted key to callback adapter; no live transaction"
+  },
+  {
+    "id": "trading.toggle-one-click",
+    "key": "t",
+    "alt": true,
+    "shift": true,
+    "description": "One Click Trading",
+    "category": "Trading",
+    "priority": 95,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "charts.indicator-list",
+    "key": "i",
+    "ctrl": true,
+    "description": "Indicator List",
+    "category": "Charts",
+    "priority": 92,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.toggle-crosshair",
+    "key": "c",
+    "description": "Toggle Crosshair",
+    "category": "Charts",
+    "priority": 92,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.object-list",
+    "key": "b",
+    "ctrl": true,
+    "description": "Object List",
+    "category": "Charts",
+    "priority": 92,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "charts.bar-chart",
+    "key": "1",
+    "alt": true,
+    "description": "Bar Chart",
+    "category": "Charts",
+    "priority": 92,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.candlestick",
+    "key": "2",
+    "alt": true,
+    "description": "Candlesticks",
+    "category": "Charts",
+    "priority": 92,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.line-chart",
+    "key": "3",
+    "alt": true,
+    "description": "Line Chart",
+    "category": "Charts",
+    "priority": 92,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.toggle-grid",
+    "key": "g",
+    "ctrl": true,
+    "description": "Toggle Grid",
+    "category": "Charts",
+    "priority": 92,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.toggle-volumes",
+    "key": "k",
+    "ctrl": true,
+    "description": "Toggle Volumes",
+    "category": "Charts",
+    "priority": 92,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "timeframe.m1",
+    "key": "4",
+    "alt": true,
+    "description": "M1",
+    "category": "Timeframes",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "timeframe.m5",
+    "key": "5",
+    "alt": true,
+    "description": "M5",
+    "category": "Timeframes",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "timeframe.m15",
+    "key": "6",
+    "alt": true,
+    "description": "M15",
+    "category": "Timeframes",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "timeframe.m30",
+    "key": "7",
+    "alt": true,
+    "description": "M30",
+    "category": "Timeframes",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "timeframe.h1",
+    "key": "8",
+    "alt": true,
+    "description": "H1",
+    "category": "Timeframes",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "timeframe.h4",
+    "key": "9",
+    "alt": true,
+    "description": "H4",
+    "category": "Timeframes",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.zoom-in",
+    "key": "+",
+    "description": "Zoom In",
+    "category": "Charts",
+    "priority": 80,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.zoom-out",
+    "key": "-",
+    "description": "Zoom Out",
+    "category": "Charts",
+    "priority": 80,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.toggle-grid-alt",
+    "key": "g",
+    "alt": true,
+    "description": "Toggle Grid",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.scroll-left",
+    "key": "ArrowLeft",
+    "description": "Scroll Chart Left",
+    "category": "Charts",
+    "priority": 80,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "charts.scroll-right",
+    "key": "ArrowRight",
+    "description": "Scroll Chart Right",
+    "category": "Charts",
+    "priority": 80,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "charts.undo-drawing",
+    "key": "z",
+    "ctrl": true,
+    "description": "Undo Last Drawing",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "charts.redo-drawing",
+    "key": "y",
+    "ctrl": true,
+    "description": "Redo Last Drawing",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "charts.delete-drawing",
+    "key": "Delete",
+    "description": "Delete Selected Drawing",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "charts.delete-last-drawing",
+    "key": "Backspace",
+    "description": "Delete Last Drawing",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "charts.properties",
+    "key": "F8",
+    "description": "Chart Properties",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "navigation.close-modal",
+    "key": "Escape",
+    "description": "Close Modal",
+    "category": "Navigation",
+    "priority": 100,
+    "allowInInput": true,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "help.shortcuts",
+    "key": "F1",
+    "description": "Keyboard Shortcuts",
+    "category": "Help",
+    "priority": 100,
+    "allowInInput": true,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "trading.order-history",
+    "key": "o",
+    "alt": true,
+    "shift": true,
+    "description": "Order History",
+    "category": "Trading",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "view.market-watch",
+    "key": "m",
+    "ctrl": true,
+    "description": "Market Watch",
+    "category": "View",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "view.navigator",
+    "key": "n",
+    "alt": true,
+    "shift": true,
+    "description": "Navigator",
+    "category": "View",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "view.terminal",
+    "key": "w",
+    "alt": true,
+    "shift": true,
+    "description": "Terminal",
+    "category": "View",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "view.toolbox",
+    "key": "u",
+    "alt": true,
+    "shift": true,
+    "description": "Toolbox",
+    "category": "View",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "view.symbols",
+    "key": "u",
+    "alt": true,
+    "description": "Search Symbols",
+    "category": "View",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "view.drawing-tools",
+    "key": "d",
+    "alt": true,
+    "shift": true,
+    "description": "Drawing tools",
+    "category": "View",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.emojis",
+    "key": "e",
+    "alt": true,
+    "description": "Emojis",
+    "category": "Drawing tools",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.stamps",
+    "key": "g",
+    "alt": true,
+    "shift": true,
+    "description": "Icons and Stamps",
+    "category": "Drawing tools",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.area-chart",
+    "key": "0",
+    "alt": true,
+    "description": "Area Chart",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.period-separators",
+    "key": "p",
+    "alt": true,
+    "shift": true,
+    "description": "Show period separators",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.trade-history",
+    "key": "i",
+    "alt": true,
+    "shift": true,
+    "description": "Show trade history",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.ohlc",
+    "key": "l",
+    "alt": true,
+    "shift": true,
+    "description": "Show OHLC",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.auto-scroll",
+    "key": "a",
+    "alt": true,
+    "shift": true,
+    "description": "Auto Scroll",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "charts.chart-shift",
+    "key": "f",
+    "alt": true,
+    "shift": true,
+    "description": "Chart Shift",
+    "category": "Charts",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "timeframe.d1",
+    "key": "4",
+    "alt": true,
+    "shift": true,
+    "description": "D1",
+    "category": "Timeframes",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "timeframe.w1",
+    "key": "5",
+    "alt": true,
+    "shift": true,
+    "description": "W1",
+    "category": "Timeframes",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "timeframe.mn",
+    "key": "6",
+    "alt": true,
+    "shift": true,
+    "description": "MN",
+    "category": "Timeframes",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "tools.history-center",
+    "key": "F2",
+    "description": "History Center",
+    "category": "Tools",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "tools.options",
+    "key": "o",
+    "ctrl": true,
+    "description": "Options",
+    "category": "Tools",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "window.tile",
+    "key": "r",
+    "alt": true,
+    "description": "Tile Windows",
+    "category": "Window",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to real layout API; layout effects in dock tests"
+  },
+  {
+    "id": "window.add-chart",
+    "key": "n",
+    "ctrl": true,
+    "alt": true,
+    "description": "Add chart",
+    "category": "Window",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "window.cascade",
+    "key": "c",
+    "alt": true,
+    "shift": true,
+    "description": "Cascade",
+    "category": "Window",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to real layout API; layout effects in dock tests"
+  },
+  {
+    "id": "window.tile-horizontal",
+    "key": "h",
+    "alt": true,
+    "shift": true,
+    "description": "Tile Horizontally",
+    "category": "Window",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to real layout API; layout effects in dock tests"
+  },
+  {
+    "id": "window.tile-vertical",
+    "key": "v",
+    "alt": true,
+    "shift": true,
+    "description": "Tile Vertically",
+    "category": "Window",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to real layout API; layout effects in dock tests"
+  },
+  {
+    "id": "window.arrange-icons",
+    "key": "m",
+    "alt": true,
+    "shift": true,
+    "description": "Arrange Icons",
+    "category": "Window",
+    "scope": "When floating windows are minimized",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to real layout API; layout effects in dock tests"
+  },
+  {
+    "id": "window.undo",
+    "key": "z",
+    "alt": true,
+    "shift": true,
+    "description": "Undo layout",
+    "category": "Window",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to real layout API; layout effects in dock tests"
+  },
+  {
+    "id": "window.redo",
+    "key": "y",
+    "alt": true,
+    "shift": true,
+    "description": "Redo layout",
+    "category": "Window",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to real layout API; layout effects in dock tests"
+  },
+  {
+    "id": "window.reset",
+    "key": "r",
+    "alt": true,
+    "shift": true,
+    "description": "Reset Windows",
+    "category": "Window",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to real layout API; layout effects in dock tests"
+  },
+  {
+    "id": "file.print-preview",
+    "key": "p",
+    "ctrl": true,
+    "shift": true,
+    "description": "Print Preview",
+    "category": "File",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "file.save-picture",
+    "key": "s",
+    "ctrl": true,
+    "shift": true,
+    "description": "Save as Picture",
+    "category": "File",
+    "priority": 90,
+    "enabled": true,
+    "verification": "Mounted key to scoped event; consumer tested separately"
+  },
+  {
+    "id": "drawing.select-all",
+    "key": "a",
+    "ctrl": true,
+    "description": "Select all drawings",
+    "category": "Charts",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.trendline",
+    "key": "t",
+    "description": "Select Trendline Tool",
+    "category": "Charts",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.hline",
+    "key": "h",
+    "description": "Select Horizontal Line Tool",
+    "category": "Charts",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.vline",
+    "key": "v",
+    "description": "Select Vertical Line Tool",
+    "category": "Charts",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.text",
+    "key": "x",
+    "description": "Select Text Tool",
+    "category": "Charts",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.rail.trendline",
+    "key": "t",
+    "alt": true,
+    "description": "Trend Line",
+    "category": "Drawing tools",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.rail.horizontal_line",
+    "key": "h",
+    "alt": true,
+    "description": "Horizontal Line",
+    "category": "Drawing tools",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.rail.horizontal_ray",
+    "key": "j",
+    "alt": true,
+    "description": "Horizontal Ray",
+    "category": "Drawing tools",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.rail.vertical_line",
+    "key": "v",
+    "alt": true,
+    "description": "Vertical Line",
+    "category": "Drawing tools",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.rail.crossline",
+    "key": "c",
+    "alt": true,
+    "description": "Cross Line",
+    "category": "Drawing tools",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.rail.fibonacci",
+    "key": "f",
+    "alt": true,
+    "description": "Fib Retracement",
+    "category": "Drawing tools",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "drawing.rail.text",
+    "key": "x",
+    "alt": true,
+    "description": "Text",
+    "category": "Drawing tools",
+    "enabled": true,
+    "verification": "Mounted key to command consumer or state/UI effect"
+  },
+  {
+    "id": "local.print-preview",
+    "key": "p",
+    "ctrl": true,
+    "description": "Print",
+    "category": "File",
+    "scope": "In Print Preview",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.print-preview",
+    "key": "p",
+    "meta": true,
+    "description": "Print",
+    "category": "File",
+    "scope": "In Print Preview",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.measure",
+    "key": "Shift",
+    "displayKeys": [
+      "Shift",
+      "Drag"
+    ],
+    "description": "Measure",
+    "category": "Charts",
+    "scope": "On the chart",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.finish-drawing",
+    "key": "Enter",
+    "description": "Finish drawing",
+    "category": "Drawing tools",
+    "scope": "While drawing a path or ghost feed",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.save-annotation",
+    "key": "Enter",
+    "ctrl": true,
+    "description": "Save annotation",
+    "category": "Drawing tools",
+    "scope": "While editing an annotation",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.save-annotation",
+    "key": "Enter",
+    "meta": true,
+    "description": "Save annotation",
+    "category": "Drawing tools",
+    "scope": "While editing an annotation",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.save-table-cell",
+    "key": "Enter",
+    "description": "Save cell",
+    "category": "Drawing tools",
+    "scope": "While editing a table cell",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.next-table-cell",
+    "key": "Tab",
+    "description": "Save and move to next cell",
+    "category": "Drawing tools",
+    "scope": "While editing a table cell",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.previous-table-cell",
+    "key": "Tab",
+    "shift": true,
+    "description": "Save and move to previous cell",
+    "category": "Drawing tools",
+    "scope": "While editing a table cell",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.quick-buy",
+    "key": "b",
+    "shift": true,
+    "description": "Buy",
+    "category": "Trading",
+    "scope": "While Last Symbol is open",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.quick-sell",
+    "key": "s",
+    "shift": true,
+    "description": "Sell",
+    "category": "Trading",
+    "scope": "While Last Symbol is open",
+    "verification": "Local handler suite (separate)"
+  },
+  {
+    "id": "local.quick-close",
+    "key": "x",
+    "shift": true,
+    "description": "Close positions",
+    "category": "Trading",
+    "scope": "While Last Symbol is open",
+    "verification": "Local handler suite (separate)"
+  }
+]

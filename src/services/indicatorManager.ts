@@ -28,10 +28,50 @@ export interface OHLCData {
 export class IndicatorManager {
   private indicators: Map<string, IndicatorConfig> = new Map();
   private indicatorSeries: Map<string, ISeriesApi<any>> = new Map();
+  private indicatorValues: Map<string, Map<number, number>> = new Map();
   private chart: IChartApi | null = null;
   private ohlcData: OHLCData[] = [];
+  private hidden = false;
 
   constructor() { }
+
+  /** Chart-level visibility gate ("Hide indicators"); stacks with per-indicator visibility. */
+  setHidden(hidden: boolean): void {
+    if (this.hidden === hidden) return;
+    this.hidden = hidden;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    this.indicatorSeries.forEach((series, key) => {
+      const baseId = key.replace(/_(upper|lower)$/, '');
+      const config = this.indicators.get(baseId);
+      series.applyOptions({ visible: !this.hidden && config?.visible !== false });
+    });
+  }
+
+  /** Price-scale indicator values at a chart time, for magnet snapping. */
+  getSnapValuesAt(time: number): number[] {
+    if (this.hidden) return [];
+    const values: number[] = [];
+    this.indicators.forEach((config, id) => {
+      if (config.visible === false || this.needsSeparateScale(config.type)) return;
+      [id, `${id}_upper`, `${id}_lower`].forEach((key) => {
+        const value = this.indicatorValues.get(key)?.get(time);
+        if (typeof value === 'number' && Number.isFinite(value)) values.push(value);
+      });
+    });
+    return values;
+  }
+
+  private cacheIndicatorValues(key: string, data: Array<{ time?: Time; value: number }>): void {
+    const values = new Map<number, number>();
+    data.forEach((point) => {
+      if (point.time === undefined) return;
+      values.set(Number(point.time), point.value);
+    });
+    this.indicatorValues.set(key, values);
+  }
 
   /**
    * Set chart reference
@@ -123,6 +163,9 @@ export class IndicatorManager {
       this.indicatorSeries.delete(`${id}_lower`);
     }
 
+    this.indicatorValues.delete(id);
+    this.indicatorValues.delete(`${id}_upper`);
+    this.indicatorValues.delete(`${id}_lower`);
     this.indicators.delete(id);
   }
 
@@ -134,25 +177,7 @@ export class IndicatorManager {
     if (!config) return;
 
     config.visible = !config.visible;
-
-    const series = this.indicatorSeries.get(id);
-    if (series) {
-      series.applyOptions({
-        visible: config.visible
-      });
-    }
-
-    // Toggle companion series for Bollinger Bands
-    if (config.type === 'bollinger' || config.type === 'bb') {
-      const upper = this.indicatorSeries.get(`${id}_upper`);
-      if (upper) {
-        upper.applyOptions({ visible: config.visible });
-      }
-      const lower = this.indicatorSeries.get(`${id}_lower`);
-      if (lower) {
-        lower.applyOptions({ visible: config.visible });
-      }
-    }
+    this.applyVisibility();
   }
 
   /**
@@ -189,7 +214,7 @@ export class IndicatorManager {
       priceLineVisible: false, // Fix: Hide indicator horizontal lines
       title: config.name,
       priceScaleId: this.needsSeparateScale(config.type) ? config.id : 'right',
-      visible: config.visible
+      visible: config.visible !== false && !this.hidden
     });
 
     return series;
@@ -220,6 +245,7 @@ export class IndicatorManager {
               value
             }))
             .filter(d => d.time !== undefined && !isNaN(d.value));
+          this.cacheIndicatorValues(id, data);
           series.setData(data);
         });
         break;
@@ -235,6 +261,7 @@ export class IndicatorManager {
               value
             }))
             .filter(d => d.time !== undefined && !isNaN(d.value));
+          this.cacheIndicatorValues(id, data);
           series.setData(data);
         });
         break;
@@ -250,6 +277,7 @@ export class IndicatorManager {
               value
             }))
             .filter(d => d.time !== undefined && !isNaN(d.value));
+          this.cacheIndicatorValues(id, data);
           series.setData(data);
         });
         break;
@@ -267,6 +295,7 @@ export class IndicatorManager {
               value
             }))
             .filter(d => d.time !== undefined && !isNaN(d.value));
+          this.cacheIndicatorValues(id, data);
           series.setData(data);
         });
         break;
@@ -290,6 +319,7 @@ export class IndicatorManager {
                 value
               }))
               .filter(d => d.time !== undefined && !isNaN(d.value));
+            this.cacheIndicatorValues(id, middleData);
             middleSeries.setData(middleData);
           }
           if (upperSeries) {
@@ -299,6 +329,7 @@ export class IndicatorManager {
                 value
               }))
               .filter(d => d.time !== undefined && !isNaN(d.value));
+            this.cacheIndicatorValues(`${id}_upper`, upperData);
             upperSeries.setData(upperData);
           }
           if (lowerSeries) {
@@ -308,6 +339,7 @@ export class IndicatorManager {
                 value
               }))
               .filter(d => d.time !== undefined && !isNaN(d.value));
+            this.cacheIndicatorValues(`${id}_lower`, lowerData);
             lowerSeries.setData(lowerData);
           }
         });

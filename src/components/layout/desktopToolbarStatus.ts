@@ -1,4 +1,5 @@
 import type { ConnectionState } from '../../store/useWebSocketStore';
+import { translateUi as tr } from '../../hooks/useUiTranslation';
 
 export type DesktopFeedState = 'live' | 'checking' | 'silent' | 'unverified' | 'offline';
 export type DesktopTransportSecurity = 'secure' | 'insecure' | 'unknown';
@@ -31,12 +32,12 @@ const normalizeSymbol = (value: unknown): string => String(value ?? '').trim().t
 
 const formatConnectionState = (state: ConnectionState): string => {
   switch (state) {
-    case 'connected': return 'Connected';
-    case 'connecting': return 'Connecting';
-    case 'reconnecting': return 'Reconnecting';
-    case 'offline': return 'Offline';
-    case 'error': return 'Connection error';
-    default: return 'Disconnected';
+    case 'connected': return tr('Connected');
+    case 'connecting': return tr('Connecting');
+    case 'reconnecting': return tr('Reconnecting');
+    case 'offline': return tr('Offline');
+    case 'error': return tr('Connection error');
+    default: return tr('Disconnected');
   }
 };
 
@@ -62,39 +63,41 @@ export const resolveDesktopToolbarStatus = ({
   }
 
   let feedState: DesktopFeedState = 'unverified';
-  let feedLabel = normalizedSymbol ? `${normalizedSymbol} feed status unverified` : 'Feed status unverified';
+  let feedLabel = normalizedSymbol
+    ? tr('{{value0}} feed status unverified', { value0: normalizedSymbol })
+    : tr('Feed status unverified');
 
   if (!socketConnected) {
     feedState = connectionState === 'connecting' || connectionState === 'reconnecting'
       ? 'checking'
       : 'offline';
     feedLabel = connectionState === 'connecting' || connectionState === 'reconnecting'
-      ? `Checking ${normalizedSymbol || 'selected symbol'} feed`
-      : `${normalizedSymbol || 'Selected symbol'} feed offline`;
+      ? tr('Checking {{value0}} feed', { value0: normalizedSymbol || tr('selected symbol') })
+      : tr('{{value0}} feed offline', { value0: normalizedSymbol || tr('Selected symbol') });
   } else if (!feed.settled) {
     feedState = 'checking';
-    feedLabel = `Checking ${normalizedSymbol || 'selected symbol'} feed`;
+    feedLabel = tr('Checking {{value0}} feed', { value0: normalizedSymbol || tr('selected symbol') });
   } else if (feed.current) {
     const currentSymbols = new Set(feed.symbols.map(normalizeSymbol).filter(Boolean));
     if (normalizedSymbol && currentSymbols.has(normalizedSymbol)) {
       feedState = 'live';
-      feedLabel = `${normalizedSymbol} live feed verified`;
+      feedLabel = tr('{{value0}} live feed verified', { value0: normalizedSymbol });
     } else {
       feedState = 'silent';
-      feedLabel = `${normalizedSymbol || 'Selected symbol'} is not active in current feed status`;
+      feedLabel = tr('{{value0}} is not active in current feed status', { value0: normalizedSymbol || tr('Selected symbol') });
     }
   } else {
     feedLabel = feed.error
-      ? `${normalizedSymbol || 'Selected symbol'} feed could not be verified`
-      : `${normalizedSymbol || 'Selected symbol'} feed status unverified`;
+      ? tr('{{value0}} feed could not be verified', { value0: normalizedSymbol || tr('Selected symbol') })
+      : tr('{{value0}} feed status unverified', { value0: normalizedSymbol || tr('Selected symbol') });
   }
 
   const transportLabel = socketConnected
     ? transportSecurity === 'secure'
-      ? 'secure transport'
+      ? tr('secure transport')
       : transportSecurity === 'insecure'
-        ? 'insecure transport'
-        : 'transport security unknown'
+        ? tr('insecure transport')
+        : tr('transport security unknown')
     : connectionLabel.toLowerCase();
 
   return {

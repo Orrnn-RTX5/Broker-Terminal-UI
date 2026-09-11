@@ -66,6 +66,8 @@
   /* === Typography === */
   --font-sans: 'Plus Jakarta Sans Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-login-sans: var(--font-sans);
+  --rtx-chrome-sheen: linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 1%) 48%, transparent);
+  --rtx-chrome-edge: rgb(255 255 255 / 10%);
   --font-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
 
   /* Enterprise type scale */
@@ -219,22 +221,57 @@ body {
 
 .rtx-top-chrome {
   background: var(--bg-secondary);
+  background-image: var(--rtx-chrome-sheen);
+  box-shadow: inset 0 1px 0 var(--rtx-chrome-edge), 0 1px 2px rgb(0 0 0 / 12%);
 }
 
 /* === Primary chart command strip === */
 .rtx-toolbar-command-cluster {
+  --rtx-toolbar-item-gap: 10px;
   gap: 0;
-  padding-inline: 8px;
+  padding-inline: 10px;
 }
 
 .rtx-toolbar-group,
 .rtx-timeframe-strip {
-  gap: 6px;
+  flex-shrink: 0;
+  gap: var(--rtx-toolbar-item-gap, 10px);
+}
+
+.rtx-timeframe-strip .rtx-timeframe-option {
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+.rtx-timeframe-strip .rtx-timeframe-option:not([aria-checked='true']):not(:hover):not(:focus-visible) {
+  color: var(--text-primary);
 }
 
 .rtx-mt5-divider {
-  margin-inline: 3px;
+  margin-inline: 6px;
   width: 0;
+}
+
+.rtx-chart-toolbar-scroll {
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-secondary) transparent;
+}
+
+.rtx-chart-toolbar-scroll::-webkit-scrollbar { height: 3px; }
+.rtx-chart-toolbar-scroll::-webkit-scrollbar-thumb { background: var(--border-secondary); }
+.rtx-chart-toolbar-scroll:focus-visible { outline: 1px solid var(--color-info); outline-offset: -1px; }
+
+@supports selector(::-webkit-scrollbar) {
+  .rtx-chart-toolbar-scroll { scrollbar-width: auto; }
+}
+
+@media (max-width: 1280px) {
+  .rtx-toolbar-command-cluster { --rtx-toolbar-item-gap: 8px; }
 }
 
 .rtx-toolbar-icon-button svg,
@@ -260,12 +297,20 @@ body {
   transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 
-.rtx-toolbar-action {
+.rtx-toolbar-icon-button svg.rtx-chart-command-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  stroke-width: 1;
+}
+
+.rtx-toolbar-command-cluster .rtx-toolbar-action {
   flex: 0 0 auto;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
   font-size: 13px;
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-normal);
   gap: 6px;
-  letter-spacing: -0.01em;
+  letter-spacing: normal;
   line-height: 1;
   padding: 0 10px;
   white-space: nowrap;
@@ -685,6 +730,10 @@ textarea {
   border-radius: 2px;
 }
 
+.rtx-menu-launcher .rtx-application-menu-trigger {
+  color: var(--text-primary);
+}
+
 .rtx-application-menu-trigger:hover,
 .rtx-application-menu-trigger:focus-visible,
 .rtx-application-menu-trigger.is-open {
@@ -824,6 +873,24 @@ textarea {
   font-family: inherit;
 }
 
+/* The Electron menu bar and its portaled submenus are the desktop counterpart of
+   the web application menu, so every option label reads with the same dense text
+   role. Only type is shared here; the desktop chrome rules own the layout. */
+.rtx-desktop-menu-bar .rtx-menu-row,
+.rtx-desktop-menu-bar .rtx-file-menu button.text-\[14px\],
+[data-rtx-desktop-submenu='true'] .rtx-menu-row,
+[data-rtx-desktop-submenu='true'] .rtx-file-menu button.text-\[14px\] {
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: var(--rtx-advanced-dense-font-size, 13px);
+  font-weight: var(--font-weight-normal);
+  line-height: 19.5px;
+}
+
+.rtx-desktop-menu-bar .rtx-menu-row > .font-segoe,
+[data-rtx-desktop-submenu='true'] .rtx-menu-row > .font-segoe {
+  font-family: inherit;
+}
+
 .rtx-menu-row:not(.is-disabled):hover,
 .rtx-menu-row:not(.is-disabled):focus-visible,
 .rtx-menu-row.is-open {
@@ -837,7 +904,15 @@ textarea {
 }
 
 .rtx-menu-row.is-disabled {
-  color: var(--text-quaternary);
+  color: var(--text-secondary);
+}
+
+.rtx-menu-row__lock {
+  align-items: center;
+  color: inherit;
+  display: flex;
+  flex: 0 0 16px;
+  justify-content: center;
 }
 
 .rtx-menu-row__icon {
@@ -858,6 +933,12 @@ textarea {
 }
 
 .rtx-application-menu .rtx-menu-row__shortcut {
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  line-height: 18px;
+}
+
+.rtx-desktop-menu-bar .rtx-menu-row__shortcut,
+[data-rtx-desktop-submenu='true'] .rtx-menu-row__shortcut {
   font-family: "Segoe UI", Tahoma, Arial, sans-serif;
   line-height: 18px;
 }
@@ -1242,44 +1323,45 @@ html.rtx-advanced-view .price-display[data-size="lg"] .price-big {
     font-size: 14px;
 }
 
-/* === Electron-only MetaTrader desktop chrome === */
-html.rtx-desktop-shell-active .rtx-top-chrome {
-  background: #f2f2f2;
-  border-bottom: 1px solid #aeb3b8;
-  box-shadow: none;
-  color: #202124;
-}
+/* Electron changes the arrangement; colors follow the shared web theme. */
 
 html.rtx-desktop-shell-active .rtx-desktop-main-toolbar {
   width: 100%;
-  background: #f2f2f2;
-  color: #202124;
+  background: var(--rtx-light-panel-header, var(--bg-secondary));
+  color: var(--text-primary);
   border: 0;
   box-shadow: none;
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-menu-row {
-  background: #f8f8f8;
-  border-bottom: 1px solid #c7c9cc;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  padding-block: 2px;
+  background: var(--rtx-light-panel-header, var(--bg-secondary));
+  border-bottom: 1px solid var(--border-primary);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-menu-bar {
-  color: #202124;
-  font-family: "Segoe UI", var(--font-sans);
+  color: var(--text-primary);
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-menu-bar .rtx-application-menu-trigger {
-  height: 20px;
+  height: 25px;
   background: transparent;
-  color: #202124;
+  color: var(--text-primary);
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: var(--rtx-advanced-dense-font-size, 13px);
+  font-weight: var(--font-weight-normal);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-menu-bar .rtx-application-menu-trigger:hover,
 html.rtx-desktop-shell-active .rtx-desktop-menu-bar .rtx-application-menu-trigger:focus-visible,
 html.rtx-desktop-shell-active .rtx-desktop-menu-bar .rtx-application-menu-trigger.is-open {
-  background: #dce9f8;
-  border-color: #8fb4df;
-  color: #0b4f91;
+  background: var(--rtx-light-accent-soft, var(--bg-quaternary));
+  border-color: var(--rtx-light-accent-border, var(--border-secondary));
+  color: var(--rtx-light-accent-strong, var(--text-primary));
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-menu-items > div > [role='menu'] {
@@ -1289,83 +1371,54 @@ html.rtx-desktop-shell-active .rtx-desktop-menu-items > div > [role='menu'] {
 }
 
 html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) {
-  background: #f0f0f0;
-  color: #202124;
-  border-bottom: 1px solid #c7c9cc;
-}
-
-html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) button {
-  color: #374151 !important;
-  border-color: transparent;
-  border-radius: 1px;
-  box-shadow: none;
-}
-
-html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) button:hover,
-html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) button:focus-visible {
-  background: #dce9f8 !important;
-  border-color: #8fb4df !important;
-  color: #0b4f91 !important;
-}
-
-html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) button[aria-pressed='true'],
-html.rtx-desktop-shell-active .rtx-timeframe-option[aria-checked='true'] {
-  background: #c9def5 !important;
-  border-color: #6e9fd4 !important;
-  color: #064b8e !important;
-}
-
-html.rtx-desktop-shell-active .rtx-toolbar-action,
-html.rtx-desktop-shell-active .rtx-toolbar-icon-button {
-  background: transparent !important;
-  color: #30343a !important;
-  font-family: "Segoe UI", var(--font-sans);
-}
-
-html.rtx-desktop-shell-active .rtx-toolbar-action--primary {
-  background: transparent !important;
-  border-color: transparent !important;
-  color: #202124 !important;
-}
-
-html.rtx-desktop-shell-active .rtx-toolbar-icon-button[aria-checked='true'] {
-  background: #c9def5 !important;
-  border-color: #6e9fd4 !important;
-  border-radius: 3px;
-  box-shadow: none;
-  color: #064b8e !important;
-}
-
-html.rtx-desktop-shell-active .rtx-toolbar-symbol-badge {
-  background: #ffffff;
-  border-color: #c7c9cc;
-  color: #4b5563;
-}
-
-html.rtx-desktop-shell-active .rtx-toolbar-action[aria-pressed='true'] .rtx-toolbar-symbol-badge {
-  background: #ffffff;
-  border-color: #6e9fd4;
-  color: #064b8e;
+  background: var(--rtx-light-panel-header, var(--bg-secondary));
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-primary);
 }
 
 html.rtx-desktop-shell-active .rtx-timeframe-option {
-  height: 30px;
+  height: 32px;
   min-width: 34px;
   padding-inline: 7px;
-  background: transparent !important;
-  color: #30343a !important;
-  font-size: 12px;
+  font-size: 13px;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-command-row {
+  --rtx-toolbar-icon-size: 20px;
+  --rtx-toolbar-control-size: 32px;
+  --rtx-toolbar-item-gap: 10px;
+  height: 40px;
+  gap: var(--rtx-toolbar-item-gap);
+  padding-right: 10px;
+  font: 400 13px/1 "Segoe UI", Tahoma, Arial, sans-serif;
+}
+
+/* One typography scale across commands, timeframes, search, and drawing tools. */
+html.rtx-desktop-shell-active .rtx-desktop-command-row :is(
+  .rtx-toolbar-action, .rtx-toolbar-icon-button, .rtx-timeframe-option,
+  .rtx-desktop-quick-button, .web-drawing-tools-rail__button
+) {
+  height: var(--rtx-toolbar-control-size);
+  font: 400 13px/1 "Segoe UI", Tahoma, Arial, sans-serif;
+}
+
+html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
+  --rtx-toolbar-item-gap: inherit;
+  padding-right: 0;
+}
+
+@media (max-width: 1280px) {
+  html.rtx-desktop-shell-active .rtx-desktop-command-row {
+    --rtx-toolbar-item-gap: 8px;
+  }
 }
 
 html.rtx-desktop-shell-active .rtx-mt5-divider {
-  width: 1px;
-  height: 24px;
-  margin-inline: 4px;
-  background: #c1c4c8;
-  visibility: visible;
+  display: none;
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-command-scroll {
+  flex: 0 1 auto;
   scrollbar-width: none;
 }
 
@@ -1374,24 +1427,32 @@ html.rtx-desktop-shell-active .rtx-desktop-command-scroll::-webkit-scrollbar {
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-command-actions {
-  gap: 1px;
-  padding: 0 5px 0 4px;
-  border-left: 1px solid #c1c4c8;
-  background: #f0f0f0;
+  gap: var(--rtx-toolbar-item-gap);
+  margin-left: 0;
+  padding: 0;
+  border-left: 0;
+  background: var(--rtx-light-panel-header, var(--bg-secondary));
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-button.rtx-desktop-symbol-search {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  margin-inline: 0;
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-quick-button {
   position: relative;
   display: inline-flex;
-  width: 27px;
-  height: 30px;
-  flex: 0 0 27px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   align-items: center;
   justify-content: center;
   padding: 0;
   border: 1px solid transparent;
   background: transparent;
-  color: #374151 !important;
+  color: var(--text-primary) !important;
   line-height: 1;
 }
 
@@ -1399,6 +1460,12 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-button--split-main {
   width: 25px;
   flex-basis: 25px;
   border-right: 0;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-button > svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.25;
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-quick-button--split-arrow {
@@ -1412,7 +1479,7 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-divider {
   height: 20px;
   flex: 0 0 1px;
   margin: 0 4px;
-  background: #c1c4c8;
+  background: var(--border-primary);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-account-badge {
@@ -1425,7 +1492,7 @@ html.rtx-desktop-shell-active .rtx-desktop-account-badge {
   padding: 0 2px;
   place-items: center;
   border-radius: 999px;
-  background: #ef3340;
+  background: var(--color-loss);
   color: #ffffff;
   font-family: "Segoe UI", var(--font-sans);
   font-size: 8px;
@@ -1440,23 +1507,23 @@ html.rtx-desktop-shell-active .rtx-desktop-security-indicator {
   flex: 0 0 20px;
   align-items: center;
   justify-content: center;
-  color: #828991;
+  color: var(--status-idle);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-security-indicator.is-secure {
-  color: #059669;
+  color: var(--status-connected);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-security-indicator.is-insecure {
-  color: #dc2626;
+  color: var(--status-disconnected);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-security-indicator.is-pending {
-  color: #b7791f;
+  color: var(--status-pending);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-security-indicator.is-offline {
-  color: #828991;
+  color: var(--status-idle);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-connection-button {
@@ -1477,57 +1544,57 @@ html.rtx-desktop-shell-active .rtx-desktop-ping-indicator {
   flex: 0 0 42px;
   align-items: stretch;
   overflow: hidden;
-  border: 1px solid #6b7280;
-  background: #16181d;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-primary);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-ping-indicator__fill {
   width: var(--rtx-desktop-feed-level, 0%);
-  background: #7b8490;
+  background: var(--status-idle);
   transition: width 160ms ease-out, background-color 160ms ease-out;
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-live .rtx-desktop-ping-indicator__fill {
-  background: #10b981;
+  background: var(--status-connected);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-checking {
-  border-color: #b7791f;
+  border-color: var(--status-pending);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-checking .rtx-desktop-ping-indicator__fill {
-  background: #d69e2e;
+  background: var(--status-pending);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-silent {
-  border-color: #c05621;
+  border-color: var(--status-pending);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-silent .rtx-desktop-ping-indicator__fill {
-  background: #dd6b20;
+  background: var(--status-pending);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-unverified {
-  border-color: #828991;
+  border-color: var(--status-idle);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-ping-indicator.is-offline {
-  border-color: #dc2626;
+  border-color: var(--status-disconnected);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-quick-menu {
   overflow: hidden;
-  border: 1px solid #9da3aa;
+  border: 1px solid var(--border-secondary);
   border-radius: 1px;
-  background: #ffffff;
-  color: #202124;
-  box-shadow: 2px 3px 8px rgb(0 0 0 / 24%);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xl);
   font-family: "Segoe UI", var(--font-sans);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-quick-menu__heading {
   padding: 4px 10px 3px;
-  color: #626871;
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -1544,26 +1611,26 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: #202124;
+  color: var(--text-primary);
   font-size: 13px;
   text-align: left;
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item:hover,
 html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item:focus-visible {
-  background: #dce9f8;
-  color: #0b4f91;
+  background: var(--rtx-light-accent-soft, var(--bg-quaternary));
+  color: var(--rtx-light-accent-strong, var(--text-primary));
   outline: none;
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item--danger {
-  color: #c0262d;
+  color: var(--color-loss);
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-quick-menu__separator {
   height: 1px;
   margin: 4px 7px;
-  background: #d5d7da;
+  background: var(--border-primary);
 }
 
 html.rtx-desktop-shell-active :is(.rtx-desktop-quick-menu__account, .rtx-desktop-quick-menu__connection) {
@@ -1584,14 +1651,14 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__detail {
   justify-content: space-between;
   gap: 12px;
   padding: 3px 10px;
-  color: #626871;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 html.rtx-desktop-shell-active .rtx-desktop-quick-menu__detail strong {
   min-width: 0;
   overflow: hidden;
-  color: #202124;
+  color: var(--text-primary);
   font-family: Consolas, monospace;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -1600,20 +1667,12 @@ html.rtx-desktop-shell-active .rtx-desktop-quick-menu__detail strong {
 
 html.rtx-desktop-shell-active .left-drawing-toolbar--horizontal {
   background: transparent;
-  color: #374151;
+  color: var(--text-primary);
 }
 
 html.rtx-desktop-shell-active .left-drawing-toolbar--horizontal .left-drawing-toolbar__button[data-active='true'] {
-  background: #c9def5;
-  color: #064b8e;
-}
-
-html.rtx-desktop-shell-active :is(.rtx-menu-surface, .rtx-file-menu) {
-  background: #ffffff !important;
-  border-color: #9da3aa !important;
-  border-radius: 1px !important;
-  color: #202124 !important;
-  box-shadow: 2px 3px 8px rgb(0 0 0 / 24%) !important;
+  background: var(--rtx-light-accent-soft, var(--color-info-dim));
+  color: var(--rtx-light-accent-strong, var(--color-info));
 }
 
 html.rtx-desktop-shell-active :is(.trend-tools-menu, .rtx-drawing-operations__menu) {
@@ -1644,19 +1703,8 @@ html.rtx-desktop-shell-active :is(.trend-tools-menu, .rtx-drawing-operations__me
   color: var(--text-primary) !important;
 }
 
-html.rtx-desktop-shell-active .rtx-menu-row {
-  color: #202124 !important;
-}
-
 html.rtx-desktop-shell-active :is(.trend-tools-menu__item, .rtx-drawing-operations__item) {
   color: var(--text-primary) !important;
-}
-
-html.rtx-desktop-shell-active .rtx-menu-row:hover,
-html.rtx-desktop-shell-active .rtx-menu-row:focus-visible {
-  background: #dce9f8 !important;
-  border-color: transparent !important;
-  color: #0b4f91 !important;
 }
 
 html.rtx-desktop-shell-active :is(.trend-tools-menu__item, .rtx-drawing-operations__item):hover,
@@ -1664,10 +1712,6 @@ html.rtx-desktop-shell-active :is(.trend-tools-menu__item, .rtx-drawing-operatio
   background: var(--bg-quaternary) !important;
   border-color: transparent !important;
   color: var(--text-primary) !important;
-}
-
-html.rtx-desktop-shell-active .rtx-menu-divider {
-  background: #d5d7da !important;
 }
 
 html.rtx-desktop-shell-active .trend-tools-menu__separator {
@@ -1692,18 +1736,61 @@ html.rtx-desktop-shell-active .rtx-dock-workspace {
   gap: 0 !important;
 }
 
-html.rtx-desktop-shell-active .rtx-status-bar {
-  background: #f4f4f4 !important;
-  border-top-color: #aeb3b8 !important;
-  color: #202124 !important;
-}
-
-html.rtx-desktop-shell-active .rtx-status-bar :is(span, button) {
-  color: #202124 !important;
-}
-
 @media (max-width: 1200px) {
   html.rtx-desktop-shell-active .rtx-desktop-command-scroll {
     overflow-x: auto;
   }
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-button:is(:hover, :focus-visible) {
+  background: var(--rtx-light-accent-soft, var(--bg-quaternary));
+  border-color: var(--rtx-light-accent-border, var(--border-secondary));
+  color: var(--rtx-light-accent-strong, var(--text-primary)) !important;
+}
+
+html.rtx-desktop-shell-active .rtx-desktop-quick-button[aria-pressed='true'] {
+  background: var(--rtx-light-accent-soft, var(--color-info-dim));
+  border-color: var(--rtx-light-accent-border, var(--border-tertiary));
+  color: var(--rtx-light-accent-strong, var(--color-info)) !important;
+}
+
+/* Align the desktop's first command icon with the Market Watch search icon. */
+html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
+  padding-left: 0;
+}
+
+.rtx-history-overlay-menu {
+  background: var(--bg-secondary);
+  background-image: var(--rtx-chrome-sheen);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  box-shadow: var(--shadow-xl);
+}
+.rtx-history-overlay-menu__header { border-color: var(--border-primary); }
+.rtx-history-overlay-menu__slider {
+  background: var(--bg-primary);
+  border-color: var(--border-primary);
+}
+.rtx-history-overlay-menu span { color: inherit; }
+.rtx-history-overlay-menu button {
+  color: var(--text-primary);
+  border-color: var(--border-secondary);
+}
+.rtx-history-overlay-menu button:hover,
+.rtx-history-overlay-menu label:hover { background: var(--bg-quaternary); }
+
+/* Desktop groups use the same spacing as their controls, without pipe dividers. */
+html.rtx-desktop-shell-active .rtx-toolbar-command-cluster {
+  column-gap: var(--rtx-toolbar-item-gap);
+}
+
+html.rtx-desktop-shell-active .navigator-tree-item__lock {
+  color: var(--text-primary);
+  opacity: 1;
+}
+html.rtx-desktop-shell-active .navigator-tree-item__lock svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.75;
 }

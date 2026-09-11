@@ -4,6 +4,7 @@ import { toolbarReducer, initialToolbarState } from '../store/toolbarState';
 import { useCommandBus } from './useCommandBus';
 import type { Command } from '../types/commands';
 import { getActiveChartSource } from '../services/activeChartSource';
+import { useDrawingToolPreferencesStore } from '../store/useDrawingToolPreferencesStore';
 
 export function useToolbarState() {
   const [state, dispatchLocal] = useReducer(toolbarReducer, initialToolbarState);
@@ -85,6 +86,9 @@ export function useToolbarState() {
       const targetContextId = drawingTargetContextRef.current;
       if (contextId && targetContextId && contextId !== targetContextId) return;
       if (contextId && activeContextId && contextId !== activeContextId) return;
+      // Keep drawing re-arms the tool from the rail; resetting the highlight
+      // here would fight that replay.
+      if (!window.electron?.window && useDrawingToolPreferencesStore.getState().keepDrawing) return;
 
       // Completion already restores chart interaction in TradingChart. Reset
       // only the tool highlight: SELECT_TOOL cursor would deselect the drawing.
@@ -186,6 +190,8 @@ export function useToolbarState() {
 
   return {
     state,
-    dispatch
+    dispatch,
+    // Prop hydration must not send a new chart command back to subscribers.
+    syncState: dispatchLocal,
   };
 }

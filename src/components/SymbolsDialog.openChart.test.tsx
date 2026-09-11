@@ -60,4 +60,29 @@ describe('SymbolsDialog chart opening', () => {
     expect(onOpenChart).toHaveBeenCalledWith(brokerSymbol);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('uses the authorized loaded catalog and original exact selection without a second network request', () => {
+    const onOpenChart = vi.fn();
+    const onClose = vi.fn();
+    render(<SymbolsDialog isOpen onClose={onClose} onOpenChart={onOpenChart}
+      title="Change chart symbol" chartActionLabel="Apply" initialSymbol="EURUSD.raw"
+      instruments={[{ symbol: 'XAUUSD.rtx', description: 'Gold' }, { symbol: 'EURUSD.raw', description: 'Euro' }]} />);
+    expect(screen.getByRole('dialog', { name: 'Change chart symbol' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(onOpenChart).toHaveBeenCalledWith('EURUSD.raw');
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not consume Escape belonging to another local overlay', () => {
+    const onClose = vi.fn();
+    render(<><SymbolsDialog isOpen onClose={onClose} instruments={[{ symbol: brokerSymbol }]} />
+      <div data-shortcut-scope="local"><input aria-label="Another editor" /></div></>);
+    const other = screen.getByLabelText('Another editor'); other.focus();
+    fireEvent.keyDown(other, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog'); dialog.focus();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
 });

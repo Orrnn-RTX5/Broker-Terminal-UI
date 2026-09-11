@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { Copy, Minus, Square, X } from 'lucide-react';
 import './DesktopWindowShell.css';
@@ -15,10 +16,21 @@ const readDesktopTitle = (): string => {
   return !title || title === 'RTX 5 Web Terminal' ? DEFAULT_DESKTOP_TITLE : title;
 };
 
+// Preserve the UTC clock previously displayed in the desktop status bar.
+function DesktopTitleClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <time className="rtx-desktop-titlebar__clock" dateTime={now.toISOString()} title="UTC">{now.toISOString().slice(11, 19)} UTC</time>;
+}
+
 function ElectronDesktopWindowShell({
   children,
   electronWindow,
 }: DesktopWindowShellProps & { electronWindow: ElectronWindowApi }) {
+    const tr = useUiTranslation();
   const [isMaximized, setIsMaximized] = useState(false);
   const [title, setTitle] = useState(readDesktopTitle);
 
@@ -65,7 +77,7 @@ function ElectronDesktopWindowShell({
 
   return (
     <div className="rtx-desktop-shell" data-rtx-desktop-shell="true">
-      <header className="rtx-desktop-titlebar" aria-label="Application title bar">
+      <header className="rtx-desktop-titlebar" aria-label={tr("Application title bar")}>
         <div className="rtx-desktop-titlebar__drag-region">
           <img
             className="rtx-desktop-titlebar__icon"
@@ -74,20 +86,21 @@ function ElectronDesktopWindowShell({
             aria-hidden="true"
             draggable={false}
           />
-          <span className="rtx-desktop-titlebar__title" title={title}>{title}</span>
+          <DesktopTitleClock />
+          <span className="rtx-desktop-titlebar__title" title={tr(title)}>{tr(title)}</span>
         </div>
 
         <div
           className="rtx-desktop-titlebar__controls"
           data-window-controls
           role="toolbar"
-          aria-label="Window controls"
+          aria-label={tr("Window controls")}
         >
           <button
             type="button"
             className="rtx-desktop-titlebar__control"
-            aria-label="Minimize window"
-            title="Minimize"
+            aria-label={tr("Minimize window")}
+            title={tr("Minimize")}
             onClick={() => electronWindow.minimize()}
           >
             <Minus size={13} strokeWidth={1.5} aria-hidden="true" />
@@ -95,8 +108,8 @@ function ElectronDesktopWindowShell({
           <button
             type="button"
             className="rtx-desktop-titlebar__control"
-            aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
-            title={isMaximized ? 'Restore' : 'Maximize'}
+            aria-label={isMaximized ? tr("Restore window") : tr("Maximize window")}
+            title={isMaximized ? tr("Restore") : tr("Maximize")}
             onClick={() => electronWindow.maximize()}
           >
             {isMaximized ? (
@@ -108,8 +121,8 @@ function ElectronDesktopWindowShell({
           <button
             type="button"
             className="rtx-desktop-titlebar__control rtx-desktop-titlebar__control--close"
-            aria-label="Close window"
-            title="Close"
+            aria-label={tr("Close window")}
+            title={tr("Close")}
             onClick={() => electronWindow.close()}
           >
             <X size={14} strokeWidth={1.5} aria-hidden="true" />

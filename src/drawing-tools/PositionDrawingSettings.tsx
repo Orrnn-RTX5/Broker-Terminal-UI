@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useEffect, useRef, useState } from 'react';
 import { drawingManager, type Drawing } from '../services/drawingManager';
 import { useAppStore } from '../store/useAppStore';
@@ -6,6 +7,7 @@ import type { PositionSizing } from './positionDrawingValues';
 export function PositionDrawingSettings({ drawing, contextId, onClose }: {
   drawing: Drawing; contextId?: string; onClose: () => void;
 }) {
+    const tr = useUiTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const account = useAppStore(state => state.account);
   const [error, setError] = useState('');
@@ -32,22 +34,22 @@ export function PositionDrawingSettings({ drawing, contextId, onClose }: {
       positionTargetPrice: target, positionStopPrice: stop, positionSizing: settings,
     }, contextId)) onClose();
   };
-  return <dialog ref={dialogRef} className="position-drawing-settings" aria-label="Position drawing settings" onCancel={onClose} onClose={onClose}>
+  return <dialog ref={dialogRef} className="position-drawing-settings" aria-label={tr("Position drawing settings")} onCancel={onClose} onClose={onClose}>
     <form onSubmit={submit}>
-      <h2>Position drawing settings</h2>
-      <label>Account size<input name="accountSize" type="number" min="0.00000001" step="any" required defaultValue={sizing?.accountSize ?? account?.balance ?? ''} /></label>
-      <label>Risk<input name="risk" type="number" min="0.00000001" step="any" required defaultValue={sizing?.risk ?? ''} /></label>
-      <label>Risk unit<select name="riskMode" defaultValue={sizing?.riskMode ?? 'percent'}><option value="percent">% of account</option><option value="amount">Account currency</option></select></label>
-      <label>Point value<input name="pointValue" type="number" min="0.00000001" step="any" required defaultValue={sizing?.pointValue ?? ''} aria-describedby="position-point-value-help" /></label>
-      <p id="position-point-value-help">Account-currency value of one price unit per unit of the instrument.</p>
-      <label>Lot size<input name="lotSize" type="number" min="0.00000001" step="any" required defaultValue={sizing?.lotSize ?? 1} /></label>
-      <label>Leverage<input name="leverage" type="number" min="0.00000001" step="any" defaultValue={sizing?.leverage ?? ''} placeholder="No cap" /></label>
-      <label>Quantity decimals<input name="quantityPrecision" type="number" min="0" max="8" step="1" required defaultValue={sizing?.quantityPrecision ?? 2} /></label>
-      <label>Entry price<input name="entry" type="number" step="any" required defaultValue={drawing.points[0]?.price} /></label>
-      <label>Target price<input name="target" type="number" step="any" required defaultValue={drawing.positionTargetPrice} /></label>
-      <label>Stop price<input name="stop" type="number" step="any" required defaultValue={drawing.positionStopPrice} /></label>
+      <h2>{tr("Position drawing settings")}</h2>
+      <label>{tr("Account size")}<input name="accountSize" type="number" min="0.00000001" step="any" required defaultValue={sizing?.accountSize ?? account?.balance ?? ''} /></label>
+      <label>{tr("Risk")}<input name="risk" type="number" min="0.00000001" step="any" required defaultValue={sizing?.risk ?? ''} /></label>
+      <label>{tr("Risk unit")}<select name="riskMode" defaultValue={sizing?.riskMode ?? 'percent'}><option value="percent">{tr("% of account")}</option><option value="amount">{tr("Account currency")}</option></select></label>
+      <label>{tr("Point value")}<input name="pointValue" type="number" min="0.00000001" step="any" required defaultValue={sizing?.pointValue ?? ''} aria-describedby="position-point-value-help" /></label>
+      <p id="position-point-value-help">{tr("Account-currency value of one price unit per unit of the instrument.")}</p>
+      <label>{tr("Lot size")}<input name="lotSize" type="number" min="0.00000001" step="any" required defaultValue={sizing?.lotSize ?? 1} /></label>
+      <label>{tr("Leverage")}<input name="leverage" type="number" min="0.00000001" step="any" defaultValue={sizing?.leverage ?? ''} placeholder={tr("No cap")} /></label>
+      <label>{tr("Quantity decimals")}<input name="quantityPrecision" type="number" min="0" max="8" step="1" required defaultValue={sizing?.quantityPrecision ?? 2} /></label>
+      <label>{tr("Entry price")}<input name="entry" type="number" step="any" required defaultValue={drawing.points[0]?.price} /></label>
+      <label>{tr("Target price")}<input name="target" type="number" step="any" required defaultValue={drawing.positionTargetPrice} /></label>
+      <label>{tr("Stop price")}<input name="stop" type="number" step="any" required defaultValue={drawing.positionStopPrice} /></label>
       {error && <p role="alert">{error}</p>}
-      <div className="position-drawing-settings__actions"><button type="button" onClick={onClose}>Cancel</button><button type="submit">Apply</button></div>
+      <div className="position-drawing-settings__actions"><button type="button" onClick={onClose}>{tr("Cancel")}</button><button type="submit">{tr("Apply")}</button></div>
     </form>
   </dialog>;
 }

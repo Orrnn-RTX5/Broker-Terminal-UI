@@ -1,3 +1,5 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
+import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Flag } from 'lucide-react';
@@ -51,9 +53,10 @@ function actualTone(actual: string): string {
 }
 
 function ImpactMark({ priority }: { priority: CalendarEvent['priority'] }) {
+    const tr = useUiTranslation();
     if (priority === 'Holiday') {
         return (
-            <span className="rtx-calendar-impact rtx-calendar-impact--holiday" title="Holiday">
+            <span className="rtx-calendar-impact rtx-calendar-impact--holiday" title={tr("Holiday")}>
                 <Flag size={11} aria-hidden="true" />
             </span>
         );
@@ -62,8 +65,8 @@ function ImpactMark({ priority }: { priority: CalendarEvent['priority'] }) {
     return (
         <span
             className={`rtx-calendar-impact rtx-calendar-impact--${priority.toLowerCase()}`}
-            title={priority}
-            aria-label={priority}
+            title={tr(priority)}
+            aria-label={tr(priority)}
         >
             <span className="rtx-calendar-impact__bar" />
             <span className="rtx-calendar-impact__bar" />
@@ -75,6 +78,9 @@ function ImpactMark({ priority }: { priority: CalendarEvent['priority'] }) {
 // --- Components ---
 
 export function CalendarTab() {
+    const tr = useUiTranslation();
+    const { i18n } = useTranslation();
+    const locale = i18n.resolvedLanguage || i18n.language;
     // State
     const [events, setEvents] = useState<CalendarEvent[]>(MOCK_EVENTS);
     const [filterPriority, setFilterPriority] = useState<string[]>(['High', 'Medium', 'Low', 'Holiday']);
@@ -98,7 +104,7 @@ export function CalendarTab() {
         const groups: Record<string, CalendarEvent[]> = {};
         filteredEvents.forEach(e => {
             const date = new Date(e.time);
-            const dateKey = date.toLocaleDateString('en-GB', {
+            const dateKey = date.toLocaleDateString(locale, {
                 weekday: 'long',
                 day: 'numeric',
                 month: 'long'
@@ -110,10 +116,10 @@ export function CalendarTab() {
         return Object.entries(groups).sort((a, b) => {
             return new Date(a[1][0].time).getTime() - new Date(b[1][0].time).getTime();
         });
-    }, [filteredEvents]);
+    }, [filteredEvents, locale]);
 
     const formatTime = (isoString: string) => {
-        return new Date(isoString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return new Date(isoString).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
     };
 
     // Context Menu Handlers
@@ -172,20 +178,20 @@ export function CalendarTab() {
                 <table className="rtx-calendar-tab__table">
                     <thead className="rtx-calendar-tab__head font-normal text-[12px] leading-[18px]">
                         <tr>
-                            <th className="rtx-calendar-tab__col--time">Time</th>
-                            <th className="rtx-calendar-tab__col--currency">Cur.</th>
-                            <th className="rtx-calendar-tab__col--impact">Imp.</th>
-                            <th className="rtx-calendar-tab__col--event">Event</th>
-                            <th className="rtx-calendar-tab__col--period">Period</th>
-                            <th className="rtx-calendar-tab__col--actual">Actual</th>
-                            <th className="rtx-calendar-tab__col--forecast">Forecast</th>
-                            <th className="rtx-calendar-tab__col--previous">Previous</th>
+                            <th className="rtx-calendar-tab__col--time">{tr("Time")}</th>
+                            <th className="rtx-calendar-tab__col--currency">{tr("Cur.")}</th>
+                            <th className="rtx-calendar-tab__col--impact">{tr("Imp.")}</th>
+                            <th className="rtx-calendar-tab__col--event">{tr("Event")}</th>
+                            <th className="rtx-calendar-tab__col--period">{tr("Period")}</th>
+                            <th className="rtx-calendar-tab__col--actual">{tr("Actual")}</th>
+                            <th className="rtx-calendar-tab__col--forecast">{tr("Forecast")}</th>
+                            <th className="rtx-calendar-tab__col--previous">{tr("Previous")}</th>
                         </tr>
                     </thead>
                     <tbody className="rtx-calendar-tab__body text-[13px] font-normal leading-[19.5px]">
                         {groupedEvents.length === 0 && (
                             <tr className="rtx-calendar-empty">
-                                <td colSpan={8}>No events match the current filters.</td>
+                                <td colSpan={8}>{tr("No events match the current filters.")}</td>
                             </tr>
                         )}
                         {groupedEvents.map(([dateLabel, groupEvents]) => (
@@ -225,19 +231,18 @@ export function CalendarTab() {
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                     onClick={(e) => e.stopPropagation()}
                     role="menu"
-                    aria-label="Calendar filters"
+                    aria-label={tr("Calendar filters")}
                 >
                     <button type="button" className="rtx-calendar-menu__item" role="menuitem" onClick={showAllEvents}>
-                        Add All Events
-                    </button>
+                        {tr("Add All Events")}</button>
                     <button type="button" className="rtx-calendar-menu__item" role="menuitem" onClick={refreshEvents}>
-                        <span>Refresh</span>
+                        <span>{tr("Refresh")}</span>
                         <span className="rtx-calendar-menu__shortcut text-[12px] font-normal">F5</span>
                     </button>
                     <div className="rtx-calendar-menu__divider" role="separator" />
 
                     <div className="rtx-calendar-menu__item" role="menuitem">
-                        <span>Priority</span>
+                        <span>{tr("Priority")}</span>
                         <Icon name="chevron-right" size="xs" className="rtx-calendar-menu__chevron" />
                         <div className="rtx-calendar-menu__submenu">
                             {PRIORITIES.map(p => (
@@ -250,14 +255,14 @@ export function CalendarTab() {
                                     onClick={() => toggleFilter(filterPriority, setFilterPriority, p, '')}
                                 >
                                     {filterPriority.includes(p) && <Icon name="check" size="xs" className="rtx-calendar-menu__check" />}
-                                    <span>{p}</span>
+                                    <span>{tr(p)}</span>
                                 </button>
                             ))}
                         </div>
                     </div>
 
                     <div className="rtx-calendar-menu__item" role="menuitem">
-                        <span>Currency</span>
+                        <span>{tr("Currency")}</span>
                         <Icon name="chevron-right" size="xs" className="rtx-calendar-menu__chevron" />
                         <div className="rtx-calendar-menu__submenu">
                             {CURRENCIES.map(c => (
@@ -270,14 +275,14 @@ export function CalendarTab() {
                                     onClick={() => toggleFilter(filterCurrency, setFilterCurrency, c, 'ALL')}
                                 >
                                     {filterCurrency.includes(c) && <Icon name="check" size="xs" className="rtx-calendar-menu__check" />}
-                                    <span>{c}</span>
+                                    <span>{c === 'ALL' ? tr('All') : c}</span>
                                 </button>
                             ))}
                         </div>
                     </div>
 
                     <div className="rtx-calendar-menu__item" role="menuitem">
-                        <span>Country</span>
+                        <span>{tr("Country")}</span>
                         <Icon name="chevron-right" size="xs" className="rtx-calendar-menu__chevron" />
                         <div className="rtx-calendar-menu__submenu">
                             {COUNTRIES.map(c => (
@@ -290,15 +295,15 @@ export function CalendarTab() {
                                     onClick={() => toggleFilter(filterCountry, setFilterCountry, c, 'All Countries')}
                                 >
                                     {filterCountry.includes(c) && <Icon name="check" size="xs" className="rtx-calendar-menu__check" />}
-                                    <span>{c}</span>
+                                    <span>{tr(c)}</span>
                                 </button>
                             ))}
                         </div>
                     </div>
 
                     <div className="rtx-calendar-menu__divider" role="separator" />
-                    <button type="button" className="rtx-calendar-menu__item" role="menuitem">Auto Arrange</button>
-                    <button type="button" className="rtx-calendar-menu__item" role="menuitem">Grid</button>
+                    <button type="button" className="rtx-calendar-menu__item" role="menuitem">{tr("Auto Arrange")}</button>
+                    <button type="button" className="rtx-calendar-menu__item" role="menuitem">{tr("Grid")}</button>
                 </div>
             )}
         </div>

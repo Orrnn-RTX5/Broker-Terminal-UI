@@ -1,7 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearAdvancedViewRootClasses,
   syncAdvancedViewRootClasses,
+  runOutsideChartFocus,
+  RTX_EXIT_CHART_FOCUS_EVENT,
   type AdvancedViewRootOptions,
 } from './advancedViewRootClasses';
 
@@ -16,6 +18,24 @@ const baseOptions: AdvancedViewRootOptions = {
 describe('advanced view root classes', () => {
   afterEach(() => {
     document.documentElement.className = '';
+    vi.restoreAllMocks();
+  });
+
+  it('reveals the workspace before measuring an explicit window arrangement and keeps the theme', () => {
+    syncAdvancedViewRootClasses(document.documentElement, true, { ...baseOptions, focusChart: true });
+    let nextFrame: FrameRequestCallback | undefined;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { nextFrame = callback; return 1; });
+    const persistPreference = vi.fn();
+    window.addEventListener(RTX_EXIT_CHART_FOCUS_EVENT, persistPreference);
+    const arrange = vi.fn();
+    runOutsideChartFocus(arrange);
+    expect(document.documentElement).not.toHaveClass('rtx-advanced-focus-chart');
+    expect(document.documentElement).toHaveClass('rtx-advanced-view', 'rtx-skin-untitled-light');
+    expect(persistPreference).toHaveBeenCalledOnce();
+    expect(arrange).not.toHaveBeenCalled();
+    nextFrame?.(0);
+    expect(arrange).toHaveBeenCalledOnce();
+    window.removeEventListener(RTX_EXIT_CHART_FOCUS_EVENT, persistPreference);
   });
 
   it('applies one coherent Light-theme class set', () => {

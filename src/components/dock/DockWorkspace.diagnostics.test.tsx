@@ -156,6 +156,34 @@ describe('DockWorkspace chart diagnostic attributes', () => {
     useDockLayoutStore.setState({ layout: originalLayout });
   });
 
+  it('keeps an explicit saved chart blank during a partial catalog, then renders its own contract when settled', async () => {
+    useDockLayoutStore.setState({ layout: chartLayout('saved-gold', 'XAUUSD.raw') });
+    const workspace = (current: boolean, symbols: string[]) => <DockWorkspace
+      globalChartType="candlestick" globalTimeframe="M5" selectedSymbol="AAPL.US"
+      allSymbols={symbols} chartSymbols={symbols} tradeSymbols={symbols}
+      activeMarketSnapshot={createActiveMarketSnapshot({ symbols })}
+      marketInstrumentsSnapshot={createMarketInstrumentsSnapshot({ chartCatalogCurrent: current, authorizationSettled: current })}
+      onSymbolSelect={vi.fn()} onClosePosition={vi.fn()} onModifyPosition={vi.fn()}
+      onCancelOrder={vi.fn()} onCloseBulk={vi.fn()} />;
+    const view = render(workspace(false, ['AAPL.US']));
+    expect(view.container.querySelector('[data-chart-rendered-symbol]')).toHaveAttribute('data-chart-rendered-symbol', '');
+    expect(chartMocks.render).not.toHaveBeenCalled();
+    view.rerender(workspace(true, ['AAPL.US', 'XAUUSD.raw', 'BTCUSD']));
+    await waitFor(() => expect(chartMocks.render).toHaveBeenCalled());
+    expect(chartMocks.render.mock.calls.every(([props]) => props.symbol === 'XAUUSD.RAW')).toBe(true);
+    expect(view.container.querySelector('[data-chart-rendered-symbol]')).toHaveAttribute('data-chart-rendered-symbol', 'XAUUSD.RAW');
+  });
+
+  it.each([
+    { name: 'an unbound placeholder', saved: 'Chart', current: false },
+    { name: 'an invalid contract after successful catalog loading', saved: 'OLD-BROKER.GOLD', current: true },
+  ])('allows the existing fallback for $name', async ({ saved, current }) => {
+    const view = renderWorkspace(chartLayout('chart-fallback', saved), 'BTCUSD', true,
+      createActiveMarketSnapshot(), ['BTCUSD'], createMarketInstrumentsSnapshot({ chartCatalogCurrent: current }));
+    await waitFor(() => expect(chartMocks.render).toHaveBeenCalled());
+    expect(view.container.querySelector('[data-chart-rendered-symbol]')).toHaveAttribute('data-chart-rendered-symbol', 'BTCUSD');
+  });
+
   it('does not expose hostile persisted panel IDs or symbols in any data-chart attribute', async () => {
     const hostileId = 'panel:200002:1234@mql5helpline@gmail.com';
     const hostileSymbol = 'BTCUSD" data-password="1234';

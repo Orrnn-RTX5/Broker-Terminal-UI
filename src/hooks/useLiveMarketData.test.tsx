@@ -683,6 +683,8 @@ describe('useMarketInstruments normalization', () => {
     expect(result.current.authorizedSymbols).toEqual([]);
     expect(result.current.authorizationSettled).toBe(false);
 
+    expect(result.current.chartCatalogCurrent).toBe(false);
+
     await act(async () => {
       resolveAuthorization({
         symbols: [{ symbol: 'XAUUSD', trading_enabled: true }],
@@ -693,6 +695,33 @@ describe('useMarketInstruments normalization', () => {
 
     expect(result.current.authorizedSymbols).toEqual(['XAUUSD']);
     expect(result.current.authorizationSettled).toBe(true);
+    expect(result.current.chartCatalogCurrent).toBe(true);
+    unmount();
+  });
+
+  it('does not permit saved-chart replacement when catalog authorization fails', async () => {
+    apiGet.mockResolvedValueOnce({ symbols: [{ symbol: 'AAPL.US' }] })
+      .mockRejectedValueOnce(new ApiError(503, 'Catalog unavailable'));
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    expect(result.current.authorizationSettled).toBe(true);
+    expect(result.current.symbols.map(item => item.symbol)).toEqual(['AAPL.US']);
+    expect(result.current.chartCatalogCurrent).toBe(false);
+    unmount();
+  });
+
+  it('invalidates successful catalog ownership before another broker/account request resolves', async () => {
+    apiGet.mockResolvedValueOnce({ symbols: [{ symbol: 'XAUUSD.raw' }] })
+      .mockResolvedValueOnce({ symbols: [{ symbol: 'XAUUSD.raw', trading_enabled: true }] });
+    const { result, unmount } = renderHook(() => useMarketInstruments());
+    await flushPromises();
+    expect(result.current.chartCatalogCurrent).toBe(true);
+    apiGet.mockImplementation(() => new Promise(() => {}));
+    act(() => {
+      localStorage.setItem('broker_id', 'achiever-financials');
+      useAppStore.setState({ accountId: 'changed-catalog-account' });
+    });
+    expect(result.current.chartCatalogCurrent).toBe(false);
     unmount();
   });
 

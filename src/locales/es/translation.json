@@ -39,7 +39,7 @@
       "indicators": "Indicadores",
       "objects": "Objetos",
       "experts": "Expertos",
-      "scripts": "Scripts"
+      "scripts": "Guiones"
     },
     "charts": {
       "label": "Gráficos",
@@ -56,7 +56,8 @@
       "tickVolumes": "Volúmenes de tick",
       "zoomIn": "Acercar",
       "zoomOut": "Alejar",
-      "properties": "Propiedades"
+      "properties": "Propiedades",
+      "areaChart": "Gráfico de áreas"
     },
     "tools": {
       "label": "Herramientas",
@@ -86,10 +87,10 @@
       "whatsNew": "Novedades",
       "telegramChannel": "Canal de Telegram RTX5",
       "videoGuides": "Guías en video",
-      "webTrader": "RTX5 Web Trader",
+      "webTrader": "Comerciante web RTX5",
       "documentation": "Documentación RTX5",
-      "algoBook": "RTX5 AlgoBook",
-      "neuroBook": "RTX5 NeuroBook",
+      "algoBook": "AlgoBook RTX5",
+      "neuroBook": "NeuroLibro RTX5",
       "articles": "Artículos RTX5",
       "codeBase": "Base de código RTX5",
       "jobs": "Empleos RTX5",

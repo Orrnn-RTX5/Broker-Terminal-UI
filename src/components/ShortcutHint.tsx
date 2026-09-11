@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * Shortcut Hint Component
  * Displays keyboard shortcut hints in menu items and tooltips
@@ -50,6 +51,7 @@ export function ShortcutTooltip({
   children,
   position = 'bottom'
 }: ShortcutTooltipProps) {
+    const tr = useUiTranslation();
   const [isVisible, setIsVisible] = React.useState(false);
 
   const positionClasses = {
@@ -71,7 +73,7 @@ export function ShortcutTooltip({
           className={`absolute ${positionClasses[position]} z-50 animate-in fade-in zoom-in-95 duration-100`}
         >
           <div className="bg-zinc-900 text-zinc-200 px-3 py-2 rounded-lg shadow-xl border border-zinc-700 whitespace-nowrap">
-            <div className="text-xs font-medium">{description}</div>
+            <div className="text-xs font-medium">{tr(description)}</div>
             {shortcut && (
               <div className="text-[10px] text-zinc-400 font-mono mt-1">
                 {shortcut}

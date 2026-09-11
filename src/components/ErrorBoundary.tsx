@@ -1,3 +1,4 @@
+import { translateUi as tr } from '../hooks/useUiTranslation';
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 
@@ -35,14 +36,13 @@ export class ErrorBoundary extends Component<Props, State> {
             // Show a minimal error indicator in the panel
             return (
                 <div style={{ padding: 8, color: '#f87171', fontSize: 11, fontFamily: 'monospace', background: '#1a0000' }}>
-                    ⚠ {this.props.label || 'Component'} error: {this.state.error?.message}
+                    ⚠ {this.props.label || 'Component'} {tr(" error: ")}{this.state.error?.message}
                     <br />
                     <button
                         style={{ marginTop: 4, padding: '2px 8px', background: '#333', color: '#ccc', border: 'none', borderRadius: 3, cursor: 'pointer' }}
                         onClick={() => this.setState({ hasError: false, error: null })}
                     >
-                        Retry
-                    </button>
+                        {tr("Retry")}</button>
                 </div>
             );
         }

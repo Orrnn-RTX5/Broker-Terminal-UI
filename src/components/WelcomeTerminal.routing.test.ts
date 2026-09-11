@@ -199,7 +199,7 @@ describe('WelcomeTerminal broker runtime selection', () => {
     expect(pickDiscoveryBroker(brokers, { savedBrokerId: 'localdemo' })?.broker_id).toBe('TEST');
   });
 
-  it('restores a saved broker only when it is marked by a successful login', () => {
+  it('keeps the configured web broker even after another broker logged in successfully', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
       API_HOST: 'https://fxtrustbrokerbackend.orrnn.com',
@@ -215,6 +215,58 @@ describe('WelcomeTerminal broker runtime selection', () => {
     expect(pickDiscoveryBroker(brokers, {
       savedBrokerId: 'localdemo',
       lastAuthenticatedBrokerId: localStorage.getItem(LAST_AUTHENTICATED_BROKER_ID_KEY),
-    })?.broker_id).toBe('localdemo');
+    })?.broker_id).toBe('TEST');
+  });
+
+  it('switches a same-origin TEST login to the configured Achiever broker', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://service.achieverfinancials.com',
+      BROKER_ID: 'achiever-financials',
+    };
+    const selected = pickDiscoveryBroker([
+      broker({ broker_id: 'TEST', broker_name: 'FX Trust TEST' }),
+      broker({ broker_id: 'achiever-financials', broker_name: 'Achiever Financials' }),
+    ], { savedBrokerId: 'TEST', lastAuthenticatedBrokerId: 'TEST' });
+    expect(selected?.broker_id).toBe('achiever-financials');
+  });
+
+  it('keeps the configured web broker when the saved broker is the only directory row', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://service.achieverfinancials.com',
+      BROKER_ID: 'achiever-financials',
+    };
+    const selected = pickDiscoveryBroker([
+      broker({ broker_id: 'TEST', broker_name: 'FX Trust TEST' }),
+    ], { savedBrokerId: 'TEST', lastAuthenticatedBrokerId: 'TEST' });
+    expect(selected?.broker_id).toBe('achiever-financials');
+    expect(selected?.server_url).toBe('https://service.achieverfinancials.com');
+  });
+
+  it('retains the authenticated broker selection in desktop mode', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://service.achieverfinancials.com',
+      BROKER_ID: 'achiever-financials',
+    };
+    const selected = pickDiscoveryBroker([
+      broker({ broker_id: 'TEST', broker_name: 'FX Trust TEST' }),
+      broker({ broker_id: 'achiever-financials', broker_name: 'Achiever Financials' }),
+    ], { isDesktopBrokerSelection: true, savedBrokerId: 'TEST', lastAuthenticatedBrokerId: 'TEST' });
+    expect(selected?.broker_id).toBe('TEST');
+  });
+
+  it('uses a discovered desktop broker instead of an unavailable configured fallback', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://services.growtradingacademy.com',
+      BROKER_ID: 'gta_broker',
+    };
+    const selected = pickDiscoveryBroker([
+      broker({ broker_id: 'achiever-financials', broker_name: 'Achiever Financials', server_url: 'https://service.achieverfinancials.com' }),
+    ], { isDesktopBrokerSelection: true, savedBrokerId: 'gta_broker' });
+    expect(selected?.broker_id).toBe('achiever-financials');
+    expect(selected?.server_url).toBe('https://service.achieverfinancials.com');
   });
 });

@@ -56,7 +56,8 @@
       "tickVolumes": "Tick-Volumen",
       "zoomIn": "Vergrößern",
       "zoomOut": "Verkleinern",
-      "properties": "Eigenschaften"
+      "properties": "Eigenschaften",
+      "areaChart": "Flächendiagramm"
     },
     "tools": {
       "label": "Extras",
@@ -92,11 +93,11 @@
       "neuroBook": "RTX5 NeuroBook",
       "articles": "RTX5 Artikel",
       "codeBase": "RTX5 Code-Basis",
-      "jobs": "RTX5 Jobs",
+      "jobs": "RTX5-Jobs",
       "marketplace": "RTX5 Marktplatz",
       "signals": "RTX5 Signale",
       "quotes": "RTX5 Kurse",
-      "forum": "RTX5 Forum",
+      "forum": "RTX5-Forum",
       "cloudHosting": "RTX5 Cloud-Hosting",
       "mobile": "Mobil",
       "mac": "RTX5 für Mac",

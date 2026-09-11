@@ -1,0 +1,48 @@
+/* The symbol browser uses the same neutral surfaces as the terminal. */
+.rtx-symbols-dialog {
+  color: var(--text-primary);
+  font: 400 13px/1.4 var(--font-sans);
+  background: var(--bg-secondary);
+}
+
+.rtx-symbols-dialog__titlebar,
+.rtx-symbols-dialog__footer {
+  background-image: var(--rtx-chrome-sheen);
+}
+
+.rtx-symbols-dialog :is(thead, th) {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-secondary) !important;
+  backdrop-filter: none !important;
+  font-weight: 400;
+}
+
+.rtx-symbols-dialog tbody tr {
+  background: var(--bg-secondary) !important;
+}
+
+.rtx-symbols-dialog tbody tr:nth-child(even) {
+  background: var(--bg-tertiary) !important;
+}
+
+.rtx-symbols-dialog tbody tr:hover {
+  background: var(--bg-quaternary) !important;
+}
+
+.rtx-symbols-dialog tbody tr[data-selected='true'] {
+  background: var(--color-info-dim) !important;
+}
+
+.rtx-symbols-dialog :is(button, input, select):focus-visible {
+  outline: 1px solid var(--color-info);
+  outline-offset: -1px;
+}
+
+.rtx-symbols-dialog__footer {
+  gap: 8px;
+}
+
+.rtx-symbols-dialog__footer button {
+  min-height: 30px;
+  font-weight: 400;
+}

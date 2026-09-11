@@ -1,0 +1,135 @@
+[
+  {
+    "tool": "01-text",
+    "file": "01-text-reference.mp4",
+    "seconds": 8.63,
+    "frames": 19,
+    "segments": [
+      "01-text-browser"
+    ]
+  },
+  {
+    "tool": "02-note",
+    "file": "02-note-reference.mp4",
+    "seconds": 7.18,
+    "frames": 19,
+    "segments": [
+      "02-note-reference",
+      "02-note-edit-reference",
+      "02-note-content-reference"
+    ]
+  },
+  {
+    "tool": "03-price-note",
+    "file": "03-price-note-reference.mp4",
+    "seconds": 5.15,
+    "frames": 14,
+    "segments": [
+      "03-price-note-reference",
+      "03-price-note-edit"
+    ]
+  },
+  {
+    "tool": "04-pin",
+    "file": "04-pin-reference.mp4",
+    "seconds": 4.89,
+    "frames": 15,
+    "segments": [
+      "04-pin-reference",
+      "04-pin-content-reference"
+    ]
+  },
+  {
+    "tool": "05-table",
+    "file": "05-table-reference.mp4",
+    "seconds": 6.45,
+    "frames": 18,
+    "segments": [
+      "05-table-placement-reference",
+      "05-table-edit-reference",
+      "05-table-cells-reference"
+    ]
+  },
+  {
+    "tool": "06-callout",
+    "file": "06-callout-reference.mp4",
+    "seconds": 5.92,
+    "frames": 15,
+    "segments": [
+      "06-callout-reference",
+      "06-callout-content-reference"
+    ]
+  },
+  {
+    "tool": "07-comment",
+    "file": "07-comment-reference.mp4",
+    "seconds": 8.26,
+    "frames": 14,
+    "segments": [
+      "07-comment-reference",
+      "07-comment-content-reference"
+    ]
+  },
+  {
+    "tool": "08-price-label",
+    "file": "08-price-label-reference.mp4",
+    "seconds": 5.49,
+    "frames": 14,
+    "segments": [
+      "08-price-label-reference",
+      "08-price-label-drag-reference"
+    ]
+  },
+  {
+    "tool": "09-signpost",
+    "file": "09-signpost-reference.mp4",
+    "seconds": 7.55,
+    "frames": 12,
+    "segments": [
+      "09-signpost-reference",
+      "09-signpost-content-reference"
+    ]
+  },
+  {
+    "tool": "10-flag",
+    "file": "10-flag-reference.mp4",
+    "seconds": 5.24,
+    "frames": 10,
+    "segments": [
+      "10-flag-reference"
+    ]
+  },
+  {
+    "tool": "11-image",
+    "file": "11-image-reference.mp4",
+    "seconds": 2.85,
+    "frames": 7,
+    "segments": [
+      "11-image-reference",
+      "11-image-dialog-reference"
+    ]
+  },
+  {
+    "tool": "12-post",
+    "file": "12-post-reference.mp4",
+    "seconds": 6.29,
+    "frames": 15,
+    "segments": [
+      "12-post-dialog-reference",
+      "12-post-link-reference",
+      "12-post-placement-reference"
+    ]
+  },
+  {
+    "tool": "13-idea",
+    "file": "13-idea-reference.mp4",
+    "seconds": 12.19,
+    "frames": 18,
+    "segments": [
+      "13-idea-dialog-reference",
+      "13-idea-link-reference",
+      "13-idea-scale-reference",
+      "13-idea-visible-reference"
+    ]
+  }
+]

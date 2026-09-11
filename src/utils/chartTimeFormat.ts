@@ -126,9 +126,19 @@ const toDisplayDate = (time: Time, brokerOffsetSeconds: number): Date | null => 
   return null;
 };
 
-const formatDayMonth = (date: Date): string => `${date.getUTCDate()} ${MONTH_NAMES[date.getUTCMonth()]}`;
-const formatMonthYear = (date: Date): string => `${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
-const formatDayMonthYear = (date: Date): string => `${formatDayMonth(date)} ${date.getUTCFullYear()}`;
+const monthFormatters = new Map<string, Intl.DateTimeFormat>();
+const formatMonth = (date: Date, locale = 'en'): string => {
+  if (locale.startsWith('en')) return MONTH_NAMES[date.getUTCMonth()];
+  let formatter = monthFormatters.get(locale);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, { month: 'short', timeZone: 'UTC' });
+    monthFormatters.set(locale, formatter);
+  }
+  return formatter.format(date);
+};
+const formatDayMonth = (date: Date, locale = 'en'): string => `${date.getUTCDate()} ${formatMonth(date, locale)}`;
+const formatMonthYear = (date: Date, locale = 'en'): string => `${formatMonth(date, locale)} ${date.getUTCFullYear()}`;
+const formatDayMonthYear = (date: Date, locale = 'en'): string => `${formatDayMonth(date, locale)} ${date.getUTCFullYear()}`;
 const formatTime = (date: Date): string => `${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`;
 const formatTimeWithSeconds = (date: Date): string => `${formatTime(date)}:${pad2(date.getUTCSeconds())}`;
 
@@ -136,59 +146,63 @@ const formatMinuteTickLabel = (
   date: Date,
   timeframeMetrics: ReturnType<typeof getTimeframeMetrics>,
   tickMarkType: TickMarkType,
+  locale = 'en',
 ): string => {
   if (tickMarkType === TickMarkType.Year) {
     return String(date.getUTCFullYear());
   }
 
   if (tickMarkType === TickMarkType.Month) {
-    return formatMonthYear(date);
+    return formatMonthYear(date, locale);
   }
 
   if (tickMarkType === TickMarkType.DayOfMonth) {
-    return formatDayMonthYear(date);
+    return formatDayMonthYear(date, locale);
   }
 
   if (tickMarkType === TickMarkType.TimeWithSeconds) {
     return timeframeMetrics.showsTimeOnlyInFooter
       ? formatTimeWithSeconds(date)
-      : `${formatDayMonth(date)} ${formatTimeWithSeconds(date)}`;
+      : `${formatDayMonth(date, locale)} ${formatTimeWithSeconds(date)}`;
   }
 
   return timeframeMetrics.showsTimeOnlyInFooter
     ? formatTime(date)
-    : `${formatDayMonth(date)} ${formatTime(date)}`;
+    : `${formatDayMonth(date, locale)} ${formatTime(date)}`;
 };
 
 const formatIntradayTickLabel = (
   date: Date,
   timeframeMetrics: ReturnType<typeof getTimeframeMetrics>,
   tickMarkType: TickMarkType,
+  locale = 'en',
 ): string => {
-  return formatMinuteTickLabel(date, timeframeMetrics, tickMarkType);
+  return formatMinuteTickLabel(date, timeframeMetrics, tickMarkType, locale);
 };
 
 const formatHigherTimeframeTickLabel = (
   date: Date,
   timeframeMetrics: ReturnType<typeof getTimeframeMetrics>,
   tickMarkType: TickMarkType,
+  locale = 'en',
 ): string => {
   if (tickMarkType === TickMarkType.Year) {
     return String(date.getUTCFullYear());
   }
 
   if (tickMarkType === TickMarkType.Month || timeframeMetrics.unit === 'month') {
-    return formatMonthYear(date);
+    return formatMonthYear(date, locale);
   }
 
   // Fallback to DayMonth ("1 Apr") instead of DayMonthYear ("1 Apr 2024")
-  return formatDayMonth(date);
+  return formatDayMonth(date, locale);
 };
 
 export const formatTradingChartCrosshairLabel = (
   time: Time,
   timeframe: string,
   brokerOffsetSeconds: number = 0,
+  locale = 'en',
 ): string => {
   const date = toDisplayDate(time, brokerOffsetSeconds);
   if (!date) return '';
@@ -196,14 +210,14 @@ export const formatTradingChartCrosshairLabel = (
   const timeframeMetrics = getTimeframeMetrics(timeframe);
 
   if (timeframeMetrics.unit === 'month') {
-    return formatMonthYear(date);
+    return formatMonthYear(date, locale);
   }
 
   if (timeframeMetrics.isIntraday) {
-    return `${formatDayMonthYear(date)} ${formatTime(date)}`;
+    return `${formatDayMonthYear(date, locale)} ${formatTime(date)}`;
   }
 
-  return formatDayMonthYear(date);
+  return formatDayMonthYear(date, locale);
 };
 
 export const formatTradingChartTickLabel = (
@@ -213,6 +227,7 @@ export const formatTradingChartTickLabel = (
   brokerOffsetSeconds: number = 0,
   options?: {
     forceDateLabel?: boolean;
+    locale?: string;
   },
 ): string | null => {
   const date = toDisplayDate(time, brokerOffsetSeconds);
@@ -221,18 +236,18 @@ export const formatTradingChartTickLabel = (
   const timeframeMetrics = getTimeframeMetrics(timeframe);
 
   if (timeframeMetrics.unit === 'month') {
-    return formatMonthYear(date);
+    return formatMonthYear(date, options?.locale);
   }
 
   if (options?.forceDateLabel && timeframeMetrics.showsTimeOnlyInFooter) {
-    return formatDayMonthYear(date);
+    return formatDayMonthYear(date, options?.locale);
   }
 
   if (timeframeMetrics.isIntraday) {
-    return formatIntradayTickLabel(date, timeframeMetrics, tickMarkType);
+    return formatIntradayTickLabel(date, timeframeMetrics, tickMarkType, options?.locale);
   }
 
-  return formatHigherTimeframeTickLabel(date, timeframeMetrics, tickMarkType);
+  return formatHigherTimeframeTickLabel(date, timeframeMetrics, tickMarkType, options?.locale);
 };
 
 export const getTradingChartTickMarkCharacterLength = (timeframe: string): number =>

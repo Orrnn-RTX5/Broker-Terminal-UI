@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * Connection Status Indicator
  * Shows WebSocket connection health with MT5-style menu dropdown
@@ -16,6 +17,7 @@ interface ConnectionStatusProps {
 }
 
 export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusProps) {
+    const tr = useUiTranslation();
   const storeState = useWebSocketStore();
   const tradeWsConnected = useAppStore((state) => state.wsConnected);
   const tradeApiStatus = useAppStore((state) => state.tradeApiStatus);
@@ -105,16 +107,14 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
       <button
         onClick={() => setShowDropdown(!showDropdown)}
         className="flex items-center gap-1.5 px-2 py-0.5 rounded text-zinc-200 transition-colors hover:bg-white/5 hover:text-white [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:hover:bg-zinc-300/50"
-        title="Click for connection details"
+        title={tr("Click for connection details")}
       >
         <div className={`w-2 h-2 rounded-full ${status.color} shadow-sm`} />
         <span className="rtx-status-bar__metric font-normal text-[13px] leading-[19.5px]">
-          {state === 'connected' 
-            ? (metrics.lastLatency > 0 ? `Connected ${metrics.lastLatency}ms` : 'Connected')
-            : status.text}
+          {state === 'connected' ? (metrics.lastLatency > 0 ? `${tr('Connected')} ${metrics.lastLatency}ms` : tr('Connected')) : tr(status.text)}
         </span>
         {isStale && (
-          <span className="text-orange-400 text-[12px] font-normal ml-1 [.rtx-advanced-view_&]:text-orange-600">(Stale)</span>
+          <span className="text-orange-400 text-[12px] font-normal ml-1 [.rtx-advanced-view_&]:text-orange-600">{tr("(Stale)")}</span>
         )}
         <StatusIcon size={12} className={status.iconColor} />
       </button>
@@ -131,7 +131,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
               className="w-full flex items-center gap-2.5 px-3 py-[7px] hover:bg-[#2a3040] transition-colors text-left"
             >
               <LogIn size={14} className="text-blue-400" />
-              <span>Login</span>
+              <span>{tr("Login")}</span>
             </button>
 
             {/* Network Rescan */}
@@ -140,17 +140,17 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
               className="w-full flex items-center gap-2.5 px-3 py-[7px] hover:bg-[#2962FF] hover:text-white transition-colors text-left"
             >
               <Globe size={14} className="text-cyan-400" />
-              <span>Network Rescan</span>
+              <span>{tr("Network Rescan")}</span>
             </button>
 
             {/* VPS Hosting Speed Up */}
             <div className="flex items-center justify-between px-3 py-[7px] hover:bg-[#2a3040] transition-colors cursor-default">
               <div className="flex items-center gap-2.5">
                 <Zap size={14} className="text-yellow-400" />
-                <span>VPS Hosting Speed Up</span>
+                <span>{tr("VPS Hosting Speed Up")}</span>
               </div>
               {latencyMs && (
-                <span className="text-zinc-400 text-[10px]">{(latencyMs * 0.01).toFixed(2)} ms</span>
+                <span className="text-zinc-400 text-[10px]">{(latencyMs * 0.01).toFixed(2)} {tr(" ms")}</span>
               )}
             </div>
           </div>
@@ -160,22 +160,22 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
             <div className="flex items-center justify-between px-3 py-[7px] hover:bg-[#2a3040] transition-colors cursor-default">
               <div className="flex items-center gap-2.5">
                 <Server size={14} className="text-zinc-400" />
-                <span>Trade API</span>
+                <span>{tr("Trade API")}</span>
               </div>
               <span
                 className={`text-[10px] font-mono ${tradeApiColor}`}
                 title={tradeApiStatus.error ?? undefined}
               >
-                {tradeApiLabel}
+                {tr(tradeApiLabel)}
               </span>
             </div>
             <div className="flex items-center justify-between px-3 py-[7px] hover:bg-[#2a3040] transition-colors cursor-default">
               <div className="flex items-center gap-2.5">
                 <Server size={14} className="text-zinc-400" />
-                <span>Account Stream</span>
+                <span>{tr("Account Stream")}</span>
               </div>
               <span className={`text-[10px] font-mono ${accountStreamConnected ? 'text-green-400' : 'text-yellow-400'}`}>
-                {accountStreamConnected ? 'live' : 'polling'}
+                {accountStreamConnected ? tr("live") : tr("polling")}
               </span>
             </div>
           </div>
@@ -184,7 +184,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161921]">
             <Server size={12} className="text-zinc-500" />
             <span className={`font-mono text-[10px] ${latencyMs && latencyMs < 200 ? 'text-green-400' : 'text-yellow-400'}`}>
-              {latencyMs ? `${latencyMs.toFixed(2)} ms` : '---'}
+              {latencyMs ? tr("{{value0}} ms", { value0: latencyMs.toFixed(2) }) : '---'}
             </span>
           </div>
         </div>

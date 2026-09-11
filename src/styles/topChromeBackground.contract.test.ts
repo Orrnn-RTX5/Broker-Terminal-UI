@@ -49,12 +49,12 @@ describe('terminal top chrome background contract', () => {
     expect(desktopQuickActionsSource).toContain('rtx-desktop-command-actions');
     expect(desktopQuickActionsSource).toContain('data-rtx-desktop-toolbar-cluster="right"');
     expect(desktopQuickActionsSource).toContain('role="toolbar"');
-    expect(desktopQuickActionsSource).toContain('aria-label="Desktop quick actions"');
+    expect(desktopQuickActionsSource).toContain('aria-label={tr("Desktop quick actions")}');
   });
 
   it('keeps the hamburger fixed and preserves an Electron drag surface', () => {
     const menuIndex = topToolbarSource.indexOf('<MenuBar');
-    const scrollingStripIndex = topToolbarSource.indexOf('overflow-x-auto px-1.5 no-scrollbar');
+    const scrollingStripIndex = topToolbarSource.indexOf('rtx-chart-toolbar-scroll flex min-w-0 flex-1');
     const desktopScrollingStripIndex = topToolbarSource.indexOf('rtx-desktop-command-scroll');
     const desktopQuickActionsIndex = topToolbarSource.indexOf('<DesktopQuickActions');
     expect(menuIndex).toBeGreaterThan(-1);

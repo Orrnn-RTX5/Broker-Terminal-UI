@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 /**
  * Notification Preferences Panel
  * Detailed notification settings for all categories
@@ -82,6 +83,7 @@ const HISTORY_RETENTION_OPTIONS: { value: HistoryRetention; label: string }[] = 
 ];
 
 export function NotificationPreferences() {
+    const tr = useUiTranslation();
   const notifications = useSettingsStore((state) => state.notifications);
   const updateNotificationsSettings = useSettingsStore((state) => state.updateNotificationsSettings);
   const clearAll = useNotificationStore((state) => state.clearAll);
@@ -111,8 +113,7 @@ export function NotificationPreferences() {
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
             <Icon name="monitor" size="sm" />
-            Global Settings
-          </h3>
+            {tr("Global Settings")}</h3>
 
           <div className="bg-[#131316] border border-zinc-700 rounded p-4 space-y-4">
             {/* Do Not Disturb */}
@@ -120,10 +121,9 @@ export function NotificationPreferences() {
               <div className="flex items-start gap-3 flex-1">
                 <Icon name="settings" size="md" className="text-zinc-400 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <div className="text-sm text-zinc-200 font-medium">Do Not Disturb</div>
+                  <div className="text-sm text-zinc-200 font-medium">{tr("Do Not Disturb")}</div>
                   <div className="text-xs text-zinc-500 mt-0.5">
-                    Mutes all non-critical notifications
-                  </div>
+                    {tr("Mutes all non-critical notifications")}</div>
                 </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -144,7 +144,7 @@ export function NotificationPreferences() {
               <Icon name="clock" size="md" className="text-zinc-400 mt-2 flex-shrink-0" />
               <div className="flex-1 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm text-zinc-200 font-medium">DND Schedule</div>
+                  <div className="text-sm text-zinc-200 font-medium">{tr("DND Schedule")}</div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
@@ -165,7 +165,7 @@ export function NotificationPreferences() {
                 {notifications.dndSchedule.enabled && (
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
-                      <label className="block text-xs text-zinc-500 mb-1">From</label>
+                      <label className="block text-xs text-zinc-500 mb-1">{tr("From")}</label>
                       <input
                         type="time"
                         value={notifications.dndSchedule.fromTime}
@@ -181,7 +181,7 @@ export function NotificationPreferences() {
                       />
                     </div>
                     <div className="flex-1">
-                      <label className="block text-xs text-zinc-500 mb-1">To</label>
+                      <label className="block text-xs text-zinc-500 mb-1">{tr("To")}</label>
                       <input
                         type="time"
                         value={notifications.dndSchedule.toTime}
@@ -205,8 +205,7 @@ export function NotificationPreferences() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm text-zinc-200 font-medium">
-                  Max Notifications Per Minute
-                </label>
+                  {tr("Max Notifications Per Minute")}</label>
                 <span className="text-sm text-blue-400 font-mono">
                   {notifications.maxNotificationsPerMinute}
                 </span>
@@ -228,8 +227,7 @@ export function NotificationPreferences() {
             {/* History Retention */}
             <div className="space-y-2">
               <label className="block text-sm text-zinc-200 font-medium">
-                Notification History Retention
-              </label>
+                {tr("Notification History Retention")}</label>
               <select
                 value={notifications.historyRetention}
                 onChange={(e) =>
@@ -241,7 +239,7 @@ export function NotificationPreferences() {
               >
                 {HISTORY_RETENTION_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
-                    {option.label}
+                    {tr(option.label)}
                   </option>
                 ))}
               </select>
@@ -253,7 +251,7 @@ export function NotificationPreferences() {
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-600/30 rounded text-sm transition-colors"
             >
               <Icon name="trash" size="sm" />
-              <span>Clear All Notifications</span>
+              <span>{tr("Clear All Notifications")}</span>
             </button>
           </div>
         </div>
@@ -262,8 +260,7 @@ export function NotificationPreferences() {
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
             <Icon name="bell" size="sm" />
-            Notification Categories
-          </h3>
+            {tr("Notification Categories")}</h3>
 
           <div className="space-y-3">
             {CATEGORIES.map((category) => {
@@ -286,10 +283,10 @@ export function NotificationPreferences() {
                       <div className="text-zinc-400 mt-0.5">{category.icon}</div>
                       <div className="flex-1">
                         <div className="text-sm text-zinc-200 font-semibold">
-                          {category.label}
+                          {tr(category.label)}
                         </div>
                         <div className="text-xs text-zinc-500 mt-0.5">
-                          {category.description}
+                          {tr(category.description)}
                         </div>
                       </div>
                     </div>
@@ -323,7 +320,7 @@ export function NotificationPreferences() {
                           }
                           className="w-4 h-4 text-blue-600 bg-zinc-700 border-zinc-600 rounded focus:ring-blue-500 focus:ring-2"
                         />
-                        <span className="text-xs text-zinc-300">Show popup notification</span>
+                        <span className="text-xs text-zinc-300">{tr("Show popup notification")}</span>
                       </label>
 
                       {/* Play Sound */}
@@ -338,13 +335,13 @@ export function NotificationPreferences() {
                           }
                           className="w-4 h-4 text-blue-600 bg-zinc-700 border-zinc-600 rounded focus:ring-blue-500 focus:ring-2"
                         />
-                        <span className="text-xs text-zinc-300">Play sound</span>
+                        <span className="text-xs text-zinc-300">{tr("Play sound")}</span>
                       </label>
 
                       {/* Sound Selector */}
                       {categorySettings.playSound && (
                         <div className="space-y-1">
-                          <label className="block text-xs text-zinc-500">Sound</label>
+                          <label className="block text-xs text-zinc-500">{tr("Sound")}</label>
                           <select
                             value={categorySettings.sound}
                             onChange={(e) =>
@@ -356,7 +353,7 @@ export function NotificationPreferences() {
                           >
                             {SOUND_OPTIONS.map((option) => (
                               <option key={option.value} value={option.value}>
-                                {option.label}
+                                {tr(option.label)}
                               </option>
                             ))}
                           </select>
@@ -365,7 +362,7 @@ export function NotificationPreferences() {
 
                       {/* Priority Level */}
                       <div className="space-y-1">
-                        <label className="block text-xs text-zinc-500">Priority Level</label>
+                        <label className="block text-xs text-zinc-500">{tr("Priority Level")}</label>
                         <select
                           value={categorySettings.priority}
                           onChange={(e) =>
@@ -377,7 +374,7 @@ export function NotificationPreferences() {
                         >
                           {PRIORITY_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
-                              {option.label}
+                              {tr(option.label)}
                             </option>
                           ))}
                         </select>

@@ -18,6 +18,7 @@
 
 import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
 import { isCleartextDowngradeAllowedHost } from '../config/urlSecurity';
+import { brokerDisplayName } from './brokerDisplayName';
 
 export type SessionChangeReason =
   | 'token_rotation'
@@ -239,6 +240,9 @@ export interface BrokerSessionDiscoveryInput {
   access_token?: string | null;
   token?: string | null;
   broker_id?: string | null;
+  broker_name?: string | null;
+  brokerName?: string | null;
+  name?: string | null;
   feed_token?: string | null;
   feed_broker_token?: string | null;
   broker_feed_token?: string | null;
@@ -739,6 +743,7 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
       'rtx_saved_username',
       'feed_broker_token',
       'feed_broker_id',
+      'broker_name',
     ].forEach((key) => {
       removeLocalStorageItem(key);
       removeSessionStorageItem(key);
@@ -774,6 +779,17 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
     });
   }
   if (logoUrl) setLocalStorageItem('logo_url', logoUrl);
+
+  const rawBrokerName = String(
+    normalizedInput.broker_name
+    || (normalizedInput as any).brokerName
+    || (normalizedInput as any).name
+    || ''
+  ).trim();
+  const resolvedBrokerName = brokerDisplayName(serverUrl || backendUrl || brokerId, rawBrokerName);
+  if (resolvedBrokerName && resolvedBrokerName !== 'Broker') {
+    setLocalStorageItem('broker_name', resolvedBrokerName);
+  }
 
   emitSessionChange(token ? 'login' : 'broker_url_change');
 }

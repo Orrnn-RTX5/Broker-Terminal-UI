@@ -1,3 +1,5 @@
+import './SymbolsDialog.css';
+import { useUiTranslation } from '../hooks/useUiTranslation';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { Search, ChevronRight, ChevronDown, FolderOpen, Folder, X, Minus, Square } from 'lucide-react';
@@ -5,6 +7,8 @@ import { useWatchlistStore } from '../store/useWatchlistStore';
 import { useMarketDataStore } from '../store/useMarketDataStore';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { API_ENDPOINTS, API_V2_BASE_URL, MARKET_WS_URL } from '../config/api';
+import { normalizeExactBrokerSymbol } from '../utils/exactBrokerSymbol';
+import { isShortcutOwnedBy, shouldIgnoreShortcutEvent } from '../services/keyboardShortcutManager';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -261,6 +265,7 @@ interface TreeItemProps {
 }
 
 const TreeItem: React.FC<TreeItemProps> = ({ name, node, depth = 0, selectedSymbol, onSelectSymbol, searchQuery, watchlistSymbols }) => {
+    const tr = useUiTranslation();
   const [expanded, setExpanded] = useState(depth < 2);
   const hasChildren = node.children && Object.keys(node.children).length > 0;
   const hasSymbols = node.symbols && node.symbols.length > 0;
@@ -274,21 +279,19 @@ const TreeItem: React.FC<TreeItemProps> = ({ name, node, depth = 0, selectedSymb
     <div>
       {/* Folder row */}
       <div
-        className="flex items-center gap-1 px-1 py-[2px] cursor-pointer hover:bg-[#2a2e45] rounded-sm select-none"
+        className="flex items-center gap-1 px-1 py-[2px] cursor-pointer hover:bg-[var(--bg-quaternary)] rounded-sm select-none"
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
         onClick={() => setExpanded(e => !e)}
       >
         {(hasChildren || hasSymbols) ? (
           expanded
-            ? <ChevronDown size={12} className="text-zinc-500 flex-shrink-0" />
-            : <ChevronRight size={12} className="text-zinc-500 flex-shrink-0" />
+            ? <ChevronDown size={12} className="text-[var(--text-secondary)] flex-shrink-0" />
+            : <ChevronRight size={12} className="text-[var(--text-secondary)] flex-shrink-0" />
         ) : (
           <span className="w-3" />
         )}
-        {expanded
-          ? <FolderOpen size={13} className="text-yellow-400 flex-shrink-0" />
-          : <Folder size={13} className="text-yellow-600 flex-shrink-0" />}
-        <span className="ml-1 text-[14px] font-normal text-zinc-300">{name}</span>
+        {expanded ? <FolderOpen size={13} className="text-yellow-400 flex-shrink-0" /> : <Folder size={13} className="text-yellow-600 flex-shrink-0" />}
+        <span className="ml-1 text-[13px] font-normal text-[var(--text-primary)]">{name}</span>
       </div>
 
       {/* Children */}
@@ -314,14 +317,14 @@ const TreeItem: React.FC<TreeItemProps> = ({ name, node, depth = 0, selectedSymb
               key={sym.id || sym.name}
               className={`flex items-center gap-1 px-1 py-[2px] cursor-pointer rounded-sm select-none ${
                 selectedSymbol?.name === sym.name
-                  ? 'bg-[#1a3a6b] text-white'
-                  : 'hover:bg-[#2a2e45] text-zinc-300'
+                  ? 'bg-[var(--color-info-dim)] text-[var(--text-primary)]'
+                  : 'hover:bg-[var(--bg-quaternary)] text-[var(--text-primary)]'
               }`}
               style={{ paddingLeft: `${(depth + 1) * 12 + 4}px` }}
               onClick={() => onSelectSymbol(sym)}
             >
               <DollarIcon className="flex-shrink-0" shown={watchlistSymbols.includes(sym.symbol || sym.name)} />
-              <span className="ml-1 text-[14px] font-normal">{sym.name}</span>
+              <span className="ml-1 text-[13px] font-normal">{sym.name}</span>
             </div>
           ))}
         </>
@@ -337,6 +340,10 @@ interface SymbolsDialogProps {
   onClose: () => void;
   onShowSymbol?: (symbol: string) => void;
   onOpenChart?: (symbol: string) => void;
+  instruments?: readonly unknown[];
+  initialSymbol?: string;
+  title?: string;
+  chartActionLabel?: string;
 }
 
 export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
@@ -344,7 +351,12 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   onClose,
   onShowSymbol,
   onOpenChart,
+  instruments,
+  initialSymbol,
+  title = 'Symbols',
+  chartActionLabel = 'Open Chart',
 }) => {
+    const tr = useUiTranslation();
   const [activeTab, setActiveTab] = useState<Tab>('Specification');
   const [searchQuery, setSearchQuery] = useState('');
   const [showExpired, setShowExpired] = useState(false);
@@ -425,6 +437,14 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
   // ── Load symbols on open ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
+    if (instruments) {
+      const normalized = instruments.map(normalizeInstrument).filter((symbol): symbol is SymbolSpec => Boolean(symbol));
+      setAllSymbols(normalized);
+      setSelectedSymbol(normalized.find(symbol => normalizeExactBrokerSymbol(symbol.symbol) === normalizeExactBrokerSymbol(initialSymbol)) || normalized[0] || null);
+      setLoading(false); setSymbolsError(null);
+      return;
+    }
+    let cancelled = false;
     setLoading(true);
     setSymbolsError(null);
 
@@ -455,6 +475,7 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
 
     loadSymbols()
       .then(({ endpoint, normalized }) => {
+        if (cancelled) return;
         setAllSymbols(normalized);
         setSelectedSymbol(current => {
           if (current && normalized.some(sym => (sym.symbol || sym.name) === (current.symbol || current.name))) return current;
@@ -465,12 +486,14 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
         }
       })
       .catch(err => {
+        if (cancelled) return;
         setAllSymbols([]);
         setSelectedSymbol(null);
         setSymbolsError(err instanceof Error ? err.message : 'Failed to load symbols.');
       })
-      .finally(() => setLoading(false));
-  }, [isOpen, symbolsFetchTrigger]);
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [isOpen, symbolsFetchTrigger, instruments, initialSymbol]);
 
   // ── Filter symbols by search (memoized) ───────────────────────────────────
   const filteredSymbols = useMemo(() => {
@@ -648,9 +671,24 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
 
   // ── Keyboard shortcut ─────────────────────────────────────────────────────
   useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
+    return () => { if (document.activeElement === document.body || dialogRef.current?.contains(document.activeElement)) previousFocus?.focus(); };
+  }, [isOpen]);
+
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.altKey && (e.key.toLowerCase() === 'u' || e.code === 'KeyU')) { e.preventDefault(); if (isOpen) onClose(); }
-      if (e.key === 'Escape' && isOpen) onClose();
+      if (!isOpen || shouldIgnoreShortcutEvent(e) || !isShortcutOwnedBy(e, dialogRef.current)) return;
+      const closeShortcut = e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key.toLowerCase() === 'u' || e.code === 'KeyU');
+      if (closeShortcut || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
+      if (e.key === 'Tab') {
+        const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]') ?? []);
+        const first = controls[0]; const last = controls.at(-1);
+        if (first && last && (document.activeElement === dialogRef.current || (!e.shiftKey && document.activeElement === last) || (e.shiftKey && document.activeElement === first))) {
+          e.preventDefault(); (e.shiftKey ? last : first).focus();
+        }
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -663,15 +701,15 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
 
   // ── Spec fields ───────────────────────────────────────────────────────────
   const specFields = selectedSymbol ? [
-    { label: 'Sector', value: selectedSymbol.sector || 'Forex', color: 'text-zinc-200' },
-    { label: 'Industry', value: selectedSymbol.industry || 'Currency Pairs', color: 'text-zinc-200', alignRight: true },
-    { label: 'Digits', value: selectedSymbol.digits, prefix: '01', color: 'text-amber-400' },
-    { label: 'Contract size', value: `${selectedSymbol.contractSize} ${selectedSymbol.marginCurrency || ''}`, prefix: '½', color: 'text-amber-400' },
-    { label: 'Spread', value: selectedSymbol.spread || 'floating', prefix: '01', color: 'text-amber-400' },
-    { label: 'Stops level', value: selectedSymbol.stopsLevel || 20, prefix: '01', color: 'text-amber-400' },
-    { label: 'Margin currency', value: selectedSymbol.marginCurrency || selectedSymbol.name.slice(0, 3), prefix: 'ab', color: 'text-emerald-400' },
-    { label: 'Tick size', value: selectedSymbol.tickSize, prefix: '01', color: 'text-amber-400' },
-    { label: 'Trading enabled', value: selectedSymbol.tradingEnabled ? 'Yes' : 'No', prefix: '', color: 'text-zinc-300' },
+    { label: 'Sector', value: selectedSymbol.sector || 'Forex', color: 'text-[var(--text-primary)]' },
+    { label: 'Industry', value: selectedSymbol.industry || 'Currency Pairs', color: 'text-[var(--text-primary)]', alignRight: true },
+    { label: 'Digits', value: selectedSymbol.digits, prefix: '01', color: 'text-[var(--text-primary)]' },
+    { label: 'Contract size', value: `${selectedSymbol.contractSize} ${selectedSymbol.marginCurrency || ''}`, prefix: '½', color: 'text-[var(--text-primary)]' },
+    { label: 'Spread', value: selectedSymbol.spread || 'floating', prefix: '01', color: 'text-[var(--text-primary)]' },
+    { label: 'Stops level', value: selectedSymbol.stopsLevel || 20, prefix: '01', color: 'text-[var(--text-primary)]' },
+    { label: 'Margin currency', value: selectedSymbol.marginCurrency || selectedSymbol.name.slice(0, 3), prefix: 'ab', color: 'text-[var(--color-profit)]' },
+    { label: 'Tick size', value: selectedSymbol.tickSize, prefix: '01', color: 'text-[var(--text-primary)]' },
+    { label: 'Trading enabled', value: selectedSymbol.tradingEnabled ? 'Yes' : 'No', prefix: '', color: 'text-[var(--text-primary)]' },
   ] : [];
 
   return ReactDOM.createPortal(
@@ -682,68 +720,73 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
       {/* Dialog Window */}
       <div
         ref={dialogRef}
-        className="rtx-symbols-dialog absolute pointer-events-auto flex flex-col bg-[#1a1d27] border border-[#3a3e52] shadow-2xl select-none"
+        role="dialog"
+        aria-modal="true"
+        aria-label={tr(title)}
+        data-shortcut-scope="local"
+        tabIndex={-1}
+        className="rtx-symbols-dialog absolute pointer-events-auto flex flex-col bg-[var(--bg-tertiary)] border border-[var(--border-primary)] shadow-2xl select-none"
         style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, minWidth: 500, minHeight: 360 }}
         onClick={e => e.stopPropagation()}
       >
         {/* ── Title bar ────────────────────────────────────────────────────── */}
         <div
-          className="flex items-center justify-between h-7 bg-[#131620] border-b border-[#3a3e52] px-2 flex-shrink-0 cursor-move"
+          className="flex items-center justify-between h-7 rtx-symbols-dialog__titlebar bg-[var(--bg-tertiary)] border-b border-[var(--border-primary)] px-2 flex-shrink-0 cursor-move"
           onMouseDown={onDragStart}
         >
           <div className="flex items-center gap-2">
             <DollarIcon />
-            <span className="text-[14px] font-semibold text-zinc-200">Symbols</span>
+            <span className="text-[13px] font-medium text-[var(--text-primary)]">{tr(title)}</span>
           </div>
           <div className="flex items-center gap-0 h-full" onMouseDown={e => e.stopPropagation()}>
-            <button className="h-full px-3 hover:bg-white/10 flex items-center justify-center" title="Minimize">
-              <Minus size={10} className="text-zinc-400" strokeWidth={1.8} />
+            <button className="h-full px-3 hover:bg-white/10 flex items-center justify-center" title={tr("Minimize")}>
+              <Minus size={10} className="text-[var(--text-secondary)]" strokeWidth={1.8} />
             </button>
-            <button className="h-full px-3 hover:bg-white/10 flex items-center justify-center" title="Maximize">
-              <Square size={10} className="text-zinc-400" strokeWidth={1.8} />
+            <button className="h-full px-3 hover:bg-white/10 flex items-center justify-center" title={tr("Maximize")}>
+              <Square size={10} className="text-[var(--text-secondary)]" strokeWidth={1.8} />
             </button>
             <button
               className="h-full px-3 hover:bg-red-500 flex items-center justify-center group"
               onClick={onClose}
-              title="Close"
+              title={tr("Close")}
             >
-              <X size={11} className="text-zinc-400 group-hover:text-white" strokeWidth={1.8} />
+              <X size={11} className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]" strokeWidth={1.8} />
             </button>
           </div>
         </div>
 
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
-        <div className="flex items-end h-8 bg-[#1a1d27] border-b border-[#3a3e52] px-2 gap-0 flex-shrink-0">
+        <div className="flex items-end h-8 bg-[var(--bg-tertiary)] border-b border-[var(--border-primary)] px-2 gap-0 flex-shrink-0">
           {(['Specification', 'Bars', 'Ticks'] as Tab[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-1.5 text-[14px] border-b-2 transition-colors ${
+              className={`px-4 py-1.5 text-[13px] border-b-2 transition-colors ${
                 activeTab === tab
-                  ? 'border-[#4a7aff] text-white bg-[#222640] font-semibold'
-                  : 'border-transparent text-zinc-400 font-normal hover:text-zinc-200 hover:bg-white/5'
+                  ? 'border-[var(--color-info)] text-[var(--text-primary)] bg-[var(--color-info-dim)] font-medium'
+                  : 'border-transparent text-[var(--text-secondary)] font-normal hover:text-[var(--text-primary)] hover:bg-white/5'
               }`}
             >
-              {tab}
+              {tr(tab)}
             </button>
           ))}
         </div>
 
         {/* ── Main content ─────────────────────────────────────────────────── */}
-        <div className="flex flex-1 min-h-0 bg-[#161922]">
+        <div className="flex flex-1 min-h-0 bg-[var(--bg-secondary)]">
           {activeTab === 'Bars' ? (
             <div className="flex-1 flex flex-col min-w-0">
               {/* Bars Top Controls */}
-              <div className="flex flex-wrap items-center gap-2 px-2 py-2 border-b border-[#3a3e52] bg-[#1a1d27]">
+              <div className="flex flex-wrap items-center gap-2 px-2 py-2 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)]">
                 <select 
-                  className="w-[120px] border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none"
+                  className="w-[120px] border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none"
                   value={barsSymbolInput}
                   onChange={e => setBarsSymbolInput(e.target.value)}
                 >
                   {allSymbols.map(s => <option key={s.symbol || s.name} value={s.symbol || s.name}>{s.name || s.symbol}</option>)}
                 </select>
                 <select 
-                  className="w-[70px] border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none"
+                  className="w-[70px] border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none"
                   value={barsTimeframe}
                   onChange={e => setBarsTimeframe(e.target.value)}
                 >
@@ -751,45 +794,43 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                 </select>
                 <input 
                   type="datetime-local" 
-                  className="border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none [color-scheme:dark]"
+                  className="border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none [color-scheme:dark]"
                   value={barsStartTime}
                   onChange={e => setBarsStartTime(e.target.value)}
                 />
                 <input 
                   type="datetime-local" 
-                  className="border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none [color-scheme:dark]"
+                  className="border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none [color-scheme:dark]"
                   value={barsEndTime}
                   onChange={e => setBarsEndTime(e.target.value)}
                 />
                 <button 
-                  className="ml-auto rounded-sm border border-[#3a3e52] bg-[#1e2235] px-6 py-1 text-[14px] font-normal text-zinc-200 transition-colors hover:bg-[#2a2e45]"
+                  className="ml-auto rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-6 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
                   onClick={() => setBarsFetchTrigger(v => v + 1)}
                 >
-                  Request
-                </button>
+                  {tr("Request")}</button>
               </div>
               
               {/* Bars Meta Info */}
               {barsLoading ? (
-                <div className="h-[20px] bg-[#e0e0e0] relative border-b border-[#3a3e52] flex-shrink-0 text-black font-sans">
-                  <div className="absolute top-0 left-0 h-full bg-[#008000]" style={{ width: `${barsProgress}%` }} />
+                <div className="h-[20px] bg-[var(--bg-quaternary)] relative border-b border-[var(--border-primary)] flex-shrink-0 text-[var(--text-primary)] font-sans">
+                  <div className="absolute top-0 left-0 h-full bg-[var(--color-profit)]" style={{ width: `${barsProgress}%` }} />
                   <div className="absolute inset-0 z-10 flex w-full items-center overflow-hidden text-ellipsis whitespace-nowrap px-2 text-[12px] font-normal">
-                    {barsSymbolInput}: '{new Date(barsStartTime).toLocaleString('default', { month: 'short', year: 'numeric' })}' downloaded ({barsProgress.toFixed(1)}%)
+                    {barsSymbolInput}: '{new Date(barsStartTime).toLocaleString('default', { month: 'short', year: 'numeric' })}{tr("' downloaded (")}{barsProgress.toFixed(1)}%)
                   </div>
                 </div>
               ) : (
-                <div className="flex-shrink-0 border-b border-[#3a3e52] bg-[#1a1d27] px-3 py-1 text-[12px] font-normal text-zinc-300">
-                  {barsSymbolInput},{barsTimeframe}: {bars.length} bars
-                </div>
+                <div className="flex-shrink-0 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-3 py-1 text-[12px] font-normal text-[var(--text-primary)]">
+                  {barsSymbolInput},{barsTimeframe}: {bars.length} {tr(" bars")}</div>
               )}
               
               {/* Bars Table */}
               <div className="flex-1 overflow-y-auto custom-scrollbar" onScroll={handleBarsScroll}>
-                <table className="w-full border-collapse text-[14px] font-normal">
+                <table className="w-full border-collapse text-[13px] font-normal">
                     <thead>
-                      <tr className="bg-[#1a1d27] sticky top-0 z-10">
+                      <tr className="bg-[var(--bg-tertiary)] sticky top-0 z-10">
                         {['Date', 'Open', 'High', 'Low', 'Close', 'Tick Volume', 'Volume', 'Spread'].map((h, i) => (
-                          <th key={h} className={`border-b border-[#3a3e52] px-3 py-1.5 text-[12px] font-normal text-zinc-400 ${i === 0 ? 'text-left' : 'text-right'}`}>
+                          <th key={h} className={`border-b border-[var(--border-primary)] px-3 py-1.5 text-[12px] font-normal text-[var(--text-secondary)] ${i === 0 ? 'text-left' : 'text-right'}`}>
                             {h}
                           </th>
                         ))}
@@ -798,10 +839,10 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                     <tbody>
                       {bars.slice(0, barsVisibleCount).map((bar, i) => {
                         const isUp = bar.close >= bar.open;
-                        const candleColor = isUp ? '#4ade80' : '#60a5fa';
+                        const candleColor = isUp ? 'var(--color-profit)' : 'var(--color-loss)';
                         return (
-                          <tr key={i} className={`border-b border-[#2a2e45] hover:bg-[#2a2e45] ${i % 2 === 0 ? 'bg-[#161922]' : 'bg-[#1a1d27]'}`}>
-                            <td className="px-3 py-[4px] text-zinc-300 text-left whitespace-nowrap">
+                          <tr key={i} className={`border-b border-[var(--border-primary)] hover:bg-[var(--bg-quaternary)] ${i % 2 === 0 ? 'bg-[var(--bg-secondary)]' : 'bg-[var(--bg-tertiary)]'}`}>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] text-left whitespace-nowrap">
                               <svg width="10" height="14" viewBox="0 0 10 14" fill="none" className="mr-2 inline-block align-middle">
                                 <rect x="2" y="3" width="6" height="8" stroke={candleColor} fill={isUp ? 'none' : candleColor} strokeWidth="1" />
                                 <line x1="5" y1="1" x2="5" y2="3" stroke={candleColor} strokeWidth="1" />
@@ -809,26 +850,25 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                               </svg>
                               {bar.time.replace(/,/g, '')}
                             </td>
-                            <td className="px-3 py-[4px] text-zinc-300 font-mono text-right">{bar.open.toFixed(selectedSymbol?.digits || 5)}</td>
-                            <td className="px-3 py-[4px] text-zinc-300 font-mono text-right">{bar.high.toFixed(selectedSymbol?.digits || 5)}</td>
-                            <td className="px-3 py-[4px] text-zinc-300 font-mono text-right">{bar.low.toFixed(selectedSymbol?.digits || 5)}</td>
-                            <td className={`px-3 py-[4px] font-mono text-right ${isUp ? 'text-emerald-400' : 'text-blue-400'}`}>{bar.close.toFixed(selectedSymbol?.digits || 5)}</td>
-                            <td className="px-3 py-[4px] text-zinc-300 font-mono text-right">{bar.volume.toLocaleString()}</td>
-                            <td className="px-3 py-[4px] text-zinc-300 font-mono text-right">0</td>
-                            <td className="px-3 py-[4px] text-zinc-300 font-mono text-right">{Math.round((bar.high - bar.low) * Math.pow(10, selectedSymbol?.digits || 5) * 0.1) || 10}</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{bar.open.toFixed(selectedSymbol?.digits || 5)}</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{bar.high.toFixed(selectedSymbol?.digits || 5)}</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{bar.low.toFixed(selectedSymbol?.digits || 5)}</td>
+                            <td className={`px-3 py-[4px] font-mono text-right ${isUp ? 'text-[var(--color-profit)]' : 'text-blue-400'}`}>{bar.close.toFixed(selectedSymbol?.digits || 5)}</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{bar.volume.toLocaleString()}</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">0</td>
+                            <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{Math.round((bar.high - bar.low) * Math.pow(10, selectedSymbol?.digits || 5) * 0.1) || 10}</td>
                           </tr>
                         );
                       })}
                       {bars.length === 0 && !barsLoading && (
                         <tr>
-                          <td colSpan={8} className="text-center py-6 text-zinc-600">
+                          <td colSpan={8} className="text-center py-6 text-[var(--text-tertiary)]">
                             <div>{barsError || 'No bar data available'}</div>
                             <button
-                              className="mt-2 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-3 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]"
+                              className="mt-2 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-3 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
                               onClick={() => setBarsFetchTrigger(v => v + 1)}
                             >
-                              Retry
-                            </button>
+                              {tr("Retry")}</button>
                           </td>
                         </tr>
                       )}
@@ -839,16 +879,16 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
           ) : activeTab === 'Ticks' ? (
             <div className="flex-1 flex flex-col min-w-0">
               {/* Ticks Top Controls */}
-              <div className="flex flex-wrap items-center gap-2 px-2 py-2 border-b border-[#3a3e52] bg-[#1a1d27]">
+              <div className="flex flex-wrap items-center gap-2 px-2 py-2 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)]">
                 <select 
-                  className="w-[120px] border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none"
+                  className="w-[120px] border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none"
                   value={ticksSymbolInput}
                   onChange={e => setTicksSymbolInput(e.target.value)}
                 >
                   {allSymbols.map(s => <option key={s.symbol || s.name} value={s.symbol || s.name}>{s.name || s.symbol}</option>)}
                 </select>
                 <select 
-                  className="w-[110px] border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none"
+                  className="w-[110px] border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none"
                   value={ticksType}
                   onChange={e => setTicksType(e.target.value)}
                 >
@@ -856,45 +896,43 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                 </select>
                 <input 
                   type="datetime-local" 
-                  className="border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none [color-scheme:dark]"
+                  className="border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none [color-scheme:dark]"
                   value={ticksStartTime}
                   onChange={e => setTicksStartTime(e.target.value)}
                 />
                 <input 
                   type="datetime-local" 
-                  className="border border-[#3a3e52] bg-[#161922] px-2 py-1 text-[14px] font-normal text-zinc-200 outline-none [color-scheme:dark]"
+                  className="border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] font-normal text-[var(--text-primary)] outline-none [color-scheme:dark]"
                   value={ticksEndTime}
                   onChange={e => setTicksEndTime(e.target.value)}
                 />
                 <button 
-                  className="ml-auto rounded-sm border border-[#3a3e52] bg-[#1e2235] px-6 py-1 text-[14px] font-normal text-zinc-200 transition-colors hover:bg-[#2a2e45]"
+                  className="ml-auto rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-6 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
                   onClick={() => setTicksFetchTrigger(v => v + 1)}
                 >
-                  Request
-                </button>
+                  {tr("Request")}</button>
               </div>
               
               {/* Ticks Meta Info */}
               {ticksLoading ? (
-                <div className="h-[20px] bg-[#e0e0e0] relative border-b border-[#3a3e52] flex-shrink-0 text-black font-sans">
-                  <div className="absolute top-0 left-0 h-full bg-[#008000]" style={{ width: `${ticksProgress}%` }} />
+                <div className="h-[20px] bg-[var(--bg-quaternary)] relative border-b border-[var(--border-primary)] flex-shrink-0 text-[var(--text-primary)] font-sans">
+                  <div className="absolute top-0 left-0 h-full bg-[var(--color-profit)]" style={{ width: `${ticksProgress}%` }} />
                   <div className="absolute inset-0 z-10 flex w-full items-center overflow-hidden text-ellipsis whitespace-nowrap px-2 text-[12px] font-normal">
-                    {ticksSymbolInput}: '{new Date(ticksStartTime).toLocaleString('default', { month: 'short', year: 'numeric' })}' downloaded ({ticksProgress.toFixed(1)}%)
+                    {ticksSymbolInput}: '{new Date(ticksStartTime).toLocaleString('default', { month: 'short', year: 'numeric' })}{tr("' downloaded (")}{ticksProgress.toFixed(1)}%)
                   </div>
                 </div>
               ) : (
-                <div className="flex-shrink-0 border-b border-[#3a3e52] bg-[#1a1d27] px-3 py-1 text-[12px] font-normal text-zinc-300">
-                  {ticksSymbolInput}: {ticks.length} ticks
-                </div>
+                <div className="flex-shrink-0 border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-3 py-1 text-[12px] font-normal text-[var(--text-primary)]">
+                  {ticksSymbolInput}: {ticks.length} {tr(" ticks")}</div>
               )}
               
               {/* Ticks Table */}
               <div className="flex-1 overflow-y-auto custom-scrollbar" onScroll={handleTicksScroll}>
-                <table className="w-full border-collapse text-[14px] font-normal">
+                <table className="w-full border-collapse text-[13px] font-normal">
                     <thead>
-                      <tr className="bg-[#1a1d27] sticky top-0 z-10">
+                      <tr className="bg-[var(--bg-tertiary)] sticky top-0 z-10">
                         {['Date', 'Bid', 'Ask', 'Last', 'Volume', 'Flags'].map((h, i) => (
-                          <th key={h} className={`border-b border-[#3a3e52] px-3 py-1.5 text-[12px] font-normal text-zinc-400 ${i === 0 ? 'text-left' : 'text-right'}`}>
+                          <th key={h} className={`border-b border-[var(--border-primary)] px-3 py-1.5 text-[12px] font-normal text-[var(--text-secondary)] ${i === 0 ? 'text-left' : 'text-right'}`}>
                             {h}
                           </th>
                         ))}
@@ -902,27 +940,26 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                     </thead>
                     <tbody>
                       {ticks.slice(0, ticksVisibleCount).map((tick, i) => (
-                        <tr key={i} className={`border-b border-[#2a2e45] hover:bg-[#2a2e45] ${i % 2 === 0 ? 'bg-[#161922]' : 'bg-[#1a1d27]'}`}>
-                          <td className="px-3 py-[4px] text-zinc-300 text-left whitespace-nowrap">
+                        <tr key={i} className={`border-b border-[var(--border-primary)] hover:bg-[var(--bg-quaternary)] ${i % 2 === 0 ? 'bg-[var(--bg-secondary)]' : 'bg-[var(--bg-tertiary)]'}`}>
+                          <td className="px-3 py-[4px] text-[var(--text-primary)] text-left whitespace-nowrap">
                             {tick.time.replace(/,/g, '')}
                           </td>
                           <td className="px-3 py-[4px] text-red-400 font-mono text-right">{tick.bid.toFixed(selectedSymbol?.digits || 5)}</td>
-                          <td className="px-3 py-[4px] text-emerald-400 font-mono text-right">{tick.ask.toFixed(selectedSymbol?.digits || 5)}</td>
-                          <td className="px-3 py-[4px] text-zinc-200 font-mono text-right">{tick.last.toFixed(selectedSymbol?.digits || 5)}</td>
-                          <td className="px-3 py-[4px] text-zinc-300 font-mono text-right">{tick.volume.toLocaleString()}</td>
-                          <td className="px-3 py-[4px] text-zinc-400 font-mono text-right">{tick.flags}</td>
+                          <td className="px-3 py-[4px] text-[var(--color-profit)] font-mono text-right">{tick.ask.toFixed(selectedSymbol?.digits || 5)}</td>
+                          <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{tick.last.toFixed(selectedSymbol?.digits || 5)}</td>
+                          <td className="px-3 py-[4px] text-[var(--text-primary)] font-mono text-right">{tick.volume.toLocaleString()}</td>
+                          <td className="px-3 py-[4px] text-[var(--text-secondary)] font-mono text-right">{tick.flags}</td>
                         </tr>
                       ))}
                       {ticks.length === 0 && !ticksLoading && (
                         <tr>
-                          <td colSpan={6} className="text-center py-6 text-zinc-600">
+                          <td colSpan={6} className="text-center py-6 text-[var(--text-tertiary)]">
                             <div>{ticksError || 'No tick data available'}</div>
                             <button
-                              className="mt-2 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-3 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]"
+                              className="mt-2 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-3 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
                               onClick={() => setTicksFetchTrigger(v => v + 1)}
                             >
-                              Retry
-                            </button>
+                              {tr("Retry")}</button>
                           </td>
                         </tr>
                       )}
@@ -933,24 +970,23 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
           ) : (
             <>
               {/* Left panel — Tree */}
-              <div className="w-[180px] flex-shrink-0 border-r border-[#3a3e52] flex flex-col bg-[#161922]">
+              <div className="w-[180px] flex-shrink-0 border-r border-[var(--border-primary)] flex flex-col bg-[var(--bg-secondary)]">
             {/* Tree header */}
-            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[#3a3e52]">
+            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--border-primary)]">
               <FolderOpen size={14} className="text-yellow-400" />
-              <span className="text-[12px] font-normal text-zinc-400">RTX 5 Web Terminal</span>
+              <span className="text-[12px] font-normal text-[var(--text-secondary)]">{tr("RTX 5 Web Terminal")}</span>
             </div>
             <div className="flex-1 overflow-y-auto no-scrollbar py-1">
               {loading ? (
-                <div className="px-3 py-2 text-[12px] font-normal text-zinc-500">Loading...</div>
+                <div className="px-3 py-2 text-[12px] font-normal text-[var(--text-secondary)]">{tr("Loading...")}</div>
               ) : symbolsError ? (
-                <div className="px-3 py-2 text-[12px] font-normal text-zinc-500">
+                <div className="px-3 py-2 text-[12px] font-normal text-[var(--text-secondary)]">
                   <div>{symbolsError}</div>
                   <button
-                    className="mt-2 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-3 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]"
+                    className="mt-2 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-3 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
                     onClick={() => setSymbolsFetchTrigger(v => v + 1)}
                   >
-                    Retry
-                  </button>
+                    {tr("Retry")}</button>
                 </div>
               ) : (
                 Object.entries(tree.children || {}).map(([n, node]) => (
@@ -973,19 +1009,19 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
           <div className="flex-1 flex flex-col min-w-0">
 
             {/* Search + checkbox */}
-            <div className="flex items-center gap-2 px-2 py-1.5 border-b border-[#3a3e52] bg-[#161922]">
-              <div className="flex items-center flex-1 bg-[#0d0f18] border border-[#3a3e52] rounded-sm h-6 px-1.5 gap-1">
-                <Search size={11} className="text-zinc-500 flex-shrink-0" />
+            <div className="flex items-center gap-2 px-2 py-1.5 border-b border-[var(--border-primary)] bg-[var(--bg-secondary)]">
+              <div className="flex items-center flex-1 bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-sm h-6 px-1.5 gap-1">
+                <Search size={11} className="text-[var(--text-secondary)] flex-shrink-0" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search symbols..."
-                  className="flex-1 bg-transparent text-[14px] font-normal text-zinc-300 outline-none placeholder-zinc-600"
+                  placeholder={tr("Search symbols...")}
+                  className="flex-1 bg-transparent text-[13px] font-normal text-[var(--text-primary)] outline-none placeholder-[var(--text-tertiary)]"
                 />
                 {searchQuery && (
                   <button onClick={() => setSearchQuery('')}>
-                    <X size={10} className="text-zinc-500 hover:text-zinc-300" />
+                    <X size={10} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]" />
                   </button>
                 )}
               </div>
@@ -994,34 +1030,33 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                   type="checkbox"
                   checked={showExpired}
                   onChange={e => setShowExpired(e.target.checked)}
-                  className="w-3 h-3 accent-blue-500"
+                  className="w-3 h-3 accent-[var(--color-info)]"
                 />
-                <span className="text-[14px] font-normal text-zinc-400">Show expired contracts</span>
+                <span className="text-[13px] font-normal text-[var(--text-secondary)]">{tr("Show expired contracts")}</span>
               </label>
             </div>
 
             {/* Symbol list table */}
-            <div className="h-[120px] flex-shrink-0 overflow-y-auto border-b border-[#3a3e52]">
-              <table className="w-full border-collapse text-[14px] font-normal">
+            <div className="h-[120px] flex-shrink-0 overflow-y-auto border-b border-[var(--border-primary)]">
+              <table className="w-full border-collapse text-[13px] font-normal">
                 <thead>
-                  <tr className="bg-[#1a1d27] sticky top-0">
-                    <th className="w-[140px] border-b border-[#3a3e52] px-3 py-1.5 text-left text-[12px] font-normal text-zinc-400">Symbol</th>
-                    <th className="border-b border-[#3a3e52] px-3 py-1.5 text-left text-[12px] font-normal text-zinc-400">Description</th>
-                    <th className="w-[100px] border-b border-[#3a3e52] px-3 py-1.5 text-right text-[12px] font-normal text-zinc-400">Expiration</th>
+                  <tr className="bg-[var(--bg-tertiary)] sticky top-0">
+                    <th className="w-[140px] border-b border-[var(--border-primary)] px-3 py-1.5 text-left text-[12px] font-normal text-[var(--text-secondary)]">{tr("Symbol")}</th>
+                    <th className="border-b border-[var(--border-primary)] px-3 py-1.5 text-left text-[12px] font-normal text-[var(--text-secondary)]">{tr("Description")}</th>
+                    <th className="w-[100px] border-b border-[var(--border-primary)] px-3 py-1.5 text-right text-[12px] font-normal text-[var(--text-secondary)]">{tr("Expiration")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredSymbols.length === 0 && !loading && (
                     <tr>
-                      <td colSpan={3} className="py-4 text-center text-[12px] font-normal text-zinc-600">
+                      <td colSpan={3} className="py-4 text-center text-[12px] font-normal text-[var(--text-tertiary)]">
                         <div>{symbolsError || 'No symbols found'}</div>
                         {symbolsError && (
                           <button
-                            className="mt-2 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-3 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]"
+                            className="mt-2 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-3 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]"
                             onClick={() => setSymbolsFetchTrigger(v => v + 1)}
                           >
-                            Retry
-                          </button>
+                            {tr("Retry")}</button>
                         )}
                       </td>
                     </tr>
@@ -1029,22 +1064,23 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                   {filteredSymbols.map(sym => (
                     <tr
                       key={sym.id || sym.name}
+                      data-selected={selectedSymbol?.name === sym.name}
                       onClick={() => setSelectedSymbol(sym)}
                       onDoubleClick={() => openChartForSymbol(sym)}
                       className={`cursor-pointer transition-colors ${
                         selectedSymbol?.name === sym.name
-                          ? 'bg-[#1a3a6b] text-white'
-                          : 'hover:bg-[#2a2e45] text-zinc-300'
+                          ? 'bg-[var(--color-info-dim)] text-[var(--text-primary)]'
+                          : 'hover:bg-[var(--bg-quaternary)] text-[var(--text-primary)]'
                       }`}
                     >
                       <td className="px-3 py-1">
                         <div className="flex items-center gap-1.5">
                           <DollarIcon shown={watchlistSymbols.includes(sym.symbol || sym.name)} />
-                          <span className={selectedSymbol?.name === sym.name ? 'text-blue-200' : 'text-zinc-200'}>{sym.name}</span>
+                          <span className={selectedSymbol?.name === sym.name ? 'text-[var(--text-primary)]' : 'text-[var(--text-primary)]'}>{sym.name}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-1 text-zinc-400">{sym.description}</td>
-                      <td className="px-3 py-1 text-zinc-500 text-right">{sym.expiration || ''}</td>
+                      <td className="px-3 py-1 text-[var(--text-secondary)]">{sym.description}</td>
+                      <td className="px-3 py-1 text-[var(--text-secondary)] text-right">{sym.expiration || ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1058,27 +1094,27 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               {activeTab === 'Specification' && selectedSymbol && (
                 <div>
                   {/* Symbol title */}
-                  <div className="px-3 py-2 bg-[#161922] border-b border-[#3a3e52]">
-                    <span className="text-[14px] font-semibold text-[#4a7aff]">
+                  <div className="px-3 py-2 bg-[var(--bg-secondary)] border-b border-[var(--border-primary)]">
+                    <span className="text-[13px] font-medium text-[var(--color-info)]">
                       {selectedSymbol.name}, {selectedSymbol.description}
                     </span>
                   </div>
 
                   {/* Spec rows */}
-                  <table className="w-full border-collapse text-[14px] font-normal">
+                  <table className="w-full border-collapse text-[13px] font-normal">
                     <tbody>
                       {specFields.map((field, i) => (
-                        <tr key={i} className={`border-b border-[#2a2e45] ${i % 2 === 0 ? 'bg-[#161922]' : 'bg-[#1a1d27]'}`}>
+                        <tr key={i} className={`border-b border-[var(--border-primary)] ${i % 2 === 0 ? 'bg-[var(--bg-secondary)]' : 'bg-[var(--bg-tertiary)]'}`}>
                           <td className="px-3 py-[5px] w-[160px]">
                             <div className="flex items-center gap-1.5">
                               {field.prefix && (
                                 <span className={`text-[9px] font-mono font-bold ${
-                                  field.prefix === 'ab' ? 'text-emerald-400' :
-                                  field.prefix === '½' ? 'text-amber-400' :
-                                  field.prefix === '01' ? 'text-amber-400' : 'text-zinc-500'
+                                  field.prefix === 'ab' ? 'text-[var(--color-profit)]' :
+                                  field.prefix === '½' ? 'text-[var(--text-primary)]' :
+                                  field.prefix === '01' ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'
                                 }`}>{field.prefix}</span>
                               )}
-                              <span className="text-zinc-400">{field.label}</span>
+                              <span className="text-[var(--text-secondary)]">{tr(field.label)}</span>
                             </div>
                           </td>
                           <td className={`px-3 py-[5px] text-right ${field.alignRight ? 'text-right' : ''} ${field.color}`}>
@@ -1092,9 +1128,8 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
               )}
 
               {activeTab === 'Specification' && !selectedSymbol && (
-                <div className="flex h-full items-center justify-center text-[12px] font-normal text-zinc-600">
-                  Select a symbol to view specification
-                </div>
+                <div className="flex h-full items-center justify-center text-[12px] font-normal text-[var(--text-tertiary)]">
+                  {tr("Select a symbol to view specification")}</div>
               )}
 
             </div>
@@ -1104,27 +1139,26 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
         </div>
 
         {/* ── Bottom buttons ────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-3 py-2 bg-[#131620] border-t border-[#3a3e52] flex-shrink-0">
+        <div className="rtx-symbols-dialog__footer flex items-center justify-between px-3 py-2 bg-[var(--bg-tertiary)] border-t border-[var(--border-primary)] flex-shrink-0">
           <div className="flex items-center gap-2">
             {activeTab === 'Bars' || activeTab === 'Ticks' ? (
               <>
-                <button className="flex items-center gap-1.5 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-4 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]">
-                  Export {activeTab}
+                <button className="flex items-center gap-1.5 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-4 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]">
+                  {tr("Export ")}{activeTab}
                 </button>
-                <button className="flex items-center gap-1.5 rounded-sm border border-[#3a3e52] bg-[#1e2235] px-4 py-1 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-[#2a2e45]">
-                  Import {activeTab}
+                <button className="flex items-center gap-1.5 rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-4 py-1 text-[13px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-quaternary)]">
+                  {tr("Import ")}{activeTab}
                 </button>
-                <button className="cursor-not-allowed rounded-sm border border-[#3a3e52] bg-[#1e2235] px-4 py-1 text-[14px] font-normal text-zinc-400 transition-colors hover:bg-[#2a2e45]">
-                  Create Custom Symbol
-                </button>
+                <button className="cursor-not-allowed rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-4 py-1 text-[13px] font-normal text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-quaternary)]">
+                  {tr("Create Custom Symbol")}</button>
               </>
             ) : (
               <>
                 <button
-                  className={`rounded-sm border px-3 py-0.5 text-[14px] font-normal transition-colors ${
+                  className={`rounded-sm border px-3 py-0.5 text-[13px] font-normal transition-colors ${
                     !selectedSymbol || isSelectedSymbolShown
-                      ? 'bg-[#1a1d27] text-zinc-600 border-[#3a3e52] cursor-not-allowed'
-                      : 'text-zinc-200 bg-[#1e2235] border-[#3a3e52] hover:bg-[#2a2e45] hover:border-[#4a7aff]'
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border-[var(--border-primary)] cursor-not-allowed'
+                      : 'text-[var(--text-primary)] bg-[var(--bg-quaternary)] border-[var(--border-primary)] hover:bg-[var(--bg-quaternary)] hover:border-[var(--color-info)]'
                   }`}
                   disabled={!selectedSymbol || isSelectedSymbolShown}
                   onClick={() => {
@@ -1140,13 +1174,12 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                     }
                   }}
                 >
-                  Show Symbol
-                </button>
+                  {tr("Show Symbol")}</button>
                 <button
-                  className={`rounded-sm border px-4 py-1 text-[14px] font-normal transition-colors ${
+                  className={`rounded-sm border px-4 py-1 text-[13px] font-normal transition-colors ${
                     !selectedSymbol || !isSelectedSymbolShown
-                      ? 'bg-[#1a1d27] text-zinc-600 border-[#3a3e52] cursor-not-allowed'
-                      : 'text-zinc-400 bg-[#1e2235] border-[#3a3e52] hover:bg-[#2a2e45]'
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border-[var(--border-primary)] cursor-not-allowed'
+                      : 'text-[var(--text-secondary)] bg-[var(--bg-quaternary)] border-[var(--border-primary)] hover:bg-[var(--bg-quaternary)]'
                   }`}
                   disabled={!selectedSymbol || !isSelectedSymbolShown}
                   onClick={() => {
@@ -1156,40 +1189,36 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
                     }
                   }}
                 >
-                  Hide Symbol
-                </button>
+                  {tr("Hide Symbol")}</button>
                 <button
-                  className={`rounded-sm border px-4 py-1 text-[14px] font-normal transition-colors ${
+                  className={`rounded-sm border px-4 py-1 text-[13px] font-normal transition-colors ${
                     !selectedSymbol || !onOpenChart
-                      ? 'bg-[#1a1d27] text-zinc-600 border-[#3a3e52] cursor-not-allowed'
-                      : 'border-[#4a6aff] bg-[#2a4aad] text-white hover:bg-[#3a5abf]'
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] border-[var(--border-primary)] cursor-not-allowed'
+                      : 'border-[var(--color-info)] bg-[var(--color-info-dim)] text-[var(--text-primary)] hover:bg-[var(--color-info-dim)]'
                   }`}
                   disabled={!selectedSymbol || !onOpenChart}
                   onClick={() => openChartForSymbol(selectedSymbol)}
                 >
-                  Open Chart
-                </button>
+                  {tr(chartActionLabel)}</button>
                 <button
-                  className="cursor-not-allowed rounded-sm border border-[#3a3e52] bg-[#1e2235] px-4 py-1 text-[14px] font-normal text-zinc-400 transition-colors hover:bg-[#2a2e45]"
+                  className="cursor-not-allowed rounded-sm border border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-4 py-1 text-[13px] font-normal text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-quaternary)]"
                 >
-                  Create Custom Symbol
-                </button>
+                  {tr("Create Custom Symbol")}</button>
               </>
             )}
           </div>
           <button
-            className="rounded-sm border border-[#4a6aff] bg-[#2a4aad] px-5 py-0.5 text-[14px] font-semibold text-white transition-colors hover:bg-[#3a5abf]"
+            className="rounded-sm border border-[var(--color-info)] bg-[var(--color-info-dim)] px-5 py-0.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--color-info-dim)]"
             onClick={onClose}
           >
-            OK
-          </button>
+            {tr("OK")}</button>
         </div>
 
         {/* Resize handle */}
         <div
           className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
           onMouseDown={onResizeStart}
-          style={{ background: 'linear-gradient(135deg, transparent 50%, #4a4e65 50%)' }}
+          style={{ background: 'linear-gradient(135deg, transparent 50%, var(--border-secondary) 50%)' }}
         />
       </div>
     </div>,

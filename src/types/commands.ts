@@ -62,7 +62,7 @@ export type Command =
   | {
     type: 'SELECT_TOOL';
     payload: {
-      tool: 'cursor' | 'trendline' | 'hline' | 'vline' | 'text' | 'channel' | 'fibonacci' | 'fib_extension' | 'measure' | 'freehand' | 'callout' | 'shapes' | 'rectangle' | 'ellipse' | 'stamp' | 'pattern';
+      tool: 'cursor' | 'ruler' | 'trendline' | 'hline' | 'vline' | 'text' | 'channel' | 'fibonacci' | 'fib_extension' | 'measure' | 'freehand' | 'callout' | 'shapes' | 'rectangle' | 'ellipse' | 'stamp' | 'pattern';
       subtype?: string;
       /** Explicit chart owner for commands coming from the web drawing rail. */
       targetContextId?: string;
@@ -88,6 +88,10 @@ export type Command =
       targetContextId?: string;
       symbol?: string;
     };
+  }
+  | {
+    type: 'REMOVE_ALL_INDICATORS';
+    payload: { targetContextId?: string };
   }
   // Drawing Persistence
   | {

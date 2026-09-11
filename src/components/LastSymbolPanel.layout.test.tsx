@@ -72,12 +72,12 @@ describe('LastSymbolPanel enterprise layout', () => {
     render(<LastSymbolPanel />);
 
     expect(screen.getByRole('region', { name: 'Last symbol trader' })).toBeInTheDocument();
-    expect(screen.getByText('No symbol selected')).toBeInTheDocument();
+    expect(screen.getByText('Missing symbol')).toBeInTheDocument();
     expect(screen.getByText('Idle')).toHaveAttribute('data-tone', 'idle');
 
-    expect(screen.getByRole('button', { name: 'Sell last symbol at market' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Buy last symbol at market' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Close all last symbol positions' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Sell Last Symbol at market' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Buy Last Symbol at market' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Close all Last Symbol positions' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Decrease order volume' })).toBeDisabled();
     expect(screen.getByRole('spinbutton', { name: 'Order volume in lots' })).toHaveValue(0.01);
   });

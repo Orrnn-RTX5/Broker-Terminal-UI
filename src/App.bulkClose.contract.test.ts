@@ -39,7 +39,9 @@ describe('Close All source contract', () => {
     expect(bulkHandler).toContain("dispatchTradeOverlayCloseState(confirmedTicketIds, 'confirmed')");
     expect(bulkHandler).toContain('clearOptimisticClosedTickets(failedTicketIds)');
     expect(bulkHandler).toContain("dispatchTradeOverlayCloseState(failedTicketIds, 'failed')");
-    expect(bulkHandler).toContain('Closed ${confirmedTicketIds.length} of ${closeResult.attemptedTicketIds.length} positions.');
+    expect(bulkHandler).toContain("feedbackLabel('closed')");
+    expect(bulkHandler).toContain('${confirmedTicketIds.length}/${closeResult.attemptedTicketIds.length}');
+    expect(bulkHandler).toContain('${failedTicketIds.length} — ${failureMessage}');
   });
 
   it('guards duplicate submissions and stale broker-account results', () => {

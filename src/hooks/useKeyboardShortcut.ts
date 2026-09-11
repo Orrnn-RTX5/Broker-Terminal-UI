@@ -9,7 +9,7 @@
  * - Multiple shortcuts per component
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { keyboardShortcutManager, type ShortcutDefinition } from '../services/keyboardShortcutManager';
 
 export interface UseKeyboardShortcutOptions {
@@ -34,24 +34,8 @@ export function useKeyboardShortcut(
   shortcut: Omit<ShortcutDefinition, 'id'> & { id?: string },
   deps: React.DependencyList = []
 ): void {
-  const idRef = useRef<string>(shortcut.id || `shortcut-${Math.random().toString(36).substr(2, 9)}`);
-
-  useEffect(() => {
-    if ((shortcut.enabled as any) === false) return;
-
-    const fullShortcut: ShortcutDefinition = {
-      ...shortcut,
-      id: idRef.current,
-      enabled: (shortcut as any).enabled !== false
-    };
-
-    const unregister = keyboardShortcutManager.register(fullShortcut);
-
-    return () => {
-      unregister();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shortcut.enabled, ...deps]);
+  const generatedId = useId();
+  useKeyboardShortcuts([{ ...shortcut, id: shortcut.id || `shortcut-${generatedId}` }], deps);
 }
 
 /**
@@ -67,28 +51,47 @@ export function useKeyboardShortcuts(
   shortcuts: Array<Omit<ShortcutDefinition, 'id'> & { id?: string }>,
   deps: React.DependencyList = []
 ): void {
-  const idsRef = useRef<string[]>(
-    shortcuts.map((s, i) => s.id || `shortcut-${i}-${Math.random().toString(36).substr(2, 9)}`)
-  );
+  const instanceId = useId();
+  const anonymousIds = useRef(new Map<string, string>());
+  const latestHandlers = useRef(new Map<string, ShortcutDefinition['handler']>());
+  const occurrences = new Map<string, number>();
+  const declarations = shortcuts.map((shortcut): ShortcutDefinition => {
+    if (shortcut.id) return { ...shortcut, id: shortcut.id };
+    // Anonymous declarations follow their key/action identity instead of an
+    // array index, so inserting or reordering actions cannot swap handlers.
+    const identity = JSON.stringify([
+      shortcut.key.toLowerCase(), Boolean(shortcut.ctrl), Boolean(shortcut.shift),
+      Boolean(shortcut.alt), Boolean(shortcut.meta), shortcut.description, shortcut.category,
+    ]);
+    const occurrence = occurrences.get(identity) || 0;
+    occurrences.set(identity, occurrence + 1);
+    const identityKey = `${identity}:${occurrence}`;
+    let id = anonymousIds.current.get(identityKey);
+    if (!id) {
+      id = `shortcut-${instanceId}-${anonymousIds.current.size}`;
+      anonymousIds.current.set(identityKey, id);
+    }
+    return { ...shortcut, id };
+  });
+  const signature = JSON.stringify(declarations.map(({ handler: _handler, ...metadata }) => metadata));
+
+  useLayoutEffect(() => {
+    latestHandlers.current = new Map(declarations.map(({ id, handler }) => [id, handler]));
+  });
 
   useEffect(() => {
-    const unregisterFns = shortcuts.map((shortcut, index) => {
-      if ((shortcut.enabled as any) === false) return () => { };
-
-      const fullShortcut: ShortcutDefinition = {
+    const unregisterFns = declarations
+      .filter((shortcut) => shortcut.enabled !== false)
+      .map((shortcut) => keyboardShortcutManager.register({
         ...shortcut,
-        id: idsRef.current[index],
-        enabled: (shortcut as any).enabled !== false, // undefined means enabled
-      };
-
-      return keyboardShortcutManager.register(fullShortcut);
-    });
+        handler: (event) => latestHandlers.current.get(shortcut.id)?.(event),
+      }));
 
     return () => {
       unregisterFns.forEach(fn => fn());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shortcuts.length, ...deps]);
+  }, [signature, ...deps]);
 }
 
 /**

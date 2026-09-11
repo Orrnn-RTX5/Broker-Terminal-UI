@@ -1,0 +1,34 @@
+.annotation-editor {
+  position: fixed;
+  z-index: 10020;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 6px 24px #0004;
+  font: 13px Arial, sans-serif;
+}
+.annotation-editor input, .annotation-editor select, .annotation-editor textarea, .annotation-editor button {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 4px;
+  max-width: 100%;
+}
+.annotation-editor input[type=color] { padding: 1px; height: 25px; }
+.annotation-editor input[type=checkbox] { margin: 6px; }
+.annotation-editor button { cursor: pointer; padding: 5px 10px; }
+.annotation-editor button[aria-pressed=true] { color: #fff; background: #2962ff; }
+.annotation-editor button:focus-visible, .annotation-editor input:focus-visible, .annotation-editor textarea:focus-visible, .annotation-editor select:focus-visible { outline: 2px solid #2962ff; outline-offset: 1px; }
+.annotation-editor p { margin: 8px 0; }
+.annotation-editor [role=alert] { color: #e65757; }
+.annotation-editor--inline { width: 280px; padding: 0; overflow: visible; border: 0; box-shadow: none; }
+.annotation-editor__inline-tools { position: absolute; bottom: 100%; left: 0; display: flex; gap: 5px; padding: 4px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; }
+.annotation-editor__inline-actions { display: flex; justify-content: flex-end; gap: 4px; padding-top: 3px; }
+body:has(.annotation-editor) .web-drawing-selection-toolbar { visibility: hidden; pointer-events: none; }

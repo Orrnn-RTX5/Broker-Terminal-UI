@@ -95,7 +95,7 @@ describe('cTrader-style position controls contract', () => {
     // While dragging, the floating badge recomputes pips and projected money.
     expect(chartSource).toContain('const previewMoney = estimateTradeLevelMoney({');
     expect(chartSource).toContain('const previewPips = computeSignedPips(tradeObj.side, tradeObj.entryPrice, price, digits);');
-    expect(chartSource).toContain('dragBadgeOverlay.textContent = `${role} ${price.toFixed(digits)}  Pips: ${formatPipsLabel(previewPips)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;');
+    expect(chartSource).toContain("previewBadge.textContent = `${tr(role)} ${price.toFixed(digits)}  ${tr('pips')}: ${formatPipsLabel(previewPips)}  ${previewCurrency}: ${formatMoneyLabel(previewMoney)}`;");
     // The stale bar hides during the drag and is restored on release/cancel.
     expect(chartSource).toContain('hideDraggedLevelControls(closestTrade.key, grabbedType);');
     expect(chartSource.match(/restoreDraggedLevelControls\(\);/g)).toHaveLength(2);

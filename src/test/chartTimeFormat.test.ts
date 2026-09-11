@@ -12,6 +12,15 @@ import {
 } from '../utils/chartTimeFormat';
 
 describe('chartTimeFormat', () => {
+  it.each(['fr', 'hi', 'ar'])('localizes month labels in %s without changing broker time', locale => {
+    const date = new Date(Date.UTC(2026, 3, 1, 10, 25));
+    const timestamp = date.getTime() / 1000;
+    const month = new Intl.DateTimeFormat(locale, { month: 'short', timeZone: 'UTC' }).format(date);
+    expect(formatTradingChartCrosshairLabel(timestamp, 'M1', 7200, locale)).toBe(`1 ${month} 2026 12:25`);
+    expect(formatTradingChartTickLabel(timestamp, 'M1', TickMarkType.Time, 7200, { locale })).toBe('12:25');
+    expect(formatTradingChartTickLabel(timestamp, 'MN', TickMarkType.Month, 7200, { locale })).toBe(`${month} 2026`);
+  });
+
   it('formats M1 footer labels with compact time-only ticks', () => {
     const timestamp = Math.floor(Date.UTC(2026, 3, 1, 10, 25, 0, 0) / 1000);
     const brokerOffsetSeconds = 2 * 60 * 60;

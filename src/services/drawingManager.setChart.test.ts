@@ -231,4 +231,38 @@ describe('DrawingManager.setChart', () => {
     expect(manager.getDrawings()).toHaveLength(0);
     expect(remountedContainer.querySelectorAll('g[data-id]')).toHaveLength(0);
   });
+
+  it('selects every drawing in one target chart without changing sibling selection, order, or active context', async () => {
+    const manager = new DrawingManager();
+    const containerA = document.createElement('div');
+    const containerB = document.createElement('div');
+    document.body.append(containerA, containerB);
+    manager.setChart(interactiveChart, interactiveSeries, 'SAME', 1, containerA, 'M1', 'chart-a', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(1));
+    for (let index = 0; index < 3; index++) {
+      manager.startDrawing('hline');
+      manager.addPoint(1_700_000_000 + index * 60, 2000 + index, undefined, 'chart-a');
+    }
+    manager.unselectAll('chart-a');
+    const beforeA = JSON.parse(JSON.stringify(manager.getDrawings('chart-a')));
+    manager.setChart(interactiveChart, interactiveSeries, 'SAME', 1, containerB, 'M5', 'chart-b', 'account-1');
+    await vi.waitFor(() => expect(loadDrawings).toHaveBeenCalledTimes(2));
+    manager.startDrawing('hline');
+    manager.addPoint(1_700_000_000, 2010, undefined, 'chart-b');
+    const beforeB = JSON.parse(JSON.stringify(manager.getDrawings('chart-b')));
+    const render = vi.spyOn(manager, 'renderAll');
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    expect(manager.selectAll('chart-a')).toBe(3);
+    expect(manager.getDrawings('chart-a')).toEqual(beforeA.map((drawing: object) => ({ ...drawing, selected: true })));
+    expect(manager.getDrawings('chart-b')).toEqual(beforeB);
+    expect(manager.getDrawings()).toEqual(beforeB);
+    expect(render).toHaveBeenCalledTimes(1);
+    const changes = dispatch.mock.calls.map(([event]) => event).filter(event => event.type === 'drawings:changed');
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ detail: { contextId: 'chart-a', symbol: 'SAME', timeframe: 'M1', accountScope: 'account-1', reason: 'selection' } });
+    expect(manager.selectAll('missing-chart')).toBe(0);
+    expect(manager.getDrawings('chart-b')).toEqual(beforeB);
+    dispatch.mockRestore();
+    render.mockRestore();
+  });
 });

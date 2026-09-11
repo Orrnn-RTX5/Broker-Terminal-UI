@@ -56,11 +56,12 @@
       "tickVolumes": "Tik Hacimleri",
       "zoomIn": "Yakınlaştır",
       "zoomOut": "Uzaklaştır",
-      "properties": "Özellikler"
+      "properties": "Özellikler",
+      "areaChart": "Alan Tablosu"
     },
     "tools": {
       "label": "Araçlar",
-      "newOrder": "Yeni Emir",
+      "newOrder": "Yeni emir",
       "strategyTester": "Strateji Test",
       "scriptEditor": "RTX5 Script Editörü",
       "agentsManager": "Acenta Yöneticisi",
@@ -96,7 +97,7 @@
       "marketplace": "RTX5 Pazaryeri",
       "signals": "RTX5 Sinyaller",
       "quotes": "RTX5 Kotasyonlar",
-      "forum": "RTX5 Forum",
+      "forum": "RTX5 Forumu",
       "cloudHosting": "RTX5 Bulut Hosting",
       "mobile": "Mobil",
       "mac": "RTX5 Mac için",

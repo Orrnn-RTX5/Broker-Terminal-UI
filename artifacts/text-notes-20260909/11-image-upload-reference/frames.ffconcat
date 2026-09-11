@@ -1,0 +1,6 @@
+ffconcat version 1.0
+file '0000.jpg'
+duration 0.169
+file '0001.jpg'
+duration 0.6
+file '0001.jpg'

@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useCurrentTick } from '../store/useMarketDataStore';
 import { useLiveOrderBook } from '../hooks/useLiveMarketData';
@@ -508,6 +509,7 @@ interface DOMToolbarProps {
 }
 
 function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair, onZoomIn, onZoomOut }: DOMToolbarProps) {
+    const tr = useUiTranslation();
   const iconColor = '#9898a8';
   const activeColor = '#f0f0f8';
   const activeGlow = '#00c896';
@@ -532,7 +534,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
         className={iconBtn(chartMode === 'bar')}
         style={btnStyle(chartMode === 'bar')}
         onClick={() => onChartModeChange('bar')}
-        title="Bar Chart (OHLC)"
+        title={tr("Bar Chart (OHLC)")}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="1" y="5" width="2.5" height="8" rx="0.5" fill={chartMode === 'bar' ? activeColor : iconColor}/>
@@ -546,7 +548,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
         className={iconBtn(chartMode === 'candlestick')}
         style={btnStyle(chartMode === 'candlestick')}
         onClick={() => onChartModeChange('candlestick')}
-        title="Candlestick Chart"
+        title={tr("Candlestick Chart")}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           {/* left candle — bearish red */}
@@ -567,7 +569,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
         className={iconBtn(chartMode === 'line')}
         style={btnStyle(chartMode === 'line')}
         onClick={() => onChartModeChange('line')}
-        title="Line Chart"
+        title={tr("Line Chart")}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <polyline points="1,12 5,6 9,9 15,3"
@@ -584,7 +586,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
         className={iconBtn(chartMode === 'tick')}
         style={btnStyle(chartMode === 'tick')}
         onClick={() => onChartModeChange('tick')}
-        title="Tick Chart"
+        title={tr("Tick Chart")}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <polyline points="0,9 3,5 6,10 9,4 12,11 16,3"
@@ -598,7 +600,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
         className={iconBtn(crosshair)}
         style={btnStyle(crosshair)}
         onClick={onToggleCrosshair}
-        title={crosshair ? 'Crosshair: ON' : 'Crosshair: OFF'}
+        title={crosshair ? tr("Crosshair: ON") : tr("Crosshair: OFF")}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <line x1="8" y1="1" x2="8" y2="15"
@@ -617,7 +619,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
       <button
         className="w-[26px] h-[22px] flex items-center justify-center rounded cursor-pointer transition-all hover:bg-[#333338] active:bg-[#404048]"
         onClick={onZoomIn}
-        title="Zoom In"
+        title={tr("Zoom In")}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <circle cx="7" cy="7" r="4.5" stroke={iconColor} strokeWidth="1.2"/>
@@ -631,7 +633,7 @@ function DOMToolbar({ chartMode, crosshair, onChartModeChange, onToggleCrosshair
       <button
         className="w-[26px] h-[22px] flex items-center justify-center rounded cursor-pointer transition-all hover:bg-[#333338] active:bg-[#404048]"
         onClick={onZoomOut}
-        title="Zoom Out"
+        title={tr("Zoom Out")}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <circle cx="7" cy="7" r="4.5" stroke={iconColor} strokeWidth="1.2"/>
@@ -653,6 +655,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   onCloseBulk,
   onDragHandleMouseDown,
 }) => {
+    const tr = useUiTranslation();
   const currentTick = useCurrentTick(symbol);
   const [volume, setVolume] = useState(0.01);
   const [sl, setSl] = useState(0);
@@ -757,11 +760,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
               {symbol}
             </span>
             <span className="text-[12px] leading-[18px] font-normal truncate" style={{ color: C.textTertiary, letterSpacing: 'normal' }}>
-              {symbol.startsWith('BTC') ? 'Bitcoin vs US Dollar' :
-               symbol.startsWith('ETH') ? 'Ethereum vs US Dollar' :
-               symbol.startsWith('XAU') ? 'Gold vs US Dollar' :
-               symbol.startsWith('XAG') ? 'Silver vs US Dollar' :
-               symbol.replace(/([A-Z]{3})([A-Z]{3})/, '$1 / $2')}
+              {symbol.startsWith('BTC') ? tr("Bitcoin vs US Dollar") : symbol.startsWith('ETH') ? tr("Ethereum vs US Dollar") : symbol.startsWith('XAU') ? tr("Gold vs US Dollar") : symbol.startsWith('XAG') ? tr("Silver vs US Dollar") : symbol.replace(/([A-Z]{3})([A-Z]{3})/, '$1 / $2')}
             </span>
           </div>
         </div>
@@ -774,7 +773,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             onMouseDown={e => e.stopPropagation()}
             onMouseEnter={e => { e.currentTarget.style.color = C.textPrimary; e.currentTarget.style.background = C.bgElevated; }}
             onMouseLeave={e => { e.currentTarget.style.color = C.textSecondary; e.currentTarget.style.background = 'transparent'; }}
-            title="Close"
+            title={tr("Close")}
           >
             ✕
           </button>
@@ -818,21 +817,18 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             }}
           >
             <div className="flex min-h-[30px] items-center justify-center border-r text-[12px] leading-[18px] font-normal uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
-              Volume
-            </div>
+              {tr("Volume")}</div>
             <div className="flex min-h-[30px] items-center justify-center border-r text-[12px] leading-[18px] font-normal uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
-              Price
-            </div>
+              {tr("Price")}</div>
             <div className="flex min-h-[30px] items-center justify-center text-[12px] leading-[18px] font-normal uppercase tracking-normal" style={{ color: C.textTertiary }}>
-              Trade
-            </div>
+              {tr("Trade")}</div>
           </div>
 
           {/* Scrollable Price Levels */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ background: C.bgSecondary }}>
             {depthLevels.asks.length === 0 && depthLevels.bids.length === 0 && (
               <div className="flex items-center justify-center h-full px-3 text-center text-[14px] leading-[21px] font-normal" style={{ color: C.textTertiary }}>
-                {depthLoading ? 'Loading market depth...' : depthError || 'No market depth available'}
+                {depthLoading ? tr("Loading market depth...") : depthError || 'No market depth available'}
               </div>
             )}
             {/* ── ASK (Sell) rows ── */}
@@ -868,7 +864,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                     </span>
                   </div>
                   <div className="flex items-center justify-center gap-1">
-                    <span style={{ color: C.loss, fontSize: 9, cursor: 'pointer' }} title={`Sell @ ${level.price.toFixed(digits)}`}>▼</span>
+                    <span style={{ color: C.loss, fontSize: 9, cursor: 'pointer' }} title={tr("Sell @ {{value0}}", { value0: level.price.toFixed(digits) })}>▼</span>
                     <span style={{ color: C.profit, fontSize: 9, cursor: 'pointer', opacity: 0.2 }}>▲</span>
                   </div>
                 </div>
@@ -889,8 +885,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
               >
                 <div className="flex items-center justify-center border-r" style={{ borderColor: C.borderSecondary }} />
                 <div className="flex items-center justify-center border-r text-[12px] font-normal uppercase tracking-normal" style={{ borderColor: C.borderSecondary, color: '#7aacca' }}>
-                  ↕ {((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)} pts
-                </div>
+                  ↕ {((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)} {tr(" pts")}</div>
                 <div className="flex items-center justify-center" />
               </div>
             )}
@@ -929,7 +924,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   </div>
                   <div className="flex items-center justify-center gap-1">
                     <span style={{ color: C.loss, fontSize: 9, cursor: 'pointer', opacity: 0.2 }}>▼</span>
-                    <span style={{ color: C.profit, fontSize: 9, cursor: 'pointer' }} title={`Buy @ ${level.price.toFixed(digits)}`}>▲</span>
+                    <span style={{ color: C.profit, fontSize: 9, cursor: 'pointer' }} title={tr("Buy @ {{value0}}", { value0: level.price.toFixed(digits) })}>▲</span>
                   </div>
                 </div>
               );
@@ -944,7 +939,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         style={{ borderColor: C.borderPrimary, background: C.bgTertiary }}
       >
         <div className="flex items-center gap-0.5">
-          <label className="text-[12px] leading-[18px] font-normal uppercase" style={{ color: C.textTertiary }}>sl</label>
+          <label className="text-[12px] leading-[18px] font-normal uppercase" style={{ color: C.textTertiary }}>{tr("sl")}</label>
           <input
             type="number"
             value={sl}
@@ -983,7 +978,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         <div className="w-px h-4" style={{ background: C.borderSecondary }} />
 
         <div className="flex items-center gap-0.5">
-          <label className="text-[12px] leading-[18px] font-normal uppercase" style={{ color: C.textTertiary }}>tp</label>
+          <label className="text-[12px] leading-[18px] font-normal uppercase" style={{ color: C.textTertiary }}>{tr("tp")}</label>
           <input
             type="number"
             value={tp}
@@ -1011,8 +1006,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.2)')}
           onMouseLeave={e => (e.currentTarget.style.filter = 'none')}
         >
-          Sell
-        </button>
+          {tr("Sell")}</button>
         <button
           onClick={handleCloseAll}
           onMouseDown={e => e.stopPropagation()}
@@ -1021,8 +1015,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.3)'; e.currentTarget.style.color = C.textPrimary; }}
           onMouseLeave={e => { e.currentTarget.style.filter = 'none'; e.currentTarget.style.color = C.textSecondary; }}
         >
-          Close
-        </button>
+          {tr("Close")}</button>
         <button
           onClick={() => onPlaceOrder?.(buildDepthOrderRequest('BUY', bestAsk, volume, 'market', digits, sl, tp))}
           onMouseDown={e => e.stopPropagation()}
@@ -1031,8 +1024,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
           onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(1.2)')}
           onMouseLeave={e => (e.currentTarget.style.filter = 'none')}
         >
-          Buy
-        </button>
+          {tr("Buy")}</button>
       </div>
     </div>
   );

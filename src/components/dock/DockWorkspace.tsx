@@ -1,11 +1,13 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useEffect, useCallback, useMemo, useState } from 'react';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { resetWorkspaceLayout } from '../../services/resetLayout';
 import { DockContainer, FloatingPanelsLayer, GlobalEdgeIndicators } from './DockContainer';
+import { StableChartHosts } from './StableChartHosts';
 import { ErrorBoundary } from '../ErrorBoundary';
 import type { Timeframe, ChartType } from '../TradingChart';
 import type { DockPanelConfig } from '../../services/dockManager';
 import { useCommandBus } from '../../hooks/useCommandBus';
-import type { DockContainer as IDockContainer } from '../../services/dockManager';
 import { MarketWatchPanel, type ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';
 import type { MarketInstrumentsSnapshot } from '../../hooks/useLiveMarketData';
 import { NavigatorPanel } from '../layout/NavigatorPanel';
@@ -116,6 +118,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     onCancelOrder,
     onCloseBulk
 }) => {
+    const tr = useUiTranslation();
     const tradeSymbolSet = useMemo(() => {
         return new Set(getUniqueSymbolNames(tradeSymbols ?? allSymbols));
     }, [allSymbols, tradeSymbols]);
@@ -159,13 +162,19 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     const renderPanel = useCallback((panel: DockPanelConfig, isActive: boolean) => {
         if (panel.component === 'Chart') {
             const panelSymbol = panel.props?.symbol ?? panel.title?.split(',')[0];
-            const chartSymbol = resolveRenderedChartSymbol(
-                panelSymbol,
-                selectedSymbol,
-                authorizedChartSymbols,
-            );
             const diagnosticPanelSymbol = getAuthorizedChartDiagnosticSymbol(
                 panelSymbol,
+                authorizedChartSymbols,
+            );
+            const explicitPanelSymbol = String(panelSymbol ?? '').trim();
+            const waitingForPanelSymbol = marketInstrumentsSnapshot.chartCatalogCurrent === false
+                && Boolean(explicitPanelSymbol) && explicitPanelSymbol.toUpperCase() !== 'CHART'
+                && !diagnosticPanelSymbol;
+            // An early feed snapshot must never pair an explicit XAU/BTC
+            // header with another instrument's canvas or trading buttons.
+            const chartSymbol = waitingForPanelSymbol ? '' : resolveRenderedChartSymbol(
+                panelSymbol,
+                selectedSymbol,
                 authorizedChartSymbols,
             );
             const diagnosticPanelId = getChartPanelDiagnosticId(panel.id);
@@ -279,14 +288,14 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                 />
             );
         }
-        return <div className="p-4 text-muted-foreground whitespace-nowrap overflow-hidden">Unknown Panel type: {panel.component}</div>;
+        return <div className="p-4 text-muted-foreground whitespace-nowrap overflow-hidden">{tr("Unknown Panel type: ")}{panel.component}</div>;
 
     }, [
         authorizedChartSymbols,
         globalChartType, globalTimeframe,
         activeMarketSnapshot, marketInstrumentsSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, priceDigitsBySymbol, resolveChartSymbol, tradeSymbolSet, volumeMetadataBySymbol,
         onClosePosition, onModifyPosition, onCancelOrder, onCloseBulk
-    ]);
+    , tr]);
 
     return (
         <DockWorkspaceClean renderPanel={renderPanel} />
@@ -297,17 +306,18 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
 const DockWorkspaceClean: React.FC<{
     renderPanel: (panel: DockPanelConfig, isActive: boolean, isFloating?: boolean) => React.ReactNode;
 }> = ({ renderPanel }) => {
-    const { layout, resetToDefaultLayout, tileWindows } = useDockLayoutStore();
+    const tr = useUiTranslation();
+    const { layout, arrangeCharts } = useDockLayoutStore();
     const { subscribe } = useCommandBus();
 
     // Listen for events
     useEffect(() => {
-        const handleResetLayout = () => resetToDefaultLayout();
+        const handleResetLayout = () => resetWorkspaceLayout();
         window.addEventListener('resetLayout', handleResetLayout);
 
         const unsubCommandBus = subscribe((cmd) => {
             if (cmd.type === 'TILE_WINDOWS') {
-                tileWindows();
+                arrangeCharts(cmd.payload.mode);
             }
         });
 
@@ -315,24 +325,9 @@ const DockWorkspaceClean: React.FC<{
             window.removeEventListener('resetLayout', handleResetLayout);
             unsubCommandBus();
         };
-    }, [resetToDefaultLayout, subscribe, tileWindows]);
+    }, [subscribe, arrangeCharts]);
 
     const isLayoutEmpty = !layout.root.children || layout.root.children.length === 0;
-
-    // Collect all open chart panels
-    const chartPanels: DockPanelConfig[] = [];
-    const collectCharts = (container: IDockContainer) => {
-        if (!container.children) return;
-        container.children.forEach(child => {
-            if ('children' in child) {
-                collectCharts(child as IDockContainer);
-            } else if ((child as DockPanelConfig).component === 'Chart') {
-                chartPanels.push(child as DockPanelConfig);
-            }
-        });
-    };
-    collectCharts(layout.root);
-    layout.floatingPanels.forEach(collectCharts);
 
     return (
         <div
@@ -343,14 +338,14 @@ const DockWorkspaceClean: React.FC<{
             {/* Reset Layout Button */}
             {isLayoutEmpty && (
                 <button
-                    onClick={() => resetToDefaultLayout()}
+                    onClick={() => resetWorkspaceLayout()}
                     className="absolute top-4 right-4 z-50 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors"
                 >
-                    Reset Layout
-                </button>
+                    {tr("Reset Layout")}</button>
             )}
 
             <div className="flex-1 relative min-h-0 min-w-0">
+                <StableChartHosts renderPanel={renderPanel}>
                 <DockContainer
                     container={layout.root}
                     isRoot={true}
@@ -358,6 +353,7 @@ const DockWorkspaceClean: React.FC<{
                 />
                 <FloatingPanelsLayer renderPanel={renderPanel} />
                 <GlobalEdgeIndicators />
+                </StableChartHosts>
             </div>
         </div>
     );

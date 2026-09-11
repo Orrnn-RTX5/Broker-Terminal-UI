@@ -56,7 +56,8 @@
       "tickVolumes": "Volumes de tick",
       "zoomIn": "Zoom avant",
       "zoomOut": "Zoom arrière",
-      "properties": "Propriétés"
+      "properties": "Propriétés",
+      "areaChart": "Graphique de zone"
     },
     "tools": {
       "label": "Outils",
@@ -86,10 +87,10 @@
       "whatsNew": "Nouveautés",
       "telegramChannel": "Canal Telegram RTX5",
       "videoGuides": "Guides vidéo",
-      "webTrader": "RTX5 Web Trader",
+      "webTrader": "Web Trader RTX5",
       "documentation": "Documentation RTX5",
-      "algoBook": "RTX5 AlgoBook",
-      "neuroBook": "RTX5 NeuroBook",
+      "algoBook": "AlgoBook RTX5",
+      "neuroBook": "NeuroBook RTX5",
       "articles": "Articles RTX5",
       "codeBase": "Base de code RTX5",
       "jobs": "Emplois RTX5",

@@ -1,4 +1,6 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 import { Icon } from './ui/Icon';
+import { lockedTerminalTool } from '../config/terminalToolAvailability';
 import { ContextMenu, type ContextMenuItemConfig } from './ui/ContextMenu';
 import { ModifyPositionDialog } from './ModifyPositionDialog';
 import { lazy, memo, Suspense, useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -19,6 +21,8 @@ import {
 } from './BottomDock.exposure';
 import { resolveTradeAccountMetrics, resolveTradeProfit } from './BottomDock.trade';
 import { MARKET_ORDER_PLACEMENT_STATE_EVENT } from '../services/marketOrderPlacementEvents';
+import { getTerminalShortcutHint, runTerminalShortcutAction } from '../services/shortcutCatalog';
+import { acknowledgeBottomDockTab, getRequestedBottomDockTab } from '../services/bottomDockNavigation';
 
 const LazyHistoryDownloader = lazy(async () => {
     const module = await import('./HistoryDownloader');
@@ -316,6 +320,7 @@ export function BottomDock({
     onModifyPosition,
     onCloseBulk,
 }: BottomDockProps) {
+    const tr = useUiTranslation();
     // Read trading data directly from store — NOT from props
     // This prevents DockWorkspace.renderPanel from needing to re-create when positions change
     const [account, setAccount] = useState<any>(useAppStore.getState().account);
@@ -371,7 +376,7 @@ export function BottomDock({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const [activeTab, setActiveTab] = useState<TabType>('Trade');
+    const [activeTab, setActiveTab] = useState<TabType>(() => getRequestedBottomDockTab() ?? 'Trade');
     const isTradeSurfaceLive = activeTab === 'Trade';
     const isExposureSurfaceLive = activeTab === 'Exposure';
 
@@ -437,10 +442,16 @@ export function BottomDock({
     }, [activeTab]);
 
     useEffect(() => {
+        const pendingTab = getRequestedBottomDockTab();
+        if (pendingTab) {
+            setActiveTab(pendingTab);
+            acknowledgeBottomDockTab(pendingTab);
+        }
         const handleOpenBottomDockTab = (event: Event) => {
             const requestedTab = (event as CustomEvent<{ tab?: TabType }>).detail?.tab;
             if (!requestedTab || !TABS.some(tab => tab.id === requestedTab)) return;
             setActiveTab(requestedTab);
+            acknowledgeBottomDockTab(requestedTab);
         };
 
         window.addEventListener('rtx:open-bottom-dock-tab', handleOpenBottomDockTab);
@@ -605,7 +616,7 @@ export function BottomDock({
                     {activeTab === 'Journal' && <MemoJournalTab />}
                 </div>
                 {activeTab === 'Historical Data' && (
-                    <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-zinc-500">Opening historical data…</div>}>
+                    <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-zinc-500">{tr("Opening historical data…")}</div>}>
                         <LazyHistoryDownloader />
                     </Suspense>
                 )}
@@ -622,46 +633,43 @@ export function BottomDock({
                     {TABS.map((tab) => (
                         <button
                             key={tab.id}
-                            title={TAB_HOVER_COMMENTS[tab.id]}
-                            aria-label={TAB_HOVER_COMMENTS[tab.id]}
+                            title={tr(TAB_HOVER_COMMENTS[tab.id])}
+                            aria-label={tr(TAB_HOVER_COMMENTS[tab.id])}
                             onClick={() => setActiveTab(tab.id)}
                             className={`rtx-dock-tab inline-flex h-full items-center justify-center px-4 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t transition-colors duration-75 relative
                         ${activeTab === tab.id
                                     ? 'active-tab'
                                     : 'border-t-transparent'}`}
                         >
-                            {tab.id}
+                            {tr(tab.id)}
                         </button>
                     ))}
                 </div>
                 <div className="rtx-dock-tab-actions flex h-full shrink-0 flex-nowrap items-stretch">
                     <button
                         type="button"
-                        title="Close all profitable positions"
+                        title={tr("Close all profitable positions")}
                         onClick={() => handleTradeCloseBulk('WINNERS')}
                         disabled={!onCloseBulk || (toolboxTrade.positions ?? []).length === 0}
                         className="rtx-dock-tab rtx-trade-bulk-close inline-flex h-full items-center justify-center px-2.5 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent text-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                        Close Winners
-                    </button>
+                        {tr("Close Winners")}</button>
                     <button
                         type="button"
-                        title="Close all losing positions"
+                        title={tr("Close all losing positions")}
                         onClick={() => handleTradeCloseBulk('LOSERS')}
                         disabled={!onCloseBulk || (toolboxTrade.positions ?? []).length === 0}
                         className="rtx-dock-tab inline-flex h-full items-center justify-center px-2.5 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent text-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                        Close Losers
-                    </button>
+                        {tr("Close Losers")}</button>
                     <button
                         type="button"
-                        title="Close all open positions"
+                        title={tr("Close all open positions")}
                         onClick={() => handleTradeCloseBulk('ALL')}
                         disabled={!onCloseBulk || (toolboxTrade.positions ?? []).length === 0}
                         className="rtx-dock-tab rtx-dock-tab--danger inline-flex h-full items-center justify-center px-2.5 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t border-t-transparent disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                        Close All
-                    </button>
+                        {tr("Close All")}</button>
                 </div>
             </div>
         </div>
@@ -670,101 +678,107 @@ export function BottomDock({
 
 // --- TAB COMPONENTS ---
 
-function ToolboxTab() {
-    const tools = [
+export function ToolboxTab() {
+    const tr = useUiTranslation();
+    const tools: Array<{
+        category: string;
+        items: Array<{
+            name: string;
+            shortcutId?: Parameters<typeof runTerminalShortcutAction>[0];
+            icon: string;
+            disabled?: boolean;
+            unavailableReason?: string;
+        }>;
+    }> = [
         {
             category: 'Trading',
             items: [
-                { name: 'New Order', shortcut: 'F9', icon: 'plus' },
-                { name: 'Depth of Market', shortcut: 'Alt+B', icon: 'box' },
-                { name: 'One Click Trading', shortcut: '', icon: 'mouse-pointer' },
-                { name: 'Order History', shortcut: '', icon: 'history' },
+                { name: 'New Order', shortcutId: 'tools.new-order', icon: 'plus' },
+                { name: 'Depth of Market', shortcutId: 'view.depth-of-market', icon: 'box' },
+                { name: 'One Click Trading', shortcutId: 'trading.toggle-one-click', icon: 'mouse-pointer' },
+                { name: 'Order History', shortcutId: 'trading.order-history', icon: 'history' },
             ]
         },
         {
             category: 'View',
             items: [
-                { name: 'Market Watch', shortcut: 'Ctrl+M', icon: 'monitor' },
-                { name: 'Data Window', shortcut: 'Ctrl+D', icon: 'database' },
-                { name: 'Navigator', shortcut: 'Ctrl+N', icon: 'compass' },
-                { name: 'Terminal', shortcut: 'Ctrl+T', icon: 'terminal' },
-                { name: 'Strategy Tester', shortcut: 'Ctrl+R', icon: 'activity' },
-                { name: 'Toolbox', shortcut: '', icon: 'tool' },
+                { name: 'Market Watch', shortcutId: 'view.market-watch', icon: 'monitor' },
+                { name: 'Data Window', shortcutId: 'view.data-window', icon: 'database' },
+                { name: 'Navigator', shortcutId: 'view.navigator', icon: 'compass' },
+                { name: 'Terminal', shortcutId: 'view.terminal', icon: 'terminal' },
+                { name: 'Strategy Tester', icon: 'activity', ...lockedTerminalTool('strategyTester') },
+                { name: 'Toolbox', shortcutId: 'view.toolbox', icon: 'tool' },
             ]
         },
         {
             category: 'Charts',
             items: [
-                { name: 'Bar Chart', shortcut: 'Alt+1', icon: 'bar-chart' },
-                { name: 'Candlesticks', shortcut: 'Alt+2', icon: 'candlestick' },
-                { name: 'Line Chart', shortcut: 'Alt+3', icon: 'line-chart' },
-                { name: 'Area Chart', shortcut: '', icon: 'area-chart' },
-                { name: 'Indicators', shortcut: 'Ctrl+I', icon: 'line-chart' },
-                { name: 'Objects', shortcut: '', icon: 'square' },
+                { name: 'Bar Chart', shortcutId: 'charts.bar-chart', icon: 'bar-chart' },
+                { name: 'Candlesticks', shortcutId: 'charts.candlestick', icon: 'candlestick' },
+                { name: 'Line Chart', shortcutId: 'charts.line-chart', icon: 'line-chart' },
+                { name: 'Area Chart', shortcutId: 'charts.area-chart', icon: 'area-chart' },
+                { name: 'Indicators', shortcutId: 'charts.indicator-list', icon: 'line-chart' },
+                { name: 'Objects', shortcutId: 'charts.object-list', icon: 'square' },
             ]
         },
         {
             category: 'Tools',
             items: [
-                { name: 'History Center', shortcut: 'F2', icon: 'database' },
-                { name: 'Global Variables', shortcut: 'F3', icon: 'globe' },
-                { name: 'MetaEditor', shortcut: 'F4', icon: 'code' },
-                { name: 'Options', shortcut: 'Ctrl+O', icon: 'settings' },
+                { name: 'History Center', shortcutId: 'tools.history-center', icon: 'database' },
+                { name: 'Global Variables', icon: 'globe', ...lockedTerminalTool('globalVariables') },
+                { name: 'MetaEditor', icon: 'code', ...lockedTerminalTool('scriptEditor') },
+                { name: 'Options', shortcutId: 'tools.options', icon: 'settings' },
             ]
         },
         {
             category: 'Window',
             items: [
-                { name: 'Tile Windows', shortcut: 'Alt+R', icon: 'grid' },
-                { name: 'Cascade', shortcut: '', icon: 'layers' },
-                { name: 'Tile Horizontally', shortcut: '', icon: 'layout' },
-                { name: 'Tile Vertically', shortcut: '', icon: 'layout' },
+                { name: 'Tile Windows', shortcutId: 'window.tile', icon: 'grid' },
+                { name: 'Cascade', shortcutId: 'window.cascade', icon: 'layers' },
+                { name: 'Tile Horizontally', shortcutId: 'window.tile-horizontal', icon: 'layout' },
+                { name: 'Tile Vertically', shortcutId: 'window.tile-vertical', icon: 'layout' },
             ]
         },
         {
             category: 'Help',
             items: [
-                { name: 'Help Topics', shortcut: 'F1', icon: 'help-circle' },
-                { name: 'Documentation', shortcut: '', icon: 'book-open' },
-                { name: 'Market', shortcut: '', icon: 'trending-up' },
-                { name: 'Signals', shortcut: '', icon: 'signal' },
+                { name: 'Help Topics', shortcutId: 'help.shortcuts', icon: 'help-circle' },
+                { name: 'Documentation', icon: 'book-open', disabled: true, unavailableReason: 'Documentation is not configured for this deployment' },
+                { name: 'Market', icon: 'trending-up', ...lockedTerminalTool('marketplace') },
+                { name: 'Signals', icon: 'signal', ...lockedTerminalTool('signalsHub') },
             ]
         },
     ];
 
     return (
         <div className="h-full w-full overflow-auto bg-[#131316] p-2 sm:p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 min-w-0">
+            <div className="grid gap-3 min-w-0" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))' }}>
                 {tools.map((section) => (
                     <div key={section.category} className="space-y-2 min-w-0">
                         <h3 className="text-[12px] font-normal text-zinc-400 uppercase tracking-wider border-b border-zinc-700 pb-1 mb-2 truncate">
-                            {section.category}
+                            {tr(section.category)}
                         </h3>
                         <div className="space-y-1">
                             {section.items.map((item) => (
                                 <button
                                     key={item.name}
-                                    className="w-full flex items-center justify-between px-2 py-1.5 text-[14px] font-normal text-zinc-300 hover:bg-zinc-700/50 rounded transition-colors group text-left min-w-0"
+                                    disabled={item.disabled}
+                                    aria-disabled={item.disabled || undefined}
+                                    aria-description={tr(item.unavailableReason)}
+                                    className={`w-full flex items-center justify-between px-2 py-1.5 text-[14px] font-normal rounded transition-colors text-left min-w-0 ${item.disabled ? 'text-zinc-400 cursor-not-allowed' : 'text-zinc-300 hover:bg-zinc-700/50 group'}`}
                                     onClick={() => {
-                                        if (item.name === 'New Order') {
-                                            // Same event as TopToolbar & MarketWatch — App.tsx opens the order dialog
-                                            window.dispatchEvent(new CustomEvent('openNewOrder'));
-                                            return;
-                                        }
-                                        // Generic dispatch for other toolbox items
-                                        const eventName = item.name.toLowerCase().replace(/\s+/g, '-');
-                                        window.dispatchEvent(new CustomEvent('toolbox-action', {
-                                            detail: { action: eventName, name: item.name }
-                                        }));
+                                        if (!item.disabled && item.shortcutId) runTerminalShortcutAction(item.shortcutId);
                                     }}
-                                    title={item.name}
+                                    title={tr(item.unavailableReason || item.name)}
                                 >
                                     <span className="flex items-center gap-2 min-w-0 overflow-hidden">
                                         <Icon name={item.icon as any} size="xs" className="text-zinc-500 group-hover:text-zinc-300 flex-shrink-0" />
-                                        <span className="group-hover:text-white truncate">{item.name}</span>
+                                        <span className="group-hover:text-white truncate">{tr(item.name)}</span>
                                     </span>
-                                    {item.shortcut && (
-                                        <span className="text-[12px] font-normal text-zinc-600 font-mono flex-shrink-0 ml-2">{item.shortcut}</span>
+                                    {item.disabled ? (
+                                        <span className="ml-2 flex-shrink-0" aria-hidden="true"><Icon name="lock" size="xs" /></span>
+                                    ) : item.shortcutId && getTerminalShortcutHint(item.shortcutId) && (
+                                        <span className="text-[12px] font-normal text-zinc-600 font-mono flex-shrink-0 ml-2">{getTerminalShortcutHint(item.shortcutId)}</span>
                                     )}
                                 </button>
                             ))}
@@ -813,8 +827,9 @@ function BlinkingText({ value, formatFn, prefix = '', suffix = '', defaultColor 
 // Placeholder for an account metric the backend did not report. Rendering a dash keeps the
 // footer honest: the terminal has no authoritative value and refuses to invent one.
 function UnavailableMetric({ title = 'Not reported by the trading server' }: { title?: string }) {
+    const tr = useUiTranslation();
     return (
-        <span className="px-0.5 rounded-sm inline-block text-zinc-500" title={title}>
+        <span className="px-0.5 rounded-sm inline-block text-zinc-500" title={tr(title)}>
             {METRIC_UNAVAILABLE}
         </span>
     );
@@ -832,6 +847,7 @@ const TradeTab = memo(function TradeTab({
     loading,
     error,
 }: any) {
+    const tr = useUiTranslation();
     const accountId = useAppStore(s => s.accountId);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editSL, setEditSL] = useState("");
@@ -1170,7 +1186,7 @@ const TradeTab = memo(function TradeTab({
                 value = formatMoney(totalCommission);
                 break;
         }
-        return `${TRADE_FOOTER_METRIC_COMMENTS[key]}: ${value}`;
+        return `${tr(TRADE_FOOTER_METRIC_COMMENTS[key])}: ${value}`;
     };
 
     const visibleTradeColumns = useMemo(
@@ -1575,8 +1591,8 @@ ${rows}
     const renderColumnResizeHandle = (key: TradeColumnWidthKey) => (
         <button
             type="button"
-            aria-label={`Resize ${getTradeColumnDef(key).label} column`}
-            title={`Resize ${getTradeColumnDef(key).label} column`}
+            aria-label={tr("Resize {{value0}} column", { value0: tr(getTradeColumnDef(key).label) })}
+            title={tr("Resize {{value0}} column", { value0: tr(getTradeColumnDef(key).label) })}
             tabIndex={-1}
             className={`absolute right-0 top-0 z-20 h-full w-[5px] translate-x-1/2 cursor-default border-0 bg-transparent p-0 ${resizingColumn === key ? 'bg-sky-400/70' : 'hover:bg-sky-400/50'}`}
             onMouseDown={(event) => startColumnResize(event, key)}
@@ -1599,16 +1615,16 @@ ${rows}
         <th
             className="relative px-1.5 py-[3px] text-center border-r border-zinc-700/70"
             style={{ width: columnWidths[key] }}
-            title={TRADE_COLUMN_HOVER_COMMENTS[key]}
+            title={tr(TRADE_COLUMN_HOVER_COMMENTS[key])}
             aria-sort={sortState?.column === sortColumn ? (sortState.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
         >
             <button
                 type="button"
-                title={`Sort by ${label}`}
+                title={tr("Sort by {{value0}}", { value0: tr(label) })}
                 onClick={() => toggleSort(sortColumn)}
                 className="relative flex w-full cursor-default items-center justify-center px-2 text-center hover:text-white"
             >
-                <span>{label}</span>
+                <span>{tr(label)}</span>
                 <span className="absolute right-0 inline-block w-[8px] text-center text-zinc-500">
                     {sortState?.column === sortColumn ? (sortState.direction === 'asc' ? '^' : 'v') : ''}
                 </span>
@@ -1623,9 +1639,9 @@ ${rows}
                 key={column.key}
                 className="relative px-1.5 py-[3px] text-center border-r border-zinc-700/70"
                 style={{ width: columnWidths[column.key] }}
-                title={TRADE_COLUMN_HOVER_COMMENTS[column.key]}
+                title={tr(TRADE_COLUMN_HOVER_COMMENTS[column.key])}
             >
-                <span className="block px-2">{column.label}</span>
+                <span className="block px-2">{tr(column.label)}</span>
                 {renderColumnResizeHandle(column.key)}
             </th>
         );
@@ -1654,14 +1670,14 @@ ${rows}
                                 if (column.key === 'profit') return renderSortableHeader('profit', column.label, 'profit');
                                 return renderHeader(column);
                             })}
-                            <th className="px-0.5 py-[3px] text-center" style={{ width: columnWidths.close }} aria-label="Close position" title={TRADE_COLUMN_HOVER_COMMENTS.close}></th>
+                            <th className="px-0.5 py-[3px] text-center" style={{ width: columnWidths.close }} aria-label={tr("Close position")} title={tr(TRADE_COLUMN_HOVER_COMMENTS.close)}></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[13px] leading-[19.5px] font-normal">
                         {displayedLivePositions.length === 0 && (loading || error) && (
                             <tr>
                                 <td colSpan={visibleOptionalColumnCount + 2} className="h-16 text-center text-zinc-600 text-xs italic">
-                                    {loading ? 'Loading open positions...' : error}
+                                    {loading ? tr("Loading open positions...") : error}
                                 </td>
                             </tr>
                         )}
@@ -1680,7 +1696,7 @@ ${rows}
                             const positionKey = getPositionKey(pos);
                             const isSelected = selectedPositionKey === positionKey;
                             const symbolLabel = pos.symbol ?? '-';
-                            const ticketLabel = isPendingPlacement ? placementState : String(pos.ticket ?? pos.id ?? '-');
+                            const ticketLabel = isPendingPlacement ? tr(placementState) : String(pos.ticket ?? pos.id ?? '-');
                             const timeLabel = formatTradeTime(pos.time_create);
                             const sideLabel = String(pos.side ?? '').toLowerCase() || '-';
                             const volumeLabel = String(formatTradeVolume(pos));
@@ -1702,11 +1718,14 @@ ${rows}
                             const profitLabel = isPendingPlacement
                                 ? '…'
                                 : profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue);
+                            const rowSummary = [
+                                symbolLabel,
+                                tr(sideLabel),
+                                tr('{{value0}} lots', { value0: volumeLabel }),
+                            ].join(' · ');
                             const rowComment = isPendingPlacement
-                                ? isTerminalPlacementFailure
-                                    ? `${placementState}: ${placementError || 'The order did not fill.'}`
-                                    : `${symbolLabel} ${sideLabel} ${volumeLabel} lots is ${placementState}.`
-                                : `${symbolLabel} ${sideLabel} ${volumeLabel} lots, ticket ${ticketLabel}. Double-click to modify, right-click for more options.`;
+                                ? `${rowSummary}\n${tr('Order is {{value0}}', { value0: tr(placementState) })}${isTerminalPlacementFailure ? `: ${placementError || tr('Order failed')}` : ''}`
+                                : `${rowSummary}\n${tr('Ticket: {{value0}}', { value0: ticketLabel })}\n${tr('Modify Position')} · ${tr('Context menu')}`;
                             return (
                                 <tr
                                     key={pos.id ?? i}
@@ -1727,48 +1746,48 @@ ${rows}
                                     }}
                                 >
                                     {/* symbol */}
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={`Symbol: ${symbolLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={tr("Symbol: {{value0}}", { value0: symbolLabel })}>
                                         <span>{symbolLabel}</span>
                                     </td>
 
                                     {/* ticket */}
                                     {isColumnVisible('ticket') && (
-                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums whitespace-nowrap" title={`Ticket: ${ticketLabel}`}>{ticketLabel}</td>
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums whitespace-nowrap" title={tr("Ticket: {{value0}}", { value0: ticketLabel })}>{ticketLabel}</td>
                                     )}
 
                                     {/* time_create */}
                                     {isColumnVisible('time') && (
-                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap" title={`Open time: ${timeLabel}`}>
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap" title={tr("Open time: {{value0}}", { value0: timeLabel })}>
                                             {timeLabel}
                                         </td>
                                     )}
 
                                     {/* side */}
                                     {isColumnVisible('side') && (
-                                        <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={`Type: ${sideLabel}`}>
+                                        <td className={`rtx-trade-side-cell ${isBuy ? 'rtx-trade-side-cell--buy text-[#45bff7]' : 'rtx-trade-side-cell--sell text-[#ff2d2d]'} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={tr("Type: {{value0}}", { value0: tr(sideLabel) })}>
                                             <div className="flex items-center justify-center">
-                                                <span>{sideLabel}</span>
+                                                <span>{tr(sideLabel)}</span>
                                             </div>
                                         </td>
                                     )}
 
                                     {/* volume */}
                                     {isColumnVisible('volume') && (
-                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={`Volume: ${volumeLabel} lots`}>
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={tr("Volume: {{value0}} lots", { value0: volumeLabel })}>
                                             {volumeLabel}
                                         </td>
                                     )}
 
                                     {/* price_open */}
                                     {isColumnVisible('priceOpen') && (
-                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={`Open price: ${openPriceLabel}`}>
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr("Open price: {{value0}}", { value0: openPriceLabel })}>
                                             {openPriceLabel}
                                         </td>
                                     )}
 
                                     {/* price_sl */}
                                     {isColumnVisible('sl') && (
-                                        <td className="rtx-trade-sl-cell cursor-pointer px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Stop Loss: ${slLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
+                                        <td className="rtx-trade-sl-cell cursor-pointer px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={tr("Stop Loss: {{value0}}. Double-click to modify.", { value0: slLabel })} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
                                             {editingId === pos.id ? (
                                                 <input
                                                     className="rtx-trade-sl-editor h-[21px] w-full cursor-pointer bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
@@ -1788,7 +1807,7 @@ ${rows}
 
                                     {/* price_tp */}
                                     {isColumnVisible('tp') && (
-                                        <td className="rtx-trade-tp-cell cursor-pointer px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Take Profit: ${tpLabel}. Double-click to modify.`} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
+                                        <td className="rtx-trade-tp-cell cursor-pointer px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={tr("Take Profit: {{value0}}. Double-click to modify.", { value0: tpLabel })} onDoubleClick={(event) => { event.stopPropagation(); if (!isPendingPlacement) startEditing(pos); }}>
                                             {editingId === pos.id ? (
                                                 <input
                                                     className="rtx-trade-tp-editor h-[21px] w-full cursor-pointer bg-zinc-800 text-white text-center px-1 text-[13px] font-normal outline-none ring-1 ring-sky-500/70"
@@ -1808,40 +1827,40 @@ ${rows}
 
                                     {/* price_current */}
                                     {isColumnVisible('priceCurrent') && (
-                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums" title={`Current price: ${currentPriceLabel}`}>
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 font-normal tabular-nums" title={tr("Current price: {{value0}}", { value0: currentPriceLabel })}>
                                             {currentPriceLabel}
                                         </td>
                                     )}
 
                                     {/* swap */}
                                     {isColumnVisible('swap') && (
-                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={`Swap: ${swapLabel}`}>{swapLabel}</td>
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr("Swap: {{value0}}", { value0: swapLabel })}>{swapLabel}</td>
                                     )}
 
                                     {/* account_login */}
                                     {isColumnVisible('accountLogin') && (
-                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={`Account login: ${accountLoginLabel}`}>
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={tr("Account login: {{value0}}", { value0: accountLoginLabel })}>
                                             {accountLoginLabel}
                                         </td>
                                     )}
 
                                     {/* time_update */}
                                     {isColumnVisible('timeUpdate') && (
-                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={`Last update: ${timeUpdateLabel}`}>
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 whitespace-nowrap tabular-nums" title={tr("Last update: {{value0}}", { value0: timeUpdateLabel })}>
                                             {timeUpdateLabel}
                                         </td>
                                     )}
 
                                     {/* comment */}
                                     {isColumnVisible('comment') && (
-                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 truncate" title={`Comment: ${commentLabel}`}>
+                                        <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 truncate" title={tr("Comment: {{value0}}", { value0: commentLabel })}>
                                             {commentLabel}
                                         </td>
                                     )}
 
                                     {/* profit */}
                                     {isColumnVisible('profit') && (
-                                        <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${profitMode === 'points' ? 'Profit points' : 'Profit'}: ${profitLabel}`}>
+                                        <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${tr(profitMode === 'points' ? 'Profit Points' : 'Profit')}: ${profitLabel}`}>
                                             {profitLabel}
                                         </td>
                                     )}
@@ -1850,8 +1869,8 @@ ${rows}
                                     <td className="px-0.5 py-[2px] text-center">
                                         <button
                                             type="button"
-                                            aria-label={isPendingPlacement ? `Order is ${placementState}` : `Close position ${pos.ticket ?? pos.id}`}
-                                            title={isPendingPlacement ? rowComment : `Close position ${ticketLabel}`}
+                                            aria-label={isPendingPlacement ? tr("Order is {{value0}}", { value0: tr(placementState) }) : tr("Close position {{value0}}", { value0: pos.ticket ?? pos.id })}
+                                            title={isPendingPlacement ? rowComment : tr("Close position {{value0}}", { value0: ticketLabel })}
                                             disabled={isPendingPlacement}
                                             onClick={(event) => {
                                                 event.stopPropagation();
@@ -1879,8 +1898,8 @@ ${rows}
                                 ref={footerMetricButtonRef}
                                 type="button"
                                 className="rtx-trade-footer-status inline-flex h-5 w-5 shrink-0 cursor-default items-center justify-center rounded-[3px] border border-zinc-700/70 bg-zinc-950/35 px-0 text-zinc-400 hover:bg-zinc-800/70 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400"
-                                title="Select footer metrics"
-                                aria-label="Footer metrics"
+                                title={tr("Select footer metrics")}
+                                aria-label={tr("Footer metrics")}
                                 aria-haspopup="menu"
                                 aria-expanded={footerMetricMenu !== null}
                                 onClick={(event) => {
@@ -1892,7 +1911,7 @@ ${rows}
                             </button>
                             {visibleFooterMetrics.map(metric => (
                                 <span key={metric.key} className="rtx-trade-footer-metric" title={getFooterMetricComment(metric.key)}>
-                                    <span className="rtx-trade-metric-label text-zinc-500">{metric.label}</span>
+                                    <span className="rtx-trade-metric-label text-zinc-500">{tr(metric.label)}</span>
                                     {renderFooterMetricValue(metric.key)}
                                 </span>
                             ))}
@@ -1902,7 +1921,7 @@ ${rows}
                             <span
                                 className={`rtx-trade-footer-floating rtx-trade-footer-floating--profit inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap text-center font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
                                 style={{ width: footerProfitColumnWidth, flex: `0 0 ${footerProfitColumnWidth}` }}
-                                title={`Floating P/L: ${formatMoney(totalLivePnL)} ${account?.currency || 'USD'}`}
+                                title={tr("Floating P/L: {{value0}} {{value1}}", { value0: formatMoney(totalLivePnL), value1: account?.currency || 'USD' })}
                             >
                                 <BlinkingText
                                     value={totalLivePnL}
@@ -1914,7 +1933,7 @@ ${rows}
                         ) : (
                             <span
                                 className={`rtx-trade-footer-floating inline-flex shrink-0 items-center justify-end gap-1 whitespace-nowrap text-right font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
-                                title={`Floating P/L: ${formatMoney(totalLivePnL)} ${account?.currency || 'USD'}`}
+                                title={tr("Floating P/L: {{value0}} {{value1}}", { value0: formatMoney(totalLivePnL), value1: account?.currency || 'USD' })}
                             >
                                 <BlinkingText
                                     value={totalLivePnL}
@@ -1932,8 +1951,7 @@ ${rows}
                         className="rtx-trade-empty-state flex h-16 w-max min-w-full items-center justify-center text-center text-xs italic text-zinc-600"
                         style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}
                     >
-                        No open positions
-                    </div>
+                        {tr("No open positions")}</div>
                 )}
             </div>
             {footerMetricMenu && (
@@ -1992,6 +2010,7 @@ const getAssetBadgeStyle = (asset: string) => {
 };
 
 function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
+    const tr = useUiTranslation();
     const exposure = useMemo(() => {
         return buildExposureSummary(positions ?? [], account);
     }, [positions, account]);
@@ -2010,19 +2029,18 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
                     <table className="w-full min-w-[720px] table-fixed border-collapse text-left">
                         <thead className="sticky top-0 z-10 border-b border-[#20222a] bg-[#0d0f14] text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                             <tr className="h-[32px]">
-                                <th className="w-[140px] border-r border-zinc-800/80 p-1.5 pl-3">Assets</th>
-                                <th className="w-[130px] border-r border-zinc-800/80 p-1.5 text-right">Volume</th>
-                                <th className="w-[130px] border-r border-zinc-800/80 p-1.5 text-right">Rate</th>
+                                <th className="w-[140px] border-r border-zinc-800/80 p-1.5 pl-3">{tr("Assets")}</th>
+                                <th className="w-[130px] border-r border-zinc-800/80 p-1.5 text-right">{tr("Volume")}</th>
+                                <th className="w-[130px] border-r border-zinc-800/80 p-1.5 text-right">{tr("Rate")}</th>
                                 <th className="w-[140px] border-r border-zinc-800/80 p-1.5 text-right">{exposure.accountCurrency}</th>
-                                <th className="p-1.5 text-center">Graph</th>
+                                <th className="p-1.5 text-center">{tr("Graph")}</th>
                             </tr>
                         </thead>
                         <tbody className="font-mono text-[12.5px] leading-[20px] text-zinc-200">
                             {exposure.rows.length === 0 ? (
                                 <tr>
                                     <td colSpan={5} className="h-20 text-center font-sans text-[12px] text-zinc-500">
-                                        No active asset exposure
-                                    </td>
+                                        {tr("No active asset exposure")}</td>
                                 </tr>
                             ) : exposure.rows.map((exp, i) => {
                                 const isLong = exp.value >= 0;
@@ -2071,23 +2089,23 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
 
                 <div className="rtx-exposure-account-bar">
                     <span className="rtx-exposure-account-metric">
-                        <span className="rtx-exposure-account-label">Balance:</span>
+                        <span className="rtx-exposure-account-label">{tr("Balance:")}</span>
                         <span className="rtx-exposure-account-value">{formatMoney(accountBalance)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
-                        <span className="rtx-exposure-account-label">Equity:</span>
+                        <span className="rtx-exposure-account-label">{tr("Equity:")}</span>
                         <span className="rtx-exposure-account-value">{formatMoney(accountEquity)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
-                        <span className="rtx-exposure-account-label">Margin:</span>
+                        <span className="rtx-exposure-account-label">{tr("Margin:")}</span>
                         <span className="rtx-exposure-account-value">{formatMoney(accountMargin)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
-                        <span className="rtx-exposure-account-label">Free margin:</span>
+                        <span className="rtx-exposure-account-label">{tr("Free margin:")}</span>
                         <span className="rtx-exposure-account-value">{formatMoney(accountFreeMargin)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
-                        <span className="rtx-exposure-account-label">Level:</span>
+                        <span className="rtx-exposure-account-label">{tr("Level:")}</span>
                         <span className="rtx-exposure-account-value">
                             {Number.isFinite(accountMarginLevel) ? `${accountMarginLevel.toFixed(2)}%` : '0.00%'}
                         </span>
@@ -2120,6 +2138,7 @@ const loadOrderHistory = (login: number, force = false): Promise<Trade[]> => {
 };
 
 function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined | null) => string }) {
+    const tr = useUiTranslation();
     const accountId = useAppStore((state) => state.accountId);
     const activeLogin = Number.parseInt(String(accountId ?? getStoredAccountLogin() ?? ''), 10);
     const [orders, setOrders] = useState<Trade[]>(() => (
@@ -2212,11 +2231,11 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
                     ))}
                 </div>
                 <div className="flex-1" />
-                <span className="text-[12px] font-normal text-zinc-500">{filteredOrders.length} records</span>
+                <span className="text-[12px] font-normal text-zinc-500">{filteredOrders.length} {tr(" records")}</span>
                 <button onClick={() => fetchHistory({ force: true })} disabled={loading}
                     className="rtx-history-refresh-btn text-[12px] font-normal px-2 py-0.5 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 disabled:cursor-wait disabled:opacity-50">
                     <Icon name="refresh" size="xs" className={loading ? 'animate-spin' : ''} />
-                    {loading ? 'Loading…' : 'Refresh'}
+                    {loading ? tr("Loading…") : tr("Refresh")}
                 </button>
             </div>
 
@@ -2228,27 +2247,27 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
                 >
                     <thead className="rtx-trade-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-normal text-[12px] leading-[18px] uppercase border-y border-zinc-700/70 select-none shadow-[0_1px_0_0_rgba(255,255,255,0.04)]">
                         <tr className="h-[30px]">
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Ticket</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28">Open Time</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-14">Type</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-16">Volume</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Symbol</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22">Open Price</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Ticket")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28">{tr("Open Time")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-14">{tr("Type")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-16">{tr("Volume")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Symbol")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22">{tr("Open Price")}</th>
                             <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">S/L</th>
                             <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">T/P</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28">Close Time</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22">Close Price</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Commission</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Swap</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Profit</th>
-                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">Status</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28">{tr("Close Time")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22">{tr("Close Price")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Commission")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Swap")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Profit")}</th>
+                            <th className="px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20">{tr("Status")}</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/90 text-[#d8dde8] text-[13px] leading-[19.5px] font-normal">
                         {filteredOrders.length === 0 && (
                             <tr>
                                 <td colSpan={14} className="h-16 text-center text-zinc-600 text-xs italic">
-                                    {loading ? 'Loading closed trade history…' : error ? error : 'No closed trades for this period'}
+                                    {loading ? tr("Loading closed trade history…") : error ? error : tr("No closed trades for this period")}
                                 </td>
                             </tr>
                         )}
@@ -2257,38 +2276,38 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
                             return (
                                 <tr key={`${o.type}-${o.id}-${i}`}
                                     className="rtx-trade-row h-[30px] transition-colors">
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={`Ticket: ${o.id ?? '-'}`}>{o.id ?? '-'}</td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={`Open time: ${formatTs(o.openTime)}`}>{formatTs(o.openTime)}</td>
-                                    <td className={`${typeColor(o.side)} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={`Type: ${sideLabel}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={tr("Ticket: {{value0}}", { value0: o.id ?? '-' })}>{o.id ?? '-'}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={tr("Open time: {{value0}}", { value0: formatTs(o.openTime) })}>{formatTs(o.openTime)}</td>
+                                    <td className={`${typeColor(o.side)} px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]`} title={tr("Type: {{value0}}", { value0: tr(sideLabel) })}>
                                         <div className="flex items-center justify-center">
-                                            <span>{sideLabel}</span>
+                                            <span>{tr(sideLabel)}</span>
                                         </div>
                                     </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={`Volume: ${o.volume != null ? Number(o.volume).toFixed(2) : '-'}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums" title={tr("Volume: {{value0}}", { value0: o.volume != null ? Number(o.volume).toFixed(2) : '-' })}>
                                         {o.volume != null ? Number(o.volume).toFixed(2) : '-'}
                                     </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={`Symbol: ${o.symbol ?? '-'}`}>{o.symbol ?? '-'}</td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={`Open price: ${formatPriceCell(o.openPrice, o.symbol)}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap" title={tr("Symbol: {{value0}}", { value0: o.symbol ?? '-' })}>{o.symbol ?? '-'}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr("Open price: {{value0}}", { value0: formatPriceCell(o.openPrice, o.symbol) })}>
                                         {formatPriceCell(o.openPrice, o.symbol)}
                                     </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Stop Loss: ${formatLevelCell(o.sl, o.symbol)}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={tr("Stop Loss: {{value0}}", { value0: formatLevelCell(o.sl, o.symbol) })}>
                                         <span className={(o.sl ?? 0) > 0 ? "text-[#ff7676] bg-red-950/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>
                                             {formatLevelCell(o.sl, o.symbol)}
                                         </span>
                                     </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={`Take Profit: ${formatLevelCell(o.tp, o.symbol)}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums" title={tr("Take Profit: {{value0}}", { value0: formatLevelCell(o.tp, o.symbol) })}>
                                         <span className={(o.tp ?? 0) > 0 ? "text-[#34dca0] bg-emerald-900/20 px-1 rounded-sm font-normal" : "text-zinc-100 font-normal"}>
                                             {formatLevelCell(o.tp, o.symbol)}
                                         </span>
                                     </td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={`Close time: ${formatTs(o.closeTime)}`}>{formatTs(o.closeTime)}</td>
-                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={`Close price: ${formatPriceCell(o.closePrice, o.symbol)}`}>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap" title={tr("Close time: {{value0}}", { value0: formatTs(o.closeTime) })}>{formatTs(o.closeTime)}</td>
+                                    <td className="px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums" title={tr("Close price: {{value0}}", { value0: formatPriceCell(o.closePrice, o.symbol) })}>
                                         {formatPriceCell(o.closePrice, o.symbol)}
                                     </td>
-                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums ${moneyColor(o.commission)}`} title={`Commission: ${formatMoney(o.commission)}`}>{formatMoney(o.commission)}</td>
-                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums ${moneyColor(o.swap)}`} title={`Swap: ${formatMoney(o.swap)}`}>{formatMoney(o.swap)}</td>
-                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal tabular-nums ${moneyColor(o.profit)}`} title={`Profit: ${formatMoney(o.profit)}`}>{formatMoney(o.profit)}</td>
-                                    <td className="px-1.5 py-[2px] text-center text-zinc-100 capitalize whitespace-nowrap" title={`Status: ${formatTradeStatus(o)}`}>{formatTradeStatus(o)}</td>
+                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums ${moneyColor(o.commission)}`} title={tr("Commission: {{value0}}", { value0: formatMoney(o.commission) })}>{formatMoney(o.commission)}</td>
+                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums ${moneyColor(o.swap)}`} title={tr("Swap: {{value0}}", { value0: formatMoney(o.swap) })}>{formatMoney(o.swap)}</td>
+                                    <td className={`px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal tabular-nums ${moneyColor(o.profit)}`} title={tr("Profit: {{value0}}", { value0: formatMoney(o.profit) })}>{formatMoney(o.profit)}</td>
+                                    <td className="px-1.5 py-[2px] text-center text-zinc-100 capitalize whitespace-nowrap" title={tr("Status: {{value0}}", { value0: tr(formatTradeStatus(o)) })}>{tr(formatTradeStatus(o))}</td>
                                 </tr>
                             );
                         })}
@@ -2303,11 +2322,12 @@ function HistoryTab({ formatMoney }: { formatMoney: (value: number | undefined |
 
 
 function PlaceholderTab({ title }: { title: string }) {
+    const tr = useUiTranslation();
     return (
         <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 bg-[#131316]">
             <Icon name="briefcase" size="xl" className="mb-2 opacity-20" />
-            <div className="text-[12px] font-normal">RTX5 {title}</div>
-            <div className="text-[12px] font-normal">No active items to display</div>
+            <div className="text-[12px] font-normal">{tr("RTX5 ")}{tr(title)}</div>
+            <div className="text-[12px] font-normal">{tr("No active items to display")}</div>
         </div>
     );
 }

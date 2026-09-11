@@ -520,6 +520,12 @@ export const iconRegistry = {
         h('path', { d: 'M12.5 5.5A9 9 0 0115 8s-3 5-7 5' })
     ),
 
+    'pencil-lock': () => h(React.Fragment, null,
+        h('path', { d: 'M9.5 1.5l3 3L5 12H2V9l7.5-7.5z' }),
+        h('rect', { x: 9, y: 9, width: 6, height: 5, rx: 1 }),
+        h('path', { d: 'M10.5 9V7.75a1.5 1.5 0 013 0V9' })
+    ),
+
     'lock': () => h(React.Fragment, null,
         h('rect', { x: 3, y: 7, width: 10, height: 7, rx: 1 }),
         h('path', { d: 'M5 7V5a3 3 0 016 0v2' })

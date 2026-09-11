@@ -10,6 +10,8 @@ const themeCss = readSource('src/styles/theme.css');
 const indexCss = readSource('src/index.css');
 const loginCss = readSource('src/styles/login.css');
 const advancedCss = readSource('src/styles/advanced-untitled-light.css');
+const lightCss = readSource('src/styles/enterprise-light.css');
+const orderDialogCss = readSource('src/styles/order-panel-dialog.css');
 const topToolbarSource = readSource('src/components/layout/TopToolbar.tsx');
 const menuBarSource = readSource('src/components/layout/MenuBar.tsx');
 const timeframePickerSource = readSource('src/components/layout/TimeframePicker.tsx');
@@ -111,10 +113,10 @@ describe('enterprise typography contract', () => {
   });
 
   it('locks the physically measured terminal chrome and chart HUD typography', () => {
-    expect(topToolbarSource).toContain('rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-semibold');
-    expect(topToolbarSource).toContain('rtx-toolbar-action rtx-toolbar-action--last-symbol text-[13px] font-semibold');
-    expect(themeCss).toMatch(/\.rtx-toolbar-action \{[\s\S]*font-size: 13px;[\s\S]*font-weight: var\(--font-weight-semibold\);/);
-    expect(timeframePickerSource).toMatch(/text-\[14px\] font-normal font-segoe[\s\S]*\{option\.value\}/);
+    expect(topToolbarSource).toContain('rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-normal');
+    expect(topToolbarSource).toContain('rtx-toolbar-action rtx-toolbar-action--last-symbol text-[13px] font-normal');
+    expect(themeCss).toMatch(/\.rtx-toolbar-action \{[\s\S]*font-size: 13px;[\s\S]*font-weight: var\(--font-weight-normal\);/);
+    expect(timeframePickerSource).toMatch(/text-\[13px\] font-normal font-segoe[\s\S]*\{option\.value\}/);
     expect(advancedCss).toContain('.rtx-timeframe-strip');
     expect(advancedCss).toContain('.rtx-timeframe-option[aria-checked="true"]');
     expect(tradingChartSource.match(/className="rtx-chart-hud"/g)).toHaveLength(2);
@@ -149,7 +151,8 @@ describe('enterprise typography contract', () => {
     expect(researchSource).toMatch(/text-\[12px\][^"`]*leading-\[18px\]/);
     expect(researchSource).toMatch(/text-\[13px\][^"`]*font-normal[^"`]*leading-\[19\.5px\]/);
     expect(historyDownloaderSource).toMatch(/text-\[14px\][^"`]*font-normal/);
-    expect(historyDownloaderSource).toMatch(/text-\[12px\][^"`]*font-normal/);
+    expect(historyDownloaderSource).toContain('rtx-history-field-label');
+    expect(lightCss).toMatch(/\.rtx-history-field-label,[\s\S]*?font-size: var\(--rtx-advanced-header-font-size, 12px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-body-weight\) !important;/);
     expect(bottomDockSource).toContain('rtx-exposure-tab');
     expect(calendarSource).toContain('rtx-calendar-tab');
     expect(researchSource).toContain('rtx-research-tab');
@@ -177,11 +180,12 @@ describe('enterprise typography contract', () => {
   });
 
   it('keeps dialogs and responsive login states on the same hierarchy', () => {
-    expect(orderDialogSource).toContain('text-[14px] font-normal text-zinc-400');
-    expect(orderDialogSource).toContain('text-[12px] font-normal');
+    expect(orderDialogSource).toContain('rtx-order-dialog__label');
+    expect(orderDialogCss).toMatch(/\.rtx-order-dialog__label\s*\{[^}]*font-size: 13px;[^}]*font-weight: var\(--font-weight-normal\);/);
+    expect(lightCss).toMatch(/\.rtx-order-dialog__margin,[\s\S]*?font-size: var\(--rtx-advanced-header-font-size, 12px\) !important;/);
     expect(modifyDialogSource).toContain('text-[14px] font-normal');
     expect(modifyDialogSource).toContain('text-[12px] font-normal');
-    expect(symbolsDialogSource).toContain('border-collapse text-[14px] font-normal');
+    expect(symbolsDialogSource).toContain('border-collapse text-[13px] font-normal');
     expect(symbolsDialogSource).toContain('text-[12px] font-normal');
     expect(optionsDialogSource).toContain('text-[14px] font-normal');
     expect(optionsDialogSource).toContain('text-[12px] font-normal');
@@ -193,12 +197,13 @@ describe('enterprise typography contract', () => {
     expect(welcomeSource).toContain('fontWeight: 400');
   });
 
-  it('keeps financial data on a tabular system-mono stack', () => {
+  it('keeps financial data tabular and preserves the system-mono stack for prices', () => {
     expect(themeCss).toContain("--font-mono: ui-monospace, 'Cascadia Mono', Consolas");
     expect(themeCss).toMatch(/\.font-mono \{[\s\S]*font-variant-numeric: tabular-nums slashed-zero/);
     expect(indexCss).toMatch(/input\[type="number"\],[\s\S]*input\[inputmode="decimal"\][\s\S]*font-family: var\(--font-mono\)/);
     expect(indexCss).not.toMatch(/input\[type="text"\],[\s\S]*font-family: var\(--font-mono\)/);
-    expect(journalSource).toContain('border-collapse font-mono');
+    expect(journalSource).toContain('rtx-journal-table');
+    expect(lightCss).toMatch(/\.rtx-journal-table tbody td,[\s\S]*?font-variant-numeric: tabular-nums;/);
     expect(marketWatchSource).toContain("fontVariantNumeric: 'tabular-nums'");
     expect(bottomDockSource).toContain('tabular-nums');
     expect(advancedCss).toContain('.rtx-dom-dialog :where(.font-mono, input[type="number"], input[inputmode="decimal"])');

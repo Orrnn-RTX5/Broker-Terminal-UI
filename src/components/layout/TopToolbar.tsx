@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { Icon, type IconName } from '../ui/Icon';
+import { Icon } from '../ui/Icon';
+import { ChartCommandIcon, type ChartCommandIconName } from './ChartCommandIcon';
 import type { ChartType, Timeframe } from '../TradingChart';
 import {
     Minus, Square, Copy, X
@@ -18,6 +19,7 @@ import {
     useChartSettingsStore,
     type ChartProperties,
 } from '../../store/useChartSettingsStore';
+import { useDrawingToolPreferencesStore } from '../../store/useDrawingToolPreferencesStore';
 import type { NormalizedMarketStatus } from '../../utils/marketStatus';
 import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
 import { buildBrokerWsFeedUri } from '../../services/brokerSession';
@@ -35,11 +37,12 @@ interface TopToolbarProps {
     feedStatus: DesktopFeedSnapshot;
     onRefreshConnection: () => void;
     onLoadTemplate?: (template: any) => void;
+    desktopDrawingTools?: React.ReactNode;
 }
 
 import { MenuBar } from './MenuBar';
 import { TimeframePicker } from './TimeframePicker';
-import { DesktopQuickActions } from './DesktopQuickActions';
+import { DesktopQuickActions, DesktopSymbolSearchButton } from './DesktopQuickActions';
 import { ChartTemplateManager } from '../ChartTemplateManager';
 import { indicatorManager } from '../../services/indicatorManager';
 import { drawingManager } from '../../services/drawingManager';
@@ -57,13 +60,13 @@ import {
 import { suppressThemeTransitions } from '../../utils/themeTransitionSuppression';
 
 const getLogoutBase = (): string => {
-  const fallback = normalizeServerUrl(RTX5_API_URL || import.meta.env.VITE_API_URL || '');
-  if (typeof window === 'undefined') return fallback;
+    const fallback = normalizeServerUrl(RTX5_API_URL || import.meta.env.VITE_API_URL || '');
+    if (typeof window === 'undefined') return fallback;
 
-  const serverUrl = normalizeBrokerServerUrl(localStorage.getItem('server_url') || localStorage.getItem('rtx_broker_server') || '');
-  if (serverUrl) return serverUrl;
-  if (fallback) return fallback;
-  return '';
+    const serverUrl = normalizeBrokerServerUrl(localStorage.getItem('server_url') || localStorage.getItem('rtx_broker_server') || '');
+    if (serverUrl) return serverUrl;
+    if (fallback) return fallback;
+    return '';
 };
 
 export const TopToolbar: React.FC<TopToolbarProps> = ({
@@ -75,15 +78,23 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     symbol,
     feedStatus,
     onRefreshConnection,
-    onLoadTemplate
+    onLoadTemplate,
+    desktopDrawingTools
 }) => {
     const { state: toolbarState, dispatch: dispatchToolbar } = useToolbarState();
     const { dispatch: dispatchCommand } = useCommandBus();
 
+    const magnetMode = useDrawingToolPreferencesStore((state) => state.magnetMode);
+    const snapToIndicators = useDrawingToolPreferencesStore((state) => state.snapToIndicators);
+
     // Sync magnet state to drawingManager
     useEffect(() => {
-        drawingManager.setMagnetEnabled(toolbarState.magnetEnabled);
-    }, [toolbarState.magnetEnabled]);
+        drawingManager.setMagnetMode(magnetMode);
+    }, [magnetMode]);
+
+    useEffect(() => {
+        drawingManager.setSnapToIndicators(snapToIndicators);
+    }, [snapToIndicators]);
 
 
     useKeyboardShortcuts([
@@ -153,6 +164,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 feedStatus={feedStatus}
                 onRefreshConnection={onRefreshConnection}
                 onLoadTemplate={onLoadTemplate}
+                desktopDrawingTools={desktopDrawingTools}
             />
 
         </div>
@@ -308,7 +320,8 @@ const MainToolbar = ({
     symbol,
     feedStatus,
     onRefreshConnection,
-    onLoadTemplate
+    onLoadTemplate,
+    desktopDrawingTools
 }: MainToolbarProps) => {
 
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
@@ -491,235 +504,229 @@ const MainToolbar = ({
             <div
                 className={isDesktopShell
                     ? 'rtx-desktop-command-row flex h-[32px] min-w-0 w-full shrink-0 items-center overflow-hidden'
-                    : 'flex min-w-0 flex-1 self-stretch items-center overflow-x-auto px-1.5 no-scrollbar'}
+                    : 'rtx-chart-toolbar-scroll flex min-w-0 flex-1 self-stretch items-center overflow-x-auto px-1.5'}
+                tabIndex={isDesktopShell ? undefined : 0}
+                role={isDesktopShell ? undefined : 'region'}
+                aria-label={isDesktopShell ? undefined : 'Scrollable chart toolbar'}
                 style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
-            <div className={isDesktopShell
-                ? 'rtx-desktop-command-scroll flex min-w-0 flex-1 self-stretch items-center overflow-x-auto px-1 no-scrollbar'
-                : 'contents'}>
-            <div
-                className="rtx-toolbar-command-cluster flex shrink-0 items-center"
-                role="toolbar"
-                aria-label="Chart commands"
-                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            >
-            {/* New Order & Last Symbol */}
-            <MT5Group label="Trading shortcuts">
-
-                <button
-                    type="button"
-                    className="rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-semibold font-segoe"
-                    title="New Order (F9)"
-                    aria-label="New Order (F9)"
-                    onClick={() => {
-                        window.dispatchEvent(new CustomEvent('openNewOrder', {
-                            detail: { symbol },
-                        }));
-                    }}
-                >
-                    <span className="rtx-toolbar-action__icon" aria-hidden="true">
-                        <Icon name="new-order" size={20} />
-                    </span>
-                    <span className="rtx-toolbar-action__label">New Order</span>
-                </button>
-
-                {/* Last Symbol Trader Toggle */}
-                <button
-                    type="button"
-                    className="rtx-toolbar-action rtx-toolbar-action--last-symbol text-[13px] font-semibold font-segoe"
-                    title="Last Symbol Trader Panel (Shift+B/S/X)"
-                    aria-label={lastSymbol
-                        ? `Last Symbol Trader Panel: ${lastSymbol} (Shift+B/S/X)`
-                        : 'Last Symbol Trader Panel (Shift+B/S/X)'}
-                    aria-pressed={lastSymbolPanelVisible}
-                    onClick={toggleLastSymbolPanel}
-                >
-                    <span className="rtx-toolbar-action__icon" aria-hidden="true">
-                        <Icon name="activity" size={20} />
-                    </span>
-                    <span className="rtx-toolbar-action__label">Last Symbol</span>
-                    {lastSymbol && (
-                        <span className="rtx-toolbar-symbol-badge" aria-hidden="true">
-                            {lastSymbol}
-                        </span>
-                    )}
-                </button>
-            </MT5Group>
-
-            <MT5Divider />
-
-            {/* Group 3: Chart Types */}
-            <MT5Group label="Chart type" role="radiogroup">
-                <CommandIconButton icon="bar-chart" title="Bar Chart" active={toolbarState.chartType === 'bar'} selectionRole="radio" onClick={() => dispatchTargetedChartType('bar')} />
-                <CommandIconButton icon="candlestick" title="Candlesticks" active={toolbarState.chartType === 'candlestick'} selectionRole="radio" onClick={() => dispatchTargetedChartType('candlestick')} />
-                <CommandIconButton icon="line-chart" title="Line Chart" active={toolbarState.chartType === 'line'} selectionRole="radio" onClick={() => dispatchTargetedChartType('line')} />
-                <CommandIconButton icon="area-chart" title="Area Chart" active={toolbarState.chartType === 'area'} selectionRole="radio" onClick={() => dispatchTargetedChartType('area')} />
-            </MT5Group>
-
-            <MT5Divider />
-
-            {/* Chart tools: zoom, layout, latest candle, indicators */}
-            <MT5Group label="Chart tools">
-                <CommandIconButton icon="zoom-in" title="Zoom In" onClick={() => dispatchTargetedZoom('ZOOM_IN')} />
-                <CommandIconButton icon="zoom-out" title="Zoom Out" onClick={() => dispatchTargetedZoom('ZOOM_OUT')} />
-                <CommandIconButton icon="grid" title="Arrange Windows" onClick={() => dispatchCommand({ type: 'TILE_WINDOWS', payload: { mode: 'grid' } })} />
-                <CommandIconButton icon="refresh" title="Reset Layout" onClick={() => window.dispatchEvent(new CustomEvent('resetLayout'))} />
-                <CommandIconButton
-                    icon="chart-shift"
-                    title="Jump to Latest Candle"
-                    onClick={() => dispatchCommand({ type: 'JUMP_TO_LATEST_CANDLE', payload: {} })}
-                />
-                <CommandIconButton
-                    icon="indicator-list"
-                    title="Indicators List"
-                    onClick={() => dispatchCommand({ type: 'OPEN_INDICATOR_LIST', payload: {} })}
-                />
-            </MT5Group>
-
-            <MT5Divider />
-
-            {/* Screenshot, period separators, and trade-history overlays — three equal command buttons */}
-            <MT5Group label="Chart capture and overlays">
-                <CommandIconButton
-                    icon="camera"
-                    title="Screenshot (Export Chart)"
-                    onClick={() => {
-                        captureFullPage();
-                    }}
-                />
-                <CommandIconButton
-                    icon="period-separator"
-                    className="rtx-period-separator-toggle"
-                    title={tradeHistorySettings.showPeriodSeparators !== false ? 'Hide Period Separators' : 'Show Period Separators'}
-                    active={tradeHistorySettings.showPeriodSeparators !== false}
-                    onClick={togglePeriodSeparators}
-                />
-                <div ref={historyOverlayRef} className="relative flex items-center">
-                    <CommandIconButton
-                        icon="sliders-horizontal"
-                        className="rtx-trade-history-overlay-button"
-                        title="Trade History Overlays"
-                        active={showHistoryOverlayMenu}
-                        ariaHasPopup="menu"
-                        ariaExpanded={showHistoryOverlayMenu}
-                        onClick={() => {
-                            setShowHistoryOverlayMenu((open) => !open);
-                        }}
-                    />
-
-                {showHistoryOverlayMenu && ReactDOM.createPortal(
+                <div className={isDesktopShell
+                    ? 'rtx-desktop-command-scroll rtx-chart-toolbar-scroll flex min-w-0 flex-1 self-stretch items-center overflow-x-auto px-1'
+                    : 'contents'}
+                    tabIndex={isDesktopShell ? 0 : undefined}
+                    role={isDesktopShell ? 'region' : undefined}
+                    aria-label={isDesktopShell ? 'Scrollable chart toolbar' : undefined}>
                     <div
-                        ref={historyOverlayDropdownRef}
-                        className="fixed z-[9999] w-[236px] rounded-[5px] border border-zinc-700/80 bg-[#151820] p-3 text-[14px] font-normal text-zinc-200 shadow-2xl shadow-black/50 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:bg-white [.rtx-advanced-view_&]:text-gray-800 [.rtx-advanced-view_&]:shadow-xl"
-                        style={{
-                            top: (historyOverlayRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
-                            left: Math.min(
-                                historyOverlayRef.current?.getBoundingClientRect().left ?? 0,
-                                Math.max(8, window.innerWidth - 244),
-                            ),
-                        }}
-                        role="menu"
-                        aria-label="Trade history overlay controls"
+                        className="rtx-toolbar-command-cluster flex shrink-0 items-center"
+                        role="toolbar"
+                        aria-label="Chart commands"
+                        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     >
-                        <div className="mb-2 flex items-center justify-between border-b border-zinc-700/70 pb-2 [.rtx-advanced-view_&]:border-gray-100">
-                            <span className="text-[12px] font-medium uppercase tracking-wide text-zinc-400 [.rtx-advanced-view_&]:text-gray-500">Trade History</span>
+                        {/* New Order & Last Symbol */}
+                        <MT5Group label="Trading shortcuts">
+
                             <button
                                 type="button"
-                                className="rounded-[3px] border border-zinc-700 px-1.5 py-0.5 text-[12px] font-normal text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:text-gray-600 [.rtx-advanced-view_&]:hover:bg-gray-50"
-                                onClick={resetTradeHistorySettings}
+                                className="rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-normal font-segoe"
+                                title="New Order (F9)"
+                                aria-label="New Order (F9)"
+                                onClick={() => {
+                                    window.dispatchEvent(new CustomEvent('openNewOrder', {
+                                        detail: { symbol },
+                                    }));
+                                }}
                             >
-                                Reset
+                                <span className="rtx-toolbar-action__icon" aria-hidden="true">
+                                    <Icon name="new-order" size={20} />
+                                </span>
+                                <span className="rtx-toolbar-action__label">New Order</span>
                             </button>
-                        </div>
 
-                        <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry-to-close line</span>
-                            <input
-                                type="checkbox"
-                                checked={tradeHistorySettings.showTradeHistory !== false}
-                                onChange={(event) => updateTradeHistorySetting('showTradeHistory', event.target.checked)}
-                                className="h-3.5 w-3.5 accent-blue-500"
+                            {/* Last Symbol Trader Toggle */}
+                            <button
+                                type="button"
+                                className="rtx-toolbar-action rtx-toolbar-action--last-symbol text-[13px] font-normal font-segoe"
+                                title="Last Symbol Trader Panel (Shift+B/S/X)"
+                                aria-label={lastSymbol
+                                    ? `Last Symbol Trader Panel: ${lastSymbol} (Shift+B/S/X)`
+                                    : 'Last Symbol Trader Panel (Shift+B/S/X)'}
+                                aria-pressed={lastSymbolPanelVisible}
+                                onClick={toggleLastSymbolPanel}
+                            >
+                                <span className="rtx-toolbar-action__icon" aria-hidden="true">
+                                    <Icon name="activity" size={20} />
+                                </span>
+                                <span className="rtx-toolbar-action__label">Last Symbol</span>
+                                {lastSymbol && (
+                                    <span className="rtx-toolbar-symbol-badge" aria-hidden="true">
+                                        {lastSymbol}
+                                    </span>
+                                )}
+                            </button>
+                        </MT5Group>
+
+                        <MT5Divider />
+
+                        {/* Group 3: Chart Types */}
+                        <MT5Group label="Chart type" role="radiogroup">
+                            <CommandIconButton icon="bar-chart" title="Bar Chart" active={toolbarState.chartType === 'bar'} selectionRole="radio" onClick={() => dispatchTargetedChartType('bar')} />
+                            <CommandIconButton icon="candlestick" title="Candlesticks" active={toolbarState.chartType === 'candlestick'} selectionRole="radio" onClick={() => dispatchTargetedChartType('candlestick')} />
+                            <CommandIconButton icon="line-chart" title="Line Chart" active={toolbarState.chartType === 'line'} selectionRole="radio" onClick={() => dispatchTargetedChartType('line')} />
+                            <CommandIconButton icon="area-chart" title="Area Chart" active={toolbarState.chartType === 'area'} selectionRole="radio" onClick={() => dispatchTargetedChartType('area')} />
+                        </MT5Group>
+
+                        <MT5Divider />
+
+                        {/* Chart tools: zoom, layout, latest candle, indicators */}
+                        <MT5Group label="Chart tools">
+                            <CommandIconButton icon="zoom-in" title="Zoom In" onClick={() => dispatchTargetedZoom('ZOOM_IN')} />
+                            <CommandIconButton icon="zoom-out" title="Zoom Out" onClick={() => dispatchTargetedZoom('ZOOM_OUT')} />
+                            <CommandIconButton icon="grid" title="Arrange Windows" onClick={() => dispatchCommand({ type: 'TILE_WINDOWS', payload: { mode: 'grid' } })} />
+                            <CommandIconButton icon="refresh" title="Reset Layout" onClick={() => window.dispatchEvent(new CustomEvent('resetLayout'))} />
+                            <CommandIconButton
+                                icon="chart-shift"
+                                title="Jump to Latest Candle"
+                                onClick={() => dispatchCommand({ type: 'JUMP_TO_LATEST_CANDLE', payload: {} })}
                             />
-                        </label>
-
-                        <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
-                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry / close arrows</span>
-                            <input
-                                type="checkbox"
-                                checked={tradeHistorySettings.showTradeHistoryArrows !== false}
-                                onChange={(event) => updateTradeHistorySetting('showTradeHistoryArrows', event.target.checked)}
-                                className="h-3.5 w-3.5 accent-blue-500"
+                            <CommandIconButton
+                                icon="indicator-list"
+                                title="Indicators List"
+                                onClick={() => dispatchCommand({ type: 'OPEN_INDICATOR_LIST', payload: {} })}
                             />
-                        </label>
+                        </MT5Group>
 
-                        <div className="space-y-2 rounded-[4px] border border-zinc-800/80 bg-zinc-950/35 p-2 [.rtx-advanced-view_&]:border-gray-100 [.rtx-advanced-view_&]:bg-gray-50">
-                            <label className="block">
-                                <div className="mb-1 flex items-center justify-between">
-                                    <span className="text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Line opacity</span>
-                                    <span className="font-mono text-[12px] font-normal text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryLineOpacity}%</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={100}
-                                    step={5}
-                                    disabled={tradeHistorySettings.showTradeHistory === false}
-                                    value={tradeHistorySettings.tradeHistoryLineOpacity}
-                                    onChange={(event) => updateTradeHistorySetting('tradeHistoryLineOpacity', Number(event.target.value))}
-                                    className="w-full accent-blue-500"
+                        <MT5Divider />
+
+                        {/* Screenshot, period separators, and trade-history overlays — three equal command buttons */}
+                        <MT5Group label="Chart capture and overlays">
+                            <CommandIconButton
+                                icon="camera"
+                                title="Screenshot (Export Chart)"
+                                onClick={() => {
+                                    captureFullPage();
+                                }}
+                            />
+                            <CommandIconButton
+                                icon="period-separator"
+                                className="rtx-period-separator-toggle"
+                                title={tradeHistorySettings.showPeriodSeparators !== false ? 'Hide Period Separators' : 'Show Period Separators'}
+                                active={tradeHistorySettings.showPeriodSeparators !== false}
+                                onClick={togglePeriodSeparators}
+                            />
+                            <div ref={historyOverlayRef} className="relative flex items-center">
+                                <CommandIconButton
+                                    icon="sliders-horizontal"
+                                    className="rtx-trade-history-overlay-button"
+                                    title="Trade History Overlays"
+                                    active={showHistoryOverlayMenu}
+                                    ariaHasPopup="menu"
+                                    ariaExpanded={showHistoryOverlayMenu}
+                                    onClick={() => {
+                                        setShowHistoryOverlayMenu((open) => !open);
+                                    }}
                                 />
-                            </label>
-                        </div>
-                    </div>,
-                    document.body,
-                )}
+
+                                {showHistoryOverlayMenu && ReactDOM.createPortal(
+                                    <div
+                                        ref={historyOverlayDropdownRef}
+                                        className="fixed z-[9999] w-[236px] rounded-[5px] border border-zinc-700/80 bg-[#151820] p-3 text-[14px] font-normal text-zinc-200 shadow-2xl shadow-black/50 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:bg-white [.rtx-advanced-view_&]:text-gray-800 [.rtx-advanced-view_&]:shadow-xl"
+                                        style={{
+                                            top: (historyOverlayRef.current?.getBoundingClientRect().bottom ?? 0) + 5,
+                                            left: Math.min(
+                                                historyOverlayRef.current?.getBoundingClientRect().left ?? 0,
+                                                Math.max(8, window.innerWidth - 244),
+                                            ),
+                                        }}
+                                        role="menu"
+                                        aria-label="Trade history overlay controls"
+                                    >
+                                        <div className="mb-2 flex items-center justify-between border-b border-zinc-700/70 pb-2 [.rtx-advanced-view_&]:border-gray-100">
+                                            <span className="text-[12px] font-medium uppercase tracking-wide text-zinc-400 [.rtx-advanced-view_&]:text-gray-500">Trade History</span>
+                                            <button
+                                                type="button"
+                                                className="rounded-[3px] border border-zinc-700 px-1.5 py-0.5 text-[12px] font-normal text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800 [.rtx-advanced-view_&]:border-gray-200 [.rtx-advanced-view_&]:text-gray-600 [.rtx-advanced-view_&]:hover:bg-gray-50"
+                                                onClick={resetTradeHistorySettings}
+                                            >
+                                                Reset
+                                            </button>
+                                        </div>
+
+                                        <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
+                                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry-to-close line</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={tradeHistorySettings.showTradeHistory !== false}
+                                                onChange={(event) => updateTradeHistorySetting('showTradeHistory', event.target.checked)}
+                                                className="h-3.5 w-3.5 accent-blue-500"
+                                            />
+                                        </label>
+
+                                        <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-[4px] px-1 py-1 hover:bg-white/5 [.rtx-advanced-view_&]:hover:bg-gray-50">
+                                            <span className="font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-800">Entry / close arrows</span>
+                                            <input
+                                                type="checkbox"
+                                                checked={tradeHistorySettings.showTradeHistoryArrows !== false}
+                                                onChange={(event) => updateTradeHistorySetting('showTradeHistoryArrows', event.target.checked)}
+                                                className="h-3.5 w-3.5 accent-blue-500"
+                                            />
+                                        </label>
+
+                                        <div className="space-y-2 rounded-[4px] border border-zinc-800/80 bg-zinc-950/35 p-2 [.rtx-advanced-view_&]:border-gray-100 [.rtx-advanced-view_&]:bg-gray-50">
+                                            <label className="block">
+                                                <div className="mb-1 flex items-center justify-between">
+                                                    <span className="text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">Line opacity</span>
+                                                    <span className="font-mono text-[12px] font-normal text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tradeHistorySettings.tradeHistoryLineOpacity}%</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min={0}
+                                                    max={100}
+                                                    step={5}
+                                                    disabled={tradeHistorySettings.showTradeHistory === false}
+                                                    value={tradeHistorySettings.tradeHistoryLineOpacity}
+                                                    onChange={(event) => updateTradeHistorySetting('tradeHistoryLineOpacity', Number(event.target.value))}
+                                                    className="w-full accent-blue-500"
+                                                />
+                                            </label>
+                                        </div>
+                                    </div>,
+                                    document.body,
+                                )}
+                            </div>
+                        </MT5Group>
+
+                        <MT5Divider />
+
+                        {/* Group 8: Horizontal MT-style timeframe strip */}
+                        <TimeframePicker
+                            timeframe={timeframe}
+                            advancedViewEnabled={advancedViewEnabled}
+                            onSelect={(nextTimeframe) => {
+                                onTimeframeChange(nextTimeframe);
+                                dispatchCommand({ type: 'SET_TIMEFRAME', payload: { timeframe: nextTimeframe } });
+                                window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: nextTimeframe } }));
+                            }}
+                        />
+
+                    </div>
+
+                    {/* Keep a usable row end without hiding any toolbar actions. */}
+                    <div className="min-w-[24px] flex-1 self-stretch" aria-hidden="true" />
                 </div>
-            </MT5Group>
-
-            <MT5Divider />
-
-            {/* Group 8: Horizontal MT-style timeframe strip */}
-            <TimeframePicker
-                timeframe={timeframe}
-                advancedViewEnabled={advancedViewEnabled}
-                onSelect={(nextTimeframe) => {
-                    onTimeframeChange(nextTimeframe);
-                    dispatchCommand({ type: 'SET_TIMEFRAME', payload: { timeframe: nextTimeframe } });
-                    window.dispatchEvent(new CustomEvent('change-timeframe', { detail: { timeframe: nextTimeframe } }));
-                }}
-            />
-
+                {isDesktopShell && <DesktopSymbolSearchButton />}
+                {isDesktopShell && desktopDrawingTools && (
+                    <div className="rtx-desktop-inline-drawings">{desktopDrawingTools}</div>
+                )}
+                {isDesktopShell && (
+                    <DesktopQuickActions
+                        accountId={accountId}
+                        accountName={activeSavedAccount?.name}
+                        accountServer={activeSavedAccount?.server}
+                        savedAccountCount={savedAccountCount}
+                        onLogout={handleLogout}
+                    />
+                )}
             </div>
-
-            {/* Keep a usable row end without hiding any toolbar actions. */}
-            <div className="min-w-[24px] flex-1 self-stretch" aria-hidden="true" />
-
-            {/* Search, appearance, drawing, stamps, and account controls now live in the application menu. */}
-            </div>
-            {isDesktopShell && (
-                <DesktopQuickActions
-                    advancedViewEnabled={advancedViewEnabled}
-                    advancedFontSize={advancedOptions.fontSize}
-                    focusChart={advancedOptions.focusChart}
-                    activeDrawingTool={toolbarState.activeTool}
-                    crosshairEnabled={toolbarState.crosshairEnabled}
-                    accountId={accountId}
-                    accountName={activeSavedAccount?.name}
-                    accountServer={activeSavedAccount?.server}
-                    savedAccountCount={savedAccountCount}
-                    symbol={symbol}
-                    connectionState={connectionState}
-                    transportSecurity={transportSecurity}
-                    feedStatus={feedStatus}
-                    dispatchCommand={dispatchCommand}
-                    onSetAdvancedViewEnabled={setAdvancedViewEnabled}
-                    onSetAdvancedFontSize={(fontSize) => updateAdvancedOptions({ fontSize })}
-                    onSetFocusChart={(focusChart) => updateAdvancedOptions({ focusChart })}
-                    onRefreshConnection={onRefreshConnection}
-                    onLogout={handleLogout}
-                />
-            )}
-        </div>
             {!isDesktopShell && <WindowControls />}
         </div>
     );
@@ -748,7 +755,7 @@ interface MT5BtnProps {
 }
 
 interface CommandIconButtonProps extends Omit<MT5BtnProps, 'icon'> {
-    icon: IconName;
+    icon: ChartCommandIconName;
     selectionRole?: 'radio';
     className?: string;
     ariaHasPopup?: React.AriaAttributes['aria-haspopup'];
@@ -768,7 +775,7 @@ const CommandIconButton = ({ icon, title, active, selectionRole, onClick, classN
         aria-expanded={ariaExpanded}
         className={['rtx-toolbar-icon-button', className].filter(Boolean).join(' ')}
     >
-        <Icon name={icon} size={20} />
+        <ChartCommandIcon name={icon} />
     </button>
 );
 

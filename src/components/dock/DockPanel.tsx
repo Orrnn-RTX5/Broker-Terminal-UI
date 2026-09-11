@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 /**
  * DockPanel Component
  * MT5-style panel with thin title bar — supports Minimize and Close.
@@ -28,6 +29,7 @@ export interface DockPanelProps {
   onClose?: () => void;
   onFloat?: () => void;
   onActivate?: () => void;
+  onMinimizedChange?: (minimized: boolean) => void;
   onDragStart?: (e: React.MouseEvent | React.TouchEvent) => void;
   style?: React.CSSProperties;
 }
@@ -43,11 +45,21 @@ export const DockPanel: React.FC<DockPanelProps> = ({
   onClose,
   onFloat,
   onActivate,
+  onMinimizedChange,
   onDragStart,
   style,
 }) => {
-  // ── Minimize state (local — collapses content to title bar only) ──
-  const [minimized, setMinimized] = useState(false);
+    const tr = useUiTranslation();
+  // Docked windows use layout state; standalone panels keep local control.
+  const [localMinimized, setLocalMinimized] = useState(false);
+  const minimized = onMinimizedChange ? Boolean(panel.minimized) : localMinimized;
+  const isChart = panel.component === 'Chart';
+  const chartSymbol = typeof panel.props?.symbol === 'string' ? panel.props.symbol : panel.title.split(',')[0];
+  const chartTimeframe = typeof panel.props?.timeframe === 'string' ? panel.props.timeframe : panel.title.split(',')[1];
+  const setMinimized = (value: boolean) => {
+    if (onMinimizedChange) onMinimizedChange(value);
+    else setLocalMinimized(value);
+  };
 
   return (
     <div
@@ -84,29 +96,40 @@ export const DockPanel: React.FC<DockPanelProps> = ({
             }
             onDragStart?.(e);
           }}
-          title={minimized ? `Click to restore ${panel.title}` : undefined}
+          title={minimized ? tr("Click to restore {{value0}}", { value0: panel.title }) : undefined}
         >
           {/* Title */}
-          <span className="dock-panel__title flex-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]">
-            {panel.title}
+          <span className="dock-panel__title flex-1 min-w-0 flex items-center gap-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]">
+            {isChart ? <>
+              <button type="button" className="min-w-0 inline-flex items-center gap-1 rounded px-1 hover:bg-white/10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400"
+                aria-label={tr('Change symbol for {{symbol}}', { symbol: chartSymbol })}
+                title={tr('Change chart symbol')}
+                onClick={event => {
+                  event.stopPropagation();
+                  window.dispatchEvent(new CustomEvent('request-chart-symbol-change', { detail: { panelId: panel.id } }));
+                }}>
+                <span className="truncate">{chartSymbol}</span><Icon name="chevron-down" size="xs" />
+              </button>
+              <span className="shrink-0 opacity-70 text-[12px]">{chartTimeframe}</span>
+            </> : tr(panel.title)}
             {minimized && (
-              <span className="ml-1 text-[12px] font-normal text-zinc-600 italic">(minimized)</span>
+              <span className="ml-1 text-[12px] font-normal text-zinc-600 italic">{tr("(minimized)")}</span>
             )}
           </span>
 
           {/* ── Minimize button ── */}
           {panel.component !== 'EmptyChartArea' && (
             <button
+              type="button"
+              aria-label={isChart ? tr(minimized ? 'Restore chart {{symbol}}' : 'Minimize chart {{symbol}}', { symbol: chartSymbol }) : undefined}
               onClick={(e) => {
                 e.stopPropagation();
-                setMinimized((m) => !m);
+                setMinimized(!minimized);
               }}
-              className="dock-panel__action w-[16px] h-[16px] flex items-center justify-center rounded-sm hover:bg-zinc-600/80 text-zinc-400 hover:text-white transition-colors mr-0.5"
-              title={minimized ? 'Restore' : 'Minimize'}
+              className={cn('dock-panel__action shrink-0 flex items-center justify-center rounded-sm hover:bg-zinc-600/80 text-zinc-400 hover:text-white transition-colors mr-0.5', isChart ? 'w-[22px] h-[22px]' : 'w-4 h-4')}
+              title={minimized ? tr("Restore") : tr("Minimize")}
             >
-              {minimized
-                ? <Icon name="chevron-up" size="xs" />
-                : <Minus className="w-2.5 h-2.5" />
+              {minimized ? <Icon name="chevron-up" size="xs" /> : <Minus className="w-2.5 h-2.5" />
               }
             </button>
           )}
@@ -114,12 +137,14 @@ export const DockPanel: React.FC<DockPanelProps> = ({
           {/* ── Close button ── */}
           {panel.closable !== false && (
             <button
+              type="button"
+              aria-label={isChart ? tr('Close chart {{symbol}}', { symbol: chartSymbol }) : undefined}
               onClick={(e) => {
                 e.stopPropagation();
                 onClose?.();
               }}
-              className="dock-panel__action dock-panel__action--close w-[16px] h-[16px] flex items-center justify-center rounded-sm hover:bg-red-500/80 text-zinc-400 hover:text-white transition-colors"
-              title="Close"
+              className={cn('dock-panel__action dock-panel__action--close shrink-0 flex items-center justify-center rounded-sm hover:bg-red-500/80 text-zinc-400 hover:text-white transition-colors', isChart ? 'w-[22px] h-[22px]' : 'w-4 h-4')}
+              title={tr("Close")}
             >
               <X className="w-3 h-3" />
             </button>
@@ -127,16 +152,14 @@ export const DockPanel: React.FC<DockPanelProps> = ({
         </div>
       )}
 
-      {/* ── Content — hidden when minimized ── */}
-      {!minimized && (
-        <div className="dock-panel__content flex-1 overflow-hidden min-h-0 min-w-0 relative">
+      {/* Keep chart state mounted while its window is minimized. */}
+        <div hidden={minimized} className="dock-panel__content flex-1 overflow-hidden min-h-0 min-w-0 relative">
           {children || (
             <div className="flex items-center justify-center h-full text-zinc-500 p-4">
-              <p className="text-xs">{panel.title}</p>
+              <p className="text-xs">{tr(panel.title)}</p>
             </div>
           )}
         </div>
-      )}
     </div>
   );
 };

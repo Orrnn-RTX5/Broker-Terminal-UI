@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 import { useState, FormEvent } from 'react';
 import { ApiError } from '../api/client';
 import { tradeApi } from '../api/trade';
@@ -9,6 +10,7 @@ interface ChangePasswordDialogProps {
 }
 
 export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePasswordDialogProps) {
+    const tr = useUiTranslation();
     const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -69,7 +71,7 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                 onClick={e => e.stopPropagation()}
             >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-[#191a1e]">
-                    <h2 className="text-zinc-200 font-medium">Change Password - {accountLogin}</h2>
+                    <h2 className="text-zinc-200 font-medium">{tr("Change Password - ")}{accountLogin}</h2>
                     <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
                         ✕
                     </button>
@@ -77,7 +79,7 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
 
                 <form onSubmit={handleSubmit} className="p-4 space-y-4">
                     <div className="space-y-1">
-                        <label className="text-xs text-zinc-400">Password Type</label>
+                        <label className="text-xs text-zinc-400">{tr("Password Type")}</label>
                         <select
                             value={type}
                             onChange={(e) => {
@@ -87,43 +89,43 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                             }}
                             className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
                         >
-                            <option value="master">Master Password</option>
-                            <option value="investor">Investor Password (Read-only)</option>
+                            <option value="master">{tr("Master Password")}</option>
+                            <option value="investor">{tr("Investor Password (Read-only)")}</option>
                         </select>
                     </div>
 
                     {type === 'master' && (
                         <div className="space-y-1">
-                            <label className="text-xs text-zinc-400">Current Password</label>
+                            <label className="text-xs text-zinc-400">{tr("Current Password")}</label>
                             <input
                                 type="password"
                                 value={oldPassword}
                                 onChange={(e) => setOldPassword(e.target.value)}
                                 className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
-                                placeholder="Enter current password"
+                                placeholder={tr("Enter current password")}
                             />
                         </div>
                     )}
 
                     <div className="space-y-1">
-                        <label className="text-xs text-zinc-400">New Password</label>
+                        <label className="text-xs text-zinc-400">{tr("New Password")}</label>
                         <input
                             type="password"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
                             className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
-                            placeholder="Enter new password"
+                            placeholder={tr("Enter new password")}
                         />
                     </div>
 
                     <div className="space-y-1">
-                        <label className="text-xs text-zinc-400">Confirm New Password</label>
+                        <label className="text-xs text-zinc-400">{tr("Confirm New Password")}</label>
                         <input
                             type="password"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             className="w-full bg-[#0d0d11] border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
-                            placeholder="Confirm new password"
+                            placeholder={tr("Confirm new password")}
                         />
                     </div>
 
@@ -145,7 +147,7 @@ export function ChangePasswordDialog({ isOpen, onClose, accountLogin }: ChangePa
                             disabled={isLoading}
                             className="w-full bg-zinc-700 hover:bg-zinc-600 text-white font-medium py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {isLoading ? 'Changing...' : 'Change Password'}
+                            {isLoading ? tr("Changing...") : tr("Change Password")}
                         </button>
                     </div>
                 </form>

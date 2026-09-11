@@ -51,11 +51,11 @@ describe('enterprise light visual-system contract', () => {
   });
 
   it('uses one neutral surface hierarchy with blue reserved for interaction', () => {
-    expect(lightCss).toContain('--rtx-light-canvas: #e8eaed;');
-    expect(lightCss).toContain('--rtx-light-panel: #fafbfc;');
-    expect(lightCss).toContain('--rtx-light-panel-header: #f2f2f2;');
-    expect(lightCss).toContain('--rtx-light-border: #d5d7da;');
-    expect(lightCss).toContain('--rtx-light-accent: #0b4f91;');
+    expect(lightCss).toContain('--rtx-light-canvas: #dfe4e8;');
+    expect(lightCss).toContain('--rtx-light-panel: #f2f4f5;');
+    expect(lightCss).toContain('--rtx-light-panel-header: #e7ebee;');
+    expect(lightCss).toContain('--rtx-light-border: #d1d8de;');
+    expect(lightCss).toContain('--rtx-light-accent: #28547c;');
     expect(lightCss).not.toMatch(/#(?:7f56d9|7e57c2|6941c6|f4ebff|f3e5f5|e9d7fe)/i);
   });
 
@@ -100,9 +100,9 @@ describe('enterprise light visual-system contract', () => {
   it('keeps the chart calm before and after data becomes ready', () => {
     expect(lightCss).toContain('.rtx-chart-wrapper > div[class*="bg-[#0a0a0f]"]');
     expect(lightCss).toMatch(/\.rtx-chart-hud > span,[\s\S]*?background: transparent !important;/);
-    expect(chartSettingsSource).toContain('background: "#fafbfc"');
-    expect(chartSettingsSource).toContain('foreground: "#4b5563"');
-    expect(chartSettingsSource).toContain('grid: "#e8e8e8"');
+    expect(chartSettingsSource).toContain('background: "#f2f4f5"');
+    expect(chartSettingsSource).toContain('foreground: "#465461"');
+    expect(chartSettingsSource).toContain('grid: "#dfe4e8"');
   });
 
   it('repairs selected Market Watch rows even when the row omits mw-row', () => {
@@ -111,15 +111,15 @@ describe('enterprise light visual-system contract', () => {
   });
 
   it('uses a readable light-theme hierarchy without making dense data bold', () => {
-    expect(lightCss).toContain('--rtx-light-font-body-weight: 450;');
+    expect(lightCss).toContain('--rtx-light-font-body-weight: 400;');
     expect(lightCss).toContain('--rtx-light-font-control-weight: 500;');
-    expect(lightCss).toMatch(/\.rtx-toolbar-action\s*\{[\s\S]*?font-size: var\(--rtx-advanced-primary-font-size, 14px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-control-weight\) !important;/);
+    expect(lightCss).toMatch(/\.rtx-toolbar-action\s*\{[\s\S]*?font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-body-weight\) !important;/);
     expect(lightCss).toMatch(/\.rtx-toolbar-icon-button svg[\s\S]*?stroke-width: 1\.35 !important;/);
-    expect(lightCss).toMatch(/\.rtx-timeframe-strip \.rtx-timeframe-option\s*\{[\s\S]*?font-family: var\(--font-sans\) !important;[\s\S]*?font-size: var\(--rtx-advanced-primary-font-size, 14px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-control-weight\) !important;/);
+    expect(lightCss).toMatch(/\.rtx-timeframe-strip \.rtx-timeframe-option\s*\{[\s\S]*?font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;[\s\S]*?font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-body-weight\) !important;/);
     expect(lightCss).toMatch(/\.rtx-toolbar-symbol-badge\s*\{[\s\S]*?font-size: var\(--rtx-advanced-header-font-size, 12px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-control-weight\) !important;/);
-    expect(lightCss).toMatch(/\.dock-panel__title\s*\{[\s\S]*?font-size: var\(--rtx-advanced-primary-font-size, 14px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-control-weight\) !important;/);
-    expect(lightCss).toMatch(/\.navigator-tree-item__label\s*\{[\s\S]*?font-size: var\(--rtx-advanced-primary-font-size, 14px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-body-weight\) !important;/);
-    expect(lightCss).toMatch(/\.rtx-chart-hud\s*\{[\s\S]*?font-size: var\(--rtx-advanced-primary-font-size, 14px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-body-weight\) !important;/);
+    expect(lightCss).toMatch(/\.dock-panel__title\s*\{[\s\S]*?font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-control-weight\) !important;/);
+    expect(lightCss).toMatch(/\.navigator-tree-item__label\s*\{[\s\S]*?font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-body-weight\) !important;/);
+    expect(lightCss).toMatch(/\.rtx-chart-hud\s*\{[\s\S]*?font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-body-weight\) !important;/);
     expect(lightCss).toMatch(/\.rtx-market-watch__column-heading,[\s\S]*?\.rtx-trade-table__head th,[\s\S]*?font-weight: var\(--rtx-light-font-control-weight\) !important;/);
     expect(lightCss).toMatch(/\.rtx-trade-table tbody tr\.rtx-trade-row td,[\s\S]*?\.rtx-status-bar__metric[\s\S]*?font-weight: var\(--rtx-light-font-body-weight\) !important;/);
   });
@@ -127,7 +127,7 @@ describe('enterprise light visual-system contract', () => {
   it('neutralizes pink trade stripes while preserving a quiet selected row', () => {
     expect(lightCss).toContain('.rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected):nth-child(even)');
     expect(lightCss).toMatch(/\.rtx-trade-table tbody tr\.rtx-trade-row[\s\S]*?background: var\(--rtx-light-panel\) !important;/);
-    expect(lightCss).toContain('background: #f0f5f9 !important;');
+    expect(lightCss).toContain('background: var(--rtx-light-selected) !important;');
     expect(lightCss).not.toMatch(/#f3e5f5/i);
   });
 

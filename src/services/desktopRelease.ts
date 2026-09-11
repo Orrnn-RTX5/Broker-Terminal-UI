@@ -1,3 +1,5 @@
+import { translateUi } from '../hooks/useUiTranslation';
+
 export const DESKTOP_RELEASE_REPOSITORY = 'rtx5-orrnn/rtx5-terminal-releases';
 export const DESKTOP_RELEASE_API_URL = `https://api.github.com/repos/${DESKTOP_RELEASE_REPOSITORY}/releases/latest`;
 export const DESKTOP_RELEASE_LATEST_URL = `https://github.com/${DESKTOP_RELEASE_REPOSITORY}/releases/latest`;
@@ -99,7 +101,9 @@ export const getDesktopReleaseVersionLabel = (release: DesktopRelease | null | u
 
 export const getDesktopReleaseButtonTitle = (release: DesktopRelease | null | undefined): string => {
   const version = getDesktopReleaseVersionLabel(release);
-  return version ? `Download RTX Terminal desktop installer ${version}` : 'Download the latest RTX Terminal desktop installer';
+  return version
+    ? translateUi('Download RTX Terminal desktop installer {{value0}}', { value0: version })
+    : translateUi('Download the latest RTX Terminal desktop installer');
 };
 
 export const openDesktopReleaseDownload = (release: DesktopRelease | null | undefined): void => {

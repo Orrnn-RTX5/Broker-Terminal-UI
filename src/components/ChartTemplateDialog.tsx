@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * Chart Template Management Dialog
  * Allows users to save, load, and delete chart templates
@@ -34,6 +35,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
   currentConfig,
   onLoadTemplate,
 }) => {
+    const tr = useUiTranslation();
   const { templates, saveTemplate, deleteTemplate, loadTemplate } = useTemplateStore();
   const [templateName, setTemplateName] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -154,7 +156,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
               </div>
             )}
             <h2 className="text-[13px] font-bold text-zinc-100 uppercase tracking-wider">
-              {mode === 'save' ? 'Save Chart Template' : 'Load Chart Template'}
+              {mode === 'save' ? tr("Save Chart Template") : tr("Load Chart Template")}
             </h2>
           </div>
           <button
@@ -171,14 +173,13 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
           {mode === 'save' && showSaveInput && (
             <div className="bg-[#252526] border border-zinc-700 rounded-lg p-4">
               <label className="block text-xs text-zinc-400 mb-2 font-medium">
-                Template Name
-              </label>
+                {tr("Template Name")}</label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
-                  placeholder="My Custom Template"
+                  placeholder={tr("My Custom Template")}
                   className="flex-1 bg-[#131316] border border-zinc-700 rounded px-3 py-1.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
@@ -191,30 +192,29 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
                   onClick={handleSaveTemplate}
                   className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded font-semibold transition-colors shadow-lg shadow-blue-500/10"
                 >
-                  Save
-                </button>
+                  {tr("Save")}</button>
               </div>
               {currentConfig && (
                 <div className="mt-3 text-xs text-zinc-500 space-y-1">
                   <div className="flex justify-between">
-                    <span>Chart Type:</span>
+                    <span>{tr("Chart Type:")}</span>
                     <span className="text-zinc-400 font-mono">{currentConfig.chartType}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Timeframe:</span>
+                    <span>{tr("Timeframe:")}</span>
                     <span className="text-zinc-400 font-mono">{currentConfig.timeframe}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Indicators:</span>
+                    <span>{tr("Indicators:")}</span>
                     <span className="text-zinc-400">{currentConfig.indicators?.length || 0}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Grid:</span>
-                    <span className="text-zinc-400">{currentConfig.showGrid ? 'On' : 'Off'}</span>
+                    <span>{tr("Grid:")}</span>
+                    <span className="text-zinc-400">{currentConfig.showGrid ? tr("On") : tr("Off")}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Volumes:</span>
-                    <span className="text-zinc-400">{currentConfig.showVolumes ? 'On' : 'Off'}</span>
+                    <span>{tr("Volumes:")}</span>
+                    <span className="text-zinc-400">{currentConfig.showVolumes ? tr("On") : tr("Off")}</span>
                   </div>
                 </div>
               )}
@@ -227,8 +227,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
               <div className="flex items-center gap-2 mb-2.5 px-1">
                 <CheckCircle size={14} className="text-[#eab308]" />
                 <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                  Default Templates
-                </h3>
+                  {tr("Default Templates")}</h3>
               </div>
               <div className="space-y-2">
                 {defaultTemplates.map((template) => (
@@ -250,8 +249,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
           {customTemplates.length > 0 && (
             <div>
               <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">
-                Custom Templates
-              </h3>
+                {tr("Custom Templates")}</h3>
               <div className="space-y-2">
                 {customTemplates.map((template) => (
                   <TemplateCard
@@ -271,8 +269,8 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
           {customTemplates.length === 0 && mode === 'load' && !showSaveInput && (
             <div className="text-center py-12 text-zinc-600">
               <Plus size={32} className="mx-auto mb-3 opacity-20" />
-              <p className="text-sm font-medium">No custom templates</p>
-              <p className="text-[11px] mt-1 opacity-60">Right-click chart to save a new template</p>
+              <p className="text-sm font-medium">{tr("No custom templates")}</p>
+              <p className="text-[11px] mt-1 opacity-60">{tr("Right-click chart to save a new template")}</p>
             </div>
           )}
         </div>
@@ -283,8 +281,7 @@ export const ChartTemplateDialog: React.FC<ChartTemplateDialogProps> = ({
             onClick={onClose}
             className="px-5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs rounded font-bold uppercase tracking-wider transition-all"
           >
-            Close
-          </button>
+            {tr("Close")}</button>
         </div>
       </div>
     </div>,
@@ -309,6 +306,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
   onDelete,
   mode,
 }) => {
+    const tr = useUiTranslation();
   return (
     <div
       className={`bg-[#252526] border rounded-lg p-3 cursor-pointer transition-all ${
@@ -324,8 +322,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
             <h4 className="text-sm font-semibold text-zinc-200">{template.name}</h4>
             {template.isDefault && (
               <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded border border-yellow-500/30">
-                Default
-              </span>
+                {tr("Default")}</span>
             )}
           </div>
           <p className="text-xs text-zinc-500 mt-1">
@@ -340,7 +337,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
                 onLoad();
               }}
               className="p-1.5 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white rounded transition-all"
-              title="Load template"
+              title={tr("Load template")}
             >
               <Download size={14} />
             </button>
@@ -352,7 +349,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
                 onDelete();
               }}
               className="p-1.5 bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white rounded transition-all"
-              title="Delete template"
+              title={tr("Delete template")}
             >
               <Trash2 size={14} />
             </button>
@@ -363,21 +360,21 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
       {/* Template Preview */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         <div className="flex justify-between">
-          <span className="text-zinc-500">Type:</span>
+          <span className="text-zinc-500">{tr("Type:")}</span>
           <span className="text-zinc-400 font-mono">{template.chartType}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-zinc-500">Timeframe:</span>
+          <span className="text-zinc-500">{tr("Timeframe:")}</span>
           <span className="text-zinc-400 font-mono">{template.timeframe}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-zinc-500">Indicators:</span>
+          <span className="text-zinc-500">{tr("Indicators:")}</span>
           <span className="text-zinc-400">{template.indicators.length}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-zinc-500">Grid:</span>
+          <span className="text-zinc-500">{tr("Grid:")}</span>
           <span className={template.showGrid ? 'text-emerald-400' : 'text-zinc-600'}>
-            {template.showGrid ? 'On' : 'Off'}
+            {template.showGrid ? tr("On") : tr("Off")}
           </span>
         </div>
       </div>

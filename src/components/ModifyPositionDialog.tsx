@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * MT5-style Modify Position Dialog (Dark Theme)
  * Opens on double-click of a position row
@@ -232,6 +233,7 @@ const getFocusableElements = (container: HTMLElement) => {
 };
 
 export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'position' }: ModifyPositionDialogProps) {
+    const tr = useUiTranslation();
     const [sl, setSl] = useState('0.00');
     const [tp, setTp] = useState('0.00');
     const [volumeStr, setVolumeStr] = useState('0.01');
@@ -313,8 +315,10 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
         };
 
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (shouldIgnoreShortcutEvent(event) || !isShortcutOwnedBy(event, dialogRef.current)) return;
             if (event.key === 'Escape') {
                 event.preventDefault();
+                event.stopPropagation();
                 onCloseRef.current();
                 return;
             }
@@ -569,8 +573,8 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 type="button"
                 onClick={onClick}
                 disabled={disabled}
-                title={label}
-                aria-label={label}
+                title={tr(label)}
+                aria-label={tr(label)}
                 aria-pressed={active}
                 className={[
                     'flex h-[23px] w-[24px] shrink-0 items-center justify-center border text-[11px] transition-colors',
@@ -666,8 +670,8 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                         <button
                             type="button"
                             className={`flex h-[16px] w-[18px] items-center justify-center border bg-[#162030] ${tradeBorder}`}
-                            title="Use the Sell or Buy by Market buttons to trade"
-                            aria-label={`${level.side === 'ASK' ? 'Ask' : 'Bid'} depth level ${level.price.toFixed(digits)}`}
+                            title={tr("Use the Sell or Buy by Market buttons to trade")}
+                            aria-label={tr("{{value0}} depth level {{value1}}", { value0: level.side === 'ASK' ? 'Ask' : 'Bid', value1: level.price.toFixed(digits) })}
                             onClick={() => setError('Use the Sell by Market or Buy by Market buttons to trade from this dialog.')}
                         >
                             <span className={`h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent ${tradeColor}`} />
@@ -680,19 +684,19 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
         return (
             <div
                 role="region"
-                aria-label={`${position.symbol} market depth`}
+                aria-label={tr("{{value0}} market depth", { value0: position.symbol })}
                 className="flex h-full min-h-0 flex-col overflow-hidden border border-[#334057] bg-[#0d1420]"
             >
                 <div className="grid h-[24px] shrink-0 grid-cols-[58px_minmax(0,1fr)_28px] border-b border-[#334057] bg-[#121b2a] text-[12px] font-normal text-[#b8c4d6]">
-                    <div className="flex items-center justify-center border-r border-[#334057]">Volume</div>
-                    <div className="flex items-center justify-center border-r border-[#334057]">Price</div>
-                    <div className="flex items-center justify-center">Trade</div>
+                    <div className="flex items-center justify-center border-r border-[#334057]">{tr("Volume")}</div>
+                    <div className="flex items-center justify-center border-r border-[#334057]">{tr("Price")}</div>
+                    <div className="flex items-center justify-center">{tr("Trade")}</div>
                 </div>
                 <div className="flex-1 overflow-hidden">
                     <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
                     {asks.map(renderDepthLevel)}
                     <div className="flex h-[22px] items-center justify-center border-y border-[#3d4b64] bg-[#111827] font-mono text-[12px] font-normal text-[#8fa2bd]">
-                        Spread {spreadPoints}
+                        {tr("Spread ")}{spreadPoints}
                     </div>
                     {bids.map(renderDepthLevel)}
                     <div className="h-[18px] border-b border-[#29344a] bg-[#0d1420]" />
@@ -802,7 +806,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                     fontFamily="Consolas, monospace"
                     textAnchor="middle"
                 >
-                    {label}
+                    {tr(label)}
                 </text>
             </g>
         );
@@ -814,7 +818,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 viewBox={`0 0 ${w} ${h}`}
                 className="h-full w-full"
                 role="img"
-                aria-label={`${position.symbol} bid and ask tick chart`}
+                aria-label={tr("{{value0}} bid and ask tick chart", { value0: position.symbol })}
                 preserveAspectRatio="xMidYMid meet"
             >
                 <rect x={0} y={0} width={w} height={h} fill={chartBackground} />
@@ -961,12 +965,12 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                 {/* Title Bar - MT5 style with position info */}
                 <div className="flex h-[43px] shrink-0 items-center justify-between border-b border-[#3f424a] bg-[#2b2b2e] px-4">
                     <span id={dialogTitleId} className="min-w-0 truncate text-[14px] font-semibold text-[#d9dde5]">
-                        Position: #{position.id} {position.side.toLowerCase()} {position.volume.toFixed(2)} {position.symbol} {position.openPrice.toFixed(digits)}
+                        {tr("Position: #")}{position.id} {position.side.toLowerCase()} {position.volume.toFixed(2)} {position.symbol} {position.openPrice.toFixed(digits)}
                     </span>
                     <button
                         onClick={() => onClose()}
                         className="ml-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-lg leading-none text-zinc-400 transition-colors hover:bg-[#3b3d42] hover:text-white"
-                        aria-label="Close modify position dialog"
+                        aria-label={tr("Close modify position dialog")}
                     >
                         &times;
                     </button>
@@ -1003,7 +1007,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                     <div className="min-w-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain bg-[#101116] p-4 max-[420px]:p-3">
                         {/* Symbol */}
                         <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <label htmlFor={symbolFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">Symbol:</label>
+                            <label htmlFor={symbolFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">{tr("Symbol:")}</label>
                             <select
                                 id={symbolFieldId}
                                 value={position.symbol}
@@ -1016,15 +1020,15 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
                         {/* Type */}
                         <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <span id={typeLabelId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">Type:</span>
+                            <span id={typeLabelId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#8d94a3] max-[420px]:w-full max-[420px]:text-left">{tr("Type:")}</span>
                             <div id={typeValueId} aria-labelledby={`${typeLabelId} ${typeValueId}`} className="flex h-[31px] min-w-0 flex-1 items-center truncate rounded-sm border border-[#434650] bg-[#1f2026] px-3 text-[14px] font-normal text-[#e4e7ee] shadow-inner shadow-black/20">
-                                {kind === 'pending-order' ? 'Modify Pending Order' : 'Modify Position'}
+                                {kind === 'pending-order' ? tr("Modify Pending Order") : tr("Modify Position")}
                             </div>
                         </div>
 
                         {/* Volume */}
                         <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <label htmlFor={volumeFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">Volume:</label>
+                            <label htmlFor={volumeFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">{tr("Volume:")}</label>
                             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
                                 <div className="flex h-[31px] w-[96px] items-stretch overflow-hidden rounded-sm border border-[#434650] bg-[#1f2026] shadow-inner shadow-black/20">
                                     <input
@@ -1046,7 +1050,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                             type="button"
                                             onClick={() => adjustVolume(0.01)}
                                             className="h-1/2 text-[8px] leading-none text-zinc-400 hover:bg-[#3c404b] hover:text-white"
-                                            aria-label="Increase volume"
+                                            aria-label={tr("Increase volume")}
                                         >
                                             &#9650;
                                         </button>
@@ -1054,7 +1058,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                             type="button"
                                             onClick={() => adjustVolume(-0.01)}
                                             className="h-1/2 text-[8px] leading-none text-zinc-400 hover:bg-[#3c404b] hover:text-white"
-                                            aria-label="Decrease volume"
+                                            aria-label={tr("Decrease volume")}
                                         >
                                             &#9660;
                                         </button>
@@ -1066,7 +1070,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
                         {/* Stop Loss with Points */}
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <label htmlFor={slFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#ff626a] max-[420px]:w-full max-[420px]:text-left">Stop Loss:</label>
+                            <label htmlFor={slFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#ff626a] max-[420px]:w-full max-[420px]:text-left">{tr("Stop Loss:")}</label>
                             <input
                                 id={slFieldId}
                                 type="number"
@@ -1077,18 +1081,18 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                             />
                             <input
                                 id={slPointsFieldId}
-                                aria-label="Stop Loss points"
+                                aria-label={tr("Stop Loss points")}
                                 type="number"
                                 value={slPoints}
                                 onChange={(e) => handleSlPointsChange(parseInt(e.target.value) || 0)}
                                 className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
-                            <span className="text-[12px] font-normal text-[#7f8796]">points</span>
+                            <span className="text-[12px] font-normal text-[#7f8796]">{tr("points")}</span>
                         </div>
 
                         {/* Take Profit with Points */}
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <label htmlFor={tpFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#1fd79b] max-[420px]:w-full max-[420px]:text-left">Take Profit:</label>
+                            <label htmlFor={tpFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#1fd79b] max-[420px]:w-full max-[420px]:text-left">{tr("Take Profit:")}</label>
                             <input
                                 id={tpFieldId}
                                 type="number"
@@ -1099,18 +1103,18 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                             />
                             <input
                                 id={tpPointsFieldId}
-                                aria-label="Take Profit points"
+                                aria-label={tr("Take Profit points")}
                                 type="number"
                                 value={tpPoints}
                                 onChange={(e) => handleTpPointsChange(parseInt(e.target.value) || 0)}
                                 className="h-[31px] w-[62px] rounded-sm border border-[#434650] bg-[#1f2026] px-2 text-center font-mono text-[14px] font-normal text-[#f3f4f6] shadow-inner shadow-black/20 outline-none focus:border-[#666b78]"
                             />
-                            <span className="text-[12px] font-normal text-[#7f8796]">points</span>
+                            <span className="text-[12px] font-normal text-[#7f8796]">{tr("points")}</span>
                         </div>
 
                         {/* Comment */}
                         <div className="flex min-w-0 items-center gap-3 max-[420px]:flex-wrap max-[420px]:gap-y-1">
-                            <label htmlFor={commentFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">Comment:</label>
+                            <label htmlFor={commentFieldId} className="w-[84px] shrink-0 text-right text-[14px] font-normal text-[#aeb5c3] max-[420px]:w-full max-[420px]:text-left">{tr("Comment:")}</label>
                             <input
                                 id={commentFieldId}
                                 type="text"
@@ -1136,7 +1140,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                             disabled={isSubmitting}
                             className="min-h-[36px] w-full break-words rounded-sm border border-[#51535d] bg-[#4a4b53] px-2 py-2 text-[14px] font-bold leading-tight text-white transition-colors hover:bg-[#565861] active:bg-[#3f4047] disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {isSubmitting ? 'Processing...' : `Modify #${position.id} ${position.side.toLowerCase()} ${position.volume.toFixed(2)} ${position.symbol} ${position.openPrice.toFixed(digits)}`}
+                            {isSubmitting ? tr("Processing...") : tr("Modify #{{value0}} {{value1}} {{value2}} {{value3}} {{value4}}", { value0: position.id, value1: position.side.toLowerCase(), value2: position.volume.toFixed(2), value3: position.symbol, value4: position.openPrice.toFixed(digits) })}
                         </button>
 
                         {kind === 'position' && (
@@ -1148,16 +1152,14 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                         disabled={isSubmitting || bid <= 0}
                                         className="min-h-[34px] rounded-sm bg-[#f23f45] px-2 py-2 text-[14px] font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#ff5258] active:bg-[#d8393f] disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-                                        Sell by Market
-                                    </button>
+                                        {tr("Sell by Market")}</button>
                                     <button
                                         type="button"
                                         onClick={() => handleMarketOrder('BUY')}
                                         disabled={isSubmitting || ask <= 0}
                                         className="min-h-[34px] rounded-sm bg-[#3f73f1] px-2 py-2 text-[14px] font-bold leading-tight text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors hover:bg-[#5486ff] active:bg-[#315fd1] disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-                                        Buy by Market
-                                    </button>
+                                        {tr("Buy by Market")}</button>
                                 </div>
                                 <button
                                     type="button"
@@ -1165,8 +1167,7 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
                                     disabled={isSubmitting}
                                     className="min-h-[31px] w-full break-words rounded-sm border border-[#d8c889] bg-[#fff8dc] px-2 py-2 text-[14px] font-semibold leading-tight text-zinc-900 transition-colors hover:bg-[#fff1b8] active:bg-[#f1df9b] disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                    Close #{position.id} {position.side.toLowerCase()} {actionVolume > 0 ? actionVolume.toFixed(2) : '0.00'} {position.symbol} {position.openPrice.toFixed(digits)} by Market
-                                </button>
+                                    {tr("Close #")}{position.id} {position.side.toLowerCase()} {actionVolume > 0 ? actionVolume.toFixed(2) : '0.00'} {position.symbol} {position.openPrice.toFixed(digits)} {tr(" by Market")}</button>
                             </div>
                         )}
 
@@ -1184,9 +1185,8 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
 
                         {/* MT5 Quote Text */}
                         <div className="px-2 pt-1 text-center text-[12px] font-normal leading-relaxed text-[#777f8d]">
-                            Stop Loss or Take Profit you set must differ from market price by at least 0 points.<br />
-                            Stops processing is performed on the broker side.
-                        </div>
+                            {tr("Stop Loss or Take Profit you set must differ from market price by at least 0 points.")}<br />
+                            {tr("Stops processing is performed on the broker side.")}</div>
                     </div>
                 </div>
             </div>
@@ -1194,3 +1194,4 @@ export function ModifyPositionDialog({ isOpen, onClose, position, kind = 'positi
         document.body
     );
 }
+import { isShortcutOwnedBy, shouldIgnoreShortcutEvent } from '../services/keyboardShortcutManager';

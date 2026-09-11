@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAppStore } from '../../store/useAppStore';
 import { MarketWatchPanel } from './MarketWatchPanel';
+import { keyboardShortcutManager } from '../../services/keyboardShortcutManager';
 
 const CORE_DEFAULT_SYMBOLS = ['XAUUSD', 'BTCUSD', 'EURUSD'];
 const DEFAULT_SYMBOLS = [...CORE_DEFAULT_SYMBOLS, 'GBPUSD', 'USDJPY'];
@@ -421,7 +422,7 @@ describe('MarketWatchPanel symbol visibility', () => {
   });
 
   it('shows the requested Market Watch instruments with exactly two price decimals', () => {
-    const precisionSymbols = ['JPN225-F', 'WHEAT', 'GOLD-PERP', 'NICKEL', 'EURUSD'];
+    const precisionSymbols = ['JPN225', 'JPN225-F', 'WHEAT', 'GOLD-PERP', 'NICKEL', 'EURUSD'];
     setMarketCatalog(precisionSymbols);
     marketHooks.activeSymbols = [...precisionSymbols];
     watchlistState.activeWatchlistId = 'precision';
@@ -432,6 +433,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     }];
     act(() => {
       useAppStore.getState().setTicks({
+        JPN225: { symbol: 'JPN225', bid: 64706.7, ask: 64714.7, spread: 8, timestamp: Date.now() },
         'JPN225-F': { symbol: 'JPN225-F', bid: 66229.5, ask: 66245.5, spread: 16, timestamp: Date.now() },
         WHEAT: { symbol: 'WHEAT', bid: 774.3, ask: 775.1, spread: 0.8, timestamp: Date.now() },
         'GOLD-PERP': { symbol: 'GOLD-PERP', bid: 4433.31, ask: 4433.65, spread: 0.34, timestamp: Date.now() },
@@ -456,6 +458,7 @@ describe('MarketWatchPanel symbol visibility', () => {
       );
 
       const expectedPrices: Record<string, [string, string]> = {
+        JPN225: ['64706.70', '64714.70'],
         'JPN225-F': ['66229.50', '66245.50'],
         WHEAT: ['774.30', '775.10'],
         'GOLD-PERP': ['4433.31', '4433.65'],
@@ -464,8 +467,8 @@ describe('MarketWatchPanel symbol visibility', () => {
       };
       Object.entries(expectedPrices).forEach(([symbol, [expectedBid, expectedAsk]]) => {
         const row = screen.getByText(symbol).closest('tr')!;
-        expect(row.querySelector('.rtx-market-watch__price--bid')).toHaveTextContent(expectedBid);
-        expect(row.querySelector('.rtx-market-watch__price--ask')).toHaveTextContent(expectedAsk);
+        expect(row.querySelector('.rtx-market-watch__price--bid')?.textContent).toBe(expectedBid);
+        expect(row.querySelector('.rtx-market-watch__price--ask')?.textContent).toBe(expectedAsk);
       });
     } finally {
       if (offsetWidthDescriptor) {
@@ -668,7 +671,7 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(btcRow).toHaveTextContent('65000');
   });
 
-  it('keeps a compact gap between the search divider and quote column headers', () => {
+  it('places quote column headers directly after the search divider', () => {
     const { container } = render(
       <MarketWatchPanel
         allSymbols={DEFAULT_SYMBOLS}
@@ -679,13 +682,9 @@ describe('MarketWatchPanel symbol visibility', () => {
 
     const search = screen.getByRole('combobox', { name: 'Add symbol' });
     const searchSurface = search.closest<HTMLElement>('.rtx-market-watch__search');
-    const headerGap = container.querySelector<HTMLElement>('.rtx-market-watch__search-table-gap');
     const tableSurface = container.querySelector<HTMLElement>('.rtx-market-watch__table');
 
-    expect(searchSurface?.nextElementSibling).toBe(headerGap);
-    expect(headerGap?.style.height).toBe('6px');
-    expect(headerGap?.style.flex).toBe('0 0 6px');
-    expect(headerGap?.nextElementSibling).toBe(tableSurface);
+    expect(searchSurface?.nextElementSibling).toBe(tableSurface);
 
     fireEvent.focus(search);
     expect(container.querySelector('.rtx-market-watch__search-table-gap')).not.toBeInTheDocument();
@@ -973,7 +972,9 @@ describe('MarketWatchPanel symbol visibility', () => {
       />,
     );
 
-    fireEvent.keyDown(window, { key: 'Delete' });
+    const selectedRow = screen.getByText('EURUSD').closest('tr')!;
+    fireEvent.click(selectedRow);
+    fireEvent.keyDown(selectedRow, { key: 'Delete' });
     expect(getRenderedRowSymbols(container)).toEqual(['XAUUSD', 'BTCUSD']);
     expect(JSON.parse(localStorage.getItem('rtx5_hidden_symbols') ?? '[]')).toEqual(['EURUSD']);
 
@@ -986,6 +987,54 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_DISPLAY_SYMBOLS);
     expect(JSON.parse(localStorage.getItem('rtx5_hidden_symbols') ?? '[]')).toEqual([]);
     expect(screen.queryByText('Hide All')).not.toBeInTheDocument();
+  });
+
+  it('owns Delete only for a focused Market Watch row and yields other controls', () => {
+    const { container } = render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="EURUSD" onSymbolSelect={vi.fn()} />);
+    const globalDelete = vi.fn();
+    const unregister = keyboardShortcutManager.register({ id: 'test.chart-delete', key: 'Delete', description: 'Delete drawing', handler: globalDelete });
+    const dispose = keyboardShortcutManager.initialize();
+    const menu = document.createElement('div'); menu.setAttribute('role', 'menu');
+    const menuButton = document.createElement('button'); menu.append(menuButton);
+    container.querySelector('.rtx-market-watch')!.append(menu);
+    try {
+      fireEvent.keyDown(document.body, { key: 'Delete' });
+      expect(globalDelete).toHaveBeenCalledOnce();
+      expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_DISPLAY_SYMBOLS);
+      fireEvent.keyDown(menuButton, { key: 'Delete' });
+      expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_DISPLAY_SYMBOLS);
+      const search = screen.getByRole('combobox', { name: 'Add symbol' });
+      fireEvent.keyDown(search, { key: 'Delete' });
+      expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_DISPLAY_SYMBOLS);
+      const row = screen.getByText('EURUSD').closest('tr')!;
+      fireEvent.click(row); expect(row).toHaveFocus();
+      fireEvent.keyDown(row, { key: 'Delete', repeat: true });
+      expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_DISPLAY_SYMBOLS);
+      fireEvent.keyDown(row, { key: 'Delete' });
+      expect(getRenderedRowSymbols(container)).toEqual(['XAUUSD', 'BTCUSD']);
+      expect(globalDelete).toHaveBeenCalledOnce();
+    } finally { dispose(); unregister(); menu.remove(); }
+  });
+
+  it('does not override Ctrl+U or trade shortcuts while editing or browsing a local dialog', () => {
+    const { container } = render(<MarketWatchPanel allSymbols={DEFAULT_SYMBOLS} selectedSymbol="EURUSD" onSymbolSelect={vi.fn()} />);
+    const openOrder = vi.fn(); const openDepth = vi.fn();
+    window.addEventListener('openNewOrder', openOrder); window.addEventListener('openDepthOfMarket', openDepth);
+    const help = document.createElement('div'); help.setAttribute('role', 'dialog'); help.dataset.shortcutScope = 'local';
+    const button = document.createElement('button'); help.append(button); container.querySelector('.rtx-market-watch')!.append(help);
+    try {
+      const search = screen.getByRole('combobox', { name: 'Add symbol' });
+      fireEvent.change(search, { target: { value: 'eth' } });
+      fireEvent.keyDown(search, { key: 'u', ctrlKey: true });
+      expect(search).toHaveValue('eth');
+      for (const target of [search, button, document.body]) {
+        fireEvent.keyDown(target, { key: 'F9' });
+        fireEvent.keyDown(target, { key: 'b', altKey: true });
+      }
+      expect(openOrder).not.toHaveBeenCalled(); expect(openDepth).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('openNewOrder', openOrder); window.removeEventListener('openDepthOfMarket', openDepth); help.remove();
+    }
   });
 
   it('exposes keyboard-operable docked search results without a footer add-symbol control', () => {
@@ -1042,9 +1091,8 @@ describe('MarketWatchPanel symbol visibility', () => {
     fireEvent.click(screen.getByText('ETHUSD'));
 
     expect(onSymbolSelect).toHaveBeenCalledWith('ETHUSD');
-    expect(openChartListener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: { symbol: 'ETHUSD', newTab: true },
-    }));
+    expect(onSymbolSelect).toHaveBeenCalledTimes(1);
+    expect(openChartListener).not.toHaveBeenCalled();
     expect(getRenderedRowSymbols(container)).toEqual([...CORE_DEFAULT_SYMBOLS, 'ETHUSD']);
     expect(screen.getByText('ETHUSD')).toBeInTheDocument();
     expect(marketHooks.useLiveQuotes).toHaveBeenCalledWith([...CORE_DEFAULT_SYMBOLS, 'ETHUSD']);
@@ -1072,9 +1120,8 @@ describe('MarketWatchPanel symbol visibility', () => {
     fireEvent.click(option);
 
     expect(onSymbolSelect).toHaveBeenCalledWith('EURUSD');
-    expect(openChartListener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: { symbol: 'EURUSD', newTab: true },
-    }));
+    expect(onSymbolSelect).toHaveBeenCalledTimes(1);
+    expect(openChartListener).not.toHaveBeenCalled();
     expect(getRenderedRowSymbols(container)).toEqual(DEFAULT_DISPLAY_SYMBOLS);
     expect(screen.getByText('EURUSD')).toBeInTheDocument();
     expect(screen.queryByText('EUROUSD')).not.toBeInTheDocument();
@@ -1105,9 +1152,8 @@ describe('MarketWatchPanel symbol visibility', () => {
     fireEvent.click(screen.getByRole('option', { name: /EURUSD/ }));
 
     expect(onSymbolSelect).toHaveBeenCalledWith('EUROUSD');
-    expect(openChartListener).toHaveBeenCalledWith(expect.objectContaining({
-      detail: { symbol: 'EUROUSD', newTab: true },
-    }));
+    expect(onSymbolSelect).toHaveBeenCalledTimes(1);
+    expect(openChartListener).not.toHaveBeenCalled();
     expect(screen.getByText('EURUSD')).toBeInTheDocument();
     expect(screen.queryByText('EUROUSD')).not.toBeInTheDocument();
     expect(marketHooks.useLiveQuotes).toHaveBeenCalledWith(brokerDefaultSymbols);
@@ -1129,7 +1175,7 @@ describe('MarketWatchPanel symbol visibility', () => {
 
     const btcRow = screen.getByText('BTCUSD').closest('tr');
     expect(btcRow).toHaveAttribute('aria-disabled', 'true');
-    expect(btcRow).toHaveTextContent('UNKNOWN');
+    expect(within(btcRow!).getByLabelText(/^BTCUSD unknown(?:,|$)/)).toHaveAttribute('title', expect.stringMatching(/^BTCUSD unknown(?:,|$)/));
     expect(btcRow).toHaveTextContent('65000');
     expect(container.querySelectorAll('tbody tr[aria-disabled="false"]')).toHaveLength(0);
   });
@@ -1285,7 +1331,7 @@ describe('MarketWatchPanel symbol visibility', () => {
 
     const row = screen.getByText('ETHUSD').closest('tr');
     expect(row).toHaveAttribute('aria-disabled', 'true');
-    expect(row).toHaveTextContent('UNAVAILABLE');
+    expect(within(row!).getByLabelText(/^ETHUSD unavailable(?:,|$)/)).toHaveAttribute('title', expect.stringMatching(/^ETHUSD unavailable(?:,|$)/));
     expect(row).toHaveTextContent('3500');
     fireEvent.click(row!);
     expect(onSymbolSelect).toHaveBeenCalledWith('ETHUSD');
@@ -1505,6 +1551,10 @@ describe('MarketWatchPanel symbol visibility', () => {
     expect(getRenderedRowSymbols(container)).toEqual(['ETHUSD']);
 
     fireEvent.keyDown(window, { key: 'Delete' });
+    expect(watchlistState.removeSymbolFromWatchlist).not.toHaveBeenCalled();
+    const selectedRow = screen.getByText('ETHUSD').closest('tr')!;
+    fireEvent.click(selectedRow);
+    fireEvent.keyDown(selectedRow, { key: 'Delete' });
     expect(watchlistState.removeSymbolFromWatchlist).toHaveBeenCalledWith('custom', 'ETHUSD');
   });
 

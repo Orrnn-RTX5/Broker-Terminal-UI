@@ -1,5 +1,7 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
-import React, { useState, useEffect } from 'react';
+import { NewChartSymbolMenu, type NewChartMenuItem } from './NewChartSymbolMenu';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SaveWorkspaceDialog } from '../dialogs/SaveWorkspaceDialog';
 import { PrintSetupDialog } from '../dialogs/PrintSetupDialog';
@@ -15,6 +17,7 @@ import {
 } from '../../services/activeChartSource';
 import { useDesktopRelease } from '../../hooks/useDesktopRelease';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { getTerminalShortcutHint } from '../../services/shortcutCatalog';
 import {
     listWorkspaceProfiles,
     restoreWorkspaceProfile,
@@ -37,12 +40,6 @@ interface SymbolData {
     symbol: string;
     name: string;
     category: string;
-}
-
-interface NewChartMenuItem {
-    label: string;
-    symbol?: string;
-    children?: NewChartMenuItem[];
 }
 
 // Organized symbol catalog for YoForex broker
@@ -100,6 +97,7 @@ const YoForexPanel: React.FC<{
     activePair: string;
     onSelect: (sym: string) => void;
 }> = ({ activePair, onSelect }) => {
+    const tr = useUiTranslation();
     const [search, setSearch] = React.useState('');
 
     const filtered = YOFOREX_SYMBOLS.map(grp => ({
@@ -121,7 +119,7 @@ const YoForexPanel: React.FC<{
                         autoFocus
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        placeholder="Search..."
+                        placeholder={tr("Search...")}
                         className="bg-transparent text-[14px] font-normal text-zinc-200 [.rtx-advanced-view_&]:text-gray-900 placeholder-zinc-600 [.rtx-advanced-view_&]:placeholder-gray-400 outline-none w-full"
                         onClick={e => e.stopPropagation()}
                     />
@@ -151,48 +149,15 @@ const YoForexPanel: React.FC<{
                     </div>
                 ))}
                 {filtered.length === 0 && (
-                    <div className="px-3 py-3 text-center text-[12px] font-normal text-zinc-600 [.rtx-advanced-view_&]:text-gray-500">No pairs found</div>
+                    <div className="px-3 py-3 text-center text-[12px] font-normal text-zinc-600 [.rtx-advanced-view_&]:text-gray-500">{tr("No pairs found")}</div>
                 )}
             </div>
         </div>
     );
 };
 
-// Recursive menu item renderer (for API-loaded symbols)
-const NewChartMenuItemRenderer: React.FC<{ item: NewChartMenuItem; activePair?: string; onClose?: () => void }> = ({ item, activePair, onClose }) => {
-    const hasChildren = item.children && item.children.length > 0;
-    const isActive = item.symbol && item.symbol === activePair;
-
-    const handleClick = () => {
-        if (item.symbol) {
-            window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol: item.symbol, newTab: true } }));
-            onClose?.();
-        }
-    };
-
-    return (
-        <div className="relative group/sub px-1 [&:hover>div.submenu]:block">
-            <button
-                onClick={handleClick}
-                className={`w-full flex min-h-[30px] items-center gap-2 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left cursor-default group ${isActive ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600 bg-emerald-500/10 [.rtx-advanced-view_&]:bg-emerald-50' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
-                    }`}
-            >
-                <span className="w-3 text-[10px] flex-none">{isActive ? '✓' : ''}</span>
-                <span className="flex-1 font-mono">{item.label}</span>
-                {hasChildren && <Icon name="chevron-right" size="xs" className="rtx-menu-icon--neutral" />}
-            </button>
-            {hasChildren && (
-                <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[200px] py-1 z-[102] max-h-[400px] overflow-y-auto no-scrollbar">
-                    {item.children!.map((child, idx) => (
-                        <NewChartMenuItemRenderer key={idx} item={child} activePair={activePair} onClose={onClose} />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-};
-
 export interface FileMenuProps {
+    shortcutsOnly?: boolean;
     onSave?: (workspaceName?: string) => void;
     onSaveAsPicture?: () => void;
     onOpenDataFolder?: () => void;
@@ -212,6 +177,7 @@ export interface FileMenuProps {
 }
 
 export const FileMenu: React.FC<FileMenuProps> = ({
+    shortcutsOnly = false,
     onSave,
     onSaveAsPicture,
     onOpenDataFolder,
@@ -229,6 +195,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     onExit,
     hasUnsavedChanges = false
 }) => {
+    const tr = useUiTranslation();
     const { t } = useTranslation();
     const [showSaveDialog, setShowSaveDialog] = useState(false);
     const [showSavePictureDialog, setShowSavePictureDialog] = useState(false);
@@ -365,6 +332,10 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     // Print state
     const [printPreferences, setPrintPreferences] = useState<PrintPreferences | null>(null);
     const [chartPrintData, setChartPrintData] = useState<ChartPrintData | null>(null);
+    const [printError, setPrintError] = useState<string | null>(null);
+    const [preparingPrint, setPreparingPrint] = useState(false);
+    const printRequest = useRef(0);
+    useEffect(() => () => { printRequest.current += 1; }, []);
 
     const handleSave = () => {
         setShowSaveDialog(true);
@@ -394,15 +365,20 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         openDesktopReleaseDownload(desktopReleaseState.release);
     };
 
-    const handlePrint = async (chartData?: ChartPrintData) => {
-        const data = chartData || generateChartPrintData();
-        const preferences = printPreferences || chartPrinter.getPreferences(accountId);
+    const handlePrint = async (chartData?: ChartPrintData, selectedPreferences?: PrintPreferences) => {
+        const preferences = selectedPreferences || printPreferences || chartPrinter.getPreferences(accountId);
+        const data = chartData || await chartPrinter.captureActiveChartData();
+        if (onPrint) await onPrint(data, preferences);
+        else await chartPrinter.printChart(data, preferences);
+    };
 
-        if (onPrint) {
-            await onPrint(data, preferences);
-        } else {
-            await chartPrinter.printChart(data, preferences);
-        }
+    const handleDirectPrint = async () => {
+        if (preparingPrint) return;
+        setPreparingPrint(true);
+        setPrintError(null);
+        try { await handlePrint(); }
+        catch (error) { setPrintError(error instanceof Error ? error.message : 'The chart could not be printed.'); }
+        finally { setPreparingPrint(false); }
     };
 
     const handleCloseActiveChart = () => {
@@ -428,16 +404,26 @@ export const FileMenu: React.FC<FileMenuProps> = ({
             }
         } catch (error) {
             console.error('[FileMenu] Failed to restore workspace profile:', error);
-            window.alert(error instanceof Error ? error.message : 'The workspace profile could not be restored.');
+            window.alert(tr(error instanceof Error ? error.message : 'The workspace profile could not be restored.'));
         }
     };
 
-    const handlePrintPreview = () => {
+    const handlePrintPreview = async () => {
+        const request = ++printRequest.current;
         onPrintPreview?.();
-        // Generate chart data for preview
-        const data = generateChartPrintData();
-        setChartPrintData(data);
+        setChartPrintData(null);
+        setPrintError(null);
+        setPrintPreferences(printPreferences || chartPrinter.getPreferences(accountId));
+        setPreparingPrint(true);
         setShowPrintPreviewDialog(true);
+        try {
+            const data = await chartPrinter.captureActiveChartData();
+            if (request === printRequest.current) setChartPrintData(data);
+        } catch (error) {
+            if (request === printRequest.current) setPrintError(error instanceof Error ? error.message : 'The chart could not be captured.');
+        } finally {
+            if (request === printRequest.current) setPreparingPrint(false);
+        }
     };
 
     const handlePrintSetup = () => {
@@ -445,36 +431,18 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         setShowPrintSetupDialog(true);
     };
 
-    const generateChartPrintData = (): ChartPrintData => {
-        const activeSource = getActiveChartSource();
-        const chartContainer = activeSource?.container
-            || document.querySelector('.tv-lightweight-charts');
-        let chartCanvas: HTMLCanvasElement | undefined;
-
-        const canvas = activeSource?.canvas || chartContainer?.querySelector('canvas');
-        if (canvas) {
-            const copiedCanvas = document.createElement('canvas');
-            copiedCanvas.width = canvas.width;
-            copiedCanvas.height = canvas.height;
-            const ctx = copiedCanvas.getContext('2d');
-            if (ctx) {
-                ctx.drawImage(canvas, 0, 0);
-                chartCanvas = copiedCanvas;
-            }
-        }
-
-        return {
-            symbol: activeSource?.symbol || selectedSymbol || 'BTCUSD',
-            timeframe: activeSource?.timeframe || timeframe || 'M1',
-            dateRange: {
-                from: new Date(Date.now() - 24 * 60 * 60 * 1000),
-                to: new Date(),
-            },
-            chartCanvas,
-            indicators: [],
-            drawings: [],
+    // Keyboard actions use the same capture, error and dialog lifecycle as File.
+    useEffect(() => {
+        if (!shortcutsOnly) return;
+        const preview = () => { void handlePrintPreview(); };
+        const picture = () => handleSaveAsPicture();
+        window.addEventListener('open-print-preview', preview);
+        window.addEventListener('open-save-picture', picture);
+        return () => {
+            window.removeEventListener('open-print-preview', preview);
+            window.removeEventListener('open-save-picture', picture);
         };
-    };
+    });
 
     const handleExit = () => {
         if (hasUnsavedChanges) {
@@ -503,12 +471,12 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
     return (
         <>
-            <div className="rtx-file-menu rtx-menu-surface min-w-[268px] py-1">
+            {!shortcutsOnly && <div className="rtx-file-menu rtx-menu-surface min-w-[268px] py-1">
                 {(accountId || onLogout) && (
                     <>
                         <div
                             className="mx-1 flex min-h-[50px] items-center gap-2 rounded-sm px-2 py-1.5 text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151]"
-                            aria-label={`Current trading account ${accountId || ''}`.trim()}
+                            aria-label={tr('Current trading account {{value0}}', { value0: accountId || '' }).trim()}
                             data-testid="file-menu-account-header"
                             role="presentation"
                         >
@@ -516,20 +484,20 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                 <Icon name="user" size="sm" />
                             </div>
                             <div className="min-w-0 flex-1">
-                                <div className="text-[11px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-[#667085]">Current account</div>
+                                <div className="text-[11px] font-normal text-zinc-500 [.rtx-advanced-view_&]:text-[#667085]">{tr("Current account")}</div>
                                 <div className="truncate font-mono text-[13px] font-medium text-zinc-200 [.rtx-advanced-view_&]:text-[#101828]">{accountId || '---'}</div>
                             </div>
                             {onLogout && (
                                 <button
                                     type="button"
                                     role="menuitem"
-                                    aria-label="Log Out"
-                                    title="Log out of the current account"
+                                    aria-label={tr("Log Out")}
+                                    title={tr("Log out of the current account")}
                                     onClick={onLogout}
                                     className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-sm border border-rose-500/20 px-2 text-[12px] font-medium text-rose-400 hover:border-rose-500/35 hover:bg-rose-500/10 hover:text-rose-300 [.rtx-advanced-view_&]:border-[#fecdca] [.rtx-advanced-view_&]:text-[#b42318] [.rtx-advanced-view_&]:hover:bg-[#fef3f2] [.rtx-advanced-view_&]:hover:text-[#912018]"
                                 >
                                     <Icon name="log-out" size="xs" />
-                                    <span>Log Out</span>
+                                    <span>{tr("Log Out")}</span>
                                 </button>
                             )}
                         </div>
@@ -543,7 +511,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         onClick={() => setNewChartOpen(o => !o)}
                         className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left cursor-default group ${newChartOpen ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827]' : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
                             }`}
-                        title="Open a new chart for a symbol"
+                        title={tr("Open a new chart for a symbol")}
                     >
                         <div className="w-4 flex items-center justify-center text-emerald-500">
                             <Icon name="plus-circle" size="sm" />
@@ -558,19 +526,16 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                             {isLoadingSymbols ? (
                                 <div className="rtx-menu-surface w-[220px] px-3 py-3 text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 text-[12px] font-normal flex items-center gap-2">
                                     <Icon name="refresh" size="sm" className="animate-spin" />
-                                    Connecting to broker...
-                                </div>
+                                    {tr("Connecting to broker...")}</div>
                             ) : newChartMenuItems.length > 0 ? (
-                                <div className="rtx-menu-surface min-w-[200px] py-1 max-h-[420px] overflow-y-auto no-scrollbar">
-                                    {newChartMenuItems.map((item, idx) => (
-                                        <NewChartMenuItemRenderer
-                                            key={idx}
-                                            item={item}
-                                            activePair={selectedSymbol}
-                                            onClose={() => setNewChartOpen(false)}
-                                        />
-                                    ))}
-                                </div>
+                                <NewChartSymbolMenu
+                                    items={newChartMenuItems}
+                                    activeSymbol={selectedSymbol}
+                                    onSelect={(symbol) => {
+                                        window.dispatchEvent(new CustomEvent('openChart', { detail: { symbol, newTab: true } }));
+                                        setNewChartOpen(false);
+                                    }}
+                                />
                             ) : (
                                 <YoForexPanel
                                     activePair={selectedSymbol}
@@ -591,7 +556,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left ${recentlyClosedCharts.length > 0
                             ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
                             : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'}`}
-                        title={recentlyClosedCharts.length > 0 ? 'Restore a recently closed chart' : 'No recently closed charts'}
+                        title={recentlyClosedCharts.length > 0 ? tr("Restore a recently closed chart") : tr("No recently closed charts")}
                     >
                         <div className="w-4 flex items-center justify-center">
                             <Icon name="history" size="sm" />
@@ -607,7 +572,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                     type="button"
                                     onClick={() => handleRestoreChart(panel.id)}
                                     className="w-full flex min-h-[30px] items-center gap-2 px-3 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default"
-                                    title={`Restore ${panel.title || panel.props?.symbol || 'chart'}`}
+                                    title={tr("Restore {{value0}}", { value0: panel.title || panel.props?.symbol || 'chart' })}
                                 >
                                     <Icon name="candlestick" size="sm" className="rtx-menu-icon--neutral shrink-0" />
                                     <span className="truncate">{panel.title || String(panel.props?.symbol || 'Chart')}</span>
@@ -621,7 +586,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 <div className="relative group/profiles px-1 [&:hover>div.submenu]:block">
                     <button
                         className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default"
-                        title="Load profile configurations"
+                        title={tr("Load profile configurations")}
                     >
                         <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                             <Icon name="layout" size="sm" />
@@ -636,7 +601,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                 type="button"
                                 onClick={() => handleRestoreProfile(profile.name)}
                                 className="w-full flex min-h-[30px] items-center gap-3 px-3 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default"
-                                title={`Restore workspace ${profile.name}`}
+                                title={tr("Restore workspace {{value0}}", { value0: profile.name })}
                             >
                                 <Icon name="layout" size="sm" className="rtx-menu-icon--neutral shrink-0" />
                                 <span className="truncate">{profile.name}</span>
@@ -644,8 +609,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         ))}
                         {workspaceProfiles.length === 0 && (
                             <div className="px-3 py-2 text-[12px] text-zinc-500 [.rtx-advanced-view_&]:text-gray-500">
-                                Save a workspace to create a profile.
-                            </div>
+                                {tr("Save a workspace to create a profile.")}</div>
                         )}
                     </div>
                 </div>
@@ -654,13 +618,13 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 <button
                     onClick={handleCloseActiveChart}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title="Close current chart"
+                    title={tr("Close current chart")}
                 >
                     <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="x-close" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.close')}</span>
-                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">Ctrl+F4</span>
+                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{getTerminalShortcutHint('file.close-chart')}</span>
                 </button>
 
                 <div className="rtx-menu-divider" role="separator"></div>
@@ -669,25 +633,26 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 <button
                     onClick={handleSave}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title="Save workspace configuration"
+                    title={tr("Save workspace configuration")}
                 >
                     <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="save" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.save')}</span>
-                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">Ctrl+S</span>
+                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{tr("Ctrl+S")}</span>
                 </button>
 
                 {/* Save As Picture */}
                 <button
                     onClick={handleSaveAsPicture}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title="Export chart as image"
+                    title={tr("Export chart as image")}
                 >
                     <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="image" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.saveAsPicture')}</span>
+                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{getTerminalShortcutHint('file.save-picture')}</span>
                 </button>
 
                 <div className="rtx-menu-divider" role="separator"></div>
@@ -699,13 +664,15 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left group ${onOpenDataFolder
                         ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
                         : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'}`}
-                    title={onOpenDataFolder ? 'Open application data directory' : 'Available in the desktop app'}
+                    title={onOpenDataFolder ? tr("Open application data directory") : tr("Available in the desktop app")}
                 >
                     <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="folder-open" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.openDataFolder')}</span>
-                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">Ctrl+Shift+D</span>
+                    {onOpenDataFolder && window.electron && (
+                        <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{tr("Ctrl+Shift+D")}</span>
+                    )}
                 </button>
 
                 {showDesktopDownload && (
@@ -717,7 +684,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <div className="w-4 flex items-center justify-center text-sky-400 group-hover:text-sky-300 [.rtx-advanced-view_&]:text-sky-600">
                             <Icon name="download" size="sm" />
                         </div>
-                        <span className="flex-1">Download Desktop App</span>
+                        <span className="flex-1">{tr("Download Desktop App")}</span>
                         {desktopReleaseMetaLabel && (
                             <span className="rounded-[3px] border border-zinc-600/70 [.rtx-advanced-view_&]:border-gray-300 bg-zinc-900/70 [.rtx-advanced-view_&]:bg-gray-100 px-1.5 py-[1px] text-[12px] font-normal text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 font-mono leading-none">{desktopReleaseMetaLabel}</span>
                         )}
@@ -728,34 +695,36 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
                 {/* Print */}
                 <button
-                    onClick={() => { void handlePrint(); }}
+                    onClick={() => { void handleDirectPrint(); }}
+                    disabled={preparingPrint}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title="Print chart"
+                    title={tr("Print chart")}
                 >
                     <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="print" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.print')}</span>
-                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">Ctrl+P</span>
+                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{tr("Ctrl+P")}</span>
                 </button>
 
                 {/* Print Preview */}
                 <button
                     onClick={handlePrintPreview}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title="Preview before printing"
+                    title={tr("Preview before printing")}
                 >
                     <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="file-text" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.printPreview')}</span>
+                    <span className="text-[12px] font-normal text-zinc-500 font-mono tracking-tighter">{getTerminalShortcutHint('file.print-preview')}</span>
                 </button>
 
                 {/* Print Setup */}
                 <button
                     onClick={handlePrintSetup}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title="Configure print settings"
+                    title={tr("Configure print settings")}
                 >
                     <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
                         <Icon name="settings" size="sm" />
@@ -769,7 +738,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 <button
                     onClick={() => setShowOpenAccountDialog(true)}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title="Register new trading account"
+                    title={tr("Register new trading account")}
                 >
                     <div className="w-4 flex items-center justify-center">
                         <Icon name="user-plus" size="sm" className="text-blue-400" />
@@ -784,7 +753,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left ${onLoginTrade
                         ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
                         : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'}`}
-                    title={onLoginTrade ? 'Connect to another trading account' : 'Trade account login is unavailable'}
+                    title={onLoginTrade ? tr("Connect to another trading account") : tr("Trade account login is unavailable")}
                 >
                     <div className="w-4 flex items-center justify-center">
                         <Icon name="log-in" size="sm" className={onLoginTrade ? 'text-blue-400' : 'text-blue-400/50'} />
@@ -799,7 +768,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left ${onLoginWebTrader
                         ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
                         : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'}`}
-                    title={onLoginWebTrader ? 'Open this broker in Web Trader' : 'Web Trader URL is not configured'}
+                    title={onLoginWebTrader ? tr("Open this broker in Web Trader") : tr("Web Trader URL is not configured")}
                 >
                     <div className="w-4 flex items-center justify-center">
                         <Icon name="globe" size="sm" />
@@ -811,7 +780,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 <button
                     disabled
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed"
-                    title="RTX5 Community is not configured for this deployment"
+                    title={tr("RTX5 Community is not configured for this deployment")}
                 >
                     <div className="w-4 flex items-center justify-center">
                         <Icon name="help-circle" size="sm" className="text-blue-500/50" />
@@ -825,15 +794,16 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 <button
                     onClick={handleExit}
                     className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default group"
-                    title="Close application"
+                    title={tr("Close application")}
                 >
                     <div className="w-4 flex items-center justify-center text-rose-400 group-hover:text-rose-300">
                         <Icon name="log-out" size="sm" />
                     </div>
                     <span className="flex-1">{t('menu.file.exit')}</span>
                 </button>
-            </div>
+            </div>}
 
+            {printError && !showPrintPreviewDialog && <div role="alert" className="fixed bottom-10 right-4 z-[10000] max-w-sm rounded border border-red-500/40 bg-[#252528] p-3 text-sm text-red-300">{tr(printError)}</div>}
             {/* Dialogs */}
             {showSaveDialog && (
                 <SaveWorkspaceDialog
@@ -851,7 +821,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                     onConfirm={(preferences) => {
                         setShowPrintSetupDialog(false);
                         setPrintPreferences(preferences);
-                        console.log('Print preferences saved:', preferences);
+                        chartPrinter.setPreferences(preferences, accountId);
                     }}
                     onCancel={() => setShowPrintSetupDialog(false)}
                     accountId={accountId}
@@ -860,8 +830,10 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
             {showPrintPreviewDialog && (
                 <PrintPreviewDialog
-                    onPrint={() => handlePrint(chartPrintData || undefined)}
-                    onClose={() => setShowPrintPreviewDialog(false)}
+                    onPrint={(preferences) => handlePrint(chartPrintData || undefined, preferences)}
+                    isLoading={preparingPrint}
+                    error={printError || undefined}
+                    onClose={() => { printRequest.current += 1; setPreparingPrint(false); setShowPrintPreviewDialog(false); }}
                     chartData={chartPrintData || undefined}
                     preferences={printPreferences || undefined}
                 />
@@ -902,9 +874,9 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                 });
                             } catch (error) {
                                 console.error('[FileMenu] Could not save workspace before exit:', error);
-                                window.alert(error instanceof Error
+                                window.alert(tr(error instanceof Error
                                     ? error.message
-                                    : 'The workspace could not be saved before exit.');
+                                    : 'The workspace could not be saved before exit.'));
                                 return;
                             }
                         }

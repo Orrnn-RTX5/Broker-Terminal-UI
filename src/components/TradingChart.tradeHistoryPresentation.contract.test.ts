@@ -34,10 +34,11 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(chartSource).toContain('const strokeWidth = emphasized ? 1.75 : 1.15;');
     expect(chartSource).toContain('return pnl >= 0 ? chartThemeRef.current.candleUp : chartThemeRef.current.candleDown;');
     expect(chartSource).toContain("const thickness = isHistoryLine ? 1 : lineStyle === 'solid' ? 2 : 1;");
-    expect(chartSource).toContain('const historyVisualOpacity = safeOpacity > 0 ? 0.78 + safeOpacity * 0.22 : 0;');
+    expect(chartSource).toContain('const renderedOpacity = safeOpacity;');
+    expect(chartSource).not.toContain('0.78 + safeOpacity * 0.22');
     expect(chartSource).not.toContain('const historyGlow');
     expect(chartSource).toContain("el.style.transformOrigin = isHistoryLine ? '0 50%' : '0 0';");
-    expect(chartSource).toContain("const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v6-thin-candle-connectors';");
+    expect(chartSource).toContain("const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v7-exact-line-opacity';");
     expect((chartSource.match(/TRADE_HISTORY_PRESENTATION_VERSION/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(chartSource).not.toContain('createTradeHistoryLabel');
   });
@@ -52,7 +53,7 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(chartSource).toContain('const markerHeight = isHistoryMarker ? 15 : 26;');
     expect(chartSource).toContain("hoverTarget.style.cssText = 'position:absolute;display:none;width:32px;height:36px;z-index:22;pointer-events:auto;");
     expect(chartSource).toContain("tooltip.className = 'rtx-trade-marker__price-tooltip';");
-    expect(chartSource).toContain('tooltipHeader.textContent = `${historyPositionSide} ${lifecycleLabel}`;');
+    expect(chartSource).toContain("tooltipHeader.textContent = `${tr(historyPositionSide)} ${tr(lifecycle === 'open' ? 'Open' : 'Close')}`;");
     expect(chartSource).toContain("appendTooltipDetail('Price', title);");
     expect(chartSource).toContain("appendTooltipDetail('Time', timeLabel);");
     expect(chartSource).toContain('pointer-events:none;opacity:0;visibility:hidden;');

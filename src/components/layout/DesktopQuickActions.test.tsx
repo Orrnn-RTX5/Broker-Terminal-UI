@@ -8,8 +8,7 @@ vi.mock('../ui/Icon', () => ({
     Icon: ({ name }: { name: string }) => <span data-testid={`icon-${name}`} />,
 }));
 
-import { DesktopQuickActions } from './DesktopQuickActions';
-import { drawingManager } from '../../services/drawingManager';
+import { DesktopQuickActions, DesktopSymbolSearchButton } from './DesktopQuickActions';
 import {
     activateActiveChartSource,
     clearActiveChartSources,
@@ -18,30 +17,10 @@ import {
 
 const renderQuickActions = (overrides: Partial<React.ComponentProps<typeof DesktopQuickActions>> = {}) => {
     const props: React.ComponentProps<typeof DesktopQuickActions> = {
-        advancedViewEnabled: false,
-        advancedFontSize: 'normal',
-        focusChart: false,
-        activeDrawingTool: null,
-        crosshairEnabled: false,
         accountId: '200002',
         accountName: 'Primary account',
         accountServer: 'Broker-Live',
         savedAccountCount: 2,
-        symbol: 'XAUUSD',
-        connectionState: 'connected',
-        transportSecurity: 'secure',
-        feedStatus: {
-            symbols: ['XAUUSD'],
-            loading: false,
-            settled: true,
-            current: true,
-            error: null,
-        },
-        dispatchCommand: vi.fn(),
-        onSetAdvancedViewEnabled: vi.fn(),
-        onSetAdvancedFontSize: vi.fn(),
-        onSetFocusChart: vi.fn(),
-        onRefreshConnection: vi.fn(),
         onLogout: vi.fn(),
         ...overrides,
     };
@@ -68,60 +47,30 @@ describe('DesktopQuickActions', () => {
         expect(toolbar).toHaveAttribute('data-rtx-desktop-toolbar-cluster', 'right');
         expect(toolbar).toHaveClass('rtx-desktop-command-actions', 'ml-auto', 'shrink-0');
         const labels = within(toolbar).getAllByRole('button').map(button => button.getAttribute('aria-label'));
-        expect(labels.slice(0, -1)).toEqual([
-            'Search Symbols',
-            'Advanced View Settings',
-            'Crosshair',
-            'Cursor',
-            'Trend Line',
-            'Horizontal Line',
-            'Vertical Line',
-            'Equidistant Channel',
-            'Fibonacci Retracement',
-            'Thumbs Up Stamp',
-            'Stamp Picker',
-            'Clear All Drawings',
+        expect(labels).toEqual([
             'Account',
         ]);
-        expect(labels.at(-1)).toBe(
-            'Connection details: Connected; secure transport; XAUUSD live feed verified',
-        );
+        expect(toolbar.querySelector('.rtx-desktop-connection-button')).toBeNull();
     });
 
-    it('dispatches search, crosshair, drawing, stamp, and clear actions', () => {
+    it('keeps search functional without the removed appearance and crosshair buttons', () => {
         const chartContainer = document.createElement('div');
         document.body.appendChild(chartContainer);
         registerActiveChartSource({ id: 'chart-active', getContainer: () => chartContainer });
         activateActiveChartSource('chart-active');
         const openSymbolsSpy = vi.fn();
         window.addEventListener('openSymbolsDialog', openSymbolsSpy, { once: true });
-        const clearAllSpy = vi.spyOn(drawingManager, 'clearAllDrawings');
-        const props = renderQuickActions();
+        renderQuickActions();
 
+        render(<DesktopSymbolSearchButton />);
         fireEvent.click(screen.getByRole('button', { name: 'Search Symbols' }));
         expect(openSymbolsSpy).toHaveBeenCalledTimes(1);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Crosshair' }));
-        expect(props.dispatchCommand).toHaveBeenCalledWith({ type: 'TOGGLE_CROSSHAIR', payload: {} });
+        expect(screen.queryByRole('button', { name: 'Crosshair' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Advanced View Settings' })).not.toBeInTheDocument();
 
-        fireEvent.click(screen.getByRole('button', { name: 'Trend Line' }));
-        expect(props.dispatchCommand).toHaveBeenCalledWith({
-            type: 'SELECT_TOOL',
-            payload: { tool: 'trendline', subtype: undefined },
-        });
-
-        fireEvent.click(screen.getByRole('button', { name: 'Thumbs Up Stamp' }));
-        expect(props.dispatchCommand).toHaveBeenCalledWith({
-            type: 'SELECT_TOOL',
-            payload: { tool: 'stamp', subtype: 'thumbsUp' },
-        });
-
-        fireEvent.click(screen.getByRole('button', { name: 'Clear All Drawings' }));
-        expect(clearAllSpy).toHaveBeenCalledWith(true, 'chart-active');
-        expect(props.dispatchCommand).toHaveBeenLastCalledWith({
-            type: 'SELECT_TOOL',
-            payload: { tool: 'cursor', targetContextId: 'chart-active' },
-        });
+        expect(screen.queryByRole('group', { name: 'Drawing tools' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Stamp Picker' })).not.toBeInTheDocument();
     });
 
     it('uses the saved-account count and keeps account actions functional', () => {
@@ -146,30 +95,4 @@ describe('DesktopQuickActions', () => {
         expect(screen.queryByRole('menu', { name: 'Account' })).not.toBeInTheDocument();
     });
 
-    it('opens exact selected-symbol connection details and refreshes the live sources', () => {
-        const onRefreshConnection = vi.fn();
-        renderQuickActions({
-            symbol: 'EURUSD.r',
-            transportSecurity: 'insecure',
-            feedStatus: {
-                symbols: ['EURUSD.R'],
-                loading: true,
-                settled: true,
-                current: true,
-                error: null,
-            },
-            onRefreshConnection,
-        });
-
-        fireEvent.click(screen.getByRole('button', {
-            name: 'Connection details: Connected; insecure transport; EURUSD.R live feed verified',
-        }));
-        const connectionMenu = screen.getByRole('menu', { name: 'Connection' });
-        expect(within(connectionMenu).getByText('EURUSD.r')).toBeInTheDocument();
-        expect(within(connectionMenu).getByText('WS insecure')).toBeInTheDocument();
-        fireEvent.click(within(connectionMenu).getByRole('menuitem', { name: 'Refresh connection' }));
-
-        expect(onRefreshConnection).toHaveBeenCalledTimes(1);
-        expect(screen.queryByRole('menu', { name: 'Connection' })).not.toBeInTheDocument();
-    });
 });

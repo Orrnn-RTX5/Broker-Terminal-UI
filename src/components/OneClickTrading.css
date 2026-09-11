@@ -1,0 +1,53 @@
+/* Keep all three controls available when several chart columns share a screen. */
+html:root body .rtx-oct[data-compact='true'] > [data-testid='one-click-trading-row'] {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas: 'sell buy' 'volume volume';
+  width: 100%;
+}
+
+html:root body .rtx-oct[data-compact='true'] .rtx-oct-trade-button {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 48px !important;
+  max-height: none !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+html:root body .rtx-oct[data-compact='true'] .rtx-oct-trade-button[data-side='sell'] { grid-area: sell; }
+html:root body .rtx-oct[data-compact='true'] .rtx-oct-trade-button[data-side='buy'] { grid-area: buy; }
+
+html:root body .rtx-oct[data-compact='true'] .rtx-oct-trade-button .rtx-oct-side-label,
+html:root body .rtx-oct[data-compact='true'] .rtx-oct-trade-button .rtx-oct-price {
+  display: block;
+  flex: 0 1 auto;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 4px 2px;
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+html:root body .rtx-oct[data-compact='true'] .rtx-oct-trade-button .rtx-oct-side-label { order: -1; }
+
+html:root body .rtx-oct[data-compact='true'] .rtx-oct-volume-control {
+  grid-area: volume;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+}
+
+html:root body .rtx-oct[data-compact='true'] .rtx-oct-volume-control button {
+  min-width: 24px;
+  min-height: 28px;
+}

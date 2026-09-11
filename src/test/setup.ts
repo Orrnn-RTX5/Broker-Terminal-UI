@@ -52,13 +52,15 @@ const installWindowStorageGlobal = (key: 'localStorage' | 'sessionStorage') => {
   }
 }
 
-installWindowStorageGlobal('localStorage')
-installWindowStorageGlobal('sessionStorage')
-
 // Cleanup after each test
 afterEach(() => {
-  cleanup()
+  if (typeof document !== 'undefined') cleanup()
 })
+
+// Vite/server integration tests use Node; keep browser mocks in DOM environments.
+if (typeof window !== 'undefined') {
+installWindowStorageGlobal('localStorage')
+installWindowStorageGlobal('sessionStorage')
 
 // Mock WebSocket
 globalThis.WebSocket = vi.fn() as unknown as typeof WebSocket
@@ -131,3 +133,4 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   })),
 })
+}

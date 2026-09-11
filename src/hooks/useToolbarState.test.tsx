@@ -9,8 +9,24 @@ import {
   registerActiveChartSource,
 } from '../services/activeChartSource';
 import { useToolbarState } from './useToolbarState';
+import { useDrawingToolPreferencesStore } from '../store/useDrawingToolPreferencesStore';
 
 describe('useToolbarState', () => {
+  it('resets desktop tool state despite a saved repeat preference', () => {
+    const previousBridge = window.electron;
+    const previousKeepDrawing = useDrawingToolPreferencesStore.getState().keepDrawing;
+    Object.defineProperty(window, 'electron', { configurable: true, value: { window: {} } });
+    useDrawingToolPreferencesStore.setState({ keepDrawing: true });
+    try {
+      const { result } = renderHook(() => useToolbarState());
+      act(() => commandBus.dispatch({ type: 'SELECT_TOOL', payload: { tool: 'freehand', targetContextId: 'chart-a' } }));
+      act(() => window.dispatchEvent(new CustomEvent('drawing:saved', { detail: { contextId: 'chart-a', type: 'freehand' } })));
+      expect(result.current.state.activeTool).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'electron', { configurable: true, value: previousBridge });
+      useDrawingToolPreferencesStore.setState({ keepDrawing: previousKeepDrawing });
+    }
+  });
   beforeEach(() => {
     commandBus.clearHistory();
     clearActiveChartSources();

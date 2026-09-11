@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Drawing } from '../../services/drawingManager';
+import { getPictographItems, PICTOGRAPH_CATEGORIES, type PictographTab } from '../../drawing-tools/pictographCatalog';
 import {
   ChartObjectsDialog,
   getChartObjectDisplayName,
@@ -60,6 +61,24 @@ const createDrawingService = (initialDrawings: Drawing[]) => {
 };
 
 describe('ChartObjectsDialog', () => {
+  it('does not capture Escape or Tab from a newer local dialog', () => {
+    const onClose = vi.fn();
+    render(<ChartObjectsDialog isOpen targetContextId="chart-a" symbol="EURUSD" drawingService={createDrawingService([])} onClose={onClose} />);
+    const help = document.createElement('div'); help.setAttribute('role', 'dialog'); help.dataset.shortcutScope = 'local';
+    const button = document.createElement('button'); help.append(button); document.body.append(help); button.focus();
+    const local = vi.fn(); help.addEventListener('keydown', local);
+    try {
+      fireEvent.keyDown(button, { key: 'Escape', cancelable: true });
+      fireEvent.keyDown(button, { key: 'Tab', shiftKey: true, cancelable: true });
+      expect(local).toHaveBeenCalledTimes(2);
+      expect(button).toHaveFocus();
+      expect(onClose).not.toHaveBeenCalled();
+    } finally { help.remove(); }
+    const close = screen.getByRole('button', { name: 'Close' }); close.focus();
+    fireEvent.keyDown(close, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it('renders truthful object labels and keeps selection/deletion scoped to the supplied context', () => {
     const service = createDrawingService([
       makeDrawing({ id: 'd-horizontal-123456', type: 'hline' }),
@@ -167,5 +186,32 @@ describe('ChartObjectsDialog', () => {
     expect(getChartObjectDisplayName({ type: 'trendline', subtype: 'info_line' })).toBe('Info line');
     expect(getChartObjectDisplayName({ type: 'stamp', subtype: 'sell' })).toBe('Sell arrow');
     expect(getChartObjectDisplayName({ type: 'stamp', subtype: 'customMarker' })).toBe('Custom Marker');
+  });
+
+  it.each([
+    ['emojis', 'Emoji', 'Émoji'],
+    ['stickers', 'Sticker', 'Autocollant'],
+    ['icons', 'Icon', 'Icône'],
+  ] as const)('shows a readable %s name and real size while preserving selection and deletion', (tab, kind, translatedKind) => {
+    const category = PICTOGRAPH_CATEGORIES.find(item => getPictographItems(tab as PictographTab, item.id).length > 0)!;
+    const stamp = getPictographItems(tab, category.id)[0];
+    const drawing = makeDrawing({ id: 'd-pictograph', type: 'stamp', subtype: stamp.id });
+    const service = createDrawingService([drawing]);
+    const displayName = `${kind} ${stamp.glyph}`;
+
+    expect(getChartObjectDisplayName(drawing)).toBe(displayName);
+    expect(getChartObjectDisplayName(drawing, label => label === kind ? translatedKind : label))
+      .toBe(`${translatedKind} ${stamp.glyph}`);
+    render(<ChartObjectsDialog isOpen targetContextId="chart-a" symbol="XAUUSD"
+      drawingService={service} onClose={vi.fn()} />);
+
+    expect(screen.getByText(displayName)).toBeInTheDocument();
+    expect(screen.queryByText(stamp.id)).not.toBeInTheDocument();
+    expect(screen.getByText(`${stamp.size}px`)).toBeInTheDocument();
+    expect(screen.queryByText('solid · 2px')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: `Select ${displayName} pictograph` }));
+    expect(service.selectDrawing).toHaveBeenCalledWith('d-pictograph', true, 'chart-a');
+    fireEvent.click(screen.getByRole('button', { name: `Delete ${displayName} pictograph` }));
+    expect(service.deleteDrawing).toHaveBeenCalledWith('d-pictograph', 'chart-a');
   });
 });

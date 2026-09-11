@@ -56,7 +56,8 @@
       "tickVolumes": "Khối lượng Tick",
       "zoomIn": "Phóng to",
       "zoomOut": "Thu nhỏ",
-      "properties": "Thuộc tính"
+      "properties": "Thuộc tính",
+      "areaChart": "Biểu đồ vùng"
     },
     "tools": {
       "label": "Công cụ",
@@ -88,7 +89,7 @@
       "videoGuides": "Hướng dẫn Video",
       "webTrader": "RTX5 Web Trader",
       "documentation": "Tài liệu RTX5",
-      "algoBook": "RTX5 AlgoBook",
+      "algoBook": "Sách thuật toán RTX5",
       "neuroBook": "RTX5 NeuroBook",
       "articles": "Bài viết RTX5",
       "codeBase": "Kho mã RTX5",

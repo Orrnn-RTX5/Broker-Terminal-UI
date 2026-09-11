@@ -12,6 +12,12 @@ const activeChartSource = vi.hoisted(() => ({
 }));
 
 vi.mock('../services/activeChartSource', () => ({
+  activateActiveChartSource: (id: string) => {
+    activeChartSource.id = id;
+    return { id, canvas: null, container: null };
+  },
+  getActiveChartSourceId: () => activeChartSource.id ?? null,
+  subscribeActiveChartSource: () => () => {},
   getActiveChartSource: () => activeChartSource.id ? {
     id: activeChartSource.id,
     canvas: null,
@@ -22,6 +28,8 @@ vi.mock('../services/activeChartSource', () => ({
 }));
 
 import { commandBus } from '../services/commandBus';
+import { keyboardShortcutManager } from '../services/keyboardShortcutManager';
+import { useDrawingSidebarStore } from '../store/useDrawingSidebarStore';
 import { drawingManager } from '../services/drawingManager';
 import { STAMP_OPTIONS } from '../components/layout/stampOptions';
 import {
@@ -36,7 +44,11 @@ import {
 } from './gannFibonacciToolCatalog';
 import { TREND_LINE_TOOLS, type TrendLineToolDefinition } from './toolCatalog';
 import { BRUSH_SHAPE_TOOLS } from './brushShapeToolCatalog';
+import { useChartObjectStateStore } from '../store/useChartObjectStateStore';
+import { useDrawingToolPreferencesStore } from '../store/useDrawingToolPreferencesStore';
 import { WebDrawingToolsRail } from './WebDrawingToolsRail';
+import { useChartZoomStore } from '../store/useChartZoomStore';
+import { getPictographItems } from './pictographCatalog';
 
 type TestWindow = Window & { electronAPI?: unknown };
 
@@ -86,22 +98,70 @@ const selectForecastingMeasurementTool = (tool: ForecastingMeasurementToolDefini
   fireEvent.click(item!);
 };
 
+let disposeKeyboard: (() => void) | undefined;
 beforeEach(() => {
   cleanup();
+  keyboardShortcutManager.clear();
+  disposeKeyboard = keyboardShortcutManager.initialize();
+  useDrawingSidebarStore.setState({ visible: true, requestedMenu: null });
   commandBus.clearHistory();
   window.localStorage.clear();
   activeChartSource.id = 'chart-xauusd-m1';
   delete (window as TestWindow).electronAPI;
   document.documentElement.className = '';
   document.documentElement.removeAttribute('data-theme');
+  useDrawingToolPreferencesStore.setState({ keepDrawing: false, magnetMode: 'off', snapToIndicators: false });
+  useChartObjectStateStore.setState({ byContext: {} });
+  useChartZoomStore.setState({ byContext: {} });
 });
 
 afterEach(() => {
   cleanup();
+  disposeKeyboard?.();
+  keyboardShortcutManager.clear();
   vi.restoreAllMocks();
 });
 
 describe('WebDrawingToolsRail', () => {
+  it('keeps emojis and trading stamps in separate rail sections and arms the active chart', () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const emojiTrigger = screen.getByRole('button', { name: 'Emojis', exact: true });
+    const stampTrigger = screen.getByRole('button', { name: 'Icons and Stamps', exact: true });
+    expect(emojiTrigger.querySelector('svg')?.innerHTML).not.toBe(stampTrigger.querySelector('svg')?.innerHTML);
+    fireEvent.click(emojiTrigger);
+    const picker = screen.getByRole('dialog', { name: 'Emoji picker' });
+    expect(within(picker).queryByRole('menuitemradio', { name: 'Thumbs Up' })).not.toBeInTheDocument();
+    const emoji = getPictographItems('emojis', 'smileys')[0];
+    fireEvent.click(picker.querySelector(`[data-pictograph-id="${emoji.id}"]`)!);
+    expect(commandBus.getHistory().at(-1)).toEqual({
+      type: 'SELECT_TOOL', payload: { tool: 'stamp', subtype: emoji.id, targetContextId: 'chart-xauusd-m1' },
+    });
+    expect(screen.queryByRole('dialog', { name: 'Emoji picker' })).not.toBeInTheDocument();
+    expect(emojiTrigger).toHaveAttribute('data-active', 'true');
+    expect(stampTrigger).toHaveAttribute('data-active', 'false');
+    const stamps = openRailMenu('Icons and Stamps', 'Icons and stamps');
+    expect(within(stamps).getAllByRole('menuitemradio')).toHaveLength(STAMP_OPTIONS.length);
+    fireEvent.click(within(stamps).getByRole('menuitemradio', { name: 'Thumbs Up', exact: true }));
+    expect(commandBus.getHistory().at(-1)).toEqual({
+      type: 'SELECT_TOOL', payload: { tool: 'stamp', subtype: 'thumbsUp', targetContextId: 'chart-xauusd-m1' },
+    });
+    expect(emojiTrigger).toHaveAttribute('data-active', 'false');
+    expect(stampTrigger).toHaveAttribute('data-active', 'true');
+  });
+
+  it('dismisses the emoji picker with Escape or an outside press and restores trigger focus', () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const trigger = screen.getByRole('button', { name: 'Emojis', exact: true });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Emoji picker' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('dialog', { name: 'Emoji picker' })).not.toBeInTheDocument();
+    expect(commandBus.getHistory()).toHaveLength(0);
+  });
+
   it.each(BRUSH_SHAPE_TOOLS)('routes $label to its exact drawing subtype', tool => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     const menu = openRailMenu('Brush tools', 'Brushes, arrows, and shapes');
@@ -126,14 +186,18 @@ describe('WebDrawingToolsRail', () => {
       'Forecasting and measurement tools',
       'Brush tools',
       'Annotation Tools',
+      'Emojis',
       'Icons and Stamps',
+      'Measure',
       'Zoom In',
-      'Magnet Mode',
-      'Hide drawing tools',
+      'Magnet mode',
+      'Keep drawing',
+      'Lock objects',
+      'Hide objects',
       'Remove Drawings',
     ]);
     expect(screen.getByRole('button', { name: 'Cursor' })).toHaveAttribute('data-active', 'true');
-    expect(within(rail).getAllByRole('separator')).toHaveLength(1);
+    expect(within(rail).getAllByRole('separator')).toHaveLength(3);
   });
 
   it('keeps the exact 17-tool catalog in its three ordered flyout groups', () => {
@@ -210,8 +274,8 @@ describe('WebDrawingToolsRail', () => {
       </>);
       fireEvent.click(within(openTrendMenu()).getByRole('menuitemradio', { name: 'Pitchfork', exact: true }));
       expect(commandBus.getHistory()).toHaveLength(1);
-      if (anchorCount) fireEvent.pointerDown(screen.getByTestId('active-chart'));
-      else fireEvent.pointerMove(screen.getByTestId('active-chart'));
+      fireEvent.pointerMove(screen.getByTestId('active-chart'));
+      fireEvent.pointerDown(screen.getByTestId('active-chart'));
       expect(armed).toHaveBeenCalledWith('chart-xauusd-m1');
       expect(commandBus.getHistory()).toHaveLength(1);
       fireEvent.pointerMove(screen.getByTestId('active-chart'));
@@ -221,7 +285,7 @@ describe('WebDrawingToolsRail', () => {
     }
   });
 
-  it('re-arms the selected tool for the chart actually entered after a dock-tab switch', () => {
+  it('re-arms the selected tool for the chart clicked after a dock-tab switch', () => {
     activeChartSource.id = 'chart-before-switch';
     render(
       <>
@@ -240,6 +304,8 @@ describe('WebDrawingToolsRail', () => {
 
     activeChartSource.id = 'chart-after-switch';
     fireEvent.pointerMove(screen.getByTestId('active-chart'));
+    expect(commandBus.getHistory()).toHaveLength(1);
+    fireEvent.pointerDown(screen.getByTestId('active-chart'));
 
     expect(commandBus.getHistory()).toHaveLength(2);
     expect(commandBus.getHistory()[1]).toEqual({
@@ -252,6 +318,35 @@ describe('WebDrawingToolsRail', () => {
     });
 
     fireEvent.pointerMove(screen.getByTestId('active-chart'));
+    expect(commandBus.getHistory()).toHaveLength(2);
+  });
+
+  it('keeps the clicked chart selected during sibling hover and arms the sibling before its first drawing point', () => {
+    activeChartSource.id = 'chart-a';
+    const firstPoint = vi.fn(() => {
+      expect(activeChartSource.id).toBe('chart-b');
+      expect(commandBus.getHistory().at(-1)).toEqual({
+        type: 'SELECT_TOOL', payload: { tool: 'fibonacci', subtype: 'fib_retracement', targetContextId: 'chart-b' },
+      });
+    });
+    render(<>
+      <WebDrawingToolsRail selectedSymbol="XAUUSD" orientation="horizontal" />
+      <div className="rtx-chart-wrapper" data-chart-context-id="chart-a" data-testid="chart-a" />
+      <div className="rtx-chart-wrapper" data-chart-context-id="chart-b" data-testid="chart-b" onPointerDown={firstPoint} />
+    </>);
+    const fibRetracement = GANN_FIBONACCI_TOOLS.find(tool => tool.id === 'fib_retracement')!;
+    selectGannFibonacciTool(fibRetracement);
+    expect(commandBus.getHistory().at(-1)).toMatchObject({ payload: { targetContextId: 'chart-a' } });
+    fireEvent.pointerMove(screen.getByTestId('chart-b'));
+    fireEvent.pointerMove(screen.getByTestId('chart-a'));
+    fireEvent.pointerMove(screen.getByTestId('chart-b'));
+    expect(activeChartSource.id).toBe('chart-a');
+    expect(commandBus.getHistory()).toHaveLength(1);
+    fireEvent.pointerDown(screen.getByTestId('chart-b'));
+    expect(firstPoint).toHaveBeenCalledOnce();
+    expect(commandBus.getHistory()).toHaveLength(2);
+    fireEvent.pointerDown(screen.getByTestId('chart-b'));
+    expect(firstPoint).toHaveBeenCalledTimes(2);
     expect(commandBus.getHistory()).toHaveLength(2);
   });
 
@@ -345,13 +440,12 @@ describe('WebDrawingToolsRail', () => {
     rerender(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     menu = openRailMenu('Annotation Tools', 'Annotation tools');
     expect(within(menu).getAllByRole('menuitemradio').map((item) => item.textContent)).toEqual([
-      'Text',
-      'Callout',
+      'Text', 'Note', 'Price note', 'Pin', 'Table', 'Callout', 'Comment', 'Price label', 'Signpost', 'Flag mark', 'Image', 'Post', 'Idea',
     ]);
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Callout' }));
     expect(commandBus.getHistory().at(-1)).toEqual({
       type: 'SELECT_TOOL',
-      payload: { tool: 'callout', subtype: undefined, targetContextId: 'chart-xauusd-m1' },
+      payload: { tool: 'text', subtype: 'callout', targetContextId: 'chart-xauusd-m1' },
     });
 
     rerender(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
@@ -427,77 +521,241 @@ describe('WebDrawingToolsRail', () => {
     });
   });
 
-  it('keeps the RTX5 collapse control and restores the complete rail without dispatching a tool', () => {
-    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-    selectTrendTool(TREND_LINE_TOOLS[1]);
-    expect(screen.getByRole('button', { name: /Ray — Trend Line Tools$/i })).toHaveAttribute('data-active', 'true');
-
-    openTrendMenu();
-    fireEvent.click(screen.getByRole('button', { name: 'Hide drawing tools' }));
-
-    expect(commandBus.getHistory()).toEqual([{
-      type: 'SELECT_TOOL',
-      payload: { tool: 'trendline', subtype: 'ray', targetContextId: 'chart-xauusd-m1' },
-    }]);
-
-    const rail = screen.getByRole('toolbar', { name: 'Drawing tools for XAUUSD' });
-    const showButton = screen.getByRole('button', { name: 'Show drawing tools' });
-    expect(rail).toHaveAttribute('data-expanded', 'false');
-    expect(showButton).toHaveAttribute('aria-expanded', 'false');
-    expect(showButton.querySelector('img')).toHaveAttribute('src', '/favicon.png');
-    expect(within(rail).getAllByRole('button')).toHaveLength(1);
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-
-    fireEvent.click(showButton);
-    expect(rail).toHaveAttribute('data-expanded', 'true');
-    expect(within(rail).getAllByRole('button')).toHaveLength(12);
-    expect(screen.getByRole('button', { name: /Ray — Trend Line Tools$/i })).toHaveAttribute('data-active', 'true');
-    expect(commandBus.getHistory()).toHaveLength(1);
-  });
-
-  it('routes cursor, zoom, and magnet utilities through the active chart command path', () => {
+  it('routes cursor and zoom utilities through the active chart command path', () => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     const shapes = openRailMenu('Brush tools', 'Brushes, arrows, and shapes');
     fireEvent.click(within(shapes).getByRole('menuitemradio', { name: 'Brush' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cursor' }));
     fireEvent.click(screen.getByRole('button', { name: 'Zoom In' }));
-    const magnet = screen.getByRole('button', { name: 'Magnet Mode' });
-    fireEvent.click(magnet);
 
-    expect(commandBus.getHistory().slice(-3)).toEqual([
+    expect(commandBus.getHistory().slice(-2)).toEqual([
       { type: 'SELECT_TOOL', payload: { tool: 'cursor', targetContextId: 'chart-xauusd-m1' } },
       { type: 'ZOOM_IN', payload: { targetContextId: 'chart-xauusd-m1' } },
-      { type: 'TOGGLE_MAGNET', payload: {} },
     ]);
-    expect(magnet).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps the full shared catalog and scoped emoji/drawing actions in the horizontal desktop toolbar', () => {
+    const view = render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const verticalLabels = within(screen.getByRole('toolbar', { name: 'Drawing tools for XAUUSD' }))
+      .getAllByRole('button').map(button => button.getAttribute('aria-label'));
+    view.rerender(<WebDrawingToolsRail selectedSymbol="XAUUSD" orientation="horizontal" />);
+    const rail = screen.getByRole('toolbar', { name: 'Drawing tools for XAUUSD' });
+    expect(rail).toHaveAttribute('aria-orientation', 'horizontal');
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label')))
+      .toEqual(verticalLabels.filter(label => !['Cursor', 'Keep drawing', 'Zoom In', 'Zoom Out'].includes(label)));
+    const lines = openTrendMenu();
+    expect(within(lines).getAllByRole('menuitemradio')).toHaveLength(TREND_LINE_TOOLS.length);
+    const horizontalLine = within(lines).getAllByRole('menuitemradio').find(item =>
+      item.querySelector('.web-drawing-tools-menu__label')?.textContent === 'Horizontal line');
+    expect(horizontalLine).toBeDefined();
+    fireEvent.click(horizontalLine!);
+    expect(commandBus.getHistory().at(-1)).toEqual({
+      type: 'SELECT_TOOL', payload: { tool: 'hline', subtype: 'horizontal_line', targetContextId: 'chart-xauusd-m1' },
+    });
+    fireEvent.click(within(rail).getByRole('button', { name: 'Emojis', exact: true }));
+    const emoji = getPictographItems('emojis', 'smileys')[0];
+    fireEvent.click(screen.getByRole('dialog', { name: 'Emoji picker' }).querySelector(`[data-pictograph-id="${emoji.id}"]`)!);
+    expect(commandBus.getHistory().at(-1)).toEqual({
+      type: 'SELECT_TOOL', payload: { tool: 'stamp', subtype: emoji.id, targetContextId: 'chart-xauusd-m1' },
+    });
+  });
+
+  it('places horizontal flyouts below the toolbar and keeps them inside a resized viewport', () => {
+    let viewportWidth = 500;
+    let triggerLeft = 450;
+    vi.spyOn(window, 'innerWidth', 'get').mockImplementation(() => viewportWidth);
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(600);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const isMenu = this.classList.contains('web-drawing-tools-menu');
+      const left = isMenu ? 0 : triggerLeft;
+      const top = isMenu ? 0 : 84;
+      const width = isMenu ? 288 : 36;
+      const height = isMenu ? 520 : 32;
+      return { x: left, y: top, left, top, right: left + width, bottom: top + height, width, height, toJSON: () => ({}) } as DOMRect;
+    });
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" orientation="horizontal" />);
+    const menu = openTrendMenu();
+    expect(menu).toHaveStyle({ left: '204px', top: '120px', maxHeight: 'calc(100vh - 128px)' });
+    viewportWidth = 1_000;
+    triggerLeft = 36;
+    act(() => window.dispatchEvent(new Event('resize')));
+    expect(menu).toHaveStyle({ left: '36px', top: '120px', maxHeight: 'calc(100vh - 128px)' });
+  });
+
+  it('shows zoom out directly below zoom in only after the active chart reports a larger scale', () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const zoomIn = screen.getByRole('button', { name: 'Zoom In', exact: true });
+    fireEvent.click(zoomIn);
+    // Dispatch alone must not advertise a successful zoom on an empty chart.
+    expect(screen.queryByRole('button', { name: 'Zoom Out', exact: true })).not.toBeInTheDocument();
+
+    act(() => {
+      const zoom = useChartZoomStore.getState();
+      zoom.syncSpacing('chart-xauusd-m1', 30, true);
+      zoom.syncSpacing('chart-xauusd-m1', 36);
+    });
+    const zoomOut = screen.getByRole('button', { name: 'Zoom Out', exact: true });
+    expect(zoomIn.nextElementSibling).toBe(zoomOut);
+    fireEvent.focus(zoomOut);
+    fireEvent.click(zoomOut);
+    expect(commandBus.getHistory().at(-1)).toEqual({
+      type: 'ZOOM_OUT', payload: { targetContextId: 'chart-xauusd-m1' },
+    });
+    act(() => useChartZoomStore.getState().syncSpacing('chart-xauusd-m1', 30));
+    expect(screen.queryByRole('button', { name: 'Zoom Out', exact: true })).not.toBeInTheDocument();
+    fireEvent.mouseEnter(zoomIn);
+    fireEvent.mouseLeave(zoomIn);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('keeps zoom-out availability local to the selected chart, including same-symbol panels', () => {
+    useChartZoomStore.getState().syncSpacing('chart-xauusd-m1', 8, true);
+    useChartZoomStore.getState().syncSpacing('chart-xauusd-m1', 16);
+    const { rerender } = render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    expect(screen.getByRole('button', { name: 'Zoom Out', exact: true })).toBeInTheDocument();
+    activeChartSource.id = 'second-xauusd-panel';
+    rerender(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    expect(screen.queryByRole('button', { name: 'Zoom Out', exact: true })).not.toBeInTheDocument();
+    activeChartSource.id = 'chart-xauusd-m1';
+    rerender(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    expect(screen.getByRole('button', { name: 'Zoom Out', exact: true })).toBeInTheDocument();
+  });
+
+  it('does not send a zoom command when no chart is available', () => {
+    activeChartSource.id = undefined;
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom In', exact: true }));
+    expect(commandBus.getHistory()).toEqual([]);
+  });
+
+  it('offers weak and strong magnet modes plus indicator snapping behind a flyout', () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const magnet = screen.getByRole('button', { name: 'Magnet mode' });
+    expect(magnet).toHaveAttribute('data-active', 'false');
+
+    const menu = openRailMenu('Magnet mode', 'Magnet mode');
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Strong magnet' }));
+    expect(useDrawingToolPreferencesStore.getState().magnetMode).toBe('strong');
+    expect(screen.getByRole('button', { name: 'Magnet mode' })).toHaveAttribute('data-active', 'true');
+
+    // The flyout stays open so the snap toggle and mode flip remain reachable.
+    const openMenu = screen.getByRole('menu', { name: 'Magnet mode' });
+    fireEvent.click(within(openMenu).getByRole('switch', { name: 'Snap to indicators' }));
+    expect(useDrawingToolPreferencesStore.getState().snapToIndicators).toBe(true);
+    fireEvent.click(within(openMenu).getByRole('menuitemradio', { name: 'Strong magnet' }));
+    expect(useDrawingToolPreferencesStore.getState().magnetMode).toBe('off');
+  });
+
+  it.each(['trendline', 'freehand'])('returns desktop %s tools to idle even with a saved repeat preference', async (type) => {
+    useDrawingToolPreferencesStore.setState({ keepDrawing: true });
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" orientation="horizontal" />);
+    expect(screen.queryByRole('button', { name: 'Cursor' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Keep drawing' })).not.toBeInTheDocument();
+    act(() => commandBus.dispatch({ type: 'SELECT_TOOL', payload: {
+      tool: type, targetContextId: 'chart-xauusd-m1',
+    } }));
+    const history = commandBus.getHistory();
+    act(() => window.dispatchEvent(new CustomEvent('drawing:saved', {
+      detail: { contextId: 'chart-xauusd-m1', type },
+    })));
+    await act(async () => { await Promise.resolve(); });
+    expect(commandBus.getHistory()).toEqual(history);
+    const rail = screen.getByRole('toolbar', { name: 'Drawing tools for XAUUSD' });
+    expect(rail.querySelector('[data-active="true"]')).toBeNull();
+  });
+
+  it('toggles keep drawing so saved drawings re-arm the same tool', async () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+    const keep = screen.getByRole('button', { name: 'Keep drawing' });
+    expect(keep).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(keep);
+    expect(useDrawingToolPreferencesStore.getState().keepDrawing).toBe(true);
+    expect(screen.getByRole('button', { name: 'Keep drawing' })).toHaveAttribute('aria-pressed', 'true');
+
+    selectTrendTool(TREND_LINE_TOOLS[0]);
+    act(() => {
+      window.dispatchEvent(new CustomEvent('drawing:saved', {
+        detail: { contextId: 'chart-xauusd-m1', type: 'trendline' },
+      }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(commandBus.getHistory().at(-1)).toEqual({
+      type: 'SELECT_TOOL',
+      payload: { tool: 'trendline', subtype: 'trendline', targetContextId: 'chart-xauusd-m1' },
+    });
+    expect(screen.getByRole('button', { name: /Trend Line Tools$/i })).toHaveAttribute('data-active', 'true');
+  });
+
+  it('locks drawings and indicators per active chart behind the lock flyout', () => {
+    const setAllDrawingsLocked = vi.spyOn(drawingManager, 'setAllDrawingsLocked').mockImplementation(() => 0);
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+
+    let menu = openRailMenu('Lock objects', 'Lock objects');
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Lock drawings' }));
+    expect(setAllDrawingsLocked).toHaveBeenCalledWith(true, 'chart-xauusd-m1');
+    expect(useChartObjectStateStore.getState().byContext['chart-xauusd-m1']?.drawingsLocked).toBe(true);
+
+    menu = openRailMenu('Lock objects', 'Lock objects');
+    expect(within(menu).getByRole('menuitem', { name: 'Unlock drawings' })).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Lock indicators' }));
+    expect(useChartObjectStateStore.getState().byContext['chart-xauusd-m1']?.indicatorsLocked).toBe(true);
+    expect(screen.getByRole('button', { name: 'Lock objects' })).toHaveAttribute('data-active', 'true');
+  });
+
+  it('hides drawings, indicators, and trade objects per active chart behind the eye flyout', () => {
+    render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
+
+    let menu = openRailMenu('Hide objects', 'Hide objects');
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Hide positions and orders' }));
+    expect(useChartObjectStateStore.getState().byContext['chart-xauusd-m1']?.tradesHidden).toBe(true);
+
+    menu = openRailMenu('Hide objects', 'Hide objects');
+    expect(within(menu).getByRole('menuitem', { name: 'Show positions and orders' })).toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Hide all' }));
+    expect(useChartObjectStateStore.getState().byContext['chart-xauusd-m1']).toEqual({
+      drawingsHidden: true,
+      indicatorsHidden: true,
+      tradesHidden: true,
+      drawingsLocked: false,
+      indicatorsLocked: false,
+    });
   });
 
   it('puts destructive actions behind a remove menu and scopes them to the active chart', () => {
-    const clearAll = vi.spyOn(drawingManager, 'clearAllDrawings').mockImplementation(() => undefined);
+    const deleteDrawing = vi.spyOn(drawingManager, 'deleteDrawing').mockImplementation(() => true);
+    vi.spyOn(drawingManager, 'getDrawings').mockImplementation(() => [
+      { id: 'd-1', locked: false },
+      { id: 'd-2', locked: false },
+    ] as ReturnType<typeof drawingManager.getDrawings>);
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-
-    let menu = openRailMenu('Remove Drawings', 'Remove drawings');
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Delete selected drawing' }));
-    expect(commandBus.getHistory().at(-1)).toEqual({
-      type: 'DELETE_SELECTED_DRAWING',
-      payload: { targetContextId: 'chart-xauusd-m1' },
+    act(() => {
+      window.dispatchEvent(new CustomEvent('indicators:changed', {
+        detail: { contextId: 'chart-xauusd-m1', count: 1 },
+      }));
     });
 
-    menu = openRailMenu('Remove Drawings', 'Remove drawings');
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Remove all drawings' }));
-    expect(clearAll).not.toHaveBeenCalled();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Click again to remove all drawings' }));
-    expect(clearAll).toHaveBeenCalledWith(true, 'chart-xauusd-m1');
+    const menu = openRailMenu('Remove Drawings', 'Remove drawings');
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Remove 2 drawings',
+      'Remove 1 indicator',
+      'Remove 2 drawings & 1 indicator',
+    ]);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Remove 2 drawings' }));
+    expect(deleteDrawing).toHaveBeenCalledWith('d-1', 'chart-xauusd-m1');
+    expect(deleteDrawing).toHaveBeenCalledWith('d-2', 'chart-xauusd-m1');
     expect(commandBus.getHistory().at(-1)).toEqual({
       type: 'SELECT_TOOL',
       payload: { tool: 'cursor', targetContextId: 'chart-xauusd-m1' },
     });
   });
 
-  it('keeps the 40px rail footprint, compact fallback, and unclipped portal surfaces', () => {
+  it('matches the reference rail dimensions with a compact fallback and unclipped portals', () => {
     const css = readFileSync(resolve(process.cwd(), 'src/drawing-tools/WebDrawingToolsRail.css'), 'utf8');
-    expect(css).toMatch(/\.web-drawing-tools-rail\s*\{[\s\S]*?width:\s*40px;[\s\S]*?min-width:\s*40px;/);
-    expect(css).toMatch(/\.web-drawing-tools-rail__button\s*\{[\s\S]*?width:\s*40px;[\s\S]*?height:\s*40px;[\s\S]*?min-height:\s*40px;/);
+    expect(css).toMatch(/\.web-drawing-tools-rail\s*\{[\s\S]*?width:\s*53px;[\s\S]*?min-width:\s*53px;/);
+    expect(css).toMatch(/\.web-drawing-tools-rail__button\s*\{[\s\S]*?width:\s*52px;[\s\S]*?height:\s*38px;[\s\S]*?min-height:\s*38px;/);
     expect(css).toMatch(/\.web-drawing-tools-rail__tools\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?overflow-x:\s*hidden;[\s\S]*?overflow-y:\s*auto;/);
     expect(css).toMatch(/\.web-drawing-tools-rail__footer\s*\{[\s\S]*?flex:\s*0 0 auto;/);
     expect(css).toMatch(/\.web-drawing-tools-tooltip\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?z-index:\s*10030;/);
@@ -624,7 +882,7 @@ describe('WebDrawingToolsRail', () => {
     ['c', 'crossline', 'vline'],
     ['f', 'fib_retracement', 'fibonacci'],
   ] as const)(
-    'captures Alt+%s before document-level global shortcuts and selects %s',
+    'registers Alt+%s in the shared manager and selects %s',
     (key, subtype, tool) => {
       render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
       const documentCapture = vi.fn();
@@ -641,7 +899,7 @@ describe('WebDrawingToolsRail', () => {
       });
 
       expect(event.defaultPrevented).toBe(true);
-      expect(documentCapture).not.toHaveBeenCalled();
+      expect(documentCapture).toHaveBeenCalledOnce();
       expect(commandBus.getHistory()).toEqual([{
         type: 'SELECT_TOOL',
         payload: {
@@ -675,7 +933,7 @@ describe('WebDrawingToolsRail', () => {
     document.removeEventListener('keydown', documentCapture, { capture: true });
   });
 
-  it('does not register drawing shortcut interception in an Electron runtime', () => {
+  it('registers the same scoped drawing shortcuts in an Electron runtime', () => {
     (window as TestWindow).electronAPI = {};
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     const documentCapture = vi.fn();
@@ -687,11 +945,14 @@ describe('WebDrawingToolsRail', () => {
       bubbles: true,
       cancelable: true,
     });
-    document.body.dispatchEvent(event);
+    act(() => { document.body.dispatchEvent(event); });
 
-    expect(event.defaultPrevented).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
     expect(documentCapture).toHaveBeenCalledOnce();
-    expect(commandBus.getHistory()).toEqual([]);
+    expect(commandBus.getHistory()).toEqual([{
+      type: 'SELECT_TOOL',
+      payload: { tool: 'trendline', subtype: 'trendline', targetContextId: 'chart-xauusd-m1' },
+    }]);
 
     document.removeEventListener('keydown', documentCapture, { capture: true });
   });

@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * Alert Card Component
  * Individual alert display with severity indicator and actions
@@ -56,6 +57,7 @@ const SEVERITY_CONFIG = {
 };
 
 export function AlertCard({ alert, onAcknowledge, onSnooze, onDismiss }: AlertCardProps) {
+    const tr = useUiTranslation();
   const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
   const config = SEVERITY_CONFIG[alert.severity];
   const Icon = config.icon;
@@ -102,7 +104,7 @@ export function AlertCard({ alert, onAcknowledge, onSnooze, onDismiss }: AlertCa
         <button
           onClick={() => onDismiss(alert.id)}
           className="text-zinc-500 hover:text-zinc-300 transition-colors p-0.5"
-          title="Dismiss"
+          title={tr("Dismiss")}
         >
           <Icon name="x-close" size="sm" className="w-4 h-4" />
         </button>
@@ -115,8 +117,7 @@ export function AlertCard({ alert, onAcknowledge, onSnooze, onDismiss }: AlertCa
           className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded text-xs font-medium transition-colors border border-emerald-500/20"
         >
           <Icon name="check-circle" size="sm" className="w-3 h-3" />
-          Acknowledge
-        </button>
+          {tr("Acknowledge")}</button>
 
         <div className="relative">
           <button
@@ -124,8 +125,7 @@ export function AlertCard({ alert, onAcknowledge, onSnooze, onDismiss }: AlertCa
             className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800/50 hover:bg-zinc-800 text-zinc-400 rounded text-xs font-medium transition-colors border border-zinc-700/50"
           >
             <Icon name="clock" size="sm" className="w-3 h-3" />
-            Snooze
-          </button>
+            {tr("Snooze")}</button>
 
           {showSnoozeMenu && (
             <div className="absolute bottom-full left-0 mb-1 bg-zinc-900 border border-zinc-800 rounded shadow-lg overflow-hidden z-10">

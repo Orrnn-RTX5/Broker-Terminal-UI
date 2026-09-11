@@ -52,11 +52,12 @@
       "grid": "الشبكة",
       "autoScroll": "تمرير تلقائي",
       "chartShift": "تحريك الرسم البياني",
-      "volumes": "الأحجام",
+      "volumes": "أحجام التداول",
       "tickVolumes": "أحجام التيك",
       "zoomIn": "تكبير",
       "zoomOut": "تصغير",
-      "properties": "الخصائص"
+      "properties": "الخصائص",
+      "areaChart": "مخطط المساحة"
     },
     "tools": {
       "label": "أدوات",
@@ -88,8 +89,8 @@
       "videoGuides": "دليل الفيديو",
       "webTrader": "RTX5 Web Trader",
       "documentation": "وثائق RTX5",
-      "algoBook": "RTX5 AlgoBook",
-      "neuroBook": "RTX5 NeuroBook",
+      "algoBook": "ألغوبوك RTX5",
+      "neuroBook": "جهاز نيورو بوك RTX5",
       "articles": "مقالات RTX5",
       "codeBase": "قاعدة أكواد RTX5",
       "jobs": "وظائف RTX5",

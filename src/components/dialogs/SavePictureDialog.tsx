@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../ui/Icon';
@@ -22,6 +23,7 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
   symbol,
   timeframe,
 }) => {
+    const tr = useUiTranslation();
   const [format, setFormat] = useState<ImageFormat>('png');
   const [quality, setQuality] = useState(0.92);
   const [scale, setScale] = useState(1);
@@ -94,7 +96,7 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#131316] [.rtx-advanced-view_&]:bg-gray-50 rounded-t-lg">
-          <h3 className="text-sm font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-900">Save Chart As Picture</h3>
+          <h3 className="text-sm font-semibold text-zinc-200 [.rtx-advanced-view_&]:text-gray-900">{tr("Save Chart As Picture")}</h3>
           <button
             onClick={onClose}
             disabled={isExporting}
@@ -107,9 +109,9 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
         <div className="p-4 space-y-4 text-sm text-zinc-400 [.rtx-advanced-view_&]:text-gray-600">
           <div className="h-[150px] rounded border border-zinc-700 bg-zinc-950 flex items-center justify-center overflow-hidden">
             {preview ? (
-              <img src={preview} alt="Chart preview" className="max-h-full max-w-full object-contain" />
+              <img src={preview} alt={tr("Chart preview")} className="max-h-full max-w-full object-contain" />
             ) : (
-              <span className="text-xs text-zinc-500">No preview available</span>
+              <span className="text-xs text-zinc-500">{tr("No preview available")}</span>
             )}
           </div>
 
@@ -121,8 +123,7 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
                 checked={format === 'png'}
                 onChange={() => setFormat('png')}
               />
-              PNG
-            </label>
+              {tr("PNG")}</label>
             <label className="flex items-center gap-2">
               <input
                 type="radio"
@@ -130,13 +131,12 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
                 checked={format === 'jpg'}
                 onChange={() => setFormat('jpg')}
               />
-              JPG
-            </label>
+              {tr("JPG")}</label>
           </div>
 
           {format === 'jpg' && (
             <label className="block">
-              <span className="mb-1 block">Quality: {Math.round(quality * 100)}%</span>
+              <span className="mb-1 block">{tr("Quality: ")}{Math.round(quality * 100)}%</span>
               <input
                 type="range"
                 min="0.1"
@@ -150,15 +150,15 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
           )}
 
           <label className="block">
-            <span className="mb-1 block">Scale</span>
+            <span className="mb-1 block">{tr("Scale")}</span>
             <select
               value={scale}
               onChange={(e) => setScale(Number(e.target.value))}
               className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-zinc-200"
             >
-              <option value={1}>1x - Standard</option>
-              <option value={2}>2x - Retina</option>
-              <option value={3}>3x - High resolution</option>
+              <option value={1}>{tr("1x - Standard")}</option>
+              <option value={2}>{tr("2x - Retina")}</option>
+              <option value={3}>{tr("3x - High resolution")}</option>
             </select>
           </label>
 
@@ -169,38 +169,35 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
                 checked={includeSymbolInfo}
                 onChange={(e) => setIncludeSymbolInfo(e.target.checked)}
               />
-              Include Symbol & Timeframe
-            </label>
+              {tr("Include Symbol & Timeframe")}</label>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={includeTimestamp}
                 onChange={(e) => setIncludeTimestamp(e.target.checked)}
               />
-              Include Timestamp
-            </label>
+              {tr("Include Timestamp")}</label>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
                 checked={includeWatermark}
                 onChange={(e) => setIncludeWatermark(e.target.checked)}
               />
-              Include Watermark
-            </label>
+              {tr("Include Watermark")}</label>
           </div>
 
           {includeWatermark && (
             <input
               value={watermarkText}
               onChange={(e) => setWatermarkText(e.target.value)}
-              placeholder="Watermark text"
+              placeholder={tr("Watermark text")}
               className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-zinc-200"
             />
           )}
 
           {error && (
             <div className="rounded border border-red-700 bg-red-900/30 px-3 py-2 text-red-300">
-              {error}
+              {tr(error)}
             </div>
           )}
 
@@ -213,15 +210,13 @@ export const SavePictureDialog: React.FC<SavePictureDialogProps> = ({
             disabled={isExporting}
             className="px-3 py-1 bg-zinc-700 [.rtx-advanced-view_&]:bg-gray-200 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-gray-300 text-white [.rtx-advanced-view_&]:text-gray-800 rounded disabled:opacity-50"
           >
-            Cancel
-          </button>
+            {tr("Cancel")}</button>
           <button
             onClick={handleSave}
             disabled={isExporting}
             className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded disabled:opacity-50"
           >
-            Save Picture
-          </button>
+            {tr("Save Picture")}</button>
         </div>
       </div>
     </div>,

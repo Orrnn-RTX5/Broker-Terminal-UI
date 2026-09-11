@@ -207,8 +207,25 @@ export const getLivePriceOverlayColors = (
   preferredLineColor?: string,
 ): LivePriceOverlayColors => {
   const background = normalizeColorCandidate(colors.background) ?? LIVE_PRICE_FALLBACK_DARK;
+  // Keep the live series hue on light charts instead of falling back to a gray
+  // badge. Darken saturated colors just enough for small white price text.
+  const preferred = normalizeColorCandidate(preferredLineColor);
+  const hex = preferred?.match(/^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if ((getColorLuminance(background) ?? 0) > 0.45 && hex) {
+    const channels = hex.slice(1).map(channel => parseInt(channel, 16));
+    if (Math.max(...channels) - Math.min(...channels) >= 40) {
+      for (let step = 0; step <= 40; step += 1) {
+        const factor = 1 - step / 40;
+        const tone = `#${channels.map(channel => Math.round(channel * factor).toString(16).padStart(2, '0')).join('')}`;
+        if ((getColorContrastRatio(tone, '#ffffff') ?? 0) >= 4.5
+          && hasReadableColorSeparation(tone, background)) {
+          return { lineColor: tone, badgeBackground: tone, badgeTextColor: '#ffffff' };
+        }
+      }
+    }
+  }
   const lineColor = [
-    normalizeColorCandidate(preferredLineColor),
+    preferred,
     normalizeColorCandidate(colors.foreground),
   ].find((candidate): candidate is string => (
     Boolean(candidate) && hasReadableColorSeparation(candidate, background)

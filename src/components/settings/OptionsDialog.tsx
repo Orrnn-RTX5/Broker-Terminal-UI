@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
 import React, { useState, useEffect, useRef } from 'react';
 import { useSettingsStore, type SettingsState } from '../../store/useSettingsStore';
@@ -12,6 +13,7 @@ interface OptionsDialogProps {
 type TabId = 'server' | 'charts' | 'trade' | 'automation' | 'events' | 'notifications' | 'email' | 'ftp' | 'community' | 'signals';
 
 export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose }) => {
+    const tr = useUiTranslation();
     const [activeTab, setActiveTab] = useState<TabId>('server');
     const snapshotRef = useRef<SettingsState | null>(null);
 
@@ -67,7 +69,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose })
             <div className="rtx-options-dialog w-[800px] h-[600px] bg-[#252528] rounded-lg shadow-2xl border border-zinc-700 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="h-10 bg-[#131316] border-b border-zinc-700 flex items-center justify-between px-4 select-none">
-                    <span className="text-[14px] font-semibold text-zinc-200">Options</span>
+                    <span className="text-[14px] font-semibold text-zinc-200">{tr("Options")}</span>
                     <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
                         <Icon name="x-close" size="md" />
                     </button>
@@ -84,7 +86,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose })
                                     ? 'border-zinc-600 text-blue-400 font-semibold'
                                     : 'border-transparent text-zinc-400 font-normal hover:text-zinc-200 hover:bg-zinc-800/50'}`}
                         >
-                            {tab.label}
+                            {tr(tab.label)}
                         </button>
                     ))}
                 </div>
@@ -95,25 +97,22 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose })
                     {activeTab === 'charts' && <ChartsTab />}
                     {activeTab === 'trade' && <TradeTab />}
                     {activeTab === 'automation' && <AutomationTab />}
-                    {activeTab === 'events' && <PlaceholderTab icon={<Icon name="activity" size="xl" />} title="Events" desc="Configure sound notifications and system events." />}
+                    {activeTab === 'events' && <PlaceholderTab icon={<Icon name="activity" size="xl" />} title={tr("Events")} desc="Configure sound notifications and system events." />}
                     {activeTab === 'notifications' && <NotificationPreferences />}
-                    {activeTab === 'email' && <PlaceholderTab icon={<Icon name="mail" size="xl" />} title="Email" desc="SMTP server configuration for alerts." />}
-                    {activeTab === 'ftp' && <PlaceholderTab icon={<Icon name="hard-drive" size="xl" />} title="FTP" desc="Automated report publishing settings." />}
-                    {activeTab === 'community' && <PlaceholderTab icon={<Icon name="globe" size="xl" />} title="RTX5 Community" desc="Login to the proprietary RTX5 ecosystem." />}
-                    {activeTab === 'signals' && <PlaceholderTab icon={<Icon name="wifi" size="xl" />} title="RTX5 Signals Hub" desc="Subscribe to institutional signal providers." />}
+                    {activeTab === 'email' && <PlaceholderTab icon={<Icon name="mail" size="xl" />} title={tr("Email")} desc="SMTP server configuration for alerts." />}
+                    {activeTab === 'ftp' && <PlaceholderTab icon={<Icon name="hard-drive" size="xl" />} title={tr("FTP")} desc="Automated report publishing settings." />}
+                    {activeTab === 'community' && <PlaceholderTab icon={<Icon name="globe" size="xl" />} title={tr("RTX5 Community")} desc="Login to the proprietary RTX5 ecosystem." />}
+                    {activeTab === 'signals' && <PlaceholderTab icon={<Icon name="wifi" size="xl" />} title={tr("RTX5 Signals Hub")} desc="Subscribe to institutional signal providers." />}
                 </div>
 
                 {/* Footer */}
                 <div className="h-14 bg-[#131316] border-t border-zinc-700 flex items-center justify-end px-4 gap-3">
                     <button onClick={handleCancel} className="rounded px-4 py-1.5 text-[14px] font-normal text-zinc-300 transition-colors hover:bg-zinc-700">
-                        Cancel
-                    </button>
+                        {tr("Cancel")}</button>
                     <button onClick={handleOK} className="rounded bg-zinc-700 px-4 py-1.5 text-[14px] font-semibold text-white transition-colors hover:bg-zinc-600">
-                        Apply
-                    </button>
+                        {tr("Apply")}</button>
                     <button onClick={handleOK} className="rounded bg-zinc-700 px-4 py-1.5 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-zinc-600">
-                        OK
-                    </button>
+                        {tr("OK")}</button>
                 </div>
             </div>
         </div>
@@ -121,6 +120,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose })
 };
 
 const ServerTab = () => {
+    const tr = useUiTranslation();
     const server = useSettingsStore((state) => state.server);
     const updateServerSettings = useSettingsStore((state) => state.updateServerSettings);
     const accountId = useAppStore(state => state.accountId);
@@ -128,7 +128,7 @@ const ServerTab = () => {
     return (
         <div className="space-y-6 text-[14px] font-normal text-zinc-300">
             <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                <label className="text-right text-zinc-400">Server:</label>
+                <label className="text-right text-zinc-400">{tr("Server:")}</label>
                 <input
                     type="text"
                     value={server.serverName || "RTX 5 Web Terminal"}
@@ -136,13 +136,13 @@ const ServerTab = () => {
                     className="w-full bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none cursor-not-allowed opacity-80 text-zinc-400"
                 />
 
-                <label className="text-right text-zinc-400">Login:</label>
-                <input type="text" value={accountId || "Guest"} readOnly className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none focus:border-zinc-600" />
+                <label className="text-right text-zinc-400">{tr("Login:")}</label>
+                <input type="text" value={accountId || tr("Guest")} readOnly className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none focus:border-zinc-600" />
 
-                <label className="text-right text-zinc-400">Password:</label>
+                <label className="text-right text-zinc-400">{tr("Password:")}</label>
                 <div className="flex gap-2">
                     <input type="password" value="********" readOnly className="flex-1 bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 outline-none focus:border-zinc-600" />
-                    <button className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-zinc-200">Change</button>
+                    <button className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 rounded text-zinc-200">{tr("Change")}</button>
                 </div>
             </div>
 
@@ -154,8 +154,8 @@ const ServerTab = () => {
                         onChange={(e) => updateServerSettings({ proxyEnabled: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-0 focus:ring-offset-0"
                     />
-                    <span>Enable proxy server</span>
-                    <button className="ml-auto px-3 py-0.5 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700">Proxy...</button>
+                    <span>{tr("Enable proxy server")}</span>
+                    <button className="ml-auto px-3 py-0.5 bg-zinc-800 border border-zinc-700 rounded hover:bg-zinc-700">{tr("Proxy...")}</button>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -164,7 +164,7 @@ const ServerTab = () => {
                         onChange={(e) => updateServerSettings({ keepPersonalSettings: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-0 focus:ring-offset-0"
                     />
-                    <span>Keep personal settings and data at startup</span>
+                    <span>{tr("Keep personal settings and data at startup")}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -173,7 +173,7 @@ const ServerTab = () => {
                         onChange={(e) => updateServerSettings({ enableNews: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-0 focus:ring-offset-0"
                     />
-                    <span>Enable news</span>
+                    <span>{tr("Enable news")}</span>
                 </label>
             </div>
         </div>
@@ -181,6 +181,7 @@ const ServerTab = () => {
 };
 
 const ChartsTab = () => {
+    const tr = useUiTranslation();
     const charts = useSettingsStore((state) => state.charts);
     const updateChartsSettings = useSettingsStore((state) => state.updateChartsSettings);
 
@@ -194,7 +195,7 @@ const ChartsTab = () => {
                         onChange={(e) => updateChartsSettings({ showTradeHistory: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span>Show trade history</span>
+                    <span>{tr("Show trade history")}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -203,7 +204,7 @@ const ChartsTab = () => {
                         onChange={(e) => updateChartsSettings({ showTradeLevels: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span>Show trade levels</span>
+                    <span>{tr("Show trade levels")}</span>
                 </label>
                 <div className="ml-6">
                     <select
@@ -211,8 +212,8 @@ const ChartsTab = () => {
                         onChange={(e) => updateChartsSettings({ tradeLevelsDragging: e.target.value as 'enabled' | 'disabled' })}
                         className="w-full bg-[#131316] border border-zinc-700 rounded px-2 py-1"
                     >
-                        <option value="enabled">Enable dragging of trade levels</option>
-                        <option value="disabled">Disable dragging</option>
+                        <option value="enabled">{tr("Enable dragging of trade levels")}</option>
+                        <option value="disabled">{tr("Disable dragging")}</option>
                     </select>
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -222,7 +223,7 @@ const ChartsTab = () => {
                         onChange={(e) => updateChartsSettings({ preloadChartData: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span>Preload chart data for open positions and orders</span>
+                    <span>{tr("Preload chart data for open positions and orders")}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -231,7 +232,7 @@ const ChartsTab = () => {
                         onChange={(e) => updateChartsSettings({ showObjectPropertiesAfterCreation: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span>Show object properties after creation</span>
+                    <span>{tr("Show object properties after creation")}</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -240,12 +241,12 @@ const ChartsTab = () => {
                         onChange={(e) => updateChartsSettings({ selectObjectAfterCreation: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span>Select object after creation</span>
+                    <span>{tr("Select object after creation")}</span>
                 </label>
             </div>
 
             <div className="grid grid-cols-[120px_1fr] gap-4 pt-4 border-t border-zinc-700/50">
-                <label className="text-right text-zinc-400">Magnet sensitivity:</label>
+                <label className="text-right text-zinc-400">{tr("Magnet sensitivity:")}</label>
                 <select
                     value={charts.magnetSensitivity}
                     onChange={(e) => updateChartsSettings({ magnetSensitivity: parseInt(e.target.value) })}
@@ -256,14 +257,14 @@ const ChartsTab = () => {
                     <option value="20">20</option>
                 </select>
 
-                <label className="text-right text-zinc-400">Max bars in chart:</label>
+                <label className="text-right text-zinc-400">{tr("Max bars in chart:")}</label>
                 <select
                     value={charts.maxBarsInChart}
                     onChange={(e) => updateChartsSettings({ maxBarsInChart: e.target.value === 'unlimited' ? 'unlimited' : parseInt(e.target.value) })}
                     className="w-32 bg-[#131316] border border-zinc-700 rounded px-2 py-1"
                 >
                     <option value="100000">100000</option>
-                    <option value="unlimited">Unlimited</option>
+                    <option value="unlimited">{tr("Unlimited")}</option>
                 </select>
             </div>
         </div>
@@ -271,6 +272,7 @@ const ChartsTab = () => {
 };
 
 const TradeTab = () => {
+    const tr = useUiTranslation();
     const trade = useSettingsStore((state) => state.trade);
     const updateTradeSettings = useSettingsStore((state) => state.updateTradeSettings);
     const selectedSymbol = useAppStore((state) => state.selectedSymbol);
@@ -278,25 +280,25 @@ const TradeTab = () => {
     return (
         <div className="space-y-5 text-[14px] font-normal text-zinc-300">
             <div className="grid grid-cols-[100px_1fr_1fr] gap-4 items-center">
-                <label className="text-right text-zinc-400">Symbol:</label>
+                <label className="text-right text-zinc-400">{tr("Symbol:")}</label>
                 <select
                     value={trade.defaultSymbolMode}
                     onChange={(e) => updateTradeSettings({ defaultSymbolMode: e.target.value as 'automatic' | 'last-used' })}
                     className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 focus:border-zinc-600"
                 >
-                    <option value="automatic">Automatic</option>
-                    <option value="last-used">Last Used</option>
+                    <option value="automatic">{tr("Automatic")}</option>
+                    <option value="last-used">{tr("Last Used")}</option>
                 </select>
                 <div className="text-zinc-500 italic">{selectedSymbol || 'EURUSD'}</div>
 
-                <label className="text-right text-zinc-400">Volume:</label>
+                <label className="text-right text-zinc-400">{tr("Volume:")}</label>
                 <select
                     value={trade.defaultVolumeMode}
                     onChange={(e) => updateTradeSettings({ defaultVolumeMode: e.target.value as 'last-used' | 'default' })}
                     className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 focus:border-zinc-600"
                 >
-                    <option value="last-used">Last Used</option>
-                    <option value="default">Default</option>
+                    <option value="last-used">{tr("Last Used")}</option>
+                    <option value="default">{tr("Default")}</option>
                 </select>
                 <input
                     type="number"
@@ -307,14 +309,14 @@ const TradeTab = () => {
                     className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 w-24"
                 />
 
-                <label className="text-right text-zinc-400">Deviation:</label>
+                <label className="text-right text-zinc-400">{tr("Deviation:")}</label>
                 <select
                     value={trade.defaultDeviationMode}
                     onChange={(e) => updateTradeSettings({ defaultDeviationMode: e.target.value as 'last-used' | 'default' })}
                     className="bg-[#131316] border border-zinc-700 rounded px-2 py-1.5 focus:border-zinc-600"
                 >
-                    <option value="last-used">Last Used</option>
-                    <option value="default">Default</option>
+                    <option value="last-used">{tr("Last Used")}</option>
+                    <option value="default">{tr("Default")}</option>
                 </select>
                 <input
                     type="number"
@@ -337,17 +339,17 @@ const TradeTab = () => {
                         <div className="w-9 h-5 bg-zinc-700 rounded-full peer peer-checked:bg-blue-600 transition-colors"></div>
                         <div className="absolute left-1 top-1 w-3 h-3 bg-white rounded-full peer-checked:translate-x-4 transition-transform"></div>
                     </div>
-                    <span className="font-medium group-hover:text-white transition-colors">One Click Trading</span>
+                    <span className="font-medium group-hover:text-white transition-colors">{tr("One Click Trading")}</span>
                 </label>
                 <p className="ml-11 mt-2 text-[12px] font-normal text-zinc-500">
-                    Allows performing trade operations with a single mouse click without additional confirmation.
-                </p>
+                    {tr("Allows performing trade operations with a single mouse click without additional confirmation.")}</p>
             </div>
         </div>
     );
 };
 
 const AutomationTab = () => {
+    const tr = useUiTranslation();
     const [newURL, setNewURL] = useState('');
     const automation = useSettingsStore((state) => state.automation);
     const updateAutomationSettings = useSettingsStore((state) => state.updateAutomationSettings);
@@ -377,7 +379,7 @@ const AutomationTab = () => {
                         onChange={(e) => updateAutomationSettings({ enableStrategies: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span className="font-medium text-zinc-200">Enable automated strategies</span>
+                    <span className="font-medium text-zinc-200">{tr("Enable automated strategies")}</span>
                 </label>
                 <div className="ml-6 space-y-2 text-zinc-400">
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -388,7 +390,7 @@ const AutomationTab = () => {
                             disabled={!automation.enableStrategies}
                             className="rounded bg-zinc-700 border-zinc-600 text-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         />
-                        <span>Disable strategies when the account has been changed</span>
+                        <span>{tr("Disable strategies when the account has been changed")}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -398,7 +400,7 @@ const AutomationTab = () => {
                             disabled={!automation.enableStrategies}
                             className="rounded bg-zinc-700 border-zinc-600 text-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         />
-                        <span>Disable strategies when the profile has been changed</span>
+                        <span>{tr("Disable strategies when the profile has been changed")}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -408,7 +410,7 @@ const AutomationTab = () => {
                             disabled={!automation.enableStrategies}
                             className="rounded bg-zinc-700 border-zinc-600 text-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         />
-                        <span>Disable strategies when the charts symbol or period has been changed</span>
+                        <span>{tr("Disable strategies when the charts symbol or period has been changed")}</span>
                     </label>
                 </div>
             </div>
@@ -422,9 +424,8 @@ const AutomationTab = () => {
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
                     <span className="flex items-center gap-2">
-                        External library access (DLL)
-                        <Icon name="alert-triangle" size="xs" className="text-amber-500" />
-                        <span className="text-zinc-500">(potentially dangerous, enable only for trusted applications)</span>
+                        {tr("External library access (DLL)")}<Icon name="alert-triangle" size="xs" className="text-amber-500" />
+                        <span className="text-zinc-500">{tr("(potentially dangerous, enable only for trusted applications)")}</span>
                     </span>
                 </label>
             </div>
@@ -437,7 +438,7 @@ const AutomationTab = () => {
                         onChange={(e) => updateAutomationSettings({ allowWebRequest: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span>Allow WebRequest for listed URL:</span>
+                    <span>{tr("Allow WebRequest for listed URL:")}</span>
                 </label>
                 <div className="border border-zinc-700 rounded bg-[#131316] h-32 overflow-y-auto">
                     {automation.allowedURLs.map((url, index) => (
@@ -467,8 +468,7 @@ const AutomationTab = () => {
                                 onClick={handleAddURL}
                                 className="text-[14px] font-normal text-emerald-500 hover:text-emerald-400"
                             >
-                                ADD
-                            </button>
+                                {tr("ADD")}</button>
                         )}
                     </div>
                 </div>
@@ -478,6 +478,7 @@ const AutomationTab = () => {
 };
 
 const NotificationsTab = () => {
+    const tr = useUiTranslation();
     const notifications = useSettingsStore((state) => state.notifications);
     const updateNotificationsSettings = useSettingsStore((state) => state.updateNotificationsSettings);
 
@@ -491,11 +492,10 @@ const NotificationsTab = () => {
                         onChange={(e) => updateNotificationsSettings({ enablePushNotifications: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span className="font-medium text-zinc-200">Enable push notifications</span>
+                    <span className="font-medium text-zinc-200">{tr("Enable push notifications")}</span>
                 </label>
                 <p className="ml-6 text-[12px] font-normal text-zinc-500">
-                    Send notifications to RTX5 Mobile app for important trading events.
-                </p>
+                    {tr("Send notifications to RTX5 Mobile app for important trading events.")}</p>
             </div>
 
             <div className="space-y-3 pt-4 border-t border-zinc-700/50">
@@ -506,11 +506,10 @@ const NotificationsTab = () => {
                         onChange={(e) => updateNotificationsSettings({ enableSoundAlerts: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span className="font-medium text-zinc-200">Enable sound alerts</span>
+                    <span className="font-medium text-zinc-200">{tr("Enable sound alerts")}</span>
                 </label>
                 <p className="ml-6 text-[12px] font-normal text-zinc-500">
-                    Play audio notifications for order fills, stop-loss hits, and other events.
-                </p>
+                    {tr("Play audio notifications for order fills, stop-loss hits, and other events.")}</p>
             </div>
 
             <div className="space-y-3 pt-4 border-t border-zinc-700/50">
@@ -521,28 +520,26 @@ const NotificationsTab = () => {
                         onChange={(e) => updateNotificationsSettings({ enableEmailAlerts: e.target.checked })}
                         className="rounded bg-zinc-700 border-zinc-600 text-blue-500"
                     />
-                    <span className="font-medium text-zinc-200">Enable email alerts</span>
+                    <span className="font-medium text-zinc-200">{tr("Enable email alerts")}</span>
                 </label>
                 <p className="ml-6 text-[12px] font-normal text-zinc-500">
-                    Send email notifications for critical account events and margin calls.
-                </p>
+                    {tr("Send email notifications for critical account events and margin calls.")}</p>
             </div>
 
             <div className="pt-4 border-t border-zinc-700/50 text-zinc-500">
                 <p className="text-[12px] font-normal">
-                    Configure specific notification rules and thresholds in the Events tab.
-                </p>
+                    {tr("Configure specific notification rules and thresholds in the Events tab.")}</p>
             </div>
         </div>
     );
 };
 
-const PlaceholderTab = ({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) => (
+const PlaceholderTab = ({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) => { const tr = useUiTranslation(); return ((
     <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
         <div className="text-zinc-600">{icon}</div>
         <div>
-            <h3 className="text-[14px] font-semibold text-zinc-300">{title}</h3>
-            <p className="mx-auto max-w-xs text-[12px] font-normal text-zinc-500">{desc}</p>
+            <h3 className="text-[14px] font-semibold text-zinc-300">{tr(title)}</h3>
+            <p className="mx-auto max-w-xs text-[12px] font-normal text-zinc-500">{tr(desc)}</p>
         </div>
     </div>
-);
+)); };

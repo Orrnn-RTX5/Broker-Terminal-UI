@@ -5,6 +5,11 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppShell from './AppShell';
 
+const runtimeWindow = window as Window & {
+  __RTX_RUNTIME_CONFIG__?: Record<string, unknown>;
+  RUNTIME_CONFIG?: Record<string, unknown>;
+};
+
 const shellMocks = vi.hoisted(() => ({
   terminalRender: vi.fn(),
 }));
@@ -27,7 +32,8 @@ vi.mock('./App', () => ({
 }));
 
 vi.mock('./services/screenshotService', () => ({}));
-vi.mock('./i18n', () => ({
+vi.mock('./i18n', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./i18n')>(),
   i18nReady: Promise.resolve(),
 }));
 vi.mock('./authenticatedStyles', () => ({}));
@@ -64,12 +70,18 @@ describe('AppShell startup boundary', () => {
     localStorage.clear();
     sessionStorage.clear();
     shellMocks.terminalRender.mockClear();
+    delete runtimeWindow.RUNTIME_CONFIG;
+    delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+    vi.stubEnv('VITE_BROKER_ID', '');
   });
 
   afterEach(() => {
     cleanup();
     localStorage.clear();
     sessionStorage.clear();
+    delete runtimeWindow.RUNTIME_CONFIG;
+    delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+    vi.unstubAllEnvs();
   });
 
   it('keeps a known-expired stored session on the lightweight login path', async () => {
@@ -124,6 +136,44 @@ describe('AppShell startup boundary', () => {
       () => expect(view.getByTestId('authenticated-terminal')).toBeTruthy(),
       { timeout: 5_000 },
     );
+  });
+
+  it('opens the configured broker login without loading a previous broker session', async () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web', BROKER_ID: 'achiever-financials',
+      API_HOST: 'https://service.achieverfinancials.com',
+    };
+    localStorage.setItem('broker_id', 'TEST');
+    localStorage.setItem('server_url', 'https://fxtrustbrokerbackend.orrnn.com');
+    localStorage.setItem('rtx_last_login', '200002');
+    localStorage.setItem('auth_token', 'previous-broker-token');
+    localStorage.setItem('token_expires_at', new Date(Date.now() + 60_000).toISOString());
+    const loadStoredSessionTerminal = vi.fn<() => Promise<typeof import('./App')>>();
+
+    const view = render(<AppShell loadStoredSessionTerminal={loadStoredSessionTerminal} />);
+
+    expect(view.getByTestId('login-input')).toBeTruthy();
+    expect(loadStoredSessionTerminal).not.toHaveBeenCalled();
+    expect(shellMocks.terminalRender).not.toHaveBeenCalled();
+    expect(localStorage.getItem('auth_token')).toBeNull();
+    expect(localStorage.getItem('broker_id')).toBe('achiever-financials');
+  });
+
+  it('restores a matching configured broker session on reload', async () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web', BROKER_ID: 'achiever-financials',
+      API_HOST: 'https://service.achieverfinancials.com',
+    };
+    localStorage.setItem('broker_id', 'achiever-financials');
+    localStorage.setItem('server_url', 'https://service.achieverfinancials.com');
+    localStorage.setItem('rtx_last_login', '200002');
+    localStorage.setItem('auth_token', 'matching-broker-token');
+    localStorage.setItem('token_expires_at', new Date(Date.now() + 60_000).toISOString());
+
+    const view = render(<AppShell />);
+
+    await waitFor(() => expect(view.getByTestId('authenticated-terminal')).toBeTruthy());
+    expect(localStorage.getItem('auth_token')).toBe('matching-broker-token');
   });
 
   it('does not mount the authenticated terminal before login', async () => {

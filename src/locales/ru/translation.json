@@ -52,11 +52,12 @@
       "grid": "Сетка",
       "autoScroll": "Автопрокрутка",
       "chartShift": "Сдвиг графика",
-      "volumes": "Объемы",
+      "volumes": "Объёмы",
       "tickVolumes": "Тиковые объемы",
       "zoomIn": "Увеличить",
       "zoomOut": "Уменьшить",
-      "properties": "Свойства"
+      "properties": "Свойства",
+      "areaChart": "Диаграмма площади"
     },
     "tools": {
       "label": "Сервис",
@@ -86,10 +87,10 @@
       "whatsNew": "Что нового",
       "telegramChannel": "Telegram-канал RTX5",
       "videoGuides": "Видеоуроки",
-      "webTrader": "RTX5 Web Trader",
+      "webTrader": "Веб-трейдер RTX5",
       "documentation": "Документация RTX5",
-      "algoBook": "RTX5 AlgoBook",
-      "neuroBook": "RTX5 NeuroBook",
+      "algoBook": "Алгобук RTX5",
+      "neuroBook": "RTX5 НейроКнига",
       "articles": "Статьи RTX5",
       "codeBase": "База кода RTX5",
       "jobs": "Работа RTX5",

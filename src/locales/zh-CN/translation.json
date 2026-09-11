@@ -56,11 +56,12 @@
       "tickVolumes": "报价成交量",
       "zoomIn": "放大",
       "zoomOut": "缩小",
-      "properties": "属性"
+      "properties": "属性",
+      "areaChart": "面积图"
     },
     "tools": {
       "label": "工具",
-      "newOrder": "新订单",
+      "newOrder": "新建订单",
       "strategyTester": "策略测试器",
       "scriptEditor": "RTX5 脚本编辑器",
       "agentsManager": "代理管理器",
@@ -88,7 +89,7 @@
       "videoGuides": "视频指南",
       "webTrader": "RTX5 网页交易",
       "documentation": "RTX5 文档",
-      "algoBook": "RTX5 AlgoBook",
+      "algoBook": "RTX5算法书",
       "neuroBook": "RTX5 NeuroBook",
       "articles": "RTX5 文章",
       "codeBase": "RTX5 代码库",

@@ -38,11 +38,11 @@ describe('OrderPanelDialog presentation contract', () => {
   });
 
   it('provides one functional close control and accessible field labels', () => {
-    expect(dialogSource).toContain('aria-label="Close New Order dialog"');
+    expect(dialogSource).toContain('aria-label={tr("Close New Order dialog")}');
     expect(dialogSource).not.toContain('>—</button>');
     expect(dialogSource).not.toContain('>□</button>');
     expect(dialogSource).toContain('htmlFor={volumeFieldId}');
-    expect(dialogSource).toContain('aria-label="Increase volume"');
+    expect(dialogSource).toContain('aria-label={tr("Increase volume")}');
     expect(dialogSource).toContain('role="dialog"');
   });
 });

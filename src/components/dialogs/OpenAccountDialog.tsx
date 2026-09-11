@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, ChevronRight, ExternalLink, Building2, Shield, Globe, CheckCircle2, Copy, Loader2 } from 'lucide-react';
@@ -193,6 +194,7 @@ const mapDiscoveryBroker = (broker: ReturnType<typeof extractBrokerDiscoveryList
 });
 
 export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
+    const tr = useUiTranslation();
     const [step, setStep] = useState(0);
     const [brokers, setBrokers] = useState<BrokerServer[]>([]);
     const [loadingBrokers, setLoadingBrokers] = useState(false);
@@ -477,7 +479,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         type="text"
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        placeholder="Search broker name or server address…"
+                        placeholder={tr("Search broker name or server address…")}
                         className="w-full rounded-lg py-2 pl-9 pr-3 text-[14px] font-normal text-zinc-300 transition-all placeholder:text-zinc-600 focus:outline-none"
                         style={{
                             background: 'rgba(255,255,255,0.04)',
@@ -492,8 +494,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             {/* Section header */}
             <div className="flex items-center gap-2">
                 <span className="text-[12px] font-normal uppercase tracking-widest text-zinc-500">
-                    Available Brokers
-                </span>
+                    {tr("Available Brokers")}</span>
                 <div className="flex-1 h-px opacity-30" style={{ background: 'linear-gradient(90deg, rgba(180,180,190,0.3), transparent)' }} />
                 <span
                     className="px-1.5 py-0.5 rounded text-[9px] font-bold"
@@ -508,12 +509,12 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 {loadingBrokers ? (
                     <div className="flex flex-col items-center gap-2 py-10 text-[12px] font-normal text-zinc-600">
                         <Loader2 className="w-6 h-6 animate-spin opacity-50" />
-                        <p>Loading brokers…</p>
+                        <p>{tr("Loading brokers…")}</p>
                     </div>
                 ) : filteredBrokers.length === 0 ? (
                     <div className="py-10 text-center text-[12px] font-normal text-zinc-600">
                         <Globe className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        <p>No brokers found</p>
+                        <p>{tr("No brokers found")}</p>
                     </div>
                 ) : (
                     filteredBrokers.map((broker, i) => {
@@ -574,7 +575,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 >
                     <ExternalLink className="w-3 h-3 text-zinc-400 flex-shrink-0" />
                     <p className="text-[12px] font-normal text-zinc-500">
-                        Clicking <span className="text-zinc-400 font-semibold">Next</span> will proceed with{' '}
+                        {tr("Clicking ")}<span className="text-zinc-400 font-semibold">{tr("Next")}</span> {tr(" will proceed with")}{' '}
                         <span className="text-zinc-300">{selectedBroker.broker_name}</span>
                         <span className="text-zinc-600 font-mono ml-1">({selectedBroker.broker_id})</span>
                     </p>
@@ -589,60 +590,60 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="flex flex-col gap-6 pt-2">
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
-                        <input aria-label="Demo account" type="radio" checked={accountType === 'demo'} onChange={() => { setAccountType('demo'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
+                        <input aria-label={tr("Demo account")} type="radio" checked={accountType === 'demo'} onChange={() => { setAccountType('demo'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div>
-                        <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">Open a demo account to trade virtual money without risk</div>
-                        <div className="mt-1 text-[12px] font-normal leading-relaxed text-zinc-500">A demo account allows you to learn trading on stock exchanges and test your strategies without risking real money.</div>
+                        <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">{tr("Open a demo account to trade virtual money without risk")}</div>
+                        <div className="mt-1 text-[12px] font-normal leading-relaxed text-zinc-500">{tr("A demo account allows you to learn trading on stock exchanges and test your strategies without risking real money.")}</div>
                     </div>
                 </label>
 
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
-                        <input aria-label="Real account" type="radio" checked={accountType === 'real'} onChange={() => { setAccountType('real'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
+                        <input aria-label={tr("Real account")} type="radio" checked={accountType === 'real'} onChange={() => { setAccountType('real'); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div>
-                        <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">Open a real account for live trading</div>
-                        <div className="mt-1 text-[12px] font-normal leading-relaxed text-zinc-500">A real account requires additional proof of identity. You will need to provide copies of identification documents.</div>
+                        <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">{tr("Open a real account for live trading")}</div>
+                        <div className="mt-1 text-[12px] font-normal leading-relaxed text-zinc-500">{tr("A real account requires additional proof of identity. You will need to provide copies of identification documents.")}</div>
                     </div>
                 </label>
 
                 <label className="flex items-start gap-3 cursor-pointer group">
                     <div className="flex items-center h-5">
-                        <input aria-label="Existing account" type="radio" checked={accountType === 'existing'} onChange={() => { setAccountType('existing'); setExistingBroker(selectedBroker || null); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
+                        <input aria-label={tr("Existing account")} type="radio" checked={accountType === 'existing'} onChange={() => { setAccountType('existing'); setExistingBroker(selectedBroker || null); setValidationError(''); }} className="w-4 h-4 accent-indigo-500" />
                     </div>
                     <div className="w-full">
-                        <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">Connect with an existing trade account</div>
+                        <div className="text-[14px] font-normal text-zinc-200 transition-colors group-hover:text-white">{tr("Connect with an existing trade account")}</div>
                         {accountType === 'existing' && (
                             <div className="mt-3 flex flex-col gap-2">
                                 <div className="flex items-center gap-3">
-                                    <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Login:</span>
+                                    <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Login:")}</span>
                                     <input
-                                        aria-label="Existing account ID"
+                                        aria-label={tr("Existing account ID")}
                                         inputMode="numeric"
                                         autoComplete="username"
                                         type="text"
                                         value={existingLogin}
                                         onChange={e => setExistingLogin(e.target.value)}
                                         className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1 text-[14px] font-normal text-white outline-none focus:border-indigo-500"
-                                        placeholder="Account ID"
+                                        placeholder={tr("Account ID")}
                                     />
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Password:</span>
+                                    <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Password:")}</span>
                                     <input
-                                        aria-label="Existing account password"
+                                        aria-label={tr("Existing account password")}
                                         autoComplete="current-password"
                                         type="password"
                                         value={existingPassword}
                                         onChange={e => setExistingPassword(e.target.value)}
                                         className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1 text-[14px] font-normal text-white outline-none focus:border-indigo-500"
-                                        placeholder="Password"
+                                        placeholder={tr("Password")}
                                     />
                                 </div>
                                 {/* Server dropdown with search */}
                                 <div className="flex items-start gap-3">
-                                    <span className="mt-1.5 w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Server:</span>
+                                    <span className="mt-1.5 w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Server:")}</span>
                                     <div className="flex-1 relative">
                                         <button
                                             type="button"
@@ -658,7 +659,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                                         </span>
                                                     </>
                                                 ) : (
-                                                    <span className="text-zinc-600">Select server…</span>
+                                                    <span className="text-zinc-600">{tr("Select server…")}</span>
                                                 )}
                                             </div>
                                             <ChevronRight className={`w-3 h-3 text-zinc-500 flex-shrink-0 transition-transform ${existingServerDropOpen ? 'rotate-90' : ''}`} />
@@ -671,7 +672,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                                         type="text"
                                                         value={existingServerSearch}
                                                         onChange={e => setExistingServerSearch(e.target.value)}
-                                                        placeholder="Search broker or server…"
+                                                        placeholder={tr("Search broker or server…")}
                                                         className="h-[24px] w-full rounded border border-zinc-600/40 bg-[#131520] px-2 text-[14px] font-normal text-zinc-200 outline-none placeholder:text-zinc-600"
                                                         onClick={e => e.stopPropagation()}
                                                     />
@@ -710,49 +711,45 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-5">
                 <div className="mb-3 flex items-center gap-2 text-[14px] font-semibold text-amber-300">
                     <Shield className="h-4 w-4" />
-                    Identity verification is required
-                </div>
+                    {tr("Identity verification is required")}</div>
                 <p className="text-[13px] leading-relaxed text-zinc-300">
-                    {selectedBroker?.broker_name || 'The selected broker'} must complete identity checks and approve a live trading agreement before opening a real account.
-                </p>
+                    {selectedBroker?.broker_name || 'The selected broker'} {tr(" must complete identity checks and approve a live trading agreement before opening a real account.")}</p>
                 <p className="mt-3 text-[12px] leading-relaxed text-zinc-500">
-                    This terminal will not create or fund a real account automatically. Contact the broker through its verified customer-support or onboarding channel.
-                </p>
+                    {tr("This terminal will not create or fund a real account automatically. Contact the broker through its verified customer-support or onboarding channel.")}</p>
             </div>
         </div>
     ) : (
         <div className="flex-1 overflow-hidden flex flex-col p-5">
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">First name:</span>
-                    <input aria-label="First name" autoComplete="given-name" type="text" value={formData.firstName} onChange={e => setFormData(s => ({ ...s, firstName: e.target.value }))} className="flex-1 rounded border border-indigo-500 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("First name:")}</span>
+                    <input aria-label={tr("First name")} autoComplete="given-name" type="text" value={formData.firstName} onChange={e => setFormData(s => ({ ...s, firstName: e.target.value }))} className="flex-1 rounded border border-indigo-500 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none" />
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Last name:</span>
-                    <input aria-label="Last name" autoComplete="family-name" type="text" value={formData.lastName} onChange={e => setFormData(s => ({ ...s, lastName: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Last name:")}</span>
+                    <input aria-label={tr("Last name")} autoComplete="family-name" type="text" value={formData.lastName} onChange={e => setFormData(s => ({ ...s, lastName: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="h-2" />
                 <div className="flex items-center gap-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Email:</span>
-                    <input aria-label="Email" autoComplete="email" type="email" value={formData.email} onChange={e => setFormData(s => ({ ...s, email: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Email:")}</span>
+                    <input aria-label={tr("Email")} autoComplete="email" type="email" value={formData.email} onChange={e => setFormData(s => ({ ...s, email: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="flex items-center gap-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Mobile Phone:</span>
-                    <input aria-label="Mobile phone" autoComplete="tel" type="tel" value={formData.phone} onChange={e => setFormData(s => ({ ...s, phone: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Mobile Phone:")}</span>
+                    <input aria-label={tr("Mobile phone")} autoComplete="tel" type="tel" value={formData.phone} onChange={e => setFormData(s => ({ ...s, phone: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-transparent px-2 py-1.5 text-[14px] font-normal text-white outline-none focus:border-indigo-500" />
                 </div>
                 <div className="h-2" />
                 <div className="flex items-center gap-2 w-1/2 pr-2 mt-2">
-                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Country:</span>
-                    <select aria-label="Country" value={formData.country} onChange={e => setFormData(s => ({ ...s, country: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
-                        <option value="US">United States (US)</option>
-                        <option value="IN">India (IN)</option>
+                    <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Country:")}</span>
+                    <select aria-label={tr("Country")} value={formData.country} onChange={e => setFormData(s => ({ ...s, country: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
+                        <option value="US">{tr("United States (US)")}</option>
+                        <option value="IN">{tr("India (IN)")}</option>
                     </select>
                 </div>
                 <div className="pl-[104px] pt-4">
                     <p className="text-[12px] font-normal leading-tight text-zinc-500">
-                        Personal details are used for opening a trade account and are not passed to any third parties.<br />
-                        The information is handled securely and confidentially.
-                    </p>
+                        {tr("Personal details are used for opening a trade account and are not passed to any third parties.")}<br />
+                        {tr("The information is handled securely and confidentially.")}</p>
                 </div>
             </div>
         </div>
@@ -764,15 +761,15 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 flex-1">
-                        <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Currency:</span>
-                        <select aria-label="Currency" value={formData.currency} onChange={e => setFormData(s => ({ ...s, currency: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
-                            <option value="USD">USD</option>
-                            <option value="EUR">EUR</option>
+                        <span className="w-24 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Currency:")}</span>
+                        <select aria-label={tr("Currency")} value={formData.currency} onChange={e => setFormData(s => ({ ...s, currency: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
+                            <option value="USD">{tr("USD")}</option>
+                            <option value="EUR">{tr("EUR")}</option>
                         </select>
                     </div>
                     <div className="flex items-center gap-2 flex-1">
-                        <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">Leverage:</span>
-                        <select aria-label="Leverage" value={formData.leverage} onChange={e => setFormData(s => ({ ...s, leverage: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
+                        <span className="w-16 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Leverage:")}</span>
+                        <select aria-label={tr("Leverage")} value={formData.leverage} onChange={e => setFormData(s => ({ ...s, leverage: e.target.value }))} className="flex-1 rounded border border-zinc-700 bg-[#1a1c23] px-2 py-1.5 text-[14px] font-normal text-zinc-300 outline-none">
                             <option value="100">1:100</option>
                             <option value="200">1:200</option>
                             <option value="500">1:500</option>
@@ -781,15 +778,15 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 </div>
                 <div className="h-4" />
                 <div className="flex items-start gap-2 pl-[104px]">
-                    <input aria-label="Accept account terms" type="checkbox" className="mt-0.5 accent-indigo-500 w-3 h-3" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} />
+                    <input aria-label={tr("Accept account terms")} type="checkbox" className="mt-0.5 accent-indigo-500 w-3 h-3" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} />
                     <div>
-                        <span className="block text-[14px] font-normal text-zinc-300">I agree with the terms and conditions for opening an account and the data protection policy</span>
-                        <a href="https://rtx5.orrnn.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="mt-1 block text-[14px] font-normal text-indigo-400 hover:text-indigo-300">www.rtx5.orrnn.com</a>
+                        <span className="block text-[14px] font-normal text-zinc-300">{tr("I agree with the terms and conditions for opening an account and the data protection policy")}</span>
+                        <a href="https://rtx5.orrnn.com/terms-conditions" target="_blank" rel="noopener noreferrer" className="mt-1 block text-[14px] font-normal text-indigo-400 hover:text-indigo-300">{tr("www.rtx5.orrnn.com")}</a>
                     </div>
                 </div>
                 {createError && (
                     <div role="alert" className="mt-2 rounded border border-red-500/20 bg-red-500/10 p-2 pl-[104px] text-[12px] font-normal text-red-400">
-                        {createError}
+                        {tr(createError)}
                     </div>
                 )}
             </div>
@@ -804,8 +801,8 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/20">
                     <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                 </div>
-                <h3 className="text-white font-semibold text-[16px] mb-1">Registration Complete</h3>
-                <p className="mb-6 text-center text-[12px] font-normal text-zinc-400">Your demo account has been successfully created.<br />Save any credentials returned by the broker.</p>
+                <h3 className="text-white font-semibold text-[16px] mb-1">{tr("Registration Complete")}</h3>
+                <p className="mb-6 text-center text-[12px] font-normal text-zinc-400">{tr("Your demo account has been successfully created.")}<br />{tr("Save any credentials returned by the broker.")}</p>
                 <div className="w-full bg-[#1a1c23] border border-zinc-700/50 rounded-xl p-5 flex flex-col gap-3">
                     {[
                         { label: 'Login (Account)', value: createdAccount.login, mono: true, color: 'text-emerald-400', size: 'text-[16px]' },
@@ -818,7 +815,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         { label: 'Leverage', value: `1:${createdAccount.leverage || formData.leverage}` },
                     ].filter(isSummaryRow).map((row) => (
                         <div key={row.label} className="flex justify-between items-center pb-3 border-b border-zinc-800/80 last:border-0 last:pb-0">
-                            <span className="text-[12px] font-normal uppercase tracking-wider text-zinc-500">{row.label}</span>
+                            <span className="text-[12px] font-normal uppercase tracking-wider text-zinc-500">{tr(row.label)}</span>
                             <div className="flex items-center gap-2">
                                 <span className={`${row.color || 'text-zinc-200'} ${row.mono ? 'font-mono' : ''} ${row.size || (row.small ? 'text-[12px]' : 'text-[14px]')} ${row.small ? 'max-w-[200px] truncate' : ''} font-normal`}>{String(row.value)}</span>
                                 {row.mono && (
@@ -832,7 +829,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 </div>
                 <div className="mt-5 flex w-full items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-center text-[12px] font-normal leading-relaxed text-yellow-500/90">
                     <Shield className="w-4 h-4 flex-shrink-0 mt-0.5 opacity-80" />
-                    <span className="text-left">The terminal does not store account passwords. Copy any credentials returned by the broker and keep them private.</span>
+                    <span className="text-left">{tr("The terminal does not store account passwords. Copy any credentials returned by the broker and keep them private.")}</span>
                 </div>
             </div>
         );
@@ -890,14 +887,14 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         )}
                         <div>
                             <h2 className="text-[14px] font-semibold text-white tracking-tight">
-                                {step > 0 ? `Open an Account: ${selectedBroker?.broker_name || 'Broker'}` : header.title}
+                                {step > 0 ? tr("Open an Account: {{value0}}", { value0: selectedBroker?.broker_name || tr('Broker') }) : tr(header.title)}
                             </h2>
-                            <p className="mt-0.5 text-[12px] font-normal text-zinc-500">{step > 0 ? header.title : header.sub}</p>
+                            <p className="mt-0.5 text-[12px] font-normal text-zinc-500">{tr(step > 0 ? header.title : header.sub)}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-1">
-                        <button className="flex h-7 w-7 items-center justify-center rounded-md text-[14px] font-normal text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300" title="Help">?</button>
-                        <button onClick={closeDialog} className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-red-500/20 transition-all" title="Close">
+                        <button className="flex h-7 w-7 items-center justify-center rounded-md text-[14px] font-normal text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300" title={tr("Help")}>?</button>
+                        <button onClick={closeDialog} className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-red-500/20 transition-all" title={tr("Close")}>
                             <X className="w-3.5 h-3.5" />
                         </button>
                     </div>
@@ -912,8 +909,8 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 {/* Footer */}
                 <div className="flex items-center justify-between px-5 py-4 mt-auto" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     <div className="max-w-[280px] text-[12px] font-normal">
-                        {validationError ? <span role="alert" className="text-red-400">{validationError}</span> : (
-                            <span className="text-zinc-600">{step === 0 ? 'Double-click to proceed immediately' : ''}</span>
+                        {validationError ? <span role="alert" className="text-red-400">{tr(validationError)}</span> : (
+                            <span className="text-zinc-600">{step === 0 ? tr("Double-click to proceed immediately") : ''}</span>
                         )}
                     </div>
                     <div className="flex items-center gap-2">
@@ -923,8 +920,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                 className="rounded-lg px-5 py-2 text-[14px] font-normal text-zinc-400 transition-all hover:text-zinc-200"
                                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
                             >
-                                &lt; Back
-                            </button>
+                                {tr("< Back")}</button>
                         )}
                         <button
                             onClick={handleNext}
@@ -932,15 +928,14 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                             className="flex items-center gap-2 rounded-lg px-5 py-2 text-[14px] font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-40"
                             style={{ background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', boxShadow: '0 4px 20px rgba(180,180,190,0.4), inset 0 1px 0 rgba(255,255,255,0.15)' }}
                         >
-                            {actionLabel}
+                            {tr(actionLabel)}
                         </button>
                         <button
                             onClick={closeDialog}
                             className="ml-1 rounded-lg px-5 py-2 text-[14px] font-normal text-zinc-400 transition-all hover:text-zinc-200"
                             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
                         >
-                            Cancel
-                        </button>
+                            {tr("Cancel")}</button>
                     </div>
                 </div>
             </div>

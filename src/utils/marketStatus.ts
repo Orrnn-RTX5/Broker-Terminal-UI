@@ -1,4 +1,6 @@
 import type { MarketStatus } from '../types/api';
+import { translateUi } from '../hooks/useUiTranslation';
+import i18n from '../i18n';
 
 export type KnownMarketStatus = MarketStatus['status'];
 export type NormalizedMarketStatusValue = KnownMarketStatus | 'unknown';
@@ -178,6 +180,19 @@ export const createUnavailableMarketStatus = (symbol?: string): NormalizedMarket
   normalizeMarketStatus(null, { symbol })
 );
 
+/** Format cached session timestamps at render time so language changes do not
+ * depend on the next broker status refresh. Normalized API state stays stable. */
+export const formatMarketStatusSchedule = (
+  marketStatus: Pick<NormalizedMarketStatus, 'isOpen' | 'sessionOpenTimeMs' | 'sessionCloseTimeMs'>,
+): string | undefined => {
+  const sessionTime = formatMarketSessionTimestamp(
+    marketStatus.isOpen ? marketStatus.sessionCloseTimeMs : marketStatus.sessionOpenTimeMs,
+    { locale: i18n.resolvedLanguage || i18n.language },
+  );
+  if (!sessionTime) return undefined;
+  return translateUi(marketStatus.isOpen ? 'Closes {{value0}}' : 'Opens {{value0}}', { value0: sessionTime });
+};
+
 export const shouldBlockSymbolTrading = (
   marketStatus: Pick<NormalizedMarketStatus, 'isTradeBlocked' | 'symbol'>,
   fallbackSymbol?: string,
@@ -194,16 +209,22 @@ export const getMarketStatusTradeBlockMessage = (
   if (!shouldBlockSymbolTrading(marketStatus, fallbackSymbol)) return '';
 
   const symbol = normalizeSymbol(marketStatus.symbol) ?? normalizeSymbol(fallbackSymbol);
-  const suffix = symbol ? ` for ${symbol}` : '';
-
   if (marketStatus.status === 'closed') {
-    return `Market is closed${suffix}.`;
+    return symbol
+      ? translateUi('Market is closed for {{value0}}.', { value0: symbol })
+      : translateUi('Market is closed.');
   }
   if (marketStatus.status === 'pre_market') {
-    return `${symbol ? `${symbol} is` : 'Market is'} in pre-market. Trading is currently disabled.`;
+    return symbol
+      ? translateUi('{{value0}} is in pre-market. Trading is currently disabled.', { value0: symbol })
+      : translateUi('Market is in pre-market. Trading is currently disabled.');
   }
   if (marketStatus.status === 'after_hours') {
-    return `${symbol ? `${symbol} is` : 'Market is'} after hours. Trading is currently disabled.`;
+    return symbol
+      ? translateUi('{{value0}} is after hours. Trading is currently disabled.', { value0: symbol })
+      : translateUi('Market is after hours. Trading is currently disabled.');
   }
-  return `Market status unavailable${suffix}. Trading is blocked until status refreshes.`;
+  return symbol
+    ? translateUi('Market status unavailable for {{value0}}. Trading is blocked until status refreshes.', { value0: symbol })
+    : translateUi('Market status unavailable. Trading is blocked until status refreshes.');
 };

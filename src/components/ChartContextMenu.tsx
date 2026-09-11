@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * MT5-Style Chart Right-Click Context Menu
  * Full-featured, themed to match project dark theme
@@ -158,6 +159,7 @@ interface MenuItemProps {
 const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
     { icon, label, shortcut, onClick, hasSubmenu, active, checked, disabled }
     , ref) => {
+    const tr = useUiTranslation();
     const bg = active ? C_ITEM_ACTIVE_BG : 'transparent';
     const fg = disabled ? C_DISABLED : active ? C_ITEM_ACTIVE_FG : C_TEXT;
 
@@ -197,7 +199,7 @@ const MenuItem = React.forwardRef<HTMLDivElement, MenuItemProps>((
                 ) : icon ? icon : null}
             </span>
 
-            <span style={{ flex: 1, whiteSpace: 'nowrap' }}>{label}</span>
+            <span style={{ flex: 1, whiteSpace: 'nowrap' }}>{tr(label)}</span>
 
             {shortcut && <Shortcut keys={shortcut} />}
             {hasSubmenu && (
@@ -215,6 +217,7 @@ const Submenu = ({ children, label, icon, disabled }: {
     icon?: React.ReactNode;
     disabled?: boolean;
 }) => {
+    const tr = useUiTranslation();
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
     const [submenuStyle, setSubmenuStyle] = useState<React.CSSProperties>({ left: '100%', top: 0 });
@@ -261,7 +264,7 @@ const Submenu = ({ children, label, icon, disabled }: {
                 <span style={{ width: 18, height: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {icon}
                 </span>
-                <span style={{ flex: 1, whiteSpace: 'nowrap' }}>{label}</span>
+                <span style={{ flex: 1, whiteSpace: 'nowrap' }}>{tr(label)}</span>
                 <ChevronRight size={13} style={{ color: open ? C_ACTIVE_FG : C_HEADER, flexShrink: 0, opacity: 0.85 }} />
             </div>
 
@@ -328,6 +331,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
     currentIndicators = [],
     currentDrawingTools = [],
 }) => {
+    const tr = useUiTranslation();
     const templates = useTemplates();
     const menuRef = useRef<HTMLDivElement>(null);
     const [menuLayout, setMenuLayout] = useState<MenuLayout | null>(null);
@@ -496,7 +500,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── New Order (highlighted) ── */}
             <MenuItem
                 icon={<FileText size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-red, #ff4d4f)' }} />}
-                label="New Order"
+                label={tr("New Order")}
                 shortcut="F9"
                 highlight={false}
                 onClick={() => { onOpenNewOrder(); onClose(); }}
@@ -504,16 +508,16 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
 
             {/* ── Trading submenu ── */}
             <Submenu
-                label="Trading"
+                label={tr("Trading")}
                 icon={<TrendingUp size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />}
             >
-                <MenuItem label="Buy Market" onClick={() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'BUY', symbol } })); onClose(); }} />
-                <MenuItem label="Sell Market" onClick={() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'SELL', symbol } })); onClose(); }} />
+                <MenuItem label={tr("Buy Market")} onClick={() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'BUY', symbol } })); onClose(); }} />
+                <MenuItem label={tr("Sell Market")} onClick={() => { window.dispatchEvent(new CustomEvent('quickTrade', { detail: { side: 'SELL', symbol } })); onClose(); }} />
                 <MenuSeparator />
-                <MenuItem label="Buy Limit" onClick={() => { onOpenNewOrder(); onClose(); }} />
-                <MenuItem label="Sell Limit" onClick={() => { onOpenNewOrder(); onClose(); }} />
-                <MenuItem label="Buy Stop" onClick={() => { onOpenNewOrder(); onClose(); }} />
-                <MenuItem label="Sell Stop" onClick={() => { onOpenNewOrder(); onClose(); }} />
+                <MenuItem label={tr("Buy Limit")} onClick={() => { onOpenNewOrder(); onClose(); }} />
+                <MenuItem label={tr("Sell Limit")} onClick={() => { onOpenNewOrder(); onClose(); }} />
+                <MenuItem label={tr("Buy Stop")} onClick={() => { onOpenNewOrder(); onClose(); }} />
+                <MenuItem label={tr("Sell Stop")} onClick={() => { onOpenNewOrder(); onClose(); }} />
             </Submenu>
 
             <MenuSeparator />
@@ -521,7 +525,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Depth of Market ── */}
             <MenuItem
                 icon={<ArrowUpDown size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Depth Of Market"
+                label={tr("Depth Of Market")}
                 shortcut="Alt+B"
                 onClick={() => { onOpenDOM(); onClose(); }}
             />
@@ -529,7 +533,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── One Click Trading ── */}
             <MenuItem
                 icon={<Activity size={13} strokeWidth={1.5} style={{ color: oneClickTrading ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="One Click Trading"
+                label={tr("One Click Trading")}
                 shortcut="Alt+T"
                 checked={oneClickTrading}
                 onClick={() => { onToggleOneClickTrading(); onClose(); }}
@@ -539,7 +543,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 icon={showTradeLevels
                     ? <Eye size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />
                     : <EyeOff size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label={showTradeLevels ? 'Hide Trade Levels' : 'Show Trade Levels'}
+                label={showTradeLevels ? tr("Hide Trade Levels") : tr("Show Trade Levels")}
                 checked={showTradeLevels}
                 disabled={!onToggleTradeLevels}
                 onClick={() => { onToggleTradeLevels?.(); onClose(); }}
@@ -549,7 +553,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                 icon={showTradeHistory
                     ? <Eye size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-blue, #74b9ff)' }} />
                     : <EyeOff size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label={showTradeHistory ? 'Hide Trade History' : 'Show Trade History'}
+                label={showTradeHistory ? tr("Hide Trade History") : tr("Show Trade History")}
                 checked={showTradeHistory}
                 disabled={!onToggleTradeHistory}
                 onClick={() => { onToggleTradeHistory?.(); onClose(); }}
@@ -559,7 +563,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
 
             {/* ── Indicator List ── */}
             <Submenu
-                label="Indicator List"
+                label={tr("Indicator List")}
                 icon={<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ctx-icon, #8a8a9a)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="1.5" y="2" width="13" height="12" rx="1" /><polyline points="3 11 5 7.5 7.5 9.5 10 5.5 13 7" strokeWidth="1.3" /></svg>}
             >
                 {indicators.map((ind) => (
@@ -573,14 +577,14 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
 
             {/* ── Drawing Tools (Object List) ── */}
             <Submenu
-                label="Object List"
+                label={tr("Object List")}
                 icon={<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--ctx-icon, #8a8a9a)" strokeWidth="1.5" strokeLinecap="round"><line x1="2.5" y1="13.5" x2="13.5" y2="2.5" /><circle cx="2.5" cy="13.5" r="1.5" fill="currentColor" stroke="none" /><circle cx="13.5" cy="2.5" r="1.5" fill="currentColor" stroke="none" /></svg>}
             >
                 {drawingTools.map((tool) => (
                     <MenuItem
                         key={tool.tool}
                         icon={tool.icon}
-                        label={tool.name}
+                        label={tr(tool.name)}
                         onClick={() => handleSelectDrawingTool(tool.tool)}
                     />
                 ))}
@@ -591,7 +595,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Chart Types ── */}
             <MenuItem
                 icon={<BarChart2 size={13} strokeWidth={1.5} style={{ color: currentChartType === 'bar' ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Bar Chart"
+                label={tr("Bar Chart")}
                 shortcut="Alt+1"
                 checked={currentChartType === 'bar'}
                 active={currentChartType === 'bar'}
@@ -599,7 +603,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             />
             <MenuItem
                 icon={<CandlestickChart size={13} strokeWidth={1.5} style={{ color: currentChartType === 'candlestick' ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Candlesticks"
+                label={tr("Candlesticks")}
                 shortcut="Alt+2"
                 checked={currentChartType === 'candlestick'}
                 active={currentChartType === 'candlestick'}
@@ -607,7 +611,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             />
             <MenuItem
                 icon={<LineChart size={13} strokeWidth={1.5} style={{ color: currentChartType === 'line' ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Line Chart"
+                label={tr("Line Chart")}
                 shortcut="Alt+3"
                 checked={currentChartType === 'line'}
                 active={currentChartType === 'line'}
@@ -615,7 +619,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             />
             <MenuItem
                 icon={<AreaChart size={13} strokeWidth={1.5} style={{ color: currentChartType === 'area' ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Area Chart"
+                label={tr("Area Chart")}
                 checked={currentChartType === 'area'}
                 active={currentChartType === 'area'}
                 onClick={() => { onChangeChartType('area'); onClose(); }}
@@ -625,7 +629,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
 
             {/* ── Timeframes ── */}
             <Submenu
-                label="Timeframes"
+                label={tr("Timeframes")}
                 icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--ctx-icon, #8a8a9a)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>}
             >
                 {timeframes.map((tf) => (
@@ -641,7 +645,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
 
             {/* ── Templates ── */}
             <Submenu
-                label="Templates"
+                label={tr("Templates")}
                 icon={<Layers size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
             >
                 <MenuItem
@@ -650,18 +654,18 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
                             <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7" /></svg>
                         </div>
                     }
-                    label="Save Template..."
+                    label={tr("Save Template...")}
                     onClick={handleOpenSaveTemplate}
                 />
                 <MenuItem
                     icon={
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
                     }
-                    label="Load Template..."
+                    label={tr("Load Template...")}
                     onClick={handleOpenLoadTemplate}
                 />
                 <Submenu
-                    label="Remove Template"
+                    label={tr("Remove Template")}
                     disabled={templates.filter(t => !t.isDefault).length === 0}
                 >
                     {templates.filter(t => !t.isDefault).map(tpl => (
@@ -690,7 +694,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Refresh ── */}
             <MenuItem
                 icon={<RefreshCw size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Refresh"
+                label={tr("Refresh")}
                 onClick={() => { onRefresh(); onClose(); }}
             />
 
@@ -699,7 +703,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Grid ── */}
             <MenuItem
                 icon={<Grid3X3 size={13} strokeWidth={1.5} style={{ color: showGrid ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Grid"
+                label={tr("Grid")}
                 shortcut="Ctrl+G"
                 checked={showGrid}
                 onClick={() => { onToggleGrid(); onClose(); }}
@@ -708,7 +712,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Auto Scroll ── */}
             <MenuItem
                 icon={<RefreshCw size={13} strokeWidth={1.5} style={{ color: autoScroll ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Auto Scroll"
+                label={tr("Auto Scroll")}
                 checked={autoScroll}
                 onClick={() => { onToggleAutoScroll(); onClose(); }}
             />
@@ -716,7 +720,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Chart Shift ── */}
             <MenuItem
                 icon={<AlignJustify size={13} strokeWidth={1.5} style={{ color: chartShift ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Chart Shift"
+                label={tr("Chart Shift")}
                 checked={chartShift}
                 onClick={() => { onToggleChartShift(); onClose(); }}
             />
@@ -726,7 +730,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Volumes ── */}
             <MenuItem
                 icon={<Volume2 size={13} strokeWidth={1.5} style={{ color: showVolumes ? 'var(--ctx-blue, #74b9ff)' : 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Volumes"
+                label={tr("Volumes")}
                 shortcut="Ctrl+K"
                 checked={showVolumes}
                 onClick={() => { onToggleVolumes(); onClose(); }}
@@ -737,13 +741,13 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Zoom ── */}
             <MenuItem
                 icon={<ZoomIn size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Zoom In"
+                label={tr("Zoom In")}
                 shortcut="+"
                 onClick={() => { onZoomIn(); onClose(); }}
             />
             <MenuItem
                 icon={<ZoomOut size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Zoom Out"
+                label={tr("Zoom Out")}
                 shortcut="-"
                 onClick={() => { onZoomOut(); onClose(); }}
             />
@@ -751,7 +755,7 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Delete Indicators Window ── */}
             <MenuItem
                 icon={<Trash2 size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Delete Indicators Window"
+                label={tr("Delete Indicators Window")}
                 disabled={currentIndicators.length === 0}
                 onClick={() => { onDeleteIndicators(); onClose(); }}
             />
@@ -761,14 +765,14 @@ export const ChartContextMenu: React.FC<ChartContextMenuProps> = ({
             {/* ── Save as Picture ── */}
             <MenuItem
                 icon={<Camera size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Save as Picture"
+                label={tr("Save as Picture")}
                 onClick={() => { onSaveAsPicture(); onClose(); }}
             />
 
             {/* ── Properties ── */}
             <MenuItem
                 icon={<Settings size={13} strokeWidth={1.5} style={{ color: 'var(--ctx-icon, #8a8a9a)' }} />}
-                label="Properties"
+                label={tr("Properties")}
                 shortcut="F8"
                 onClick={() => { onOpenProperties(); onClose(); }}
             />

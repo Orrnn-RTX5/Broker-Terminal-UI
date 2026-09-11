@@ -1,7 +1,9 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React from 'react';
 import { useConfirmStore } from '../../store/useConfirmStore';
 
 export function ConfirmDialog() {
+    const tr = useUiTranslation();
     const { isOpen, title, message, onConfirm, onCancel, closeConfirm } = useConfirmStore();
 
     if (!isOpen) return null;
@@ -24,7 +26,7 @@ export function ConfirmDialog() {
 
                 {/* Title Bar */}
                 <div className="rtx-confirm-dialog__header flex items-center justify-between px-4 py-2 bg-[#252a37] border-b border-zinc-600">
-                    <span className="text-[13px] text-zinc-200 font-bold">{title}</span>
+                    <span className="text-[13px] text-zinc-200 font-bold">{tr(title)}</span>
                     <button onClick={onCancel} className="text-zinc-400 hover:text-white transition-colors">✕</button>
                 </div>
 
@@ -39,14 +41,12 @@ export function ConfirmDialog() {
                         onClick={onCancel}
                         className="rtx-confirm-dialog__cancel px-6 py-1.5 rounded text-[12px] font-medium text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
                     >
-                        Cancel
-                    </button>
+                        {tr("Cancel")}</button>
                     <button
                         onClick={onConfirm}
                         className="rtx-confirm-dialog__confirm px-6 py-1.5 rounded text-[12px] font-bold text-white bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 hover:to-blue-600 border border-blue-400/30 shadow-lg transition-colors"
                     >
-                        OK
-                    </button>
+                        {tr("OK")}</button>
                 </div>
             </div>
         </div>

@@ -1,5 +1,7 @@
 import type { Plugin, ProxyOptions } from 'vite'
 import { defineConfig, loadEnv } from 'vite'
+import { validateWebBrokerEnvironment } from './viteWebEnv'
+import { webRuntimeConfigPlugin } from './viteWebRuntimeConfig'
 import react from '@vitejs/plugin-react'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import * as http from 'node:http'
@@ -525,6 +527,7 @@ const retiredServiceWorkerDevPlugin = (): Plugin => ({
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  if (mode === 'web') validateWebBrokerEnvironment(env, process.cwd());
   const backendTarget = env.VITE_API_URL || env.VITE_BACKEND_URL || 'https://backend.orrnn.com';
   const discoveryTarget = env.VITE_BROKER_DISCOVERY_URL || 'https://testbrokerbackend.orrnn.com';
   const brokerApiTarget = env.VITE_DEV_BROKER_API_URL || env.VITE_RTX5_API_URL || 'https://testbrokerbackend.orrnn.com';
@@ -534,6 +537,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     plugins: [
+      ...(mode === 'web' ? [webRuntimeConfigPlugin(env)] : []),
       retiredServiceWorkerDevPlugin(),
       dynamicBrokerProxyPlugin(['/__broker_api', '/__broker_discovery'], brokerProxyAccess),
       dynamicBrokerWsProxyPlugin('/__broker_feed_ws', brokerProxyAccess),

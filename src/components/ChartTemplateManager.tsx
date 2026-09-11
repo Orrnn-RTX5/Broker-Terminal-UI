@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * Chart Template Manager
  * Dropdown + Modal UI for saving/loading/managing chart templates
@@ -28,6 +29,7 @@ export const ChartTemplateManager = ({
   currentDrawingTools,
   onLoadTemplate,
 }: ChartTemplateManagerProps) => {
+    const tr = useUiTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -138,8 +140,7 @@ export const ChartTemplateManager = ({
         className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded border border-zinc-700 transition-colors"
       >
         <Icon name="save" size="sm" className="w-3.5 h-3.5" />
-        Templates
-        <Icon name="chevron-down" size="sm" className={`w-3.5 h-3.5 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+        {tr("Templates")}<Icon name="chevron-down" size="sm" className={`w-3.5 h-3.5 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {/* Dropdown Menu */}
@@ -154,8 +155,7 @@ export const ChartTemplateManager = ({
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 rounded transition-colors"
               >
                 <Icon name="save" size="sm" className="w-3.5 h-3.5 text-emerald-500" />
-                Save Current
-              </button>
+                {tr("Save Current")}</button>
               <button
                 onClick={() => {
                   setSaveDialogOpen(true);
@@ -164,16 +164,14 @@ export const ChartTemplateManager = ({
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 rounded transition-colors"
               >
                 <Icon name="plus" size="sm" className="w-3.5 h-3.5 text-blue-500" />
-                Save As...
-              </button>
+                {tr("Save As...")}</button>
             </div>
 
             {/* Template List */}
             <div className="py-1">
               {templates.length === 0 ? (
                 <div className="px-4 py-6 text-center text-xs text-zinc-500">
-                  No saved templates
-                </div>
+                  {tr("No saved templates")}</div>
               ) : (
                 templates.map((template) => (
                   <div
@@ -190,7 +188,7 @@ export const ChartTemplateManager = ({
                     <button
                       onClick={(e) => handleDelete(template.id, e)}
                       className="opacity-0 group-hover:opacity-100 p-1 hover:bg-zinc-700 rounded transition-opacity"
-                      title="Delete"
+                      title={tr("Delete")}
                     >
                       <Icon name="trash" size="sm" className="w-3 h-3 text-red-400" />
                     </button>
@@ -208,8 +206,7 @@ export const ChartTemplateManager = ({
                 }}
                 className="w-full px-3 py-2 text-xs text-blue-400 hover:bg-zinc-800 rounded transition-colors text-left"
               >
-                Manage Templates...
-              </button>
+                {tr("Manage Templates...")}</button>
             </div>
           </div>
         </>
@@ -220,7 +217,7 @@ export const ChartTemplateManager = ({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-zinc-100">Save Template</h3>
+              <h3 className="text-lg font-semibold text-zinc-100">{tr("Save Template")}</h3>
               <button
                 onClick={() => {
                   setSaveDialogOpen(false);
@@ -236,7 +233,7 @@ export const ChartTemplateManager = ({
               type="text"
               value={newTemplateName}
               onChange={(e) => setNewTemplateName(e.target.value)}
-              placeholder="Template name"
+              placeholder={tr("Template name")}
               className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
               autoFocus
               onKeyDown={(e) => {
@@ -254,15 +251,13 @@ export const ChartTemplateManager = ({
                 }}
                 className="flex-1 px-4 py-2 text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded transition-colors"
               >
-                Cancel
-              </button>
+                {tr("Cancel")}</button>
               <button
                 onClick={() => newTemplateName.trim() && handleSaveTemplate(newTemplateName.trim())}
                 disabled={!newTemplateName.trim()}
                 className="flex-1 px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save
-              </button>
+                {tr("Save")}</button>
             </div>
           </div>
         </div>
@@ -274,7 +269,7 @@ export const ChartTemplateManager = ({
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-zinc-800">
-              <h2 className="text-xl font-semibold text-zinc-100">Manage Templates</h2>
+              <h2 className="text-xl font-semibold text-zinc-100">{tr("Manage Templates")}</h2>
               <button
                 onClick={() => setManagerOpen(false)}
                 className="p-2 hover:bg-zinc-800 rounded transition-colors"
@@ -290,15 +285,13 @@ export const ChartTemplateManager = ({
                 className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded transition-colors"
               >
                 <Icon name="download" size="sm" className="w-3.5 h-3.5" />
-                Export All
-              </button>
+                {tr("Export All")}</button>
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded transition-colors"
               >
                 <Icon name="upload" size="sm" className="w-3.5 h-3.5" />
-                Import
-              </button>
+                {tr("Import")}</button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -308,7 +301,7 @@ export const ChartTemplateManager = ({
               />
               <div className="flex-1" />
               <div className="text-xs text-zinc-500">
-                {templates.length} template{templates.length !== 1 ? 's' : ''}
+                {templates.length} {tr(" template")}{templates.length !== 1 ? 's' : ''}
               </div>
             </div>
 
@@ -317,18 +310,18 @@ export const ChartTemplateManager = ({
               {templates.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-zinc-500">
                   <Icon name="save" size="sm" className="w-12 h-12 mb-4 opacity-50" />
-                  <p className="text-sm">No templates saved yet</p>
-                  <p className="text-xs mt-2">Click "Save Current" to create your first template</p>
+                  <p className="text-sm">{tr("No templates saved yet")}</p>
+                  <p className="text-xs mt-2">{tr("Click \"Save Current\" to create your first template")}</p>
                 </div>
               ) : (
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800">
                     <tr className="text-left text-xs text-zinc-400 uppercase tracking-wide">
-                      <th className="px-6 py-3 font-medium">Name</th>
-                      <th className="px-6 py-3 font-medium">Symbol</th>
-                      <th className="px-6 py-3 font-medium">Timeframe</th>
-                      <th className="px-6 py-3 font-medium">Created</th>
-                      <th className="px-6 py-3 font-medium text-right">Actions</th>
+                      <th className="px-6 py-3 font-medium">{tr("Name")}</th>
+                      <th className="px-6 py-3 font-medium">{tr("Symbol")}</th>
+                      <th className="px-6 py-3 font-medium">{tr("Timeframe")}</th>
+                      <th className="px-6 py-3 font-medium">{tr("Created")}</th>
+                      <th className="px-6 py-3 font-medium text-right">{tr("Actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
@@ -348,21 +341,21 @@ export const ChartTemplateManager = ({
                             <button
                               onClick={() => handleRename(template)}
                               className="p-1.5 hover:bg-zinc-700 rounded transition-colors"
-                              title="Rename"
+                              title={tr("Rename")}
                             >
                               <Icon name="edit" size="sm" className="w-3.5 h-3.5 text-blue-400" />
                             </button>
                             <button
                               onClick={(e) => handleDuplicate(template.id, e)}
                               className="p-1.5 hover:bg-zinc-700 rounded transition-colors"
-                              title="Duplicate"
+                              title={tr("Duplicate")}
                             >
                               <Icon name="copy" size="sm" className="w-3.5 h-3.5 text-emerald-400" />
                             </button>
                             <button
                               onClick={(e) => handleDelete(template.id, e)}
                               className="p-1.5 hover:bg-zinc-700 rounded transition-colors"
-                              title="Delete"
+                              title={tr("Delete")}
                             >
                               <Icon name="trash" size="sm" className="w-3.5 h-3.5 text-red-400" />
                             </button>
@@ -381,8 +374,7 @@ export const ChartTemplateManager = ({
                 onClick={() => setManagerOpen(false)}
                 className="px-4 py-2 text-sm font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 rounded transition-colors"
               >
-                Close
-              </button>
+                {tr("Close")}</button>
             </div>
           </div>
         </div>
@@ -391,7 +383,7 @@ export const ChartTemplateManager = ({
       {editingTemplate && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onClick={() => setEditingTemplate(null)}>
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-zinc-100 mb-3">Rename Template</h3>
+            <h3 className="text-sm font-semibold text-zinc-100 mb-3">{tr("Rename Template")}</h3>
             <input
               type="text"
               value={renameValue}
@@ -407,12 +399,12 @@ export const ChartTemplateManager = ({
               className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-zinc-100 outline-none focus:border-blue-500 mb-3"
             />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setEditingTemplate(null)} className="px-3 py-1.5 text-xs bg-zinc-700 text-zinc-300 rounded hover:bg-zinc-600">Cancel</button>
+              <button onClick={() => setEditingTemplate(null)} className="px-3 py-1.5 text-xs bg-zinc-700 text-zinc-300 rounded hover:bg-zinc-600">{tr("Cancel")}</button>
               <button
                 onClick={() => { if (renameValue.trim()) { renameTemplate(editingTemplate.id, renameValue.trim()); setEditingTemplate(null); } }}
                 disabled={!renameValue.trim()}
                 className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-              >Rename</button>
+              >{tr("Rename")}</button>
             </div>
           </div>
         </div>

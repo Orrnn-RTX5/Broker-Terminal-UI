@@ -56,7 +56,8 @@
       "tickVolumes": "ปริมาณ Tick",
       "zoomIn": "ขยาย",
       "zoomOut": "ย่อ",
-      "properties": "คุณสมบัติ"
+      "properties": "คุณสมบัติ",
+      "areaChart": "แผนภูมิพื้นที่"
     },
     "tools": {
       "label": "เครื่องมือ",
@@ -86,9 +87,9 @@
       "whatsNew": "มีอะไรใหม่",
       "telegramChannel": "ช่อง Telegram RTX5",
       "videoGuides": "คู่มือวิดีโอ",
-      "webTrader": "RTX5 Web Trader",
+      "webTrader": "RTX5 เว็บเทรดเดอร์",
       "documentation": "เอกสาร RTX5",
-      "algoBook": "RTX5 AlgoBook",
+      "algoBook": "RTX5 อัลโกบุ๊ค",
       "neuroBook": "RTX5 NeuroBook",
       "articles": "บทความ RTX5",
       "codeBase": "ฐานโค้ด RTX5",

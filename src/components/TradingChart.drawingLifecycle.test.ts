@@ -622,6 +622,38 @@ describe('retained drawing listeners after chart context changes', () => {
     expect(manager.getActiveDrawing()).toBeNull();
   });
 
+  it.each(CANDLE_TIMEFRAMES.flatMap(timeframe =>
+    ['emoji:1f600', 'sticker:1f602', 'icon:arrow-up'].map(subtype => ({ timeframe, subtype }))))(
+    'previews and places $subtype once on $timeframe using retained native listeners', async ({ timeframe, subtype }) => {
+      const { manager, listeners, container, switchContext, preview, click, activeToolRef, bars } = await createFixture();
+      await switchContext({ timeframe, symbol: 'TEST' });
+      activeToolRef.current = 'stamp';
+      manager.startDrawing('stamp', '#2962ff', { subtype });
+      preview(80, 210);
+      expect(container.querySelector('[data-geometry-role="pictograph-stamp"]')?.getAttribute('pointer-events')).toBe('none');
+      listeners.handleDrawingPointerLeave();
+      expect(container.querySelector('[data-geometry-role="pictograph-stamp"]')).toBeNull();
+      expect(manager.getActiveDrawing()?.subtype).toBe(subtype);
+      preview(80, 210);
+      expect(container.querySelector('[data-geometry-role="pictograph-stamp"]')).not.toBeNull();
+      const event = { isPrimary: true, pointerType: 'mouse', button: 0, pointerId: 5,
+        clientX: 80, clientY: 210, preventDefault: vi.fn() };
+      listeners.handlePointerDown(event);
+      listeners.handlePointerUp(event);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      expect(manager.getDrawings('chart-main')).toHaveLength(1);
+      expect(manager.getDrawings('chart-main')[0]).toMatchObject({
+        type: 'stamp', subtype, points: [{ time: bars[4].time, price: 90 }], selected: true,
+      });
+      expect(manager.getActiveDrawing()).toBeNull();
+      activeToolRef.current = null;
+      click(80, 210);
+      expect(manager.getDrawings('chart-main')).toHaveLength(1);
+      expect(manager.getDrawings('chart-main')[0].selected).toBe(true);
+      expect(container.querySelectorAll('[data-geometry-role="pictograph-image"]')).toHaveLength(1);
+    },
+  );
+
   it('a cancelled Brush gesture cannot finish a replacement tool', async () => {
     const { manager, listeners } = await createFixture();
     manager.startDrawing('freehand');

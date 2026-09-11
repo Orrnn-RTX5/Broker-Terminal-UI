@@ -56,7 +56,8 @@
       "tickVolumes": "टिक वॉल्यूम",
       "zoomIn": "ज़ूम इन",
       "zoomOut": "ज़ूम आउट",
-      "properties": "गुण"
+      "properties": "गुण",
+      "areaChart": "क्षेत्र चार्ट"
     },
     "tools": {
       "label": "उपकरण",

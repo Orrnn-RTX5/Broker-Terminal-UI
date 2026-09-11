@@ -1,3 +1,5 @@
+import { brokerDisplayName } from '../../services/brokerDisplayName';
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAppStore, type SavedAccount } from '../../store/useAppStore';
@@ -79,11 +81,11 @@ const matchesCurrentStoredBroker = (serverName: string): boolean => {
 
 const getStoredBrokerLogoInfo = (serverName: string): BrokerLogoInfo | null => {
     const logoUrl = getStoredNavigatorValue('logo_url');
-    if (!logoUrl || !matchesCurrentStoredBroker(serverName)) return null;
+    if (!matchesCurrentStoredBroker(serverName)) return null;
 
     return {
         logoUrl,
-        brokerName: getStoredNavigatorValue('broker_name') || serverName,
+        brokerName: brokerDisplayName(serverName),
         baseCandidates: [
             getStoredNavigatorValue('server_url'),
             getStoredNavigatorValue('backend_url'),
@@ -104,13 +106,10 @@ const buildBrokerLogoInfo = (
         ? brokers.find((broker) => broker.broker_id === matchedServer.broker_id)
         : undefined;
     const logoUrl = normalizeNavigatorText(matchedServer.logo_url) || normalizeNavigatorText(matchedBroker?.logo_url);
-    if (!logoUrl) return getStoredBrokerLogoInfo(serverName);
 
     return {
         logoUrl,
-        brokerName: normalizeNavigatorText(matchedServer.broker_name)
-            || normalizeNavigatorText(matchedBroker?.name)
-            || serverName,
+        brokerName: brokerDisplayName(serverName, matchedServer.broker_name, matchedBroker?.name),
         baseCandidates: [
             matchedServer.server_url || '',
             matchedServer.backend_url || '',
@@ -120,6 +119,7 @@ const buildBrokerLogoInfo = (
 };
 
 export const NavigatorPanel: React.FC = () => {
+    const tr = useUiTranslation();
     const accountId = useAppStore(state => state.accountId);
     const savedAccounts = useAppStore(state => state.savedAccounts);
     const removeSavedAccount = useAppStore(state => state.removeSavedAccount);
@@ -267,7 +267,7 @@ export const NavigatorPanel: React.FC = () => {
             <div className="navigator-panel__body flex-1 overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-zinc-700">
                 {/* Accounts */}
                 <ContextMenu items={getGeneralAccountContextMenuItems()}>
-                    <TreeItem label="Accounts" icon={<Icon name="user" size="sm" />} defaultOpen>
+                    <TreeItem label={tr("Accounts")} icon={<Icon name="user" size="sm" />} defaultOpen>
                         {servers.map((serverName, sIdx) => {
                             const accountsInServer = savedAccounts.filter(a => a.server === serverName);
                             const isLive = accountsInServer[0]?.isLive; // Restore original logic checking if the server represents live accounts
@@ -275,7 +275,7 @@ export const NavigatorPanel: React.FC = () => {
                             return (
                                 <TreeItem
                                     key={serverName}
-                                    label={serverName}
+                                    label={brokerDisplayName(serverName, brokerLogos[serverName]?.brokerName)}
                                     icon={<BrokerServerIcon serverName={serverName} logoInfo={brokerLogos[serverName]} />}
                                     defaultOpen
                                     isLast={isLastServer && savedAccounts.length > 0}
@@ -291,7 +291,7 @@ export const NavigatorPanel: React.FC = () => {
                                         return (
                                             <ContextMenu key={acc.login} items={getAccountContextMenuItems(acc)}>
                                                 <TreeItem
-                                                    label={isSwitching ? `${displayName} (switching...)` : displayName}
+                                                    label={isSwitching ? tr("{{value0}} (switching...)", { value0: displayName }) : tr(displayName)}
                                                     icon={<AccountIcon isActive={isActive} isLive={isLive ?? false} />}
                                                     isLast={isLastAccount}
                                                     onItemClick={() => {
@@ -308,7 +308,7 @@ export const NavigatorPanel: React.FC = () => {
                         {/* Add Account Placeholder if empty */}
                         {savedAccounts.length === 0 && (
                             <TreeItem
-                                label={getStoredBrokerServer()}
+                                label={brokerDisplayName(getStoredBrokerServer(), brokerLogos[getStoredBrokerServer()]?.brokerName)}
                                 icon={
                                     <BrokerServerIcon
                                         serverName={getStoredBrokerServer()}
@@ -320,7 +320,7 @@ export const NavigatorPanel: React.FC = () => {
                                 isLast
                             >
                                 <TreeItem
-                                    label="Click to login..."
+                                    label={tr("Click to login...")}
                                     icon={
                                         <svg width={14} height={14} viewBox="0 0 16 16" fill="none" className="inline-block flex-shrink-0">
                                             <circle cx="8" cy="5" r="3" fill="#71717a" stroke="none" />
@@ -336,40 +336,40 @@ export const NavigatorPanel: React.FC = () => {
                 </ContextMenu>
 
                 {/* Indicators */}
-                <TreeItem label="Indicators" icon={<Icon name="trending-up" size="sm" />} defaultOpen disabled>
-                    <TreeItem label="Trend" icon={<Icon name="folder" size="sm" className="text-amber-300" />}>
-                        <TreeItem label="Moving Average" icon={<Icon name="trending-up" size="sm" />} />
-                        <TreeItem label="Bollinger Bands" icon={<Icon name="trending-up" size="sm" />} isLast />
+                <TreeItem label={tr("Indicators")} icon={<Icon name="trending-up" size="sm" />} defaultOpen disabled>
+                    <TreeItem label={tr("Trend")} icon={<Icon name="folder" size="sm" className="text-amber-300" />}>
+                        <TreeItem label={tr("Moving Average")} icon={<Icon name="trending-up" size="sm" />} />
+                        <TreeItem label={tr("Bollinger Bands")} icon={<Icon name="trending-up" size="sm" />} isLast />
                     </TreeItem>
-                    <TreeItem label="Oscillators" icon={<Icon name="folder" size="sm" className="text-amber-300" />}>
-                        <TreeItem label="RSI" icon={<Icon name="trending-up" size="sm" />} />
-                        <TreeItem label="MACD" icon={<Icon name="trending-up" size="sm" />} />
-                        <TreeItem label="Stochastic" icon={<Icon name="trending-up" size="sm" />} isLast />
+                    <TreeItem label={tr("Oscillators")} icon={<Icon name="folder" size="sm" className="text-amber-300" />}>
+                        <TreeItem label={tr("RSI")} icon={<Icon name="trending-up" size="sm" />} />
+                        <TreeItem label={tr("MACD")} icon={<Icon name="trending-up" size="sm" />} />
+                        <TreeItem label={tr("Stochastic")} icon={<Icon name="trending-up" size="sm" />} isLast />
                     </TreeItem>
-                    <TreeItem label="Volumes" icon={<Icon name="folder" size="sm" className="text-amber-300" />} />
-                    <TreeItem label="Bill Williams" icon={<Icon name="folder" size="sm" className="text-amber-300" />} isLast />
+                    <TreeItem label={tr("Volumes")} icon={<Icon name="folder" size="sm" className="text-amber-300" />} />
+                    <TreeItem label={tr("Bill Williams")} icon={<Icon name="folder" size="sm" className="text-amber-300" />} isLast />
                 </TreeItem>
 
                 {/* Expert Advisors */}
-                <TreeItem label="Automated Strategies" icon={<Icon name="bot" size="sm" className="text-zinc-400" />} disabled>
-                    <TreeItem label="Macd Sample" icon={<Icon name="bot" size="sm" className="text-zinc-400" />} />
-                    <TreeItem label="Moving Average" icon={<Icon name="bot" size="sm" className="text-zinc-400" />} />
-                    <TreeItem label="Examples" icon={<Icon name="folder" size="sm" className="text-amber-300" />} isLast>
-                        <TreeItem label="Momentum" icon={<Icon name="bot" size="sm" className="text-zinc-400" />} isLast />
+                <TreeItem label={tr("Automated Strategies")} icon={<Icon name="bot" size="sm" className="text-zinc-400" />} disabled>
+                    <TreeItem label={tr("Macd Sample")} icon={<Icon name="bot" size="sm" className="text-zinc-400" />} />
+                    <TreeItem label={tr("Moving Average")} icon={<Icon name="bot" size="sm" className="text-zinc-400" />} />
+                    <TreeItem label={tr("Examples")} icon={<Icon name="folder" size="sm" className="text-amber-300" />} isLast>
+                        <TreeItem label={tr("Momentum")} icon={<Icon name="bot" size="sm" className="text-zinc-400" />} isLast />
                     </TreeItem>
                 </TreeItem>
 
                 {/* Scripts */}
-                <TreeItem label="Scripts" icon={<FileCode size={14} className="text-zinc-400" />} disabled>
-                    <TreeItem label="CloseAllPositions" icon={<FileCode size={14} className="text-zinc-400" />} />
-                    <TreeItem label="CalculateLotSize" icon={<FileCode size={14} className="text-zinc-400" />} isLast />
+                <TreeItem label={tr("Scripts")} icon={<FileCode size={14} className="text-zinc-400" />} disabled>
+                    <TreeItem label={tr("CloseAllPositions")} icon={<FileCode size={14} className="text-zinc-400" />} />
+                    <TreeItem label={tr("CalculateLotSize")} icon={<FileCode size={14} className="text-zinc-400" />} isLast />
                 </TreeItem>
 
                 {/* Services */}
-                <TreeItem label="Services" icon={<Icon name="zap" size="sm" className="text-zinc-400" />} defaultOpen disabled>
-                    <TreeItem label="Market" icon={<Icon name="box" size="sm" className="text-zinc-400" />} />
-                    <TreeItem label="Signals" icon={<Icon name="signal" size="sm" className="text-zinc-400" />} />
-                    <TreeItem label="Virtual Hosting" icon={<Icon name="globe" size="sm" className="text-zinc-400" />} isLast />
+                <TreeItem label={tr("Services")} icon={<Icon name="zap" size="sm" className="text-zinc-400" />} defaultOpen disabled>
+                    <TreeItem label={tr("Market")} icon={<Icon name="box" size="sm" className="text-zinc-400" />} />
+                    <TreeItem label={tr("Signals")} icon={<Icon name="signal" size="sm" className="text-zinc-400" />} />
+                    <TreeItem label={tr("Virtual Hosting")} icon={<Icon name="globe" size="sm" className="text-zinc-400" />} isLast />
                 </TreeItem>
             </div>
 
@@ -450,6 +450,7 @@ function TreeItem({
     onItemClick?: () => void;
     disabled?: boolean;
 }) {
+    const tr = useUiTranslation();
     const [isOpen, setIsOpen] = useState(defaultOpen);
     const hasChildren = React.Children.count(children) > 0;
     const isExpandable = hasChildren && !disabled;
@@ -493,8 +494,8 @@ function TreeItem({
                     : 'group cursor-pointer hover:bg-[#222226]'
                     }`}
                 aria-disabled={disabled || undefined}
-                aria-label={disabled ? `${label}, currently unavailable` : undefined}
-                title={disabled ? `${label} is currently unavailable` : undefined}
+                aria-label={disabled ? tr("{{value0}}, currently unavailable", { value0: label }) : undefined}
+                title={disabled ? tr("{{value0}} is currently unavailable", { value0: label }) : undefined}
                 onClick={disabled ? undefined : () => {
                     if (hasChildren) {
                         setIsOpen(!isOpen);

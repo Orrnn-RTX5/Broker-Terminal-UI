@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * Historical Data Manager
  * Downloads, monitors, and clears locally cached tick history.
@@ -46,6 +47,7 @@ const isActiveTask = (task: DownloadTask) => (
 );
 
 export const HistoryDownloader: React.FC = () => {
+    const tr = useUiTranslation();
   const [symbols, setSymbols] = useState<SymbolDataInfo[]>([]);
   const [downloadTasks, setDownloadTasks] = useState<DownloadTask[]>([]);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
@@ -192,8 +194,8 @@ export const HistoryDownloader: React.FC = () => {
 
   const handleClearSymbol = async (symbol: string) => {
     const confirmed = await useConfirmStore.getState().showConfirm(
-      'Clear symbol history',
-      `Remove all locally cached historical data for ${symbol}?`,
+      tr('Clear symbol history'),
+      tr('Remove all locally cached historical data for {{value0}}?', { value0: symbol }),
     );
     if (!confirmed) return;
 
@@ -212,8 +214,8 @@ export const HistoryDownloader: React.FC = () => {
 
   const handleClearAll = async () => {
     const confirmed = await useConfirmStore.getState().showConfirm(
-      'Clear historical cache',
-      'Remove all locally cached historical data? Download tasks are not affected.',
+      tr('Clear historical cache'),
+      tr('Remove all locally cached historical data? Download tasks are not affected.'),
     );
     if (!confirmed) return;
 
@@ -253,7 +255,7 @@ export const HistoryDownloader: React.FC = () => {
   };
 
   const formatLastUpdate = (timestamp?: number) => {
-    if (!timestamp) return 'Not yet updated';
+    if (!timestamp) return tr('Not yet updated');
     return new Intl.DateTimeFormat(undefined, {
       hour: '2-digit',
       minute: '2-digit',
@@ -262,33 +264,33 @@ export const HistoryDownloader: React.FC = () => {
   };
 
   return (
-    <section className="rtx-history-downloader text-[14px] font-normal" aria-label="Historical Data Manager">
+    <section className="rtx-history-downloader text-[14px] font-normal" aria-label={tr("Historical Data Manager")}>
       <header className="rtx-history-downloader__header">
         <div className="rtx-history-downloader__identity">
           <span className="rtx-history-downloader__identity-icon" aria-hidden="true">
             <Icon name="database" size="md" />
           </span>
           <div>
-            <h2>Historical Data Manager</h2>
-            <p>Download and maintain local tick history</p>
+            <h2>{tr("Historical Data Manager")}</h2>
+            <p>{tr("Download and maintain local tick history")}</p>
           </div>
         </div>
 
-        <dl className="rtx-history-downloader__metrics" aria-label="Historical cache statistics">
+        <dl className="rtx-history-downloader__metrics" aria-label={tr("Historical cache statistics")}>
           <div>
-            <dt>Local storage</dt>
+            <dt>{tr("Local storage")}</dt>
             <dd>{storageStats ? formatBytes(storageStats.totalSize) : '—'}</dd>
           </div>
           <div>
-            <dt>Cached ticks</dt>
+            <dt>{tr("Cached ticks")}</dt>
             <dd>{storageStats ? formatNumber(storageStats.tickCount) : '—'}</dd>
           </div>
           <div>
-            <dt>Symbols</dt>
+            <dt>{tr("Symbols")}</dt>
             <dd>{storageStats ? storageStats.symbolCount.toLocaleString() : '—'}</dd>
           </div>
           <div className="rtx-history-downloader__metric-wide">
-            <dt>Last update</dt>
+            <dt>{tr("Last update")}</dt>
             <dd>{formatLastUpdate(storageStats?.lastUpdate)}</dd>
           </div>
         </dl>
@@ -300,8 +302,8 @@ export const HistoryDownloader: React.FC = () => {
           disabled={isRefreshing}
           data-loading={isRefreshing || undefined}
           aria-busy={isRefreshing}
-          aria-label="Refresh historical data statistics"
-          title="Refresh data and statistics"
+          aria-label={tr("Refresh historical data statistics")}
+          title={tr("Refresh data and statistics")}
         >
           <Icon name="refresh" size="sm" />
         </button>
@@ -310,8 +312,8 @@ export const HistoryDownloader: React.FC = () => {
       {operationError && (
         <div className="rtx-history-downloader__error" role="alert">
           <Icon name="warning" size="sm" />
-          <span>{operationError}</span>
-          <button type="button" onClick={() => setOperationError(null)} aria-label="Dismiss error">
+          <span>{tr(operationError)}</span>
+          <button type="button" onClick={() => setOperationError(null)} aria-label={tr("Dismiss error")}>
             <Icon name="x-close" size="xs" />
           </button>
         </div>
@@ -324,15 +326,14 @@ export const HistoryDownloader: React.FC = () => {
             <div className="rtx-history-panel-row1">
               <div className="rtx-history-symbol-picker-group">
                 <label htmlFor="history-symbol-select" className="rtx-history-symbol-label">
-                  Symbol:
-                </label>
+                  {tr("Symbol:")}</label>
                 <div className="rtx-history-symbol-dropdown-wrapper">
                   <select
                     id="history-symbol-select"
                     className="rtx-history-symbol-select"
                     value={selectedSymbol}
                     onChange={(event) => setSelectedSymbol(event.target.value)}
-                    aria-label="Select instrument"
+                    aria-label={tr("Select instrument")}
                   >
                     {symbols.map((item) => (
                       <option key={item.symbol} value={item.symbol}>
@@ -350,18 +351,18 @@ export const HistoryDownloader: React.FC = () => {
                   className="rtx-history-clear-btn"
                   onClick={() => selectedSymbol && void handleClearSymbol(selectedSymbol)}
                   disabled={clearingSymbol !== null || !selectedSymbolInfo?.downloadedDates?.length || downloadTasks.some((t) => t.symbol === selectedSymbol && isActiveTask(t))}
-                  aria-label={`Clear cached data for ${selectedSymbol}`}
-                  title={`Clear cached data for ${selectedSymbol}`}
+                  aria-label={tr("Clear cached data for {{value0}}", { value0: selectedSymbol })}
+                  title={tr("Clear cached data for {{value0}}", { value0: selectedSymbol })}
                 >
                   <Icon name="trash" size="sm" />
-                  <span>Clear Symbol Cache</span>
+                  <span>{tr("Clear Symbol Cache")}</span>
                 </button>
               </div>
             </div>
 
             {/* Row 2: Presets + Dual Date Field + Download Button */}
             <div className="rtx-history-controls-row">
-              <div className="rtx-history-segmented-presets" role="group" aria-label="Quick date range selection">
+              <div className="rtx-history-segmented-presets" role="group" aria-label={tr("Quick date range selection")}>
                 {DATE_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
@@ -369,18 +370,18 @@ export const HistoryDownloader: React.FC = () => {
                     className={`rtx-history-seg-btn ${activePreset === preset.id ? 'is-active' : ''}`}
                     onClick={() => handleApplyPreset(preset)}
                   >
-                    {preset.label}
+                    {tr(preset.label)}
                   </button>
                 ))}
               </div>
 
               <div className="rtx-history-date-inputs">
                 <label className="rtx-history-field">
-                  <span className="rtx-history-field-label">From</span>
+                  <span className="rtx-history-field-label">{tr("From")}</span>
                   <input
                     type="date"
                     className="rtx-history-date-input"
-                    aria-label="From date"
+                    aria-label={tr("From date")}
                     value={dateRange.from}
                     max={dateRange.to || undefined}
                     onChange={(event) => {
@@ -393,11 +394,11 @@ export const HistoryDownloader: React.FC = () => {
                 <span className="rtx-history-arrow">→</span>
 
                 <label className="rtx-history-field">
-                  <span className="rtx-history-field-label">To</span>
+                  <span className="rtx-history-field-label">{tr("To")}</span>
                   <input
                     type="date"
                     className="rtx-history-date-input"
-                    aria-label="To date"
+                    aria-label={tr("To date")}
                     value={dateRange.to}
                     min={dateRange.from || undefined}
                     onChange={(event) => {
@@ -409,7 +410,7 @@ export const HistoryDownloader: React.FC = () => {
 
                 {selectedDayCount > 0 && (
                   <span className="rtx-history-duration-badge">
-                    {selectedDayCount} {selectedDayCount === 1 ? 'Day' : 'Days'}
+                    {selectedDayCount} {selectedDayCount === 1 ? tr("Day") : tr("Days")}
                   </span>
                 )}
               </div>
@@ -417,12 +418,12 @@ export const HistoryDownloader: React.FC = () => {
               <button
                 type="button"
                 className="rtx-history-primary-button"
-                aria-label="Download history"
+                aria-label={tr("Download history")}
                 onClick={() => void handleDownload()}
                 disabled={!selectedSymbol || isLoading || Boolean(dateRangeError)}
               >
                 <Icon name="download" size="sm" />
-                <span>Download History</span>
+                <span>{tr("Download History")}</span>
               </button>
             </div>
 
@@ -432,32 +433,31 @@ export const HistoryDownloader: React.FC = () => {
                 {dateRangeError ? (
                   <>
                     <Icon name="warning" size="xs" />
-                    <span style={{ color: 'var(--color-loss)' }}>{dateRangeError}</span>
+                    <span style={{ color: 'var(--color-loss)' }}>{tr(dateRangeError)}</span>
                   </>
                 ) : selectedSymbolInfo?.firstDate && selectedSymbolInfo.lastDate ? (
                   <>
                     <Icon name="check" size="xs" />
                     <div className="rtx-history-coverage-details">
-                      <span className="rtx-history-coverage-title">Cached Coverage:</span>
+                      <span className="rtx-history-coverage-title">{tr("Cached Coverage:")}</span>
                       <strong className="rtx-history-coverage-date">{selectedSymbolInfo.firstDate}</strong>
-                      <span className="rtx-history-coverage-sep">to</span>
+                      <span className="rtx-history-coverage-sep">{tr("to")}</span>
                       <strong className="rtx-history-coverage-date">{selectedSymbolInfo.lastDate}</strong>
                       <span className="rtx-history-coverage-recorded">
-                        ({selectedSymbolInfo.downloadedDates?.length || 0} {selectedSymbolInfo.downloadedDates?.length === 1 ? 'day' : 'days'} recorded)
-                      </span>
+                        ({selectedSymbolInfo.downloadedDates?.length || 0} {selectedSymbolInfo.downloadedDates?.length === 1 ? tr("day") : tr("days")} {tr(" recorded)")}</span>
                     </div>
                   </>
                 ) : (
                   <>
                     <Icon name="info" size="xs" />
-                    <span>Select an instrument and date range to download tick history to local cache.</span>
+                    <span>{tr("Select an instrument and date range to download tick history to local cache.")}</span>
                   </>
                 )}
               </div>
 
               {selectedSymbolInfo && (selectedSymbolInfo.downloadProgress ?? 0) > 0 && !dateRangeError && (
                 <div className="rtx-history-coverage-bar">
-                  <span>Local sync: {selectedSymbolInfo.downloadProgress}%</span>
+                  <span>{tr("Local sync: ")}{selectedSymbolInfo.downloadProgress}%</span>
                   <div className="rtx-history-bar-track">
                     <div className="rtx-history-bar-fill" style={{ width: `${selectedSymbolInfo.downloadProgress}%` }} />
                   </div>
@@ -469,10 +469,10 @@ export const HistoryDownloader: React.FC = () => {
           <section className="rtx-history-tasks" aria-labelledby="history-download-queue-heading">
             <div className="rtx-history-tasks__header">
               <div>
-                <h3 id="history-download-queue-heading">Download queue</h3>
-                <span>{activeTaskCount ? `${activeTaskCount} active` : 'No active downloads'}</span>
+                <h3 id="history-download-queue-heading">{tr("Download queue")}</h3>
+                <span>{activeTaskCount ? tr("{{value0}} active", { value0: activeTaskCount }) : tr("No active downloads")}</span>
               </div>
-              <span className="rtx-history-task-count">{downloadTasks.length} total</span>
+              <span className="rtx-history-task-count">{downloadTasks.length} {tr(" total")}</span>
             </div>
 
             <div className="rtx-history-tasks__list">
@@ -481,8 +481,8 @@ export const HistoryDownloader: React.FC = () => {
                   <span className="rtx-history-empty__icon" aria-hidden="true">
                     <Icon name="history" size="lg" />
                   </span>
-                  <strong>Your download queue is clear</strong>
-                  <span>Choose an instrument and date range to cache historical ticks.</span>
+                  <strong>{tr("Your download queue is clear")}</strong>
+                  <span>{tr("Choose an instrument and date range to cache historical ticks.")}</span>
                 </div>
               ) : (
                 downloadTasks.map((task) => {
@@ -502,13 +502,13 @@ export const HistoryDownloader: React.FC = () => {
 
                       <div className="rtx-history-task__progress-area">
                         <div className="rtx-history-task__progress-label">
-                          <span>{STATUS_LABELS[task.status]}</span>
-                          <span>{Math.round(progress)}% · {task.downloadedTicks.toLocaleString()} ticks</span>
+                          <span>{tr(STATUS_LABELS[task.status])}</span>
+                          <span>{Math.round(progress)}% · {task.downloadedTicks.toLocaleString()} {tr(" ticks")}</span>
                         </div>
                         <div
                           className="rtx-history-progress rtx-history-progress--task"
                           role="progressbar"
-                          aria-label={`${task.symbol} ${STATUS_LABELS[task.status]}`}
+                          aria-label={`${task.symbol} ${tr(STATUS_LABELS[task.status])}`}
                           aria-valuemin={0}
                           aria-valuemax={100}
                           aria-valuenow={Math.round(progress)}
@@ -528,8 +528,8 @@ export const HistoryDownloader: React.FC = () => {
                           className="rtx-history-icon-button"
                           onClick={() => handlePauseResume(task)}
                           disabled={!canPauseOrResume}
-                          aria-label={task.status === 'paused' ? `Resume ${task.symbol} download` : `Pause ${task.symbol} download`}
-                          title={task.status === 'paused' ? 'Resume download' : canPauseOrResume ? 'Pause download' : STATUS_LABELS[task.status]}
+                          aria-label={task.status === 'paused' ? tr("Resume {{value0}} download", { value0: task.symbol }) : tr("Pause {{value0}} download", { value0: task.symbol })}
+                          title={task.status === 'paused' ? tr("Resume download") : canPauseOrResume ? tr("Pause download") : STATUS_LABELS[task.status]}
                         >
                           <Icon name={task.status === 'paused' ? 'play' : isFinished ? 'check' : 'stop'} size="sm" />
                         </button>
@@ -537,8 +537,8 @@ export const HistoryDownloader: React.FC = () => {
                           type="button"
                           className="rtx-history-icon-button"
                           onClick={() => handleCancel(task.id)}
-                          aria-label={`${isFinished ? 'Dismiss' : 'Cancel'} ${task.symbol} download`}
-                          title={isFinished ? 'Dismiss task' : 'Cancel download'}
+                          aria-label={tr("{{value0}} {{value1}} download", { value0: isFinished ? 'Dismiss' : 'Cancel', value1: task.symbol })}
+                          title={isFinished ? tr("Dismiss task") : tr("Cancel download")}
                         >
                           <Icon name="x-close" size="sm" />
                         </button>

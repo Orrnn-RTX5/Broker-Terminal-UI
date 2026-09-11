@@ -39,7 +39,7 @@
       "indicators": "Indicadores",
       "objects": "Objetos",
       "experts": "Especialistas",
-      "scripts": "Scripts"
+      "scripts": "Roteiros"
     },
     "charts": {
       "label": "Gráficos",
@@ -47,7 +47,7 @@
       "indicatorList": "Lista de Indicadores",
       "objects": "Objetos",
       "barChart": "Gráfico de Barras",
-      "candlesticks": "Candlesticks",
+      "candlesticks": "Castiçais",
       "lineChart": "Gráfico de Linhas",
       "grid": "Grade",
       "autoScroll": "Rolagem Automática",
@@ -56,11 +56,12 @@
       "tickVolumes": "Volumes de Tick",
       "zoomIn": "Ampliar",
       "zoomOut": "Reduzir",
-      "properties": "Propriedades"
+      "properties": "Propriedades",
+      "areaChart": "Gráfico de Área"
     },
     "tools": {
       "label": "Ferramentas",
-      "newOrder": "Nova Ordem",
+      "newOrder": "Nova ordem",
       "strategyTester": "Testador de Estratégia",
       "scriptEditor": "Editor de Scripts RTX5",
       "agentsManager": "Gerenciador de Agentes",
@@ -86,9 +87,9 @@
       "whatsNew": "Novidades",
       "telegramChannel": "Canal Telegram RTX5",
       "videoGuides": "Guias em Vídeo",
-      "webTrader": "RTX5 Web Trader",
+      "webTrader": "Comerciante Web RTX5",
       "documentation": "Documentação RTX5",
-      "algoBook": "RTX5 AlgoBook",
+      "algoBook": "AlgoBook RTX5",
       "neuroBook": "RTX5 NeuroBook",
       "articles": "Artigos RTX5",
       "codeBase": "Base de Código RTX5",

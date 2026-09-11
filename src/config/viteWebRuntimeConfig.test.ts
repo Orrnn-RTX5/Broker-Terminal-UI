@@ -1,0 +1,162 @@
+import { runInNewContext } from 'node:vm'
+import { describe, expect, it, vi } from 'vitest'
+import type { ViteDevServer } from 'vite'
+import type { PluginContext } from 'rollup'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import {
+  createWebRuntimeConfig,
+  renderWebRuntimeConfig,
+  webRuntimeConfigPlugin,
+} from '../../viteWebRuntimeConfig'
+
+const testEnvironment = {
+  VITE_BACKEND_TARGET: 'web',
+  VITE_API_URL: 'https://fxtrustbrokerbackend.orrnn.com',
+  VITE_WS_URL: 'wss://fxtrustbrokerbackend.orrnn.com/ws/v2',
+  VITE_BROKER_DISCOVERY_URL: 'https://fxtrustsuperbackned.orrnn.com',
+  VITE_BROKER_ID: 'TEST',
+  VITE_DEFAULT_MT5_SERVER: 'TEST',
+}
+
+const achieverEnvironment = {
+  VITE_BACKEND_TARGET: 'web',
+  VITE_BACKEND_URL: 'https://service.achieverfinancials.com',
+  VITE_BROKER_DISCOVERY_URL: 'https://superbackend.orrnn.com',
+  VITE_BROKER_ID: 'achiever-financials',
+  VITE_DEFAULT_MT5_SERVER: 'Achiever Financials',
+}
+
+const executeConfig = (source: string, overrides: Record<string, unknown> = {}, userAgent = 'Browser') => {
+  const context = {
+    window: { location: { protocol: 'http:' }, ...overrides } as Record<string, unknown>,
+    navigator: { userAgent },
+  }
+  runInNewContext(source, context)
+  return context.window
+}
+
+describe('environment-based web runtime configuration', () => {
+  it.each([
+    [testEnvironment, 'TEST', 'https://fxtrustbrokerbackend.orrnn.com'],
+    [achieverEnvironment, 'achiever-financials', 'https://service.achieverfinancials.com'],
+  ])('publishes the selected broker to every supported runtime global', (env, brokerId, apiHost) => {
+    const config = createWebRuntimeConfig(env)
+    const runtime = executeConfig(renderWebRuntimeConfig(config))
+
+    expect(runtime.RUNTIME_CONFIG).toEqual(expect.objectContaining({ BROKER_ID: brokerId, API_HOST: apiHost }))
+    expect(runtime.__RTX_RUNTIME_CONFIG__).toBe(runtime.RUNTIME_CONFIG)
+    expect(runtime.__RUNTIME_CONFIG__).toBe(runtime.RUNTIME_CONFIG)
+    expect(config.VITE_BROKER_ID).toBe(brokerId)
+    expect(config.FEED_BROKER_ID).toBe(brokerId)
+  })
+
+  it('derives all broker endpoints without retaining the prior broker', () => {
+    createWebRuntimeConfig({ ...testEnvironment, VITE_FEED_BROKER_TOKEN: 'test-public-token' })
+    const config = createWebRuntimeConfig(achieverEnvironment)
+
+    expect(config).toMatchObject({
+      API_HOST: 'https://service.achieverfinancials.com',
+      API_HOST_EXT: 'https://service.achieverfinancials.com',
+      WS_HOST: 'wss://service.achieverfinancials.com',
+      DEFAULT_MT5_SERVER: 'Achiever Financials',
+      DISCOVERY_BASE_URL: 'https://superbackend.orrnn.com',
+      FEED_BROKER_TOKEN: '',
+      USE_MOCK_DISCOVERY: false,
+    })
+    expect(JSON.stringify(config)).not.toContain('TEST')
+  })
+
+  it('respects explicit external API, feed identity, websocket, and mock settings', () => {
+    const config = createWebRuntimeConfig({
+      ...achieverEnvironment,
+      VITE_API_HOST_EXT: ' https://external.example.com/ ',
+      VITE_WS_HOST: 'wss://feed.example.com/',
+      VITE_FEED_BROKER_ID: 'backend-feed-id',
+      VITE_FEED_BROKER_TOKEN: 'explicit-public-token',
+      VITE_USE_MOCK_DISCOVERY: ' TRUE ',
+    })
+    expect(config).toMatchObject({
+      API_HOST_EXT: 'https://external.example.com',
+      WS_HOST: 'wss://feed.example.com',
+      BROKER_ID: 'achiever-financials',
+      FEED_BROKER_ID: 'backend-feed-id',
+      FEED_BROKER_TOKEN: 'explicit-public-token',
+      USE_MOCK_DISCOVERY: true,
+    })
+  })
+
+  it('does not export server secrets or arbitrary VITE environment values', () => {
+    const source = renderWebRuntimeConfig(createWebRuntimeConfig({
+      ...achieverEnvironment,
+      DATABASE_PASSWORD: 'database-secret',
+      FEED_BROKER_TOKEN: 'server-only-secret',
+      VITE_UNRELATED_SECRET: 'unrelated-secret',
+      PATH: 'private-machine-path',
+    }))
+    for (const value of ['database-secret', 'server-only-secret', 'unrelated-secret', 'private-machine-path']) {
+      expect(source).not.toContain(value)
+    }
+    expect(executeConfig(source).RUNTIME_CONFIG).toEqual(expect.objectContaining({ FEED_BROKER_TOKEN: '' }))
+  })
+
+  it('escapes source text while preserving the exact configured value', () => {
+    const server = 'Broker "A" \\ </script>\n\u2028\u2029'
+    const source = renderWebRuntimeConfig(createWebRuntimeConfig({
+      ...achieverEnvironment,
+      VITE_DEFAULT_MT5_SERVER: server,
+    }))
+    expect(source).not.toContain('</script>')
+    expect(source).not.toContain('\u2028')
+    expect(source).not.toContain('\u2029')
+    expect(executeConfig(source).RUNTIME_CONFIG).toEqual(expect.objectContaining({ DEFAULT_MT5_SERVER: server.trim() }))
+  })
+
+  it.each([
+    [{ electron: { window: {} } }, 'Browser'],
+    [{ electronAPI: {} }, 'Browser'],
+    [{ location: { protocol: 'file:' } }, 'Browser'],
+    [{}, 'Mozilla/5.0 Electron/40.0.0'],
+  ])('preserves the existing Electron broker selection', (overrides, userAgent) => {
+    const desktopConfig = { BROKER_ID: 'desktop-selected-broker' }
+    const runtime = executeConfig(renderWebRuntimeConfig(createWebRuntimeConfig(achieverEnvironment)), {
+      ...overrides,
+      __RTX_RUNTIME_CONFIG__: desktopConfig,
+      RUNTIME_CONFIG: desktopConfig,
+      __RUNTIME_CONFIG__: desktopConfig,
+    }, userAgent)
+    expect(runtime.RUNTIME_CONFIG).toBe(desktopConfig)
+    expect(runtime.__RTX_RUNTIME_CONFIG__).toBe(desktopConfig)
+    expect(runtime.__RUNTIME_CONFIG__).toBe(desktopConfig)
+  })
+
+  it('serves uncached generated JavaScript before the public development file', () => {
+    const plugin = webRuntimeConfigPlugin(achieverEnvironment)
+    const use = vi.fn()
+    const server = { middlewares: { use } } as unknown as ViteDevServer
+    if (typeof plugin.configureServer !== 'function') throw new Error('Missing development hook')
+    plugin.configureServer.call({} as never, server)
+    const middleware = use.mock.calls[0][0]
+    const res = { setHeader: vi.fn(), end: vi.fn(), statusCode: 0 }
+    const next = vi.fn()
+    middleware({ url: '/runtime-config.js?t=123', method: 'GET' } as IncomingMessage, res as unknown as ServerResponse, next)
+
+    expect(next).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(200)
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store, max-age=0')
+    expect(executeConfig(res.end.mock.calls[0][0]).RUNTIME_CONFIG).toEqual(expect.objectContaining({ BROKER_ID: 'achiever-financials' }))
+
+    middleware({ url: '/api/login', method: 'GET' } as IncomingMessage, res as unknown as ServerResponse, next)
+    expect(next).toHaveBeenCalledOnce()
+  })
+
+  it('emits the selected build configuration without replacing it during preview', () => {
+    const plugin = webRuntimeConfigPlugin(achieverEnvironment)
+    const emitFile = vi.fn()
+    if (typeof plugin.generateBundle !== 'function') throw new Error('Missing build hook')
+    plugin.generateBundle.call({ emitFile } as unknown as PluginContext, {} as never, {}, true)
+
+    expect(emitFile).toHaveBeenCalledWith(expect.objectContaining({ type: 'asset', fileName: 'runtime-config.js' }))
+    expect(executeConfig(emitFile.mock.calls[0][0].source).RUNTIME_CONFIG).toEqual(expect.objectContaining({ BROKER_ID: 'achiever-financials' }))
+    expect(plugin.configurePreviewServer).toBeUndefined()
+  })
+})

@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -16,6 +17,7 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => {
+    const tr = useUiTranslation();
   const [saveWorkspace, setSaveWorkspace] = useState(true);
   const [dontAskAgain, setDontAskAgain] = useState(false);
 
@@ -72,12 +74,12 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 [.rtx-advanced-view_&]:border-gray-200 bg-[#131316] [.rtx-advanced-view_&]:bg-gray-50 rounded-t-lg">
           <div className="flex items-center gap-2">
             <Icon name="alert-triangle" size="md" className="text-amber-400 [.rtx-advanced-view_&]:text-amber-500" />
-            <h2 className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">Confirm Exit</h2>
+            <h2 className="text-sm font-semibold text-zinc-100 [.rtx-advanced-view_&]:text-gray-900">{tr("Confirm Exit")}</h2>
           </div>
           <button
             onClick={onCancel}
             className="text-zinc-400 hover:text-zinc-100 [.rtx-advanced-view_&]:text-gray-500 [.rtx-advanced-view_&]:hover:text-gray-900 transition-colors p-1 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded"
-            aria-label="Close"
+            aria-label={tr("Close")}
           >
             <Icon name="x-close" size="md" />
           </button>
@@ -90,23 +92,21 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
             <Icon name="alert-triangle" size="lg" className="text-amber-400 [.rtx-advanced-view_&]:text-amber-600 flex-shrink-0 mt-0.5" />
             <div className="text-xs space-y-1">
               <p className="text-amber-200 [.rtx-advanced-view_&]:text-amber-800 font-medium">
-                You have unsaved changes that will be lost if you exit now.
-              </p>
+                {tr("You have unsaved changes that will be lost if you exit now.")}</p>
               <p className="text-zinc-300 [.rtx-advanced-view_&]:text-amber-700">
-                Please review the items below and choose how to proceed.
-              </p>
+                {tr("Please review the items below and choose how to proceed.")}</p>
             </div>
           </div>
 
           {/* Unsaved Items List */}
           {hasChanges && (
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 mb-2">Unsaved Items:</p>
+              <p className="text-xs font-semibold text-zinc-400 [.rtx-advanced-view_&]:text-gray-600 mb-2">{tr("Unsaved Items:")}</p>
 
               {changes.hasWorkspaceChanges && (
                 <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/50 [.rtx-advanced-view_&]:bg-gray-100 rounded">
                   <div className="w-2 h-2 rounded-full bg-zinc-400 [.rtx-advanced-view_&]:bg-gray-400" />
-                  <span className="text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">Workspace layout has been modified</span>
+                  <span className="text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tr("Workspace layout has been modified")}</span>
                 </div>
               )}
 
@@ -114,7 +114,7 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
                 <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/50 [.rtx-advanced-view_&]:bg-gray-100 rounded">
                   <div className="w-2 h-2 rounded-full bg-green-500 [.rtx-advanced-view_&]:bg-emerald-500" />
                   <span className="text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">
-                    {changes.openTradesCount} open position{changes.openTradesCount !== 1 ? 's' : ''}
+                    {changes.openTradesCount} {changes.openTradesCount === 1 ? tr('open position') : tr('open positions')}
                   </span>
                 </div>
               )}
@@ -123,7 +123,7 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
                 <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800/50 [.rtx-advanced-view_&]:bg-gray-100 rounded">
                   <div className="w-2 h-2 rounded-full bg-yellow-500 [.rtx-advanced-view_&]:bg-amber-500" />
                   <span className="text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">
-                    {changes.draftOrdersCount} pending order{changes.draftOrdersCount !== 1 ? 's' : ''}
+                    {changes.draftOrdersCount} {changes.draftOrdersCount === 1 ? tr('pending order') : tr('pending orders')}
                   </span>
                 </div>
               )}
@@ -140,11 +140,10 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
                   onChange={(e) => setSaveWorkspace(e.target.checked)}
                   className="w-4 h-4 rounded border-zinc-600 [.rtx-advanced-view_&]:border-gray-300 bg-zinc-800 [.rtx-advanced-view_&]:bg-white text-blue-600 [.rtx-advanced-view_&]:text-indigo-600 focus:ring-2 focus:ring-blue-500 [.rtx-advanced-view_&]:focus:ring-indigo-500 focus:ring-offset-0"
                 />
-                <span className="text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">Save workspace before exiting</span>
+                <span className="text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tr("Save workspace before exiting")}</span>
               </label>
               <p className="text-xs text-zinc-500 [.rtx-advanced-view_&]:text-gray-500 ml-6">
-                Your layout, charts, and settings will be restored next time
-              </p>
+                {tr("Your layout, charts, and settings will be restored next time")}</p>
             </div>
           )}
 
@@ -157,7 +156,7 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
                 onChange={(e) => setDontAskAgain(e.target.checked)}
                 className="w-4 h-4 rounded border-zinc-600 [.rtx-advanced-view_&]:border-gray-300 bg-zinc-800 [.rtx-advanced-view_&]:bg-white text-blue-600 [.rtx-advanced-view_&]:text-indigo-600 focus:ring-2 focus:ring-blue-500 [.rtx-advanced-view_&]:focus:ring-indigo-500 focus:ring-offset-0"
               />
-              <span className="text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">Don't ask again (remember my choice)</span>
+              <span className="text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-700">{tr("Don't ask again (remember my choice)")}</span>
             </label>
           </div>
 
@@ -166,9 +165,7 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
             <div className="flex items-start gap-2 p-2 bg-red-500/10 [.rtx-advanced-view_&]:bg-red-50 border border-red-500/30 [.rtx-advanced-view_&]:border-red-200 rounded mt-4">
               <Icon name="alert-triangle" size="sm" className="text-red-400 [.rtx-advanced-view_&]:text-red-600 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-red-200 [.rtx-advanced-view_&]:text-red-800">
-                Warning: Your open positions will remain active after exit. Make sure to monitor them
-                or close them before exiting.
-              </p>
+                {tr("Warning: Your open positions will remain active after exit. Make sure to monitor them or close them before exiting.")}</p>
             </div>
           )}
         </div>
@@ -179,15 +176,13 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
             onClick={onCancel}
             className="px-4 py-1.5 text-xs text-zinc-300 [.rtx-advanced-view_&]:text-gray-600 hover:text-zinc-100 [.rtx-advanced-view_&]:hover:text-gray-900 hover:bg-zinc-700/50 [.rtx-advanced-view_&]:hover:bg-gray-200 rounded transition-colors"
           >
-            Cancel
-          </button>
+            {tr("Cancel")}</button>
           <button
             onClick={handleDiscard}
             className="px-4 py-1.5 text-xs bg-zinc-700 [.rtx-advanced-view_&]:bg-gray-300 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-gray-400 text-white [.rtx-advanced-view_&]:text-gray-900 rounded transition-colors flex items-center gap-2"
           >
             <Icon name="x-close" size="xs" />
-            Discard & Exit
-          </button>
+            {tr("Discard & Exit")}</button>
           <button
             onClick={handleConfirm}
             className="px-4 py-1.5 text-xs bg-zinc-700 [.rtx-advanced-view_&]:bg-indigo-600 hover:bg-zinc-600 [.rtx-advanced-view_&]:hover:bg-indigo-700 text-white rounded transition-colors flex items-center gap-2"
@@ -195,13 +190,11 @@ export const ExitConfirmDialog: React.FC<ExitConfirmDialogProps> = ({
             {saveWorkspace ? (
               <>
                 <Icon name="save" size="xs" />
-                Save & Exit
-              </>
+                {tr("Save & Exit")}</>
             ) : (
               <>
                 <Icon name="log-out" size="xs" />
-                Exit
-              </>
+                {tr("Exit")}</>
             )}
           </button>
         </div>

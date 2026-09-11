@@ -59,6 +59,23 @@ describe('DesktopWindowShell', () => {
     expect(view.container.firstElementChild).toBe(view.getByTestId('content'));
   });
 
+  it('moves the ticking UTC clock to the title bar and clears its timer on unmount', async () => {
+    installElectronBridge();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-11T07:19:35Z'));
+    try {
+      const view = render(<DesktopWindowShell><div>Content</div></DesktopWindowShell>);
+      await act(async () => {});
+      expect(view.getByText('07:19:35 UTC')).toBeTruthy();
+      act(() => vi.advanceTimersByTime(1000));
+      expect(view.getByText('07:19:36 UTC')).toBeTruthy();
+      view.unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('renders compact desktop chrome and delegates all window actions to the preload bridge', async () => {
     const bridge = installElectronBridge();
     const view = render(

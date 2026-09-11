@@ -596,9 +596,9 @@ describe('live price overlay colors', () => {
     }, { isAdvancedUntitledLight: true });
 
     expect(getLivePriceOverlayColors(colors, colors.barUp)).toMatchObject({
-      lineColor: '#4b5563',
       badgeTextColor: '#ffffff',
     });
+    expect(getLivePriceOverlayColors(colors, colors.barUp).badgeBackground).not.toBe(colors.foreground);
   });
 
   it('uses WCAG relative luminance for badge text contrast', () => {

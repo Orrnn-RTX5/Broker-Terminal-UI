@@ -4,12 +4,15 @@ import { persist, createJSONStorage } from "zustand/middleware";
 export type ChartTypeEnum = "Bar" | "Candlesticks" | "Line" | "Area";
 export type ColorScheme =
   | "Green on Black"
+  | "Blue on Black"
   | "Black on White"
   | "Yellow on Black"
   | "Custom";
 
 export const CHART_PROFIT_COLOR = "#00C896";
 export const CHART_LOSS_COLOR = "#FF4D4F";
+export const CHART_BLUE_COLOR = "#4597ff";
+const BLUE_TEMPLATE_RED_COLOR = "#ff5858";
 
 const LEGACY_CHART_PROFIT_COLOR = "#10B981";
 const LEGACY_CHART_LOSS_COLOR = "#EF4444";
@@ -127,6 +130,25 @@ const normalizeSchemeColors = (
   colorScheme: ColorScheme,
   colors: ChartProperties["colors"],
 ): ChartProperties["colors"] => {
+  if (colorScheme === "Blue on Black") {
+    const migrateBlue = (value: string) => ["#2962ff", "#5b8fd9"].includes(value.toLowerCase()) ? CHART_BLUE_COLOR : value;
+    const migrateRed = (value: string) => value.toUpperCase() === CHART_LOSS_COLOR ? BLUE_TEMPLATE_RED_COLOR : value;
+    return {
+      ...colors,
+      barUp: migrateBlue(colors.barUp),
+      bullCandle: migrateBlue(colors.bullCandle),
+      lineChart: migrateBlue(colors.lineChart),
+      lastPriceLine: migrateBlue(colors.lastPriceLine),
+      barDown: migrateRed(colors.barDown),
+      bearCandle: migrateRed(colors.bearCandle),
+      askPriceLine: migrateRed(colors.askPriceLine),
+      stopLevels: migrateRed(colors.stopLevels),
+      volumes: ["rgba(41, 98, 255, 0.32)", "rgba(91, 143, 217, 0.32)"].includes(colors.volumes)
+        ? "rgba(69, 151, 255, 0.32)"
+        : colors.volumes,
+    };
+  }
+
   if (colorScheme === "Green on Black") {
     const migrateLegacyColor = (value: string, legacy: string, replacement: string) => (
       value.toUpperCase() === legacy ? replacement : value
@@ -304,6 +326,21 @@ export const getPresetSchemeColors = (
     return { ...defaultChartProperties.colors };
   }
 
+  if (scheme === "Blue on Black") {
+    return {
+      ...defaultChartProperties.colors,
+      barUp: CHART_BLUE_COLOR,
+      bullCandle: CHART_BLUE_COLOR,
+      lineChart: CHART_BLUE_COLOR,
+      volumes: "rgba(69, 151, 255, 0.32)",
+      barDown: BLUE_TEMPLATE_RED_COLOR,
+      bearCandle: BLUE_TEMPLATE_RED_COLOR,
+      askPriceLine: BLUE_TEMPLATE_RED_COLOR,
+      stopLevels: BLUE_TEMPLATE_RED_COLOR,
+      lastPriceLine: CHART_BLUE_COLOR,
+    };
+  }
+
   if (scheme === "Black on White") {
     return {
       background: "#000000",
@@ -349,21 +386,21 @@ export const getEffectiveChartColors = (
 ): ChartProperties["colors"] => {
   if (!options.isAdvancedUntitledLight) return properties.colors;
 
-  if (properties.colorScheme === "Green on Black") {
+  if (properties.colorScheme === "Green on Black" || properties.colorScheme === "Blue on Black") {
     return {
       ...properties.colors,
-      background: "#fafbfc",
-      foreground: "#4b5563",
-      grid: "#e8e8e8",
+      background: "#f2f4f5",
+      foreground: "#465461",
+      grid: "#dfe4e8",
     };
   }
 
   if (properties.colorScheme === "Black on White") {
     return {
       ...properties.colors,
-      background: "#fafbfc",
-      foreground: "#202124",
-      grid: "#d5d7da",
+      background: "#f2f4f5",
+      foreground: "#25313c",
+      grid: "#dfe4e8",
       barUp: "#000000",
       barDown: "#000000",
       bullCandle: "#ffffff",
@@ -377,8 +414,8 @@ export const getEffectiveChartColors = (
   if (properties.colorScheme === "Yellow on Black") {
     return {
       ...properties.colors,
-      background: "#fafbfc",
-      foreground: "#4b5563",
+      background: "#f2f4f5",
+      foreground: "#465461",
       grid: "#e0ded7",
       barUp: "#facc15",
       barDown: "#facc15",

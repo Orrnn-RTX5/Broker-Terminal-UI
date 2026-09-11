@@ -57,6 +57,7 @@ describe('LastSymbolPanel market-order transport', () => {
 
   afterEach(() => {
     cleanup();
+    document.body.replaceChildren();
     vi.restoreAllMocks();
   });
 
@@ -111,5 +112,85 @@ describe('LastSymbolPanel market-order transport', () => {
 
     await waitFor(() => expect(mocks.placeMarketOrder).toHaveBeenCalledTimes(1));
     expect(mocks.placeMarketOrder.mock.calls[0][0].symbol).toBe('XAUUSD.RAW');
+  });
+
+  const seedPosition = () => useAppStore.setState({ positions: [{
+    id: 901, symbol: 'EURUSD', side: 'BUY', volume: 0.01,
+    openPrice: 1.08, currentPrice: 1.085, openTime: '2026-09-10T10:00:00Z',
+    sl: 0, tp: 0, swap: 0, commission: 0, unrealizedPnL: 5,
+  }] });
+
+  it.each([
+    { ctrlKey: true }, { altKey: true }, { metaKey: true },
+    { repeat: true }, { isComposing: true }, { keyCode: 229 },
+  ])('never trades or closes positions for an inexact/held/composing shortcut: %j', (flags) => {
+    seedPosition(); render(<LastSymbolPanel />);
+    for (const key of ['B', 'S', 'X']) fireEvent.keyDown(window, { key, shiftKey: true, ...flags });
+    expect(mocks.placeMarketOrder).not.toHaveBeenCalled();
+    expect(mocks.closePosition).not.toHaveBeenCalled();
+    expect(useAppStore.getState().positions).toHaveLength(1);
+  });
+
+  it('ignores shortcuts already handled by a focused control', () => {
+    seedPosition(); render(<LastSymbolPanel />);
+    const control = document.createElement('button');
+    control.addEventListener('keydown', (event) => event.preventDefault());
+    document.body.append(control);
+    for (const key of ['B', 'S', 'X']) fireEvent.keyDown(control, { key, shiftKey: true, cancelable: true });
+    expect(mocks.placeMarketOrder).not.toHaveBeenCalled();
+    expect(mocks.closePosition).not.toHaveBeenCalled();
+  });
+
+  it.each(['input', 'textarea', 'select', 'editable', 'plaintext', 'dialog', 'menu', 'local'])('does not trade while keyboard focus belongs to %s', (kind) => {
+    seedPosition(); render(<LastSymbolPanel />);
+    const surface = document.createElement(['input', 'textarea', 'select'].includes(kind) ? kind : 'div');
+    let target: HTMLElement = surface;
+    if (['editable', 'plaintext'].includes(kind)) {
+      surface.setAttribute('contenteditable', kind === 'plaintext' ? 'plaintext-only' : '');
+      target = document.createElement('span'); surface.append(target);
+    } else if (['dialog', 'menu', 'local'].includes(kind)) {
+      if (kind === 'local') surface.dataset.shortcutScope = 'local';
+      else surface.setAttribute('role', kind);
+      target = document.createElement('button'); surface.append(target);
+    }
+    document.body.append(surface);
+    for (const key of ['B', 'S', 'X']) fireEvent.keyDown(target, { key, shiftKey: true });
+    expect(mocks.placeMarketOrder).not.toHaveBeenCalled();
+    expect(mocks.closePosition).not.toHaveBeenCalled();
+  });
+
+  it('keeps deliberate Shift+X closing the existing last-symbol position', async () => {
+    seedPosition(); mocks.closePosition.mockResolvedValue({ success: true });
+    render(<LastSymbolPanel />);
+    fireEvent.keyDown(window, { key: 'X', shiftKey: true });
+    await waitFor(() => expect(mocks.closePosition).toHaveBeenCalledExactlyOnceWith('901'));
+    expect(mocks.placeMarketOrder).not.toHaveBeenCalled();
+    await waitFor(() => expect(useAppStore.getState().positions).toHaveLength(0));
+  });
+
+  it.each([
+    ['TEST', 'XAUUSD'], ['achiever-financials', 'XAUUSD.raw'],
+    ['myprop-trade', 'BTCUSD-pro'], ['grow-trading-academy', 'EURUSD.r'],
+  ])('routes all three local trading chords for broker %s to its exact last symbol (mock transport)', async (brokerId, symbol) => {
+    localStorage.setItem('broker_id', brokerId);
+    useAppStore.setState({ accountId: '900001', ticks: {}, tickLookup: {}, positions: [{
+      id: 901, symbol, side: 'BUY', volume: 0.01, openPrice: 100, currentPrice: 101,
+      openTime: '2026-09-10T10:00:00Z', sl: 0, tp: 0, swap: 0, commission: 0, unrealizedPnL: 1,
+    }] });
+    useAppStore.getState().setTicks({ [symbol]: { symbol, bid: 101, ask: 102, spread: 1, timestamp: Date.now(), digits: 2 } });
+    useLastSymbolStore.setState({ lastSymbol: symbol });
+    mocks.closePosition.mockResolvedValue({ success: true });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch'); render(<LastSymbolPanel />);
+    fireEvent.keyDown(window, { key: 'B', shiftKey: true });
+    fireEvent.keyDown(window, { key: 'S', shiftKey: true });
+    await waitFor(() => expect(mocks.placeMarketOrder).toHaveBeenCalledTimes(2));
+    expect(mocks.placeMarketOrder.mock.calls.map(([order]) => ({ symbol: order.symbol, side: order.side, login: order.login }))).toEqual([
+      { symbol: symbol.toUpperCase(), side: 'buy', login: 900001 },
+      { symbol: symbol.toUpperCase(), side: 'sell', login: 900001 },
+    ]);
+    fireEvent.keyDown(window, { key: 'X', shiftKey: true });
+    await waitFor(() => expect(mocks.closePosition).toHaveBeenCalledExactlyOnceWith('901'));
+    await waitFor(() => expect(useAppStore.getState().positions).toHaveLength(0));
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

@@ -27,6 +27,23 @@ export const resolveSymbolPriceDigits = (symbol: string, brokerDigits?: unknown)
   normalizePriceDigits(brokerDigits) ?? getSymbolDigits(symbol)
 );
 
+const axisPriceFormatters = new Map<number, Intl.NumberFormat>();
+
+/** Group large axis values without losing broker precision or trailing zeros. */
+export const formatChartAxisPrice = (price: number, digits: number): string => {
+  const precision = normalizePriceDigits(digits) ?? 2;
+  let formatter = axisPriceFormatters.get(precision);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: precision,
+      maximumFractionDigits: precision,
+      useGrouping: true,
+    });
+    axisPriceFormatters.set(precision, formatter);
+  }
+  return formatter.format(price);
+};
+
 export const getPricePointFromDigits = (digits: number): number => (
   Math.pow(10, -(normalizePriceDigits(digits) ?? getSymbolDigits('')))
 );

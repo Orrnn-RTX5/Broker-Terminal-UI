@@ -29,7 +29,7 @@
       "depthOfMarket": "Głębokość Rynku",
       "marketWatch": "Obserwacja Rynku",
       "dataWindow": "Okno Danych",
-      "navigator": "Navigator",
+      "navigator": "Nawigator",
       "toolbox": "Przybornik",
       "strategyTester": "Tester Strategii",
       "fullScreen": "Pełny Ekran"
@@ -56,11 +56,12 @@
       "tickVolumes": "Wolumeny Tickowe",
       "zoomIn": "Powiększ",
       "zoomOut": "Pomniejsz",
-      "properties": "Właściwości"
+      "properties": "Właściwości",
+      "areaChart": "Wykres warstwowy"
     },
     "tools": {
       "label": "Narzędzia",
-      "newOrder": "Nowe Zlecenie",
+      "newOrder": "Nowe zlecenie",
       "strategyTester": "Tester Strategii",
       "scriptEditor": "Edytor Skryptów RTX5",
       "agentsManager": "Menedżer Agentów",
@@ -86,10 +87,10 @@
       "whatsNew": "Co Nowego",
       "telegramChannel": "Kanał Telegram RTX5",
       "videoGuides": "Przewodniki Wideo",
-      "webTrader": "RTX5 Web Trader",
+      "webTrader": "Trader internetowy RTX5",
       "documentation": "Dokumentacja RTX5",
-      "algoBook": "RTX5 AlgoBook",
-      "neuroBook": "RTX5 NeuroBook",
+      "algoBook": "AlgoBook RTX5",
+      "neuroBook": "NeuroBook RTX5",
       "articles": "Artykuły RTX5",
       "codeBase": "Baza Kodu RTX5",
       "jobs": "Oferty Pracy RTX5",

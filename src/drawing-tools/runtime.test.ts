@@ -40,11 +40,11 @@ describe('drawing-tools runtime detection', () => {
     { name: 'legacy Electron API bridge', electronAPI: {} },
     { name: 'file protocol', protocol: 'file:' },
     { name: 'Electron user agent', userAgent: 'Mozilla/5.0 Electron/40.8.0' },
-  ])('keeps the web rail disabled for the $name signal', ({ name: _name, ...runtime }) => {
+  ])('enables the shared rail for the $name signal', ({ name: _name, ...runtime }) => {
     installRuntime(runtime);
 
     expect(isElectronDrawingToolsRuntime()).toBe(true);
-    expect(isWebDrawingToolsRuntime()).toBe(false);
+    expect(isWebDrawingToolsRuntime()).toBe(true);
   });
 
   it('does not classify server-side rendering as web', () => {

@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from './/Icon';
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -185,6 +186,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   onPointerLeaveItem,
   isFocused = false
 }) => {
+    const tr = useUiTranslation();
   const itemRef = useRef<HTMLDivElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -372,7 +374,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
           </>
         )}
       </div>
-      <span className={labelClassName}>{item.label}</span>
+      <span className={labelClassName}>{tr(item.label)}</span>
       {item.shortcut && (
         <span className={shortcutClassName}>
           {item.shortcut}
@@ -398,6 +400,7 @@ interface MenuProps {
 }
 
 const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, isSubmenu = false, triggerRect }) => {
+    const tr = useUiTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
   const [activeSubmenu, setActiveSubmenu] = useState<{
@@ -622,7 +625,7 @@ const Menu: React.FC<MenuProps> = ({ items, position, onClose, zIndex, variant, 
         }}
         tabIndex={-1}
         role="menu"
-        aria-label="Context menu"
+        aria-label={tr("Context menu")}
       >
         {items.map((item, index) => {
           const itemId = `item-${index}`;
@@ -822,11 +825,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 // UTILITY: SECTION HEADER
 // ============================================================================
 
-export const MenuSectionHeader: React.FC<{ label: string }> = ({ label }) => (
+export const MenuSectionHeader: React.FC<{ label: string }> = ({ label }) => { const tr = useUiTranslation(); return ((
   <div className="px-3 py-1.5 text-[12px] font-medium text-zinc-500 uppercase tracking-wider pl-2">
-    {label}
+    {tr(label)}
   </div>
-);
+)); };
 
 // ============================================================================
 // UTILITY: DIVIDER

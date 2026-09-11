@@ -39,8 +39,8 @@ describe('BottomDock trade type presentation', () => {
 
     it('shows lowercase buy or sell text without an arrow icon', () => {
         const sideCell = source.match(/\{\/\* side \*\/\}([\s\S]*?)\{\/\* volume \*\/\}/)?.[1] ?? '';
-        expect(sideCell).toContain('<span>{sideLabel}</span>');
-        expect(sideCell).toContain('Type: ${sideLabel}');
+        expect(sideCell).toContain('<span>{tr(sideLabel)}</span>');
+        expect(sideCell).toContain('tr("Type: {{value0}}", { value0: tr(sideLabel) })');
         expect(sideCell).not.toContain('<svg');
     });
 

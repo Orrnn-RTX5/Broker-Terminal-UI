@@ -3,8 +3,8 @@
   position: relative;
   z-index: 25;
   display: flex;
-  width: 40px;
-  min-width: 40px;
+  width: 53px;
+  min-width: 53px;
   height: 100%;
   flex-direction: column;
   align-items: center;
@@ -12,32 +12,53 @@
   overflow: hidden;
   border-right: 1px solid var(--border-primary);
   background: var(--bg-secondary);
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-family: var(--font-sans);
 }
 
 .web-drawing-tools-rail__button {
   position: relative;
+  isolation: isolate;
   display: flex;
-  width: 40px;
-  height: 40px;
-  min-height: 40px;
-  flex: 0 0 40px;
+  width: 52px;
+  height: 38px;
+  min-height: 38px;
+  flex: 0 0 38px;
   align-items: center;
   justify-content: center;
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 }
 
+.web-drawing-tools-rail__button::before {
+  content: '';
+  position: absolute;
+  inset: 2px 9px;
+  z-index: -1;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.web-drawing-tools-rail__glyph {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
 .web-drawing-tools-rail__button:hover,
 .web-drawing-tools-rail__button:focus-visible {
-  background: var(--bg-quaternary);
+  background: transparent;
   color: var(--text-primary);
   outline: none;
+}
+
+.web-drawing-tools-rail__button:is(:hover, :focus-visible)::before {
+  background: var(--bg-quaternary);
 }
 
 .web-drawing-tools-rail__button:focus-visible {
@@ -45,9 +66,13 @@
 }
 
 .web-drawing-tools-rail__button[data-active='true'] {
-  background: color-mix(in srgb, var(--web-drawing-accent) 22%, var(--bg-secondary));
+  background: transparent;
   color: var(--web-drawing-accent);
-  box-shadow: inset 2px 0 0 var(--web-drawing-accent);
+  box-shadow: none;
+}
+
+.web-drawing-tools-rail__button[data-active='true']::before {
+  background: color-mix(in srgb, var(--web-drawing-accent) 12%, var(--bg-secondary));
 }
 
 .web-drawing-tools-rail__button[data-active='true']:focus-visible {
@@ -59,14 +84,14 @@
 .web-drawing-tools-rail__tools,
 .web-drawing-tools-rail__footer {
   display: flex;
-  width: 40px;
+  width: 52px;
   flex-direction: column;
   align-items: center;
 }
 
 .web-drawing-tools-rail__tools {
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: none;
@@ -81,12 +106,12 @@
 }
 
 .web-drawing-tools-rail__separator {
-  width: 24px;
+  width: 32px;
   height: 1px;
   min-height: 1px;
-  margin: 4px 0;
+  margin: 6px 0;
   flex: 0 0 1px;
-  background: var(--border-secondary);
+  background: var(--border-primary);
 }
 
 .web-drawing-tools-rail__toggle {
@@ -123,9 +148,151 @@
 
 .web-drawing-tools-rail__flyout-mark {
   position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 7px;
+  opacity: 0;
+}
+
+.web-drawing-tools-rail__flyout-button:is(:hover, :focus-visible, [aria-expanded='true']) .web-drawing-tools-rail__flyout-mark {
+  opacity: 1;
+}
+
+/* The desktop keeps the same drawing controls in a compact upper toolbar. */
+.web-drawing-tools-rail[data-orientation='horizontal'] {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  flex: 0 0 34px;
+  flex-direction: row;
+  border-right: 0;
+  border-bottom: 1px solid var(--border-primary);
+  background-image: var(--rtx-chrome-sheen);
+  box-shadow: inset 0 1px 0 var(--rtx-chrome-edge);
+}
+
+.web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__tools {
+  width: auto;
+  min-width: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  flex-direction: row;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__footer {
+  width: auto;
+  height: 100%;
+  flex-direction: row;
+  border-left: 1px solid var(--border-primary);
+}
+
+.web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__button {
+  width: 36px;
+  height: 32px;
+  min-height: 32px;
+  flex: 0 0 36px;
+}
+
+.web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__button::before {
+  inset: 2px 3px;
+}
+
+.web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__glyph {
+  width: 24px;
+  height: 24px;
+  flex-basis: 24px;
+}
+
+.web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__separator {
+  width: 1px;
+  height: 20px;
+  min-height: 20px;
+  margin: 0 5px;
+}
+
+.web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__flyout-mark {
   right: 2px;
+  top: auto;
   bottom: 2px;
-  opacity: 0.72;
+  transform: rotate(90deg);
+}
+
+/* Desktop drawing controls share the command row, after the timeframes.
+   Keep a scrollable tool area on smaller windows and the remove menu reachable. */
+.rtx-desktop-inline-drawings {
+  --rtx-drawing-item-gap: var(--rtx-toolbar-item-gap, 10px);
+  display: flex;
+  flex: 1 1 480px;
+  min-width: 168px;
+  max-width: none;
+  height: 32px;
+}
+
+.rtx-desktop-inline-drawings .web-drawing-tools-rail[data-orientation='horizontal'] {
+  flex: 1 1 auto;
+  height: 32px;
+  border-bottom: 0;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.rtx-desktop-inline-drawings .web-drawing-tools-rail__tools {
+  justify-content: space-between;
+  gap: var(--rtx-drawing-item-gap);
+  padding-inline: 0;
+}
+
+.rtx-desktop-inline-drawings .web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__button {
+  width: 32px;
+  flex-basis: 32px;
+  font: inherit;
+}
+
+.rtx-desktop-inline-drawings .web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__separator {
+  display: none;
+}
+
+.rtx-desktop-inline-drawings .web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__footer {
+  padding-inline: var(--rtx-drawing-item-gap) 0;
+  border-left: 0;
+}
+
+@media (max-width: 1280px) {
+  .rtx-desktop-inline-drawings {
+    --rtx-drawing-item-gap: 8px;
+  }
+}
+
+/* Match the compact desktop command icons; the web sidebar keeps its 28px glyphs. */
+.rtx-desktop-inline-drawings .web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__button > svg:not(.web-drawing-tools-rail__flyout-mark) {
+  width: var(--rtx-toolbar-icon-size, 20px);
+  height: var(--rtx-toolbar-icon-size, 20px);
+  flex-basis: var(--rtx-toolbar-icon-size, 20px);
+}
+
+/* Reference icons encode thin outlines as filled paths. Compensate for their
+   28-to-20px reduction so their visible lines match the other toolbar icons. */
+.rtx-desktop-inline-drawings .web-drawing-tools-rail__glyph[fill='currentColor'] {
+  stroke: currentColor;
+  stroke-width: 0.5;
+  stroke-linejoin: round;
+}
+
+.rtx-desktop-inline-drawings .web-drawing-tools-rail__button > svg[fill='none']:not(.web-drawing-tools-rail__flyout-mark) {
+  stroke-width: 1.5;
+}
+
+html.rtx-desktop-shell-active .web-drawing-tools-menu :is(.web-drawing-tools-menu__item, .web-drawing-tools-menu__label),
+html.rtx-desktop-shell-active .rtx-desktop-quick-menu__item,
+.web-drawing-tools-tooltip[data-orientation='horizontal'] {
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .web-drawing-tools-tooltip {
@@ -146,6 +313,10 @@
   white-space: nowrap;
 }
 
+.web-drawing-tools-tooltip[data-orientation='horizontal'] {
+  transform: none;
+}
+
 .web-drawing-tools-menu {
   --web-drawing-accent: #3b82f6;
   position: fixed;
@@ -158,7 +329,8 @@
   border-radius: 6px;
   background: var(--bg-elevated);
   color: var(--text-primary);
-  box-shadow: 0 12px 34px rgb(0 0 0 / 42%), 0 2px 8px rgb(0 0 0 / 30%);
+  background-image: var(--rtx-chrome-sheen);
+  box-shadow: inset 0 1px 0 var(--rtx-chrome-edge), 0 10px 28px rgb(0 0 0 / 24%), 0 2px 6px rgb(0 0 0 / 16%);
   color-scheme: dark;
   font-family: var(--font-sans);
 }
@@ -176,6 +348,10 @@
 
 .web-drawing-tools-menu[data-menu='patterns'] {
   width: min(370px, calc(100vw - 56px));
+}
+
+.web-drawing-tools-menu[data-menu='annotations'] .web-drawing-tools-menu__heading {
+  color: var(--text-secondary);
 }
 
 .web-drawing-tools-menu__heading {
@@ -245,8 +421,33 @@
   background: var(--border-primary);
 }
 
+.web-drawing-tools-menu__toggle-row {
+  display: flex;
+  height: 40px;
+  margin: 0 4px;
+  padding: 0 12px;
+  align-items: center;
+  gap: 12px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font: 500 14px/1 var(--font-sans);
+}
+
+.web-drawing-tools-menu__item:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.web-drawing-tools-menu__item:disabled:hover {
+  background: transparent;
+}
+
 @media (max-height: 620px) {
   .web-drawing-tools-menu__item {
+    height: 34px;
+  }
+
+  .web-drawing-tools-menu__toggle-row {
     height: 34px;
   }
 }

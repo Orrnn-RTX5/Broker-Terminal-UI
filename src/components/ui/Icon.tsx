@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 /**
  * Icon Component
  * 
@@ -63,6 +64,7 @@ export const Icon: React.FC<IconProps> = ({
     style,
     onClick,
 }) => {
+    const tr = useUiTranslation();
     const pixelSize = typeof size === 'number' ? size : SIZE_MAP[size];
     const paths = getIconPaths(name, state);
 
@@ -102,11 +104,11 @@ export const Icon: React.FC<IconProps> = ({
             className={`inline-block flex-shrink-0 ${stateClasses} ${className}`.trim()}
             style={style}
             role={title ? 'img' : undefined}
-            aria-label={title}
+            aria-label={tr(title)}
             aria-hidden={!title}
             onClick={onClick}
         >
-            {title && <title>{title}</title>}
+            {title && <title>{tr(title)}</title>}
             {paths}
         </svg>
     );

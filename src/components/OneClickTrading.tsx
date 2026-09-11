@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * MT5-Style One-Click Trading Panel
  * Premium compact overlay — exact MT5 replica with Red SELL / Blue BUY
@@ -28,6 +29,9 @@ import {
     resolveTradeVolumeConstraints,
 } from '../utils/tradeVolume';
 import { formatPriceParts } from './ui/PriceDisplay';
+import { resolveExactBrokerSymbolValue } from '../utils/exactBrokerSymbol';
+import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
+import './OneClickTrading.css';
 
 interface OneClickTradingProps {
     symbol: string;
@@ -103,6 +107,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     maxVolume,
     volumeStep,
 }) => {
+    const tr = useUiTranslation();
     const volumeConstraints = useMemo(() => resolveTradeVolumeConstraints({
         minVolume,
         maxVolume,
@@ -118,13 +123,32 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const [error, setError] = useState<string | null>(null);
     const prevBidRef = useRef<number>(0);
     const prevAskRef = useRef<number>(0);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const [compact, setCompact] = useState(false);
+    useEffect(() => {
+        const parent = panelRef.current?.parentElement;
+        if (!parent || !visible) return;
+        const update = (width: number) => {
+            if (width > 0) setCompact(width < 390);
+        };
+        update(parent.getBoundingClientRect().width);
+        if (typeof ResizeObserver === 'undefined') {
+            const onResize = () => update(parent.getBoundingClientRect().width);
+            window.addEventListener('resize', onResize);
+            return () => window.removeEventListener('resize', onResize);
+        }
+        const observer = new ResizeObserver(entries => {
+            const entry = entries.find(item => item.target === parent);
+            if (entry) update(entry.contentRect.width);
+        });
+        observer.observe(parent);
+        return () => observer.disconnect();
+    }, [visible, symbol]);
 
     // FIX: Broker symbols are opaque execution identities. Exact lookup avoids
     // trading EURUSD.r/XAUUSD.raw with a similarly named instrument's quote.
     const tick = useAppStore((s) => {
-        if (s.ticks[symbol]) return s.ticks[symbol];
-        if (s.ticks[symbol.toUpperCase()]) return s.ticks[symbol.toUpperCase()];
-        return null;
+        return resolveExactBrokerSymbolValue(s.ticks, symbol) ?? null;
     });
     const bid = tick?.bid || 0;
     const ask = tick?.ask || 0;
@@ -268,6 +292,12 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             setError('No trading account is selected. Please sign in again.');
             return;
         }
+        const orderSessionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+        const ownsOrderSession = () => {
+            const current = useAppStore.getState();
+            return current.isAuthenticated && String(current.accountId) === String(login)
+                && getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()) === orderSessionScope;
+        };
         try {
             const orderPromise = api.orders.placeMarketOrder({
                 side,
@@ -286,6 +316,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             const chartEntryPrice = getTradeEntryPriceFromQuote(tick, side.toUpperCase() as 'BUY' | 'SELL');
             const chartEntryTime = new Date().toISOString();
             const result = await orderPromise;
+            if (!ownsOrderSession()) return;
             // Concurrent clicks settle independently. If an earlier order was
             // rejected while this newer one was still executing, the newer
             // success must clear that stale banner immediately; it must never
@@ -304,6 +335,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             useLastSymbolStore.getState().setLastSymbol(symbol, side.toUpperCase() as 'BUY' | 'SELL');
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
         } catch (err: unknown) {
+            if (!ownsOrderSession()) return;
             console.error('[OneClick] Trade failed:', err);
             setError(formatOrderError(err));
             setTimeout(() => setError(null), 6000);
@@ -392,8 +424,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 data-active={flashSide === side}
                 onClick={() => placeOrder(side)}
                 disabled={!canSubmitOrder}
-                title={orderBlockedReason}
-                aria-label={`${label} ${symbol} at ${priceText}`}
+                title={tr(orderBlockedReason)}
+                aria-label={tr("{{value0}} {{value1}} at {{value2}}", { value0: tr(label), value1: symbol, value2: priceText })}
                 style={{
                     ...sharedButtonStyle,
                     background: flashSide === side ? activeBackground : restingBackground,
@@ -406,7 +438,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     if (!flashSide) event.currentTarget.style.background = restingBackground;
                 }}
             >
-                {isBuy && <span className="rtx-oct-side-label">{label}</span>}
+                {isBuy && <span className="rtx-oct-side-label">{tr(label)}</span>}
                 <span
                     className="rtx-oct-price"
                     style={{
@@ -417,15 +449,17 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 >
                     {priceText}
                 </span>
-                {!isBuy && <span className="rtx-oct-side-label">{label}</span>}
+                {!isBuy && <span className="rtx-oct-side-label">{tr(label)}</span>}
             </button>
         );
     };
 
     return (
         <div
+            ref={panelRef}
             className="rtx-oct absolute top-[28px] left-[10px] z-30 select-none drop-shadow-2xl"
-            style={{ pointerEvents: 'auto', fontFamily: 'var(--font-sans)', display: 'inline-block', width: 'fit-content' }}
+            data-compact={compact}
+            style={{ pointerEvents: 'auto', fontFamily: 'var(--font-sans)', display: 'inline-block', width: compact ? 'calc(100% - 20px)' : 'fit-content', maxWidth: 'calc(100% - 20px)' }}
         >
             <div
                 data-testid="one-click-trading-row"
@@ -467,8 +501,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 >
                     <button
                         type="button"
-                        aria-label="Decrease lot size"
-                        title="Decrease lot size"
+                        aria-label={tr("Decrease lot size")}
+                        title={tr("Decrease lot size")}
                         data-at-min={!isVolumeValid || volume <= volumeConstraints.min}
                         onClick={() => adjustVolume(-1)}
                         style={{
@@ -483,7 +517,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     </button>
                     <input
                         className="rtx-oct-lot-input"
-                        aria-label="Lot size"
+                        aria-label={tr("Lot size")}
                         type="text"
                         role="spinbutton"
                         inputMode="decimal"
@@ -532,8 +566,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     />
                     <button
                         type="button"
-                        aria-label="Increase lot size"
-                        title="Increase lot size"
+                        aria-label={tr("Increase lot size")}
+                        title={tr("Increase lot size")}
                         onClick={() => adjustVolume(1)}
                         style={{
                             background: 'none', border: 'none', color: '#b8c1d1', cursor: 'pointer',
@@ -562,7 +596,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     border: '1px solid #7f1d1d',
                     borderTop: 'none',
                 }}>
-                    ⚠ Invalid volume (min {formatTradeVolume(volumeConstraints.min, volumeConstraints)})
+                    {tr("⚠ Invalid volume (min ")}{formatTradeVolume(volumeConstraints.min, volumeConstraints)})
                 </div>
             )}
             {tradeAllowed && marketOpenForTrading && !hasExecutablePrice && !error && (
@@ -576,8 +610,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     border: '1px solid rgba(245, 158, 11, 0.45)',
                     borderTop: 'none',
                 }}>
-                    Waiting for a valid bid/ask price
-                </div>
+                    {tr("Waiting for a valid bid/ask price")}</div>
             )}
             {tradeAllowed && !marketOpenForTrading && !error && (
                 <div style={{
@@ -590,7 +623,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     border: '1px solid rgba(245, 158, 11, 0.45)',
                     borderTop: 'none',
                 }}>
-                    {marketBlockedMessage || effectiveMarketStatus.label}
+                    {tr(marketBlockedMessage || effectiveMarketStatus.label)}
                 </div>
             )}
             {error && (
@@ -604,7 +637,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     border: '1px solid #7f1d1d',
                     borderTop: 'none',
                 }}>
-                    {error}
+                    {tr(error)}
                 </div>
             )}
         </div>

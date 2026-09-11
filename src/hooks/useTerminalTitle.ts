@@ -1,3 +1,4 @@
+import { brokerDisplayName } from '../services/brokerDisplayName';
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { brokerV2Api } from '../api/trade';
@@ -76,11 +77,8 @@ const resolveBrokerDisplayName = (
         ? brokers.find((broker) => broker.broker_id === matchedServer.broker_id)
         : undefined;
 
-    return normalizeHeaderText(matchedServer?.broker_name)
-        || normalizeHeaderText(matchedBroker?.name)
-        || normalizeHeaderText(config?.brokerName)
-        || normalizeHeaderText(config?.name)
-        || serverName;
+    const directoryName = matchedServer?.broker_name || matchedBroker?.name;
+    return brokerDisplayName(serverName, directoryName, config?.brokerName, config?.name);
 };
 
 type BrokerDetails = [BrokerTitleConfig | null, BrokerServer[], { brokers: Broker[]; count: number } | null];
@@ -115,14 +113,14 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
     const storedServer = typeof window !== 'undefined' ? localStorage.getItem('rtx_broker_server') : '';
     const serverName = activeAccount?.server || storedServer || DEFAULT_BROKER_SERVER;
 
-    const [brokerName, setBrokerName] = useState<string>(serverName);
+    const [brokerName, setBrokerName] = useState<string>(() => brokerDisplayName(serverName));
     const [marginMode, setMarginMode] = useState<string>('Hedge');
     const [logoUrl, setLogoUrl] = useState<string>(() => getStoredLogoUrl());
     const [logoBaseCandidates, setLogoBaseCandidates] = useState<string[]>([]);
 
     useEffect(() => {
         let active = true;
-        setBrokerName(serverName);
+        setBrokerName(brokerDisplayName(serverName));
         setLogoUrl(getStoredLogoUrl());
         setLogoBaseCandidates([]);
 
@@ -180,7 +178,7 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
             } catch (err) {
                 console.error('[TerminalTitle] Error loading dynamic titlebar info:', err);
                 if (!active) return;
-                setBrokerName(serverName);
+                setBrokerName(brokerDisplayName(serverName));
                 setLogoUrl(getStoredLogoUrl());
                 setLogoBaseCandidates([]);
             }

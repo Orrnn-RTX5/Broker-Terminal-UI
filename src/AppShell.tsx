@@ -1,3 +1,4 @@
+import { useUiTranslation } from './hooks/useUiTranslation';
 import { useCallback, useEffect, useState } from 'react';
 import { WelcomeTerminal } from './components/WelcomeTerminal';
 import {
@@ -6,6 +7,7 @@ import {
 } from './startup/authenticatedSessionHandoff';
 import { TerminalLoadFallback } from './startup/TerminalLoadFallback';
 import { preloadTradingChartRuntime } from './startup/tradingChartRuntime';
+import { ensureConfiguredWebSession } from './startup/configuredWebSession';
 
 type AppModule = typeof import('./App');
 type AuthenticatedStylesModule = typeof import('./authenticatedStyles');
@@ -66,6 +68,7 @@ function StoredSessionTerminalLoader({
   loadTerminal,
   onSessionEnded,
 }: StoredSessionTerminalLoaderProps) {
+    const tr = useUiTranslation();
   const [terminalModule, setTerminalModule] = useState<AppModule | null>(() => resolvedAppModule);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -102,7 +105,7 @@ function StoredSessionTerminalLoader({
   if (loadFailed) {
     return (
       <div data-terminal-module-error="true" role="alert">
-        <span>Unable to load the terminal.</span>
+        <span>{tr("Unable to load the terminal.")}</span>
         <button
           type="button"
           onClick={() => {
@@ -110,8 +113,7 @@ function StoredSessionTerminalLoader({
             setLoadAttempt((attempt) => attempt + 1);
           }}
         >
-          Retry
-        </button>
+          {tr("Retry")}</button>
       </div>
     );
   }
@@ -121,6 +123,7 @@ function StoredSessionTerminalLoader({
 
 export const hasStoredSessionCandidate = (): boolean => {
   if (typeof window === 'undefined') return false;
+  if (!ensureConfiguredWebSession()) return false;
 
   const accountId = window.localStorage.getItem('rtx_saved_username')
     || window.localStorage.getItem('rtx_last_login');

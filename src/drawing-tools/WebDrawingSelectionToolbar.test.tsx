@@ -14,6 +14,7 @@ vi.mock('../services/drawingManager', () => ({
 }));
 
 import { WebDrawingSelectionToolbar } from './WebDrawingSelectionToolbar';
+import { getPictographItems, PICTOGRAPH_CATEGORIES } from './pictographCatalog';
 
 const drawingSelection = {
   drawingId: 'drawing-17',
@@ -180,5 +181,38 @@ describe('WebDrawingSelectionToolbar', () => {
 
     dispatchSelectionCleared('chart-xauusd-m1');
     expect(screen.queryByRole('toolbar')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['emojis', 'Emoji'], ['stickers', 'Sticker'], ['icons', 'Icon'],
+  ] as const)('offers only working lock and delete controls for %s', (tab, kind) => {
+    const category = PICTOGRAPH_CATEGORIES.find(item => getPictographItems(tab, item.id).length > 0)!;
+    const stamp = getPictographItems(tab, category.id)[0];
+    const selectStamp = (locked: boolean) => act(() => {
+      window.dispatchEvent(new CustomEvent('drawing:selected', {
+        detail: { ...drawingSelection, type: 'stamp', subtype: stamp.id, locked },
+      }));
+    });
+    render(<WebDrawingSelectionToolbar />);
+    selectStamp(false);
+
+    const toolbar = screen.getByRole('toolbar', { name: `Edit ${kind} ${stamp.glyph}` });
+    expect(screen.queryByLabelText('Line color')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Line width')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Line style')).not.toBeInTheDocument();
+    expect(toolbar.querySelector('.web-drawing-selection-toolbar__separator')).toBeNull();
+    expect(toolbar.querySelectorAll('button')).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lock drawing' }));
+    expect(managerMocks.updateDrawingProperties).toHaveBeenLastCalledWith(
+      'drawing-17', { locked: true }, 'chart-xauusd-m1',
+    );
+    selectStamp(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock drawing' }));
+    expect(managerMocks.updateDrawingProperties).toHaveBeenLastCalledWith(
+      'drawing-17', { locked: false }, 'chart-xauusd-m1',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delete drawing' }));
+    expect(managerMocks.deleteDrawing).toHaveBeenCalledWith('drawing-17', 'chart-xauusd-m1');
   });
 });

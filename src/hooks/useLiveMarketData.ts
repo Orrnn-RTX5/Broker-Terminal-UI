@@ -45,6 +45,8 @@ export interface MarketInstrumentsSnapshot {
   authorizedSymbols: string[];
   disabledSymbols: string[];
   authorizationSettled: boolean;
+  /** Complete successful catalog for this broker/account, suitable for replacing saved selections. */
+  chartCatalogCurrent?: boolean;
   loading: boolean;
   error: string | null;
   reload: () => Promise<void>;
@@ -919,6 +921,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
   const [authorizedSymbols, setAuthorizedSymbols] = useState<string[]>([]);
   const [disabledSymbols, setDisabledSymbols] = useState<string[]>([]);
   const [authorizationSettled, setAuthorizationSettled] = useState(false);
+  const [completedCatalogScope, setCompletedCatalogScope] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
@@ -971,6 +974,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
     setDisabledSymbols([]);
     setAuthorizedInstruments([]);
     setAuthorizationSettled(false);
+    setCompletedCatalogScope(null);
 
     try {
       const response = await apiClient.get<unknown>('/api/v1/market/symbols', {
@@ -998,6 +1002,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
 
       if (!isAuthenticated || !requestSession) {
         setAuthorizationSettled(true);
+        if (!isAuthenticated) setCompletedCatalogScope(catalogScope);
         return;
       }
 
@@ -1027,6 +1032,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
         }
         setAuthorizedSymbols(uniqueSymbols(enabled));
         setDisabledSymbols(uniqueSymbols(disabled));
+        setCompletedCatalogScope(catalogScope);
       } catch {
         if (requestGeneration !== requestGenerationRef.current || controller.signal.aborted) return;
         // The public grid is still valid. Trading actions stay disabled until
@@ -1070,6 +1076,7 @@ export function useMarketInstruments(): MarketInstrumentsSnapshot {
     authorizedSymbols,
     disabledSymbols,
     authorizationSettled,
+    chartCatalogCurrent: completedCatalogScope === catalogScope && authorizationSettled,
     loading,
     error,
     reload,

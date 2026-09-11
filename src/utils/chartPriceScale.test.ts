@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   computeMinimumVisiblePriceSpan,
+  formatChartAxisPrice,
   getInstrumentPriceDigits,
   getPricePointFromDigits,
   normalizePriceDigits,
@@ -17,6 +18,15 @@ const digitCases = [
 ] as const;
 
 describe('chart price-scale precision', () => {
+  it.each([
+    [4417.245, 3, '4,417.245'],
+    [4417.2, 2, '4,417.20'],
+    [1.1637, 5, '1.16370'],
+    [78216, 0, '78,216'],
+  ] as const)('formats %s with %s broker digits', (price, digits, expected) => {
+    expect(formatChartAxisPrice(price, digits)).toBe(expected);
+  });
+
   it.each(digitCases)('preserves broker-provided $digits digits for $label', ({ symbol, digits }) => {
     expect(normalizePriceDigits(digits)).toBe(digits);
     expect(getInstrumentPriceDigits({ digits })).toBe(digits);

@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 /**
  * WelcomeTerminal renders the lightweight pre-authentication webterminal.
  * Authenticated chart, data, and WebSocket modules are loaded separately.
@@ -354,6 +355,9 @@ export const buildConfiguredRuntimeBroker = (): BrokerServerItem | undefined => 
     const backendUrl = String(getBackendTarget() || '').trim();
     if (!brokerId) return undefined;
     const cachedPresentation = readBrokerPresentationCache(brokerId);
+    const configuredBrokerName = brokerId === String(import.meta.env.VITE_BROKER_ID || '').trim()
+        ? String(import.meta.env.VITE_DEFAULT_MT5_SERVER || '').trim()
+        : '';
     const storedBrokerId = typeof window === 'undefined'
         ? ''
         : String(localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '').trim();
@@ -363,7 +367,7 @@ export const buildConfiguredRuntimeBroker = (): BrokerServerItem | undefined => 
 
     return {
         broker_id: brokerId,
-        broker_name: cachedPresentation?.brokerName || brokerId,
+        broker_name: cachedPresentation?.brokerName || configuredBrokerName || brokerId,
         server: brokerId,
         server_url: backendUrl,
         backend_url: backendUrl,
@@ -392,14 +396,12 @@ export const pickDiscoveryBroker = (
     const configuredBroker = brokers.find(broker => brokerMatchesLookup(broker, configuredBrokerId));
     const configuredRuntimeBroker = buildConfiguredRuntimeBroker();
 
-    // Discovery may identify localhost as a local demo broker. That inferred
-    // match must not replace an explicit deployment broker (or a broker from a
-    // previously successful login) when the directory arrives asynchronously.
-    return authenticatedSavedBroker
-        || configuredBroker
-        || configuredRuntimeBroker
-        || runtimeBroker
-        || brokers[0];
+    // A browser deployment owns its broker. A login saved on this same local
+    // origin must not replace a newly configured broker when discovery loads.
+    // Desktop deliberately keeps its user-selected, authenticated broker.
+    return isDesktop
+        ? authenticatedSavedBroker || configuredBroker || brokers[0] || configuredRuntimeBroker
+        : configuredBroker || configuredRuntimeBroker || runtimeBroker || authenticatedSavedBroker || brokers[0];
 };
 
 const isAbortError = (err: unknown): boolean =>
@@ -432,6 +434,7 @@ export function WelcomeTerminal({
     onPrepareTerminal,
     onPreloadTerminalPresentation,
 }: WelcomeTerminalProps) {
+    const tr = useUiTranslation();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [username, setUsername] = useState(() => localStorage.getItem('rtx_saved_username') || '');
@@ -829,12 +832,12 @@ export function WelcomeTerminal({
             className={loginOverlayClassName}
         >
             {hasElectronWindowControls && (
-                <div className="rtx-login-window-controls" data-window-controls role="toolbar" aria-label="Window controls">
+                <div className="rtx-login-window-controls" data-window-controls role="toolbar" aria-label={tr("Window controls")}>
                     <button
                         type="button"
                         className="rtx-login-window-control is-close"
-                        aria-label="Close"
-                        title="Close"
+                        aria-label={tr("Close")}
+                        title={tr("Close")}
                         onMouseDown={e => e.stopPropagation()}
                         onClick={e => handleWindowControl(e, 'close')}
                     >
@@ -843,8 +846,8 @@ export function WelcomeTerminal({
                     <button
                         type="button"
                         className="rtx-login-window-control is-minimize"
-                        aria-label="Minimize"
-                        title="Minimize"
+                        aria-label={tr("Minimize")}
+                        title={tr("Minimize")}
                         onMouseDown={e => e.stopPropagation()}
                         onClick={e => handleWindowControl(e, 'minimize')}
                     >
@@ -853,8 +856,8 @@ export function WelcomeTerminal({
                     <button
                         type="button"
                         className="rtx-login-window-control is-maximize"
-                        aria-label="Maximize"
-                        title="Maximize"
+                        aria-label={tr("Maximize")}
+                        title={tr("Maximize")}
                         onMouseDown={e => e.stopPropagation()}
                         onClick={e => handleWindowControl(e, 'maximize')}
                     >
@@ -881,7 +884,7 @@ export function WelcomeTerminal({
                 </aside>
 
                 <main className="rtx-login-panel-wrap">
-                    <section data-welcome-card className="rtx-login-panel" aria-label="RTX Terminal login">
+                    <section data-welcome-card className="rtx-login-panel" aria-label={tr("RTX Terminal login")}>
                         <div className="rtx-login-body">
                             <header className="rtx-form-header">
                                 <h1 className="rtx-login-title" aria-label={LOGIN_TITLE_ACCESSIBLE_LABEL}>
@@ -911,7 +914,7 @@ export function WelcomeTerminal({
                                         />
                                     </div>
                                     <div className="rtx-route-copy">
-                                        <span className="rtx-summary-label">Broker Server</span>
+                                        <span className="rtx-summary-label">{tr("Broker Server")}</span>
                                         <strong>{selectedBrokerName}</strong>
                                     </div>
                                 </div>
@@ -939,14 +942,14 @@ export function WelcomeTerminal({
                                 data-login-submit-pending={loading ? 'true' : 'false'}
                             >
                                 <div>
-                                    <label htmlFor="rtxAccountId" style={activeLabelStyle}>Account ID</label>
+                                    <label htmlFor="rtxAccountId" style={activeLabelStyle}>{tr("Account ID")}</label>
                                     <div className="rtx-input-shell">
                                         <LoginIcon name="user" />
                                         <input
                                             id="rtxAccountId"
                                             name="accountId"
                                             type="text"
-                                            placeholder="Enter Account ID"
+                                            placeholder={tr("Enter Account ID")}
                                             required
                                             autoFocus
                                             autoComplete="username"
@@ -970,14 +973,14 @@ export function WelcomeTerminal({
                                 </div>
 
                                 <div>
-                                    <label htmlFor="rtxPassword" style={activeLabelStyle}>Password</label>
+                                    <label htmlFor="rtxPassword" style={activeLabelStyle}>{tr("Password")}</label>
                                     <div className="rtx-input-shell">
                                         <LoginIcon name="lock" />
                                         <input
                                             id="rtxPassword"
                                             name="password"
                                             type={showPassword ? 'text' : 'password'}
-                                            placeholder="Enter Password"
+                                            placeholder={tr("Enter Password")}
                                             required
                                             autoComplete="current-password"
                                             value={password}
@@ -999,7 +1002,7 @@ export function WelcomeTerminal({
                                         <button
                                             type="button"
                                             className="rtx-password-toggle"
-                                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                            aria-label={showPassword ? tr("Hide password") : tr("Show password")}
                                             aria-pressed={showPassword}
                                             onMouseDown={e => e.preventDefault()}
                                             onClick={() => setShowPassword(value => !value)}
@@ -1014,7 +1017,7 @@ export function WelcomeTerminal({
                                 </div>
 
                                 <div className="rtx-broker-field">
-                                    <label htmlFor="rtxBrokerServer" style={activeLabelStyle}>Broker Server</label>
+                                    <label htmlFor="rtxBrokerServer" style={activeLabelStyle}>{tr("Broker Server")}</label>
                                     <div
                                         ref={isDesktopBrokerSelection ? dropdownRef : undefined}
                                         className={`rtx-broker-input-wrap ${isDesktopBrokerSelection ? 'is-selectable' : 'is-locked'}`}
@@ -1027,11 +1030,7 @@ export function WelcomeTerminal({
                                             name="brokerServer"
                                             type="text"
                                             placeholder={
-                                                brokerListStatus === 'loading'
-                                                    ? 'Resolving broker...'
-                                                    : isDesktopBrokerSelection
-                                                        ? 'Search broker...'
-                                                        : 'Broker resolved from domain'
+                                                brokerListStatus === 'loading' ? tr("Resolving broker...") : isDesktopBrokerSelection ? tr("Search broker...") : tr("Broker resolved from domain")
                                             }
                                             required
                                             autoComplete="organization"
@@ -1041,7 +1040,7 @@ export function WelcomeTerminal({
                                             aria-haspopup={isDesktopBrokerSelection ? 'listbox' : undefined}
                                             aria-expanded={isDesktopBrokerSelection ? dropdownOpen : undefined}
                                             aria-controls={isDesktopBrokerSelection ? 'rtxBrokerServerMenu' : undefined}
-                                            title={isDesktopBrokerSelection ? 'Choose broker server' : 'Broker server is resolved automatically from this domain'}
+                                            title={isDesktopBrokerSelection ? tr("Choose broker server") : tr("Broker server is resolved automatically from this domain")}
                                             onChange={e => {
                                                 if (!isDesktopBrokerSelection) return;
                                                 setSearchQuery(e.target.value);
@@ -1085,7 +1084,7 @@ export function WelcomeTerminal({
                                         {isDesktopBrokerSelection && dropdownOpen && (
                                             <div id="rtxBrokerServerMenu" className="rtx-broker-menu" role="listbox">
                                                 {filteredBrokers.length === 0 ? (
-                                                    <div className="rtx-broker-empty">No brokers found</div>
+                                                    <div className="rtx-broker-empty">{tr("No brokers found")}</div>
                                                 ) : (
                                                     filteredBrokers.map(item => (
                                                         <button
@@ -1117,8 +1116,7 @@ export function WelcomeTerminal({
 
                                 {healthStatus === 'offline' && (
                                     <div className="rtx-inline-status is-offline">
-                                        Broker temporarily unavailable
-                                    </div>
+                                        {tr("Broker temporarily unavailable")}</div>
                                 )}
 
                                 <div className="rtx-remember-row">
@@ -1129,7 +1127,7 @@ export function WelcomeTerminal({
                                         checked={rememberMe}
                                         onChange={e => setRememberMe(e.target.checked)}
                                     />
-                                    <label htmlFor="wtRemember">Remember account ID</label>
+                                    <label htmlFor="wtRemember">{tr("Remember account ID")}</label>
                                 </div>
 
                                 <button
@@ -1141,8 +1139,7 @@ export function WelcomeTerminal({
                                     data-rtx-login-feedback={loading ? 'true' : undefined}
                                 >
                                     <>
-                                        Login
-                                        <LoginIcon name="arrow-right" strokeWidth={2.2} />
+                                        {tr("Login")}<LoginIcon name="arrow-right" strokeWidth={2.2} />
                                     </>
                                 </button>
                             </form>

@@ -28,6 +28,7 @@ export interface ServerDrawing {
 }
 
 export interface ServerDrawingProperties {
+  annotation?: import('../drawing-tools/annotationToolCatalog').AnnotationStyle;
   id?: string;           // Client-generated ID (optional)
   points: Array<{
     time: number;
@@ -83,6 +84,7 @@ export interface SaveDrawingResponse {
 
 // Client drawing type (matches DrawingManager)
 export interface ClientDrawing {
+  annotation?: import('../drawing-tools/annotationToolCatalog').AnnotationStyle;
   id: string;
   type: string;
   points: Array<{
@@ -179,6 +181,7 @@ class DrawingApiService {
       type: serverDrawing.type,
       points: props.points || [],
       text: props.text,
+      annotation: props.annotation,
       color: props.color || '#3b82f6',
       lineWidth: props.lineWidth || 2,
       fillColor: props.fillColor,
@@ -221,6 +224,7 @@ class DrawingApiService {
         fillOpacity: drawing.fillOpacity,
         lineStyle: drawing.lineStyle,
         text: drawing.text,
+        annotation: drawing.annotation,
         subtype: drawing.subtype,
         channelOffset: drawing.channelOffset,
         channelMidpointRatio: drawing.channelMidpointRatio,

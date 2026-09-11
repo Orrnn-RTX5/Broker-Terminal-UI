@@ -1,3 +1,4 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
@@ -15,19 +16,19 @@ import '../styles/order-panel-dialog.css';
 
 // Symbol display names
 const SYMBOL_NAMES: Record<string, string> = {
-  EURUSD: 'EURUSD, Euro vs US Dollar',
-  GBPUSD: 'GBPUSD, Great Britain Pound vs US Dollar',
-  USDJPY: 'USDJPY, US Dollar vs Japanese Yen',
-  XAUUSD: 'XAUUSD, Gold vs US Dollar',
-  XAGUSD: 'XAGUSD, Silver vs US Dollar',
-  BTCUSD: 'BTCUSD, Bitcoin vs US Dollar',
-  ETHUSD: 'ETHUSD, Ethereum vs US Dollar',
-  AUDUSD: 'AUDUSD, Australian Dollar vs US Dollar',
-  USDCAD: 'USDCAD, US Dollar vs Canadian Dollar',
-  USDCHF: 'USDCHF, US Dollar vs Swiss Franc',
-  NZDUSD: 'NZDUSD, New Zealand Dollar vs US Dollar',
-  EURJPY: 'EURJPY, Euro vs Japanese Yen',
-  GBPJPY: 'GBPJPY, Great Britain Pound vs Japanese Yen',
+  EURUSD: 'Euro / US Dollar',
+  GBPUSD: 'Pound / US Dollar',
+  USDJPY: 'US Dollar / Yen',
+  XAUUSD: 'Gold / US Dollar',
+  XAGUSD: 'Silver / US Dollar',
+  BTCUSD: 'Bitcoin / US Dollar',
+  ETHUSD: 'Ethereum / US Dollar',
+  AUDUSD: 'Aussie / US Dollar',
+  USDCAD: 'US Dollar / CAD',
+  USDCHF: 'US Dollar / Franc',
+  NZDUSD: 'Kiwi / US Dollar',
+  EURJPY: 'Euro / Yen',
+  GBPJPY: 'Pound / Yen',
 };
 
 type OrderType = 'Market Execution' | 'Buy Limit' | 'Sell Limit' | 'Buy Stop' | 'Sell Stop' | 'Buy Stop Limit' | 'Sell Stop Limit';
@@ -102,6 +103,7 @@ function MiniTickChart({
   digits: number;
   chartColors: TickChartColors;
 }) {
+    const tr = useUiTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tickHistoryRef = useRef<TickPoint[]>([]);
   const frameRef = useRef<number | null>(null);
@@ -214,7 +216,7 @@ function MiniTickChart({
         ctx.font = `11px ${palette.monoFont}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('Waiting for live tick data', left + plotWidth / 2, top + plotHeight / 2);
+        ctx.fillText(tr('Waiting for the first live quote from the broker.'), left + plotWidth / 2, top + plotHeight / 2, plotWidth - 20);
         return;
       }
 
@@ -371,7 +373,7 @@ function MiniTickChart({
       resizeObserver?.disconnect();
       themeObserver.disconnect();
     };
-  }, [ask, bid, chartColors, digits, symbol]);
+  }, [ask, bid, chartColors, digits, symbol, tr]);
 
   return (
     <div className="rtx-order-dialog__chart-shell">
@@ -380,15 +382,14 @@ function MiniTickChart({
           <span className="rtx-order-dialog__chart-symbol">{symbol}</span>
           <span className="rtx-order-dialog__chart-meta">
             <span className="rtx-order-dialog__live-dot" aria-hidden="true" />
-            Tick chart · 5 min
-          </span>
+            {tr("Tick chart · 5 min")}</span>
         </div>
-        <div className="rtx-order-dialog__chart-quotes" aria-label={`${symbol} live bid and ask`}>
+        <div className="rtx-order-dialog__chart-quotes" aria-label={tr("{{value0}} live bid and ask", { value0: symbol })}>
           <span className="rtx-order-dialog__chart-quote rtx-order-dialog__chart-quote--bid">
-            Bid <strong>{bid > 0 ? bid.toFixed(digits) : '—'}</strong>
+            {tr("Bid ")}<strong>{bid > 0 ? bid.toFixed(digits) : '—'}</strong>
           </span>
           <span className="rtx-order-dialog__chart-quote rtx-order-dialog__chart-quote--ask">
-            Ask <strong>{ask > 0 ? ask.toFixed(digits) : '—'}</strong>
+            {tr("Ask ")}<strong>{ask > 0 ? ask.toFixed(digits) : '—'}</strong>
           </span>
         </div>
       </div>
@@ -399,7 +400,7 @@ function MiniTickChart({
         className="rtx-order-dialog__chart-canvas"
         data-testid="order-mini-tick-chart"
         role="img"
-        aria-label={`Live ${symbol} bid and ask tick chart`}
+        aria-label={tr("Live {{value0}} bid and ask tick chart", { value0: symbol })}
       />
     </div>
   );
@@ -414,6 +415,7 @@ export function OrderPanelDialog({
   onSubmitOrder,
   marketStatus,
 }: OrderPanelProps) {
+    const tr = useUiTranslation();
   const [symbol, setSymbol] = useState(initialSymbol);
   const [orderType, setOrderType] = useState<OrderType>('Market Execution');
   const [volumeStr, setVolumeStr] = useState(() => localStorage.getItem('lastLotSize') || '0.01');
@@ -533,7 +535,7 @@ export function OrderPanelDialog({
   const handleSubmit = useCallback(async (side: 'buy' | 'sell') => {
     if (isPlacing) return;
     if (isMarketExecutionBlocked) {
-      setError(marketBlockedMessage || `Market is closed for ${symbol}.`);
+      setError(marketBlockedMessage || tr('Market is closed for {{value0}}.', { value0: symbol }));
       return;
     }
     setIsPlacing(true);
@@ -558,7 +560,7 @@ export function OrderPanelDialog({
     } finally {
       setIsPlacing(false);
     }
-  }, [isPlacing, isMarketExecutionBlocked, marketBlockedMessage, volumeStr, comment, symbol, onSubmitOrder, onClose]);
+  }, [isPlacing, isMarketExecutionBlocked, marketBlockedMessage, volumeStr, comment, symbol, onSubmitOrder, onClose, tr]);
 
   if (!isOpen) return null;
 
@@ -596,10 +598,10 @@ export function OrderPanelDialog({
           className="rtx-order-dialog__header"
           onMouseDown={handleHeaderMouseDown}
         >
-          <span id={dialogTitleId} className="rtx-order-dialog__title">New Order · {symbol}</span>
+          <span id={dialogTitleId} className="rtx-order-dialog__title">{tr("New Order · ")}{symbol}</span>
           <button
             type="button"
-            aria-label="Close New Order dialog"
+            aria-label={tr("Close New Order dialog")}
             className="rtx-order-dialog__close"
             onMouseDown={(event) => event.stopPropagation()}
             onClick={onClose}
@@ -623,7 +625,7 @@ export function OrderPanelDialog({
           <div className="rtx-order-dialog__form">
 
             <div className="rtx-order-dialog__field">
-              <label className="rtx-order-dialog__label" htmlFor={symbolFieldId}>Symbol</label>
+              <label className="rtx-order-dialog__label" htmlFor={symbolFieldId}>{tr("Symbol")}</label>
               <select
                 id={symbolFieldId}
                 value={symbol}
@@ -631,18 +633,18 @@ export function OrderPanelDialog({
                 className="rtx-order-dialog__control"
               >
                 {availableSymbols.map(s => (
-                  <option key={s} value={s}>{SYMBOL_NAMES[s] || s}</option>
+                  <option key={s} value={s}>{SYMBOL_NAMES[s] ? `${s}, ${tr(SYMBOL_NAMES[s])}` : s}</option>
                 ))}
               </select>
             </div>
 
             <div className="rtx-order-dialog__field">
-              <span className="rtx-order-dialog__label">Type</span>
-              <div className="rtx-order-dialog__control rtx-order-dialog__control--static">Market Execution</div>
+              <span className="rtx-order-dialog__label">{tr("Type")}</span>
+              <div className="rtx-order-dialog__control rtx-order-dialog__control--static">{tr("Market Execution")}</div>
             </div>
 
             <div className="rtx-order-dialog__field">
-              <label className="rtx-order-dialog__label" htmlFor={volumeFieldId}>Volume</label>
+              <label className="rtx-order-dialog__label" htmlFor={volumeFieldId}>{tr("Volume")}</label>
               <div className="rtx-order-dialog__volume-row">
                 <div className="rtx-order-dialog__volume-control">
                   <input
@@ -670,13 +672,13 @@ export function OrderPanelDialog({
                   <div className="rtx-order-dialog__spinner">
                     <button
                       type="button"
-                      aria-label="Increase volume"
+                      aria-label={tr("Increase volume")}
                       onClick={() => adjustVolume(0.01)}
                       className="rtx-order-dialog__spinner-button"
                     >▲</button>
                     <button
                       type="button"
-                      aria-label="Decrease volume"
+                      aria-label={tr("Decrease volume")}
                       onClick={() => adjustVolume(-0.01)}
                       className="rtx-order-dialog__spinner-button"
                     >▼</button>
@@ -687,21 +689,21 @@ export function OrderPanelDialog({
             </div>
 
             <div className="rtx-order-dialog__field">
-              <label className="rtx-order-dialog__label" htmlFor={fillPolicyFieldId}>Fill policy</label>
+              <label className="rtx-order-dialog__label" htmlFor={fillPolicyFieldId}>{tr("Fill policy")}</label>
               <select
                 id={fillPolicyFieldId}
                 value={fillPolicy}
                 onChange={(e) => setFillPolicy(e.target.value as FillPolicy)}
                 className="rtx-order-dialog__control"
               >
-                <option>Fill or Kill</option>
-                <option>Immediate or Cancel</option>
-                <option>Return</option>
+                <option value={"Fill or Kill"}>{tr("Fill or Kill")}</option>
+                <option value={"Immediate or Cancel"}>{tr("Immediate or Cancel")}</option>
+                <option value={"Return"}>{tr("Return")}</option>
               </select>
             </div>
 
             <div className="rtx-order-dialog__field">
-              <label className="rtx-order-dialog__label" htmlFor={commentFieldId}>Comment</label>
+              <label className="rtx-order-dialog__label" htmlFor={commentFieldId}>{tr("Comment")}</label>
               <input
                 id={commentFieldId}
                 type="text"
@@ -713,24 +715,24 @@ export function OrderPanelDialog({
             </div>
 
             {error && (
-              <div className="rtx-order-dialog__message rtx-order-dialog__message--error" role="alert">{error}</div>
+              <div className="rtx-order-dialog__message rtx-order-dialog__message--error" role="alert">{tr(error)}</div>
             )}
             {isMarketExecutionBlocked && !error && (
               <div className="rtx-order-dialog__message rtx-order-dialog__message--warning" role="status">
-                {marketBlockedMessage || `Market is closed for ${symbol}.`}
+                {marketBlockedMessage || tr('Market is closed for {{value0}}.', { value0: symbol })}
               </div>
             )}
 
-            <div className="rtx-order-dialog__price-summary" aria-label={`Bid ${bid.toFixed(digits)}, Ask ${ask.toFixed(digits)}`}>
+            <div className="rtx-order-dialog__price-summary" aria-label={tr("Bid {{value0}}, Ask {{value1}}", { value0: bid.toFixed(digits), value1: ask.toFixed(digits) })}>
               <div className="rtx-order-dialog__price-side">
-                <span className="rtx-order-dialog__price-label">BID</span>
+                <span className="rtx-order-dialog__price-label">{tr("BID")}</span>
                 <span className="rtx-order-dialog__price">
                   {bidF.small}<strong>{bidF.big}</strong>
                 </span>
               </div>
               <span className="rtx-order-dialog__price-divider" aria-hidden="true" />
               <div className="rtx-order-dialog__price-side rtx-order-dialog__price-side--ask">
-                <span className="rtx-order-dialog__price-label">ASK</span>
+                <span className="rtx-order-dialog__price-label">{tr("ASK")}</span>
                 <span className="rtx-order-dialog__price">
                   {askF.small}<strong>{askF.big}</strong>
                 </span>
@@ -738,7 +740,7 @@ export function OrderPanelDialog({
             </div>
 
             <div className="rtx-order-dialog__spread">
-              Spread: {spreadDisplay}
+              {tr("Spread: ")}{spreadDisplay}
             </div>
 
             {orderType === 'Market Execution' ? (
@@ -750,7 +752,7 @@ export function OrderPanelDialog({
                   className="rtx-order-dialog__action rtx-order-dialog__action--sell"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
-                  {isPlacing ? 'Placing...' : 'Sell by Market'}
+                  {isPlacing ? tr("Placing...") : tr("Sell by Market")}
                 </button>
                 <button
                   type="button"
@@ -759,7 +761,7 @@ export function OrderPanelDialog({
                   className="rtx-order-dialog__action rtx-order-dialog__action--buy"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                  {isPlacing ? 'Placing...' : 'Buy by Market'}
+                  {isPlacing ? tr("Placing...") : tr("Buy by Market")}
                 </button>
               </div>
             ) : (
@@ -772,7 +774,7 @@ export function OrderPanelDialog({
                     ? 'rtx-order-dialog__action--buy'
                     : 'rtx-order-dialog__action--sell'}`}
                 >
-                  {isPlacing ? 'Placing...' : `Place ${orderType}`}
+                  {isPlacing ? tr("Placing...") : tr("Place {{value0}}", { value0: tr(orderType) })}
                 </button>
               </div>
             )}

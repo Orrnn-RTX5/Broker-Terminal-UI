@@ -1,3 +1,5 @@
+import { useUiTranslation } from '../hooks/useUiTranslation';
+import i18n from '../i18n';
 /**
  * Last Symbol Trading Panel
  * Floating panel that always trades the last used symbol.
@@ -18,6 +20,7 @@ import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { useAppStore } from '../store/useAppStore';
 import { api } from '../services/api';
 import { captureTradeOrderIntent } from '../services/orderLatencyTelemetry';
+import { isShortcutInput, isShortcutLocalScope, isShortcutOverlay, shouldIgnoreShortcutEvent } from '../services/keyboardShortcutManager';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
 import { formatOrderError } from '../utils/orderError';
 import { useSymbolMarketStatus } from '../hooks/useSymbolMarketStatus';
@@ -49,6 +52,7 @@ const clampPanelPosition = (position: { x: number; y: number }) => ({
 });
 
 export function LastSymbolPanel() {
+    const tr = useUiTranslation();
     const {
         lastSymbol,
         lastTradeSide,
@@ -183,7 +187,7 @@ export function LastSymbolPanel() {
     const placeOrder = useCallback(
         async (side: 'BUY' | 'SELL') => {
             if (!lastSymbol) {
-                if (!lastSymbol) flash('No last symbol — place a trade first', 'error');
+                flash(tr('Missing symbol'), 'error');
                 return;
             }
             const intentAtMs = captureTradeOrderIntent();
@@ -243,19 +247,19 @@ export function LastSymbolPanel() {
                 await orderPromise;
                 setLastSymbol(exactLastSymbol, side);
                 window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-                flash(`${side} ${effectiveLot} ${lastSymbol} ✓`, 'success');
+                flash(`${tr(side)} ${effectiveLot} ${lastSymbol} ✓`, 'success');
             } catch (err: unknown) {
                 console.error('LastSymbolPanel order failed:', err);
                 flash(formatOrderError(err), 'error');
             }
         },
-        [lastSymbol, exactLastSymbol, effectiveLot, autoSLTP, slPips, tpPips, pipSize, bid, ask, accountId, canPlaceTrade, tradeBlockedMessage, setLastSymbol, flash]
+        [lastSymbol, exactLastSymbol, effectiveLot, autoSLTP, slPips, tpPips, pipSize, bid, ask, accountId, canPlaceTrade, tradeBlockedMessage, setLastSymbol, flash, tr]
     );
 
     // Close positions on last symbol via MT5 Sync API
     const closeLastPositions = useCallback(async () => {
         if (isClosing || !lastSymbol || lastSymbolPositions.length === 0) {
-            if (lastSymbolPositions.length === 0) flash('No positions on ' + lastSymbol, 'info');
+            if (lastSymbolPositions.length === 0) flash(`${tr('No open positions')} · ${lastSymbol}`, 'info');
             return;
         }
 
@@ -274,22 +278,22 @@ export function LastSymbolPanel() {
                 (position) => normalizeExactBrokerSymbol(position.symbol) !== exactLastSymbol,
             ));
             window.dispatchEvent(new Event('rtx:force-refresh-positions'));
-            flash(`Closed ${closed} position(s) on ${lastSymbol} ✓`, 'success');
+            flash(`${tr('closed')}: ${closed} · ${lastSymbol} ✓`, 'success');
         } catch (err: unknown) {
-            flash(err instanceof Error ? err.message : 'Close failed', 'error');
+            flash(err instanceof Error ? err.message : `${tr('Close positions')}: ${tr('Failed')}`, 'error');
         } finally {
             setIsClosing(false);
         }
-    }, [isClosing, lastSymbol, exactLastSymbol, lastSymbolPositions, flash]);
+    }, [isClosing, lastSymbol, exactLastSymbol, lastSymbolPositions, flash, tr]);
 
     // Keyboard shortcuts
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => {
-            // Only when panel is visible and Shift is held
-            if (!e.shiftKey) return;
-            // Don't trigger in input fields
-            const tag = (e.target as HTMLElement)?.tagName;
-            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            // These are exact, deliberate Shift-only trading shortcuts.
+            // Composing text, held keys and other shortcut chords must never
+            // submit an order or close a position through this raw listener.
+            if (!e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || shouldIgnoreShortcutEvent(e)) return;
+            if (isShortcutInput(e) || isShortcutLocalScope(e) || isShortcutOverlay(e)) return;
 
             if (e.key === 'B' || e.key === 'b') {
                 e.preventDefault();
@@ -347,11 +351,12 @@ export function LastSymbolPanel() {
     // Time since last trade
     const timeSince = lastTradeTime
         ? (() => {
-            const diff = Math.floor((Date.now() - lastTradeTime) / 1000);
-            if (diff < 60) return `${diff}s ago`;
-            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            const diff = Math.max(0, Math.floor((Date.now() - lastTradeTime) / 1000));
+            const formatter = new Intl.RelativeTimeFormat(i18n.resolvedLanguage || i18n.language || 'en', { numeric: 'auto', style: 'short' });
+            if (diff < 60) return formatter.format(-diff, 'second');
+            if (diff < 3600) return formatter.format(-Math.floor(diff / 60), 'minute');
 
-            return `${Math.floor(diff / 3600)}h ago`;
+            return formatter.format(-Math.floor(diff / 3600), 'hour');
         })()
         : '';
 
@@ -361,7 +366,7 @@ export function LastSymbolPanel() {
             className={`rtx-last-symbol-panel${isDragging ? ' is-dragging' : ''}`}
             style={{ left: position.x, top: position.y }}
             role="region"
-            aria-label="Last symbol trader"
+            aria-label={tr("Last symbol trader")}
         >
             <div className="last-symbol-card">
                 <header className="last-symbol-header" onMouseDown={onMouseDown}>
@@ -370,7 +375,7 @@ export function LastSymbolPanel() {
                             <Icon name="zap" size="sm" />
                         </span>
                         <span>
-                            <strong>Last Symbol Trader</strong>
+                            <strong>{tr("Last Symbol Trader")}</strong>
                         </span>
                     </div>
                     <div className="last-symbol-header__actions">
@@ -378,8 +383,8 @@ export function LastSymbolPanel() {
                             type="button"
                             onClick={() => setShowSettings(!showSettings)}
                             className={`last-symbol-icon-button${showSettings ? ' is-active' : ''}`}
-                            title="Execution settings"
-                            aria-label="Execution settings"
+                            title={tr("Execution settings")}
+                            aria-label={tr("Execution settings")}
                             aria-expanded={showSettings}
                             aria-controls="last-symbol-settings"
                         >
@@ -389,32 +394,32 @@ export function LastSymbolPanel() {
                             type="button"
                             onClick={() => setPanelVisible(false)}
                             className="last-symbol-icon-button last-symbol-icon-button--close"
-                            title="Close trader panel"
-                            aria-label="Close trader panel"
+                            title={tr("Close trader panel")}
+                            aria-label={tr("Close trader panel")}
                         >
                             <Icon name="x-close" size="sm" />
                         </button>
                     </div>
                 </header>
 
-                <section className="last-symbol-summary" aria-label="Last traded symbol">
+                <section className="last-symbol-summary" aria-label={tr("Last traded symbol")}>
                     <div className="last-symbol-section-heading">
-                        <span>Last traded symbol</span>
+                        <span>{tr("Last traded symbol")}</span>
                         <span className="last-symbol-status" data-tone={executionStatus.tone}>
                             <span className="last-symbol-status__dot" aria-hidden="true" />
-                            {executionStatus.label}
+                            {tr(executionStatus.label)}
                         </span>
                     </div>
                     <div className="last-symbol-summary__row">
                         <div>
                             <div className="last-symbol-value" data-empty={!lastSymbol}>
-                                {lastSymbol || 'No symbol selected'}
+                                {lastSymbol || tr('Missing symbol')}
                             </div>
                         </div>
                         {lastTradeSide ? (
                             <div className="last-symbol-history">
                                 <span className="last-symbol-side" data-side={lastTradeSide.toLowerCase()}>
-                                    {lastTradeSide}
+                                     {tr(lastTradeSide)}
                                 </span>
                                 <span>{timeSince}</span>
                             </div>
@@ -424,9 +429,9 @@ export function LastSymbolPanel() {
 
                 <section className="last-symbol-volume" aria-labelledby="last-symbol-volume-title">
                     <div className="last-symbol-section-heading">
-                        <span id="last-symbol-volume-title">Volume</span>
+                        <span id="last-symbol-volume-title">{tr("Volume")}</span>
                         <span className="last-symbol-unit">
-                            {useRiskSizing ? `${riskPercent}% risk` : 'Lots'}
+                            {useRiskSizing ? tr("{{value0}}% risk", { value0: riskPercent }) : tr("Lots")}
                         </span>
                     </div>
                     <div className="last-symbol-stepper">
@@ -434,7 +439,7 @@ export function LastSymbolPanel() {
                             type="button"
                             onClick={() => setVolume(volume - 0.01)}
                             disabled={volume <= 0.01 || useRiskSizing}
-                            aria-label="Decrease order volume"
+                            aria-label={tr("Decrease order volume")}
                         >
                             <Icon name="minus" size="sm" />
                         </button>
@@ -448,18 +453,18 @@ export function LastSymbolPanel() {
                                 if (!isNaN(val) && val >= 0.01) setVolume(val);
                             }}
                             disabled={useRiskSizing}
-                            aria-label="Order volume in lots"
+                            aria-label={tr("Order volume in lots")}
                         />
                         <button
                             type="button"
                             onClick={() => setVolume(volume + 0.01)}
                             disabled={useRiskSizing}
-                            aria-label="Increase order volume"
+                            aria-label={tr("Increase order volume")}
                         >
                             <Icon name="plus" size="sm" />
                         </button>
                     </div>
-                    <div className="last-symbol-presets" aria-label="Volume presets">
+                    <div className="last-symbol-presets" aria-label={tr("Volume presets")}>
                         {[0.01, 0.05, 0.1, 0.5, 1.0].map((preset) => {
                             const isSelected = Math.abs(volume - preset) < 0.001;
                             return (
@@ -470,7 +475,7 @@ export function LastSymbolPanel() {
                                     disabled={useRiskSizing}
                                     className={isSelected ? 'is-selected' : ''}
                                     aria-pressed={isSelected}
-                                    aria-label={`Set order volume to ${preset} lots`}
+                                    aria-label={tr("Set order volume to {{value0}} lots", { value0: preset })}
                                 >
                                     {preset.toFixed(2)}
                                 </button>
@@ -481,9 +486,9 @@ export function LastSymbolPanel() {
 
                 {autoSLTP && (
                     <div className="last-symbol-protection-summary">
-                        <span><Icon name="shield" size="xs" /> Protection on</span>
-                        <span className="last-symbol-protection-summary__sl">SL {slPips}</span>
-                        <span className="last-symbol-protection-summary__tp">TP {tpPips}</span>
+                        <span><Icon name="shield" size="xs" /> {tr(" Protection on")}</span>
+                        <span className="last-symbol-protection-summary__sl">{tr("SL ")}{slPips}</span>
+                        <span className="last-symbol-protection-summary__tp">{tr("TP ")}{tpPips}</span>
                     </div>
                 )}
                 {canPlaceTrade === false && lastSymbol && !statusMessage && (
@@ -494,9 +499,9 @@ export function LastSymbolPanel() {
 
                 <section className="last-symbol-execution" aria-labelledby="last-symbol-execution-title">
                     <div className="last-symbol-section-heading">
-                        <span id="last-symbol-execution-title">Market order</span>
+                        <span id="last-symbol-execution-title">{tr("Market order")}</span>
                         <span className="last-symbol-unit">
-                            {lastSymbol ? `Spread ${spreadDisplay}` : ''}
+                            {lastSymbol ? tr("Spread {{value0}}", { value0: spreadDisplay }) : ''}
                         </span>
                     </div>
                     <div className="last-symbol-actions">
@@ -505,11 +510,11 @@ export function LastSymbolPanel() {
                             onClick={() => placeOrder('SELL')}
                             disabled={!canPlaceTrade || bid === 0}
                             className="last-symbol-trade-button last-symbol-trade-button--sell"
-                            aria-label={`Sell ${lastSymbol || 'last symbol'} at market`}
-                            title="Sell at market (Shift+S)"
+                            aria-label={tr("Sell {{value0}} at market", { value0: lastSymbol || tr('Last Symbol') })}
+                            title={tr("Sell at market (Shift+S)")}
                         >
                             <span className="last-symbol-trade-button__top">
-                                <strong>Sell</strong>
+                                <strong>{tr("Sell")}</strong>
                             </span>
                             <span className="last-symbol-trade-button__price">
                                 {bid > 0 ? bid.toFixed(digits) : '—'}
@@ -521,11 +526,11 @@ export function LastSymbolPanel() {
                             onClick={() => placeOrder('BUY')}
                             disabled={!canPlaceTrade || ask === 0}
                             className="last-symbol-trade-button last-symbol-trade-button--buy"
-                            aria-label={`Buy ${lastSymbol || 'last symbol'} at market`}
-                            title="Buy at market (Shift+B)"
+                            aria-label={tr("Buy {{value0}} at market", { value0: lastSymbol || tr('Last Symbol') })}
+                            title={tr("Buy at market (Shift+B)")}
                         >
                             <span className="last-symbol-trade-button__top">
-                                <strong>Buy</strong>
+                                <strong>{tr("Buy")}</strong>
                             </span>
                             <span className="last-symbol-trade-button__price">
                                 {ask > 0 ? ask.toFixed(digits) : '—'}
@@ -540,7 +545,7 @@ export function LastSymbolPanel() {
                         data-tone={statusType}
                         role={statusType === 'error' ? 'alert' : 'status'}
                     >
-                        {statusMessage}
+                        {tr(statusMessage)}
                     </div>
                 )}
 
@@ -550,12 +555,12 @@ export function LastSymbolPanel() {
                         onClick={closeLastPositions}
                         disabled={isClosing || lastSymbolPositions.length === 0}
                         className="last-symbol-close-button"
-                        aria-label={`Close all ${lastSymbol || 'last symbol'} positions`}
-                        title="Close positions (Shift+X)"
+                        aria-label={tr("Close all {{value0}} positions", { value0: lastSymbol || tr('Last Symbol') })}
+                        title={tr("Close positions (Shift+X)")}
                     >
                         <span className="last-symbol-close-button__label">
                             <Icon name="x-close" size="xs" />
-                            {isClosing ? 'Closing positions' : 'Close positions'}
+                            {isClosing ? tr("Closing positions") : tr("Close positions")}
                         </span>
                         <span className="last-symbol-close-button__value">
                             {lastSymbolPositions.length > 0 ? (
@@ -565,7 +570,7 @@ export function LastSymbolPanel() {
                                         {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
                                     </strong>
                                 </>
-                            ) : 'None open'}
+                            ) : tr("None open")}
                         </span>
                     </button>
                 </div>
@@ -573,27 +578,27 @@ export function LastSymbolPanel() {
                 {account && (
                     <dl className="last-symbol-account-summary">
                         <div>
-                            <dt>Balance</dt>
+                            <dt>{tr("Balance")}</dt>
                             <dd>{ACCOUNT_VALUE_FORMATTER.format(account.balance ?? 0)}</dd>
                         </div>
                         <div>
-                            <dt>Equity</dt>
+                            <dt>{tr("Equity")}</dt>
                             <dd>{ACCOUNT_VALUE_FORMATTER.format(account.equity ?? 0)} {account.currency || 'USD'}</dd>
                         </div>
                     </dl>
                 )}
 
                 {showSettings && (
-                    <section id="last-symbol-settings" className="last-symbol-settings" aria-label="Execution settings panel">
+                    <section id="last-symbol-settings" className="last-symbol-settings" aria-label={tr("Execution settings panel")}>
                         <div className="last-symbol-settings__heading">
-                            <span>Execution settings</span>
-                            <small>Applied to the next order</small>
+                            <span>{tr("Execution settings")}</span>
+                            <small>{tr("Applied to the next order")}</small>
                         </div>
 
                         <label className="last-symbol-setting-row">
                             <span>
-                                <strong>Risk-based sizing</strong>
-                                <small>Calculate lots from account balance</small>
+                                <strong>{tr("Risk-based sizing")}</strong>
+                                <small>{tr("Calculate lots from account balance")}</small>
                             </span>
                             <span className="last-symbol-toggle">
                                 <input
@@ -606,7 +611,7 @@ export function LastSymbolPanel() {
                         </label>
                         {useRiskSizing && (
                             <label className="last-symbol-field">
-                                <span>Account risk <small>%</small></span>
+                                <span>{tr("Account risk ")}<small>%</small></span>
                                 <input
                                     type="number"
                                     step={0.1}
@@ -620,8 +625,8 @@ export function LastSymbolPanel() {
 
                         <label className="last-symbol-setting-row">
                             <span>
-                                <strong>Automatic protection</strong>
-                                <small>Add stop loss and take profit</small>
+                                <strong>{tr("Automatic protection")}</strong>
+                                <small>{tr("Add stop loss and take profit")}</small>
                             </span>
                             <span className="last-symbol-toggle">
                                 <input
@@ -635,7 +640,7 @@ export function LastSymbolPanel() {
                         {autoSLTP && (
                             <div className="last-symbol-protection-fields">
                                 <label className="last-symbol-field last-symbol-field--loss">
-                                    <span>Stop loss <small>pips</small></span>
+                                    <span>{tr("Stop loss ")}<small>{tr("pips")}</small></span>
                                     <input
                                         type="number"
                                         min={1}
@@ -644,7 +649,7 @@ export function LastSymbolPanel() {
                                     />
                                 </label>
                                 <label className="last-symbol-field last-symbol-field--profit">
-                                    <span>Take profit <small>pips</small></span>
+                                    <span>{tr("Take profit ")}<small>{tr("pips")}</small></span>
                                     <input
                                         type="number"
                                         min={1}

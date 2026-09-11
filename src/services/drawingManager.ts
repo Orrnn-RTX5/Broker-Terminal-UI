@@ -30,6 +30,8 @@ import { getTrendLineToolFromDrawing } from '../drawing-tools/toolCatalog';
 import { getGannFibonacciTool } from '../drawing-tools/gannFibonacciToolCatalog';
 import { getChartPatternTool } from '../drawing-tools/chartPatternToolCatalog';
 import { renderChartPattern } from '../drawing-tools/chartPatternRenderer';
+import { isPictographStamp } from '../drawing-tools/pictographCatalog';
+import { renderPictographStamp } from '../drawing-tools/pictographRenderer';
 import { getBrushShapeTool } from '../drawing-tools/brushShapeToolCatalog';
 import { arrowLinePath, arrowMarkerPath, arrowMarkUpPath, arrowMarkDownPath, rectanglePath, rectangleHandles, rotatedRectangle, multiPointPath, circlePath, ellipseGeometry, arcGeometry, curvePath, defaultCurveBend, doubleCurvePath, defaultDoubleCurveBends } from '../drawing-tools/brushShapeGeometry';
 import { appendInfoLinePanel as renderInfoLinePanel } from '../drawing-tools/infoLinePanel';
@@ -67,6 +69,7 @@ import {
 } from '../drawing-tools/forecastingMeasurementRenderer';
 import { drawingApi, type ClientDrawing } from './drawingApi';
 import type { PositionSizing } from '../drawing-tools/positionDrawingValues';
+import { getAnnotationTool, annotationLines, annotationTable, isAnnotationImage, isAnnotationLink, type AnnotationStyle } from '../drawing-tools/annotationToolCatalog';
 
 // ──────────────────────────────────────────────
 // Types
@@ -127,6 +130,7 @@ export interface Drawing {
   subtype?: string;
   points: DrawingPoint[];
   text?: string;
+  annotation?: AnnotationStyle;
   color?: string;
   lineWidth?: number;
   lineStyle?: 'solid' | 'dashed' | 'dotted';
@@ -225,7 +229,8 @@ const REQUIRED_POINTS: Record<DrawingType, number> = {
 };
 
 const requiredPointsForDrawing = (drawing: Pick<Drawing, 'type' | 'subtype'>): number =>
-  getChartPatternTool(drawing)?.requiredPoints
+  getAnnotationTool(drawing)?.requiredPoints
+  ?? getChartPatternTool(drawing)?.requiredPoints
   ?? getBrushShapeTool(drawing)?.requiredPoints
   ?? getTrendLineToolFromDrawing(drawing.type, drawing.subtype)?.requiredPoints
   ?? (drawing.type === 'measure'
@@ -300,7 +305,10 @@ export class DrawingManager {
   private previewPoint: DrawingPoint | null = null;
   private previewCursorVisible = false;
   private rawTrendlinePreviewPoint: DrawingPoint | null = null;
-  private magnetEnabled = false;
+  private magnetMode: 'off' | 'weak' | 'strong' = 'off';
+  private snapToIndicatorsEnabled = false;
+  private magnetSnapSources: Map<string, (time: number) => number[]> = new Map();
+  private hiddenDrawingContexts: Set<string> = new Set();
 
   private chartContexts: Map<HTMLElement, ChartContext> = new Map();
   private activeContainer: HTMLElement | null = null;
@@ -770,8 +778,97 @@ export class DrawingManager {
     };
   }
 
-  setMagnetEnabled(enabled: boolean): void {
-    this.magnetEnabled = enabled;
+  setMagnetMode(mode: 'off' | 'weak' | 'strong'): void {
+    this.magnetMode = mode;
+  }
+
+  setSnapToIndicators(enabled: boolean): void {
+    this.snapToIndicatorsEnabled = enabled;
+  }
+
+  /** Resolves the hovered candle from the owning chart's rendered series data. */
+  private resolveMagnetSeriesData(time: number): DrawingSeriesDataPoint | null {
+    const ownerContextId = this.activeDrawingOwner?.contextId ?? this.currentContextId;
+    if (!ownerContextId) return null;
+    for (const context of this.chartContexts.values()) {
+      if (context.contextId !== ownerContextId || !context.seriesDataProvider) continue;
+      const candles = context.seriesDataProvider();
+      if (!candles.length) return null;
+      let low = 0;
+      let high = candles.length - 1;
+      while (high - low > 1) {
+        const mid = (low + high) >> 1;
+        if (Number(candles[mid].time) <= time) low = mid;
+        else high = mid;
+      }
+      return Math.abs(Number(candles[low].time) - time) <= Math.abs(Number(candles[high].time) - time)
+        ? candles[low]
+        : candles[high];
+    }
+    return null;
+  }
+
+  private snapMagnetPrice(
+    time: number,
+    price: number,
+    seriesData?: { open?: number; high?: number; low?: number; close?: number } | null,
+  ): number {
+    if (this.magnetMode === 'off') return price;
+    const data = seriesData ?? this.resolveMagnetSeriesData(time);
+    if (!data) return price;
+    const candidates = [data.open, data.high, data.low, data.close]
+      .filter((p): p is number => typeof p === 'number');
+    if (this.snapToIndicatorsEnabled) {
+      const snapSource = this.magnetSnapSources.get(this.activeDrawingOwner?.contextId ?? '');
+      if (snapSource) {
+        candidates.push(...snapSource(time).filter((p) => typeof p === 'number' && Number.isFinite(p)));
+      }
+    }
+    if (!candidates.length) return price;
+    const nearest = candidates.reduce((best, p) =>
+      Math.abs(p - price) < Math.abs(best - price) ? p : best,
+    );
+    const candleRange = typeof data.high === 'number' && typeof data.low === 'number'
+      ? data.high - data.low
+      : 0;
+    const withinWeakRange = candleRange > 0
+      ? Math.abs(nearest - price) <= candleRange
+      : nearest === price;
+    return this.magnetMode === 'strong' || withinWeakRange ? nearest : price;
+  }
+
+  /** Registers extra snap candidates (e.g. indicator levels) for one chart context. */
+  registerMagnetSnapSource(contextId: string, source: (time: number) => number[]): () => void {
+    this.magnetSnapSources.set(contextId, source);
+    return () => {
+      if (this.magnetSnapSources.get(contextId) === source) {
+        this.magnetSnapSources.delete(contextId);
+      }
+    };
+  }
+
+  setAllDrawingsLocked(locked: boolean, targetContextId?: string): number {
+    let changed = 0;
+    this.getDrawings(targetContextId).forEach((drawing) => {
+      if (drawing.locked === locked) return;
+      drawing.locked = locked;
+      changed += 1;
+    });
+    if (changed > 0) {
+      this.persistCurrentContext(targetContextId);
+      this.renderAll();
+    }
+    return changed;
+  }
+
+  setDrawingsVisible(contextId: string, visible: boolean): void {
+    const wasHidden = this.hiddenDrawingContexts.has(contextId);
+    if (visible) {
+      this.hiddenDrawingContexts.delete(contextId);
+    } else {
+      this.hiddenDrawingContexts.add(contextId);
+    }
+    if (wasHidden === visible) this.renderAll();
   }
 
   // ──────────────────────────────────────────────
@@ -856,21 +953,9 @@ export class DrawingManager {
     if (!this.activeDrawing) return false;
     if (contextId && this.activeDrawingOwner?.contextId !== contextId) return false;
 
-    // Magnet snap to OHLC
-    let finalPrice = price;
-    if (this.magnetEnabled && seriesData) {
-      const candidates = [
-        seriesData.open,
-        seriesData.high,
-        seriesData.low,
-        seriesData.close,
-      ].filter((p): p is number => typeof p === 'number');
-      if (candidates.length) {
-        finalPrice = candidates.reduce((best, p) =>
-          Math.abs(p - price) < Math.abs(best - price) ? p : best,
-        );
-      }
-    }
+    // Magnet snap to OHLC (and indicator levels when enabled). Weak mode only
+    // snaps while the cursor stays within the hovered candle's range.
+    let finalPrice = this.snapMagnetPrice(time, price, seriesData);
 
     let finalTime = time;
     let finalLogicalIndex = Number.isFinite(logicalIndex) ? logicalIndex : undefined;
@@ -1012,7 +1097,7 @@ export class DrawingManager {
     // Always update — both before first click (ghost preview) and after
     const candidatePreview: DrawingPoint = this.anchorShapePoint(this.activeDrawing, {
       time,
-      price,
+      price: this.snapMagnetPrice(time, price),
       ...(Number.isFinite(logicalIndex) ? { logicalIndex } : {}),
     });
     if (this.activeDrawing.type === 'pattern' && this.activeDrawing.subtype === 'time_cycles' && this.activeDrawing.points[0]) {
@@ -1211,6 +1296,7 @@ export class DrawingManager {
         fillColor: drawing.fillColor,
         fillOpacity: drawing.fillOpacity,
         locked: drawing.locked,
+        annotation: drawing.annotation,
         anchorClientX: (containerRect?.left ?? 0) + centerX,
         anchorClientY: (containerRect?.top ?? 0) + topY,
         ...(annotationBounds ? {
@@ -1218,6 +1304,37 @@ export class DrawingManager {
         } : {}),
       },
     }));
+  }
+
+  editAnnotation(id: string, targetContextId?: string, isNew = false): void {
+    this.withTargetContext(targetContextId, identity => {
+      const drawing = this.getDrawingsFor(identity).find(item => item.id === id);
+      if (!drawing || drawing.locked) return;
+      const point = this.px(drawing.points.at(-1)!);
+      const rect = this.overlayContainer?.getBoundingClientRect();
+      if (!point || !rect) return;
+      window.dispatchEvent(new CustomEvent('drawing:edit-annotation', { detail: {
+        drawing: JSON.parse(JSON.stringify(drawing)), contextId: identity.contextId, isNew,
+        x: rect.left + point.x, y: rect.top + point.y,
+      } }));
+    });
+  }
+
+  editTableCell(id: string, row: number, column: number, targetContextId?: string): void {
+    this.withTargetContext(targetContextId, identity => {
+      const drawing = this.getDrawingsFor(identity).find(item => item.id === id);
+      if (!drawing || drawing.locked || drawing.subtype !== 'table') return;
+      const cells = annotationTable(drawing.annotation?.tableData);
+      if (!cells[row] || column < 0 || column >= cells[row].length) return;
+      const point = this.px(drawing.points[0]); const rect = this.overlayContainer?.getBoundingClientRect();
+      if (!point || !rect) return;
+      const width = Math.max(40, Math.min(300, drawing.annotation?.cellWidth ?? 120));
+      const height = Math.max((drawing.annotation?.fontSize ?? 14) + 12, drawing.annotation?.cellHeight ?? 32);
+      window.dispatchEvent(new CustomEvent('drawing:edit-table-cell', { detail: {
+        drawing: JSON.parse(JSON.stringify(drawing)), contextId: identity.contextId, row, column,
+        x: rect.left + point.x + column * width, y: rect.top + point.y + row * height, width, height,
+      } }));
+    });
   }
 
   selectDrawing(id: string, multi = false, targetContextId?: string): boolean {
@@ -1247,6 +1364,19 @@ export class DrawingManager {
       this.dispatchDrawingsChanged(identity, 'selection');
       return true;
     }) ?? false;
+  }
+
+  /** Select the chart's collection in one batch, preserving its drawing order. */
+  selectAll(targetContextId?: string): number {
+    return this.withTargetContext(targetContextId, identity => {
+      const drawings = this.getDrawingsFor(identity);
+      if (drawings.length === 0) return 0;
+      drawings.forEach(drawing => (drawing.selected = true));
+      this.renderAll();
+      this.dispatchDrawingSelection(drawings[drawings.length - 1], identity);
+      this.dispatchDrawingsChanged(identity, 'selection');
+      return drawings.length;
+    }) ?? 0;
   }
 
   unselectAll(targetContextId?: string): number {
@@ -1814,6 +1944,7 @@ export class DrawingManager {
     if (!overlayContainer) return false;
     const context = this.chartContexts.get(overlayContainer);
     if (!context) return false;
+    if (this.hiddenDrawingContexts.has(context.contextId)) return false;
 
     const hasDrawings = (
       this.drawingsBySymbol.get(buildDrawingContextKey(this.identityForContext(context)))?.length
@@ -1860,6 +1991,7 @@ export class DrawingManager {
     // Clear only this context. Pan frames must not tear down sibling overlays.
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
+    if (this.hiddenDrawingContexts.has(context.contextId)) return;
     if (!context.chart || !context.series) return;
 
     // Set active context temporarily for px() and rendering helpers
@@ -1894,11 +2026,12 @@ export class DrawingManager {
     // Only draw the active/preview drawings on the active container if it matches this context!
     if (this.contextOwnsActiveDrawing(context) && this.activeDrawing && this.activeDrawing.points.length === 0 && this.previewPoint) {
       const type = this.activeDrawing.type;
+      const showGhost = this.previewCursorVisible || type !== 'stamp' || !isPictographStamp(this.activeDrawing.subtype);
       if (
-        type === 'vline'
+        showGhost && (type === 'vline'
         || type === 'hline'
         || type === 'stamp'
-        || requiredPointsForDrawing(this.activeDrawing) === 1
+        || requiredPointsForDrawing(this.activeDrawing) === 1)
       ) {
         const ghost: Drawing = {
           ...this.activeDrawing,
@@ -2065,6 +2198,16 @@ export class DrawingManager {
 
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('data-id', d.id);
+    const annotationResizeHandle = (x: number, y: number) => {
+      if (!d.selected || d.locked || isPreview) return;
+      const handle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      handle.setAttribute('x', String(x - 4)); handle.setAttribute('y', String(y - 4));
+      handle.setAttribute('width', '8'); handle.setAttribute('height', '8');
+      handle.setAttribute('fill', '#ffffff'); handle.setAttribute('stroke', color);
+      handle.setAttribute('data-annotation-resize', 'true'); handle.setAttribute('pointer-events', 'all');
+      handle.style.cursor = 'nwse-resize';
+      handle.addEventListener('pointerdown', event => this.beginDrag(event, d.id, -101)); g.appendChild(handle);
+    };
 
     switch (d.type) {
 
@@ -2820,23 +2963,176 @@ export class DrawingManager {
 
       // ─── Text ────────────────────────────────────────────────────
       case 'text': {
-        if (d.points.length < 1 || !d.text) break;
-        const p = this.px(d.points[0]);
+        if (d.points.length < 1) break;
+        const p = this.px(d.points.at(-1)!);
         if (!p) break;
 
-        // Background rect
-        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        const textLen = d.text.length * 7 + 10;
+        const isPriceLabel = d.subtype === 'price_label';
+        const isPrice = d.subtype === 'price_note' || isPriceLabel;
+        const isPin = d.subtype === 'pin';
+        const isCallout = d.subtype === 'callout';
+        const isComment = d.subtype === 'comment';
+        const isSignpost = d.subtype === 'signpost';
+        const fontSize = Math.max(8, Math.min(72, d.annotation?.fontSize ?? (isPrice ? 12 : 14)));
+        if (['post', 'idea'].includes(d.subtype ?? '') && isAnnotationLink(d.annotation?.url ?? '', d.subtype!)) {
+          const isIdea = d.subtype === 'idea';
+          const card = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          card.setAttribute('x', String(p.x)); card.setAttribute('y', String(p.y));
+          card.setAttribute('width', '320'); card.setAttribute('height', '100'); card.setAttribute('rx', '10');
+          card.setAttribute('fill', this.getThemeToken('--bg-secondary', '#202024')); card.setAttribute('stroke', color);
+          card.setAttribute('pointer-events', isPreview ? 'none' : 'all'); card.style.cursor = d.locked ? 'default' : 'move';
+          card.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null)); g.appendChild(card);
+          const foreground = this.getThemeToken('--text-primary', '#eeeeee');
+          const title = this.svgText(p.x+12, p.y+25, isIdea ? 'Idea · TradingView' : '𝕏  Post', foreground, 16); title.setAttribute('pointer-events', 'none'); g.appendChild(title);
+          const caption = this.svgText(p.x+12, p.y+49, (d.text || new URL(d.annotation!.url!).pathname).slice(0, 36), foreground, 12); caption.setAttribute('pointer-events', 'none'); g.appendChild(caption);
+          const link = document.createElementNS('http://www.w3.org/2000/svg', 'a');
+          link.setAttribute('href', d.annotation!.url!); link.setAttribute('target', '_blank'); link.setAttribute('rel', 'noopener noreferrer');
+          link.setAttribute('pointer-events', isPreview ? 'none' : 'all'); link.addEventListener('pointerdown', e => e.stopPropagation());
+          link.appendChild(this.svgText(p.x+12, p.y+80, isIdea ? 'Open idea ↗' : 'Open post ↗', color, 13)); g.appendChild(link); break;
+        }
+        if (d.subtype === 'image' && isAnnotationImage(d.annotation?.imageUrl ?? '')) {
+          const image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+          image.setAttribute('href', d.annotation!.imageUrl!);
+          image.setAttribute('x', String(p.x)); image.setAttribute('y', String(p.y));
+          image.setAttribute('width', String(Math.max(24, Math.min(1200, d.annotation?.width ?? 240))));
+          image.setAttribute('height', String(Math.max(24, Math.min(1200, d.annotation?.height ?? 160))));
+          image.setAttribute('opacity', String(d.annotation?.opacity ?? 1));
+          image.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+          image.setAttribute('pointer-events', isPreview ? 'none' : 'all'); image.style.cursor = d.locked ? 'default' : 'move';
+          image.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+          image.setAttribute('data-geometry-role', 'annotation-background');
+          g.appendChild(image);
+          annotationResizeHandle(p.x + Math.max(24, Math.min(1200, d.annotation?.width ?? 240)), p.y + Math.max(24, Math.min(1200, d.annotation?.height ?? 160)));
+          break;
+        }
+        if (d.subtype === 'flag') {
+          const flag = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          flag.setAttribute('d', `M ${p.x} ${p.y} V ${p.y-20} H ${p.x+18} L ${p.x+14} ${p.y-15} L ${p.x+18} ${p.y-10} H ${p.x} Z`);
+          flag.setAttribute('fill', color); flag.setAttribute('stroke', color);
+          flag.setAttribute('data-geometry-role', 'annotation-background');
+          flag.setAttribute('pointer-events', isPreview ? 'none' : 'all');
+          flag.style.cursor = d.locked ? 'default' : 'move';
+          flag.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null)); g.appendChild(flag);
+          break;
+        }
+        if (d.subtype === 'table') {
+          const cells = annotationTable(d.annotation?.tableData);
+          const cellW = Math.max(40, Math.min(300, d.annotation?.cellWidth ?? 120));
+          const cellH = Math.max(fontSize + 12, d.annotation?.cellHeight ?? 32);
+          cells.slice(0, 10).forEach((row, r) => row.slice(0, 10).forEach((value, c) => {
+            const cell = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            cell.setAttribute('x', String(p.x + c * cellW)); cell.setAttribute('y', String(p.y + r * cellH));
+            cell.setAttribute('width', String(cellW)); cell.setAttribute('height', String(cellH));
+            cell.setAttribute('fill', d.fillColor || this.getThemeToken('--bg-secondary', '#202024'));
+            cell.setAttribute('stroke', color); cell.setAttribute('stroke-width', '1');
+            cell.setAttribute('pointer-events', isPreview ? 'none' : 'all');
+            cell.setAttribute('data-geometry-role', 'annotation-background');
+            cell.setAttribute('data-table-row', String(r)); cell.setAttribute('data-table-column', String(c));
+            cell.style.cursor = d.locked ? 'default' : 'move';
+            cell.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+            g.appendChild(cell);
+            const align = d.annotation?.align ?? 'left';
+            const label = this.svgText(p.x + c * cellW + (align === 'center' ? cellW / 2 : align === 'right' ? cellW - 6 : 6), p.y + r * cellH + fontSize + 6, value.slice(0, Math.floor((cellW - 12) / (fontSize * .62))), d.annotation?.textColor || color, fontSize);
+            label.setAttribute('text-anchor', align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start');
+            label.setAttribute('font-weight', d.annotation?.bold ? '700' : '400'); label.setAttribute('font-style', d.annotation?.italic ? 'italic' : 'normal');
+            label.setAttribute('font-family', 'Arial, sans-serif'); label.setAttribute('pointer-events', 'none');
+            g.appendChild(label);
+          }));
+          annotationResizeHandle(p.x + cells[0].length * cellW, p.y + cells.length * cellH);
+          break;
+        }
+        const lines = annotationLines(isPrice ? [this.formatPrice(d.points[0].price), d.text].filter(Boolean).join('\n') : d.text || 'Text', fontSize, d.annotation?.wrapWidth);
+        if (isPriceLabel) {
+          const tail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          tail.setAttribute('d', `M ${p.x} ${p.y} L ${p.x + 9} ${p.y - 18} L ${p.x + 22} ${p.y - 18} Z`);
+          tail.setAttribute('fill', d.fillColor || color); tail.setAttribute('pointer-events', isPreview ? 'none' : 'all');
+          tail.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null)); g.appendChild(tail);
+          p.x += 8; p.y -= lines.length * fontSize * 1.25 + 20;
+        }
+        if (isPin) {
+          const marker = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          marker.setAttribute('d', `M ${p.x} ${p.y} C ${p.x - 20} ${p.y - 20} ${p.x - 10} ${p.y - 32} ${p.x} ${p.y - 32} C ${p.x + 10} ${p.y - 32} ${p.x + 20} ${p.y - 20} ${p.x} ${p.y} Z`);
+          marker.setAttribute('fill', color); marker.setAttribute('pointer-events', isPreview ? 'none' : 'all');
+          marker.style.cursor = d.locked ? 'default' : 'move';
+          marker.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+          g.appendChild(marker);
+          const hole = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          hole.setAttribute('cx', String(p.x)); hole.setAttribute('cy', String(p.y - 22)); hole.setAttribute('r', '4'); hole.setAttribute('fill', '#fff'); hole.setAttribute('pointer-events', 'none'); g.appendChild(hole);
+          p.x -= 120; p.y -= 44 + lines.length * fontSize * 1.25;
+        }
+        if (['note', 'price_note'].includes(d.subtype ?? '') && d.points.length > 1) {
+          const anchor = this.px(d.points[0]);
+          if (anchor) {
+            const leader = this.svgLine(anchor.x, anchor.y, p.x, p.y + fontSize / 2, color, lw, dash);
+            leader.setAttribute('pointer-events', isPreview ? 'none' : 'stroke');
+            leader.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+            g.appendChild(leader);
+            const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            dot.setAttribute('cx', String(anchor.x)); dot.setAttribute('cy', String(anchor.y));
+            dot.setAttribute('r', '2'); dot.setAttribute('fill', color); g.appendChild(dot);
+          }
+        }
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', isComment ? 'path' : 'rect');
+        const textLen = Math.max(isPin ? 240 : 0, Math.max(...lines.map(line => line.length), 2) * fontSize * .62 + (isComment ? 20 : 8));
+        if (isSignpost) {
+          const pole = this.svgLine(p.x, p.y, p.x, H, color, 1, 'none');
+          pole.setAttribute('pointer-events', isPreview ? 'none' : 'stroke');
+          pole.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+          g.appendChild(pole); p.x -= textLen / 2;
+        }
+        if (isComment) {
+          const h = lines.length * fontSize * 1.25 + 16;
+          p.y -= h;
+          const r = Math.min(20, h / 2);
+          bg.setAttribute('d', `M ${p.x} ${p.y+h} L ${p.x} ${p.y+r} Q ${p.x} ${p.y} ${p.x+r} ${p.y} H ${p.x+textLen-r} Q ${p.x+textLen} ${p.y} ${p.x+textLen} ${p.y+r} V ${p.y+h-r} Q ${p.x+textLen} ${p.y+h} ${p.x+textLen-r} ${p.y+h} Z`);
+        }
+        if (isCallout) {
+          const anchor = this.px(d.points[0]);
+          p.x -= textLen / 2;
+          p.y -= (lines.length * fontSize * 1.25 + 4) / 2;
+          if (anchor && d.points.length > 1) {
+            const tail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const edgeX = Math.max(p.x + 8, Math.min(p.x + textLen - 8, anchor.x));
+            const edgeY = anchor.y < p.y ? p.y : p.y + lines.length * fontSize * 1.25 + 4;
+            tail.setAttribute('d', `M ${edgeX - 6} ${edgeY} L ${anchor.x} ${anchor.y} L ${edgeX + 6} ${edgeY} Z`);
+            tail.setAttribute('fill', d.fillColor || color); tail.setAttribute('stroke', color);
+            tail.setAttribute('pointer-events', isPreview ? 'none' : 'all');
+            tail.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
+            g.appendChild(tail);
+          }
+        }
         bg.setAttribute('x', String(p.x));
-        bg.setAttribute('y', String(p.y - 16));
+        bg.setAttribute('y', String(p.y));
         bg.setAttribute('width', String(textLen));
-        bg.setAttribute('height', '20');
-        bg.setAttribute('rx', '3');
-        bg.setAttribute('fill', '#18181b');
-        bg.setAttribute('fill-opacity', '0.85');
+        bg.setAttribute('height', String(lines.length * fontSize * 1.25 + 4));
+        bg.setAttribute('data-geometry-role', 'annotation-background');
+        bg.setAttribute('fill', d.fillColor || (isPrice || isCallout || isComment ? color : isPin || isSignpost ? this.getThemeToken('--bg-secondary', '#202024') : 'transparent'));
+        bg.setAttribute('rx', isPrice || isCallout ? '4' : '0');
+        bg.setAttribute('fill-opacity', String(d.fillOpacity ?? 1));
+        bg.setAttribute('stroke', d.selected || d.annotation?.border ? color : 'none');
+        bg.setAttribute('stroke-width', '1');
+        bg.setAttribute('pointer-events', isPreview ? 'none' : 'all');
+        bg.style.cursor = d.locked ? 'default' : 'move';
+        if (!isPreview) {
+          bg.addEventListener('pointerdown', event => this.beginDrag(event as PointerEvent, d.id, null));
+          bg.addEventListener('dblclick', event => { event.stopPropagation(); this.editAnnotation(d.id); });
+        }
         g.appendChild(bg);
-
-        g.appendChild(this.svgText(p.x + 5, p.y - 1, d.text, color, 12));
+        const textElements: SVGElement[] = [bg];
+        lines.forEach((line, index) => {
+          const label = this.svgText(p.x + (isComment ? 10 : 4), p.y + (isComment ? 6 : 0) + fontSize + index * fontSize * 1.25, line, d.annotation?.textColor || (isPrice || isCallout || isComment ? '#ffffff' : color), fontSize);
+          label.setAttribute('font-weight', (d.annotation?.bold ?? isPriceLabel) ? '700' : '400');
+          label.setAttribute('font-style', d.annotation?.italic ? 'italic' : 'normal');
+          label.setAttribute('font-family', 'Arial, sans-serif');
+          label.setAttribute('pointer-events', 'none');
+          g.appendChild(label);
+          textElements.push(label);
+        });
+        if (isPin && !d.selected && !isPreview) {
+          textElements.forEach(element => { element.style.visibility = 'hidden'; });
+          g.addEventListener('pointerenter', () => textElements.forEach(element => { element.style.visibility = 'visible'; }));
+          g.addEventListener('pointerleave', () => textElements.forEach(element => { element.style.visibility = 'hidden'; }));
+        }
         break;
       }
 
@@ -2875,6 +3171,11 @@ export class DrawingManager {
         if (d.points.length < 1) break;
         const p = this.px(d.points[0]);
         if (!p) break;
+
+        if (renderPictographStamp(g, d, p, {
+          preview: isPreview,
+          onPointerDown: event => this.beginDrag(event, d.id, 0),
+        })) break;
 
         const sub = d.subtype || 'thumbsUp';
         const icon = STAMP_ICONS[sub];
@@ -2985,7 +3286,8 @@ export class DrawingManager {
 
     // ─── Selection handles & drag on completed drawings ──────────
     // Channel handles are rendered inline in the channel case above (3 handles: anchor1, anchor2, width)
-    if (!isPreview && d.selected && Array.isArray(d.points) && d.type !== 'channel') {
+    if (!isPreview && d.selected && Array.isArray(d.points) && d.type !== 'channel'
+      && !(d.type === 'stamp' && isPictographStamp(d.subtype))) {
       const trendTool = getTrendLineToolFromDrawing(d.type, d.subtype) ?? getGannFibonacciTool(d.subtype);
       if (d.type === 'freehand' && this.chart && this.series) {
         const indices = d.points.length > 1 ? [0, d.points.length - 1] : [0];
@@ -4086,6 +4388,8 @@ export class DrawingManager {
     };
   }
 
+  private lastAnnotationPress: { id: string; at: number; x: number; y: number } | null = null;
+
   private beginDrag(e: PointerEvent, id: string, nodeIndex: number | null): void {
     e.stopPropagation();
     e.preventDefault();
@@ -4093,6 +4397,21 @@ export class DrawingManager {
 
     const drawing = this.drawings.find(d => d.id === id);
     if (!drawing || drawing.locked) return;
+
+    if (drawing.type === 'text' && nodeIndex === null) {
+      const previous = this.lastAnnotationPress;
+      this.lastAnnotationPress = { id, at: Date.now(), x: e.clientX, y: e.clientY };
+      // Selection rebuilds the SVG between presses, so a native dblclick
+      // listener on its old node cannot reliably receive the second press.
+      if (previous?.id === id && Date.now() - previous.at < 400
+        && Math.hypot(e.clientX - previous.x, e.clientY - previous.y) < 5) {
+        this.lastAnnotationPress = null;
+        const cell = e.target instanceof Element ? e.target.closest('[data-table-row]') : null;
+        if (drawing.subtype === 'table' && cell) this.editTableCell(id, Number(cell.getAttribute('data-table-row')), Number(cell.getAttribute('data-table-column')), context?.contextId);
+        else this.editAnnotation(id, context?.contextId);
+        return;
+      }
+    }
 
     this.selectDrawing(id);
     this.draggingId = id;
@@ -4127,6 +4446,21 @@ export class DrawingManager {
 
     const dx = e.clientX - this.dragStartX;
     const dy = e.clientY - this.dragStartY;
+    if (drawing.type === 'text' && this.draggingNodeIndex === -101) {
+      const initial = this.dragInitialDrawingCopy?.annotation;
+      if (drawing.subtype === 'image') {
+        const width = Math.max(24, Math.min(1200, (initial?.width ?? 240) + dx));
+        const ratio = (initial?.height ?? 160) / (initial?.width ?? 240);
+        drawing.annotation = { ...initial, width, height: e.shiftKey ? Math.max(24, Math.min(1200, (initial?.height ?? 160) + dy)) : Math.max(24, Math.min(1200, width * ratio)) };
+      } else if (drawing.subtype === 'table') {
+        const cells = annotationTable(initial?.tableData);
+        drawing.annotation = { ...initial,
+          cellWidth: Math.max(40, Math.min(300, (initial?.cellWidth ?? 120) + dx / cells[0].length)),
+          cellHeight: Math.max((initial?.fontSize ?? 14) + 12, Math.min(300, (initial?.cellHeight ?? 32) + dy / cells.length)),
+        };
+      }
+      this.renderAll(); return;
+    }
 
     // ── Channel parallel-offset drag (sentinel nodeIndex = -1) ─────────
     const isPositionDrawing = drawing.type === 'measure'
@@ -4402,7 +4736,7 @@ export class DrawingManager {
             this.persistLocalFor(this.draggingOwner, this.getDrawingsFor(this.draggingOwner));
             this.dispatchDrawingsChanged(this.draggingOwner, 'updated');
           }
-          if (drawing.subtype === 'info_line' || drawing.type === 'freehand' || getBrushShapeTool(drawing) || getChartPatternTool(drawing)) {
+          if (drawing.subtype === 'info_line' || drawing.type === 'freehand' || drawing.type === 'text' || getBrushShapeTool(drawing) || getChartPatternTool(drawing)) {
             this.dispatchDrawingSelection(drawing, this.draggingOwner);
           }
         }
@@ -4522,6 +4856,7 @@ export class DrawingManager {
           type: drawing.type as DrawingType,
           points: drawing.points,
           text: drawing.text,
+          annotation: drawing.annotation,
           color: drawing.color,
           lineWidth: drawing.lineWidth,
           fillColor: drawing.fillColor,

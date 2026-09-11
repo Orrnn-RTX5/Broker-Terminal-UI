@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -51,6 +51,30 @@ describe('ModifyPositionDialog chart toolbar', () => {
         mocks.modifyPendingOrder.mockResolvedValue(undefined);
         mocks.placeMarketOrder.mockResolvedValue(undefined);
         mocks.closePosition.mockResolvedValue(undefined);
+    });
+
+    it('does not close or move focus when Escape/Tab belongs to a newer local dialog', async () => {
+        const onClose = vi.fn();
+        render(<ModifyPositionDialog isOpen onClose={onClose} position={{
+            id: 164, symbol: 'GBPUSD', side: 'BUY', volume: 0.01,
+            openPrice: 1.33981, sl: 0, tp: 0, comment: '',
+        }} />);
+        const dialog = screen.getByRole('dialog');
+        await waitFor(() => expect(dialog).toHaveFocus());
+        const help = document.createElement('div'); help.setAttribute('role', 'dialog'); help.dataset.shortcutScope = 'local';
+        const button = document.createElement('button'); help.append(button); document.body.append(help); button.focus();
+        const local = vi.fn(); help.addEventListener('keydown', local);
+        try {
+            fireEvent.keyDown(button, { key: 'Escape', cancelable: true });
+            fireEvent.keyDown(button, { key: 'Tab', shiftKey: true, cancelable: true });
+            expect(local).toHaveBeenCalledTimes(2);
+            expect(button).toHaveFocus(); expect(onClose).not.toHaveBeenCalled();
+        } finally { help.remove(); }
+        dialog.focus(); fireEvent.keyDown(dialog, { key: 'Escape' });
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(mocks.closePosition).not.toHaveBeenCalled();
+        expect(mocks.modifyPosition).not.toHaveBeenCalled();
+        expect(mocks.placeMarketOrder).not.toHaveBeenCalled();
     });
 
     it('hides and restores the mini chart from the chart toolbar button', async () => {

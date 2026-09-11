@@ -1,3 +1,5 @@
+import { translateUi, useUiTranslation } from '../../hooks/useUiTranslation';
+import i18n from '../../i18n';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -206,7 +208,7 @@ export const buildSymbolSpecificationSnapshot = (
 const formatNumber = (value: number | null, maximumFractionDigits = 8): string | null => (
   value === null
     ? null
-    : new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(value)
+    : new Intl.NumberFormat(i18n.resolvedLanguage || i18n.language, { maximumFractionDigits }).format(value)
 );
 
 const formatPrice = (value: number | null, digits: number): string | null => (
@@ -215,7 +217,7 @@ const formatPrice = (value: number | null, digits: number): string | null => (
 
 const formatTimestamp = (value: number | null | undefined): string | null => {
   if (!value || !Number.isFinite(value)) return null;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language, {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
@@ -228,7 +230,7 @@ const formatTimestamp = (value: number | null | undefined): string | null => {
 
 const formatLots = (value: number | null): string | null => {
   const formatted = formatNumber(value);
-  return formatted === null ? null : `${formatted} lots`;
+  return formatted === null ? null : translateUi('{{value0}} lots', { value0: formatted });
 };
 
 const QuoteMetric = ({
@@ -239,16 +241,16 @@ const QuoteMetric = ({
   label: string;
   value: string;
   tone?: 'positive' | 'negative' | 'neutral';
-}) => (
+}) => { const tr = useUiTranslation(); return ((
   <div className="min-w-[132px] flex-1 rounded border border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-3 py-2.5">
-    <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-secondary)]">{label}</div>
+    <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--text-secondary)]">{tr(label)}</div>
     <div className={`mt-1 truncate font-mono text-[15px] font-semibold ${
       tone === 'positive' ? 'text-emerald-400' : tone === 'negative' ? 'text-rose-400' : 'text-[var(--text-primary)]'
     }`}>
       {value}
     </div>
   </div>
-);
+)); };
 
 const SpecificationSection = ({
   title,
@@ -263,15 +265,16 @@ const SpecificationSection = ({
   emptyMessage: string;
   grid?: boolean;
 }) => {
+    const tr = useUiTranslation();
   const availableRows = rows.filter((row): row is { label: string; value: string } => row.value !== null);
 
   return (
     <section className="self-start overflow-hidden rounded border border-[var(--border-primary)] bg-[var(--bg-tertiary)]">
       <div className="flex h-9 items-center gap-2 border-b border-[var(--border-primary)] bg-[var(--bg-quaternary)] px-3">
         <span className="text-[var(--color-info)]" aria-hidden="true">{icon}</span>
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--text-primary)]">{title}</h3>
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.07em] text-[var(--text-primary)]">{tr(title)}</h3>
         <span className="ml-auto text-[10px] tabular-nums text-[var(--text-secondary)]">
-          {availableRows.length > 0 ? `${availableRows.length} fields` : 'Unavailable'}
+          {availableRows.length > 0 ? tr("{{value0}} fields", { value0: availableRows.length }) : tr("Unavailable")}
         </span>
       </div>
       {availableRows.length > 0 ? (
@@ -284,7 +287,7 @@ const SpecificationSection = ({
                 : 'grid min-h-9 grid-cols-[minmax(0,1fr)_minmax(112px,1fr)] items-center gap-3'
               }`}
             >
-              <dt className="text-[11px] text-[var(--text-secondary)]">{row.label}</dt>
+              <dt className="text-[11px] text-[var(--text-secondary)]">{tr(row.label)}</dt>
               <dd
                 className={`${grid ? 'mt-1 text-left text-[13px]' : 'truncate text-right text-[12px]'} font-mono font-medium text-[var(--text-primary)]`}
                 title={row.value}
@@ -299,7 +302,7 @@ const SpecificationSection = ({
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--bg-quaternary)] text-[var(--text-muted)]" aria-hidden="true">
             <Icon name="info" size="xs" />
           </span>
-          <span>{emptyMessage}</span>
+          <span>{tr(emptyMessage)}</span>
         </div>
       )}
     </section>
@@ -313,6 +316,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
   fallbackInstrument,
   onClose,
 }) => {
+    const tr = useUiTranslation();
   const tick = useTick(symbol);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -397,7 +401,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
   ].filter((metric): metric is { label: string; value: string; tone: 'positive' | 'negative' | 'neutral' } => metric.value !== null);
 
   const contractRows: DisplayRow[] = [
-    { label: 'Price precision', value: snapshot.digits === null ? null : `${snapshot.digits} digits` },
+    { label: 'Price precision', value: snapshot.digits === null ? null : tr('{{value0}} digits', { value0: snapshot.digits }) },
     { label: 'Contract size', value: formatNumber(snapshot.contractSize) },
     { label: pointSizeLabel, value: formatNumber(pointSize, 10) },
     { label: 'Tick value', value: formatNumber(snapshot.tickValue) },
@@ -448,10 +452,9 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
             </div>
             <div className="min-w-0">
               <h2 id="rtx-symbol-specification-title" className="truncate text-[16px] font-semibold">
-                {symbol} Specification
-              </h2>
+                {symbol} {tr(" Specification")}</h2>
               <p className="mt-0.5 truncate text-[12px] text-[var(--text-secondary)]">
-                {snapshot.description ?? 'Broker contract details and current market data'}
+                {snapshot.description ?? tr('Broker contract details and current market data')}
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 {snapshot.category && (
@@ -464,13 +467,12 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
                     ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
                     : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
                   }`}>
-                    {snapshot.tradingEnabled ? 'Trading enabled' : 'Trading disabled'}
+                    {snapshot.tradingEnabled ? tr("Trading enabled") : tr("Trading disabled")}
                   </span>
                 )}
                 {hasBrokerSpecification && (
                   <span className="rounded border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-400">
-                    Broker specification
-                  </span>
+                    {tr("Broker specification")}</span>
                 )}
               </div>
             </div>
@@ -478,7 +480,7 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
           <button
             ref={closeButtonRef}
             type="button"
-            aria-label="Close symbol specification"
+            aria-label={tr("Close symbol specification")}
             onClick={onClose}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
@@ -488,35 +490,34 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {quoteMetrics.length > 0 ? (
-            <div className="flex flex-wrap gap-2" aria-label="Current quote summary">
+            <div className="flex flex-wrap gap-2" aria-label={tr("Current quote summary")}>
               {quoteMetrics.map((metric) => <QuoteMetric key={metric.label} {...metric} />)}
             </div>
           ) : (
             <div className="flex min-h-[64px] items-center gap-3 rounded border border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-4 text-[12px] text-[var(--text-secondary)]">
               <Icon name="activity" size="sm" />
-              Waiting for the first live quote from the broker.
-            </div>
+              {tr("Waiting for the first live quote from the broker.")}</div>
           )}
 
           <div className="mt-4 grid grid-cols-1 items-start gap-3 md:grid-cols-2">
             <SpecificationSection
-              title="Contract details"
+              title={tr("Contract details")}
               icon={<Icon name="info" size="xs" />}
               rows={contractRows}
-              emptyMessage="Contract details were not provided by this broker."
+              emptyMessage={tr("Contract details were not provided by this broker.")}
             />
             <SpecificationSection
-              title="Volume & costs"
+              title={tr("Volume & costs")}
               icon={<Icon name="layers" size="xs" />}
               rows={volumeRows}
-              emptyMessage="Volume and cost terms were not provided by this broker."
+              emptyMessage={tr("Volume and cost terms were not provided by this broker.")}
             />
             <div className="md:col-span-2">
               <SpecificationSection
-                title="Latest quote"
+                title={tr("Latest quote")}
                 icon={<Icon name="activity" size="xs" />}
                 rows={quoteRows}
-                emptyMessage="Waiting for detailed quote data from the broker feed."
+                emptyMessage={tr("Waiting for detailed quote data from the broker feed.")}
                 grid
               />
             </div>
@@ -525,15 +526,13 @@ export const SymbolSpecificationDialog: React.FC<SymbolSpecificationDialogProps>
 
         <footer className="flex items-center justify-between gap-4 border-t border-[var(--border-primary)] bg-[var(--bg-tertiary)] px-5 py-3">
           <p className="text-[11px] text-[var(--text-secondary)]">
-            Only values supplied by your broker or live feed are shown.
-          </p>
+            {tr("Only values supplied by your broker or live feed are shown.")}</p>
           <button
             type="button"
             onClick={onClose}
             className="h-8 rounded border border-[var(--border-secondary)] bg-[var(--bg-quaternary)] px-4 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--color-info)] focus:outline-none focus:ring-1 focus:ring-[var(--color-info)]"
           >
-            Close
-          </button>
+            {tr("Close")}</button>
         </footer>
       </div>
     </div>,
