@@ -307,7 +307,7 @@ const DockWorkspaceClean: React.FC<{
     renderPanel: (panel: DockPanelConfig, isActive: boolean, isFloating?: boolean) => React.ReactNode;
 }> = ({ renderPanel }) => {
     const tr = useUiTranslation();
-    const { layout, arrangeCharts } = useDockLayoutStore();
+    const { layout, arrangeCharts, stepTileWindows } = useDockLayoutStore();
     const { subscribe } = useCommandBus();
 
     // Listen for events
@@ -317,7 +317,8 @@ const DockWorkspaceClean: React.FC<{
 
         const unsubCommandBus = subscribe((cmd) => {
             if (cmd.type === 'TILE_WINDOWS') {
-                arrangeCharts(cmd.payload.mode);
+                if (cmd.payload.mode === 'grid') stepTileWindows();
+                else arrangeCharts(cmd.payload.mode);
             }
         });
 
@@ -325,7 +326,7 @@ const DockWorkspaceClean: React.FC<{
             window.removeEventListener('resetLayout', handleResetLayout);
             unsubCommandBus();
         };
-    }, [subscribe, arrangeCharts]);
+    }, [subscribe, arrangeCharts, stepTileWindows]);
 
     const isLayoutEmpty = !layout.root.children || layout.root.children.length === 0;
 

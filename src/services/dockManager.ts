@@ -111,6 +111,25 @@ export const enforceChartPanelLimit = (layout: DockLayout): { layout: DockLayout
   return { layout: bounded, overflowCharts };
 };
 
+const findFirstChartPanel = (layout: DockLayout): DockPanelConfig | undefined => {
+  const findChart = (container: DockContainer): DockPanelConfig | undefined => {
+    for (const child of container.children) {
+      if ('children' in child) { const chart = findChart(child); if (chart) return chart; }
+      else if (child.component === 'Chart') return child;
+    }
+  };
+  return findChart(layout.root) || layout.floatingPanels.map(findChart).find(Boolean);
+};
+
+const createChartPanel = (symbol: string, timeframe: string, chartType: NonNullable<AddChartPanelOptions['chartType']>): DockPanelConfig => {
+  const panelId = `chart-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
+  return {
+    id: panelId, title: `${symbol || 'Chart'},${timeframe}`, component: 'Chart',
+    props: { ...(symbol ? { symbol } : {}), timeframe, chartType },
+    ratio: 1, closable: true, floatable: true,
+  };
+};
+
 const MIN_PANEL_SIZE = 100;
 const DEFAULT_RATIO = 0.5;
 const DEFAULT_CHART_TIMEFRAME = 'M5';
@@ -309,32 +328,21 @@ export class DockManager {
   addChartPanel(options: AddChartPanelOptions = {}): AddChartPanelResult {
     const count = this.getChartCount();
     if (count >= MAX_CHART_PANELS) return { status: 'limit-reached', count, limit: MAX_CHART_PANELS };
-    const findChart = (container: DockContainer): DockPanelConfig | undefined => {
-      for (const child of container.children) {
-        if ('children' in child) { const chart = findChart(child); if (chart) return chart; }
-        else if (child.component === 'Chart') return child;
-      }
-    };
-    const source = findChart(this.layout.root) || this.layout.floatingPanels.map(findChart).find(Boolean);
+    const source = findFirstChartPanel(this.layout);
     const symbol = options.symbol?.trim() || String(source?.props?.symbol || '').trim();
     const timeframe = options.timeframe?.trim() || String(source?.props?.timeframe || DEFAULT_CHART_TIMEFRAME);
     const chartType = options.chartType || source?.props?.chartType || 'candlestick';
-    const panelId = `chart-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
-    const panel: DockPanelConfig = {
-      id: panelId, title: `${symbol || 'Chart'},${timeframe}`, component: 'Chart',
-      props: { ...(symbol ? { symbol } : {}), timeframe, chartType },
-      ratio: 1, closable: true, floatable: true,
-    };
+    const panel = createChartPanel(symbol, timeframe, chartType);
     // Stage the new panel off-screen, then commit once. This also handles an
     // empty/root-only workspace without relying on a particular tab host.
     const staged = this.getLayout();
     staged.floatingPanels.push({
-      id: `new-${panelId}`, type: 'panel', ratio: 1, isFloating: true, children: [panel],
+      id: `new-${panel.id}`, type: 'panel', ratio: 1, isFloating: true, children: [panel],
     });
     const next = new DockManager(staged);
     next.tileWindows('grid', { restoreMinimized: false });
     this.setLayout(next.getLayout());
-    return { status: 'added', panelId, count: count + 1, limit: MAX_CHART_PANELS };
+    return { status: 'added', panelId: panel.id, count: count + 1, limit: MAX_CHART_PANELS };
   }
 
   setLayout(layout: DockLayout, silent = false, preserveWindowHistory = false): void {
@@ -512,7 +520,19 @@ export class DockManager {
   }
 
   /**
-   * TILE WINDOWS implementation: 
+   * Arrange Windows toolbar action: grow the tiled grid by one chart per call
+   * until the six-window maximum, then keep re-tiling the open charts.
+   */
+  stepTileWindows(): void {
+    if (this.canAddChart()) {
+      this.addChartPanel();
+      return;
+    }
+    this.arrangeCharts('grid');
+  }
+
+  /**
+   * TILE WINDOWS implementation:
    * Finds all Chart components and recursively removes them from their current container.
    * Then repackages them into a clean tiled grid layout.
    */

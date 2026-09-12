@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DockLayout } from '../../services/dockManager';
+import { commandBus } from '../../services/commandBus';
+import type { CommandType } from '../../types/commands';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import type { ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';
 import type { MarketInstrumentsSnapshot } from '../../hooks/useLiveMarketData';
@@ -30,9 +32,14 @@ vi.mock('../layout/MarketWatchPanel', () => ({
 vi.mock('../layout/NavigatorPanel', () => ({ NavigatorPanel: () => null }));
 vi.mock('../BottomDock', () => ({ BottomDock: () => null }));
 
-vi.mock('../../hooks/useCommandBus', () => ({
-  useCommandBus: () => ({ subscribe: () => () => undefined }),
-}));
+vi.mock('../../hooks/useCommandBus', async () => {
+  const { commandBus: bus } = await vi.importActual<typeof import('../../services/commandBus')>('../../services/commandBus');
+  return {
+    useCommandBus: () => ({
+      subscribe: (handler: (cmd: unknown) => void) => bus.subscribe('*' as CommandType, handler),
+    }),
+  };
+});
 
 const originalLayout = useDockLayoutStore.getState().layout;
 
@@ -154,6 +161,17 @@ describe('DockWorkspace chart diagnostic attributes', () => {
   afterEach(() => {
     cleanup();
     useDockLayoutStore.setState({ layout: originalLayout });
+  });
+
+  it('grows the chart grid by one window per Arrange Windows command from the toolbar icon', () => {
+    renderWorkspace(chartLayout('chart-1', 'BTCUSD'), 'BTCUSD');
+    expect(useDockLayoutStore.getState().getChartCount()).toBe(1);
+    act(() => commandBus.dispatch({ type: 'TILE_WINDOWS', payload: { mode: 'grid' } }));
+    expect(useDockLayoutStore.getState().getChartCount()).toBe(2);
+    act(() => commandBus.dispatch({ type: 'TILE_WINDOWS', payload: { mode: 'grid' } }));
+    expect(useDockLayoutStore.getState().getChartCount()).toBe(3);
+    act(() => commandBus.dispatch({ type: 'TILE_WINDOWS', payload: { mode: 'vertical' } }));
+    expect(useDockLayoutStore.getState().getChartCount()).toBe(3);
   });
 
   it('keeps an explicit saved chart blank during a partial catalog, then renders its own contract when settled', async () => {

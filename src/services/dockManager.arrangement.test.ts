@@ -43,6 +43,23 @@ const makeLayout = (): DockLayout => ({
 const panels = (container: DockContainer): DockPanelConfig[] => container.children.flatMap(child => (
   'children' in child ? panels(child) : [child]
 ));
+const singleChartLayout = (): DockLayout => ({
+  version: '2.6',
+  root: {
+    id: 'root', type: 'split', direction: 'horizontal', ratio: 1,
+    children: [{
+      id: 'left-sidebar', type: 'split', direction: 'vertical', ratio: 0.23,
+      children: [{ id: 'market-watch', title: 'Market Watch', component: 'MarketWatch', ratio: 1 }],
+    }, {
+      id: 'center-main', type: 'split', direction: 'vertical', ratio: 0.77,
+      children: [
+        { ...chart('XAUUSD'), ratio: 0.68 },
+        { id: 'toolbox', title: 'Toolbox', component: 'Terminal', ratio: 0.32 },
+      ],
+    }],
+  },
+  floatingPanels: [],
+});
 const charts = (layout: DockLayout) => [layout.root, ...layout.floatingPanels]
   .flatMap(panels).filter(panel => panel.component === 'Chart');
 const center = (layout: DockLayout) => layout.root.children.find(child => child.id === 'center-main') as DockContainer;
@@ -199,6 +216,27 @@ describe('chart window arrangements', () => {
     expect(manager.undo()).toBe(false);
     manager.resetWindows('stale-chart-id');
     expect(manager.getLayout()).toEqual(reset);
+  });
+
+  it('grows the tiled grid by one chart per Arrange Windows step up to the six-window maximum', () => {
+    const manager = new DockManager(singleChartLayout());
+    for (let count = 2; count <= MAX_CHART_PANELS; count++) {
+      manager.stepTileWindows();
+      expect(manager.getChartCount()).toBe(count);
+      const tiled = center(manager.getLayout()).children[0] as DockContainer;
+      expect(tiled.type).toBe('split');
+      expect(charts(manager.getLayout()).every(panel => panel.props?.symbol === 'XAUUSD' && panel.props?.timeframe === 'M15')).toBe(true);
+    }
+    manager.stepTileWindows();
+    expect(manager.getChartCount()).toBe(MAX_CHART_PANELS);
+    expect(manager.getLayout().floatingPanels).toEqual([]);
+    expect(panels(center(manager.getLayout())).some(panel => panel.id === 'toolbox')).toBe(true);
+  });
+
+  it('keeps adding one chart at a time per add request', () => {
+    const manager = new DockManager(singleChartLayout());
+    expect(manager.addChartPanel({ symbol: 'BTCUSD', timeframe: 'H1' }).status).toBe('added');
+    expect(manager.getChartCount()).toBe(2);
   });
 
   it('arranges only minimized floating windows, restores their original geometry, and keeps chart state', () => {

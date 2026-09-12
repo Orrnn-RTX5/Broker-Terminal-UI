@@ -78,6 +78,21 @@ describe('chart slot actions', () => {
     expect(useDockLayoutStore.getState().recentlyClosedCharts).toEqual([]);
   });
 
+  it('steps the Arrange Windows grid one chart at a time through the store', () => {
+    const state = () => useDockLayoutStore.getState();
+    expect(state().getChartCount()).toBe(1);
+    state().stepTileWindows();
+    expect(state().getChartCount()).toBe(2);
+    state().stepTileWindows();
+    expect(state().getChartCount()).toBe(3);
+    const tiled = collect(state().layout.root).filter(panel => panel.component === 'Chart');
+    expect(tiled.every(panel => panel.props?.symbol === 'TEST' && panel.props?.chartType === 'area')).toBe(true);
+    while (state().canAddChart()) state().stepTileWindows();
+    expect(state().getChartCount()).toBe(MAX_CHART_PANELS);
+    state().stepTileWindows();
+    expect(state().getChartCount()).toBe(MAX_CHART_PANELS);
+  });
+
   it('reports count/cap state and leaves a seventh request unchanged', () => {
     fillCharts();
     expect(useDockLayoutStore.getState().getChartCount()).toBe(MAX_CHART_PANELS);

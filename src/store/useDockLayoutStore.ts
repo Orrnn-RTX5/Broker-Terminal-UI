@@ -110,6 +110,7 @@ export interface DockState {
   resetWindows: () => void;
   arrangeIcons: () => number;
   tileWindows: () => void;
+  stepTileWindows: () => void;
   arrangeCharts: (mode: ChartArrangement) => void;
 
   // Magnetic Snap Actions
@@ -538,6 +539,12 @@ const useDockLayoutStore = create<DockState>()(
         },
         tileWindows: () => {
           get().arrangeCharts('grid');
+        },
+        stepTileWindows: () => {
+          runOutsideChartFocus(() => {
+            dockManager.stepTileWindows();
+            set({ layout: dockManager.getLayout() });
+          });
         },
         resetWindows: () => {
           // Resolve the exact pane before leaving focus mode; several charts
