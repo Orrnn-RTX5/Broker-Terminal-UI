@@ -457,6 +457,7 @@ interface ChartSettingsState {
   ) => void;
   applyPresetScheme: (scheme: ColorScheme) => void;
   applySymbolPresetScheme: (symbol: string, scheme: ColorScheme) => void;
+  inheritSymbolProperties: (from: string, to: string) => void;
   resetSymbolToDefaults: (symbol: string) => void;
   resetToDefaults: () => void;
 }
@@ -549,6 +550,16 @@ export const useChartSettingsStore = create<ChartSettingsState>()(
               },
             },
           };
+        });
+      },
+
+      inheritSymbolProperties: (from, to) => {
+        set((state) => {
+          const source = state.symbolProperties[from];
+          // The chart window keeps its Show-section choices when its rendered
+          // symbol settles from a fallback to the saved broker contract.
+          if (!source || from === to || state.symbolProperties[to]) return state;
+          return { symbolProperties: { ...state.symbolProperties, [to]: source } };
         });
       },
 

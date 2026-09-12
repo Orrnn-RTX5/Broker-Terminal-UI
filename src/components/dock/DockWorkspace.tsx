@@ -1,6 +1,8 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
-import React, { useEffect, useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { useChartSettingsStore } from '../../store/useChartSettingsStore';
+import { getChartPanels } from '../../services/chartPanelNavigation';
 import { resetWorkspaceLayout } from '../../services/resetLayout';
 import { DockContainer, FloatingPanelsLayer, GlobalEdgeIndicators } from './DockContainer';
 import { StableChartHosts } from './StableChartHosts';
@@ -159,6 +161,35 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
         return resolveAuthorizedChartSymbol(value, authorizedChartSymbols);
     }, [authorizedChartSymbols]);
 
+    // The rendered symbol is the per-symbol chart-settings key, so it must be
+    // resolved identically here and in the settings-carry effect below.
+    const resolvePanelChartSymbol = useCallback((panel: DockPanelConfig): string => {
+        const panelSymbol = panel.props?.symbol ?? panel.title?.split(',')[0];
+        const explicitPanelSymbol = String(panelSymbol ?? '').trim();
+        const waitingForPanelSymbol = marketInstrumentsSnapshot.chartCatalogCurrent === false
+            && Boolean(explicitPanelSymbol) && explicitPanelSymbol.toUpperCase() !== 'CHART'
+            && !getAuthorizedChartDiagnosticSymbol(panelSymbol, authorizedChartSymbols);
+        if (waitingForPanelSymbol) return '';
+        return resolveRenderedChartSymbol(panelSymbol, selectedSymbol, authorizedChartSymbols);
+    }, [authorizedChartSymbols, marketInstrumentsSnapshot.chartCatalogCurrent, selectedSymbol]);
+
+    // While the broker catalog settles, a panel can render under a fallback
+    // symbol (typically the selected one). Per-symbol Show-section choices
+    // such as OHLC belong to the chart window, so carry them to the symbol the
+    // panel settles on instead of dropping back to global defaults.
+    const renderedChartSymbolsRef = useRef(new Map<string, string>());
+    const layout = useDockLayoutStore(state => state.layout);
+    useEffect(() => {
+        const settings = useChartSettingsStore.getState();
+        getChartPanels(layout).forEach(panel => {
+            const rendered = resolvePanelChartSymbol(panel);
+            if (!rendered) return;
+            const previous = renderedChartSymbolsRef.current.get(panel.id);
+            if (previous && previous !== rendered) settings.inheritSymbolProperties(previous, rendered);
+            renderedChartSymbolsRef.current.set(panel.id, rendered);
+        });
+    }, [layout, resolvePanelChartSymbol]);
+
     const renderPanel = useCallback((panel: DockPanelConfig, isActive: boolean) => {
         if (panel.component === 'Chart') {
             const panelSymbol = panel.props?.symbol ?? panel.title?.split(',')[0];
@@ -166,17 +197,9 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                 panelSymbol,
                 authorizedChartSymbols,
             );
-            const explicitPanelSymbol = String(panelSymbol ?? '').trim();
-            const waitingForPanelSymbol = marketInstrumentsSnapshot.chartCatalogCurrent === false
-                && Boolean(explicitPanelSymbol) && explicitPanelSymbol.toUpperCase() !== 'CHART'
-                && !diagnosticPanelSymbol;
             // An early feed snapshot must never pair an explicit XAU/BTC
             // header with another instrument's canvas or trading buttons.
-            const chartSymbol = waitingForPanelSymbol ? '' : resolveRenderedChartSymbol(
-                panelSymbol,
-                selectedSymbol,
-                authorizedChartSymbols,
-            );
+            const chartSymbol = resolvePanelChartSymbol(panel);
             const diagnosticPanelId = getChartPanelDiagnosticId(panel.id);
             const tradeAllowed = chartSymbol ? tradeSymbolSet.has(chartSymbol) : false;
             const volumeMetadata = volumeMetadataBySymbol.get(chartSymbol);
@@ -293,7 +316,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
     }, [
         authorizedChartSymbols,
         globalChartType, globalTimeframe,
-        activeMarketSnapshot, marketInstrumentsSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, priceDigitsBySymbol, resolveChartSymbol, tradeSymbolSet, volumeMetadataBySymbol,
+        activeMarketSnapshot, marketInstrumentsSnapshot, allSymbols, selectedSymbol, chartRuntimeEnabled, onSymbolSelect, priceDigitsBySymbol, resolveChartSymbol, resolvePanelChartSymbol, tradeSymbolSet, volumeMetadataBySymbol,
         onClosePosition, onModifyPosition, onCancelOrder, onCloseBulk
     , tr]);
 

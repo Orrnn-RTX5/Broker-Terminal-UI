@@ -2112,6 +2112,25 @@ export class DrawingManager {
       if (isChannel) {
         this.appendChannelScaleLabels(construction, this.activeDrawing, plotW, plotH, true);
       }
+      if (isPitchfork && this.activeDrawing.points.length >= 2) {
+        const forkYs = this.activeDrawing.points.map(point => this.px(point))
+          .filter(Boolean)
+          .map(screen => screen.y);
+        if (this.previewPoint && this.previewCursorVisible) {
+          const cursorScreen = this.px(this.previewPoint);
+          if (cursorScreen) forkYs.push(cursorScreen.y);
+        }
+        if (forkYs.length >= 2) {
+          this.appendPriceScaleRangeBand(
+            construction,
+            plotW,
+            Math.min(...forkYs),
+            Math.max(...forkYs),
+            this.activeDrawing.color || '#2962ff',
+            forkYs.map(y => Number(this.series?.coordinateToPrice(y) ?? 0)),
+          );
+        }
+      }
       if (getBrushShapeTool(this.activeDrawing)?.requiredPoints === 0) {
         const hint = this.svgText(16, Math.max(20, plotH - 16), 'Double-click or press Enter to finish', this.activeDrawing.color || '#2962ff', 12);
         hint.setAttribute('data-geometry-role', 'shape-finish-hint');
@@ -3335,6 +3354,27 @@ export class DrawingManager {
         const hasAnchorCoordinates = (trendTool.drawingType === 'trendline' && trendTool.requiredPoints === 2)
           || Boolean(getGannFibonacciTool(d.subtype));
 
+        if (
+          trendTool.drawingType === 'trendline'
+          && trendTool.requiredPoints === 2
+          && trendTool.id !== 'horizontal_line'
+          && trendTool.id !== 'vertical_line'
+          && d.points.length >= 2
+        ) {
+          const first = this.px(d.points[0]);
+          const second = this.px(d.points[1]);
+          if (first && second) {
+            this.appendPriceScaleRangeBand(
+              g,
+              plotW,
+              Math.min(first.y, second.y),
+              Math.max(first.y, second.y),
+              color,
+              [d.points[0].price, d.points[1].price],
+            );
+          }
+        }
+
         d.points.forEach((point, index) => {
           const screenPoint = this.px(point);
           if (!screenPoint) return;
@@ -3513,6 +3553,21 @@ export class DrawingManager {
       } else if (trendTool) {
         const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
         const plotH = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
+        if (trendTool.group === 'Pitchforks' && d.points.length >= 2) {
+          // Pitchfork badges sit on the clicked anchors, so the highlight
+          // spans exactly those prices in both construction and selection.
+          const anchorYs = d.points.map(point => this.px(point)).filter(Boolean).map(screen => screen.y);
+          if (anchorYs.length >= 2) {
+            this.appendPriceScaleRangeBand(
+              g,
+              plotW,
+              Math.min(...anchorYs),
+              Math.max(...anchorYs),
+              color,
+              anchorYs.map(y => Number(this.series?.coordinateToPrice(y) ?? 0)),
+            );
+          }
+        }
         d.points.forEach((point, index) => {
           const screenPoint = this.px(point);
           if (!screenPoint) return;
@@ -3681,6 +3736,35 @@ export class DrawingManager {
     return value || fallback;
   }
 
+  /**
+   * TradingView-style tinted band on the right price scale spanning the
+   * selected drawing's endpoint prices; endpoint badges paint above it.
+   */
+  private appendPriceScaleRangeBand(
+    group: SVGGElement,
+    plotWidth: number,
+    topY: number,
+    bottomY: number,
+    accent: string,
+    prices: number[],
+    role = 'price-scale-range',
+  ): void {
+    const height = bottomY - topY;
+    if (!(height > 2)) return;
+    const scaleWidth = Math.max(42, this.chart?.priceScale('right').width() ?? 0);
+    const width = Math.min(scaleWidth, Math.max(48, ...prices.map(price => this.formatPrice(price).length * 6.4 + 12)));
+    const band = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    band.setAttribute('x', String(plotWidth));
+    band.setAttribute('y', String(topY));
+    band.setAttribute('width', String(width));
+    band.setAttribute('height', String(height));
+    band.setAttribute('fill', accent);
+    band.setAttribute('fill-opacity', '0.35');
+    band.setAttribute('data-geometry-role', role);
+    band.setAttribute('pointer-events', 'none');
+    group.appendChild(band);
+  }
+
   private appendPriceScaleLabel(
     group: SVGGElement,
     plotWidth: number,
@@ -3830,6 +3914,28 @@ export class DrawingManager {
     });
     for (let index = ordered.length - 1; index >= 0; index -= 1) {
       ordered[index].y = Math.min(ordered[index].y, index === ordered.length - 1 ? plotH - 9 : ordered[index + 1].y - spacing);
+    }
+    const baselineEnd = prices.find(entry => entry.role === 'baseline-end');
+    const boundaryEnd = prices.find(entry => entry.role === 'boundary-end');
+    const regressionStart = prices.find(entry => entry.role === 'regression-start');
+    const regressionEnd = prices.find(entry => entry.role === 'regression-end');
+    const pair = baselineEnd && boundaryEnd ? [baselineEnd, boundaryEnd]
+      : regressionStart && regressionEnd ? [regressionStart, regressionEnd]
+      : null;
+    // Flat top/bottom can dedupe a rail end into the opposite rail's label when
+    // both share a price; fall back to the full labelled span so the highlight
+    // never disappears for those shapes.
+    const bandEntries = pair ?? prices.filter(entry => entry.role !== 'cursor');
+    if (bandEntries.length >= 2) {
+      const bandYs = bandEntries.map(entry => entry.y);
+      this.appendPriceScaleRangeBand(
+        group,
+        plotW,
+        Math.min(...bandYs),
+        Math.max(...bandYs),
+        color,
+        bandEntries.map(entry => entry.price),
+      );
     }
     prices.forEach(entry => this.appendPriceScaleLabel(
       group, plotW, entry.y, entry.price, entry.accent, `${entry.role}-price-scale-label`,

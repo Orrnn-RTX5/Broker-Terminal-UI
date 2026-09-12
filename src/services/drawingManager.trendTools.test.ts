@@ -267,6 +267,110 @@ describe('DrawingManager trend tool lifecycle', () => {
     expect(prices()).toEqual([]);
   });
 
+  it.each(['ray', 'extended_line', 'trend_angle'] as const)(
+    '%s highlights the price-scale range between its endpoint badges while selected',
+    async subtype => {
+      const { manager, container } = await createRenderHarness({ pricePrecision: 3 });
+      const band = () => container.querySelector('rect[data-geometry-role="price-scale-range"]');
+      manager.startDrawing('trendline', '#2962ff', { subtype });
+      manager.addPoint(150, 100);
+      manager.addPoint(240, 109);
+      const bandElement = band();
+      expect(bandElement).not.toBeNull();
+      expect(numberAttribute(bandElement!, 'y')).toBeCloseTo(220 - 109);
+      expect(numberAttribute(bandElement!, 'y') + numberAttribute(bandElement!, 'height')).toBeCloseTo(220 - 100);
+      const drawing = manager.getDrawings()[0];
+      manager.unselectDrawing(drawing.id);
+      expect(band()).toBeNull();
+      manager.selectDrawing(drawing.id);
+      expect(band()).not.toBeNull();
+    },
+  );
+
+  it.each(['parallel_channel', 'flat_top_bottom', 'disjoint_channel', 'regression_trend'] as const)(
+    '%s highlights the price-scale range between its line badges while selected',
+    async subtype => {
+      const { manager, container } = await createRenderHarness({ pricePrecision: 3 });
+      const band = () => container.querySelector('rect[data-geometry-role="price-scale-range"]');
+      manager.startDrawing('channel', '#2962ff', { subtype });
+      manager.addPoint(150, 100);
+      manager.addPoint(240, 109);
+      manager.addPoint(180, 92);
+      const bandElement = band();
+      expect(bandElement).not.toBeNull();
+      const bandTop = numberAttribute(bandElement!, 'y');
+      const bandBottom = bandTop + numberAttribute(bandElement!, 'height');
+      const endRoles = subtype === 'regression_trend'
+        ? ['regression-start', 'regression-end']
+        : ['baseline-end', 'boundary-end'];
+      const endCenters = endRoles.map(role => numberAttribute(
+        container.querySelector(`rect[data-geometry-role="${role}-price-scale-label"]`)!, 'y',
+      ) + 9);
+      expect(bandTop).toBeCloseTo(Math.min(...endCenters));
+      expect(bandBottom).toBeCloseTo(Math.max(...endCenters));
+      const drawing = manager.getDrawings()[0];
+      manager.unselectDrawing(drawing.id);
+      expect(band()).toBeNull();
+      manager.selectDrawing(drawing.id);
+      expect(band()).not.toBeNull();
+    },
+  );
+
+  it('flat top/bottom keeps the price-scale highlight when a rail end shares the opposite rail price', async () => {
+    const { manager, container } = await createRenderHarness({ pricePrecision: 3 });
+    manager.startDrawing('channel', '#2962ff', { subtype: 'flat_top_bottom' });
+    manager.addPoint(150, 100);
+    manager.addPoint(240, 109);
+    manager.addPoint(180, 109);
+    const bandElement = container.querySelector('rect[data-geometry-role="price-scale-range"]');
+    expect(bandElement).not.toBeNull();
+    const badgeTops = Array.from(container.querySelectorAll('rect[data-geometry-role$="price-scale-label"]'))
+      .map(label => numberAttribute(label, 'y'));
+    expect(badgeTops).toHaveLength(2);
+    expect(numberAttribute(bandElement!, 'y')).toBeCloseTo(Math.min(...badgeTops) + 9);
+    expect(numberAttribute(bandElement!, 'y') + numberAttribute(bandElement!, 'height'))
+      .toBeCloseTo(Math.max(...badgeTops) + 9);
+  });
+
+  it.each([
+    'pitchfork',
+    'schiff_pitchfork',
+    'modified_schiff_pitchfork',
+    'inside_pitchfork',
+  ] as const)('%s highlights the price-scale area between its outer rays while selected', async subtype => {
+    const { manager, container } = await createRenderHarness({ pricePrecision: 3 });
+    const band = () => container.querySelector('rect[data-geometry-role="price-scale-range"]');
+    manager.startDrawing('channel', '#2962ff', { subtype });
+    manager.addPoint(150, 100);
+    manager.addPoint(240, 109);
+    manager.addPoint(180, 92);
+    const bandElement = band();
+    expect(bandElement).not.toBeNull();
+    expect(numberAttribute(bandElement!, 'height')).toBeGreaterThan(2);
+    const drawing = manager.getDrawings()[0];
+    manager.unselectDrawing(drawing.id);
+    expect(band()).toBeNull();
+    manager.selectDrawing(drawing.id);
+    expect(band()).not.toBeNull();
+  });
+
+  it.each(['pitchfork', 'modified_schiff_pitchfork'] as const)(
+    '%s highlights the price-scale area during construction before commit',
+    async subtype => {
+      const { manager, container } = await createRenderHarness({ pricePrecision: 3 });
+      const band = () => container.querySelector('rect[data-geometry-role="price-scale-range"]');
+      manager.startDrawing('channel', '#2962ff', { subtype });
+      manager.addPoint(150, 100);
+      manager.updatePreviewPoint(240, 109);
+      expect(band()).toBeNull();
+      manager.addPoint(240, 109);
+      manager.updatePreviewPoint(180, 92);
+      expect(band()).not.toBeNull();
+      manager.cancelDrawing('chart-test-m1');
+      expect(band()).toBeNull();
+    },
+  );
+
   it('uses clicked Regression Trend prices during construction and fitted endpoint prices after completion', async () => {
     const { manager, container } = await createRenderHarness({ pricePrecision: 3 });
     const prices = () => Array.from(container.querySelectorAll('text[data-geometry-role$="price-scale-label-text"]'))

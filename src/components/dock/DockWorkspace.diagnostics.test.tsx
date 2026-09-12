@@ -7,6 +7,7 @@ import type { DockLayout } from '../../services/dockManager';
 import { commandBus } from '../../services/commandBus';
 import type { CommandType } from '../../types/commands';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
+import { useChartSettingsStore } from '../../store/useChartSettingsStore';
 import type { ActiveMarketSymbolsSnapshot } from '../layout/MarketWatchPanel';
 import type { MarketInstrumentsSnapshot } from '../../hooks/useLiveMarketData';
 import { DockWorkspace } from './DockWorkspace';
@@ -161,6 +162,7 @@ describe('DockWorkspace chart diagnostic attributes', () => {
   afterEach(() => {
     cleanup();
     useDockLayoutStore.setState({ layout: originalLayout });
+    useChartSettingsStore.setState({ symbolProperties: {} });
   });
 
   it('grows the chart grid by one window per Arrange Windows command from the toolbar icon', () => {
@@ -172,6 +174,43 @@ describe('DockWorkspace chart diagnostic attributes', () => {
     expect(useDockLayoutStore.getState().getChartCount()).toBe(3);
     act(() => commandBus.dispatch({ type: 'TILE_WINDOWS', payload: { mode: 'vertical' } }));
     expect(useDockLayoutStore.getState().getChartCount()).toBe(3);
+  });
+
+  it('inherits per-symbol chart settings only into symbols without their own entry', () => {
+    const store = useChartSettingsStore.getState();
+    store.updateSymbolProperty('AAA', 'showOHLC', true);
+    store.updateSymbolProperty('BBB', 'showOHLC', false);
+    useChartSettingsStore.getState().inheritSymbolProperties('AAA', 'BBB');
+    expect(useChartSettingsStore.getState().symbolProperties.BBB.showOHLC).toBe(false);
+    useChartSettingsStore.getState().inheritSymbolProperties('AAA', 'CCC');
+    expect(useChartSettingsStore.getState().symbolProperties.CCC.showOHLC).toBe(true);
+    useChartSettingsStore.getState().inheritSymbolProperties('MISSING', 'DDD');
+    expect(useChartSettingsStore.getState().symbolProperties.DDD).toBeUndefined();
+  });
+
+  it('keeps Show-section choices when the rendered chart symbol settles to the saved panel symbol', () => {
+    useChartSettingsStore.getState().updateSymbolProperty('BTCUSD', 'showOHLC', true);
+    const layout: DockLayout = {
+      version: 'settings-carry', floatingPanels: [], root: {
+        id: 'root', type: 'split', ratio: 1, children: [{
+          id: 'chart-1', type: 'panel', component: 'Chart', title: 'XAUUSD,M5',
+          props: { symbol: 'XAUUSD', timeframe: 'M5' }, ratio: 1,
+        }],
+      },
+    };
+    useDockLayoutStore.setState({ layout });
+    const workspace = (symbols: string[]) => <DockWorkspace
+      globalChartType="candlestick" globalTimeframe="M5" selectedSymbol="BTCUSD"
+      allSymbols={symbols} chartSymbols={symbols} tradeSymbols={symbols}
+      activeMarketSnapshot={createActiveMarketSnapshot({ symbols })}
+      marketInstrumentsSnapshot={createMarketInstrumentsSnapshot({ symbols })}
+      onSymbolSelect={vi.fn()} onClosePosition={vi.fn()} onModifyPosition={vi.fn()}
+      onCancelOrder={vi.fn()} onCloseBulk={vi.fn()} />;
+    const view = render(workspace(['BTCUSD']));
+    expect(view.container.querySelector('[data-chart-rendered-symbol]')).toHaveAttribute('data-chart-rendered-symbol', 'BTCUSD');
+    view.rerender(workspace(['BTCUSD', 'XAUUSD']));
+    expect(view.container.querySelector('[data-chart-rendered-symbol]')).toHaveAttribute('data-chart-rendered-symbol', 'XAUUSD');
+    expect(useChartSettingsStore.getState().symbolProperties.XAUUSD).toMatchObject({ showOHLC: true });
   });
 
   it('keeps an explicit saved chart blank during a partial catalog, then renders its own contract when settled', async () => {
