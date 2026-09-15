@@ -53,6 +53,46 @@ interface DepthOfMarketProps {
 const FONT = "var(--font-sans, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)";
 const MONO = "var(--font-mono, 'Roboto Mono', 'Courier New', monospace)";
 
+export const readDepthTypography = () => {
+  const style = typeof document === 'undefined' ? null : getComputedStyle(document.documentElement);
+  const readNumber = (name: string, fallback: number) => {
+    const value = Number.parseFloat(style?.getPropertyValue(name) || '');
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
+  const fontSize = readNumber('--rtx-ui-font-size', 14);
+  const lineHeight = Math.ceil(fontSize * 1.5);
+  const fontFamily = style?.getPropertyValue('--font-mono').trim();
+  return {
+    fontSize,
+    lineHeight,
+    rowHeight: Math.max(26, lineHeight + 5),
+    bodyWeight: readNumber('--rtx-font-weight-body', 400),
+    controlWeight: readNumber('--rtx-font-weight-control', 400),
+    headingWeight: readNumber('--rtx-font-weight-heading', 500),
+    // Canvas2D needs a resolved font string, not CSS custom-property syntax.
+    fontFamily: fontFamily && !fontFamily.includes('var(') ? fontFamily : "'Courier New', monospace",
+  };
+};
+
+type DepthTypography = ReturnType<typeof readDepthTypography>;
+
+function useDepthTypography() {
+  const [typography, setTypography] = useState(readDepthTypography);
+  useEffect(() => {
+    const update = () => setTypography(current => {
+      const next = readDepthTypography();
+      return Object.keys(next).every(key => (
+        current[key as keyof DepthTypography] === next[key as keyof DepthTypography]
+      )) ? current : next;
+    });
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
+    return () => observer.disconnect();
+  }, []);
+  return typography;
+}
+
 /* ─── Chart display types ──────────────────────────────────────────── */
 type ChartMode = 'bar' | 'candlestick' | 'line' | 'tick';
 
@@ -102,6 +142,7 @@ interface TickChartProps {
   chartMode: ChartMode;
   crosshair: boolean;
   zoomLevel: number; // 1=default, higher=zoomed in
+  typography: DepthTypography;
 }
 
 interface TickData {
@@ -143,7 +184,7 @@ function aggregateToOHLC(ticks: TickData[], barCount: number): OHLCBar[] {
   return bars;
 }
 
-function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: TickChartProps) {
+function TickChart({ symbol, width: fallbackWidth, height, chartMode, crosshair, zoomLevel, typography }: TickChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const tickHistoryRef = useRef<TickData[]>([]);
   const mouseRef = useRef<{ x: number; y: number } | null>(null);
@@ -191,6 +232,13 @@ function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: T
       const allHistory = tickHistoryRef.current;
       if (allHistory.length < 2) return;
 
+      // The canvas is in a flexible pane; drawing at its CSS width keeps text
+      // at the selected size instead of stretching a fixed 250px bitmap.
+      const width = canvas.clientWidth || fallbackWidth;
+      const bodyFont = `${typography.bodyWeight} ${typography.fontSize}px ${typography.fontFamily}`;
+      const controlFont = `${typography.controlWeight} ${typography.fontSize}px ${typography.fontFamily}`;
+      const labelHeight = typography.lineHeight + 4;
+
       // Apply zoom — zoom in shows fewer ticks
       const visibleCount = Math.max(20, Math.floor(MAX_TICKS / zoomLevel));
       const history = allHistory.slice(-visibleCount);
@@ -206,8 +254,8 @@ function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: T
       ctx.fillStyle = isLight ? '#f8fafc' : C.bgPrimary;
       ctx.fillRect(0, 0, width, height);
 
-      const chartH = height * 0.72;
-      const volH = height * 0.22;
+      const chartH = Math.max(labelHeight, (height - labelHeight) * 0.75);
+      const volH = Math.max(0, height - chartH - labelHeight - 4);
       const volTop = chartH + 4;
       let minP = Infinity, maxP = -Infinity;
       let maxVol = 1;
@@ -236,12 +284,14 @@ function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: T
 
       // Price scale on right
       ctx.fillStyle = C.textTertiary;
-      ctx.font = `9px ${MONO}`;
+      ctx.font = bodyFont;
       ctx.textAlign = 'right';
-      for (let i = 0; i <= 4; i++) {
-        const y = (chartH / 4) * i;
-        const price = maxP - (i / 4) * totalRange;
-        ctx.fillText(price.toFixed(2), width - 3, y + 3);
+      ctx.textBaseline = 'middle';
+      const priceIntervals = Math.max(1, Math.min(4, Math.floor(chartH / (labelHeight + 4))));
+      for (let i = 0; i <= priceIntervals; i++) {
+        const y = (chartH / priceIntervals) * i;
+        const price = maxP - (i / priceIntervals) * totalRange;
+        ctx.fillText(price.toFixed(2), width - 3, Math.max(labelHeight / 2, Math.min(chartH - labelHeight / 2, y)));
       }
 
       // === CHART MODE RENDERING ===
@@ -405,13 +455,14 @@ function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: T
         if (my <= chartH) {
           const price = maxP - (my / chartH) * totalRange;
           const labelText = price.toFixed(2);
+          ctx.font = bodyFont;
           ctx.fillStyle = '#333338';
           const tw = ctx.measureText(labelText).width + 8;
-          ctx.fillRect(width - tw - 2, my - 8, tw + 2, 16);
+          const labelY = Math.max(0, Math.min(chartH - labelHeight, my - labelHeight / 2));
+          ctx.fillRect(width - tw - 2, labelY, tw + 2, labelHeight);
           ctx.fillStyle = C.textPrimary;
-          ctx.font = `9px ${MONO}`;
           ctx.textAlign = 'right';
-          ctx.fillText(labelText, width - 5, my + 3);
+          ctx.fillText(labelText, width - 5, labelY + labelHeight / 2);
         }
 
         // Index label at crosshair X
@@ -420,13 +471,14 @@ function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: T
           const tick = history[idx];
           const d = new Date(tick.time);
           const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+          ctx.font = bodyFont;
           const tw = ctx.measureText(timeStr).width + 8;
+          const labelX = Math.max(0, Math.min(width - tw, mx - tw / 2));
           ctx.fillStyle = '#333338';
-          ctx.fillRect(mx - tw / 2, height - 14, tw, 14);
+          ctx.fillRect(labelX, height - labelHeight, tw, labelHeight);
           ctx.fillStyle = C.textPrimary;
-          ctx.font = `9px ${MONO}`;
           ctx.textAlign = 'center';
-          ctx.fillText(timeStr, mx, height - 3);
+          ctx.fillText(timeStr, labelX + tw / 2, height - labelHeight / 2);
         }
 
         // Tooltip with bid/ask at cursor
@@ -439,24 +491,24 @@ function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: T
               `Ask: ${t.ask.toFixed(5)}`,
               `Vol: ${t.volume.toFixed(2)}`,
             ];
+            ctx.font = bodyFont;
             const tooltipX = mx + 12;
-            const tooltipY = Math.min(my, chartH - 40);
+            const tw = Math.max(...tooltipLines.map(line => ctx.measureText(line).width)) + 12;
+            const th = tooltipLines.length * typography.lineHeight + 8;
+            const tooltipY = Math.max(0, Math.min(my, chartH - th));
             ctx.fillStyle = 'rgba(25, 26, 30, 0.92)';
             ctx.strokeStyle = C.borderSecondary;
             ctx.lineWidth = 1;
-            const tw = 90;
-            const th = 38;
             // Rounded rect
-            const rx = Math.min(tooltipX, width - tw - 4);
+            const rx = Math.max(0, Math.min(tooltipX, width - tw - 4));
             ctx.beginPath();
             ctx.roundRect(rx, tooltipY, tw, th, 4);
             ctx.fill();
             ctx.stroke();
             ctx.fillStyle = C.textPrimary;
-            ctx.font = `9px ${MONO}`;
             ctx.textAlign = 'left';
             tooltipLines.forEach((line, li) => {
-              ctx.fillText(line, rx + 4, tooltipY + 11 + li * 12);
+              ctx.fillText(line, rx + 6, tooltipY + 4 + typography.lineHeight * (li + 0.5));
             });
           }
         }
@@ -466,25 +518,28 @@ function TickChart({ symbol, width, height, chartMode, crosshair, zoomLevel }: T
       if (history.length > 0) {
         const lastTick = history[history.length - 1];
         const lastY = chartH - ((lastTick.bid - minP) / totalRange) * chartH;
+        ctx.font = controlFont;
+        const priceText = lastTick.bid.toFixed(2);
+        const priceLabelWidth = ctx.measureText(priceText).width + 10;
+        const priceLabelY = Math.max(0, Math.min(chartH - labelHeight, lastY - labelHeight / 2));
         // Price line
         ctx.strokeStyle = C.loss;
         ctx.lineWidth = 0.5;
         ctx.setLineDash([2, 2]);
-        ctx.beginPath(); ctx.moveTo(0, lastY); ctx.lineTo(width - 50, lastY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, lastY); ctx.lineTo(width - priceLabelWidth, lastY); ctx.stroke();
         ctx.setLineDash([]);
         // Label
         ctx.fillStyle = C.loss;
-        ctx.fillRect(width - 50, lastY - 7, 50, 14);
+        ctx.fillRect(width - priceLabelWidth, priceLabelY, priceLabelWidth, labelHeight);
         ctx.fillStyle = '#ffffff';
-        ctx.font = `bold 9px ${MONO}`;
         ctx.textAlign = 'center';
-        ctx.fillText(lastTick.bid.toFixed(2), width - 25, lastY + 3);
+        ctx.fillText(priceText, width - priceLabelWidth / 2, priceLabelY + labelHeight / 2);
       }
 
     }, 100);
 
     return () => clearInterval(interval);
-  }, [width, height, symbol, chartMode, crosshair, zoomLevel]);
+  }, [fallbackWidth, height, symbol, chartMode, crosshair, zoomLevel, typography]);
 
   return (
     <canvas
@@ -656,6 +711,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   onDragHandleMouseDown,
 }) => {
     const tr = useUiTranslation();
+  const typography = useDepthTypography();
   const currentTick = useCurrentTick(symbol);
   const [volume, setVolume] = useState(0.01);
   const [sl, setSl] = useState(0);
@@ -676,8 +732,9 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
     setZoomLevel(prev => Math.max(0.5, prev / 1.5));
   }, []);
 
-  const ROW_H = 19;
-  const COLUMN_HEADER_HEIGHT = 30;
+  const ROW_H = typography.rowHeight;
+  const COLUMN_HEADER_HEIGHT = Math.max(30, typography.lineHeight + 8);
+  const ladderColumns = 'minmax(64px, 0.8fr) minmax(96px, 1.2fr) 52px';
   const availableForRows = Math.max(ROW_H * 6 * 2, mainContentHeight - COLUMN_HEADER_HEIGHT);
   const dynamicLevels = Math.max(6, Math.floor(availableForRows / ROW_H / 2));
   const { orderBook, loading: depthLoading, error: depthError } = useLiveOrderBook(symbol, dynamicLevels);
@@ -726,8 +783,8 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
   if (!currentTick && !orderBook) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-full select-none"
-        style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: 14, fontWeight: 400, lineHeight: '21px', color: C.textSecondary }}
+        className="rtx-depth-of-market flex flex-col items-center justify-center h-full select-none"
+        style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: typography.fontSize, fontWeight: typography.bodyWeight, lineHeight: 1.5, color: C.textSecondary }}
       >
         <div className="text-center">
           {depthLoading && <div className="w-4 h-4 border-2 border-zinc-700 border-t-blue-500 rounded-full animate-spin mx-auto mb-2" />}
@@ -739,8 +796,8 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
 
   return (
     <div
-      className="flex flex-col w-full h-full select-none overflow-hidden"
-      style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: 12, fontWeight: 400, borderRadius: 10 }}
+      className="rtx-depth-of-market flex flex-col w-full h-full select-none overflow-hidden"
+      style={{ background: C.bgSecondary, fontFamily: FONT, fontSize: typography.fontSize, fontWeight: typography.bodyWeight, lineHeight: 1.5, borderRadius: 10 }}
     >
       {/* ── Title Bar ── */}
       <div
@@ -756,7 +813,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-2 h-2 rounded-full shrink-0" style={{ background: C.profit, boxShadow: `0 0 6px ${C.profit}` }} />
           <div className="flex items-baseline gap-1.5 min-w-0">
-            <span className="text-[14px] leading-[21px] font-normal uppercase tracking-normal shrink-0" style={{ color: C.textPrimary }}>
+            <span className="rtx-depth-of-market__heading uppercase tracking-normal shrink-0" style={{ color: C.textPrimary, fontSize: typography.fontSize, fontWeight: typography.headingWeight }}>
               {symbol}
             </span>
             <span className="text-[12px] leading-[18px] font-normal truncate" style={{ color: C.textTertiary, letterSpacing: 'normal' }}>
@@ -802,25 +859,29 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             chartMode={chartMode}
             crosshair={crosshair}
             zoomLevel={zoomLevel}
+            typography={typography}
           />
         </div>
 
         {/* ── Right: DOM Table ── */}
-        <div className="flex-[45] flex flex-col min-w-0 overflow-hidden">
+        <div className="flex-[45] flex flex-col min-w-[228px] overflow-hidden">
           {/* Column Headers */}
           <div
-            className="grid shrink-0 border-b"
+            className="rtx-depth-of-market__columns grid shrink-0 border-b"
             style={{
-              gridTemplateColumns: '50px 1fr 42px',
+              gridTemplateColumns: ladderColumns,
+              minHeight: COLUMN_HEADER_HEIGHT,
+              fontSize: typography.fontSize,
+              fontWeight: typography.controlWeight,
               borderColor: C.borderPrimary,
               background: C.bgTertiary,
             }}
           >
-            <div className="flex min-h-[30px] items-center justify-center border-r text-[12px] leading-[18px] font-normal uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
+            <div className="flex items-center justify-center border-r uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
               {tr("Volume")}</div>
-            <div className="flex min-h-[30px] items-center justify-center border-r text-[12px] leading-[18px] font-normal uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
+            <div className="flex items-center justify-center border-r uppercase tracking-normal" style={{ borderColor: C.borderPrimary, color: C.textTertiary }}>
               {tr("Price")}</div>
-            <div className="flex min-h-[30px] items-center justify-center text-[12px] leading-[18px] font-normal uppercase tracking-normal" style={{ color: C.textTertiary }}>
+            <div className="flex items-center justify-center uppercase tracking-normal" style={{ color: C.textTertiary }}>
               {tr("Trade")}</div>
           </div>
 
@@ -838,9 +899,9 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
               return (
                 <div
                   key={`ask-${i}`}
-                  className="grid cursor-pointer transition-colors"
+                  className="rtx-depth-of-market__row grid cursor-pointer transition-colors"
                   style={{
-                    gridTemplateColumns: '50px 1fr 42px',
+                    gridTemplateColumns: ladderColumns,
                     height: ROW_H,
                     background: isNearSpread ? C.askBgBest : C.askBg,
                     borderBottom: `1px solid ${C.borderPrimary}`,
@@ -853,13 +914,13 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: C.borderPrimary }}>
                     <div className="absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.lossDim }} />
                     {isNearSpread && (
-                      <span className="relative z-10 text-[12px] font-normal" style={{ fontFamily: MONO, color: C.loss }}>
+                      <span className="relative z-10" style={{ fontFamily: MONO, color: C.loss }}>
                         {level.volume.toFixed(2)}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: C.borderPrimary }}>
-                    <span style={{ fontFamily: MONO, fontSize: 11, color: '#f87171' }}>
+                    <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#f87171' }}>
                       {level.price.toFixed(digits)}
                     </span>
                   </div>
@@ -874,9 +935,9 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
             {/* ── Spread row ── */}
             {(bestBid > 0 || bestAsk > 0) && (
               <div
-                className="grid"
+                className="rtx-depth-of-market__row grid"
                 style={{
-                  gridTemplateColumns: '50px 1fr 42px',
+                  gridTemplateColumns: ladderColumns,
                   height: ROW_H,
                   background: C.spreadBg,
                   borderBottom: `1px solid ${C.borderSecondary}`,
@@ -884,7 +945,7 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                 }}
               >
                 <div className="flex items-center justify-center border-r" style={{ borderColor: C.borderSecondary }} />
-                <div className="flex items-center justify-center border-r text-[12px] font-normal uppercase tracking-normal" style={{ borderColor: C.borderSecondary, color: '#7aacca' }}>
+                <div className="flex items-center justify-center border-r uppercase tracking-normal" style={{ borderColor: C.borderSecondary, color: '#7aacca' }}>
                   ↕ {((bestAsk - bestBid) * Math.pow(10, digits)).toFixed(1)} {tr(" pts")}</div>
                 <div className="flex items-center justify-center" />
               </div>
@@ -897,9 +958,9 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
               return (
                 <div
                   key={`bid-${i}`}
-                  className="grid cursor-pointer transition-colors"
+                  className="rtx-depth-of-market__row grid cursor-pointer transition-colors"
                   style={{
-                    gridTemplateColumns: '50px 1fr 42px',
+                    gridTemplateColumns: ladderColumns,
                     height: ROW_H,
                     background: isNearSpread ? C.bidBgBest : C.bidBg,
                     borderBottom: `1px solid ${C.borderPrimary}`,
@@ -912,13 +973,13 @@ export const DepthOfMarket: React.FC<DepthOfMarketProps> = ({
                   <div className="relative flex items-center justify-end pr-1 border-r" style={{ borderColor: C.borderPrimary }}>
                     <div className="absolute left-0 top-0 bottom-0" style={{ width: `${volPct}%`, background: C.profitDim }} />
                     {isNearSpread && (
-                      <span className="relative z-10 text-[12px] font-normal" style={{ fontFamily: MONO, color: C.profit }}>
+                      <span className="relative z-10" style={{ fontFamily: MONO, color: C.profit }}>
                         {level.volume.toFixed(2)}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center justify-end pr-2 border-r" style={{ borderColor: C.borderPrimary }}>
-                    <span style={{ fontFamily: MONO, fontSize: 11, color: '#60a5fa' }}>
+                    <span style={{ fontFamily: MONO, fontSize: typography.fontSize, color: '#60a5fa' }}>
                       {level.price.toFixed(digits)}
                     </span>
                   </div>

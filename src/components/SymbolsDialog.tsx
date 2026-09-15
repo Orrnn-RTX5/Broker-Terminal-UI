@@ -731,12 +731,12 @@ export const SymbolsDialog: React.FC<SymbolsDialogProps> = ({
       >
         {/* ── Title bar ────────────────────────────────────────────────────── */}
         <div
-          className="flex items-center justify-between h-7 rtx-symbols-dialog__titlebar bg-[var(--bg-tertiary)] border-b border-[var(--border-primary)] px-2 flex-shrink-0 cursor-move"
+          className="flex min-h-[44px] items-center justify-between rtx-symbols-dialog__titlebar bg-[var(--bg-tertiary)] border-b border-[var(--border-primary)] px-2 flex-shrink-0 cursor-move"
           onMouseDown={onDragStart}
         >
           <div className="flex items-center gap-2">
             <DollarIcon />
-            <span className="text-[13px] font-medium text-[var(--text-primary)]">{tr(title)}</span>
+            <span className="rtx-dialog-title text-[20px] leading-7 font-semibold text-[var(--text-primary)]">{tr(title)}</span>
           </div>
           <div className="flex items-center gap-0 h-full" onMouseDown={e => e.stopPropagation()}>
             <button className="h-full px-3 hover:bg-white/10 flex items-center justify-center" title={tr("Minimize")}>

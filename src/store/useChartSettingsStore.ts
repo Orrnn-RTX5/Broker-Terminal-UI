@@ -11,6 +11,10 @@ export type ColorScheme =
 
 export const CHART_PROFIT_COLOR = "#00C896";
 export const CHART_LOSS_COLOR = "#FF4D4F";
+// Candle bodies, borders and wicks share the reference chart's directional hues.
+// Price levels and trading controls have their own semantic colors.
+export const CHART_CANDLE_UP_COLOR = "#089981";
+export const CHART_CANDLE_DOWN_COLOR = "#F23645";
 export const CHART_BLUE_COLOR = "#4597ff";
 const BLUE_TEMPLATE_RED_COLOR = "#ff5858";
 
@@ -99,10 +103,10 @@ export const defaultChartProperties: ChartProperties = {
     background: "#000000",
     foreground: "#ffffff",
     grid: "rgba(255,255,255,0.12)",
-    barUp: CHART_PROFIT_COLOR,
-    barDown: CHART_LOSS_COLOR,
-    bullCandle: CHART_PROFIT_COLOR,
-    bearCandle: CHART_LOSS_COLOR,
+    barUp: CHART_CANDLE_UP_COLOR,
+    barDown: CHART_CANDLE_DOWN_COLOR,
+    bullCandle: CHART_CANDLE_UP_COLOR,
+    bearCandle: CHART_CANDLE_DOWN_COLOR,
     lineChart: CHART_PROFIT_COLOR,
     volumes: "rgba(0, 200, 150, 0.32)",
     bidPriceLine: "#778899",
@@ -153,14 +157,24 @@ const normalizeSchemeColors = (
     const migrateLegacyColor = (value: string, legacy: string, replacement: string) => (
       value.toUpperCase() === legacy ? replacement : value
     );
+    // Only migrate known built-in candle colors. Custom schemes are not routed
+    // through this branch, and other explicitly configured colors stay intact.
+    const migrateCandleColor = (value: string, direction: "up" | "down") => {
+      const previousDefaults = direction === "up"
+        ? [LEGACY_CHART_PROFIT_COLOR, CHART_PROFIT_COLOR, "#059669"]
+        : [LEGACY_CHART_LOSS_COLOR, CHART_LOSS_COLOR, "#DC2626"];
+      return previousDefaults.includes(value.toUpperCase())
+        ? direction === "up" ? CHART_CANDLE_UP_COLOR : CHART_CANDLE_DOWN_COLOR
+        : value;
+    };
 
     return {
       ...colors,
       background: "#000000",
-      barUp: migrateLegacyColor(colors.barUp, LEGACY_CHART_PROFIT_COLOR, CHART_PROFIT_COLOR),
-      barDown: migrateLegacyColor(colors.barDown, LEGACY_CHART_LOSS_COLOR, CHART_LOSS_COLOR),
-      bullCandle: migrateLegacyColor(colors.bullCandle, LEGACY_CHART_PROFIT_COLOR, CHART_PROFIT_COLOR),
-      bearCandle: migrateLegacyColor(colors.bearCandle, LEGACY_CHART_LOSS_COLOR, CHART_LOSS_COLOR),
+      barUp: migrateCandleColor(colors.barUp, "up"),
+      barDown: migrateCandleColor(colors.barDown, "down"),
+      bullCandle: migrateCandleColor(colors.bullCandle, "up"),
+      bearCandle: migrateCandleColor(colors.bearCandle, "down"),
       lineChart: migrateLegacyColor(colors.lineChart, LEGACY_CHART_PROFIT_COLOR, CHART_PROFIT_COLOR),
       volumes: colors.volumes === "rgba(34, 197, 94, 0.4)"
         ? defaultChartProperties.colors.volumes
@@ -405,10 +419,8 @@ export const getEffectiveChartColors = (
         if (color.toUpperCase() === CHART_LOSS_COLOR) return "#dc2626";
         return color;
       };
-      colors.barUp = referenceColor(colors.barUp);
-      colors.barDown = referenceColor(colors.barDown);
-      colors.bullCandle = referenceColor(colors.bullCandle);
-      colors.bearCandle = referenceColor(colors.bearCandle);
+      // Candle hues remain identical in light and dark mode. Only the separate
+      // line-chart and configured last-price colors need the light treatment.
       colors.lineChart = referenceColor(colors.lineChart);
       colors.lastPriceLine = referenceColor(colors.lastPriceLine);
     }

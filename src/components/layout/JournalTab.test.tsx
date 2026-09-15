@@ -443,6 +443,54 @@ describe('JournalTab', () => {
         expect(journalHarness.getLogs).toHaveBeenCalledTimes(1);
     });
 
+    it('uses measured row heights for compact scrolling and reacts to later size changes', async () => {
+        let rowHeight = 26;
+        const observers = new Set<() => void>();
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(private callback: () => void) { observers.add(callback); }
+            observe() {}
+            disconnect() { observers.delete(this.callback); }
+        });
+        const getRect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            const height = this.matches('.rtx-journal-row, .rtx-journal-table__head') ? rowHeight : 0;
+            return { x: 0, y: 0, width: 0, height, top: 0, right: 0, bottom: height, left: 0, toJSON: () => ({}) };
+        });
+        const logs = Array.from({ length: 1000 }, (_, index) => makeLog({
+            id: `compact-${index}`,
+            datetime: nowSeconds() - index,
+            message: `Compact row ${index}`,
+        }));
+        journalHarness.getLogs.mockResolvedValue({ count: logs.length, logs });
+
+        try {
+            const view = render(<JournalTab />);
+            expect(await screen.findByText('Compact row 0')).toBeInTheDocument();
+            const viewport = screen.getByTestId('journal-scroll-viewport');
+            act(() => {
+                viewport.scrollTop = 2600;
+                fireEvent.scroll(viewport);
+            });
+            expect(screen.getAllByTestId('journal-rendered-row')[0]).toHaveTextContent('Compact row 92');
+            expect(view.container.querySelector<HTMLElement>('.rtx-journal-spacer-row')?.style.height).toBe('2392px');
+            expect(view.container.querySelector<HTMLElement>('.rtx-journal-spacer-cell')?.style.lineHeight).toBe('0');
+
+            act(() => {
+                rowHeight = 32;
+                [...observers].forEach(measure => measure());
+            });
+            expect(screen.getAllByTestId('journal-rendered-row')[0]).toHaveTextContent('Compact row 73');
+            expect(view.container.querySelector<HTMLElement>('.rtx-journal-spacer-row')?.style.height).toBe('2336px');
+            act(() => {
+                viewport.scrollTop = 32000;
+                fireEvent.scroll(viewport);
+            });
+            expect(screen.getByText('Compact row 999')).toBeInTheDocument();
+        } finally {
+            getRect.mockRestore();
+            vi.unstubAllGlobals();
+        }
+    });
+
     it('updates Mode immediately and keeps the current rows mounted during the refetch', async () => {
         const standardLoad = deferred<JournalResponse>();
         journalHarness.getLogs

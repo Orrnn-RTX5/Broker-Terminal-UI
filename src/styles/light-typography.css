@@ -1,101 +1,14 @@
-/* All light terminal sections share the requested 14px UI type role.
-   Keep these tokens local: dark mode retains its existing scale and weights. */
+/* Light-theme chrome uses the shared application typography. Size and weight
+   roles live in app-typography.css; this file preserves the classic dock layout. */
 html:root.rtx-advanced-view.rtx-skin-untitled-light {
-  --rtx-light-ui-font-size: 14px;
-  --rtx-light-ui-font-weight: 450;
-  --rtx-light-history-body-size: var(--rtx-light-ui-font-size);
-  --rtx-light-history-caption-size: var(--rtx-light-ui-font-size);
-  --rtx-light-toolbox-tab-size: var(--rtx-light-ui-font-size);
-  --rtx-light-status-body-size: var(--rtx-light-ui-font-size);
-  --rtx-light-status-action-size: var(--rtx-light-ui-font-size);
-  --rtx-advanced-primary-font-size: var(--rtx-light-ui-font-size);
-  --rtx-advanced-dense-font-size: var(--rtx-light-ui-font-size);
-  --rtx-advanced-header-font-size: var(--rtx-light-ui-font-size);
-  --rtx-light-control-line-height: calc(var(--rtx-light-ui-font-size) * 1.5);
-}
-
-html:root.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-small {
-  --rtx-light-ui-font-size: 13px;
-}
-
-html:root.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-large {
-  --rtx-light-ui-font-size: 15px;
-}
-
-/* History rows, headings, and filters use the same size as the other panels. */
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab {
-  --rtx-light-ui-font-size: var(--rtx-light-history-body-size);
-  --rtx-advanced-dense-font-size: var(--rtx-light-history-body-size);
-  --rtx-advanced-header-font-size: var(--rtx-light-history-caption-size);
-  --rtx-light-control-line-height: calc(var(--rtx-light-ui-font-size) * 1.5);
-}
-
-html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab :is(
-  .rtx-history-toolbar, .rtx-trade-table__head
-) {
-  --rtx-light-ui-font-size: var(--rtx-light-history-caption-size);
-  --rtx-light-control-line-height: calc(var(--rtx-light-ui-font-size) * 1.5);
-}
-
-/* Portals live outside .rtx-app-shell. Apply the same role to their text nodes,
-   including nested price digits and utility spans. SVG glyphs and user-created
-   chart drawings keep their own rendering metrics; code keeps its own weight. */
-html:root.rtx-advanced-view.rtx-skin-untitled-light body,
-html:root.rtx-advanced-view.rtx-skin-untitled-light body :is(
-  div, span, p, a, button, input, select, option, optgroup, textarea, label,
-  legend, fieldset, th, td, caption, li, dt, dd, h1, h2, h3, h4, h5, h6,
-  strong, b, em, small, time, output, summary, kbd
-):not(:where(
-  svg *, pre, pre *, code, code *,
-  .chart-drawing-overlay, .chart-drawing-overlay *,
-  .rtx-order-dialog__spinner-button, .rtx-order-dialog__close,
-  .rtx-toolbar-icon-button, .navigator-tree-item__icon, .navigator-tree-item__chevron
-)) {
-  font-size: var(--rtx-light-ui-font-size) !important;
-  font-weight: var(--rtx-light-ui-font-weight) !important;
-}
-
-/* System trade annotations and technical details also use the shared size,
-   while retaining their original font family and semantic emphasis. */
-html:root.rtx-advanced-view.rtx-skin-untitled-light :is(
-  pre, code, .rtx-trade-level-badge, .rtx-position-label, .rtx-position-badge,
-  .rtx-trade-drag-price-badge, .rtx-trade-marker__price-tooltip
-),
-html:root.rtx-advanced-view.rtx-skin-untitled-light :is(
-  pre, code, .rtx-trade-level-badge, .rtx-position-label, .rtx-position-badge,
-  .rtx-trade-drag-price-badge, .rtx-trade-marker__price-tooltip
-) :not(:where(svg, svg *)) {
-  font-size: var(--rtx-light-ui-font-size) !important;
-}
-
-/* These component rules carry more specificity, including late-loaded compact
-   trading controls. Text follows the shared role in every interaction state. */
-html:root.rtx-advanced-view.rtx-skin-untitled-light body :is(
-  .rtx-market-watch .price-display, .rtx-market-watch .price-display span,
-  .rtx-bottom-dock .price-display, .rtx-bottom-dock .price-display span,
-  .rtx-oct .rtx-oct-trade-button .rtx-oct-price,
-  .rtx-oct .rtx-oct-trade-button .rtx-oct-side-label,
-  .rtx-oct .rtx-oct-volume-control input,
-  .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab,
-  .rtx-order-dialog .rtx-order-dialog__price,
-  .rtx-order-dialog .rtx-order-dialog__price strong
-) {
-  font-size: var(--rtx-light-ui-font-size) !important;
-  font-weight: var(--rtx-light-ui-font-weight) !important;
-}
-
-html:root.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .dock-panel__title, .dock-panel__title [role='tab'],
-  .rtx-chart-hud, .rtx-chart-hud span,
-  .rtx-market-watch__symbol, .rtx-market-watch__price, .rtx-market-watch__daily,
-  .rtx-market-watch__column-heading, .rtx-bottom-dock th, .rtx-bottom-dock td,
-  .rtx-dock-tab, .rtx-status-bar, .rtx-status-bar span,
-  .rtx-menu-row, .rtx-menu-row span, .rtx-application-menu__root-item,
-  .rtx-order-dialog__title, .rtx-order-dialog__label, .rtx-order-dialog__chart-meta,
-  .rtx-order-dialog__chart-quotes, .rtx-order-dialog__price,
-  .rtx-order-dialog__price strong, .rtx-order-dialog__margin
-) {
-  line-height: 1.5 !important;
+  --rtx-light-ui-font-size: var(--rtx-ui-font-size);
+  --rtx-light-ui-font-weight: var(--rtx-font-weight-body);
+  --rtx-light-history-body-size: var(--rtx-ui-font-size);
+  --rtx-light-history-caption-size: var(--rtx-ui-font-size);
+  --rtx-light-toolbox-tab-size: var(--rtx-ui-font-size);
+  --rtx-light-status-body-size: var(--rtx-ui-font-size);
+  --rtx-light-status-action-size: var(--rtx-ui-font-size);
+  --rtx-light-control-line-height: var(--rtx-ui-line-height);
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role='tab'] {
@@ -206,7 +119,7 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock {
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs {
   --rtx-light-ui-font-size: var(--rtx-light-toolbox-tab-size);
   --rtx-light-ui-font-weight: 400;
-  --rtx-light-control-line-height: calc(var(--rtx-light-ui-font-size) * 1.5);
+  --rtx-light-control-line-height: var(--rtx-ui-line-height);
   --rtx-dock-tab-strip-height: calc(var(--rtx-light-control-line-height) + 7px);
   height: var(--rtx-dock-tab-strip-height) !important;
   min-height: var(--rtx-dock-tab-strip-height) !important;

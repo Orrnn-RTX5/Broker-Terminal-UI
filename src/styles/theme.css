@@ -88,8 +88,8 @@
 
   /* Variable-font weight hierarchy */
   --font-weight-normal: 400;
-  --font-weight-medium: 400;
-  --font-weight-semibold: 500;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
   --font-weight-bold: 600;
   --font-weight-extrabold: 650;
   --font-weight-black: 700;

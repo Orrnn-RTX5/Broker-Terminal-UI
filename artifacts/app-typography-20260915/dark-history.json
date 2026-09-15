@@ -1,0 +1,35 @@
+{
+  "root": "theme-dark rtx-advanced-font-normal",
+  "samples": [
+    {
+      "line": "20px",
+      "s": ".rtx-history-tab th",
+      "size": "14px",
+      "weight": "500"
+    },
+    {
+      "line": "20px",
+      "s": ".rtx-history-tab tbody td",
+      "size": "14px",
+      "weight": "400"
+    },
+    {
+      "line": "20px",
+      "s": ".rtx-market-watch__price",
+      "size": "14px",
+      "weight": "400"
+    },
+    {
+      "line": "20px",
+      "s": ".rtx-chart-hud__symbol",
+      "size": "14px",
+      "weight": "500"
+    },
+    {
+      "line": "19.5px",
+      "s": ".rtx-status-bar__metric",
+      "size": "14px",
+      "weight": "400"
+    }
+  ]
+}

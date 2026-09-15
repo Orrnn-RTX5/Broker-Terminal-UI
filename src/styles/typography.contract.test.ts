@@ -60,7 +60,7 @@ describe('enterprise typography contract', () => {
     expect(loginCss).not.toContain("font-family: 'Inter'");
   });
 
-  it('defines the measured MetaTrader-like size and softened weight hierarchy', () => {
+  it('defines distinct regular, medium, and semibold weights', () => {
     expect(themeCss).toContain('--text-2xs: 0.6875rem;');
     expect(themeCss).toContain('--text-xs: 0.75rem;');
     expect(themeCss).toContain('--text-sm: 0.875rem;');
@@ -69,8 +69,8 @@ describe('enterprise typography contract', () => {
     expect(themeCss).toContain('--text-xl: 1.125rem;');
     expect(themeCss).toContain('--text-2xl: 1.375rem;');
     expect(themeCss).toContain('--font-weight-normal: 400;');
-    expect(themeCss).toContain('--font-weight-medium: 400;');
-    expect(themeCss).toContain('--font-weight-semibold: 500;');
+    expect(themeCss).toContain('--font-weight-medium: 500;');
+    expect(themeCss).toContain('--font-weight-semibold: 600;');
     expect(themeCss).toContain('--font-weight-bold: 600;');
     expect(themeCss).toContain('--font-weight-extrabold: 650;');
     expect(themeCss).toContain('--font-weight-black: 700;');
@@ -121,7 +121,7 @@ describe('enterprise typography contract', () => {
     expect(advancedCss).toContain('.rtx-timeframe-strip');
     expect(advancedCss).toContain('.rtx-timeframe-option[aria-checked="true"]');
     expect(tradingChartSource.match(/className="rtx-chart-hud"/g)).toHaveLength(2);
-    expect(tradingChartSource).toMatch(/className="rtx-chart-hud"[\s\S]*fontSize: '14px', fontWeight: 400, lineHeight: '16px'/);
+    expect(tradingChartSource).toContain("fontSize: 'var(--rtx-ui-font-size, 14px)'");
   });
 
   it('locks Market Watch, trade dock, status, and journal to measured reference roles', () => {
@@ -167,8 +167,8 @@ describe('enterprise typography contract', () => {
     expect(dataWindowSource).toContain("fontSize: 14, fontWeight: 400, lineHeight: '21px'");
     expect(dataWindowSource).toContain('minHeight: 24');
     expect(dataWindowSource).toContain('minWidth: 200');
-    expect(depthOfMarketSource).toContain('text-[12px] leading-[18px] font-normal uppercase tracking-normal');
-    expect(depthOfMarketSource).toContain('text-[14px] leading-[21px] font-semibold');
+    expect(depthOfMarketSource).toContain('rtx-depth-of-market__columns');
+    expect(depthOfMarketSource).toContain('rtx-depth-of-market__heading');
     expect(depthOfMarketSource).toContain('ref={mainContentRef}');
     expect(depthOfMarketSource).toContain('height={mainContentHeight}');
     expect(appSource).toContain('Math.max(360, origW + dx)');
@@ -191,11 +191,11 @@ describe('enterprise typography contract', () => {
     expect(optionsDialogSource).toContain('text-[14px] font-normal');
     expect(optionsDialogSource).toContain('text-[12px] font-normal');
     expect(openAccountDialogSource).toContain('text-[14px] font-normal');
-    expect(openAccountDialogSource).toContain('text-[12px] font-normal');
-    expect(loginDialogSource).toContain('text-right text-[14px] font-normal');
-    expect(loginDialogSource).toContain('text-[12px] font-normal');
+    expect(openAccountDialogSource).toContain('rtx-reading-text');
+    expect(loginDialogSource).toContain('text-right text-[14px] leading-5 font-medium');
+    expect(loginDialogSource).toContain('rtx-dialog-title');
     expect(welcomeSource).toContain('fontSize: 14');
-    expect(welcomeSource).toContain('fontWeight: 400');
+    expect(welcomeSource).toContain("fontWeight: 'var(--rtx-font-weight-body, 400)'");
   });
 
   it('keeps financial data tabular and preserves the system-mono stack for prices', () => {

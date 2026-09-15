@@ -720,13 +720,13 @@ html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :whe
   padding-bottom: 1px !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :where(td, th) {
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact :where(td, th):not(.rtx-journal-spacer-cell) {
   padding-top: 1px !important;
   padding-bottom: 1px !important;
   height: 26px !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact tr {
+html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact tr:not(.rtx-journal-spacer-row) {
   height: 26px !important;
 }
 

@@ -578,16 +578,15 @@ const applyBrokerTimeOffset = (candles: Candle[], offsetSeconds: number): Candle
 type ChartColorPalette = ChartProperties['colors'];
 const MINUTE_SEPARATOR_PIXEL_DEDUP_DISTANCE = 10;
 
-const CHART_AXIS_FONT_FAMILY = '"Inter", "Segoe UI", Tahoma, Arial, sans-serif';
+const CHART_AXIS_FONT_FAMILY = '"Segoe UI", Tahoma, Arial, sans-serif';
 const LIGHT_CHART_AXIS_FONT_FAMILY = '"Segoe UI", Tahoma, Arial, sans-serif';
-const CHART_AXIS_FONT_SIZE = 12;
+const CHART_AXIS_FONT_SIZE = 14;
 
 const readChartAxisFontSize = (): number => {
   if (typeof document === 'undefined') return CHART_AXIS_FONT_SIZE;
   const root = document.documentElement;
-  if (!root.classList.contains('rtx-skin-untitled-light')) return CHART_AXIS_FONT_SIZE;
-  const size = Number.parseFloat(getComputedStyle(root).getPropertyValue('--rtx-light-ui-font-size'));
-  return Number.isFinite(size) && size > 0 ? size : 14;
+  const size = Number.parseFloat(getComputedStyle(root).getPropertyValue('--rtx-ui-font-size'));
+  return Number.isFinite(size) && size > 0 ? size : CHART_AXIS_FONT_SIZE;
 };
 
 const clampAlpha = (alpha: number): number => Math.max(0, Math.min(1, alpha));
@@ -1754,7 +1753,7 @@ export const TradingChart = React.memo(function TradingChart({
     };
     syncSkinState();
     const observer = new MutationObserver(syncSkinState);
-    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    observer.observe(root, { attributes: true, attributeFilter: ['class', 'style'] });
     window.addEventListener(RTX_ADVANCED_VIEW_CHANGE_EVENT, handleAdvancedViewChange);
     return () => {
       observer.disconnect();
@@ -7551,12 +7550,12 @@ export const TradingChart = React.memo(function TradingChart({
         : 'top:calc(100% + 7px);';
       const tooltipBackground = lightSurface ? '#ffffff' : '#111827';
       const tooltipText = lightSurface ? '#111827' : '#f8fafc';
-      tooltip.style.cssText = `position:absolute;left:50%;${verticalPosition}display:block;min-width:148px;padding:0;border:1px solid ${palette.border};border-radius:6px;background:${tooltipBackground};color:${tooltipText};font-size:11px;font-family:${CHART_AXIS_FONT_FAMILY};font-variant-numeric:tabular-nums;line-height:16px;white-space:nowrap;pointer-events:none;opacity:0;visibility:hidden;transform:translateX(-50%);transition:opacity 90ms ease;box-shadow:0 6px 18px rgba(0,0,0,0.38);overflow:hidden;`;
+      tooltip.style.cssText = `position:absolute;left:50%;${verticalPosition}display:block;min-width:148px;padding:0;border:1px solid ${palette.border};border-radius:6px;background:${tooltipBackground};color:${tooltipText};font-size:var(--rtx-ui-font-size, 14px);font-family:${CHART_AXIS_FONT_FAMILY};font-variant-numeric:tabular-nums;line-height:16px;white-space:nowrap;pointer-events:none;opacity:0;visibility:hidden;transform:translateX(-50%);transition:opacity 90ms ease;box-shadow:0 6px 18px rgba(0,0,0,0.38);overflow:hidden;`;
 
       const tooltipHeader = document.createElement('span');
       tooltipHeader.className = 'rtx-trade-marker__tooltip-header';
       tooltipHeader.textContent = `${tr(historyPositionSide)} ${tr(lifecycle === 'open' ? 'Open' : 'Close')}`;
-      tooltipHeader.style.cssText = `display:block;padding:3px 8px;border-bottom:1px solid ${colorWithAlpha(palette.border, 0.5, palette.border)};background:${palette.background};color:${palette.text};font-size:10px;font-weight:800;letter-spacing:0.075em;`;
+      tooltipHeader.style.cssText = `display:block;padding:3px 8px;border-bottom:1px solid ${colorWithAlpha(palette.border, 0.5, palette.border)};background:${palette.background};color:${palette.text};font-size:var(--rtx-ui-font-size, 14px);font-weight:var(--rtx-font-weight-heading, 500);letter-spacing:0.075em;`;
 
       const tooltipDetails = document.createElement('span');
       tooltipDetails.className = 'rtx-trade-marker__tooltip-details';
@@ -7566,10 +7565,10 @@ export const TradingChart = React.memo(function TradingChart({
         const label = document.createElement('span');
         label.dataset.chartUiLabel = labelText;
         label.textContent = tr(labelText);
-        label.style.cssText = `color:${detailLabelColor};font-weight:600;`;
+        label.style.cssText = `color:${detailLabelColor};font-weight:var(--rtx-font-weight-control, 400);`;
         const value = document.createElement('span');
         value.textContent = valueText;
-        value.style.cssText = `color:${tooltipText};font-weight:750;text-align:right;`;
+        value.style.cssText = `color:${tooltipText};font-weight:var(--rtx-font-weight-body, 400);text-align:right;`;
         tooltipDetails.append(label, value);
       };
       appendTooltipDetail('Price', title);
@@ -7659,8 +7658,8 @@ export const TradingChart = React.memo(function TradingChart({
       badge.dataset.leftInset = String(leftInset);
       badge.dataset.display = isLineTextLabel ? 'block' : 'inline-flex';
       badge.style.cssText = isLineTextLabel
-        ? `position:absolute;left:${leftInset}px;display:none;padding:0 2px;background:transparent;border:0;color:${color};font-size:11px;font-family:Consolas,'Courier New',monospace;font-weight:700;line-height:14px;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:0;transform:none;width:max-content;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:left;touch-action:none;letter-spacing:0;text-shadow:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;`
-        : `position:absolute;left:${leftInset}px;display:none;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:10px;font-family:Consolas,'Courier New',monospace;font-weight:700;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;${palette.shadow}`;
+        ? `position:absolute;left:${leftInset}px;display:none;padding:0 2px;background:transparent;border:0;color:${color};font-size:var(--rtx-ui-font-size, 14px);font-family:Consolas,'Courier New',monospace;font-weight:var(--rtx-font-weight-control, 400);line-height:14px;white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:0;transform:none;width:max-content;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:left;touch-action:none;letter-spacing:0;text-shadow:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;`
+        : `position:absolute;left:${leftInset}px;display:none;align-items:center;justify-content:center;padding:1px 6px;background:${palette.background};border:1px solid ${palette.border};color:${palette.text};font-size:var(--rtx-ui-font-size, 14px);font-family:Consolas,'Courier New',monospace;font-weight:var(--rtx-font-weight-control, 400);white-space:nowrap;z-index:21;pointer-events:${canDrag ? 'auto' : 'none'};cursor:${canDrag ? 'grab' : 'default'};border-radius:2px;transform:translateY(-50%);width:max-content;min-width:52px;max-width:calc(100% - ${leftInset + 12}px);box-sizing:border-box;text-align:center;touch-action:none;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;${palette.shadow}`;
       appendOverlayNode(badge, { kind: 'price-badge', price }, 'active');
     };
 
@@ -8774,9 +8773,9 @@ export const TradingChart = React.memo(function TradingChart({
           padding: 0 2px;
           background: transparent;
           color: ${labelColor};
-          font-size: 10px;
+          font-size: var(--rtx-ui-font-size, 14px);
           font-family: Consolas, 'Courier New', monospace;
-          font-weight: 600;
+          font-weight: var(--rtx-font-weight-control, 400);
           white-space: nowrap;
           z-index: 5;
           pointer-events: none;
@@ -8804,9 +8803,9 @@ export const TradingChart = React.memo(function TradingChart({
           background: ${palette.background};
           border: 1px solid ${palette.border};
           color: ${palette.text};
-          font-size: 10px;
+          font-size: var(--rtx-ui-font-size, 14px);
           font-family: Consolas, 'Courier New', monospace;
-          font-weight: 700;
+          font-weight: var(--rtx-font-weight-control, 400);
           white-space: nowrap;
           z-index: 6;
           pointer-events: none;
@@ -9725,7 +9724,7 @@ export const TradingChart = React.memo(function TradingChart({
         dragBadgeOverlay = document.createElement('div');
         dragBadgeOverlay.className = 'rtx-trade-drag-price-badge';
         const initialPalette = getTradeOverlayCardPalette(grabbedType === 'TP' ? 'TP' : 'SL', isChartSurfaceLight());
-        dragBadgeOverlay.style.cssText = `position:absolute;left:${TRADE_LEVEL_BADGE_LEFT_INSET_PX}px;top:0;padding:1px 5px;background:${initialPalette.background};border:1px solid ${initialPalette.border};color:${initialPalette.text};font-size:10px;font-family:Consolas,monospace;font-weight:700;z-index:1000;pointer-events:none;border-radius:2px;transform:translateY(calc(-50% + ${initialOverlayY}px));will-change:transform;opacity:0;${initialPalette.shadow}`;
+        dragBadgeOverlay.style.cssText = `position:absolute;left:${TRADE_LEVEL_BADGE_LEFT_INSET_PX}px;top:0;padding:1px 5px;background:${initialPalette.background};border:1px solid ${initialPalette.border};color:${initialPalette.text};font-size:var(--rtx-ui-font-size, 14px);font-family:Consolas,monospace;font-weight:var(--rtx-font-weight-control, 400);z-index:1000;pointer-events:none;border-radius:2px;transform:translateY(calc(-50% + ${initialOverlayY}px));will-change:transform;opacity:0;${initialPalette.shadow}`;
 
         overlayRef.current?.appendChild(dragLineOverlay);
         overlayRef.current?.appendChild(dragBadgeOverlay);
@@ -10168,51 +10167,49 @@ export const TradingChart = React.memo(function TradingChart({
       )}
 
 
-      {/* Premium MT5 HTML HUD — dark mode keeps original styling;
-          advanced/untitled-light mode gets sans font, semibold/bold mix,
-          theme-purple symbol with traditional H/L colors highlighted in soft pills. */}
+      {/* Chart HUD uses shared size and weight roles with theme-specific families and colors. */}
       {(chartSettings.showTicker || chartSettings.showOHLC) && (isAdvancedUntitledLight ? (
         <div className="rtx-chart-hud" style={{
           position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
-          fontFamily: 'var(--font-sans)', fontSize: '14px', fontWeight: 400, lineHeight: '16px', letterSpacing: 'normal',
+          fontFamily: 'var(--font-sans)', fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', lineHeight: '16px', letterSpacing: 'normal',
           display: 'flex', alignItems: 'center', gap: '8px'
         }}>
           {chartSettings.showTicker && (
-            <span style={{
-              fontWeight: 500, color: '#7f56d9',
+            <span className="rtx-chart-hud__symbol" style={{
+              fontWeight: 'var(--rtx-font-weight-control, 400)', color: '#7f56d9',
               background: 'rgba(127, 86, 217, 0.10)',
               padding: '2px 8px', borderRadius: '4px',
             }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
           )}
           {chartSettings.showOHLC && (
             <>
-              <span style={{ fontWeight: 400, color: '#475467' }}>
+              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                 O: <span ref={ohlcOpenRef} style={{
-                  fontWeight: 400, color: '#1d2939',
+                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#1d2939',
                   background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
                 }}>0.00000</span>
               </span>
-              <span style={{ fontWeight: 400, color: '#475467' }}>
+              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                 H: <span ref={ohlcHighRef} style={{
-                  fontWeight: 400, color: '#16a34a',
+                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#16a34a',
                   background: 'rgba(22, 163, 74, 0.10)', padding: '1px 6px', borderRadius: '3px'
                 }}>0.00000</span>
               </span>
-              <span style={{ fontWeight: 400, color: '#475467' }}>
+              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                 L: <span ref={ohlcLowRef} style={{
-                  fontWeight: 400, color: '#dc2626',
+                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#dc2626',
                   background: 'rgba(220, 38, 38, 0.10)', padding: '1px 6px', borderRadius: '3px'
                 }}>0.00000</span>
               </span>
-              <span style={{ fontWeight: 400, color: '#475467' }}>
+              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                 C: <span ref={ohlcCloseRef} style={{
-                  fontWeight: 400, color: '#1d2939',
+                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#1d2939',
                   background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
                 }}>0.00000</span>
               </span>
-              <span style={{ fontWeight: 400, color: '#475467' }}>
+              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
                 V: <span ref={ohlcVolumeRef} style={{
-                  fontWeight: 400, color: '#1d2939',
+                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#1d2939',
                   background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
                 }}>0</span>
               </span>
@@ -10222,11 +10219,11 @@ export const TradingChart = React.memo(function TradingChart({
       ) : (
         <div className="rtx-chart-hud" style={{
           position: 'absolute', top: 8, left: 12, zIndex: 15, pointerEvents: 'none',
-          fontFamily: 'var(--font-mono)', fontSize: '14px', fontWeight: 400, lineHeight: '16px', color: chartTheme.axisText,
+          fontFamily: 'var(--font-mono)', fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', lineHeight: '16px', color: chartTheme.axisText,
           textShadow: '1px 1px 1px rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', gap: '8px'
         }}>
           {chartSettings.showTicker && (
-            <span style={{ fontWeight: 500, color: chartTheme.text }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
+            <span className="rtx-chart-hud__symbol" style={{ fontWeight: 'var(--rtx-font-weight-control, 400)', color: chartTheme.text }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
           )}
           {chartSettings.showOHLC && (
             <>
@@ -10294,7 +10291,7 @@ export const TradingChart = React.memo(function TradingChart({
       <div ref={timeLabelRef} className="rtx-chart-crosshair-label" style={{
         position: 'absolute', left: 0, top: 0,
         background: '#334155', color: useEnterpriseLightChartPalette ? '#ffffff' : '#e2e8f0',
-        fontSize: 10, fontFamily: "Consolas,'Courier New',monospace",
+        fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', fontFamily: "Consolas,'Courier New',monospace",
         padding: '1px 5px', borderRadius: 2,
         whiteSpace: 'nowrap',
         pointerEvents: 'none', zIndex: 15, opacity: 0,
@@ -10305,7 +10302,7 @@ export const TradingChart = React.memo(function TradingChart({
         position: 'absolute', left: 0, top: 0,
         width: 54, textAlign: 'center',
         background: '#334155', color: useEnterpriseLightChartPalette ? '#ffffff' : '#e2e8f0',
-        fontSize: 10, fontFamily: "Consolas,'Courier New',monospace",
+        fontSize: 'var(--rtx-ui-font-size, 14px)', fontWeight: 'var(--rtx-font-weight-body, 400)', fontFamily: "Consolas,'Courier New',monospace",
         padding: '1px 4px', borderRadius: 2,
         whiteSpace: 'nowrap',
         pointerEvents: 'none', zIndex: 15, opacity: 0,
@@ -10352,8 +10349,8 @@ export const TradingChart = React.memo(function TradingChart({
           ref={livePriceValueRef}
           style={{
             display: 'block',
-            fontSize: 12,
-            fontWeight: 600,
+            fontSize: 'var(--rtx-ui-font-size, 14px)',
+            fontWeight: 'var(--rtx-font-weight-control, 400)',
             lineHeight: '16px',
             fontVariantNumeric: 'tabular-nums',
           }}
@@ -10364,8 +10361,8 @@ export const TradingChart = React.memo(function TradingChart({
           aria-hidden="true"
           style={{
             display: 'none',
-            fontSize: 12,
-            fontWeight: 500,
+            fontSize: 'var(--rtx-ui-font-size, 14px)',
+            fontWeight: 'var(--rtx-font-weight-control, 400)',
             lineHeight: '14px',
             letterSpacing: 0,
             fontVariantNumeric: 'tabular-nums',

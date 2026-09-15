@@ -1,5 +1,5 @@
 import type { Time } from 'lightweight-charts';
-import type { ChartProperties } from '../store/useChartSettingsStore';
+import { CHART_CANDLE_DOWN_COLOR, CHART_CANDLE_UP_COLOR, type ChartProperties } from '../store/useChartSettingsStore';
 import {
   buildMarketClosedGapSeries,
   getMarketGapTimeframeSeconds,
@@ -213,9 +213,13 @@ export const getLivePriceOverlayColors = (
   // Only render-time light defaults opt in; saved custom and dark palettes keep
   // the existing contrast-aware treatment below.
   if (useEnterpriseLightPalette && preferred) {
-    const badgeBackground = preferred.toLowerCase() === '#059669'
-      ? '#047857'
-      : preferred.toLowerCase() === '#dc2626' ? '#b91c1c' : null;
+    const badgeColors: Record<string, string> = {
+      [CHART_CANDLE_UP_COLOR.toUpperCase()]: '#07816d',
+      [CHART_CANDLE_DOWN_COLOR.toUpperCase()]: '#d22f3c',
+      '#059669': '#047857',
+      '#DC2626': '#b91c1c',
+    };
+    const badgeBackground = badgeColors[preferred.toUpperCase()];
     if (badgeBackground) {
       return { lineColor: preferred, badgeBackground, badgeTextColor: '#ffffff' };
     }

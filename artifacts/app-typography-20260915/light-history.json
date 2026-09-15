@@ -1,0 +1,17 @@
+{
+  "samples": [
+    {
+      "lineHeight": "20px",
+      "selector": ".rtx-history-tab th",
+      "size": "14px",
+      "weight": "500"
+    },
+    {
+      "lineHeight": "20px",
+      "selector": ".rtx-history-tab tbody td",
+      "size": "14px",
+      "weight": "400"
+    }
+  ],
+  "theme": "theme-dark rtx-advanced-font-normal rtx-advanced-view rtx-skin-untitled-light rtx-advanced-density-comfortable rtx-advanced-accent-purple rtx-advanced-surface-white"
+}

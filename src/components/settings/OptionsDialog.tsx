@@ -69,7 +69,7 @@ export const OptionsDialog: React.FC<OptionsDialogProps> = ({ isOpen, onClose })
             <div className="rtx-options-dialog w-[800px] h-[600px] bg-[#252528] rounded-lg shadow-2xl border border-zinc-700 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="h-10 bg-[#131316] border-b border-zinc-700 flex items-center justify-between px-4 select-none">
-                    <span className="text-[14px] font-semibold text-zinc-200">{tr("Options")}</span>
+                    <span className="rtx-dialog-title text-[20px] leading-7 font-semibold text-zinc-200">{tr("Options")}</span>
                     <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
                         <Icon name="x-close" size="md" />
                     </button>

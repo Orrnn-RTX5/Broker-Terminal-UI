@@ -544,10 +544,10 @@ describe('live price overlay colors', () => {
     const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: true });
 
     expect(getLivePriceOverlayColors(colors, colors.bullCandle, true)).toEqual({
-      lineColor: '#059669', badgeBackground: '#047857', badgeTextColor: '#ffffff',
+      lineColor: '#089981', badgeBackground: '#07816d', badgeTextColor: '#ffffff',
     });
     expect(getLivePriceOverlayColors(colors, colors.bearCandle, true)).toEqual({
-      lineColor: '#dc2626', badgeBackground: '#b91c1c', badgeTextColor: '#ffffff',
+      lineColor: '#F23645', badgeBackground: '#d22f3c', badgeTextColor: '#ffffff',
     });
     // Reusing a candle hue in a saved custom scheme must not opt that scheme
     // into the default light label palette.
@@ -556,11 +556,11 @@ describe('live price overlay colors', () => {
     });
   });
 
-  it('uses the canonical terminal profit and loss colors by default', () => {
+  it('uses the reference candle direction colors by default', () => {
     const colors = defaultChartProperties.colors;
 
-    expect(getLivePriceOverlayColors(colors, colors.bullCandle).lineColor).toBe('#00C896');
-    expect(getLivePriceOverlayColors(colors, colors.bearCandle).lineColor).toBe('#FF4D4F');
+    expect(getLivePriceOverlayColors(colors, colors.bullCandle).lineColor).toBe('#089981');
+    expect(getLivePriceOverlayColors(colors, colors.bearCandle).lineColor).toBe('#F23645');
   });
 
   it('takes the live price color from the series that is actually rendered', () => {

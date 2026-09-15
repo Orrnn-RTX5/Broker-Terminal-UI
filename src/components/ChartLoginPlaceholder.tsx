@@ -140,25 +140,26 @@ export function ChartLoginPlaceholder({ symbol = 'CHART' }: ChartLoginPlaceholde
                 <div>
                     <div
                         style={{
-                            fontSize: 22,
-                            fontWeight: 700,
+                            fontSize: 20,
+                            lineHeight: '28px',
+                            fontWeight: 600,
                             color: '#f4f4f5',
                             letterSpacing: '0.08em',
                         }}
                     >
                         {symbol}
                     </div>
-                    <div style={{ fontSize: 12, color: '#52525b', marginTop: 4, letterSpacing: '0.04em' }}>
+                    <div style={{ fontSize: 14, fontWeight: 400, color: '#52525b', marginTop: 4, letterSpacing: '0.04em' }}>
                         CANDLESTICK CHART
                     </div>
                 </div>
 
                 {/* Message */}
                 <div>
-                    <p style={{ fontSize: 14, color: '#a1a1aa', margin: 0, lineHeight: 1.6 }}>
+                    <p style={{ fontSize: 14, fontWeight: 400, color: '#a1a1aa', margin: 0, lineHeight: '20px' }}>
                         Login to your trade account to view live charts
                     </p>
-                    <p style={{ fontSize: 12, color: '#52525b', margin: '6px 0 0', lineHeight: 1.5 }}>
+                    <p style={{ fontSize: 14, fontWeight: 400, color: '#52525b', margin: '6px 0 0', lineHeight: '20px' }}>
                         Connect via the terminal panel on the left to access<br />
                         real-time price data and candlestick charts.
                     </p>
@@ -184,7 +185,7 @@ export function ChartLoginPlaceholder({ symbol = 'CHART' }: ChartLoginPlaceholde
                             boxShadow: '0 0 4px #22c55e',
                         }}
                     />
-                    <span style={{ fontSize: 11, color: '#3f3f46' }}>
+                    <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#3f3f46' }}>
                         Market feed connected — awaiting authentication
                     </span>
                 </div>

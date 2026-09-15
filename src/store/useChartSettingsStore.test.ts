@@ -3,6 +3,8 @@ import {
   applyChartShiftDefaultMigration,
   applyPeriodSeparatorsDefaultMigration,
   applyVolumeBarsDefaultMigration,
+  CHART_CANDLE_DOWN_COLOR,
+  CHART_CANDLE_UP_COLOR,
   CHART_LOSS_COLOR,
   CHART_PROFIT_COLOR,
   clampChartOpacityPercent,
@@ -10,6 +12,7 @@ import {
   getEffectiveChartColors,
   getPresetSchemeColors,
   normalizeChartProperties,
+  useChartSettingsStore,
 } from './useChartSettingsStore';
 
 describe('chart settings trade history overlay defaults', () => {
@@ -30,14 +33,14 @@ describe('chart settings trade history overlay defaults', () => {
     expect(defaultChartProperties.showPeriodSeparators).toBe(true);
   });
 
-  it('uses the terminal semantic palette for chart direction and price levels', () => {
+  it('uses the reference candle hues while retaining separate price-level colors', () => {
     expect(defaultChartProperties.colors).toMatchObject({
-      barUp: CHART_PROFIT_COLOR,
-      bullCandle: CHART_PROFIT_COLOR,
+      barUp: '#089981',
+      bullCandle: '#089981',
       lineChart: CHART_PROFIT_COLOR,
       lastPriceLine: CHART_PROFIT_COLOR,
-      barDown: CHART_LOSS_COLOR,
-      bearCandle: CHART_LOSS_COLOR,
+      barDown: '#F23645',
+      bearCandle: '#F23645',
       askPriceLine: CHART_LOSS_COLOR,
       stopLevels: CHART_LOSS_COLOR,
     });
@@ -64,10 +67,10 @@ describe('chart settings trade history overlay defaults', () => {
       colorScheme: 'Green on Black',
       colors: legacyColors,
     }).colors).toMatchObject({
-      barUp: CHART_PROFIT_COLOR,
-      barDown: CHART_LOSS_COLOR,
-      bullCandle: CHART_PROFIT_COLOR,
-      bearCandle: CHART_LOSS_COLOR,
+      barUp: CHART_CANDLE_UP_COLOR,
+      barDown: CHART_CANDLE_DOWN_COLOR,
+      bullCandle: CHART_CANDLE_UP_COLOR,
+      bearCandle: CHART_CANDLE_DOWN_COLOR,
       lineChart: CHART_PROFIT_COLOR,
       volumes: defaultChartProperties.colors.volumes,
       askPriceLine: CHART_LOSS_COLOR,
@@ -79,6 +82,45 @@ describe('chart settings trade history overlay defaults', () => {
       colorScheme: 'Custom',
       colors: legacyColors,
     }).colors).toMatchObject(legacyColors);
+  });
+
+  it('migrates saved global and per-symbol defaults without changing customized palettes', () => {
+    const previous = {
+      ...defaultChartProperties,
+      colors: {
+        ...defaultChartProperties.colors,
+        barUp: '#00c896', barDown: '#ff4d4f',
+        bullCandle: '#00C896', bearCandle: '#FF4D4F',
+      },
+    };
+    const custom = { ...previous, colorScheme: 'Custom' as const };
+    const customizedPreset = {
+      ...previous,
+      colors: { ...previous.colors, bullCandle: '#123456', barDown: '#abcdef' },
+    };
+    const merge = useChartSettingsStore.persist.getOptions().merge!;
+    const hydrated = merge({
+      globalProperties: previous,
+      symbolProperties: { XAUUSD: previous, EURUSD: custom, BTCUSD: customizedPreset },
+      volumeBarsDefaultMigrationVersion: 1,
+      periodSeparatorsDefaultMigrationVersion: 1,
+      chartShiftDefaultMigrationVersion: 1,
+    }, useChartSettingsStore.getState());
+
+    for (const properties of [hydrated.globalProperties, hydrated.symbolProperties.XAUUSD]) {
+      for (const isAdvancedUntitledLight of [false, true]) {
+        expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight })).toMatchObject({
+          barUp: '#089981', barDown: '#F23645',
+          bullCandle: '#089981', bearCandle: '#F23645',
+        });
+      }
+    }
+    expect(hydrated.symbolProperties.EURUSD.colors).toEqual(custom.colors);
+    expect(hydrated.symbolProperties.BTCUSD.colors).toMatchObject({
+      bullCandle: '#123456', barDown: '#abcdef',
+      barUp: '#089981', bearCandle: '#F23645',
+    });
+    expect(previous.colors.bullCandle).toBe('#00C896');
   });
 
   it('hydrates old persisted chart settings with the new trade history overlay fields', () => {
@@ -238,13 +280,13 @@ describe('chart settings trade history overlay defaults', () => {
     });
   });
 
-  it('applies enterprise light candles without mutating the saved dark or custom palette', () => {
+  it('keeps candle colors the same in light and dark without mutating saved custom palettes', () => {
     const properties = normalizeChartProperties({ colorScheme: 'Green on Black' });
     const savedColors = { ...properties.colors };
     const light = getEffectiveChartColors(properties, { isAdvancedUntitledLight: true });
     expect(light).toMatchObject({
-      barUp: '#059669', bullCandle: '#059669',
-      barDown: '#dc2626', bearCandle: '#dc2626',
+      barUp: '#089981', bullCandle: '#089981',
+      barDown: '#F23645', bearCandle: '#F23645',
       lineChart: '#059669', lastPriceLine: '#059669',
     });
     expect(properties.colors).toEqual(savedColors);

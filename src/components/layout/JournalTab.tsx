@@ -349,6 +349,12 @@ const JournalLogTable = React.memo(function JournalLogTable({
 }: JournalLogTableProps) {
     const tr = useUiTranslation();
     const scrollViewportRef = useRef<HTMLDivElement>(null);
+    const headerRef = useRef<HTMLTableSectionElement>(null);
+    const firstRowRef = useRef<HTMLTableRowElement>(null);
+    const [rowGeometry, setRowGeometry] = useState({
+        rowHeight: JOURNAL_ROW_HEIGHT,
+        headerHeight: JOURNAL_HEADER_HEIGHT,
+    });
     const [viewport, setViewport] = useState({
         scrollTop: 0,
         height: JOURNAL_FALLBACK_VIEWPORT_HEIGHT,
@@ -395,32 +401,56 @@ const JournalLogTable = React.memo(function JournalLogTable({
     }, [autoScroll, onAutoScrollChange]);
 
     const virtualWindow = useMemo(() => {
+        const { rowHeight, headerHeight } = rowGeometry;
         const rowViewportHeight = Math.max(
-            JOURNAL_ROW_HEIGHT,
-            viewport.height - JOURNAL_HEADER_HEIGHT,
+            rowHeight,
+            viewport.height - headerHeight,
         );
         const maxScrollTop = Math.max(
             0,
-            JOURNAL_HEADER_HEIGHT + logs.length * JOURNAL_ROW_HEIGHT - viewport.height,
+            headerHeight + logs.length * rowHeight - viewport.height,
         );
         const effectiveScrollTop = Math.min(viewport.scrollTop, maxScrollTop);
         const startIndex = Math.max(
             0,
-            Math.floor(effectiveScrollTop / JOURNAL_ROW_HEIGHT) - JOURNAL_ROW_OVERSCAN,
+            Math.floor(effectiveScrollTop / rowHeight) - JOURNAL_ROW_OVERSCAN,
         );
         const endIndex = Math.min(
             logs.length,
-            Math.ceil((effectiveScrollTop + rowViewportHeight) / JOURNAL_ROW_HEIGHT)
+            Math.ceil((effectiveScrollTop + rowViewportHeight) / rowHeight)
                 + JOURNAL_ROW_OVERSCAN,
         );
 
         return {
             startIndex,
             endIndex,
-            topSpacerHeight: startIndex * JOURNAL_ROW_HEIGHT,
-            bottomSpacerHeight: (logs.length - endIndex) * JOURNAL_ROW_HEIGHT,
+            topSpacerHeight: startIndex * rowHeight,
+            bottomSpacerHeight: (logs.length - endIndex) * rowHeight,
         };
-    }, [logs.length, viewport]);
+    }, [logs.length, viewport, rowGeometry]);
+
+    // Density, text preferences and font loading can change the real table
+    // heights. Use those same heights for the virtual window and its spacers.
+    useLayoutEffect(() => {
+        const header = headerRef.current;
+        const firstRow = firstRowRef.current;
+        const measure = () => {
+            const rowHeight = firstRow?.getBoundingClientRect().height || JOURNAL_ROW_HEIGHT;
+            const headerHeight = header?.getBoundingClientRect().height || JOURNAL_HEADER_HEIGHT;
+            setRowGeometry(current => (
+                current.rowHeight === rowHeight && current.headerHeight === headerHeight
+                    ? current
+                    : { rowHeight, headerHeight }
+            ));
+        };
+
+        measure();
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(measure);
+        if (header) observer.observe(header);
+        if (firstRow) observer.observe(firstRow);
+        return () => observer.disconnect();
+    }, [logs, virtualWindow.startIndex]);
 
     const visibleLogs = logs.slice(virtualWindow.startIndex, virtualWindow.endIndex);
 
@@ -436,7 +466,7 @@ const JournalLogTable = React.memo(function JournalLogTable({
                 className="rtx-journal-table w-full table-fixed text-center border-collapse"
                 style={{ fontFamily: '"Segoe UI", Tahoma, Arial, sans-serif', fontVariantNumeric: 'tabular-nums' }}
             >
-                <thead className="rtx-journal-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-normal text-[12px] uppercase tracking-normal border-y border-zinc-700/70 select-none">
+                <thead ref={headerRef} className="rtx-journal-table__head sticky top-0 bg-[#17181c] text-[#c9cfdb] z-10 font-normal text-[12px] uppercase tracking-normal border-y border-zinc-700/70 select-none">
                     <tr className="h-[30px]">
                         <th className="px-1.5 py-[3px] w-36 whitespace-nowrap">{tr("Time")}</th>
                         <th className="px-1.5 py-[3px] w-16">{tr("Code")}</th>
@@ -448,8 +478,8 @@ const JournalLogTable = React.memo(function JournalLogTable({
                 </thead>
                 <tbody className="divide-y divide-zinc-800/90 text-zinc-100 text-[13px] leading-[19.5px] font-normal">
                     {virtualWindow.topSpacerHeight > 0 && (
-                        <tr aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }}>
-                            <td colSpan={6} className="p-0 border-0" />
+                        <tr aria-hidden="true" className="rtx-journal-spacer-row" style={{ height: virtualWindow.topSpacerHeight }}>
+                            <td colSpan={6} className="rtx-journal-spacer-cell p-0 border-0" style={{ padding: 0, border: 0, lineHeight: 0 }} />
                         </tr>
                     )}
                     {visibleLogs.map((log, visibleIndex) => {
@@ -457,6 +487,7 @@ const JournalLogTable = React.memo(function JournalLogTable({
                         return (
                             <tr
                                 key={getJournalLogKey(log, absoluteIndex)}
+                                ref={visibleIndex === 0 ? firstRowRef : undefined}
                                 data-testid="journal-rendered-row"
                                 aria-rowindex={absoluteIndex + 2}
                                 className="rtx-journal-row h-[30px] bg-[#131316] transition-colors hover:bg-[#202126]"
@@ -491,8 +522,8 @@ const JournalLogTable = React.memo(function JournalLogTable({
                         );
                     })}
                     {virtualWindow.bottomSpacerHeight > 0 && (
-                        <tr aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }}>
-                            <td colSpan={6} className="p-0 border-0" />
+                        <tr aria-hidden="true" className="rtx-journal-spacer-row" style={{ height: virtualWindow.bottomSpacerHeight }}>
+                            <td colSpan={6} className="rtx-journal-spacer-cell p-0 border-0" style={{ padding: 0, border: 0, lineHeight: 0 }} />
                         </tr>
                     )}
                 </tbody>

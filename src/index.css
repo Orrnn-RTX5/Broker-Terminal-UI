@@ -466,7 +466,7 @@ html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs {
 
 html:not(.rtx-skin-untitled-light) .rtx-dock-tab-scroller {
   display: flex !important;
-  flex: 0 0 auto !important;
+  flex: 0 1 auto !important;
   flex-wrap: nowrap !important;
   align-items: stretch !important;
   height: 30px !important;

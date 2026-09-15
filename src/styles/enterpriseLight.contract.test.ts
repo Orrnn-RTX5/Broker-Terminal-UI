@@ -225,8 +225,8 @@ describe('enterprise light visual-system contract', () => {
     typography.nodes.filter((node) => node.type === 'rule').slice(0, 1).forEach((rule) => {
       if (rule.type === 'rule') rule.walkDecls((declaration) => { tokenValues.set(declaration.prop, declaration.value); });
     });
-    expect(tokenValues.get('--rtx-light-ui-font-size')).toBe('14px');
-    expect(tokenValues.get('--rtx-light-ui-font-weight')).toBe('450');
+    expect(tokenValues.get('--rtx-light-ui-font-size')).toBe('var(--rtx-ui-font-size)');
+    expect(tokenValues.get('--rtx-light-ui-font-weight')).toBe('var(--rtx-font-weight-body)');
     expect(readSource('src/authenticatedStyles.ts')).toContain("import './styles/light-typography.css';");
   });
 

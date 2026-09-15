@@ -1,0 +1,108 @@
+/* Match the account wizard's surfaces to the active light terminal palette.
+   Dark styling stays with the component's existing classes and inline values. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-backdrop {
+  background: rgba(15, 23, 42, 0.28) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog :is(
+  .rtx-open-account-dialog__header, .rtx-open-account-dialog__footer
+) {
+  background: var(--rtx-light-panel-header);
+  border-color: var(--rtx-light-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog :is(
+  .text-white, .text-zinc-100, .text-zinc-200, .text-zinc-300
+) {
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog :is(
+  .text-zinc-400, .text-zinc-500, .text-zinc-600, .text-zinc-700
+) {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog :is(
+  input:not([type='radio']):not([type='checkbox']), select,
+  .rtx-open-account-dialog__server-trigger
+) {
+  background: var(--rtx-light-field) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog input::placeholder {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog :is(
+  input, select, button
+):focus-visible {
+  outline: 2px solid var(--rtx-light-accent);
+  outline-offset: 2px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog :is(
+  .rtx-open-account-dialog__surface, .rtx-open-account-dialog__menu
+) {
+  background: var(--rtx-light-panel-subtle) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog .rtx-open-account-dialog__broker {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-border) !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog .rtx-open-account-dialog__broker:hover {
+  background: var(--rtx-light-hover) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog .rtx-open-account-dialog__broker[data-selected='true'] {
+  background: var(--rtx-light-accent-soft) !important;
+  border-color: var(--rtx-light-accent-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog .rtx-open-account-dialog__badge {
+  background: var(--rtx-light-accent-soft) !important;
+  color: var(--rtx-light-accent-strong) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog__footer button {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text-secondary) !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog .rtx-open-account-dialog__primary {
+  background: var(--rtx-light-accent) !important;
+  border-color: var(--rtx-light-accent) !important;
+  color: #ffffff !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog .rtx-open-account-dialog__primary:hover:not(:disabled) {
+  background: var(--rtx-light-accent-strong) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog :is(
+  .rtx-open-account-dialog__avatar, .rtx-open-account-dialog__header-icon,
+  .rtx-open-account-dialog__header-icon *
+) {
+  color: #ffffff !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-open-account-dialog :is(
+  .text-amber-300, .text-yellow-500\/90
+) {
+  color: var(--color-warning) !important;
+}

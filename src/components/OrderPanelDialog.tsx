@@ -167,21 +167,22 @@ function MiniTickChart({
         monoFont: readCssValue('--font-mono', 'ui-monospace, Consolas, monospace'),
       };
 
-      const lightSize = Number.parseFloat(readCssValue('--rtx-light-ui-font-size', '0'));
-      const lightFont = Number.isFinite(lightSize) && lightSize > 0
-        ? `450 ${lightSize}px ${readCssValue('--font-sans', palette.monoFont)}`
-        : null;
-      ctx.font = lightFont || `10px ${palette.monoFont}`;
+      const tokenSize = Number.parseFloat(readCssValue('--rtx-ui-font-size', '14'));
+      const fontSize = Number.isFinite(tokenSize) && tokenSize > 0 ? tokenSize : 14;
+      const fontFamily = document.documentElement.classList.contains('rtx-skin-untitled-light')
+        ? readCssValue('--font-sans', palette.monoFont)
+        : palette.monoFont;
+      const bodyFont = `${readCssValue('--rtx-font-weight-body', '400')} ${fontSize}px ${fontFamily}`;
+      const controlFont = `${readCssValue('--rtx-font-weight-control', '400')} ${fontSize}px ${fontFamily}`;
+      ctx.font = controlFont;
 
       const width = cssWidth;
       const height = cssHeight;
       const left = 12;
-      const right = lightFont
-        ? Math.max(72, Math.ceil(ctx.measureText(Math.max(Math.abs(bid), Math.abs(ask)).toFixed(digits)).width) + 20)
-        : 72;
-      const tagHeight = lightFont ? Math.ceil(lightSize * 1.5) + 2 : 16;
-      const top = lightFont ? tagHeight / 2 + 4 : 12;
-      const bottom = lightFont ? tagHeight + 7 : 27;
+      const right = Math.max(72, Math.ceil(ctx.measureText(Math.max(Math.abs(bid), Math.abs(ask)).toFixed(digits)).width) + 20);
+      const tagHeight = Math.ceil(fontSize * 1.5) + 2;
+      const top = tagHeight / 2 + 4;
+      const bottom = tagHeight + 7;
       const plotWidth = width - left - right;
       const plotHeight = height - top - bottom;
       const plotRight = left + plotWidth;
@@ -222,7 +223,7 @@ function MiniTickChart({
       const history = tickHistoryRef.current;
       if (history.length === 0) {
         ctx.fillStyle = palette.axis;
-        ctx.font = lightFont || `11px ${palette.monoFont}`;
+        ctx.font = bodyFont;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(tr('Waiting for the first live quote from the broker.'), left + plotWidth / 2, top + plotHeight / 2, plotWidth - 20);
@@ -260,7 +261,7 @@ function MiniTickChart({
       const yOf = (price: number) => top + plotHeight - ((price - minPrice) / totalRange) * plotHeight;
 
       ctx.fillStyle = palette.axis;
-      ctx.font = lightFont || `10px ${palette.monoFont}`;
+      ctx.font = bodyFont;
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
       for (let index = 0; index <= 4; index += 1) {
@@ -344,7 +345,7 @@ function MiniTickChart({
       bidTagY = Math.max(top + tagInset, Math.min(plotBottom - tagInset, bidTagY));
       askTagY = Math.max(top + tagInset, Math.min(plotBottom - tagInset, askTagY));
 
-      ctx.font = lightFont || `600 10px ${palette.monoFont}`;
+      ctx.font = controlFont;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ([

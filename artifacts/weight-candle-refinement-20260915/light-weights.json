@@ -1,0 +1,89 @@
+{
+  "samples": [
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-toolbar-action",
+      "size": "14px",
+      "text": "New Order",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-timeframe-option",
+      "size": "14px",
+      "text": "M1",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-market-watch__symbol",
+      "size": "14px",
+      "text": "XAUUSD",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-market-watch__column-heading",
+      "size": "14px",
+      "text": "Symbol",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-market-watch__price",
+      "size": "14px",
+      "text": "4267.39",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".navigator-tree-item__label",
+      "size": "14px",
+      "text": "Accounts",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".dock-panel__title",
+      "size": "14px",
+      "text": "Navigator",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-trade-table th",
+      "size": "14px",
+      "text": "Symbol",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-trade-table th button",
+      "size": "14px",
+      "text": "Symbol",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-chart-hud",
+      "size": "14px",
+      "text": "XAUUSD, M1O: 4266.53H: 4267.69L: 4265.22",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-dock-tab",
+      "size": "14px",
+      "text": "Trade",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "selector": ".rtx-status-bar",
+      "size": "14px",
+      "text": "09:16:08 - RTX 5 Web Terminal - 200032 -",
+      "weight": "400"
+    }
+  ],
+  "theme": "theme-dark rtx-advanced-view rtx-skin-untitled-light rtx-advanced-font-normal rtx-advanced-density-comfortable rtx-advanced-accent-purple rtx-advanced-surface-white"
+}

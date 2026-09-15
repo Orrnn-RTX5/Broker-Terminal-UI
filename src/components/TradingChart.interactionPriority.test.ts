@@ -209,7 +209,7 @@ describe('TradingChart interaction-priority contract', () => {
   });
 
   it('renders the candle countdown only beneath the right-scale live price', () => {
-    const hudStart = source.indexOf('{/* Premium MT5 HTML HUD');
+    const hudStart = source.indexOf('{/* Chart HUD uses shared size and weight roles');
     const hudEnd = source.indexOf('Chart Container - must have explicit dimensions', hudStart);
     const hudMarkup = source.slice(hudStart, hudEnd);
     const badgeStart = source.indexOf('ref={livePriceBadgeRef}');
@@ -240,7 +240,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(badgeMarkup).toContain('aria-hidden="true"');
     expect(badgeMarkup).toContain('lineHeight: \'16px\'');
     expect(badgeMarkup).toContain('lineHeight: \'14px\'');
-    expect(badgeMarkup).toContain('fontSize: 12');
+    expect(badgeMarkup).toContain("fontSize: 'var(--rtx-ui-font-size, 14px)'");
     expect(badgeMarkup).toContain("opacity: 1");
     expect(badgeMarkup).toContain("textAlign: 'center'");
     expect(badgeMarkup).toContain('transform: `translateY(-${LIVE_PRICE_BADGE_PRICE_ROW_OFFSET_PX}px)`');

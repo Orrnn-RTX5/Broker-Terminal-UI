@@ -7,7 +7,7 @@ export function BootstrapLoader() {
   if (!isBootstrapping) return null;
 
   return (
-    <div style={{
+    <div className="rtx-bootstrap-loader" style={{
       position: 'fixed',
       inset: 0,
       zIndex: 9999,
@@ -45,7 +45,8 @@ export function BootstrapLoader() {
 
       <div style={{
         fontSize: 24,
-        fontWeight: 700,
+        fontWeight: 600,
+        lineHeight: '32px',
         color: '#101828',
         letterSpacing: 2,
         display: 'flex',
@@ -57,7 +58,9 @@ export function BootstrapLoader() {
 
       <div style={{
         marginTop: 16,
-        fontSize: 11,
+        fontSize: 14,
+        fontWeight: 400,
+        lineHeight: '20px',
         color: '#64748b',
         textTransform: 'uppercase',
         letterSpacing: 2,

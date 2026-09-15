@@ -138,7 +138,7 @@ export function Login({ onLogin }: LoginProps) {
 
                 <form onSubmit={handleSubmit}>
                     <div className="mb-4">
-                        <label className="block text-[10px] font-bold text-[#4a5568] uppercase tracking-[0.2em] mb-3 ml-1">
+                        <label className="block text-[14px] leading-5 font-medium text-[#4a5568] uppercase tracking-[0.2em] mb-3 ml-1">
                             Credential
                         </label>
                         <div className="login-input-group">
@@ -166,7 +166,7 @@ export function Login({ onLogin }: LoginProps) {
                         </div>
                     </div>
                     <div className="mb-6">
-                        <label className="block text-[10px] font-bold text-[#4a5568] uppercase tracking-[0.2em] mb-3 ml-1">
+                        <label className="block text-[14px] leading-5 font-medium text-[#4a5568] uppercase tracking-[0.2em] mb-3 ml-1">
                             Server Connection
                         </label>
                         <div className="login-input-group">

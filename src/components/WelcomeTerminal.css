@@ -27,6 +27,9 @@
     background: #050608;
     font-family: var(--font-login-sans, var(--font-sans));
     animation: none;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-body, 400);
+    line-height: 20px;
 }
 
 .rtx-login-overlay button,
@@ -174,8 +177,9 @@
     border-bottom: 1px solid #25272e;
     background: #101216;
     color: #8b8f9b;
-    font-size: 11px;
+    font-size: 14px;
     letter-spacing: 0;
+    line-height: 20px;
 }
 
 .rtx-window-control-group {
@@ -209,8 +213,9 @@
     align-items: center;
     gap: 7px;
     flex: 0 0 auto;
-    font-size: 11px;
-    font-weight: 750;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-control, 400);
+    line-height: 20px;
 }
 
 .rtx-shell-health span {
@@ -245,19 +250,20 @@
 .rtx-brand-name {
     margin: 0;
     color: #f4f4f5;
-    font-size: 21px;
-    line-height: 1.15;
-    font-weight: 700;
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 600;
     letter-spacing: 0;
 }
 
 .rtx-brand-subtitle {
     margin: 0 0 4px;
     color: #7d828e;
-    font-size: 10px;
+    font-size: 14px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.12em;
+    line-height: 20px;
 }
 
 .rtx-broker-strip {
@@ -277,11 +283,11 @@
     display: block;
     margin-bottom: 0;
     color: #737987;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-body, 400);
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    line-height: 1.2;
+    line-height: 20px;
 }
 
 .rtx-route-row {
@@ -303,8 +309,9 @@
     border: 1px solid #2b2f38;
     flex: 0 0 auto;
     color: #a7abb5;
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
 }
 
 .rtx-route-logo img {
@@ -326,8 +333,8 @@
     display: block;
     color: #f3f4f6;
     font-size: 14px;
-    font-weight: 500;
-    line-height: 1.18;
+    font-weight: var(--rtx-font-weight-control, 400);
+    line-height: 20px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -337,11 +344,12 @@
     display: block;
     margin-top: 3px;
     color: #838895;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-body, 400);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 20px;
 }
 
 .rtx-broker-state {
@@ -355,8 +363,9 @@
     border: 1px solid #252932;
     border-radius: 6px;
     background: #13161c;
-    font-size: 11.5px;
-    font-weight: 500;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-control, 400);
+    line-height: 20px;
 }
 
 .rtx-broker-state span {
@@ -373,18 +382,19 @@
 .rtx-form-header p {
     margin: 0 0 3px;
     color: #7d828e;
-    font-size: 10px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-control, 400);
     text-transform: uppercase;
     letter-spacing: 0.12em;
+    line-height: 20px;
 }
 
 .rtx-form-header h1 {
     margin: 0;
     color: #f4f4f5;
-    font-size: 21px;
-    line-height: 1.2;
-    font-weight: 700;
+    font-size: 24px;
+    line-height: 32px;
+    font-weight: var(--rtx-font-weight-heading, 500);
     letter-spacing: 0;
 }
 
@@ -395,9 +405,9 @@
     background: rgba(239, 68, 68, 0.10);
     border: 1px solid rgba(239, 68, 68, 0.25);
     color: #f87171;
-    font-size: 12px;
-    font-weight: 400;
-    line-height: 1.35;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-control, 400);
+    line-height: 20px;
 }
 
 .rtx-login-form {
@@ -492,8 +502,9 @@
 .rtx-broker-empty {
     padding: 10px 11px;
     color: #8b8b95;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-body, 400);
+    line-height: 20px;
 }
 
 .rtx-broker-option {
@@ -539,7 +550,8 @@
     background: rgba(255, 255, 255, 0.06);
     color: #8b8b95;
     font-style: normal;
-    font-size: 10px;
+    font-size: 14px;
+    line-height: 20px;
 }
 
 .rtx-broker-option strong {
@@ -548,16 +560,18 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 14px;
-    font-weight: 400;
+    font-weight: var(--rtx-font-weight-body, 400);
+    line-height: 20px;
 }
 
 .rtx-broker-option em {
     color: #80c33f;
     font-style: normal;
-    font-size: 9px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-heading, 500);
     text-transform: uppercase;
     letter-spacing: 0.08em;
+    line-height: 20px;
 }
 
 .rtx-inline-status {
@@ -566,8 +580,9 @@
     align-items: center;
     padding: 0 10px;
     border-radius: 6px;
-    font-size: 12px;
-    font-weight: 650;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-control, 400);
+    line-height: 20px;
 }
 
 .rtx-inline-status.is-offline {
@@ -594,8 +609,9 @@
 .rtx-remember-row label {
     color: #868690;
     font-size: 14px;
-    font-weight: 400;
+    font-weight: var(--rtx-font-weight-body, 400);
     cursor: pointer;
+    line-height: 20px;
 }
 
 .rtx-login-button {
@@ -610,9 +626,10 @@
     background: #80c33f;
     color: #04110f;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: var(--rtx-font-weight-control, 400);
     cursor: pointer;
     transition: transform 60ms ease, background-color 80ms ease, opacity 60ms ease, box-shadow 80ms ease;
+    line-height: 20px;
 }
 
 .rtx-login-button:hover:not(:disabled) {
@@ -642,8 +659,9 @@
     padding-top: 14px;
     border-top: 1px solid #252932;
     color: #767680;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-body, 400);
+    line-height: 20px;
 }
 
 @media (max-width: 900px) {
@@ -653,6 +671,9 @@
 
     .rtx-login-overlay {
         overflow-y: auto;
+        font-size: 14px;
+        font-weight: var(--rtx-font-weight-body, 400);
+        line-height: 20px;
     }
 
     .rtx-login-visual {
@@ -695,6 +716,7 @@
 
     .rtx-shell-health {
         display: none;
+        font-weight: var(--rtx-font-weight-control, 400);
     }
 
     .rtx-login-body {
@@ -708,6 +730,8 @@
 
     .rtx-brand-name {
         font-size: 20px;
+        font-weight: 600;
+        line-height: 28px;
     }
 
     .rtx-form-header {
@@ -782,7 +806,7 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    overflow: hidden;
+    overflow-y: auto;
     padding: clamp(42px, 7.5vh, 86px) clamp(54px, 5.25vw, 88px);
     background:
         linear-gradient(180deg, #10181c 0%, #0d1418 46%, #090f13 100%);
@@ -858,9 +882,9 @@
     column-gap: 10px;
     row-gap: 6px;
     color: #f5f6f8;
-    font-size: 29px;
-    line-height: 1.08;
-    font-weight: 700;
+    font-size: 24px;
+    line-height: 32px;
+    font-weight: var(--rtx-font-weight-heading, 500);
     letter-spacing: 0;
     text-shadow: 0 10px 26px rgba(0, 0, 0, 0.36);
 }
@@ -868,7 +892,7 @@
 .rtx-login-title-text {
     color: inherit;
     font: inherit;
-    line-height: 1.18;
+    line-height: inherit;
     letter-spacing: inherit;
     flex: 0 0 auto;
     max-width: 100%;
@@ -880,7 +904,7 @@
 .rtx-login-title-text .split-word,
 .rtx-login-title-text .split-char {
     display: inline-block;
-    line-height: 1.18;
+    line-height: inherit;
     vertical-align: top;
     overflow: visible;
 }
@@ -968,11 +992,12 @@
     border: 1px solid rgba(69, 135, 121, 0.58);
     flex: 0 0 auto;
     color: #a7abb5;
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 600;
     box-shadow:
         0 12px 22px rgba(0, 0, 0, 0.24),
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    line-height: 20px;
 }
 
 .rtx-route-logo img {
@@ -985,19 +1010,19 @@
     display: block;
     margin-bottom: 0;
     color: #aab1bd;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-body, 400);
     text-transform: none;
     letter-spacing: 0;
-    line-height: 1.15;
+    line-height: 20px;
 }
 
 .rtx-route-row strong {
     display: block;
     color: #f7f8fa;
     font-size: 14px;
-    font-weight: 500;
-    line-height: 1.16;
+    font-weight: var(--rtx-font-weight-control, 400);
+    line-height: 20px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1007,11 +1032,12 @@
     display: block;
     margin-top: 8px;
     color: #a8afba;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-body, 400);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 20px;
 }
 
 .rtx-broker-state {
@@ -1028,8 +1054,9 @@
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.05),
         0 10px 24px rgba(0, 0, 0, 0.22);
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-control, 400);
+    line-height: 20px;
 }
 
 .rtx-broker-state span,
@@ -1048,9 +1075,9 @@
     background: rgba(239, 68, 68, 0.10);
     border: 1px solid rgba(239, 68, 68, 0.28);
     color: #f87171;
-    font-size: 12px;
-    font-weight: 400;
-    line-height: 1.35;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-control, 400);
+    line-height: 20px;
 }
 
 .rtx-login-form {
@@ -1236,8 +1263,9 @@
 .rtx-broker-empty {
     padding: 11px 12px;
     color: #9aa0aa;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-body, 400);
+    line-height: 20px;
 }
 
 .rtx-broker-option {
@@ -1283,7 +1311,8 @@
     background: rgba(255, 255, 255, 0.06);
     color: #8b8b95;
     font-style: normal;
-    font-size: 10px;
+    font-size: 14px;
+    line-height: 20px;
 }
 
 .rtx-broker-option strong {
@@ -1292,16 +1321,18 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 14px;
-    font-weight: 400;
+    font-weight: var(--rtx-font-weight-body, 400);
+    line-height: 20px;
 }
 
 .rtx-broker-option em {
     color: #80c33f;
     font-style: normal;
-    font-size: 9px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-heading, 500);
     text-transform: uppercase;
     letter-spacing: 0.08em;
+    line-height: 20px;
 }
 
 .rtx-inline-status {
@@ -1310,8 +1341,9 @@
     align-items: center;
     padding: 0 12px;
     border-radius: 4px;
-    font-size: 13px;
-    font-weight: 650;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-control, 400);
+    line-height: 20px;
 }
 
 .rtx-inline-status.is-offline {
@@ -1339,8 +1371,9 @@
 .rtx-remember-row label {
     color: #a4aab4;
     font-size: 14px;
-    font-weight: 400;
+    font-weight: var(--rtx-font-weight-body, 400);
     cursor: pointer;
+    line-height: 20px;
 }
 
 .rtx-login-button {
@@ -1355,11 +1388,12 @@
     background: linear-gradient(180deg, #54e39d 0%, #2fc58c 100%);
     color: #02130e;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: var(--rtx-font-weight-control, 400);
     cursor: pointer;
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.26);
     transition: transform 60ms ease, background-color 80ms ease, opacity 60ms ease, box-shadow 80ms ease;
+    line-height: 20px;
 }
 
 .rtx-login-button:hover:not(:disabled) {
@@ -1391,8 +1425,9 @@
     padding-top: 25px;
     border-top: 1px solid rgba(95, 103, 118, 0.24);
     color: #a6adb7;
-    font-size: 12px;
-    font-weight: 400;
+    font-size: 14px;
+    font-weight: var(--rtx-font-weight-body, 400);
+    line-height: 20px;
 }
 
 @media (min-width: 901px) {
@@ -1537,6 +1572,9 @@
 @media (max-width: 1040px) {
     .rtx-login-overlay {
         overflow-y: auto;
+        font-size: 14px;
+        font-weight: var(--rtx-font-weight-body, 400);
+        line-height: 20px;
     }
 
     .rtx-login-stage {
@@ -1609,7 +1647,9 @@
     }
 
     .rtx-form-header h1 {
-        font-size: 27px;
+        font-size: 24px;
+        font-weight: var(--rtx-font-weight-heading, 500);
+        line-height: 32px;
     }
 
     .rtx-login-title-logo {
@@ -1639,12 +1679,15 @@
 
     .rtx-route-row strong {
         font-size: 14px;
+        line-height: 20px;
     }
 
     .rtx-broker-state {
         min-height: 29px;
         padding: 0 12px;
-        font-size: 12.5px;
+        font-size: 14px;
+        line-height: 20px;
+        font-weight: var(--rtx-font-weight-control, 400);
     }
 
     .rtx-login-form {
@@ -1673,6 +1716,9 @@
 @media (min-width: 901px) and (max-height: 700px) {
     .rtx-login-overlay {
         overflow-y: auto;
+        font-size: 14px;
+        font-weight: var(--rtx-font-weight-body, 400);
+        line-height: 20px;
     }
 
     .rtx-login-stage {
@@ -1698,9 +1744,11 @@
     }
 
     .rtx-form-header h1 {
-        font-size: 25px;
+        font-size: 24px;
         column-gap: 9px;
         row-gap: 6px;
+        font-weight: var(--rtx-font-weight-heading, 500);
+        line-height: 32px;
     }
 
     .rtx-login-title-logo {
@@ -1724,12 +1772,14 @@
     }
 
     .rtx-summary-label {
-        font-size: 12px;
-        font-weight: 400;
+        font-size: 14px;
+        font-weight: var(--rtx-font-weight-body, 400);
+        line-height: 20px;
     }
 
     .rtx-route-row strong {
         font-size: 14px;
+        line-height: 20px;
     }
 
     .rtx-login-form {
@@ -1752,6 +1802,9 @@
 @media (max-width: 900px) {
     .rtx-login-overlay {
         overflow: hidden;
+        font-size: 14px;
+        font-weight: var(--rtx-font-weight-body, 400);
+        line-height: 20px;
     }
 
     .rtx-login-stage {
@@ -1788,7 +1841,7 @@
         height: 100dvh;
         align-items: center;
         align-items: safe center;
-        overflow: hidden;
+        overflow-y: auto;
         padding:
             max(28px, env(safe-area-inset-top))
             max(18px, env(safe-area-inset-right))
@@ -1835,8 +1888,9 @@
     .rtx-form-header h1 {
         column-gap: 9px;
         row-gap: 6px;
-        font-size: 27px;
-        line-height: 1.14;
+        font-size: 24px;
+        line-height: 32px;
+        font-weight: var(--rtx-font-weight-heading, 500);
     }
 
     .rtx-login-title-logo {
@@ -1859,6 +1913,7 @@
 
     .rtx-broker-state {
         align-self: flex-start;
+        font-weight: var(--rtx-font-weight-control, 400);
     }
 
     .rtx-broker-menu {
@@ -1902,6 +1957,8 @@
         column-gap: 8px;
         row-gap: 6px;
         font-size: 24px;
+        font-weight: var(--rtx-font-weight-heading, 500);
+        line-height: 32px;
     }
 
     .rtx-login-title-logo {
@@ -1962,7 +2019,9 @@
     .rtx-form-header h1 {
         column-gap: 8px;
         row-gap: 6px;
-        font-size: 25px;
+        font-size: 24px;
+        font-weight: var(--rtx-font-weight-heading, 500);
+        line-height: 32px;
     }
 
     .rtx-login-title-logo {
@@ -1980,17 +2039,21 @@
 
     .rtx-route-row strong {
         font-size: 14px;
+        line-height: 20px;
     }
 
     .rtx-route-row small {
-        font-size: 12px;
-        font-weight: 400;
+        font-size: 14px;
+        font-weight: var(--rtx-font-weight-body, 400);
+        line-height: 20px;
     }
 
     .rtx-broker-state {
         min-height: 32px;
         padding: 0 12px;
-        font-size: 12.5px;
+        font-size: 14px;
+        line-height: 20px;
+        font-weight: var(--rtx-font-weight-control, 400);
     }
 }
 

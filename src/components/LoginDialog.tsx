@@ -308,7 +308,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 <div className="flex items-center justify-between bg-[#353847] px-3 py-2 border-b border-[#555]">
                     <div className="flex items-center gap-2">
                         <User size={16} className="text-blue-400" />
-                        <span className="text-[14px] font-semibold text-zinc-200">{tr("Login")}</span>
+                        <span className="rtx-dialog-title text-[20px] leading-7 font-semibold text-zinc-200">{tr("Login")}</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <button className="p-1 hover:bg-white/10 rounded transition-colors" title={tr("Help")}>
@@ -327,19 +327,19 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                         <div className="w-10 h-10 rounded-full bg-zinc-700/30 flex items-center justify-center flex-shrink-0">
                             <User size={22} className="text-blue-400" />
                         </div>
-                        <p className="text-[12px] font-normal leading-relaxed text-zinc-400">
+                        <p className="text-[14px] font-normal leading-5 text-zinc-400">
                             {tr("Authorization allows to get access to the trade account")}</p>
                     </div>
 
                     {/* Login Field */}
                     <div className="flex items-center gap-3 mb-3">
-                        <label className="w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Login:")}</label>
+                        <label className="w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Login:")}</label>
                         <input
                             ref={loginInputRef}
                             type="text"
                             value={login}
                             onChange={(e) => setLogin(e.target.value)}
-                            className="h-[28px] flex-1 rounded border border-zinc-600/60 bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
+                            className="h-[32px] flex-1 rounded border border-zinc-600/60 bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
                             placeholder={tr("Account ID")}
                             autoFocus
                         />
@@ -347,12 +347,12 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
                     {/* Password Field */}
                     <div className="flex items-center gap-3 mb-3">
-                        <label className="w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Password:")}</label>
+                        <label className="w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Password:")}</label>
                         <input
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="h-[28px] flex-1 rounded border border-[#555] bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
+                            className="h-[32px] flex-1 rounded border border-[#555] bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
                             placeholder={tr("Password")}
                             onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
                         />
@@ -360,9 +360,9 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
                     {/* Server / Broker Dropdown */}
                     <div className="flex items-start gap-3 mb-4">
-                        <label className="mt-1.5 w-20 flex-shrink-0 text-right text-[14px] font-normal text-zinc-400">{tr("Server:")}</label>
+                        <label className="mt-1.5 w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Server:")}</label>
                         <div className="flex-1 relative" ref={dropdownRef}>
-                            <div className="relative flex h-[28px] w-full items-center rounded border border-[#555] bg-[#1a1c26] text-[14px] font-normal text-zinc-100 transition-colors focus-within:border-zinc-600">
+                            <div className="relative flex h-[32px] w-full items-center rounded border border-[#555] bg-[#1a1c26] text-[14px] font-normal text-zinc-100 transition-colors focus-within:border-zinc-600">
                                 {selectedBroker?.logo_url && (
                                     <img
                                         src={selectedBroker.logo_url}
@@ -403,7 +403,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             {dropdownOpen && (
                                 <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#1e2030] border border-zinc-600/60 rounded shadow-xl max-h-[180px] overflow-y-auto flex flex-col font-sans">
                                     {filteredBrokers.length === 0 ? (
-                                        <div className="px-3 py-3 text-[12px] font-normal text-zinc-500">{tr("No brokers found")}</div>
+                                        <div className="px-3 py-3 text-[14px] font-normal text-zinc-500">{tr("No brokers found")}</div>
                                     ) : (
                                         filteredBrokers.map(item => (
                                             <button
@@ -427,7 +427,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                                     <span className="truncate">{item.broker_name}</span>
                                                 </div>
                                                 {item.region && (
-                                                    <span className="text-[9px] text-green-400 bg-green-500/10 border border-green-500/20 px-1 py-0.5 rounded font-bold uppercase flex-shrink-0">
+                                                    <span className="text-[12px] text-green-400 bg-green-500/10 border border-green-500/20 px-1 py-0.5 rounded font-medium uppercase flex-shrink-0">
                                                         {item.region}
                                                     </span>
                                                 )}
@@ -438,7 +438,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             )}
 
                             {healthStatus === 'offline' && (
-                                <div className="mt-1.5 flex items-center gap-1 text-[12px] font-normal text-red-400">
+                                <div className="mt-1.5 flex items-center gap-1 text-[14px] font-normal text-red-400">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                                         <line x1="12" y1="9" x2="12" y2="13" />
@@ -452,7 +452,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
                     {/* Error */}
                     {error && (
-                        <div className="mb-3 rounded border border-red-500/30 bg-red-500/15 px-2 py-1.5 text-[12px] font-normal text-red-400">
+                        <div className="mb-3 rounded border border-red-500/30 bg-red-500/15 px-2 py-1.5 text-[14px] font-normal text-red-400">
                             {error}
                         </div>
                     )}
@@ -462,7 +462,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                         <button
                             type="submit"
                             disabled={loading}
-                            className="h-[30px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] font-semibold text-zinc-200 transition-colors hover:bg-[#4a4e5f] disabled:opacity-50"
+                            className="h-[32px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] leading-5 font-medium text-zinc-200 transition-colors hover:bg-[#4a4e5f] disabled:opacity-50"
                         >
                             {loading ? tr("Connecting...") : tr("OK")}
                         </button>
@@ -470,7 +470,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             type="button"
                             onClick={onClose}
                             disabled={loading}
-                            className="h-[30px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] font-normal text-zinc-200 transition-colors hover:bg-[#4a4e5f]"
+                            className="h-[32px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] leading-5 font-medium text-zinc-200 transition-colors hover:bg-[#4a4e5f]"
                         >
                             {tr("Cancel")}</button>
                     </div>

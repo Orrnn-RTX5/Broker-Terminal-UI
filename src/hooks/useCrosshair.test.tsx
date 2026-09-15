@@ -134,6 +134,7 @@ describe('useCrosshair dirty rendering', () => {
 
   afterEach(() => {
     document.documentElement.classList.remove('rtx-skin-untitled-light');
+    document.documentElement.style.removeProperty('--rtx-ui-font-size');
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     if (originalClientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', originalClientWidth);
@@ -198,7 +199,7 @@ describe('useCrosshair dirty rendering', () => {
     expect(frames.size).toBe(1);
     flushFrames();
     expect(view.getByTestId('time-label').style.transform).toBe('translate3d(10px,338px,0)');
-    expect(view.getByTestId('price-label').style.transform).toBe('translate3d(586px,30px,0)');
+    expect(view.getByTestId('price-label').style.transform).toBe('translate3d(544px,30px,0)');
     expect(offsetWidthReads).toBe(1);
 
     fireEvent(window, new Event('scroll'));
@@ -226,7 +227,7 @@ describe('useCrosshair dirty rendering', () => {
     expect(frames.size).toBe(0);
   });
 
-  it('fits larger light labels to the axes and remeasures when switching themes', () => {
+  it('fits labels to the axes in both themes and remeasures font-size changes', () => {
     document.documentElement.classList.add('rtx-skin-untitled-light');
     const fixture = createChart();
     const chartRef = { current: fixture.chart as unknown as IChartApi };
@@ -250,10 +251,20 @@ describe('useCrosshair dirty rendering', () => {
     fixture.crosshairListeners.forEach((listener) => listener());
     flushFrames();
 
-    expect(timeLabel.style.transform).toBe('translate3d(10px,278px,0)');
-    expect(priceLabel.style.transform).toBe('translate3d(446px,30px,0)');
-    expect(priceLabel.style.width).toBe('54px');
+    expect(timeLabel.style.transform).toBe('translate3d(10px,274px,0)');
+    expect(priceLabel.style.transform).toBe('translate3d(404px,27px,0)');
+    expect(priceLabel.style.width).toBe('96px');
     expect(offsetWidthReads).toBe(2);
+
+    document.documentElement.style.setProperty('--rtx-ui-font-size', '15px');
+    Object.defineProperty(timeLabel, 'offsetHeight', { configurable: true, value: 28 });
+    Object.defineProperty(priceLabel, 'offsetHeight', { configurable: true, value: 28 });
+    fixture.crosshairListeners.forEach((listener) => listener());
+    flushFrames();
+
+    expect(timeLabel.style.transform).toBe('translate3d(10px,272px,0)');
+    expect(priceLabel.style.transform).toBe('translate3d(404px,26px,0)');
+    expect(offsetWidthReads).toBe(3);
   });
 
   it('rebinds replaced charts and stops all scheduling while disabled or disposed', () => {
