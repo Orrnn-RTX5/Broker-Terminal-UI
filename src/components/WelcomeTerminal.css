@@ -2008,3 +2008,27 @@
         transition: none !important;
     }
 }
+
+.rtx-broker-option:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.rtx-broker-option:disabled:hover {
+    background: transparent;
+}
+
+.rtx-broker-option:disabled em {
+    color: #8b8b95;
+}
+
+.rtx-broker-retry {
+    margin-left: 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}

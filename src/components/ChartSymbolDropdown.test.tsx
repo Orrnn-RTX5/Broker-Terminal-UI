@@ -3,10 +3,17 @@ import '@testing-library/jest-dom';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChartSymbolDropdown, ChartSymbolTrigger } from './ChartSymbolDropdown';
+import { useDockLayoutStore } from '../store/useDockLayoutStore';
 
-afterEach(() => { cleanup(); delete window.electron; });
+const initialLayout = useDockLayoutStore.getState().layout;
+
+afterEach(() => { cleanup(); delete window.electron; useDockLayoutStore.getState().setLayout(initialLayout); });
 describe('chart header symbol dropdown', () => {
   it('identifies the originating pane even when two charts show the same symbol', () => {
+    useDockLayoutStore.getState().setLayout({ version: '1.0', floatingPanels: [], root: { id: 'root', type: 'split', ratio: 1, children: [
+      { id: 'chart-a', component: 'Chart', title: 'EURUSD,M1' },
+      { id: 'chart-b', component: 'Chart', title: 'EURUSD,M5' },
+    ] } });
     Object.defineProperty(window, 'electron', { configurable: true, value: { window: {} } });
     const request = vi.fn();
     window.addEventListener('request-chart-symbol-change', request);
@@ -16,6 +23,15 @@ describe('chart header symbol dropdown', () => {
       expect(request.mock.calls[0][0].detail.panelId).toBe('chart-b');
       expect(request.mock.calls[0][0].detail.anchor).toEqual({ left: 0, bottom: 0 });
     } finally { window.removeEventListener('request-chart-symbol-change', request); }
+  });
+  it('keeps the desktop chart legend as plain text in a single window', () => {
+    Object.defineProperty(window, 'electron', { configurable: true, value: { window: {} } });
+    useDockLayoutStore.getState().setLayout({ version: '1.0', floatingPanels: [], root: { id: 'root', type: 'root', ratio: 1, children: [
+      { id: 'chart-a', component: 'Chart', title: 'EURUSD,M1' },
+    ] } });
+    render(<ChartSymbolTrigger symbol="EURUSD" panelId="chart-a" />);
+    expect(screen.getByText('EURUSD')).toBeVisible();
+    expect(screen.queryByRole('button')).toBeNull();
   });
   it('filters the supplied broker catalog and applies keyboard selection', () => {
     const select = vi.fn(), close = vi.fn();

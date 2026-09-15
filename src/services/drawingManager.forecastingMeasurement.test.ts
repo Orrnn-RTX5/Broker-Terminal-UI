@@ -161,6 +161,119 @@ describe('DrawingManager Forecasting and Measurement lifecycle', () => {
     deleteDrawingMock.mockResolvedValue(undefined);
   });
 
+  it.each(FORECASTING_MEASUREMENT_TOOLS.filter(tool => tool.requiredPoints !== 1 && tool.group !== 'Volume-based'))(
+    '$id highlights its measured axes during preview, selection, and movement', async tool => {
+      const { manager, container } = await createHarness();
+      const priceBand = () => container.querySelector('[data-geometry-role="price-scale-range"]');
+      const timeBand = () => container.querySelector('[data-geometry-role="time-scale-range"]');
+      manager.startDrawing('measure', '#2962ff', { subtype: tool.id });
+      manager.updatePreviewPoint(120, 100, CONTEXT_ID, 10);
+      expect(priceBand()).toBeNull();
+      expect(timeBand()).toBeNull();
+      manager.addPoint(120, 100, undefined, CONTEXT_ID, 10);
+      for (const price of [140, 60]) {
+        manager.updatePreviewPoint(180, price, CONTEXT_ID, 11);
+        if (tool.id === 'date_range') expect(priceBand()).toBeNull();
+        else {
+          expect(priceBand()).toHaveAttribute('x', '460');
+          expect(priceBand()).toHaveAttribute('height', '40');
+          expect(priceBand()).toHaveAttribute('y', String(220 - Math.max(100, price)));
+          expect(priceBand()).toHaveAttribute('pointer-events', 'none');
+        }
+        if (tool.id === 'price_range') expect(timeBand()).toBeNull();
+        else expect(timeBand()).toHaveAttribute('y', '280');
+      }
+      manager.hidePreviewCursor(CONTEXT_ID);
+      expect(priceBand()).toBeNull();
+      expect(timeBand()).toBeNull();
+      manager.addPoint(180, 140, undefined, CONTEXT_ID, 11);
+      if (tool.requiredPoints === 3 || tool.id === 'ghost_feed') manager.addPoint(240, 80, undefined, CONTEXT_ID, 12);
+      if (tool.id === 'ghost_feed') manager.finishDrawing(CONTEXT_ID);
+      const drawing = manager.getDrawings(CONTEXT_ID)[0];
+      const range = tool.id === 'sector'
+        ? Math.max(...drawing.points.map(point => point.price)) - Math.min(...drawing.points.map(point => point.price))
+        : tool.id === 'ghost_feed' ? 20 : tool.requiredPoints === 3 ? 60 : 40;
+      if (tool.id !== 'date_range') expect(priceBand()).toHaveAttribute('height', String(range));
+      manager.unselectDrawing(drawing.id);
+      expect(priceBand()).toBeNull();
+      expect(timeBand()).toBeNull();
+      manager.selectDrawing(drawing.id);
+      if (tool.id !== 'date_range') {
+        const beforeY = Number(priceBand()!.getAttribute('y'));
+        const anchor = container.querySelector('[data-geometry-role="selection-anchor-1"]')!;
+        anchor.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 80, clientY: 120 }));
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 80, clientY: 190 }));
+        window.dispatchEvent(new MouseEvent('pointerup'));
+        expect(Number(priceBand()!.getAttribute('height'))).toBeGreaterThan(range);
+        expect(Number(priceBand()!.getAttribute('y'))).toBe(tool.id === 'ghost_feed' ? 140 : beforeY);
+      }
+      manager.setChart(null, null, null, 1, container);
+    },
+  );
+
+  it.each(['long_position', 'short_position'] as const)('%s highlights the actual stop-to-target range', async subtype => {
+    const { manager, container } = await createHarness();
+    const band = () => container.querySelector('[data-geometry-role="price-scale-range"]');
+    manager.startDrawing('measure', '#2962ff', { subtype });
+    manager.updatePreviewPoint(120, 100, CONTEXT_ID, 10);
+    expect(Number(band()?.getAttribute('height'))).toBeGreaterThan(0);
+    manager.addPoint(120, 100, undefined, CONTEXT_ID, 10);
+    const drawing = manager.getDrawings(CONTEXT_ID)[0];
+    manager.updateDrawingProperties(drawing.id, {
+      positionTargetPrice: subtype === 'long_position' ? 145 : 80,
+      positionStopPrice: subtype === 'long_position' ? 80 : 145,
+    });
+    expect(band()).toHaveAttribute('y', '75');
+    expect(band()).toHaveAttribute('height', '65');
+    expect(container.querySelector('[data-geometry-role="position-target-price-scale-label"]')).not.toBeNull();
+    expect(container.querySelector('[data-geometry-hit-for="price-scale-range"]')).toBeNull();
+    manager.unselectDrawing(drawing.id);
+    expect(band()).toBeNull();
+    manager.selectDrawing(drawing.id);
+    expect(band()).toHaveAttribute('height', '65');
+    manager.setChart(null, null, null, 1, container);
+  });
+
+  it.each(['fixed_range_volume_profile', 'anchored_volume_profile'] as const)(
+    '%s highlights the profile data range rather than the clicked prices', async subtype => {
+      const { manager, container } = await createHarness({ seriesData: [
+        { time: 60, open: 50, high: 500, low: 1, close: 60, volume: 100 },
+        { time: 120, open: 100, high: 110, low: 90, close: 105, volume: 50 },
+        { time: 180, open: 105, high: 130, low: 95, close: 110, volume: 70 },
+        { time: 240, open: 110, high: 120, low: 100, close: 115, volume: 20 },
+      ] });
+      manager.startDrawing('measure', '#2962ff', { subtype });
+      manager.addPoint(120, 170, undefined, CONTEXT_ID, 10);
+      if (subtype === 'fixed_range_volume_profile') {
+        manager.updatePreviewPoint(240, 160, CONTEXT_ID, 12);
+        expect(container.querySelector('[data-geometry-role="price-scale-range"]')).toHaveAttribute('height', '40');
+        manager.addPoint(240, 160, undefined, CONTEXT_ID, 12);
+      }
+      const band = () => container.querySelector('[data-geometry-role="price-scale-range"]');
+      expect(band()).toHaveAttribute('y', '90');
+      expect(band()).toHaveAttribute('height', '40');
+      expect(container.querySelector('[data-geometry-role="forecast-endpoint-1-price-scale-label-text"]')).toHaveTextContent('90.00');
+      expect(container.querySelector('[data-geometry-role="forecast-endpoint-2-price-scale-label-text"]')).toHaveTextContent('130.00');
+      const drawing = manager.getDrawings(CONTEXT_ID)[0];
+      manager.unselectDrawing(drawing.id);
+      expect(band()).toBeNull();
+      manager.selectDrawing(drawing.id);
+      expect(band()).toHaveAttribute('height', '40');
+      manager.setChart(null, null, null, 1, container);
+    },
+  );
+
+  it.each(['anchored_vwap', 'anchored_volume_profile', 'fixed_range_volume_profile'] as const)(
+    '%s does not fabricate a price interval without data', async subtype => {
+      const { manager, container } = await createHarness();
+      manager.startDrawing('measure', '#2962ff', { subtype });
+      manager.addPoint(120, 100, undefined, CONTEXT_ID, 10);
+      if (subtype === 'fixed_range_volume_profile') manager.addPoint(240, 140, undefined, CONTEXT_ID, 12);
+      expect(container.querySelector('[data-geometry-role="price-scale-range"]')).toBeNull();
+      manager.setChart(null, null, null, 1, container);
+    },
+  );
+
   it.each(FORECASTING_MEASUREMENT_TOOLS.filter(tool => tool.requiredPoints > 0))(
     '$id commits only after its catalog-defined $requiredPoints anchor(s)',
     async (tool) => {

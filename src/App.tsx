@@ -94,6 +94,7 @@ import {
 import { applyChartTimeframeCommand } from './services/chartTimeframeCommand';
 import { getDockPanelChartType } from './services/chartTypeCommand';
 import { activateChartPanel, changeChartPanelSymbol, findChartPanelById, getActiveDockChartPanel, getChartPanels, getChartPanelSymbolUpdates, requestActiveChartSymbolChange } from './services/chartPanelNavigation';
+import { hasArrangedChartWindows } from './utils/chartSymbolTabs';
 import { SymbolsDialog } from './components/SymbolsDialog';
 
 // Services
@@ -2922,6 +2923,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       store.updatePanelProps(update.id, {
         props: update.props,
         title: update.title,
+        ...(update.chartSymbolTabs ? { chartSymbolTabs: update.chartSymbolTabs } : {}),
       });
     });
 
@@ -3048,6 +3050,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   // Workspace dialog state
   const [showSaveWorkspaceDialog, setShowSaveWorkspaceDialog] = useState(false);
   const [chartSymbolPicker, setChartSymbolPicker] = useState<{ panelId: string; sessionScope: string; anchor?: ChartSymbolAnchor } | null>(null);
+  useEffect(() => {
+    if (chartSymbolPicker && !hasArrangedChartWindows(dockLayout)) setChartSymbolPicker(null);
+  }, [chartSymbolPicker, dockLayout]);
   const chartPickerInstruments = useMemo(() => chartEligibleSymbolNames.map(symbol => (
     allSymbols.find(instrument => normalizeSymbolName(typeof instrument === 'object' && instrument ? (instrument as any).symbol ?? (instrument as any).name : instrument) === symbol)
       ?? { symbol }
@@ -3241,6 +3246,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     const handleAddChartPanel = () => addChart();
 
     const handleRequestChartSymbolChange = (event: CustomEvent<{ panelId?: unknown; anchor?: ChartSymbolAnchor }>) => {
+      if (!hasArrangedChartWindows(useDockLayoutStore.getState().layout)) return;
       const panel = findChartPanelById(useDockLayoutStore.getState().layout, event.detail?.panelId);
       if (!panel) return;
       activateChartPanel(panel.id);

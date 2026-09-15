@@ -15,7 +15,7 @@ import {
     resolveBrokerBackendUrl,
     resolveBrokerExtApiUrl,
 } from '../config/backendTarget.js';
-import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
+import { extractBrokerDiscoveryList, filterBrokerDirectory, firstSelectableBroker, getDirectoryBrokerServerUrl, isDirectoryBrokerSelectable, isBrokerSuspended } from '../services/brokerDiscovery';
 import { resolveLoginHeroAsset, toPublicAssetPath, type LoginHeroAsset } from './welcomeHeroAssets';
 import { BrokerLogoImage, buildBrokerDirectoryLogoUrl } from './BrokerLogoImage';
 import {
@@ -93,15 +93,17 @@ let brokerDirectoryPromise: Promise<BrokerServerItem[]> | null = null;
 
 const loadBrokerDirectory = (): Promise<BrokerServerItem[]> => {
     if (!brokerDirectoryPromise) {
-        brokerDirectoryPromise = fetch(brokerServersDiscoveryUrl)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10_000);
+        brokerDirectoryPromise = fetch(brokerServersDiscoveryUrl, { signal: controller.signal, cache: 'no-store' })
             .then((response) => {
                 if (!response.ok) throw new Error(`Broker discovery failed (${response.status})`);
                 return response.json();
             })
             .then((payload: unknown) => extractBrokerDiscoveryList(payload) as BrokerServerItem[])
-            .catch((error) => {
+            .finally(() => {
+                clearTimeout(timeoutId);
                 brokerDirectoryPromise = null;
-                throw error;
             });
     }
     return brokerDirectoryPromise;
@@ -386,6 +388,7 @@ export const pickDiscoveryBroker = (
     } = {}
 ): BrokerServerItem | undefined => {
     const isDesktop = Boolean(options.isDesktopBrokerSelection);
+    if (isDesktop) brokers = brokers.filter(isDirectoryBrokerSelectable);
     const runtimeBroker = isDesktop ? undefined : findBrokerForWebRuntime(brokers);
     const savedBroker = brokers.find(broker => brokerMatchesLookup(broker, options.savedBrokerId));
     const authenticatedSavedBroker = savedBroker
@@ -399,9 +402,14 @@ export const pickDiscoveryBroker = (
     // A browser deployment owns its broker. A login saved on this same local
     // origin must not replace a newly configured broker when discovery loads.
     // Desktop deliberately keeps its user-selected, authenticated broker.
+    // Suspended brokers stay visible in the directory but are never auto-picked.
+    const activeAuthenticatedSavedBroker = isBrokerSuspended(authenticatedSavedBroker) ? undefined : authenticatedSavedBroker;
+    const activeConfiguredBroker = isBrokerSuspended(configuredBroker) ? undefined : configuredBroker;
+    const activeRuntimeBroker = isBrokerSuspended(runtimeBroker) ? undefined : runtimeBroker;
+    const selectableBroker = firstSelectableBroker(brokers);
     return isDesktop
-        ? authenticatedSavedBroker || configuredBroker || brokers[0] || configuredRuntimeBroker
-        : configuredBroker || configuredRuntimeBroker || runtimeBroker || authenticatedSavedBroker || brokers[0];
+        ? activeAuthenticatedSavedBroker || activeConfiguredBroker || selectableBroker
+        : activeConfiguredBroker || configuredRuntimeBroker || activeRuntimeBroker || activeAuthenticatedSavedBroker || selectableBroker;
 };
 
 const isAbortError = (err: unknown): boolean =>
@@ -454,19 +462,23 @@ export function WelcomeTerminal({
         };
     });
     const [brokerList, setBrokerList] = useState<BrokerServerItem[]>(() => (
-        configuredRuntimeBroker ? [configuredRuntimeBroker] : []
+        !isDesktopBrokerSelection && configuredRuntimeBroker ? [configuredRuntimeBroker] : []
     ));
-    const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(configuredRuntimeBroker);
-    const [searchQuery, setSearchQuery] = useState(configuredRuntimeBroker?.broker_name || '');
+    const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(isDesktopBrokerSelection ? null : configuredRuntimeBroker);
+    const selectedBrokerRef = useRef(selectedBroker);
+    const [searchQuery, setSearchQuery] = useState(isDesktopBrokerSelection ? '' : configuredRuntimeBroker?.broker_name || '');
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(() => {
-        if (!configuredRuntimeBroker) return null;
+        if (isDesktopBrokerSelection || !configuredRuntimeBroker) return null;
         return hasFreshBrokerHealth(configuredRuntimeBroker.broker_id) ? 'online' : 'checking';
     });
     const [brokerListStatus, setBrokerListStatus] = useState<'loading' | 'ready' | 'error'>(() => (
-        configuredRuntimeBroker ? 'ready' : 'loading'
+        !isDesktopBrokerSelection && configuredRuntimeBroker ? 'ready' : 'loading'
     ));
+    const [directoryAttempt, setDirectoryAttempt] = useState(0);
     const healthAbortRef = useRef<AbortController | null>(null);
+    const verifiedBrokerTargetRef = useRef('');
+    const submittingRef = useRef(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -545,42 +557,57 @@ export function WelcomeTerminal({
         const controller = new AbortController();
         healthAbortRef.current = controller;
 
-        if (!hasFreshBrokerHealth(broker.broker_id)) {
+        verifiedBrokerTargetRef.current = '';
+        if (isDesktopBrokerSelection || !hasFreshBrokerHealth(broker.broker_id)) {
             setHealthStatus('checking');
         }
 
+        let timedOut = false;
         const timeoutId = setTimeout(() => {
+            timedOut = true;
             controller.abort();
-        }, 3000);
+        }, 8000);
 
         try {
             const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
-            const response = await fetch(toLocalDevProxyUrl(`${cleanUrl}/api/v2/time`), { signal: controller.signal });
-            clearTimeout(timeoutId);
+            const healthPath = isDesktopBrokerSelection ? '/health' : '/api/v2/time';
+            const response = await fetch(toLocalDevProxyUrl(`${cleanUrl}${healthPath}`), { signal: controller.signal, cache: 'no-store' });
+            if (healthAbortRef.current !== controller || controller.signal.aborted) return;
             setHealthStatus(response.ok ? 'online' : 'offline');
-            if (response.ok) writeBrokerPresentationCache(broker, Date.now());
+            if (response.ok) {
+                verifiedBrokerTargetRef.current = `${broker.broker_id}|${cleanUrl}`;
+                writeBrokerPresentationCache(broker, Date.now());
+            }
         } catch (err: unknown) {
-            clearTimeout(timeoutId);
-            if (!isAbortError(err)) {
+            if (healthAbortRef.current === controller && (timedOut || !isAbortError(err))) {
                 setHealthStatus('offline');
             }
+        } finally {
+            clearTimeout(timeoutId);
         }
-    }, []);
+    }, [isDesktopBrokerSelection]);
 
     const applySelectedBroker = useCallback((broker: BrokerServerItem) => {
         const normalizedBroker = normalizeBrokerInfoForTarget(broker) as BrokerServerItem;
-        setSelectedBroker({
+        const serverUrl = isDesktopBrokerSelection ? getDirectoryBrokerServerUrl(broker) : resolveBrokerBackendUrl(normalizedBroker);
+        const nextBroker = {
             ...broker,
             ...normalizedBroker,
-            server_url: resolveBrokerBackendUrl(normalizedBroker),
-        });
+            server_url: serverUrl,
+            ...(isDesktopBrokerSelection ? { backend_url: serverUrl, market_api_url: serverUrl } : {}),
+        };
+        if (isDesktopBrokerSelection && (selectedBrokerRef.current?.broker_id !== broker.broker_id || selectedBrokerRef.current?.server_url !== serverUrl)) {
+            setPassword('');
+        }
+        selectedBrokerRef.current = nextBroker;
+        setSelectedBroker(nextBroker);
         setSearchQuery(broker.broker_name);
         writeBrokerPresentationCache(broker);
-        runHealthCheck(resolveBrokerExtApiUrl(normalizedBroker), normalizedBroker);
-    }, [runHealthCheck]);
+        void runHealthCheck(isDesktopBrokerSelection ? serverUrl : resolveBrokerExtApiUrl(normalizedBroker), nextBroker);
+    }, [isDesktopBrokerSelection, runHealthCheck]);
 
     const handleSelectBroker = (broker: BrokerServerItem) => {
-        if (!isDesktopBrokerSelection) return;
+        if (!isDesktopBrokerSelection || submittingRef.current || !isDirectoryBrokerSelectable(broker)) return;
         applySelectedBroker(broker);
         setError(null);
         setDropdownOpen(false);
@@ -588,7 +615,7 @@ export function WelcomeTerminal({
 
     useEffect(() => {
         let isMounted = true;
-        if (!configuredRuntimeBroker) setBrokerListStatus('loading');
+        if (isDesktopBrokerSelection || !configuredRuntimeBroker) setBrokerListStatus('loading');
 
         loadBrokerDirectory()
             .then((data) => {
@@ -605,6 +632,12 @@ export function WelcomeTerminal({
 
                 if (selectedDiscoveryBroker) {
                     applySelectedBroker(selectedDiscoveryBroker);
+                } else if (isDesktopBrokerSelection) {
+                    selectedBrokerRef.current = null;
+                    setSelectedBroker(null);
+                    setSearchQuery('');
+                    setHealthStatus(null);
+                    verifiedBrokerTargetRef.current = '';
                 }
             })
             .catch(err => {
@@ -617,7 +650,7 @@ export function WelcomeTerminal({
         return () => {
             isMounted = false;
         };
-    }, [applySelectedBroker, configuredRuntimeBroker, isDesktopBrokerSelection]);
+    }, [applySelectedBroker, configuredRuntimeBroker, isDesktopBrokerSelection, directoryAttempt]);
 
     useEffect(() => {
         if (!dropdownOpen) return;
@@ -636,6 +669,8 @@ export function WelcomeTerminal({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (submittingRef.current) return;
+        submittingRef.current = true;
         beginLoginPerformanceMeasurement();
         setLoading(true);
         setError(null);
@@ -646,9 +681,19 @@ export function WelcomeTerminal({
                 throw new Error('Please select a broker server.');
             }
 
+            if (isDesktopBrokerSelection && (
+                brokerListStatus !== 'ready'
+                || searchQuery !== selectedBroker.broker_name
+                || !isDirectoryBrokerSelectable(selectedBroker)
+                || !brokerList.some(broker => broker.broker_id === selectedBroker.broker_id && getDirectoryBrokerServerUrl(broker) === selectedBroker.server_url && isDirectoryBrokerSelectable(broker))
+                || verifiedBrokerTargetRef.current !== `${selectedBroker.broker_id}|${selectedBroker.server_url}`
+            )) {
+                throw new Error('Select an available broker and wait for the server check before logging in.');
+            }
+
             const submitBroker = normalizeBrokerInfoForTarget(selectedBroker) as BrokerServerItem;
-            const brokerServerUrl = resolveBrokerBackendUrl(submitBroker);
-            const brokerExtApiUrl = resolveBrokerExtApiUrl(submitBroker);
+            const brokerServerUrl = isDesktopBrokerSelection ? selectedBroker.server_url! : resolveBrokerBackendUrl(submitBroker);
+            const brokerExtApiUrl = isDesktopBrokerSelection ? brokerServerUrl : resolveBrokerExtApiUrl(submitBroker);
             const {
                 authV2Api,
                 persistBrokerSessionDiscovery,
@@ -686,9 +731,10 @@ export function WelcomeTerminal({
                 ...data,
                 access_token: token,
                 broker_id: data.broker_id || submitBroker.broker_id,
-                backend_url: data.backend_url || brokerServerUrl,
-                market_api_url: data.market_api_url || brokerExtApiUrl,
-                server_url: data.server_url || data.broker_server || brokerServerUrl,
+                broker_name: submitBroker.broker_name,
+                backend_url: isDesktopBrokerSelection ? brokerServerUrl : data.backend_url || brokerServerUrl,
+                market_api_url: isDesktopBrokerSelection ? brokerExtApiUrl : data.market_api_url || brokerExtApiUrl,
+                server_url: isDesktopBrokerSelection ? brokerServerUrl : data.server_url || data.broker_server || brokerServerUrl,
                 ws_url: data.ws_url || submitBroker.ws_url,
                 feed_url: data.feed_url || submitBroker.feed_url || submitBroker.feed_ws_url,
                 feed_ws_url: data.feed_ws_url || submitBroker.feed_ws_url,
@@ -761,11 +807,15 @@ export function WelcomeTerminal({
             }
             setError(errorMessage);
         } finally {
+            submittingRef.current = false;
             setLoading(false);
         }
     };
 
     const selectedBrokerName = selectedBroker?.broker_name || 'Select broker';
+    const desktopLoginReady = brokerListStatus === 'ready' && selectedBroker && healthStatus === 'online'
+        && searchQuery === selectedBroker.broker_name
+        && verifiedBrokerTargetRef.current === `${selectedBroker.broker_id}|${selectedBroker.server_url}`;
     const healthLabel =
         healthStatus === 'online' ? 'Online'
             : healthStatus === 'checking' ? 'Checking'
@@ -778,13 +828,7 @@ export function WelcomeTerminal({
             : healthStatus === 'checking' ? '#f59e0b'
                 : healthStatus === 'offline' ? '#ef4444'
                     : '#71717a';
-    const filteredBrokers = brokerList.filter(broker => {
-        const query = searchQuery.trim().toLowerCase();
-        if (!query) return true;
-        return String(broker.broker_name || '').toLowerCase().includes(query)
-            || String(broker.broker_id || '').toLowerCase().includes(query)
-            || String(broker.region || '').toLowerCase().includes(query);
-    });
+    const filteredBrokers = filterBrokerDirectory(brokerList, searchQuery, selectedBroker);
     const loginHeroAsset = resolveLoginHeroAsset(selectedBroker);
     const isAchieverLoginTheme = loginHeroAsset.theme === 'achiever';
     const loginOverlayClassName = isAchieverLoginTheme
@@ -954,6 +998,7 @@ export function WelcomeTerminal({
                                             autoFocus
                                             autoComplete="username"
                                             value={username}
+                                            disabled={loading || (isDesktopBrokerSelection && !desktopLoginReady)}
                                             onChange={e => setUsername(e.target.value)}
                                             style={inputStyle}
                                             onFocus={e => {
@@ -984,6 +1029,7 @@ export function WelcomeTerminal({
                                             required
                                             autoComplete="current-password"
                                             value={password}
+                                            disabled={loading || (isDesktopBrokerSelection && !desktopLoginReady)}
                                             onChange={e => setPassword(e.target.value)}
                                             style={inputStyle}
                                             onFocus={e => {
@@ -1035,7 +1081,9 @@ export function WelcomeTerminal({
                                             required
                                             autoComplete="organization"
                                             value={searchQuery}
+                                            disabled={loading}
                                             readOnly={!isDesktopBrokerSelection}
+                                            role={isDesktopBrokerSelection ? 'combobox' : undefined}
                                             aria-readonly={!isDesktopBrokerSelection}
                                             aria-haspopup={isDesktopBrokerSelection ? 'listbox' : undefined}
                                             aria-expanded={isDesktopBrokerSelection ? dropdownOpen : undefined}
@@ -1049,6 +1097,9 @@ export function WelcomeTerminal({
                                             onFocus={() => {
                                                 if (isDesktopBrokerSelection) setDropdownOpen(true);
                                             }}
+                                            onClick={() => {
+                                                if (isDesktopBrokerSelection) setDropdownOpen(true);
+                                            }}
                                             onKeyDown={e => {
                                                 if (!isDesktopBrokerSelection) return;
                                                 if (e.key === 'Escape') {
@@ -1058,9 +1109,11 @@ export function WelcomeTerminal({
                                                     }
                                                     return;
                                                 }
-                                                if (e.key === 'Enter' && dropdownOpen && filteredBrokers[0]) {
+                                                if (e.key === 'Enter' && dropdownOpen) {
                                                     e.preventDefault();
-                                                    handleSelectBroker(filteredBrokers[0]);
+                                                    const selectableBroker = filteredBrokers.find(isDirectoryBrokerSelectable);
+                                                    if (!selectableBroker) return;
+                                                    handleSelectBroker(selectableBroker);
                                                 }
                                             }}
                                             style={{
@@ -1083,40 +1136,60 @@ export function WelcomeTerminal({
                                         </div>
                                         {isDesktopBrokerSelection && dropdownOpen && (
                                             <div id="rtxBrokerServerMenu" className="rtx-broker-menu" role="listbox">
-                                                {filteredBrokers.length === 0 ? (
-                                                    <div className="rtx-broker-empty">{tr("No brokers found")}</div>
+                                                {brokerListStatus !== 'ready' || filteredBrokers.length === 0 ? (
+                                                    <div className="rtx-broker-empty">{tr(brokerListStatus === 'loading' ? 'Loading broker servers...' : brokerListStatus === 'error' ? 'Broker list unavailable' : 'No brokers found')}</div>
                                                 ) : (
-                                                    filteredBrokers.map(item => (
-                                                        <button
-                                                            key={item.broker_id}
-                                                            type="button"
-                                                            role="option"
-                                                            aria-selected={selectedBroker?.broker_id === item.broker_id}
-                                                            onMouseDown={event => {
-                                                                event.preventDefault();
-                                                                handleSelectBroker(item);
-                                                            }}
-                                                            className={`rtx-broker-option ${selectedBroker?.broker_id === item.broker_id ? 'is-selected' : ''}`}
-                                                        >
-                                                            <span>
-                                                                <BrokerLogoImage
-                                                                    broker={item}
-                                                                    fallback={<i aria-hidden="true">B</i>}
-                                                                />
-                                                                <strong>{item.broker_name}</strong>
-                                                            </span>
-                                                            {item.region && <em>{item.region}</em>}
-                                                        </button>
-                                                    ))
+                                                    filteredBrokers.map(item => {
+                                                        const suspended = isBrokerSuspended(item);
+                                                        const unavailable = !isDirectoryBrokerSelectable(item);
+                                                        return (
+                                                            <button
+                                                                key={item.broker_id}
+                                                                type="button"
+                                                                role="option"
+                                                                aria-selected={selectedBroker?.broker_id === item.broker_id}
+                                                                aria-disabled={unavailable || undefined}
+                                                                disabled={unavailable || loading}
+                                                                title={suspended ? tr("{{value0}} is suspended", { value0: item.broker_name }) : undefined}
+                                                                onMouseDown={event => event.preventDefault()}
+                                                                onClick={() => handleSelectBroker(item)}
+                                                                className={`rtx-broker-option ${selectedBroker?.broker_id === item.broker_id ? 'is-selected' : ''}`}
+                                                            >
+                                                                <span>
+                                                                    <BrokerLogoImage
+                                                                        broker={item}
+                                                                        fallback={<i aria-hidden="true">B</i>}
+                                                                    />
+                                                                    <strong>{item.broker_name}</strong>
+                                                                </span>
+                                                                {suspended ? <em>{tr("Suspended")}</em> : unavailable ? <em>{tr("Unavailable")}</em> : item.region ? <em>{item.region}</em> : null}
+                                                            </button>
+                                                        );
+                                                    })
                                                 )}
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                {healthStatus === 'offline' && (
-                                    <div className="rtx-inline-status is-offline">
-                                        {tr("Broker temporarily unavailable")}</div>
+                                {isDesktopBrokerSelection && (brokerListStatus !== 'ready' || !selectedBroker) ? (
+                                    <div className="rtx-inline-status" role="status">
+                                        {tr(brokerListStatus === 'loading' ? 'Loading broker servers...' : brokerListStatus === 'error' ? 'Broker list unavailable. Please try again.' : 'No available broker servers.')}
+                                        {brokerListStatus !== 'loading' && (
+                                            <button type="button" className="rtx-broker-retry" onClick={() => setDirectoryAttempt(attempt => attempt + 1)}>
+                                                {tr("Retry")}
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : healthStatus === 'offline' && (
+                                    <div className="rtx-inline-status is-offline" role="status">
+                                        {tr("Broker temporarily unavailable")}
+                                        {isDesktopBrokerSelection && selectedBroker && (
+                                            <button type="button" className="rtx-broker-retry" disabled={loading} onClick={() => void runHealthCheck(selectedBroker.server_url!, selectedBroker)}>
+                                                {tr("Retry")}
+                                            </button>
+                                        )}
+                                    </div>
                                 )}
 
                                 <div className="rtx-remember-row">
@@ -1132,7 +1205,7 @@ export function WelcomeTerminal({
 
                                 <button
                                     type="submit"
-                                    disabled={loading}
+                                    disabled={loading || (isDesktopBrokerSelection && !desktopLoginReady)}
                                     aria-busy={loading}
                                     className="rtx-login-button"
                                     data-rtx-login-submit

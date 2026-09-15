@@ -14,6 +14,23 @@ afterEach(() => {
 });
 
 describe('individual chart window controls', () => {
+  it('shows symbol dropdowns only in arranged chart windows and hides them after reset', () => {
+    const manager = new DockManager();
+    manager.updatePanelProps('chart-default-container', { props: { symbol: 'XAUUSD', timeframe: 'M1' } });
+    const store = useDockLayoutStore.getState();
+    store.setLayout(manager.getLayout());
+    const view = render(<DockContainer isRoot renderPanel={() => <div />} />);
+    expect(within(view.container).queryByRole('button', { name: /^Change symbol for/ })).toBeNull();
+    act(() => { store.addChartPanel({ symbol: 'BTCUSD', timeframe: 'M5' }); });
+    expect(within(view.container).getAllByRole('button', { name: /^Change symbol for/ })).toHaveLength(2);
+    for (const mode of ['grid', 'horizontal', 'vertical', 'cascade'] as const) {
+      act(() => store.arrangeCharts(mode));
+      // Floating chart controls are rendered by FloatingPanelsLayer, tested separately.
+      if (mode !== 'cascade') expect(within(view.container).getAllByRole('button', { name: /^Change symbol for/ })).toHaveLength(2);
+    }
+    act(() => store.resetWindows());
+    expect(within(view.container).queryByRole('button', { name: /^Change symbol for/ })).toBeNull();
+  });
   it('lets six minimized columns shrink and scroll so their restore controls remain reachable', () => {
     const manager = new DockManager();
     for (let index = 1; index < MAX_CHART_PANELS; index++) manager.addChartPanel({ symbol: `TEST${index}`, timeframe: 'M1' });
@@ -83,6 +100,7 @@ describe('individual chart window controls', () => {
   it('sends the originating panel ID when its symbol selector is clicked', () => {
     const manager = new DockManager();
     manager.updatePanelProps('chart-default-container', { title: 'EURUSD.r,M30', props: { symbol: 'EURUSD.r', timeframe: 'M30' } });
+    manager.addChartPanel({ symbol: 'BTCUSD', timeframe: 'M5' });
     useDockLayoutStore.getState().setLayout(manager.getLayout());
     const request = vi.fn();
     window.addEventListener('request-chart-symbol-change', request);
@@ -91,7 +109,7 @@ describe('individual chart window controls', () => {
       fireEvent.click(within(view.container).getByRole('button', { name: 'Change symbol for EURUSD.r' }));
       expect(request).toHaveBeenCalledOnce();
       expect((request.mock.calls[0][0] as CustomEvent).detail).toEqual({ panelId: 'chart-default-container' });
-      expect(useDockLayoutStore.getState().getChartCount()).toBe(1);
+      expect(useDockLayoutStore.getState().getChartCount()).toBe(2);
     } finally {
       window.removeEventListener('request-chart-symbol-change', request);
     }

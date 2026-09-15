@@ -483,7 +483,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(paint).not.toContain('lineColor: chartSettingsRef.current.colors.bidPriceLine');
     expect(themeSyncStart).toBeGreaterThan(-1);
     expect(themeSyncEnd).toBeGreaterThan(themeSyncStart);
-    expect(themeSync).toContain('getLivePriceOverlayColors(chartColors, getLivePriceDirectionalColor())');
+    expect(themeSync).toContain('getLivePriceOverlayColors(chartColors, getLivePriceDirectionalColor(), useEnterpriseLightChartPalette)');
     expect(themeSync).toContain('livePriceLineRef.current.style.borderTopColor = overlayColors.lineColor;');
     expect(themeSync).toContain('livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;');
     expect(themeSync).toContain('livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;');

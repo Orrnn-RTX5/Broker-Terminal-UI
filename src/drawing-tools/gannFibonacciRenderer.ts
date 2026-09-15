@@ -660,8 +660,9 @@ export const renderGannFibonacciDrawing = (input: GannFibonacciRenderInput): voi
       const interval = second.x - first.x;
       [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89].forEach((level) => {
         const x = first.x + interval * level;
-        const levelColor = colorForLevel(level, input.color);
-        helpers.line(x, 0, x, input.plotHeight, `fib-time-zone-level-${level}`, levelColor, level <= 1 ? 2 : 1);
+        // Time zones use a neutral origin and the drawing color for every projection.
+        const levelColor = level === 0 ? FIB_COLORS['0'] : input.color;
+        helpers.line(x, 0, x, input.plotHeight, `fib-time-zone-level-${level}`, levelColor, input.lineWidth, input.dash);
         helpers.text(x + 3, Math.max(12, input.plotHeight - 6), String(level), `fib-time-zone-label-${level}`, levelColor);
       });
       return;

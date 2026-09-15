@@ -1,0 +1,292 @@
+{
+  "light": [
+    {
+      "items": [
+        {
+          "size": "14px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog"
+    },
+    {
+      "items": [
+        {
+          "size": "14px",
+          "weight": "500"
+        }
+      ],
+      "s": ".rtx-order-dialog__title"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__label"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__control"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__volume-input"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "500"
+        }
+      ],
+      "s": ".rtx-order-dialog__chart-symbol"
+    },
+    {
+      "items": [
+        {
+          "size": "11px",
+          "weight": "400"
+        },
+        {
+          "size": "11px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__chart-quote"
+    },
+    {
+      "items": [
+        {
+          "size": "11px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__margin"
+    },
+    {
+      "items": [
+        {
+          "size": "24px",
+          "weight": "400"
+        },
+        {
+          "size": "24px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__price"
+    },
+    {
+      "items": [
+        {
+          "size": "29px",
+          "weight": "600"
+        },
+        {
+          "size": "29px",
+          "weight": "600"
+        }
+      ],
+      "s": ".rtx-order-dialog__price strong"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "500"
+        },
+        {
+          "size": "13px",
+          "weight": "500"
+        }
+      ],
+      "s": ".rtx-order-dialog__action"
+    }
+  ],
+  "dark": [
+    {
+      "items": [
+        {
+          "size": "14px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog"
+    },
+    {
+      "items": [
+        {
+          "size": "14px",
+          "weight": "500"
+        }
+      ],
+      "s": ".rtx-order-dialog__title"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__label"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__control"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__volume-input"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "500"
+        }
+      ],
+      "s": ".rtx-order-dialog__chart-symbol"
+    },
+    {
+      "items": [
+        {
+          "size": "11px",
+          "weight": "400"
+        },
+        {
+          "size": "11px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__chart-quote"
+    },
+    {
+      "items": [
+        {
+          "size": "11px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__margin"
+    },
+    {
+      "items": [
+        {
+          "size": "24px",
+          "weight": "400"
+        },
+        {
+          "size": "24px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-order-dialog__price"
+    },
+    {
+      "items": [
+        {
+          "size": "29px",
+          "weight": "600"
+        },
+        {
+          "size": "29px",
+          "weight": "600"
+        }
+      ],
+      "s": ".rtx-order-dialog__price strong"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "500"
+        },
+        {
+          "size": "13px",
+          "weight": "500"
+        }
+      ],
+      "s": ".rtx-order-dialog__action"
+    }
+  ]
+}

@@ -313,7 +313,15 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-article
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row)[data-selected='true'],
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row)[data-selected='true']>* {
-  background: #f0f5f9 !important;
+  background: var(--rtx-light-selected) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-articles-tab, .rtx-codebase-tab, .rtx-experts-tab) {
+  --research-selected: var(--rtx-light-selected);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-articles-row, .rtx-codebase-row, .rtx-experts-row)[data-selected='true'] {
+  box-shadow: inset 2px 0 0 var(--rtx-light-accent);
 }
 
 @container (max-width: 920px) {

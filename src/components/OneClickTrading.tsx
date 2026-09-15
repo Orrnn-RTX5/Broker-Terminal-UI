@@ -19,7 +19,8 @@ import {
     type NormalizedMarketStatus,
 } from '../utils/marketStatus';
 import { getSymbolDigits } from '../utils/symbolUtils';
-import { formatOrderError } from '../utils/orderError';
+import { formatOrderError, isStaleOrderError } from '../utils/orderError';
+import { TradeUnavailableDialog } from './TradeUnavailableDialog';
 import {
     formatTradeVolume,
     isTradeVolumeDraftSyntax,
@@ -121,6 +122,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     ));
     const [flashSide, setFlashSide] = useState<'buy' | 'sell' | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
+    useEffect(() => { setBlockedMessage(null); setError(null); }, [symbol]);
     const prevBidRef = useRef<number>(0);
     const prevAskRef = useRef<number>(0);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -247,9 +250,9 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const effectiveMarketStatus = marketStatus ?? createUnavailableMarketStatus(symbol);
     const marketBlockedMessage = 'Market Closed';
     const marketOpenForTrading = !shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
-    const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice;
+    const staleQuoteMessage = tr('Cannot place this trade because the quote for {{symbol}} is stale. Please wait for a fresh quote and try again.', { symbol });
     const orderBlockedReason = !tradeAllowed
-        ? 'Live tradable quote unavailable - order not sent'
+        ? hasExecutablePrice ? staleQuoteMessage : tr('No live quote is available for {{symbol}}. Please wait for a fresh quote and try again.', { symbol })
         : !marketOpenForTrading
             ? marketBlockedMessage
             : !isVolumeValid
@@ -261,35 +264,35 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
         const intentAtMs = captureTradeOrderIntent();
         if (!tradeAllowed) {
-            setError('Trading is not enabled for this symbol');
+            setBlockedMessage(orderBlockedReason || staleQuoteMessage);
             return;
         }
         // The rendered status is already refreshed in the background. Never
         // put an HTTP market-status request in front of a one-click order;
         // the backend still performs the authoritative execution validation.
         if (!marketOpenForTrading) {
-            setError('Market Closed');
+            setBlockedMessage(tr('Cannot place this trade because the market for {{symbol}} is closed.', { symbol }));
             return;
         }
         if (!symbol.trim()) {
-            setError('Missing symbol');
+            setBlockedMessage(tr('Please select a symbol before placing a trade.'));
             return;
         }
         if (!isVolumeValid) {
-            setError('Volume must be greater than zero');
+            setBlockedMessage(tr('The volume is invalid. Check the lot size and try again.'));
             return;
         }
         if (!hasExecutablePrice) {
-            setError('Waiting for a valid bid/ask price');
+            setBlockedMessage(tr('No live quote is available for {{symbol}}. Please wait for a fresh quote and try again.', { symbol }));
             return;
         }
         if (!isAuthenticated) {
-            setError('Please sign in to place an order.');
+            setBlockedMessage(tr('Please sign in to place an order.'));
             return;
         }
         const login = getAccountLogin();
         if (!login) {
-            setError('No trading account is selected. Please sign in again.');
+            setBlockedMessage(tr('No trading account is selected. Please sign in again.'));
             return;
         }
         const orderSessionScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
@@ -338,11 +341,12 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             if (!ownsOrderSession()) return;
             console.error('[OneClick] Trade failed:', err);
             setError(formatOrderError(err));
+            if (isStaleOrderError(err)) setBlockedMessage(staleQuoteMessage);
             setTimeout(() => setError(null), 6000);
         } finally {
             setTimeout(() => setFlashSide(null), 500);
         }
-    }, [isAuthenticated, tradeAllowed, marketOpenForTrading, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick]);
+    }, [isAuthenticated, tradeAllowed, marketOpenForTrading, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick, tr, orderBlockedReason, staleQuoteMessage]);
 
     if (!visible || !symbol) return null;
 
@@ -387,10 +391,10 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         minHeight: btnHeight,
         maxHeight: btnHeight,
         border: '1px solid rgba(255,255,255,0.1)',
-        cursor: !canSubmitOrder ? 'not-allowed' : 'pointer',
+        cursor: 'pointer',
         position: 'relative',
         opacity: 1,
-        filter: canSubmitOrder ? 'none' : 'brightness(0.78) saturate(0.75)',
+        filter: 'none',
         transition: 'background 150ms ease, filter 150ms ease',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
         boxSizing: 'border-box',
@@ -405,13 +409,13 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
             ? '#ff6b6b'
             : isBuy ? '#6b9fff' : '#6bff6b';
         const restingBackground = isBuy
-            ? 'linear-gradient(180deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%)'
+            ? '#0078D4'
             : 'linear-gradient(180deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%)';
         const activeBackground = isBuy
-            ? 'linear-gradient(180deg, #1e3a8a 0%, #172554 100%)'
+            ? '#005A9E'
             : 'linear-gradient(180deg, #991b1b 0%, #7f1d1d 100%)';
         const hoverBackground = isBuy
-            ? 'linear-gradient(180deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%)'
+            ? '#026EC1'
             : 'linear-gradient(180deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%)';
         const label = isBuy ? 'BUY' : 'SELL';
 
@@ -423,7 +427,6 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 data-dir={isBuy ? askDir : bidDir}
                 data-active={flashSide === side}
                 onClick={() => placeOrder(side)}
-                disabled={!canSubmitOrder}
                 title={tr(orderBlockedReason)}
                 aria-label={tr("{{value0}} {{value1}} at {{value2}}", { value0: tr(label), value1: symbol, value2: priceText })}
                 style={{
@@ -626,6 +629,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     {tr(marketBlockedMessage || effectiveMarketStatus.label)}
                 </div>
             )}
+            {blockedMessage && <TradeUnavailableDialog message={blockedMessage} onClose={() => setBlockedMessage(null)} />}
             {error && (
                 <div style={{
                     fontSize: 10,

@@ -1,0 +1,688 @@
+{
+  "light": [
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-history-tab thead th"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-history-tab tbody td"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-history-tab tbody td span"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-history-time-btn"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "600"
+        }
+      ],
+      "s": ".rtx-dock-tab.active-tab"
+    }
+  ],
+  "dark": [
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-history-tab thead th"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-history-tab tbody td"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-history-tab tbody td span"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-history-time-btn"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "600"
+        }
+      ],
+      "s": ".rtx-dock-tab.active-tab"
+    }
+  ]
+}

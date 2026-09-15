@@ -109,6 +109,7 @@ export function useCrosshair({
     const measureTimeLabel = (label: HTMLDivElement): number => {
       const key = [
         label.textContent ?? '',
+        document.documentElement.className,
         label.style.font,
         label.style.fontFamily,
         label.style.fontSize,
@@ -197,6 +198,7 @@ export function useCrosshair({
         timeframe: latestTimeframe,
         brokerOffsetSeconds: latestOffset,
       } = optionsRef.current;
+      const lightLabels = document.documentElement.classList.contains('rtx-skin-untitled-light');
       const timeLabel = timeLabelRef.current;
       if (timeLabel) {
         const time = timeScale.coordinateToTime(rawX);
@@ -207,7 +209,8 @@ export function useCrosshair({
           if (timeLabel.textContent !== text) timeLabel.textContent = text;
           const labelWidth = measureTimeLabel(timeLabel);
           timeLabel.style.opacity = '1';
-          timeLabel.style.transform = `translate3d(${rawX - labelWidth / 2}px,${containerHeight - 22}px,0)`;
+          const labelHeight = lightLabels ? timeLabel.offsetHeight || 26 : 22;
+          timeLabel.style.transform = `translate3d(${rawX - labelWidth / 2}px,${containerHeight - labelHeight}px,0)`;
         }
       }
 
@@ -220,7 +223,10 @@ export function useCrosshair({
           const text = price.toFixed(latestDigits);
           if (priceLabel.textContent !== text) priceLabel.textContent = text;
           priceLabel.style.opacity = '1';
-          priceLabel.style.transform = `translate3d(${containerWidth - 54}px,${y - 10}px,0)`;
+          const labelWidth = lightLabels ? chart.priceScale('right').width() : 54;
+          priceLabel.style.width = `${labelWidth}px`;
+          const halfHeight = lightLabels ? (priceLabel.offsetHeight || 26) / 2 : 10;
+          priceLabel.style.transform = `translate3d(${containerWidth - labelWidth}px,${y - halfHeight}px,0)`;
         }
       }
     };

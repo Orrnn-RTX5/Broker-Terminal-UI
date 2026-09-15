@@ -75,10 +75,12 @@ export const getChartGridLineColors = ({
   background,
   grid,
   showGrid,
+  preserveConfiguredColor = false,
 }: {
   background: string;
   grid: string;
   showGrid: boolean;
+  preserveConfiguredColor?: boolean;
 }): ChartGridLineColors => {
   if (!showGrid || grid.trim().toLowerCase() === 'transparent') {
     return {
@@ -86,6 +88,9 @@ export const getChartGridLineColors = ({
       horizontal: TRANSPARENT_GRID_LINE,
     };
   }
+
+  // The reference light theme uses the same configured opacity on both axes.
+  if (preserveConfiguredColor) return { vertical: grid, horizontal: grid };
 
   const parsedBackground = parseChartColor(background) ?? { r: 0, g: 0, b: 0, alpha: 1 };
   const backgroundLuminance = getChartColorLuminance(parsedBackground);
@@ -116,4 +121,3 @@ export const getChartGridLineColors = ({
     horizontal: formatGridLineColor(resolvedGrid, horizontalAlpha),
   };
 };
-

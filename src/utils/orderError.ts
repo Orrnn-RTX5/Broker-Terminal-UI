@@ -77,6 +77,13 @@ const mapKnownTradingCode = (code: string): string => {
   return mapped === normalized ? '' : mapped;
 };
 
+export const isStaleOrderError = (err: unknown): boolean => {
+  const code = extractErrorCode(err);
+  if (code === 'QUOTE_STALE' || code === 'STALE_QUOTE' || code === 'SYMBOL_STALE') return true;
+  const message = isRecord(err) ? readString(err.backendMessage) || readString(err.message) : readString(err);
+  return /\b(?:quote|symbol)\b[^.]*\bstale\b|\bstale[ _-]+quote\b/i.test(message);
+};
+
 const readStructuredBackendError = (
   err: unknown,
 ): { code: string; message: string } | null => {

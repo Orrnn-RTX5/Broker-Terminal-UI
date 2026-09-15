@@ -23,8 +23,8 @@ describe('TradingChart trade-history presentation contract', () => {
     expect(chartSource).toContain("createTradeMarker(exitSide, trade.exitPrice, trade.exitTime, closePriceLabel, getHistoryExitColor(trade.side), 'history', 1, undefined, 'close', trade.side, trade.exitExecutionTime)");
     expect(chartSource).toContain("const TRADE_HISTORY_PROFIT_COLOR = '#00e6a8';");
     expect(chartSource).toContain("const TRADE_HISTORY_LOSS_COLOR = '#ff5a67';");
-    expect(chartSource).toContain("const TRADE_HISTORY_LIGHT_PROFIT_COLOR = '#007a55';");
-    expect(chartSource).toContain("const TRADE_HISTORY_LIGHT_LOSS_COLOR = '#c6283d';");
+    expect(chartSource).toContain("const TRADE_HISTORY_LIGHT_PROFIT_COLOR = '#047857';");
+    expect(chartSource).toContain("const TRADE_HISTORY_LIGHT_LOSS_COLOR = '#b91c1c';");
     expect(chartSource).toContain('const entryColor = getHistoryEntryColor(trade.side);');
     expect(chartSource).toContain('const width = emphasized ? 12 : 20;');
     expect(chartSource).toContain('const height = emphasized ? 15 : 26;');

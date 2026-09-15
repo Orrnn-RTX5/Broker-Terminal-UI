@@ -1,0 +1,57 @@
+[
+  {
+    "file": "000-tool-active.png",
+    "time": 1789206932440,
+    "label": "tool-active"
+  },
+  {
+    "file": "001-cursor.png",
+    "time": 1789206944753,
+    "label": "cursor"
+  },
+  {
+    "file": "002-first-anchor.png",
+    "time": 1789206945231,
+    "label": "first-anchor"
+  },
+  {
+    "file": "003-preview.png",
+    "time": 1789206945845,
+    "label": "preview"
+  },
+  {
+    "file": "004-committed.png",
+    "time": 1789206960379,
+    "label": "committed"
+  },
+  {
+    "file": "005-deselected.png",
+    "time": 1789206961431,
+    "label": "deselected"
+  },
+  {
+    "file": "006-hover-projected-line.png",
+    "time": 1789206962246,
+    "label": "hover-projected-line"
+  },
+  {
+    "file": "007-drag-projected-line.png",
+    "time": 1789206962472,
+    "label": "drag-projected-line"
+  },
+  {
+    "file": "008-select-level-two.png",
+    "time": 1789206975692,
+    "label": "select-level-two"
+  },
+  {
+    "file": "009-move-level-two.png",
+    "time": 1789206976159,
+    "label": "move-level-two"
+  },
+  {
+    "file": "010-reverse-second-anchor.png",
+    "time": 1789206988339,
+    "label": "reverse-second-anchor"
+  }
+]

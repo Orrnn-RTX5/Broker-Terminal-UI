@@ -38,27 +38,27 @@
 
 html.theme-light .rtx-last-symbol-panel,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel {
-  --lst-shell: #ffffff;
-  --lst-header: #f7f8fa;
-  --lst-section: #ffffff;
-  --lst-raised: #f4f6f8;
-  --lst-field: #ffffff;
-  --lst-border: #d9dee7;
-  --lst-border-strong: #b8c1ce;
-  --lst-text: #172033;
-  --lst-text-secondary: #526075;
-  --lst-text-muted: #7a8699;
-  --lst-accent: #2563c9;
-  --lst-accent-soft: #eaf1fc;
-  --lst-buy: #1669b2;
-  --lst-buy-soft: #edf6ff;
-  --lst-sell: #c43245;
-  --lst-sell-soft: #fff1f3;
-  --lst-profit: #087f5b;
-  --lst-warning: #9a6700;
-  --lst-warning-soft: #fff8e5;
-  --lst-danger-soft: #fff1f3;
-  --lst-focus: rgba(37, 99, 201, 0.24);
+  --lst-shell: var(--rtx-light-elevated, #ffffff);
+  --lst-header: var(--rtx-light-panel-header, #f2f4f8);
+  --lst-section: var(--rtx-light-elevated, #ffffff);
+  --lst-raised: var(--rtx-light-panel-header, #f2f4f8);
+  --lst-field: var(--rtx-light-field, #f2f6fc);
+  --lst-border: var(--rtx-light-border, #e3e8f0);
+  --lst-border-strong: var(--rtx-light-border-strong, #d1d5db);
+  --lst-text: var(--rtx-light-text, #111827);
+  --lst-text-secondary: var(--rtx-light-text-secondary, #4b5563);
+  --lst-text-muted: var(--rtx-light-text-muted, #5f6b7a);
+  --lst-accent: var(--rtx-light-accent, #4338ca);
+  --lst-accent-soft: var(--rtx-light-accent-soft, #eef2ff);
+  --lst-buy: var(--rtx-light-buy-hover, #1d4ed8);
+  --lst-buy-soft: #eff6ff;
+  --lst-sell: #b91c1c;
+  --lst-sell-soft: #fef2f2;
+  --lst-profit: #047857;
+  --lst-warning: #78350f;
+  --lst-warning-soft: #fffbeb;
+  --lst-danger-soft: #fef2f2;
+  --lst-focus: var(--rtx-light-accent, #4338ca);
 }
 
 .rtx-last-symbol-panel,
@@ -79,9 +79,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel {
 
 html.theme-light .rtx-last-symbol-panel > .last-symbol-card,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel > .last-symbol-card {
-  box-shadow:
-    0 24px 60px rgba(15, 23, 42, 0.16),
-    0 4px 14px rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12) !important;
 }
 
 .rtx-last-symbol-panel.is-dragging > .last-symbol-card {
@@ -839,6 +837,83 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel > .last-sy
 
 .last-symbol-field--profit input:focus-visible {
   border-color: var(--lst-profit) !important;
+}
+
+/* Functional outlines and side-specific actions share the main light skin. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel :is(.last-symbol-stepper, .last-symbol-presets button, .last-symbol-field input) {
+  border-color: var(--rtx-light-control-border) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel :is(.last-symbol-stepper, .last-symbol-presets button, .last-symbol-field input):hover:not(:disabled) {
+  border-color: #64748b !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-presets button.is-selected,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-presets button.is-selected:hover:not(:disabled) {
+  background: var(--lst-accent-soft);
+  border-color: var(--lst-accent) !important;
+  color: var(--lst-accent);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-stepper:focus-within {
+  border-color: var(--lst-accent) !important;
+  outline: 2px solid var(--lst-accent);
+  outline-offset: 2px;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-trade-button:not(:disabled) {
+  color: #ffffff;
+  filter: none;
+  box-shadow: none;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-trade-button--buy:not(:disabled) {
+  background: var(--rtx-light-buy);
+  border-color: var(--rtx-light-buy);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-trade-button--sell:not(:disabled) {
+  background: var(--rtx-light-sell);
+  border-color: var(--rtx-light-sell);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-trade-button--buy:hover:not(:disabled) {
+  background: var(--rtx-light-buy-hover);
+  border-color: var(--rtx-light-buy-hover);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-trade-button--sell:hover:not(:disabled) {
+  background: var(--rtx-light-sell-hover);
+  border-color: var(--rtx-light-sell-hover);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-trade-button--buy:active:not(:disabled) {
+  background: var(--rtx-light-buy-pressed);
+  border-color: var(--rtx-light-buy-pressed);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-trade-button--sell:active:not(:disabled) {
+  background: var(--rtx-light-sell-pressed);
+  border-color: var(--rtx-light-sell-pressed);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel :is(button, input):focus-visible,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-toggle input:focus-visible + span {
+  outline: 2px solid var(--lst-focus) !important;
+  outline-offset: 2px;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-field input:focus-visible {
+  border-color: var(--lst-accent) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-toggle > span {
+  background: var(--rtx-light-control-border);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-last-symbol-panel .last-symbol-toggle input:checked + span {
+  background: var(--lst-accent);
 }
 
 @media (max-width: 340px) {

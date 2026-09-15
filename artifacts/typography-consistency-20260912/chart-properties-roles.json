@@ -1,0 +1,226 @@
+[
+  {
+    "class": "rtx-cp-title text-xs font-medium text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "16px",
+    "text": "Properties of BTCUSD,M5",
+    "weight": "600"
+  },
+  {
+    "class": "text-xs font-serif",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "?",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-preview-text absolute top-1 left-1 text-[10px] text-zinc-400 font-mono z-10 bg-black/60 px-1",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "BTCUSD,M5: Demo Asset",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-tab px-1 py-0.5 text-xs transition-colors rtx-cp-tab-active text-blue-400 border-b-2 border-blue-400",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Common",
+    "weight": "500"
+  },
+  {
+    "class": "rtx-cp-tab px-1 py-0.5 text-xs transition-colors text-[#ccc] hover:text-white",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Show",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-tab px-1 py-0.5 text-xs transition-colors text-[#ccc] hover:text-white",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Colors",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-radio accent-blue-500 bg-[#2b2b2b]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-radio-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Bar chart",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-radio accent-blue-500 bg-[#2b2b2b]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-radio-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Candlesticks",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-radio accent-blue-500 bg-[#2b2b2b]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-radio-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Line chart",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-radio accent-blue-500 bg-[#2b2b2b]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-radio-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Area chart",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Chart on foreground",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Chart shift",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Chart auto scroll",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-legend absolute -top-[7px] left-3 bg-[#1e1e1e] px-1 text-[11px] font-medium text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Scale",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Scale fix one to one",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox accent-blue-500 bg-[#2b2b2b] border-[#444]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-checkbox-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Scale fix",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-input w-[80px] bg-[#2b2b2b] border border-[#444] rounded-sm px-1.5 py-[1px] text-[12px] text-[#ccc] focus:outline-none focus:border-blue-500 transition-colors",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Fixed maximum",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-input w-[80px] bg-[#2b2b2b] border border-[#444] rounded-sm px-1.5 py-[1px] text-[12px] text-[#ccc] focus:outline-none focus:border-blue-500 transition-colors",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-label text-[12px] text-[#ccc]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Fixed minimum",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-btn px-4 py-1 text-xs bg-[#2b2b2b] hover:bg-rose-500/20 border border-[#444] hover:border-rose-500/50 text-[#ccc] hover:text-rose-400 rounded-sm transition-colors",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Reset to Defaults",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-btn px-6 py-1 text-xs bg-[#2b2b2b] hover:bg-[#333] bg-opacity-80 border border-[#444] hover:border-[#666] text-[#ccc] hover:text-white rounded-sm transition-colors",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "Cancel",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-cp-btn rtx-cp-btn-primary px-7 py-1 text-xs bg-[#2b2b2b] hover:bg-[#333] bg-opacity-80 border border-[#444] hover:border-[#666] text-[#ccc] hover:text-white rounded-sm transition-colors",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "OK",
+    "weight": "500"
+  }
+]

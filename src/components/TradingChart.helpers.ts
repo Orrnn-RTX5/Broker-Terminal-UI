@@ -205,11 +205,23 @@ const getReadableBadgeTextColor = (background: string): '#000000' | '#ffffff' =>
 export const getLivePriceOverlayColors = (
   colors: Pick<ChartProperties['colors'], 'background' | 'foreground'>,
   preferredLineColor?: string,
+  useEnterpriseLightPalette = false,
 ): LivePriceOverlayColors => {
   const background = normalizeColorCandidate(colors.background) ?? LIVE_PRICE_FALLBACK_DARK;
+  const preferred = normalizeColorCandidate(preferredLineColor);
+  // Price labels carry small text: keep their fills distinct from candle marks.
+  // Only render-time light defaults opt in; saved custom and dark palettes keep
+  // the existing contrast-aware treatment below.
+  if (useEnterpriseLightPalette && preferred) {
+    const badgeBackground = preferred.toLowerCase() === '#059669'
+      ? '#047857'
+      : preferred.toLowerCase() === '#dc2626' ? '#b91c1c' : null;
+    if (badgeBackground) {
+      return { lineColor: preferred, badgeBackground, badgeTextColor: '#ffffff' };
+    }
+  }
   // Keep the live series hue on light charts instead of falling back to a gray
   // badge. Darken saturated colors just enough for small white price text.
-  const preferred = normalizeColorCandidate(preferredLineColor);
   const hex = preferred?.match(/^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
   if ((getColorLuminance(background) ?? 0) > 0.45 && hex) {
     const channels = hex.slice(1).map(channel => parseInt(channel, 16));

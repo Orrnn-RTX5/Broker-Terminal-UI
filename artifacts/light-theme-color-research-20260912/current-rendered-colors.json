@@ -1,0 +1,274 @@
+{
+  "elements": [
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgba(0, 0, 0, 0)",
+      "fontSize": "13px",
+      "foreground": "rgb(36, 36, 36)",
+      "role": "rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-normal font-segoe"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgba(0, 0, 0, 0)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-toolbar-action rtx-toolbar-action--last-symbol text-[13px] font-normal font-segoe"
+    },
+    {
+      "background": "rgb(247, 247, 247)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222)",
+      "fontSize": "14px",
+      "foreground": "rgb(36, 36, 36)",
+      "role": "rtx-market-watch flex-1 min-h-0 min-w-0 w-full h-full"
+    },
+    {
+      "background": "rgb(240, 240, 240)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222)",
+      "fontSize": "12px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__column-heading rtx-market-watch__column-heading--symbol"
+    },
+    {
+      "background": "rgb(240, 240, 240)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222)",
+      "fontSize": "12px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__column-heading"
+    },
+    {
+      "background": "rgb(240, 240, 240)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222)",
+      "fontSize": "12px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__column-heading"
+    },
+    {
+      "background": "rgb(240, 240, 240)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222)",
+      "fontSize": "12px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__column-heading"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--bid"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--ask"
+    },
+    {
+      "background": "rgb(227, 227, 227)",
+      "backgroundImage": "none",
+      "border": "rgb(229, 229, 229)",
+      "fontSize": "14px",
+      "foreground": "rgb(36, 36, 36)",
+      "role": "rtx-market-watch__row rtx-market-watch__row--selected"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(11, 108, 240)",
+      "fontSize": "13px",
+      "foreground": "rgb(11, 108, 240)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--bid rtx-market-watch__price--up"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(11, 108, 240)",
+      "fontSize": "13px",
+      "foreground": "rgb(11, 108, 240)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--ask rtx-market-watch__price--up"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--bid"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--ask"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--bid"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--ask"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--bid"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--ask"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--bid"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--ask"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--bid"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(69, 69, 69)",
+      "fontSize": "13px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "rtx-market-watch__price rtx-market-watch__price--ask"
+    },
+    {
+      "background": "rgb(240, 240, 240)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222)",
+      "fontSize": "14px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "dock-panel__header flex items-center h-[30px] px-1.5 select-none flex-shrink-0 cursor-default dock-panel__header--active bg-[#202126] border-b border-[#34363d]"
+    },
+    {
+      "background": "rgb(240, 240, 240)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222)",
+      "fontSize": "14px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "dock-panel__header flex items-center h-[30px] px-1.5 select-none flex-shrink-0 cursor-default dock-panel__header--active bg-[#202126] border-b border-[#34363d]"
+    },
+    {
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "none",
+      "border": "rgb(71, 84, 103)",
+      "fontSize": "14px",
+      "foreground": "rgb(71, 84, 103)",
+      "role": "rtx-oct-trade-button"
+    },
+    {
+      "background": "rgb(49, 131, 255)",
+      "backgroundImage": "none",
+      "border": "rgb(255, 255, 255)",
+      "fontSize": "13px",
+      "foreground": "rgb(255, 255, 255)",
+      "role": "rtx-oct-price"
+    },
+    {
+      "background": "rgb(42, 111, 217)",
+      "backgroundImage": "none",
+      "border": "rgb(255, 255, 255)",
+      "fontSize": "12px",
+      "foreground": "rgb(255, 255, 255)",
+      "role": "rtx-oct-side-label"
+    },
+    {
+      "background": "rgb(0, 120, 212)",
+      "backgroundImage": "none",
+      "border": "rgb(71, 84, 103)",
+      "fontSize": "14px",
+      "foreground": "rgb(71, 84, 103)",
+      "role": "rtx-oct-trade-button"
+    },
+    {
+      "background": "rgb(0, 120, 212)",
+      "backgroundImage": "none",
+      "border": "rgb(255, 255, 255)",
+      "fontSize": "12px",
+      "foreground": "rgb(255, 255, 255)",
+      "role": "rtx-oct-side-label"
+    },
+    {
+      "background": "rgb(0, 120, 212)",
+      "backgroundImage": "none",
+      "border": "rgb(255, 255, 255)",
+      "fontSize": "13px",
+      "foreground": "rgb(255, 255, 255)",
+      "role": "rtx-oct-price"
+    },
+    {
+      "background": "rgb(240, 240, 240)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222)",
+      "fontSize": "14px",
+      "foreground": "rgb(69, 69, 69)",
+      "role": "dock-panel__header flex items-center h-[30px] px-1.5 select-none flex-shrink-0 cursor-default dock-panel__header--active bg-[#202126] border-b border-[#34363d]"
+    },
+    {
+      "background": "rgb(240, 240, 240)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222) rgb(229, 231, 235) rgb(229, 231, 235)",
+      "fontSize": "13px",
+      "foreground": "rgb(16, 24, 40)",
+      "role": "rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full text-[13px] font-normal text-zinc-300 tabular-nums"
+    },
+    {
+      "background": "rgb(240, 240, 240)",
+      "backgroundImage": "none",
+      "border": "rgb(222, 222, 222)",
+      "fontSize": "12px",
+      "foreground": "rgb(101, 101, 101)",
+      "role": "rtx-status-bar h-6 flex items-center justify-between border-t border-[#2a3342] bg-[#10151d] px-2 text-[13px] leading-[19.5px] font-normal font-sans text-zinc-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] select-none z-50 [.rtx-advanced-view_&]:border-zinc-400 [.rtx-advanced-view_&]:bg-[#e1e1e1] [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:shadow-none"
+    }
+  ],
+  "theme": "theme-dark rtx-advanced-font-normal rtx-advanced-view rtx-skin-untitled-light rtx-advanced-density-comfortable rtx-advanced-accent-purple rtx-advanced-surface-white",
+  "viewport": {
+    "height": 863,
+    "scale": 1,
+    "width": 1920
+  }
+}

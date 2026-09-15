@@ -1,0 +1,474 @@
+{
+  "light": [
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock th"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock th button"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock .rtx-trade-metric-label"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock .rtx-trade-footer-metric"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "600"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock .rtx-dock-tab"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "600"
+        }
+      ],
+      "s": ".rtx-bottom-dock .rtx-dock-tab.active-tab"
+    }
+  ],
+  "dark": [
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock th"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock th button"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock .rtx-trade-metric-label"
+    },
+    {
+      "items": [
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        },
+        {
+          "size": "13px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock .rtx-trade-footer-metric"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "600"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        },
+        {
+          "size": "12px",
+          "weight": "400"
+        }
+      ],
+      "s": ".rtx-bottom-dock .rtx-dock-tab"
+    },
+    {
+      "items": [
+        {
+          "size": "12px",
+          "weight": "600"
+        }
+      ],
+      "s": ".rtx-bottom-dock .rtx-dock-tab.active-tab"
+    }
+  ]
+}

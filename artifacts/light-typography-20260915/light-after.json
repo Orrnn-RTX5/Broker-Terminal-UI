@@ -1,0 +1,68 @@
+{
+  "roles": [
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "20px",
+      "s": ".rtx-toolbar-action",
+      "size": "14px",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "20px",
+      "s": ".navigator-tree-item__label",
+      "size": "14px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "20px",
+      "s": ".dock-panel__title",
+      "size": "14px",
+      "weight": "600"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "20px",
+      "s": ".rtx-market-watch__symbol",
+      "size": "14px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "20px",
+      "s": ".rtx-market-watch__price",
+      "size": "14px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18px",
+      "s": ".rtx-market-watch__column-heading",
+      "size": "13px",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "20px",
+      "s": ".rtx-chart-hud",
+      "size": "14px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "19.5px",
+      "s": ".rtx-status-bar",
+      "size": "13px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18.2px",
+      "s": ".rtx-oct-price",
+      "size": "14px",
+      "weight": "500"
+    }
+  ],
+  "root": "theme-dark rtx-advanced-view rtx-skin-untitled-light rtx-advanced-density-comfortable rtx-advanced-accent-purple rtx-advanced-surface-white rtx-advanced-font-normal"
+}

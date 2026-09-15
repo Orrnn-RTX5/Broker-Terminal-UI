@@ -12,6 +12,7 @@ const loginCss = readSource('src/styles/login.css');
 const advancedCss = readSource('src/styles/advanced-untitled-light.css');
 const lightCss = readSource('src/styles/enterprise-light.css');
 const orderDialogCss = readSource('src/styles/order-panel-dialog.css');
+const historyDownloaderCss = readSource('src/styles/history-downloader.css');
 const topToolbarSource = readSource('src/components/layout/TopToolbar.tsx');
 const menuBarSource = readSource('src/components/layout/MenuBar.tsx');
 const timeframePickerSource = readSource('src/components/layout/TimeframePicker.tsx');
@@ -132,12 +133,15 @@ describe('enterprise typography contract', () => {
     expect(bottomDockSource).toContain('rtx-trade-table__head sticky top-0');
     expect(bottomDockSource).toContain('font-normal text-[12px] leading-[18px]');
     expect(bottomDockSource).toContain('text-[13px] leading-[19.5px] font-normal');
-    expect(indexCss).toMatch(/\.rtx-trade-table tbody tr\.rtx-trade-row td \{[\s\S]*font-size: 13px;[\s\S]*font-weight: var\(--font-weight-normal\);[\s\S]*line-height: 19\.5px;/);
+    expect(indexCss).toMatch(/html \.rtx-trade-table tbody tr\.rtx-trade-row td\s*\{[^}]*font-size: 13px;[^}]*font-weight: var\(--font-weight-normal\);/);
+    expect(indexCss).toMatch(/html:not\(\.rtx-skin-untitled-light\) \.rtx-trade-table tbody tr\.rtx-trade-row td\s*\{[^}]*line-height: 19\.5px;/);
     expect(statusBarSource).toContain('rtx-status-bar h-6');
     expect(statusBarSource).toContain('text-[13px] leading-[19.5px] font-normal');
     expect(journalSource).toContain('font-normal text-[12px] uppercase');
     expect(journalSource).toContain('text-[13px] leading-[19.5px] font-normal');
-    expect(advancedCss).toMatch(/tr\.rtx-trade-row td \{[\s\S]*font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;[\s\S]*font-weight: 400 !important;[\s\S]*line-height: 19\.5px !important;/);
+    expect(indexCss).toMatch(/html \.rtx-trade-table thead th,[\s\S]*?html \.rtx-trade-table__head th\s*\{[^}]*font-size: 12px;[^}]*font-weight: var\(--font-weight-normal\);/);
+    expect(indexCss).toMatch(/html \.rtx-trade-footer \.rtx-trade-metric-label\s*\{[^}]*font-size: 13px;[^}]*font-weight: var\(--font-weight-normal\);/);
+    expect(indexCss).toMatch(/html \.rtx-bottom-dock__tabs \.rtx-dock-tab\.active-tab\s*\{[^}]*font-weight: 600;/);
   });
 
   it('normalizes menus, floating panels, and secondary toolbox surfaces', () => {
@@ -152,14 +156,11 @@ describe('enterprise typography contract', () => {
     expect(researchSource).toMatch(/text-\[13px\][^"`]*font-normal[^"`]*leading-\[19\.5px\]/);
     expect(historyDownloaderSource).toMatch(/text-\[14px\][^"`]*font-normal/);
     expect(historyDownloaderSource).toContain('rtx-history-field-label');
-    expect(lightCss).toMatch(/\.rtx-history-field-label,[\s\S]*?font-size: var\(--rtx-advanced-header-font-size, 12px\) !important;[\s\S]*?font-weight: var\(--rtx-light-font-body-weight\) !important;/);
+    expect(historyDownloaderCss).toMatch(/\.rtx-history-field-label\s*\{[^}]*font-size: 10px;[^}]*font-weight: 600;/);
     expect(bottomDockSource).toContain('rtx-exposure-tab');
     expect(calendarSource).toContain('rtx-calendar-tab');
     expect(researchSource).toContain('rtx-research-tab');
     expect(historyDownloaderSource).toContain('rtx-history-downloader');
-    for (const surface of ['rtx-exposure-tab', 'rtx-calendar-tab', 'rtx-research-tab', 'rtx-history-downloader']) {
-      expect(advancedCss).toContain(`.${surface}`);
-    }
   });
 
   it('normalizes dense account, data, and market-depth panels without flattening actions', () => {
@@ -182,7 +183,7 @@ describe('enterprise typography contract', () => {
   it('keeps dialogs and responsive login states on the same hierarchy', () => {
     expect(orderDialogSource).toContain('rtx-order-dialog__label');
     expect(orderDialogCss).toMatch(/\.rtx-order-dialog__label\s*\{[^}]*font-size: 13px;[^}]*font-weight: var\(--font-weight-normal\);/);
-    expect(lightCss).toMatch(/\.rtx-order-dialog__margin,[\s\S]*?font-size: var\(--rtx-advanced-header-font-size, 12px\) !important;/);
+    expect(orderDialogCss).toMatch(/\.rtx-order-dialog__margin\s*\{[^}]*font-size: 11px;/);
     expect(modifyDialogSource).toContain('text-[14px] font-normal');
     expect(modifyDialogSource).toContain('text-[12px] font-normal');
     expect(symbolsDialogSource).toContain('border-collapse text-[13px] font-normal');

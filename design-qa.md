@@ -1,3 +1,169 @@
+# Light History size reference - 2026-09-15
+
+At the user's request, light History now matches the compact dark reference: **13px rows and 12px column headings/filter controls** at Normal. Small uses 12px/11px; Large uses 14px/13px, matching the existing dark History size scale. Local size tokens cover nested text and preserve the approved light weight of 450. Toolbar line height follows the smaller text. This is a History-only exception to the shared light typography below.
+
+---
+
+# Shared light-theme typography - 2026-09-15
+
+The user requested the approved Navigator **16px / 450** typography throughout the light terminal. `src/styles/light-typography.css` now owns that role for body text, toolbars, menus, panel titles, tabs, Market Watch, Toolbox tables, status text, dialogs and form controls, including portal content and nested price digits. Normal uses 16px; the existing Small and Large preferences use 15px and 17px. Weight remains 450. The earlier Navigator-only exception and theme-parity decisions below are superseded.
+
+Light-only line heights, tab minimum heights, order-form dimensions and chart-header spacing accommodate the larger text. The one-click controls sit below the taller chart header. Custom crosshair labels follow their rendered height and price-axis width, and their width cache refreshes when theme/font classes change. The order-dialog canvas uses the larger light text with measured price-label space. Native chart axes use the light size token, with the existing 12px dark fallback. Lightweight Charts exposes size/family but no axis font-weight setting, so native axis weights remain library-controlled. User-authored drawing text and icon glyphs retain their own metrics.
+
+Browser review covered the populated History workspace and New Order form. All 11 measured workspace roles returned 16px / 450; the order title, labels, controls, prices and actions also returned 16px / 450. The final workspace screenshot confirms the chart-header/one-click overlap is resolved. A dark baseline was captured before edits; the final live theme-switch comparison could not finish because subsequent preview calls timed out. Dark preservation is supported by light-scoped CSS and the tested dark geometry fallback, rather than a completed final browser round trip. Small/Large and native Electron were not separately reviewed in this pass. No order was submitted.
+
+Validation: **82 tests passed across 15 files** covering styles, crosshair, order presentation/market status and chart grid. After the final spacing/cache changes, **18 tests passed across the two affected suites**, including a new larger-crosshair/theme-switch regression test. `npm run build:web` passed with the existing mixed-import and bundle-size warnings. Diff whitespace checks passed.
+
+Evidence: [workspace](artifacts/light-ui-type-20260915/workspace-light.png), [light measurements](artifacts/light-ui-type-20260915/light-after.json), [dark baseline](artifacts/light-ui-type-20260915/dark-before.json), [tests](artifacts/light-ui-type-20260915/tests.log), [final affected tests](artifacts/light-ui-type-20260915/final-tests.log), [web build](artifacts/light-ui-type-20260915/build-web.log).
+
+---
+
+# Navigator body text - 2026-09-15 (superseded)
+
+At the user's request, light-theme Navigator tree labels use an explicit 16px font size and weight 450, increased slightly from 400: Accounts, broker, account number/name, Indicators, Automated Strategies, Scripts and Services. A 1.5 line height gives the text 24px of vertical space within the existing rows. Dark labels retain their existing typography. These labels are the requested exception to the theme typography parity below. The existing enterprise-light contract permits only these label size and weight overrides.
+
+---
+
+# Dark/light font size and weight parity - 2026-09-15
+
+The user's final preference is to use the existing dark-theme font sizes and weights in light mode. This supersedes the separate light hierarchy recorded below.
+
+Removed light-only font-size/weight declarations and light-specific size tokens from `enterprise-light.css`, `advanced-untitled-light.css` and legacy `.theme-light` rules in `theme.css`. Both themes now use the existing shared S/M/L mappings and component typography. The four Trade typography rules formerly scoped to dark (headers, rows, summary labels, selected dock tabs) now share their original size/weight declarations; their dark surface rules remain scoped. Both chart branches use 12px canvas axes and 500-weight ticker labels. Light colors, glass material, font families, spacing and the complete-price overflow correction remain in place.
+
+Browser measurements found no font-size or font-weight differences across 15 workspace selector groups at Normal and Large, 11 New Order groups, application-menu items, Trade headings/summary/tabs, and History rows including 30 sampled cells and nested spans. The final dark Normal measurements match the saved pre-edit dark baseline. Restored Normal, light theme, and the original closed-toolbox layout. No order was submitted.
+
+Examples at Normal: toolbar 13px/400; Market Watch symbols/prices 14px/500; panel titles 14px/400; Trade headers 12px/400; selected bottom tabs 12px/600; New Order title 14px/500. Per-component differences follow dark mode rather than a new uniform text rule.
+
+Validation: all **66 style tests across 11 files passed**; the focused chart/root-class/theme-transition checks also passed (10 tests). `npm run build:web` passed including TypeScript, with existing mixed-import and bundle-size warnings. Diff checks passed. Native Electron and OS/browser scaling were not separately tested. A PostCSS contract guards against future light-only font size or weight overrides, including nested selectors and shorthand.
+
+Evidence: [workspace](artifacts/theme-typography-parity-20260915/workspace-light.png), [workspace comparison](artifacts/theme-typography-parity-20260915/workspace-comparison.json), [Large comparison](artifacts/theme-typography-parity-20260915/large-comparison.json), [order comparison](artifacts/theme-typography-parity-20260915/order-comparison.json), [Trade comparison](artifacts/theme-typography-parity-20260915/trade-dock-comparison.json), [History comparison](artifacts/theme-typography-parity-20260915/history-comparison.json), [menu comparison](artifacts/theme-typography-parity-20260915/menu-comparison.json), [style tests](artifacts/theme-typography-parity-20260915/style-tests.log), [web build](artifacts/theme-typography-parity-20260915/build-web.log).
+
+---
+
+# Light typography refinement - 2026-09-15 (superseded)
+
+Implemented the user's request for larger, clearer light-theme text. This supersedes the earlier light typography sizes below. The approved dark typography and existing font family are retained.
+
+## Default Normal setting
+
+| Text role | Before | Now |
+| --- | --- | --- |
+| General body | 14px / 400 | 15px / 400 |
+| Market Watch, history rows, menu items, inputs, chart HUD | 13px / 400 | 14px / 400 |
+| Main toolbar actions | 13px / 400 | 14px / 500 |
+| Panel titles and selected chart/dock tabs | 13px / 500 | 14px / 600 |
+| Column headings | 12px / 500 | 13px / 500 |
+| Form labels | 12px / 400 | 13px / 500 |
+| Supporting text and status | 12px / 400 | 13px / 400 |
+| Dialog titles | 16px / 600 | 18px / 600 |
+| Canvas price/time axes | 12px | 13px |
+
+The light-only primary/data/caption scale is Small **14/13/12**, Normal **15/14/13**, Large **16/15/14**. Dense text gets 19/20/21px line heights. Dialog titles are 17/18/19px. Light canvas axes follow 12/13/14px and respond immediately to preference changes; dark axes stay at 12px. Regular financial text retains aligned tabular numerals, while controls and headings carry the emphasis. Compact one-click labels override the component's late-loaded fixed 12px rule without changing its responsive layout. Market Watch alerts now use the caption size and the existing dark red loss token instead of pale 10px text.
+
+This is a product-specific hierarchy informed by [Fluent's 14px/20px regular body and semibold headings](https://fluent2.microsoft.design/typography) and [Carbon's 14px productive base for dense applications](https://carbondesignsystem.com/elements/typography/type-sets/). Neither specifies a universal trading-app font size or a different mandatory weight for light themes. The 13px support and 15px body roles are our readability choices for this terminal.
+
+## Layout correction
+
+Market Watch previously hid horizontal overflow while assigning fixed percentage widths to price columns. Long quotes could lose their final digits even before this font change. Light mode now uses intrinsic table columns and horizontal scrolling when the dock is narrow. Header and body columns remain one table; responsive Ask/Daily visibility still depends on the outer panel. At the tested 173px viewport, the table requires 189px, and scrolling 16px exposes all of `15146.00000`. The price span fits inside its column. Dark layout rules are unchanged.
+
+## Verification
+
+- Authenticated Chrome preview at `http://127.0.0.1:5173/`, initially 929 x 835 CSS pixels plus the final wide workspace capture: workspace, menus, New Order dialog, populated history (57 existing records), Small/Normal/Large preferences, and dark/light round trip. No order was submitted.
+- Measured dark font size, weight, family and line height match the saved baseline for all nine existing sampled roles. Normal font preference and initial closed-toolbox layout restored after review.
+- **46 tests passed** across enterprise-light, typography, top-chrome, chart-grid, root-class and theme-transition suites. `npm run build:web` passed including TypeScript; Vite was rebuilt after the final overflow-only CSS change. Existing mixed-import and chunk-size warnings remain.
+- Native Electron, OS display scaling, browser zoom and compact one-click layout were not separately exercised. Existing custom crosshair/live-price badge sizes and user-created drawing text remain separately controlled.
+
+Evidence: [workspace](artifacts/light-typography-20260915/workspace.png), [order dialog](artifacts/light-typography-20260915/order-dialog.png), [history](artifacts/light-typography-20260915/history.png), [complete quote](artifacts/light-typography-20260915/complete-price.png), [Large](artifacts/light-typography-20260915/large.png), [Small](artifacts/light-typography-20260915/small.png), [dark baseline](artifacts/light-typography-20260915/dark-before.json), [dark result](artifacts/light-typography-20260915/dark-after.json), [tests](artifacts/light-typography-20260915/tests.log), [build](artifacts/light-typography-20260915/build-web.log), [final CSS build](artifacts/light-typography-20260915/build-final-css.log).
+
+---
+
+# Light glass finish - 2026-09-15
+
+Applied the requested glassmorphism treatment to the light theme in `src/styles/surface-finish.css`: a soft white-to-cool-gray sheen and inset highlights on toolbars, dock headers, the drawing rail and status strips; 94% white frosted surfaces, 10px corners and layered neutral shadows on floating menus and dialog shells. The core palette, table and chart backgrounds, field fills, typography and trading colors retain their existing roles. This is a user-requested material change following the earlier flat-surface research.
+
+Real backdrop blur is confined to floating boxes. Toolbar and dock ancestors use a static sheen so their fixed-position dialogs remain positioned against the viewport. File menus and their application-menu ancestor use opaque material while nested chart menus are open; this protects fixed submenu placement and prevents underlying numbers from showing through without frosting. Order-dialog form and header overrides account for its stylesheet loading after the shared finish.
+
+Fresh authenticated browser verification covered the workspace, application menu, nested Trading accounts/New Chart menu, New Order dialog and a dark/light round trip. The final state is light. No orders were placed. Computed colors confirmed 18px blur on the frosted menu/order shell, opaque fields and chart/table bodies, and no new blur on the toolbar. Evidence: [workspace](artifacts/light-glass-20260915/workspace.png), [menu](artifacts/light-glass-20260915/menu.png), [nested menu](artifacts/light-glass-20260915/nested-menu.png), [New Order](artifacts/light-glass-20260915/order-dialog.png), [workspace colors](artifacts/light-glass-20260915/workspace-colors.json), [order colors](artifacts/light-glass-20260915/order-colors.json), and [dark check](artifacts/light-glass-20260915/dark-check.json).
+
+Validation: the 34 existing enterprise-light, top-chrome and typography checks passed. The web production build, including TypeScript, passed; the final CSS was also bundled after the cascade corrections. Existing mixed-import and bundle-size warnings remain. Logs: [web build](artifacts/light-glass-20260915/build-web.log), [final CSS build](artifacts/light-glass-20260915/build-web-final-css.log), [style checks](artifacts/light-glass-20260915/style-tests.log).
+
+The new material has an opaque fallback for browsers without backdrop-filter support and disables its transparency, frosting and decorative shadows for reduced-transparency, higher-contrast, forced-color and print preferences. These fallbacks were reviewed in source; OS preference emulation and native Electron appearance were not visually tested. The existing muted text is approximately 4.75:1 against 94% white over black before the additional white highlight. This bounds the new white floating material, not every inherited component color. CSS references: [backdrop-filter](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/backdrop-filter), [reduced transparency](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/prefers-reduced-transparency).
+
+---
+
+# Approved light palette - 2026-09-12 implementation
+
+Implemented the user-approved roles from [the color research](LIGHT_THEME_COLOR_RESEARCH.md) in the shared web/Electron renderer. The workspace and headers use `#F2F4F8`, data panels `#FAFAFA`, charts `#F7F7F7`, dialogs/menus `#FFFFFF`, and fields `#F2F6FC` with `#7D8796` functional borders. Primary, secondary and muted text use `#111827`, `#4B5563` and `#5F6B7A`. Indigo `#4338CA` identifies interaction and focus, with `#EEF2FF` selection.
+
+Buy/Sell actions use fixed blue/red fills (`#2563EB` / `#DC2626`) and white labels. Small profit/loss text uses darker `#047857` / `#B91C1C`; quote upticks remain blue `#1D4ED8`. Default light candles use `#059669` / `#DC2626`. Price badges use darker fills for readable white text. Chart axes, native/DOM crosshairs and trade overlays follow their light roles. Existing dark and custom chart palettes remain authoritative; typography and trading behavior are retained.
+
+The browser pass exposed an old substring selector matching every dialog child and backdrop. It now targets actual dialog containers. Specific legacy overrides were also corrected for Market Watch search, New Order fields, Chart Properties preview text, and History side/P&L cells. Solid actions have an outside keyboard-focus ring with white separation. Calendar/research selection and Historical Data controls use the same roles.
+
+Authenticated browser verification at 1920 x 863 covered the workspace, selected Market Watch row, live one-click controls, populated History, New Order, Last Symbol's idle state, Historical Data date focus/preset selection, and Chart Properties. A dark/light round trip restored dark surfaces and then the approved light palette. No orders were submitted. Evidence: [workspace](artifacts/light-theme-implementation-20260912/workspace.jpg), [New Order](artifacts/light-theme-implementation-20260912/order-dialog.jpg), [History](artifacts/light-theme-implementation-20260912/history.jpg), [Historical Data](artifacts/light-theme-implementation-20260912/historical-data.jpg), [Last Symbol](artifacts/light-theme-implementation-20260912/last-symbol.jpg), [Chart Properties](artifacts/light-theme-implementation-20260912/chart-properties.jpg), and [computed workspace colors](artifacts/light-theme-implementation-20260912/workspace-colors.json).
+
+Validation: 80 contrast pairs pass the relevant 4.5:1 small-text or 3:1 control-boundary thresholds. Chart-focused suites passed 133 tests; shared style/typography suites passed 43 tests; order/one-click/Last Symbol suites passed 47 tests (suite totals overlap). The final shared style/order rerun passed 35 tests. Both `build:web` and `build:electron` passed TypeScript and production bundling; existing mixed-import and bundle-size warnings remain. Logs: [web build](artifacts/light-theme-implementation-20260912/build-web.log), [Electron build](artifacts/light-theme-implementation-20260912/build-electron.log), [final style tests](artifacts/light-theme-implementation-20260912/final-style-tests.log).
+
+Desktop shell/menu checks passed 45 tests with two existing chart-parity fixture failures: they expect `Add chart (0/6)` in TopToolbar while mocking away MenuBar, which owns Add chart. This is unrelated to the palette. Native Electron window appearance was not visually inspected; desktop coverage consists of the shared renderer source, component checks and Electron build. No release was published.
+
+---
+
+# Light theme typography consistency - 2026-09-12 correction
+
+The previous pass left mixed font families and nested size/weight overrides in the rendered UI. The light skin now uses Segoe UI with Tahoma/Arial fallbacks for navigation, controls, tables, quote values, status text, and chart UI. Financial values retain tabular numerals. The canvas chart uses the same light-theme font family on creation and theme changes.
+
+| Role at normal text size | Size | Weight |
+| --- | --- | --- |
+| Body copy | 14px | 400 |
+| Table values and symbols, navigation, menus, fields and ordinary controls | 13px | 400 |
+| Panel titles, selected tabs and primary actions | 13px | 500 |
+| Column headings | 12px | 500 |
+| Field labels, shortcuts, status and supporting text | 12px | 400 |
+| Dialog titles | 16px | 600 |
+| New Order quote display, including fractional digits | 20px | 500 |
+
+Corrected nested table headings and price spans, Exposure's 11px/700 headings, Journal's mixed 12px/14px controls, Historical Data's 14px/600 preset buttons and 10px monospace duration badge, and New Order's mismatched whole/fractional price digits. Chart Properties tabs, radio/checkbox labels, fields, color values and buttons follow the shared roles. One-click prices and volume use 13px/500, with side labels at 12px/500. Existing S/M/L tokens still drive terminal sizes, with a 12px supporting-text minimum. Scope is the light skin.
+
+Verified computed styles in the authenticated web terminal at 1920 x 863, device scale 1, across Market Watch, Navigator, Trade, populated History rows, Exposure, Journal, Historical Data, drawing menus, New Order, and Chart Properties. Screenshots: [workspace](artifacts/typography-consistency-20260912/workspace.jpg), [History](artifacts/typography-consistency-20260912/history.jpg), [Historical Data](artifacts/typography-consistency-20260912/historical-data.jpg), [New Order](artifacts/typography-consistency-20260912/order-dialog.jpg), and [Chart Properties](artifacts/typography-consistency-20260912/chart-properties.jpg). Measured evidence: [workspace roles](artifacts/typography-consistency-20260912/workspace-roles.json), [History rows](artifacts/typography-consistency-20260912/history-roles.json), and [dialog roles](artifacts/typography-consistency-20260912/chart-properties-roles.json). Switching to dark restored the existing font families and sizes; switching back restored the new light roles. The final workspace capture is after this round trip. No orders were submitted.
+
+Validation: 41 focused tests passed across seven style/typography suites. `npm run build:web` passed TypeScript and the Vite production build. Existing bundle-size and mixed-import warnings remain. The browser measurements supplement the source contract tests, which alone did not expose the original cascade mismatches.
+
+---
+
+# Softer light palette - 2026-09-12 follow-up
+
+The user's comfort preference supersedes the literal white reference palette below. Large chart and panel surfaces now use neutral off-white `#F7F7F7`, headers `#F0F0F0`, main text `#242424`, secondary text `#454545`, and muted text `#656565`. Grid opacity is reduced from 20% to 11% on both axes. The flat finish, existing typography, and trading colors are retained.
+
+Text contrast on the main panel is 14.49:1 (primary), 8.95:1 (secondary), and 5.44:1 (muted). These roles also exceed 4.5:1 on header and selected-row backgrounds, meeting the [WCAG normal-text contrast target](https://www.w3.org/TR/WCAG22/#contrast-minimum) for these measured pairs. This is a palette/readability check, not a claim that any color scheme prevents eye fatigue or that the entire application conforms to WCAG.
+
+Verified the authenticated workspace and chart loading surface in the browser; corrected a legacy white Trade body and tab backgrounds exposed by the softer palette. Screenshot: [soft light theme](artifacts/tradingview-light-theme-20260912/rtx5-soft-light.png). Focused palette, chart settings, grid, and rendering checks: 41 tests passed.
+
+---
+
+# TradingView light palette - 2026-09-12
+
+Reference: [TradingView BTCUSD](https://in.tradingview.com/chart/P8prO2VP/?symbol=BITSTAMP%3ABTCUSD), inspected in its existing Light theme before implementation. RTX5 was already authenticated as account 200032 at `http://127.0.0.1:5173/`. No orders were submitted for this review.
+
+| Surface | Previous RTX5 | Observed TradingView / new RTX5 |
+| --- | --- | --- |
+| Chart and panels | `#F2F4F5` | `#FFFFFF` |
+| Toolbar and dock headers | `#E7EBEE` with shading | `#FFFFFF`, flat |
+| Workspace separators | `#D1D8DE` | `#EBEBEB` |
+| Field borders | `#B5C0CA` | `#DBDBDB` |
+| Main text | `#25313C` | `#0F0F0F` |
+| Supporting text | `#5D6974` | `#707070` |
+| Selected / hover fill | Blue gray | `#F2F2F2` |
+| Primary buttons | `#28547C` | `#2E2E2E` |
+| Chart grid | Unequal faint axes | `rgba(46, 46, 46, 0.2)` on both axes |
+| Default up / down candles | `#00C896` / `#FF4D4F` | `#089981` / `#F23645` |
+
+The shared light layer now supplies these colors to the toolbar, drawing rail, Market Watch, Navigator, Toolbox, menus, and dialogs. Chart colors are resolved at render time; saved dark settings, custom chart palettes, and other candle presets retain their own colors. Chart Properties uses the same grid calculation as the live chart. Financial actions and quote-direction semantics retain their existing behavior.
+
+Evidence: [TradingView workspace](artifacts/tradingview-light-theme-20260912/tradingview-light.png), [reference canvas settings](artifacts/tradingview-light-theme-20260912/tradingview-canvas-settings.png), [RTX5 before](artifacts/tradingview-light-theme-20260912/rtx5-light-before.png), [RTX5 updated workspace and menu](artifacts/tradingview-light-theme-20260912/rtx5-light-menu.png).
+
+Verification: 58 tests passed across eight focused suites; `npm run build:web` passed TypeScript and the production build. The updated workspace, white canvas, equal gray grid, and reference candle colors were visually inspected, including after a reload. Browser control later became unresponsive, preventing completion of the final dialog/hover and dark-to-light checks. The last CSS refinements remove legacy borders around menu items and purple selected-chart-tab / primary-button hover colors; these refinements are not reflected in the saved screenshot. No claim of complete visual parity is made for those remaining checks.
+
+---
+
 # Light Theme Dock Chrome Design QA
 
 ## Comparison target

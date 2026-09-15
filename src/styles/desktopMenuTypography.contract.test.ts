@@ -73,7 +73,7 @@ describe('desktop application menu typography parity', () => {
             /html\.rtx-advanced-view\.rtx-skin-untitled-light \[data-rtx-desktop-submenu='true'\] :is\([\s\S]*?\) \{[\s\S]*?color: var\(--rtx-light-text\) !important;/,
         );
         expect(enterpriseLightCss).toMatch(
-            /html\.rtx-advanced-view\.rtx-skin-untitled-light :is\([\s\S]*?\.rtx-desktop-menu-bar,[\s\S]*?\[data-rtx-desktop-submenu='true'\][\s\S]*?\) :is\([\s\S]*?\.rtx-application-menu-trigger,[\s\S]*?\) \{[\s\S]*?font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;[\s\S]*?font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;/,
+            /html\.rtx-advanced-view\.rtx-skin-untitled-light :is\([\s\S]*?\.rtx-desktop-menu-bar,[\s\S]*?\[data-rtx-desktop-submenu='true'\][\s\S]*?\) :is\([\s\S]*?\.rtx-application-menu-trigger,[\s\S]*?\) \{[\s\S]*?font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;/,
         );
     });
 

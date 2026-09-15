@@ -1,0 +1,197 @@
+{
+  "groups": {
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 12px | 400 | normal | 12px": [
+      {
+        "class": "",
+        "tag": "SPAN",
+        "text": "Desktop App"
+      },
+      {
+        "class": "font-mono text-[12px] font-normal leading-none text-zinc-500 [.rtx-advanced-view_&]:text-zinc-600",
+        "tag": "SPAN",
+        "text": "v1.0.24"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 12px | 400 | normal | 14px": [
+      {
+        "class": "",
+        "tag": "SPAN",
+        "text": "03:07"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 12px | 400 | normal | 16px": [
+      {
+        "class": "",
+        "tag": "SPAN",
+        "text": "77,248.05"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 12px | 400 | normal | 18px": [
+      {
+        "class": "text-[12px] opacity-70",
+        "tag": "SPAN",
+        "text": "M5"
+      },
+      {
+        "class": "text-[12px] opacity-70",
+        "tag": "SPAN",
+        "text": "M1"
+      },
+      {
+        "class": "",
+        "tag": "SPAN",
+        "text": "Price"
+      },
+      {
+        "class": "",
+        "tag": "SPAN",
+        "text": "77340.95"
+      },
+      {
+        "class": "",
+        "tag": "SPAN",
+        "text": "Time"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 12px | 500 | normal | 12px": [
+      {
+        "class": "rtx-oct-side-label",
+        "tag": "SPAN",
+        "text": "SELL"
+      },
+      {
+        "class": "rtx-oct-side-label",
+        "tag": "SPAN",
+        "text": "BUY"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 12px | 500 | normal | 18px": [
+      {
+        "class": "rtx-market-watch__column-heading rtx-market-watch__column-heading--symbol",
+        "tag": "TH",
+        "text": "Symbol"
+      },
+      {
+        "class": "rtx-market-watch__column-heading",
+        "tag": "TH",
+        "text": "Bid"
+      },
+      {
+        "class": "rtx-market-watch__column-heading",
+        "tag": "TH",
+        "text": "Ask"
+      },
+      {
+        "class": "rtx-market-watch__column-heading",
+        "tag": "TH",
+        "text": "Daily Change"
+      },
+      {
+        "class": "rtx-trade-marker__tooltip-header",
+        "tag": "SPAN",
+        "text": "SELL Open"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 13px | 400 | normal | 18px": [
+      {
+        "class": "rtx-toolbar-action__label",
+        "tag": "SPAN",
+        "text": "New Order"
+      },
+      {
+        "class": "rtx-toolbar-action__label",
+        "tag": "SPAN",
+        "text": "Last Symbol"
+      },
+      {
+        "class": "rtx-timeframe-option flex h-[32px] min-w-[38px] shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border px-2.5 text-[13px] font-normal font-segoe leading-none transition-colors focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 border-transparent bg-transparent text-[#667085] hover:border-[#d0d5dd] hover:bg-[#f9fafb] hover:text-[#344054]",
+        "tag": "BUTTON",
+        "text": "M1"
+      },
+      {
+        "class": "rtx-timeframe-option flex h-[32px] min-w-[38px] shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border px-2.5 text-[13px] font-normal font-segoe leading-none transition-colors focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 border-transparent bg-transparent text-[#667085] hover:border-[#d0d5dd] hover:bg-[#f9fafb] hover:text-[#344054]",
+        "tag": "BUTTON",
+        "text": "M15"
+      },
+      {
+        "class": "rtx-timeframe-option flex h-[32px] min-w-[38px] shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border px-2.5 text-[13px] font-normal font-segoe leading-none transition-colors focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 border-transparent bg-transparent text-[#667085] hover:border-[#d0d5dd] hover:bg-[#f9fafb] hover:text-[#344054]",
+        "tag": "BUTTON",
+        "text": "M30"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 13px | 400 | normal | 19.5px": [
+      {
+        "class": "",
+        "tag": "SPAN",
+        "text": "XAUUSD"
+      },
+      {
+        "class": "min-w-[88px] text-right text-[13px] font-normal text-zinc-400 whitespace-nowrap",
+        "tag": "SPAN",
+        "text": "0  records"
+      },
+      {
+        "class": "rtx-status-bar__metric truncate whitespace-nowrap font-normal text-zinc-100 [.rtx-advanced-view_&]:text-black",
+        "tag": "SPAN",
+        "text": "13:26:48 - RTX 5 Web Terminal - 200032 - Achiever Finan"
+      },
+      {
+        "class": "rtx-status-bar__metric font-normal text-[13px] leading-[19.5px]",
+        "tag": "SPAN",
+        "text": "Connected"
+      },
+      {
+        "class": "rtx-status-bar__metric text-zinc-500 font-mono text-[13px] font-normal [.rtx-advanced-view_&]:text-zinc-500",
+        "tag": "SPAN",
+        "text": "v1.0.0"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 13px | 500 | normal | 13px": [
+      {
+        "class": "rtx-oct-price",
+        "tag": "SPAN",
+        "text": "77248.05"
+      },
+      {
+        "class": "rtx-oct-price",
+        "tag": "SPAN",
+        "text": "77263.05"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 13px | 500 | normal | 18px": [
+      {
+        "class": "rtx-timeframe-option flex h-[32px] min-w-[38px] shrink-0 items-center justify-center whitespace-nowrap rounded-[3px] border px-2.5 text-[13px] font-normal font-segoe leading-none transition-colors focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-400 border-[#7E57C2] bg-[#F3E5F5] text-[#6941C6]",
+        "tag": "BUTTON",
+        "text": "M5"
+      },
+      {
+        "class": "dock-panel__title flex-1 min-w-0 flex items-center gap-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]",
+        "tag": "SPAN",
+        "text": "Navigator"
+      },
+      {
+        "class": "",
+        "tag": "SPAN",
+        "text": "BTCUSD, M5"
+      },
+      {
+        "class": "dock-panel__title flex-1 min-w-0 flex items-center gap-1 text-[14px] font-normal text-zinc-300 truncate leading-[30px]",
+        "tag": "SPAN",
+        "text": "Toolbox"
+      },
+      {
+        "class": "rtx-dock-tab inline-flex h-full items-center justify-center px-4 text-[12px] font-normal leading-none whitespace-nowrap rounded-none border-r border-zinc-800 border-t transition-colors duration-75 relative\n                        active-tab",
+        "tag": "BUTTON",
+        "text": "Journal"
+      }
+    ],
+    "\"Segoe UI\", Tahoma, Arial, sans-serif | 13px | 500 | normal | 19.5px": [
+      {
+        "class": "",
+        "tag": "SPAN",
+        "text": "BTCUSD"
+      }
+    ]
+  },
+  "root": "theme-dark rtx-advanced-font-normal rtx-advanced-view rtx-skin-untitled-light rtx-advanced-density-comfortable rtx-advanced-accent-purple rtx-advanced-surface-white"
+}

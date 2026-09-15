@@ -53,7 +53,7 @@ describe('resolveLoginHeroAsset', () => {
       logo_url: '',
     });
 
-    expect(myPropAsset.src).toBe(toPublicAssetPath('login/myprop-hero-wide.png'));
+    expect(myPropAsset.src).toBe(toPublicAssetPath('login/myprop-hero-wide.webp'));
     expect(myPropAsset.fit).toBe('contain');
     expect(myPropAsset.position).toBe('center center');
     expect(myPropAsset.mobileFit).toBe('contain');
@@ -66,7 +66,7 @@ describe('resolveLoginHeroAsset', () => {
       logo_url: '',
     });
 
-    expect(achieverAsset.src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.png'));
+    expect(achieverAsset.src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
     expect(achieverAsset.mobileSrc).toBe(toPublicAssetPath('login/achiever-hero-mobile.jpg'));
     expect(achieverAsset.theme).toBe('achiever');
     expect(achieverAsset.fit).toBe('cover');
@@ -77,7 +77,7 @@ describe('resolveLoginHeroAsset', () => {
         broker_id: brokerId,
         broker_name: 'Neutral Broker',
         logo_url: '',
-      }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.png'));
+      }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
     }
   });
 
@@ -93,7 +93,7 @@ describe('resolveLoginHeroAsset', () => {
         broker_name: 'Unbranded',
         domain,
         logo_url: '',
-      }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.png'));
+      }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
     }
 
     expect(resolveLoginHeroAsset({
@@ -101,14 +101,14 @@ describe('resolveLoginHeroAsset', () => {
       broker_name: 'Unbranded',
       domains: ['example.com', 'webterminal.achieverfinancials.com'],
       logo_url: '',
-    }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.png'));
+    }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
 
     expect(resolveLoginHeroAsset({
       broker_id: 'unbranded',
       broker_name: 'Unbranded',
       domains: 'example.com, manager.achieverfinancials.com',
       logo_url: '',
-    }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.png'));
+    }).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
   });
 
   it('uses the Achiever image from selected broker webterminal, admin, and manager fields independently', () => {
@@ -126,7 +126,7 @@ describe('resolveLoginHeroAsset', () => {
         [field]: domain,
       };
 
-      expect(resolveLoginHeroAsset(broker).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.png'));
+      expect(resolveLoginHeroAsset(broker).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
     }
   });
 
@@ -144,7 +144,7 @@ describe('resolveLoginHeroAsset', () => {
       API_HOST: 'https://services.myprop.trade',
     };
 
-    expect(resolveLoginHeroAsset(null).src).toBe(toPublicAssetPath('login/myprop-hero-wide.png'));
+    expect(resolveLoginHeroAsset(null).src).toBe(toPublicAssetPath('login/myprop-hero-wide.webp'));
 
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',
@@ -158,7 +158,7 @@ describe('resolveLoginHeroAsset', () => {
       API_HOST: 'https://service.achieverfinancials.com',
     };
 
-    expect(resolveLoginHeroAsset(null).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.png'));
+    expect(resolveLoginHeroAsset(null).src).toBe(toPublicAssetPath('login/achiever-hero-desktop-fit.webp'));
   });
 
   it('does not let runtime identity override an already selected unbranded broker', () => {

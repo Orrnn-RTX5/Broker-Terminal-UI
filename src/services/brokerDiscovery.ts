@@ -56,3 +56,53 @@ export const extractBrokerDiscoveryList = (payload: unknown): BrokerDiscoveryIte
     })
     .filter((row) => Boolean(row.broker_id && row.broker_name));
 };
+
+const SUSPENDED_BROKER_STATUSES = new Set(['suspended', 'disabled', 'inactive', 'deleted']);
+
+export const isBrokerSuspended = (broker: BrokerDiscoveryItem | null | undefined): boolean => {
+  if (!broker) return false;
+  if (broker.active === false || broker.enabled === false) return true;
+  const status = String(broker.status ?? '').trim().toLowerCase();
+  return SUSPENDED_BROKER_STATUSES.has(status);
+};
+
+// Desktop login must use the address published in the directory, never an
+// environment fallback or an address reconstructed from the broker name/IP.
+export const getDirectoryBrokerServerUrl = (broker: BrokerDiscoveryItem | null | undefined): string => {
+  const value = String(broker?.server_url || '').trim().replace(/\/+$/, '');
+  try {
+    const url = new URL(value);
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return '';
+    return value;
+  } catch {
+    return '';
+  }
+};
+
+export const isDirectoryBrokerSelectable = (broker: BrokerDiscoveryItem | null | undefined): boolean =>
+  Boolean(broker && !isBrokerSuspended(broker) && getDirectoryBrokerServerUrl(broker));
+
+export const firstSelectableBroker = <T extends BrokerDiscoveryItem>(
+  brokers: T[],
+): T | undefined => brokers.find((broker) => !isBrokerSuspended(broker));
+
+export const filterBrokerDirectory = <T extends BrokerDiscoveryItem>(
+  brokers: T[],
+  query: string,
+  selectedBroker: T | null,
+): T[] => {
+  const normalizedQuery = query.trim().toLowerCase();
+  // The login input is pre-filled with the selected broker's name; treating that
+  // as a filter would hide the rest of the superadmin directory when the dropdown
+  // opens, so an exact self-match lists every broker instead.
+  if (selectedBroker && normalizedQuery === String(selectedBroker.broker_name || '').trim().toLowerCase()) {
+    const current = brokers.find((broker) => broker.broker_id === selectedBroker.broker_id);
+    return current ? [current, ...brokers.filter((broker) => broker !== current)] : brokers;
+  }
+  if (!normalizedQuery) return brokers;
+  return brokers.filter((broker) => (
+    String(broker.broker_name || '').toLowerCase().includes(normalizedQuery)
+    || String(broker.broker_id || '').toLowerCase().includes(normalizedQuery)
+    || String(broker.region || '').toLowerCase().includes(normalizedQuery)
+  ));
+};

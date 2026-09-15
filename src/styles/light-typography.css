@@ -1,0 +1,345 @@
+/* All light terminal sections share the requested 14px UI type role.
+   Keep these tokens local: dark mode retains its existing scale and weights. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light {
+  --rtx-light-ui-font-size: 14px;
+  --rtx-light-ui-font-weight: 450;
+  --rtx-light-history-body-size: var(--rtx-light-ui-font-size);
+  --rtx-light-history-caption-size: var(--rtx-light-ui-font-size);
+  --rtx-light-toolbox-tab-size: var(--rtx-light-ui-font-size);
+  --rtx-light-status-body-size: var(--rtx-light-ui-font-size);
+  --rtx-light-status-action-size: var(--rtx-light-ui-font-size);
+  --rtx-advanced-primary-font-size: var(--rtx-light-ui-font-size);
+  --rtx-advanced-dense-font-size: var(--rtx-light-ui-font-size);
+  --rtx-advanced-header-font-size: var(--rtx-light-ui-font-size);
+  --rtx-light-control-line-height: calc(var(--rtx-light-ui-font-size) * 1.5);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-small {
+  --rtx-light-ui-font-size: 13px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-font-large {
+  --rtx-light-ui-font-size: 15px;
+}
+
+/* History rows, headings, and filters use the same size as the other panels. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab {
+  --rtx-light-ui-font-size: var(--rtx-light-history-body-size);
+  --rtx-advanced-dense-font-size: var(--rtx-light-history-body-size);
+  --rtx-advanced-header-font-size: var(--rtx-light-history-caption-size);
+  --rtx-light-control-line-height: calc(var(--rtx-light-ui-font-size) * 1.5);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab :is(
+  .rtx-history-toolbar, .rtx-trade-table__head
+) {
+  --rtx-light-ui-font-size: var(--rtx-light-history-caption-size);
+  --rtx-light-control-line-height: calc(var(--rtx-light-ui-font-size) * 1.5);
+}
+
+/* Portals live outside .rtx-app-shell. Apply the same role to their text nodes,
+   including nested price digits and utility spans. SVG glyphs and user-created
+   chart drawings keep their own rendering metrics; code keeps its own weight. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light body,
+html:root.rtx-advanced-view.rtx-skin-untitled-light body :is(
+  div, span, p, a, button, input, select, option, optgroup, textarea, label,
+  legend, fieldset, th, td, caption, li, dt, dd, h1, h2, h3, h4, h5, h6,
+  strong, b, em, small, time, output, summary, kbd
+):not(:where(
+  svg *, pre, pre *, code, code *,
+  .chart-drawing-overlay, .chart-drawing-overlay *,
+  .rtx-order-dialog__spinner-button, .rtx-order-dialog__close,
+  .rtx-toolbar-icon-button, .navigator-tree-item__icon, .navigator-tree-item__chevron
+)) {
+  font-size: var(--rtx-light-ui-font-size) !important;
+  font-weight: var(--rtx-light-ui-font-weight) !important;
+}
+
+/* System trade annotations and technical details also use the shared size,
+   while retaining their original font family and semantic emphasis. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light :is(
+  pre, code, .rtx-trade-level-badge, .rtx-position-label, .rtx-position-badge,
+  .rtx-trade-drag-price-badge, .rtx-trade-marker__price-tooltip
+),
+html:root.rtx-advanced-view.rtx-skin-untitled-light :is(
+  pre, code, .rtx-trade-level-badge, .rtx-position-label, .rtx-position-badge,
+  .rtx-trade-drag-price-badge, .rtx-trade-marker__price-tooltip
+) :not(:where(svg, svg *)) {
+  font-size: var(--rtx-light-ui-font-size) !important;
+}
+
+/* These component rules carry more specificity, including late-loaded compact
+   trading controls. Text follows the shared role in every interaction state. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light body :is(
+  .rtx-market-watch .price-display, .rtx-market-watch .price-display span,
+  .rtx-bottom-dock .price-display, .rtx-bottom-dock .price-display span,
+  .rtx-oct .rtx-oct-trade-button .rtx-oct-price,
+  .rtx-oct .rtx-oct-trade-button .rtx-oct-side-label,
+  .rtx-oct .rtx-oct-volume-control input,
+  .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab,
+  .rtx-order-dialog .rtx-order-dialog__price,
+  .rtx-order-dialog .rtx-order-dialog__price strong
+) {
+  font-size: var(--rtx-light-ui-font-size) !important;
+  font-weight: var(--rtx-light-ui-font-weight) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light :is(
+  .dock-panel__title, .dock-panel__title [role='tab'],
+  .rtx-chart-hud, .rtx-chart-hud span,
+  .rtx-market-watch__symbol, .rtx-market-watch__price, .rtx-market-watch__daily,
+  .rtx-market-watch__column-heading, .rtx-bottom-dock th, .rtx-bottom-dock td,
+  .rtx-dock-tab, .rtx-status-bar, .rtx-status-bar span,
+  .rtx-menu-row, .rtx-menu-row span, .rtx-application-menu__root-item,
+  .rtx-order-dialog__title, .rtx-order-dialog__label, .rtx-order-dialog__chart-meta,
+  .rtx-order-dialog__chart-quotes, .rtx-order-dialog__price,
+  .rtx-order-dialog__price strong, .rtx-order-dialog__margin
+) {
+  line-height: 1.5 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role='tab'] {
+  height: auto !important;
+  min-height: 30px !important;
+}
+
+/* Fit the shared text size inside the classic footer and its controls. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar {
+  --rtx-status-strip-height: max(22px, calc(var(--rtx-light-status-body-size) * 1.5 + 2px));
+  font-size: var(--rtx-light-status-body-size) !important;
+  line-height: 1.5 !important;
+  height: var(--rtx-status-strip-height) !important;
+  min-height: var(--rtx-status-strip-height) !important;
+  max-height: var(--rtx-status-strip-height) !important;
+  flex-shrink: 0;
+  padding: 0 2px !important;
+  border-top: 1px solid #a6a6a6 !important;
+  border-bottom: 1px solid #c0c0c0 !important;
+  background: #efefef !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar :is(
+  .rtx-status-bar__metric, .rtx-status-bar__connection
+) {
+  --rtx-light-ui-font-size: var(--rtx-light-status-body-size);
+  line-height: 1.5 !important;
+  white-space: nowrap;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar .rtx-status-bar__action {
+  --rtx-light-ui-font-size: var(--rtx-light-status-action-size);
+  line-height: 1 !important;
+  white-space: nowrap;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar .rtx-status-bar__action span {
+  line-height: 1 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar .rtx-status-bar__connection > span:not(.rtx-status-bar__metric) {
+  --rtx-light-ui-font-size: var(--rtx-light-status-action-size);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar .rtx-status-bar__connection {
+  min-height: 18px;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* The docked Toolbox uses the reference's narrow side title rail. Reuse the
+   actual header and its controls; minimized and floating windows keep their
+   horizontal title bar for restoring and dragging. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child {
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  border: 0 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child > .dock-panel__header {
+  flex-direction: column;
+  width: 17px;
+  min-width: 17px;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 2px 0 5px !important;
+  gap: 2px;
+  border: 0 !important;
+  border-right: 1px solid #d6dfe5 !important;
+  background: #c1cdd9 !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child > .dock-panel__header .dock-panel__title {
+  --rtx-light-ui-font-size: var(--rtx-light-status-action-size);
+  --rtx-light-ui-font-weight: 400;
+  order: 2;
+  flex: 0 1 auto;
+  min-height: 0;
+  margin-top: auto;
+  width: 16px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  line-height: 16px !important;
+  color: #111111 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child > .dock-panel__header .dock-panel__action {
+  order: 1;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: 0;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child > .dock-panel__header .dock-panel__action--close {
+  order: 0;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock {
+  --rtx-light-panel: #ffffff;
+}
+
+/* Paint the top separator behind the tabs. The selected tab covers that line
+   to join the white content above, with a square outline on the other sides. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs {
+  --rtx-light-ui-font-size: var(--rtx-light-toolbox-tab-size);
+  --rtx-light-ui-font-weight: 400;
+  --rtx-light-control-line-height: calc(var(--rtx-light-ui-font-size) * 1.5);
+  --rtx-dock-tab-strip-height: calc(var(--rtx-light-control-line-height) + 7px);
+  height: var(--rtx-dock-tab-strip-height) !important;
+  min-height: var(--rtx-dock-tab-strip-height) !important;
+  max-height: var(--rtx-dock-tab-strip-height) !important;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  gap: 0;
+  padding: 0 0 5px !important;
+  border: 0 !important;
+  background: #efefef !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #333333;
+  pointer-events: none;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab-scroller {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 100%;
+  scrollbar-width: none;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab-scroller::-webkit-scrollbar {
+  display: none;
+  height: 0;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab-actions {
+  flex: 0 0 auto;
+  height: 100%;
+}
+
+/* Keep the two groups on the same flat strip. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs :is(
+  .rtx-dock-tab-scroller, .rtx-dock-tab-actions, .rtx-dock-tab
+) {
+  position: relative;
+  border: 0 !important;
+  box-shadow: none !important;
+  background-image: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
+  position: relative;
+  height: 100% !important;
+  flex-shrink: 0;
+  padding: 0 10px !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:not(.active-tab):not(:last-child):not(:has(+ .active-tab))::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 0;
+  bottom: 4px;
+  width: 1px;
+  background: #b7b7b7;
+  pointer-events: none;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
+  border: 1px solid #333333 !important;
+  border-top: 0 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:focus-visible {
+  outline-offset: -3px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud {
+  max-width: calc(100% - 120px);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Grow fixed form chrome so two text lines and longer labels remain visible. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog {
+  width: 880px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__content {
+  grid-template-columns: minmax(0, 1fr) minmax(370px, 410px);
+  overflow-y: auto;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__chart-header {
+  flex-basis: auto;
+  min-height: 66px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__field {
+  grid-template-columns: 96px minmax(0, 1fr);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog :is(
+  .rtx-order-dialog__control, .rtx-order-dialog__volume-control
+) {
+  height: 36px;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct {
+  top: calc(14px + var(--rtx-light-control-line-height));
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-trade-button :is(.rtx-oct-price, .rtx-oct-side-label) {
+  line-height: 1.25 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-price-badge {
+  transform: translateY(-12px) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-price-badge span {
+  line-height: 20px !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-crosshair-label {
+  line-height: 1.5 !important;
+}
+
+@media (max-width: 720px) {
+  html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

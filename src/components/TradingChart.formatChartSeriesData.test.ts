@@ -540,6 +540,22 @@ describe('formatChartSeriesData market gap separators', () => {
 });
 
 describe('live price overlay colors', () => {
+  it('separates enterprise light price label fills from the matching candle marks', () => {
+    const colors = getEffectiveChartColors(defaultChartProperties, { isAdvancedUntitledLight: true });
+
+    expect(getLivePriceOverlayColors(colors, colors.bullCandle, true)).toEqual({
+      lineColor: '#059669', badgeBackground: '#047857', badgeTextColor: '#ffffff',
+    });
+    expect(getLivePriceOverlayColors(colors, colors.bearCandle, true)).toEqual({
+      lineColor: '#dc2626', badgeBackground: '#b91c1c', badgeTextColor: '#ffffff',
+    });
+    // Reusing a candle hue in a saved custom scheme must not opt that scheme
+    // into the default light label palette.
+    expect(getLivePriceOverlayColors(colors, '#dc2626')).toEqual({
+      lineColor: '#dc2626', badgeBackground: '#dc2626', badgeTextColor: '#ffffff',
+    });
+  });
+
   it('uses the canonical terminal profit and loss colors by default', () => {
     const colors = defaultChartProperties.colors;
 

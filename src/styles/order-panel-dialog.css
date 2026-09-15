@@ -429,6 +429,118 @@
   width: 100%;
 }
 
+/* Share the light terminal's surfaces and action states without changing dark. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog-backdrop {
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: none;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog {
+  --order-ask: var(--rtx-light-buy-hover);
+  --order-bid: var(--color-loss);
+  --order-buy-action: var(--rtx-light-buy);
+  --order-sell-action: var(--rtx-light-sell);
+  --order-chart-axis-surface: var(--rtx-light-panel-header);
+  --order-control-bg: var(--rtx-light-field);
+  --order-supporting-text: var(--rtx-light-text-muted);
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__content .rtx-order-dialog__form {
+  background: var(--rtx-light-elevated) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog :is(.rtx-order-dialog__header, .rtx-order-dialog__chart-header) {
+  background: var(--rtx-light-panel-header) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__content .rtx-order-dialog__chart {
+  background: var(--rtx-light-chart) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__title {
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__label {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__close {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__close:hover {
+  background: var(--color-loss-dimmer) !important;
+  color: var(--color-loss) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog :is(.rtx-order-dialog__control, .rtx-order-dialog__volume-control) {
+  background: var(--rtx-light-field) !important;
+  border-color: var(--rtx-light-control-border) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__volume-input {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--rtx-light-text) !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog :is(.rtx-order-dialog__control, .rtx-order-dialog__volume-control):hover {
+  border-color: var(--rtx-light-control-border-hover) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__control:focus,
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__volume-control:focus-within {
+  border-color: var(--rtx-light-accent) !important;
+  outline: 2px solid var(--rtx-light-accent) !important;
+  outline-offset: 2px;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__live-dot {
+  box-shadow: none;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action {
+  color: #ffffff;
+  filter: none;
+  box-shadow: none;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--buy {
+  background: var(--order-buy-action);
+  border-color: var(--order-buy-action);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--sell {
+  background: var(--order-sell-action);
+  border-color: var(--order-sell-action);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--buy:hover:not(:disabled) {
+  background: var(--rtx-light-buy-hover);
+  border-color: var(--rtx-light-buy-hover);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--sell:hover:not(:disabled) {
+  background: var(--rtx-light-sell-hover);
+  border-color: var(--rtx-light-sell-hover);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--buy:active:not(:disabled) {
+  background: var(--rtx-light-buy-pressed);
+  border-color: var(--rtx-light-buy-pressed);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog__action--sell:active:not(:disabled) {
+  background: var(--rtx-light-sell-pressed);
+  border-color: var(--rtx-light-sell-pressed);
+}
+
 @keyframes rtx-order-progress {
   from { opacity: 0.28; }
   to { opacity: 1; }

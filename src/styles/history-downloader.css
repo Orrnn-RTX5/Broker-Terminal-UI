@@ -1023,6 +1023,179 @@ html.theme-light .rtx-history-downloader {
   gap: 2px;
 }
 
+/* Historical Data uses the shared light palette for controls and status as
+   well as surfaces; legacy gradient and white-text rules above remain dark. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-downloader {
+  --history-bg: var(--rtx-light-panel);
+  --history-panel-subtle: var(--rtx-light-hover);
+  --history-raised: var(--rtx-light-hover);
+
+  & :is(.rtx-history-downloader__header, .rtx-history-symbols__toolbar, .rtx-history-tasks__header) {
+    background: var(--rtx-light-panel-header);
+  }
+
+  & :is(.rtx-history-search, .rtx-history-date-inputs, .rtx-history-symbol-select) {
+    background: var(--rtx-light-field);
+    border-color: var(--rtx-light-control-border) !important;
+  }
+
+  & :is(.rtx-history-search, .rtx-history-date-inputs, .rtx-history-symbol-select):hover {
+    border-color: var(--rtx-light-control-border-hover) !important;
+  }
+
+  & :is(.rtx-history-search, .rtx-history-date-inputs):focus-within {
+    border-color: var(--rtx-light-accent) !important;
+    outline: 2px solid var(--rtx-light-accent);
+    outline-offset: 1px;
+  }
+
+  & :is(button, select, input):focus-visible {
+    outline: 2px solid var(--rtx-light-accent) !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--rtx-light-elevated) !important;
+  }
+
+  & .rtx-history-search input:focus-visible,
+  & .rtx-history-date-input:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  & .rtx-history-symbol-select option {
+    background: var(--rtx-light-elevated);
+    color: var(--rtx-light-text);
+  }
+
+  & .rtx-history-date-input {
+    color: var(--rtx-light-text) !important;
+    color-scheme: light;
+  }
+
+  & .rtx-history-date-input::-webkit-calendar-picker-indicator {
+    filter: none;
+    opacity: 1;
+  }
+
+  & .rtx-history-symbol-row[data-selected='true'] {
+    background: var(--rtx-light-selected);
+  }
+
+  & :is(.rtx-history-segmented-presets, .rtx-history-status-tag--muted) {
+    background: var(--rtx-light-panel-header);
+    border-color: var(--rtx-light-border);
+  }
+
+  & .rtx-history-seg-btn:hover:not(.is-active) {
+    background: var(--rtx-light-hover);
+    color: var(--rtx-light-text);
+  }
+
+  & .rtx-history-seg-btn.is-active,
+  & .rtx-history-seg-btn.is-active:hover {
+    background: var(--rtx-light-selected);
+    border-color: var(--rtx-light-accent);
+    color: var(--rtx-light-accent-strong);
+    box-shadow: none;
+  }
+
+  & .rtx-history-seg-btn:active:not(:disabled) {
+    background: var(--rtx-light-pressed);
+  }
+
+  & .rtx-history-primary-button:not(:disabled) {
+    background: var(--rtx-light-accent);
+    border-color: var(--rtx-light-accent);
+    color: var(--text-inverse) !important;
+    box-shadow: none;
+  }
+
+  & .rtx-history-primary-button:hover:not(:disabled) {
+    background: var(--rtx-light-accent-strong);
+    border-color: var(--rtx-light-accent-strong);
+  }
+
+  & .rtx-history-primary-button:active:not(:disabled) {
+    background: var(--rtx-light-accent-pressed);
+    border-color: var(--rtx-light-accent-pressed);
+  }
+
+  & .rtx-history-primary-button:disabled {
+    background: var(--rtx-light-row-border) !important;
+    border-color: var(--rtx-light-border) !important;
+    color: var(--text-quaternary) !important;
+  }
+
+  & .rtx-history-duration-badge {
+    background: var(--rtx-light-selected);
+    border-color: var(--rtx-light-border);
+    color: var(--rtx-light-accent-strong);
+  }
+
+  & .rtx-history-status-tag--success {
+    background: var(--color-profit-dimmer);
+    border-color: var(--color-profit-dim);
+    color: var(--color-profit);
+  }
+
+  & .rtx-history-coverage-banner {
+    background: var(--rtx-light-panel-header);
+    border-color: var(--rtx-light-border);
+    color: var(--rtx-light-text-secondary);
+  }
+
+  & :is(.rtx-history-coverage-title, .rtx-history-coverage-bar) {
+    color: var(--rtx-light-text-secondary);
+  }
+
+  & .rtx-history-coverage-left svg {
+    color: var(--rtx-light-text-muted);
+  }
+
+  & .rtx-history-coverage-left:has(.rtx-history-coverage-details) svg {
+    color: var(--color-profit);
+  }
+
+  & .rtx-history-coverage-banner[data-error='true'] {
+    background: var(--color-loss-dimmer);
+    border-color: var(--color-loss-dim);
+    color: var(--color-loss);
+  }
+
+  & .rtx-history-coverage-banner[data-error='true'] svg {
+    color: var(--color-loss);
+  }
+
+  & .rtx-history-bar-track {
+    background: var(--rtx-light-border);
+    border-color: var(--rtx-light-border);
+  }
+
+  & .rtx-history-bar-fill {
+    background: var(--color-profit);
+    box-shadow: none;
+  }
+
+  & :is(.rtx-history-status-dot, .rtx-history-task__status-dot) {
+    box-shadow: none;
+  }
+
+  & .rtx-history-task__status-dot {
+    background: var(--color-warning);
+  }
+
+  & .rtx-history-task[data-status='downloading'] .rtx-history-task__status-dot {
+    background: var(--rtx-light-accent);
+  }
+
+  & .rtx-history-task[data-status='completed'] .rtx-history-task__status-dot {
+    background: var(--color-profit);
+  }
+
+  & .rtx-history-task[data-status='failed'] .rtx-history-task__status-dot {
+    background: var(--color-loss);
+  }
+}
+
 @container (max-width: 920px) {
   .rtx-history-downloader__metric-wide {
     display: none;

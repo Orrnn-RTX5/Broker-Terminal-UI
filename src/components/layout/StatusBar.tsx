@@ -85,7 +85,7 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                             <button
                                 type="button"
                                 onClick={() => openDesktopReleaseDownload(desktopReleaseState.release)}
-                                className="group h-[18px] inline-flex items-center gap-1.5 rounded-[3px] border border-transparent bg-transparent px-0.5 text-[12px] font-normal leading-none text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500/70 [.rtx-advanced-view_&]:text-zinc-700 [.rtx-advanced-view_&]:hover:text-black"
+                                className="rtx-status-bar__action group h-[18px] inline-flex items-center gap-1.5 rounded-[3px] border border-transparent bg-transparent px-0.5 text-[12px] font-normal leading-none text-zinc-300 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500/70 [.rtx-advanced-view_&]:text-zinc-700 [.rtx-advanced-view_&]:hover:text-black"
                                 title={getDesktopReleaseButtonTitle(desktopReleaseState.release)}
                             >
                                 <Icon name="download" size="xs" className="text-zinc-400 [.rtx-advanced-view_&]:text-zinc-500" />
@@ -109,7 +109,7 @@ export function StatusBar({ wsRef, reconnectCallback, symbol, timeframe, marketS
                             type="button"
                             onClick={handleUpdateClick}
                             disabled={updateButtonDisabled}
-                            className={`h-[18px] rounded border px-1.5 text-[12px] font-normal leading-none transition-colors disabled:cursor-default disabled:opacity-70 ${updateButtonTone}`}
+                            className={`rtx-status-bar__action h-[18px] rounded border px-1.5 text-[12px] font-normal leading-none transition-colors disabled:cursor-default disabled:opacity-70 ${updateButtonTone}`}
                             title={tr("Check for desktop app updates")}
                         >
                             {tr(updateLabel)}

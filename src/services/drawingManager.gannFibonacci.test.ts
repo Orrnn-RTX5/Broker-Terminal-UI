@@ -699,3 +699,157 @@ describe('DrawingManager Gann/Fibonacci SVG rendering', () => {
     },
   );
 });
+
+describe('Fibonacci price-scale area highlight', () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it.each(['fib_retracement', 'trend_based_fib_extension'] as const)(
+    '%s highlights the price-scale area during construction and while selected',
+    async subtype => {
+      const { manager, container } = await createRenderHarness();
+      const tool = getGannFibonacciTool(subtype)!;
+      const band = () => container.querySelector('rect[data-geometry-role="price-scale-range"]');
+      manager.startDrawing(tool.drawingType, '#2962ff', { subtype });
+      manager.addPoint(150, 100);
+      manager.updatePreviewPoint(240, 109);
+      expect(band()).toBeNull();
+      manager.addPoint(240, 109);
+      if (tool.requiredPoints === 3) manager.updatePreviewPoint(180, 92);
+      expect(band()).not.toBeNull();
+      if (tool.requiredPoints === 3) manager.addPoint(180, 92);
+      const bandElement = band();
+      expect(bandElement).not.toBeNull();
+      expect(numberAttribute(bandElement!, 'height')).toBeGreaterThan(2);
+      const drawing = manager.getDrawings()[0];
+      manager.unselectDrawing(drawing.id);
+      expect(band()).toBeNull();
+      manager.selectDrawing(drawing.id);
+      expect(band()).not.toBeNull();
+    },
+  );
+
+  it.each(['gann_box', 'gann_square_fixed', 'gann_square', 'gann_fan'] as const)(
+    '%s highlights the moving price interval and retains it only while selected',
+    async subtype => {
+      const { manager, container } = await createRenderHarness();
+      const band = () => container.querySelector('rect[data-geometry-role="price-scale-range"]');
+      manager.startDrawing('fibonacci', '#2962ff', { subtype });
+      manager.updatePreviewPoint(150, 100);
+      expect(band()).toBeNull();
+      manager.addPoint(150, 100);
+
+      for (const price of [109, 92]) {
+        manager.updatePreviewPoint(240, price);
+        expect(band()).not.toBeNull();
+        expect(numberAttribute(band()!, 'x')).toBe(460);
+        expect(numberAttribute(band()!, 'y')).toBe(220 - Math.max(100, price));
+        expect(numberAttribute(band()!, 'height')).toBe(Math.abs(price - 100));
+        expect(band()).toHaveAttribute('fill', '#2962ff');
+        expect(band()).toHaveAttribute('pointer-events', 'none');
+      }
+      manager.hidePreviewCursor('chart-test-m1');
+      expect(band()).toBeNull();
+      manager.updatePreviewPoint(240, 109);
+      manager.addPoint(240, 109);
+      expect(numberAttribute(band()!, 'height')).toBe(9);
+      expect(container.querySelector('[data-geometry-role="endpoint-1-price-scale-label"]')).not.toBeNull();
+      expect(container.querySelector('[data-geometry-role="endpoint-2-price-scale-label"]')).not.toBeNull();
+      const drawing = manager.getDrawings()[0];
+      manager.unselectDrawing(drawing.id);
+      expect(band()).toBeNull();
+      manager.selectDrawing(drawing.id);
+      expect(numberAttribute(band()!, 'height')).toBe(9);
+    },
+  );
+});
+
+describe('Fibonacci time-scale area highlight', () => {
+  beforeEach(() => {
+    document.body.replaceChildren();
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it.each(['fib_time_zone', 'trend_based_fib_time'] as const)(
+    '%s highlights the time scale instead of the price scale',
+    async subtype => {
+      const { manager, container } = await createRenderHarness();
+      const tool = getGannFibonacciTool(subtype)!;
+      const timeBand = () => container.querySelector('rect[data-geometry-role="time-scale-range"]');
+      const priceBand = () => container.querySelector('rect[data-geometry-role="price-scale-range"]');
+      manager.startDrawing(tool.drawingType, '#2962ff', { subtype });
+      manager.addPoint(150, 100);
+      manager.updatePreviewPoint(240, 109);
+      if (subtype === 'fib_time_zone') expect(timeBand()).not.toBeNull();
+      else expect(timeBand()).toBeNull();
+      expect(priceBand()).toBeNull();
+      manager.addPoint(240, 109);
+      if (tool.requiredPoints === 3) manager.updatePreviewPoint(180, 92);
+      expect(timeBand()).not.toBeNull();
+      expect(priceBand()).toBeNull();
+      if (tool.requiredPoints === 3) manager.addPoint(180, 92);
+      const drawing = manager.getDrawings()[0];
+      manager.unselectDrawing(drawing.id);
+      expect(timeBand()).toBeNull();
+      manager.selectDrawing(drawing.id);
+      const selectedBand = timeBand();
+      expect(selectedBand).not.toBeNull();
+      expect(priceBand()).toBeNull();
+      expect(numberAttribute(selectedBand!, 'width')).toBeGreaterThan(2);
+    },
+  );
+
+  it('tracks the moving time-zone endpoint in either direction before the second click', async () => {
+    const { manager, container } = await createRenderHarness();
+    manager.startDrawing('fibonacci', '#2962ff', { subtype: 'fib_time_zone' });
+    manager.updatePreviewPoint(240, 109);
+    expect(container.querySelector('[data-geometry-role="time-scale-range"]')).toBeNull();
+    manager.addPoint(240, 109);
+
+    for (const time of [150, 300]) {
+      manager.updatePreviewPoint(time, 100);
+      const band = container.querySelector('[data-geometry-role="time-scale-range"]')!;
+      expect(band).not.toBeNull();
+      expect(numberAttribute(band, 'x')).toBe(Math.min(time, 240) - 100);
+      expect(numberAttribute(band, 'width')).toBe(Math.abs(time - 240));
+      expect(numberAttribute(band, 'y')).toBe(280);
+      expect(numberAttribute(band, 'height')).toBe(20);
+      expect(container.querySelector('[data-geometry-role="price-scale-range"]')).toBeNull();
+    }
+
+    manager.hidePreviewCursor('chart-test-m1');
+    expect(container.querySelector('[data-geometry-role="time-scale-range"]')).toBeNull();
+    manager.updatePreviewPoint(150, 100);
+    manager.addPoint(150, 100);
+    const drawing = manager.getDrawings()[0];
+    const band = container.querySelector('[data-geometry-role="time-scale-range"]')!;
+    expect(numberAttribute(band, 'x')).toBe(50);
+    expect(numberAttribute(band, 'width')).toBe(90);
+    manager.unselectDrawing(drawing.id);
+    expect(container.querySelector('[data-geometry-role="time-scale-range"]')).toBeNull();
+  });
+
+  it('keeps the time-zone origin gray and applies drawing color, width, and style to projections', async () => {
+    const { manager, container } = await createRenderHarness();
+    completeDrawing(manager, 'fibonacci', 'fib_time_zone', DRAWING_POINTS.slice(0, 2));
+    const drawing = manager.getDrawings()[0];
+    manager.updateDrawingProperties(drawing.id, { color: '#e91e63', lineWidth: 4, lineStyle: 'dashed' });
+    for (const ratio of [0, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89]) {
+      const line = container.querySelector(`[data-geometry-role="fib-time-zone-level-${ratio}"]`)!;
+      expect(numberAttribute(line, 'x1')).toBe(50 + 90 * ratio);
+      expect(line.getAttribute('stroke')).toBe(ratio === 0 ? '#787B86' : '#e91e63');
+      expect(line.getAttribute('stroke-width')).toBe('4');
+      expect(line.getAttribute('stroke-dasharray')).toBe('8 4');
+      expect(container.querySelector(`[data-geometry-role="fib-time-zone-label-${ratio}"]`)?.getAttribute('fill'))
+        .toBe(ratio === 0 ? '#787B86' : '#e91e63');
+    }
+    manager.updateDrawingProperties(drawing.id, { lineWidth: 1, lineStyle: 'solid' });
+    const level = container.querySelector('[data-geometry-role="fib-time-zone-level-1"]')!;
+    expect(level.getAttribute('stroke-width')).toBe('1');
+    expect(level.hasAttribute('stroke-dasharray')).toBe(false);
+  });
+});

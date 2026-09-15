@@ -385,15 +385,26 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-calendar-ro
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-calendar-row[data-selected='true'],
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-calendar-row[data-selected='true'] > * {
-  background: #f0f5f9 !important;
+  background: var(--rtx-light-selected) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-calendar-tab {
+  --calendar-selected: var(--rtx-light-selected);
+  --calendar-high: var(--color-loss);
+  --calendar-medium: var(--color-warning);
+  --calendar-low: var(--rtx-light-accent);
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-calendar-row[data-selected='true'] {
+  box-shadow: inset 2px 0 0 var(--rtx-light-accent);
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-calendar-menu,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-calendar-menu__submenu {
-  background: #ffffff;
-  border-color: #d9dee7;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
-  color: #172033;
+  background: var(--rtx-light-elevated);
+  border-color: var(--rtx-light-border);
+  box-shadow: var(--shadow-lg);
+  color: var(--rtx-light-text);
 }
 
 @container (max-width: 920px) {

@@ -4,6 +4,8 @@ import { useDockLayoutStore } from '../store/useDockLayoutStore';
 import { registerActiveChartSource } from './activeChartSource';
 import type { DockLayout, DockPanelConfig } from './dockManager';
 import { activateChartPanel, changeChartPanelSymbol, findChartPanelById, getActiveDockChartPanel, getChartPanels, getChartPanelSymbolUpdates, requestActiveChartSymbolChange } from './chartPanelNavigation';
+import { getChartSymbolTabs } from '../utils/chartSymbolTabs';
+import { applyChartTimeframeCommand, CHART_TIMEFRAMES } from './chartTimeframeCommand';
 
 const symbols = ['XAUUSD.RAW', 'EURUSD.R', 'BTCUSD-PRO', 'ADAUSD', 'USDJPY.R', 'GBPUSD'];
 const frames = ['M1', 'M5', 'M15', 'M30', 'H1', 'MN'];
@@ -34,6 +36,43 @@ beforeEach(() => {
 afterEach(() => { unregister.forEach(off => off()); useDockLayoutStore.getState().setLayout(originalLayout); });
 
 describe('independent chart symbol navigation', () => {
+  const navigationSymbols = [...symbols, 'XAUUSD', 'BTCUSD', 'EURUSD', 'NAS100-F', 'JPN225', 'COFFEE', 'SPA35-F', 'AAPL.US', 'USDJPY', 'TEST-CONTRACT.RAW'];
+  it.each(CHART_TIMEFRAMES)('opens every authorized symbol and restores its saved %s chart after navigation', timeframe => {
+    const store = useDockLayoutStore.getState();
+    const siblings = getChartPanels(store.layout).filter(panel => panel.id !== 'chart-0');
+    for (const symbol of navigationSymbols) {
+      expect(changeChartPanelSymbol('chart-0', symbol, navigationSymbols)).toBe(true);
+      expect(applyChartTimeframeCommand({ panelId: 'chart-0', timeframe }, () => {})).toBe(true);
+    }
+    store.setLayout(JSON.parse(JSON.stringify(useDockLayoutStore.getState().layout)));
+    for (const symbol of [...navigationSymbols].reverse()) {
+      expect(changeChartPanelSymbol('chart-0', symbol, navigationSymbols)).toBe(true);
+      const panel = findChartPanelById(useDockLayoutStore.getState().layout, 'chart-0')!;
+      expect(panel.props).toMatchObject({ symbol, timeframe });
+      expect(panel.title).toBe(`${symbol},${timeframe}`);
+      expect(getChartSymbolTabs(panel)).toHaveLength(navigationSymbols.length);
+    }
+    expect(getChartPanels(useDockLayoutStore.getState().layout).filter(panel => panel.id !== 'chart-0')).toEqual(siblings);
+  });
+  it('restores each symbol timeframe and style after switching tabs and reloading the layout', () => {
+    const store = useDockLayoutStore.getState();
+    const siblings = getChartPanels(store.layout).filter(panel => panel.id !== 'chart-0');
+    expect(changeChartPanelSymbol('chart-0', 'BTCUSD-PRO', symbols)).toBe(true);
+    applyChartTimeframeCommand({ panelId: 'chart-0', timeframe: 'M5' }, () => {});
+    store.updatePanelProps('chart-0', { props: { chartType: 'line' } });
+    expect(changeChartPanelSymbol('chart-0', 'XAUUSD.RAW', symbols)).toBe(true);
+    expect(findChartPanelById(store.layout, 'chart-0')).toBeDefined();
+    const read = () => findChartPanelById(useDockLayoutStore.getState().layout, 'chart-0')!;
+    expect(read().props).toMatchObject({ symbol: 'XAUUSD.RAW', timeframe: 'M1', chartType: 'candlestick' });
+    expect(getChartSymbolTabs(read()).map(tab => [tab.symbol, tab.timeframe])).toEqual([
+      ['XAUUSD.RAW', 'M1'], ['BTCUSD-PRO', 'M5'],
+    ]);
+    store.setLayout(JSON.parse(JSON.stringify(useDockLayoutStore.getState().layout)));
+    expect(changeChartPanelSymbol('chart-0', 'BTCUSD-PRO', symbols)).toBe(true);
+    expect(read().props).toMatchObject({ symbol: 'BTCUSD-PRO', timeframe: 'M5', chartType: 'line' });
+    expect(getChartSymbolTabs(read())).toHaveLength(2);
+    expect(getChartPanels(useDockLayoutStore.getState().layout).filter(panel => panel.id !== 'chart-0')).toEqual(siblings);
+  });
   it.each(['grid', 'horizontal', 'vertical', 'cascade'] as const)(
     'routes Market Watch to every clicked pane in %s without opening another chart', (mode) => {
       useDockLayoutStore.getState().arrangeCharts(mode);

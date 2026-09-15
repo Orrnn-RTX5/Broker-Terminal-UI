@@ -81,7 +81,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     onLoadTemplate,
     desktopDrawingTools
 }) => {
-    const { state: toolbarState, dispatch: dispatchToolbar } = useToolbarState();
+    const { state: toolbarState, dispatch: dispatchToolbar, syncState: syncToolbarState } = useToolbarState();
     const { dispatch: dispatchCommand } = useCommandBus();
 
     const magnetMode = useDrawingToolPreferencesStore((state) => state.magnetMode);
@@ -139,14 +139,14 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     // Sync an actual App-level chart type change. Keep toolbar-only commands
     // from being immediately overwritten by an unchanged global prop.
     useEffect(() => {
-        dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: chartType as any });
-    }, [chartType, dispatchToolbar]);
+        syncToolbarState({ type: 'SET_CHART_TYPE', chartType: chartType as any });
+    }, [chartType, syncToolbarState]);
 
     useEffect(() => {
         if (timeframe !== toolbarState.timeframe) {
-            dispatchToolbar({ type: 'SET_TIMEFRAME', timeframe });
+            syncToolbarState({ type: 'SET_TIMEFRAME', timeframe });
         }
-    }, [timeframe, toolbarState.timeframe, dispatchToolbar]);
+    }, [timeframe, toolbarState.timeframe, syncToolbarState]);
 
     return (
         <div className="rtx-top-chrome flex flex-col z-50 relative border-b border-white/5 shadow-2xl">

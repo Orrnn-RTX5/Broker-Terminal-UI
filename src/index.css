@@ -172,6 +172,12 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-table__head {
   text-shadow: none;
 }
 
+html .rtx-trade-table thead th,
+html .rtx-trade-table__head th{
+  font-size: 12px;
+  font-weight: var(--font-weight-normal);
+}
+
 html:not(.rtx-skin-untitled-light) .rtx-trade-table thead th,
 html:not(.rtx-skin-untitled-light) .rtx-trade-table__head th {
   height: 30px;
@@ -181,8 +187,6 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-table__head th {
   border-right: none !important;
   border-bottom: 1px solid var(--border-secondary) !important;
   color: var(--text-primary) !important;
-  font-size: 12px;
-  font-weight: var(--font-weight-normal);
   letter-spacing: normal;
   text-shadow: none;
   box-shadow: none;
@@ -216,11 +220,14 @@ html:not(.rtx-skin-untitled-light) tr.rtx-trade-row.rtx-trade-row--selected:hove
     inset 0 -1px 0 rgba(59, 130, 246, 0.3) !important;
 }
 
+html .rtx-trade-table tbody tr.rtx-trade-row td{
+  font-size: 13px;
+  font-weight: var(--font-weight-normal);
+}
+
 html:not(.rtx-skin-untitled-light) .rtx-trade-table tbody tr.rtx-trade-row td {
   border-right: none !important;
   border-bottom: 1px solid var(--border-secondary) !important;
-  font-size: 13px;
-  font-weight: var(--font-weight-normal);
   line-height: 19.5px;
   text-shadow: none;
 }
@@ -349,9 +356,12 @@ html:not(.rtx-skin-untitled-light) .rtx-trade-footer .text-zinc-300 {
   color: var(--text-primary) !important;
 }
 
-html:not(.rtx-skin-untitled-light) .rtx-trade-footer .rtx-trade-metric-label {
+html .rtx-trade-footer .rtx-trade-metric-label{
   font-size: 13px;
   font-weight: var(--font-weight-normal);
+}
+
+html:not(.rtx-skin-untitled-light) .rtx-trade-footer .rtx-trade-metric-label {
   letter-spacing: 0;
   text-transform: none;
 }
@@ -503,13 +513,16 @@ html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab:hover {
   background: var(--bg-quaternary) !important;
 }
 
+html .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab{
+  font-weight: 600;
+}
+
 html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
   color: #ffffff !important;
   background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%) !important;
   border-top-color: #0284c7 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  font-weight: 600;
 }
 
 html:not(.rtx-skin-untitled-light) .rtx-bottom-dock__tabs .rtx-dock-tab--danger {

@@ -1,36 +1,52 @@
 /*
- * RTX5 enterprise light theme
+ * RTX5 shared web and desktop light palette (2026-09-12).
  *
- * Soft neutral work areas reduce the brightness of large surfaces. Slate text,
- * quiet separators, and restrained blue states keep dense trading data clear.
+ * Soft data surfaces, cool gray chrome, indigo interaction states, and distinct
+ * execution and financial-text colors follow LIGHT_THEME_COLOR_RESEARCH.md.
  * It intentionally loads after advanced-untitled-light.css so older dark
  * utility classes and legacy purple overrides cannot leak into light mode.
  */
 
 html.rtx-advanced-view.rtx-skin-untitled-light {
-  --rtx-light-canvas: #dfe4e8;
-  --rtx-light-panel: #f2f4f5;
-  --rtx-light-panel-subtle: #edf0f2;
-  --rtx-light-panel-header: #e7ebee;
-  --rtx-light-field: #f7f8f9;
-  --rtx-light-hover: #e6ebef;
-  --rtx-light-selected: #dce6ef;
-  --rtx-light-border: #d1d8de;
-  --rtx-light-border-strong: #b5c0ca;
-  --rtx-light-row-border: #e2e7eb;
-  --rtx-light-text: #25313c;
-  --rtx-light-text-secondary: #465461;
-  --rtx-light-text-muted: #5d6974;
-  --rtx-light-accent: #28547c;
-  --rtx-light-accent-strong: #204565;
-  --rtx-light-accent-soft: #e0e8f0;
-  --rtx-light-accent-border: #afc3d5;
-  --rtx-light-focus-ring: rgba(40, 84, 124, 0.18);
-  --rtx-light-font-body-weight: 400;
-  --rtx-light-font-control-weight: 500;
-  --rtx-light-font-title-weight: 600;
-  --rtx-chrome-sheen: linear-gradient(180deg, rgb(255 255 255 / 32%), rgb(255 255 255 / 8%) 48%, transparent);
-  --rtx-chrome-edge: rgb(255 255 255 / 72%);
+  --rtx-light-canvas: #f7f8fa;
+  --rtx-light-panel: #fafafa;
+  --rtx-light-panel-subtle: #f2f4f8;
+  --rtx-light-panel-header: #f2f4f8;
+  --rtx-light-elevated: #ffffff;
+  --rtx-light-chart: #f7f8fa;
+  --rtx-light-field: #f2f6fc;
+  --rtx-light-hover: #f2f4f8;
+  --rtx-light-pressed: #e8ecf2;
+  --rtx-light-selected: #eef2ff;
+  --rtx-light-border: #e3e8f0;
+  --rtx-light-border-strong: #d1d5db;
+  --rtx-light-control-border: #7d8796;
+  --rtx-light-control-border-hover: #64748b;
+  --rtx-light-row-border: #f3f4f6;
+  --rtx-light-text: #111827;
+  --rtx-light-text-secondary: #4b5563;
+  --rtx-light-text-muted: #5f6b7a;
+  --rtx-light-price: #0f172a;
+  --rtx-light-quote-up: #1d4ed8;
+  --rtx-light-quote-down: #b91c1c;
+  --rtx-light-accent: #4338ca;
+  --rtx-light-accent-strong: #3730a3;
+  --rtx-light-accent-pressed: #312e81;
+  --rtx-light-accent-soft: #eef2ff;
+  --rtx-light-accent-border: #4338ca;
+  --rtx-light-focus-ring: rgba(67, 56, 202, 0.15);
+  --rtx-light-buy: #2563eb;
+  --rtx-light-buy-hover: #1d4ed8;
+  --rtx-light-buy-pressed: #1e40af;
+  --rtx-light-sell: #dc2626;
+  --rtx-light-sell-hover: #b91c1c;
+  --rtx-light-sell-pressed: #991b1b;
+  /* Use the same face as the terminal's command bar and tables. Mixing Jakarta,
+     Segoe and monospace made identical sizes and weights look unrelated. */
+  --font-sans: "Segoe UI", Tahoma, Arial, sans-serif;
+  --rtx-light-control-line-height: calc(var(--rtx-advanced-dense-font-size, 14px) + 6px);
+  --rtx-chrome-sheen: none;
+  --rtx-chrome-edge: transparent;
 
   --background: var(--rtx-light-canvas);
   --foreground: var(--rtx-light-text);
@@ -44,35 +60,37 @@ html.rtx-advanced-view.rtx-skin-untitled-light {
   --bg-primary: var(--rtx-light-canvas);
   --bg-secondary: var(--rtx-light-panel);
   --bg-tertiary: var(--rtx-light-panel-subtle);
-  --bg-quaternary: var(--rtx-light-panel-header);
-  --bg-elevated: var(--rtx-light-panel);
+  --bg-quaternary: var(--rtx-light-hover);
+  --bg-elevated: var(--rtx-light-elevated);
   --text-primary: var(--rtx-light-text);
   --text-secondary: var(--rtx-light-text-secondary);
   --text-tertiary: var(--rtx-light-text-muted);
-  --text-quaternary: #7c8791;
+  --text-quaternary: #9ca3af;
   --text-inverse: #ffffff;
   --border-primary: var(--rtx-light-border);
   --border-secondary: var(--rtx-light-border-strong);
-  --border-tertiary: #a4b0bb;
+  --border-tertiary: var(--rtx-light-control-border);
   --color-primary: var(--rtx-light-accent);
-  --color-primary-dim: rgba(40, 84, 124, 0.14);
-  --color-primary-dimmer: rgba(40, 84, 124, 0.07);
+  --color-primary-dim: rgba(67, 56, 202, 0.14);
+  --color-primary-dimmer: rgba(67, 56, 202, 0.07);
   --color-info: var(--rtx-light-accent);
-  --color-info-dim: rgba(40, 84, 124, 0.12);
-  --color-profit: #087a49;
-  --color-profit-dim: rgba(8, 122, 73, 0.16);
-  --color-profit-dimmer: rgba(8, 122, 73, 0.08);
-  --color-loss: #b42318;
-  --color-loss-dim: rgba(180, 35, 24, 0.16);
-  --color-loss-dimmer: rgba(180, 35, 24, 0.08);
-  --status-connected: #087a49;
-  --status-disconnected: #b42318;
+  --color-info-dim: rgba(67, 56, 202, 0.12);
+  --color-profit: #047857;
+  --color-profit-dim: rgba(4, 120, 87, 0.16);
+  --color-profit-dimmer: rgba(4, 120, 87, 0.08);
+  --color-loss: #b91c1c;
+  --color-loss-dim: rgba(185, 28, 28, 0.16);
+  --color-loss-dimmer: rgba(185, 28, 28, 0.08);
+  --color-warning: #78350f;
+  --color-warning-dim: #fffbeb;
+  --status-connected: var(--color-profit);
+  --status-disconnected: var(--color-loss);
   --shadow-sm: 0 1px 2px rgba(32, 36, 42, 0.04);
   --shadow-md: 0 2px 6px rgba(32, 36, 42, 0.08);
-  --shadow-lg: 0 8px 20px rgba(32, 36, 42, 0.10);
+  --shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.12);
   --shadow-xl: 0 12px 28px rgba(32, 36, 42, 0.12);
 
-  --ctx-bg: var(--rtx-light-panel);
+  --ctx-bg: var(--rtx-light-elevated);
   --ctx-border: var(--rtx-light-border-strong);
   --ctx-hover: var(--rtx-light-hover);
   --ctx-active-bg: var(--rtx-light-accent);
@@ -97,6 +115,9 @@ html.rtx-advanced-view.rtx-skin-untitled-light #root {
   box-shadow: none !important;
 }
 
+/* Font sizes and weights come from the same component rules and shared S / M / L
+   preferences as dark mode. This layer owns light colors, material and spacing. */
+
 html.rtx-advanced-view.rtx-skin-untitled-light * {
   scrollbar-color: var(--rtx-light-border-strong) var(--rtx-light-panel-subtle);
 }
@@ -111,22 +132,18 @@ html.rtx-advanced-view.rtx-skin-untitled-light *::-webkit-scrollbar-thumb {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light *::-webkit-scrollbar-thumb:hover {
-  background: #9ba9b5;
+  background: var(--rtx-light-control-border);
 }
 
 /* Shell, chrome, and dock geometry stay flat and quiet. */
-html.rtx-advanced-view.rtx-skin-untitled-light :where(
-  .bg-\[\#0d0d0d\], .bg-\[\#0d0d11\], .bg-\[\#0d0f18\],
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.bg-\[\#0d0d0d\], .bg-\[\#0d0d11\], .bg-\[\#0d0f18\],
   .bg-\[\#0f0f12\], .bg-\[\#131316\], .bg-\[\#191a1e\],
-  .bg-\[\#252525\], .bg-zinc-900, .bg-gray-900, .bg-gray-950
-) {
+  .bg-\[\#252525\], .bg-zinc-900, .bg-gray-900, .bg-gray-950) {
   background-color: var(--rtx-light-panel) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(
-  .bg-\[\#1a1a1a\], .bg-\[\#1e1e22\], .bg-\[\#222226\],
-  .bg-\[\#2a2a2a\], .bg-zinc-800, .bg-gray-800, .bg-zinc-700, .bg-gray-700
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.bg-\[\#1a1a1a\], .bg-\[\#1e1e22\], .bg-\[\#222226\],
+  .bg-\[\#2a2a2a\], .bg-zinc-800, .bg-gray-800, .bg-zinc-700, .bg-gray-700) {
   background-color: var(--rtx-light-panel-subtle) !important;
 }
 
@@ -135,30 +152,26 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-app-shell, .trading-term
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-dock-workspace,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-dock-workspace,
   .dock-container,
   .dock-container--split,
-  .rtx-empty-chart-area
-) {
+  .rtx-empty-chart-area) {
   background: var(--rtx-light-canvas) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-panel-shell,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-panel-shell,
   .dock-container--tabs,
   .dock-panel,
   .rtx-chart-panel,
   .rtx-chart-panel__canvas,
-  .rtx-chart-wrapper
-) {
+  .rtx-chart-wrapper) {
   background: var(--rtx-light-panel) !important;
   border-color: var(--rtx-light-border) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel] > div {
+html.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel]>div {
   background: var(--rtx-light-panel) !important;
   border-color: var(--rtx-light-border) !important;
   color: var(--rtx-light-text) !important;
@@ -174,12 +187,10 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel--active {
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .dock-panel__header,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.dock-panel__header,
   .dock-panel__header--active,
   .dock-panel__header--inactive,
-  .dock-tabs
-) {
+  .dock-tabs) {
   background: var(--rtx-light-panel-header) !important;
   background-image: none !important;
   border-color: var(--rtx-light-border) !important;
@@ -190,9 +201,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title,
 html.rtx-advanced-view.rtx-skin-untitled-light.rtx-advanced-density-compact .dock-panel__title {
   color: var(--rtx-light-text-secondary) !important;
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-control-weight) !important;
-  line-height: 30px !important;
+  line-height: var(--rtx-light-control-line-height) !important;
   letter-spacing: 0 !important;
 }
 
@@ -231,7 +240,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-rail {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-rail__button {
-  color: #0f0f0f;
+  color: var(--rtx-light-text);
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-rail__button[data-active='true'] {
@@ -241,6 +250,10 @@ html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-rail__button[d
 
 html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-rail__button:is(:hover, :focus-visible) {
   background: transparent !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-rail__button[data-active='true']::before {
+  background: var(--rtx-light-accent-soft);
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .dock-tab {
@@ -260,7 +273,16 @@ html.rtx-advanced-view.rtx-skin-untitled-light .dock-tab--active {
   box-shadow: inset 0 -2px 0 var(--rtx-light-accent) !important;
 }
 
-/* Toolbars use blue as a state signal, never as ambient decoration. */
+html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role="tab"] {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role="tab"][aria-selected="true"] {
+  background: var(--rtx-light-selected) !important;
+  color: var(--rtx-light-text) !important;
+}
+
+/* Neutral hover distinguishes pointer feedback from indigo selection. */
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action, .rtx-toolbar-icon-button) {
   background: transparent !important;
   border-color: transparent !important;
@@ -274,27 +296,23 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-action--primary {
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-toolbar-action,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action,
   .rtx-toolbar-icon-button,
   .rtx-advanced-grid-button,
   .rtx-period-separator-toggle,
-  .rtx-trade-history-overlay-button
-):is(:hover, :focus-visible) {
-  background: var(--rtx-light-accent-soft) !important;
-  border-color: var(--rtx-light-accent-border) !important;
-  color: var(--rtx-light-accent-strong) !important;
+  .rtx-trade-history-overlay-button):is(:hover, :focus-visible) {
+  background: var(--rtx-light-hover) !important;
+  border-color: var(--rtx-light-border-strong) !important;
+  color: var(--rtx-light-text) !important;
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-toolbar-action[aria-pressed="true"],
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action[aria-pressed="true"],
   .rtx-toolbar-icon-button[aria-pressed="true"],
   .rtx-toolbar-icon-button[aria-checked="true"],
   .rtx-period-separator-toggle[aria-pressed="true"],
   .rtx-trade-history-overlay-button[aria-expanded="true"],
-  .rtx-advanced-grid-button[aria-expanded="true"]
-) {
+  .rtx-advanced-grid-button[aria-expanded="true"]) {
   background: var(--rtx-light-accent-soft) !important;
   border-color: var(--rtx-light-accent-border) !important;
   color: var(--rtx-light-accent-strong) !important;
@@ -307,7 +325,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[role="ra
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option {
-  color: #0f0f0f !important;
+  color: var(--rtx-light-text) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option:is(:hover, :focus-visible) {
@@ -329,63 +347,54 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-symbol-badge {
 }
 
 /* Menus and popovers remain opaque with a single restrained elevation. */
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-application-menu,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu,
   .rtx-menu-surface,
   .rtx-market-watch__dropdown,
   .rtx-connection-dropdown,
+  .web-drawing-tools-menu,
   .floating-panel,
   [role="menu"],
-  [role="listbox"]
-) {
-  background: var(--rtx-light-panel) !important;
+  [role="listbox"]) {
+  background: var(--rtx-light-elevated) !important;
   border-color: var(--rtx-light-border-strong) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: var(--shadow-lg) !important;
   backdrop-filter: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-application-menu__root-item,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-item,
   .rtx-menu-row,
   [role="menuitem"],
-  [role="option"]
-) {
+  [role="option"]) {
   color: var(--rtx-light-text-secondary) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu :is(
-  .rtx-application-menu__root-item,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu :is(.rtx-application-menu__root-item,
   .rtx-menu-row:not(.is-disabled),
-  .rtx-file-menu button.text-\[14px\]:not(:disabled)
-) {
+  .rtx-file-menu button.text-\[14px\]:not(:disabled)) {
   color: var(--rtx-light-text) !important;
 }
 
 /* The desktop menu bar and its portaled submenus sit outside
    .rtx-application-menu, so they need the same contrast restoration. */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-desktop-menu-bar :is(
-  .rtx-application-menu-trigger,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-desktop-menu-bar :is(.rtx-application-menu-trigger,
   .rtx-menu-row:not(.is-disabled),
-  .rtx-file-menu button.text-\[14px\]:not(:disabled)
-),
-html.rtx-advanced-view.rtx-skin-untitled-light [data-rtx-desktop-submenu='true'] :is(
-  .rtx-menu-row:not(.is-disabled),
-  .rtx-file-menu button.text-\[14px\]:not(:disabled)
-) {
+  .rtx-file-menu button.text-\[14px\]:not(:disabled)),
+html.rtx-advanced-view.rtx-skin-untitled-light [data-rtx-desktop-submenu='true'] :is(.rtx-menu-row:not(.is-disabled),
+  .rtx-file-menu button.text-\[14px\]:not(:disabled)) {
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-application-menu__root-item:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-item:hover,
   .rtx-application-menu__root-item:focus-visible,
   .rtx-application-menu__root-item.is-active,
   .rtx-menu-row:not(.is-disabled):hover,
   .rtx-menu-row:not(.is-disabled):focus-visible,
   .rtx-menu-row.is-open,
   [role="menuitem"]:not(:disabled):not([aria-disabled="true"]):hover,
-  [role="option"]:hover
-) {
+  [role="option"]:hover) {
   background: var(--rtx-light-accent-soft) !important;
   border-color: transparent !important;
   color: var(--rtx-light-accent-strong) !important;
@@ -402,35 +411,27 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__divide
 }
 
 /* Market Watch, Navigator, tables, and Toolbox share one scan-friendly rhythm. */
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-market-watch,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch,
   .rtx-market-watch__search,
   .rtx-market-watch__table,
   .rtx-market-watch__footer,
   .navigator-panel,
   .rtx-bottom-dock,
-  .rtx-bottom-dock__content
-) {
+  .rtx-bottom-dock__content) {
   background: var(--rtx-light-panel) !important;
   border-color: var(--rtx-light-border) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-market-watch__header,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch__header,
   .rtx-market-watch__symbols-panel,
   .navigator-panel__header,
-  .rtx-bottom-dock__tabs
-) {
+  .rtx-bottom-dock__tabs) {
   background: var(--rtx-light-panel-header) !important;
   border-color: var(--rtx-light-border) !important;
   color: var(--rtx-light-text-secondary) !important;
   box-shadow: none !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel__header {
-  font-weight: var(--rtx-light-font-control-weight) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row {
@@ -440,9 +441,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row {
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__label {
   color: var(--rtx-light-text-secondary) !important;
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
-  line-height: 20px !important;
+  line-height: 1.5 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.navigator-tree-item__chevron, .navigator-tree-item__icon) {
@@ -458,7 +457,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch :is(.mw-row, tr
   box-shadow: inset 2px 0 0 var(--rtx-light-accent) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch :is(.mw-row, tr)[aria-selected="true"] > * {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch :is(.mw-row, tr)[aria-selected="true"]>* {
   background: transparent !important;
 }
 
@@ -480,41 +479,54 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(td, tr):not(.tv-lightweigh
   color: var(--rtx-light-text) !important;
 }
 
+/* History uses clear horizontal separators without vertical cell edges. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-trade-table :is(thead th, tbody td) {
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--rtx-light-border-strong) !important;
+  box-shadow: none !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr:nth-child(even) {
   background: var(--rtx-light-panel) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr:hover,
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr:hover > * {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock tbody tr:hover>* {
   background: var(--rtx-light-hover) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab {
   background: transparent !important;
   border-color: transparent !important;
   color: var(--rtx-light-text-muted) !important;
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
-  line-height: 18px !important;
+  line-height: var(--rtx-light-control-line-height) !important;
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab:hover {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab:hover {
   background: var(--rtx-light-hover) !important;
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab.active-tab {
-  background: var(--rtx-light-panel) !important;
-  color: var(--rtx-light-accent-strong) !important;
-  font-weight: var(--rtx-light-font-control-weight) !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock__tabs .rtx-dock-tab.active-tab {
+  background: #ffffff !important;
+  color: var(--rtx-light-text) !important;
   box-shadow: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-dock-tab-indicator {
   background: var(--rtx-light-accent) !important;
   box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-trade-tab {
+  background: var(--rtx-light-panel) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-empty-state {
+  color: var(--rtx-light-text-muted) !important;
 }
 
 /* The account summary is one quiet strip, not a row of floating cards. */
@@ -524,11 +536,9 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer {
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-trade-footer-status,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-trade-footer-status,
   .rtx-trade-footer-metric,
-  .rtx-trade-footer-floating
-) {
+  .rtx-trade-footer-floating) {
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
@@ -550,11 +560,13 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer button:hover {
   color: var(--rtx-light-text) !important;
 }
 
+/* Cover the full Exposure viewport, including unused space below its rows. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-tab {
+  background: var(--rtx-light-panel) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-account-bar {
-  background: var(--rtx-light-panel-header) !important;
-  border-top-color: var(--rtx-light-border) !important;
-  color: var(--rtx-light-text) !important;
-  box-shadow: none !important;
+  display: none;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-exposure-tab .bg-\[\#2a2d34\],
@@ -572,15 +584,59 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar {
   background: var(--rtx-light-panel-header) !important;
   border-color: var(--rtx-light-border) !important;
   color: var(--rtx-light-text-muted) !important;
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
   box-shadow: none !important;
 }
 
-/* Inputs, dialogs, and focused states use the same neutral/blue contract. */
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea) {
-  background: var(--rtx-light-field) !important;
+/* Market Watch search sits in a rounded field above the full-width explorer. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search {
+  background: var(--rtx-light-panel) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar {
+  margin: 6px 8px;
+  background: var(--rtx-light-elevated) !important;
+  border: 1px solid var(--rtx-light-border) !important;
+  border-radius: 999px !important;
+  box-shadow: 0 1px 2px rgb(17 24 39 / 4%) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar:hover {
   border-color: var(--rtx-light-border-strong) !important;
+  box-shadow: 0 2px 8px rgb(17 24 39 / 10%) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar .mw-input {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar .mw-input::placeholder {
+  color: var(--rtx-light-text-muted) !important;
+  opacity: 1;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar > svg {
+  color: var(--rtx-light-text-muted) !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__search-bar:focus-within {
+  border-color: var(--rtx-light-accent) !important;
+  box-shadow: 0 0 0 2px var(--rtx-light-focus-ring), 0 2px 8px rgb(17 24 39 / 10%) !important;
+}
+
+/* Functional outlines stay distinct from quiet structural panel borders. */
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea),
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog, .rtx-dom-dialog, .rtx-modify-dialog, .rtx-cp-shell,
+  .rtx-options-dialog, .rtx-symbols-dialog, .rtx-chart-template-dialog) :is(input, select, textarea) {
+  background: var(--rtx-light-field) !important;
+  border-color: var(--rtx-light-control-border) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: none !important;
 }
@@ -589,57 +645,70 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea)::
   color: var(--rtx-light-text-muted) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):focus,
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-login-dialog,
-  .rtx-order-dialog,
-  .rtx-dom-dialog,
-  .rtx-modify-dialog,
-  .rtx-shortcut-dialog,
-  .rtx-oad-shell,
-  .rtx-cp-shell
-) :is(input, select, textarea):focus {
-  border-color: var(--rtx-light-accent) !important;
-  box-shadow: 0 0 0 3px var(--rtx-light-focus-ring) !important;
-  outline: none !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog, .rtx-dom-dialog, .rtx-modify-dialog, .rtx-cp-shell,
+  .rtx-options-dialog, .rtx-symbols-dialog, .rtx-chart-template-dialog) :is(input, select, textarea):hover {
+  border-color: var(--rtx-light-control-border-hover) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-login-dialog,
+html.rtx-advanced-view.rtx-skin-untitled-light input:is([type="checkbox"], [type="radio"]) {
+  accent-color: var(--rtx-light-accent) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :where(input, select, textarea):focus,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input:focus,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog,
   .rtx-order-dialog,
   .rtx-dom-dialog,
   .rtx-modify-dialog,
   .rtx-shortcut-dialog,
   .rtx-oad-shell,
   .rtx-cp-shell,
-  .rtx-chart-text-input-popover
-) {
-  background: var(--rtx-light-panel) !important;
+  .rtx-options-dialog,
+  .rtx-symbols-dialog,
+  .rtx-chart-template-dialog) :is(input, select, textarea):focus {
+  border-color: var(--rtx-light-accent) !important;
+  box-shadow: 0 0 0 3px var(--rtx-light-focus-ring) !important;
+  outline: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog,
+  .rtx-order-dialog,
+  .rtx-dom-dialog,
+  .rtx-modify-dialog,
+  .rtx-shortcut-dialog,
+  .rtx-oad-shell,
+  .rtx-cp-shell,
+  .rtx-chart-text-input-popover) {
+  background: var(--rtx-light-elevated) !important;
   border-color: var(--rtx-light-border-strong) !important;
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-login-dialog button[type="submit"],
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog button[type="submit"],
   .rtx-cp-btn-primary,
   .rtx-oad-btn-next,
-  .rtx-shortcut-dialog .bg-blue-600
-) {
+  .rtx-shortcut-dialog .bg-blue-600) {
   background: var(--rtx-light-accent) !important;
   border-color: var(--rtx-light-accent) !important;
   color: #ffffff !important;
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-cp-tab-active,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-cp-tab-active,
   .rtx-oad-item-selected,
-  .rtx-journal-time-btn.bg-zinc-600
-) {
+  .rtx-journal-time-btn.bg-zinc-600) {
   background: var(--rtx-light-accent-soft) !important;
   border-color: var(--rtx-light-accent-border) !important;
   color: var(--rtx-light-accent-strong) !important;
   box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-btn-primary:hover,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oad-btn-next:hover {
+  background: var(--rtx-light-accent-strong) !important;
+  border-color: var(--rtx-light-accent-strong) !important;
+  color: #ffffff !important;
 }
 
 /* Confirmation dialog was previously half dark and half white in light mode. */
@@ -649,23 +718,21 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog-backdrop {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog {
-  background: var(--rtx-light-panel) !important;
+  background: var(--rtx-light-elevated) !important;
   border-color: var(--rtx-light-border-strong) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: var(--shadow-xl) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-confirm-dialog__header,
-  .rtx-confirm-dialog__footer
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-confirm-dialog__header,
+  .rtx-confirm-dialog__footer) {
   background: var(--rtx-light-panel-header) !important;
   border-color: var(--rtx-light-border) !important;
   color: var(--rtx-light-text) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog__content {
-  background: var(--rtx-light-panel) !important;
+  background: var(--rtx-light-elevated) !important;
   color: var(--rtx-light-text-secondary) !important;
 }
 
@@ -683,34 +750,26 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-confirm-dialog__confirm {
 }
 
 /* Large settings and symbol surfaces use stable hooks instead of dark-class guesses. */
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-options-dialog-backdrop,
-  .rtx-chart-template-dialog-backdrop
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-options-dialog-backdrop,
+  .rtx-chart-template-dialog-backdrop) {
   background: rgba(32, 36, 42, 0.28) !important;
   backdrop-filter: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-options-dialog,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-options-dialog,
   .rtx-chart-template-dialog,
-  .rtx-symbols-dialog
-) {
-  background: var(--rtx-light-panel) !important;
+  .rtx-symbols-dialog) {
+  background: var(--rtx-light-elevated) !important;
   border-color: var(--rtx-light-border-strong) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: var(--shadow-xl) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-options-dialog :is(
-  .bg-\[\#252528\],
-  .bg-\[\#131316\]
-),
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-template-dialog :is(
-  .bg-\[\#252526\],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-options-dialog :is(.bg-\[\#252528\],
+  .bg-\[\#131316\]),
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-template-dialog :is(.bg-\[\#252526\],
   .bg-\[\#131316\],
-  .bg-black\/20
-) {
+  .bg-black\/20) {
   background: var(--rtx-light-panel-header) !important;
   border-color: var(--rtx-light-border) !important;
   color: var(--rtx-light-text-secondary) !important;
@@ -718,7 +777,7 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-template-dialog :is(
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-options-dialog .flex-1.bg-\[\#252528\],
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-options-dialog .overflow-y-auto.bg-\[\#252528\] {
-  background: var(--rtx-light-panel) !important;
+  background: var(--rtx-light-elevated) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-options-dialog button.bg-zinc-700 {
@@ -734,30 +793,24 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-template-dialog .bg-bl
   box-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog :is(
-  .bg-\[\#0d0f18\],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog :is(.bg-\[\#0d0f18\],
   .bg-\[\#131620\],
   .bg-\[\#161922\],
   .bg-\[\#1a1d27\],
-  .bg-\[\#2a2e45\]
-) {
+  .bg-\[\#2a2e45\]) {
   background: var(--rtx-light-panel) !important;
   border-color: var(--rtx-light-border) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog :is(
-  .bg-\[\#1e2235\],
-  .bg-\[\#222640\]
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog :is(.bg-\[\#1e2235\],
+  .bg-\[\#222640\]) {
   background: var(--rtx-light-accent-soft) !important;
   border-color: var(--rtx-light-accent-border) !important;
   color: var(--rtx-light-accent-strong) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog :is(
-  .border-\[\#2a2e45\],
-  .border-\[\#3a3e52\]
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-symbols-dialog :is(.border-\[\#2a2e45\],
+  .border-\[\#3a3e52\]) {
   border-color: var(--rtx-light-border) !important;
 }
 
@@ -774,10 +827,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-data-window {
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-data-window__titlebar,
-  .rtx-data-window__symbol
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-data-window__titlebar,
+  .rtx-data-window__symbol) {
   background: var(--rtx-light-panel-header) !important;
   border-color: var(--rtx-light-border) !important;
 }
@@ -790,91 +841,77 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-data-window__row {
   border-color: var(--rtx-light-row-border) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-data-window__title,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-data-window__title,
   .rtx-data-window__symbol-label,
-  .rtx-data-window__value
-) {
+  .rtx-data-window__value) {
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-data-window__label,
-  .rtx-data-window__close
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-data-window__label,
+  .rtx-data-window__close) {
   color: var(--rtx-light-text-muted) !important;
 }
 
 /* Translate legacy inline drawing-menu colors without changing drawing state. */
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  [style*="background: #1a1f2e"],
-  [style*="background: rgb(26, 31, 46)"]
-) {
-  background: var(--rtx-light-panel) !important;
+html.rtx-advanced-view.rtx-skin-untitled-light :is([style*="background: #1a1f2e"],
+  [style*="background: rgb(26, 31, 46)"]) {
+  background: var(--rtx-light-elevated) !important;
   border-color: var(--rtx-light-border-strong) !important;
   color: var(--rtx-light-text) !important;
   box-shadow: var(--shadow-lg) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  [style*="background: #252b3b"],
-  [style*="background: rgb(37, 43, 59)"]
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :is([style*="background: #252b3b"],
+  [style*="background: rgb(37, 43, 59)"]) {
   background: var(--rtx-light-hover) !important;
   border-color: var(--rtx-light-border) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  [style*="color: #c8ccd4"],
-  [style*="color: rgb(200, 204, 212)"]
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :is([style*="color: #c8ccd4"],
+  [style*="color: rgb(200, 204, 212)"]) {
   color: var(--rtx-light-text) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  [style*="color: #4b5563"],
-  [style*="color: rgb(75, 85, 99)"]
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :is([style*="color: #4b5563"],
+  [style*="color: rgb(75, 85, 99)"]) {
   color: var(--rtx-light-text-muted) !important;
 }
 
 /* The chart stays light during its loading phase and its HUD avoids color pills. */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper > div[class*="bg-[#0a0a0f]"] {
-  background: var(--rtx-light-panel) !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper>div[class*="bg-[#0a0a0f]"] {
+  background: var(--rtx-light-chart) !important;
   color: var(--rtx-light-text-secondary) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper > div[class*="bg-[#0a0a0f]"] div[class*="bg-white/40"] {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper>div[class*="bg-[#0a0a0f]"] div[class*="bg-white/40"] {
   background: #cbd5df !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper > div[class*="bg-[#0a0a0f]"] div[class*="text-white/90"] {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper>div[class*="bg-[#0a0a0f]"] div[class*="text-white/90"] {
   color: var(--rtx-light-text-secondary) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper > div[class*="bg-[#0a0a0f]"] div[class*="animate-spin"] {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-wrapper>div[class*="bg-[#0a0a0f]"] div[class*="animate-spin"] {
   border-color: #d2d6dc !important;
   border-top-color: var(--rtx-light-accent) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud > span,
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud > span > span {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>span,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>span>span {
   background: transparent !important;
   border-radius: 0 !important;
   padding: 0 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud > span:first-child {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>span:first-child {
   color: var(--rtx-light-text) !important;
-  font-weight: 500 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud > span:not(:first-child) {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud>span:not(:first-child) {
   color: var(--rtx-light-text-muted) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(
-  .price-up,
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.price-up,
   .pl-pos,
   .text-profit,
   .text-emerald-300,
@@ -882,14 +919,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(
   .text-green-400,
   .text-green-500,
   .rtx-market-watch__price--up,
-  .rtx-market-watch__daily--up
-) {
+  .rtx-market-watch__daily--up) {
   color: var(--color-profit) !important;
   text-shadow: none !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(
-  .price-down,
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.price-down,
   .pl-neg,
   .text-loss,
   .text-red-300,
@@ -897,29 +932,24 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(
   .text-red-500,
   .text-rose-400,
   .rtx-market-watch__price--down,
-  .rtx-market-watch__daily--down
-) {
+  .rtx-market-watch__daily--down) {
   color: var(--color-loss) !important;
   text-shadow: none !important;
 }
 
 /* Final utility remap catches light dialogs rendered through portals. */
-html.rtx-advanced-view.rtx-skin-untitled-light :where(
-  .text-blue-300,
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.text-blue-300,
   .text-blue-400,
   .text-blue-500,
   .text-blue-600,
-  .text-purple-500
-) {
+  .text-purple-500) {
   color: var(--rtx-light-accent-strong) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :where(
-  .bg-blue-500\/15,
+html.rtx-advanced-view.rtx-skin-untitled-light :where(.bg-blue-500\/15,
   .bg-blue-500\/10,
   .bg-purple-500,
-  .bg-blue-600
-) {
+  .bg-blue-600) {
   background: var(--rtx-light-accent-soft) !important;
   color: var(--rtx-light-accent-strong) !important;
 }
@@ -928,12 +958,75 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(.border-blue-500\/20, .bor
   border-color: var(--rtx-light-accent-border) !important;
 }
 
-/* Compact controls, regular data, and quiet metadata share the S / M / L scale. */
+/* Legacy dialog and table rules have their own specificity. Keep these roles
+   consistent when fields are portalled or financial rows are selected. */
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-chart-panel__canvas, .rtx-chart-wrapper) {
+  background: var(--rtx-light-chart) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell :is(.rtx-cp-header, .rtx-cp-footer) {
+  background: var(--rtx-light-panel-header) !important;
+  border-color: var(--rtx-light-border) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell :is(.rtx-cp-content, .rtx-cp-legend) {
+  background: var(--rtx-light-elevated) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell .rtx-cp-preview-text {
+  background: var(--rtx-light-elevated) !important;
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell :is(.rtx-cp-label, .rtx-cp-checkbox-label, .rtx-cp-radio-label, .rtx-cp-color-text, .rtx-cp-legend) {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-cp-shell :is(.rtx-cp-btn:not(.rtx-cp-btn-primary), .rtx-cp-color-picker) {
+  background: var(--rtx-light-elevated) !important;
+  border-color: var(--rtx-light-control-border) !important;
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer .rtx-trade-metric-label {
+  color: var(--rtx-light-text-secondary) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-footer :is(.text-zinc-100, .text-zinc-300) {
+  color: var(--rtx-light-price) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row td.rtx-trade-profit-value--positive,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-trade-table tbody tr.rtx-trade-row td.text-\[\#22c55e\],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-trade-footer .text-\[\#22c55e\] {
+  color: var(--color-profit) !important;
+  text-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row td.rtx-trade-profit-value--negative,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-trade-table tbody tr.rtx-trade-row td.text-\[\#ff2d2d\],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-trade-table tbody tr.rtx-trade-row td.text-\[\#ff2d2d\] span,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock .rtx-trade-footer .text-\[\#ff2d2d\] {
+  color: var(--color-loss) !important;
+  text-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row td.rtx-trade-side-cell--buy,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row td.rtx-trade-side-cell--buy span,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-trade-table tbody tr.rtx-trade-row td.text-\[\#45bff7\],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-trade-table tbody tr.rtx-trade-row td.text-\[\#45bff7\] span {
+  color: var(--rtx-light-quote-up) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row td.rtx-trade-side-cell--sell,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row td.rtx-trade-side-cell--sell span {
+  color: var(--color-loss) !important;
+}
+
+/* Light chrome retains its font face and spacing; size and weight are shared. */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-action {
   font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
-  line-height: 18px !important;
+  line-height: var(--rtx-light-control-line-height) !important;
   letter-spacing: 0 !important;
 }
 
@@ -947,45 +1040,31 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button svg.rtx-
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button:not([aria-pressed="true"]):not([aria-checked="true"]):not(:hover):not(:focus-visible) {
-  color: #0f0f0f !important;
+  color: var(--rtx-light-text) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option {
   font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
-  line-height: 18px !important;
+  line-height: var(--rtx-light-control-line-height) !important;
   letter-spacing: 0 !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-symbol-badge {
-  font-size: var(--rtx-advanced-header-font-size, 12px) !important;
-  font-weight: var(--rtx-light-font-control-weight) !important;
   line-height: 1 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-timeframe-strip .rtx-timeframe-option[aria-checked="true"] {
-  font-weight: var(--rtx-light-font-body-weight) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-market-watch__column-heading,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch__column-heading,
+  .rtx-bottom-dock thead th,
   .rtx-trade-table__head th,
   .rtx-journal-table thead th,
   .rtx-calendar-tab__head th,
   .rtx-articles-tab__head th,
   .rtx-codebase-tab__head th,
-  .rtx-experts-tab__head th,
-  .rtx-journal-time-btn
-) {
-  font-size: var(--rtx-advanced-header-font-size, 12px) !important;
-  font-weight: var(--rtx-light-font-control-weight) !important;
+  .rtx-experts-tab__head th) {
   line-height: 18px !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-market-watch__symbol,
-  .rtx-market-watch__price,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch__price,
   .rtx-market-watch__spread,
   .rtx-market-watch__daily,
   .rtx-trade-table tbody tr.rtx-trade-row td,
@@ -997,59 +1076,28 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(
   .rtx-experts-tab tbody td,
   .rtx-trade-footer,
   .rtx-trade-footer-metric,
-  .rtx-trade-footer-floating,
-  .rtx-status-bar__metric
-) {
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
+  .rtx-trade-footer-floating) {
   font-variant-numeric: tabular-nums;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-chart-hud {
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
-  line-height: 18px !important;
+  line-height: var(--rtx-light-control-line-height) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-application-menu__root-item,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu :is(.rtx-application-menu__root-item,
   .rtx-menu-row,
-  [role="menuitem"],
-  [role="option"]
-) {
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu :is(
-  .rtx-application-menu__root-item,
-  .rtx-menu-row,
-  .rtx-file-menu button.text-\[14px\]
-) {
+  .rtx-file-menu button.text-\[14px\]) {
   font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
-  line-height: 19.5px !important;
+  line-height: var(--rtx-light-control-line-height) !important;
 }
 
 /* Desktop menu labels take the same type role. Line height is left to theme.css
    so the fixed-height Electron menu row keeps its metrics. */
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-desktop-menu-bar,
-  [data-rtx-desktop-submenu='true']
-) :is(
-  .rtx-application-menu-trigger,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-desktop-menu-bar,
+  [data-rtx-desktop-submenu='true']) :is(.rtx-application-menu-trigger,
   .rtx-menu-row,
-  .rtx-file-menu button.text-\[14px\]
-) {
+  .rtx-file-menu button.text-\[14px\]) {
   font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-menu-row__shortcut {
-  font-size: var(--rtx-advanced-header-font-size, 12px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu .rtx-menu-row__shortcut {
@@ -1057,17 +1105,10 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-application-menu .rtx-menu-r
   line-height: 18px !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-desktop-menu-bar,
-  [data-rtx-desktop-submenu='true']
-) .rtx-menu-row__shortcut {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-desktop-menu-bar,
+  [data-rtx-desktop-submenu='true']) .rtx-menu-row__shortcut {
   font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
   line-height: 18px !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .mw-input {
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
 }
 
 /* Open positions share the panel surface and the same selection as Market Watch. */
@@ -1078,64 +1119,62 @@ html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-tra
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected):hover,
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected):hover > * {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row:not(.rtx-trade-row--selected):hover>* {
   background: var(--rtx-light-hover) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row.rtx-trade-row--selected,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row[aria-selected="true"],
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row.rtx-trade-row--selected > *,
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row[aria-selected="true"] > * {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row.rtx-trade-row--selected>*,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table tbody tr.rtx-trade-row[aria-selected="true"]>* {
   background: var(--rtx-light-selected) !important;
 }
 
 /* Market Watch follows MetaTrader semantics: blue for an uptick, red for a downtick. */
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__symbol {
   color: var(--rtx-light-text) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-market-watch__price--bid,
-  .rtx-market-watch__price--ask
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch__price--bid,
+  .rtx-market-watch__price--ask) {
   color: var(--rtx-light-text-secondary) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-market-watch__price--up,
-  .rtx-market-watch__daily--up
-) {
-  color: #0b6cf0 !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__price {
+  color: var(--rtx-light-price) !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-market-watch__price--down,
-  .rtx-market-watch__daily--down
-) {
-  color: #d61f2c !important;
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__price--up {
+  color: var(--rtx-light-quote-up) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch .rtx-market-watch__price--down {
+  color: var(--rtx-light-quote-down) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__daily--up {
+  color: var(--color-profit) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__daily--down {
+  color: var(--color-loss) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__direction--up {
-  color: #24a35a !important;
+  color: var(--rtx-light-quote-up) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__direction--down {
-  color: #d61f2c !important;
+  color: var(--rtx-light-quote-down) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__symbol-description {
   color: var(--rtx-light-text-muted) !important;
-  font-size: var(--rtx-advanced-header-font-size, 12px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
-  line-height: 15px !important;
+  line-height: 1.4 !important;
 }
 
-/* Dialogs are often portalled outside the app shell. Apply the same hierarchy
-   to their text roles without resizing chart labels, quotes, or icon glyphs. */
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-login-dialog,
+/* Portalled dialogs retain light spacing while using shared font sizes/weights. */
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog,
   .rtx-order-dialog,
   .rtx-dom-dialog,
   .rtx-modify-dialog,
@@ -1145,97 +1184,82 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(
   .rtx-options-dialog,
   .rtx-chart-template-dialog,
   .rtx-symbols-dialog,
-  .rtx-confirm-dialog
-) {
-  font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
+  .rtx-confirm-dialog) {
 
   & :is(.text-xs, .text-2xs, .text-\[9px\], .text-\[10px\], .text-\[11px\], .text-\[12px\]) {
-    font-size: var(--rtx-advanced-header-font-size, 12px) !important;
     line-height: 1.5 !important;
     letter-spacing: 0 !important;
   }
 
-  & :is(input, select, textarea, label, .rtx-order-dialog__control,
-    .rtx-cp-label, .rtx-cp-radio-label, .rtx-cp-checkbox-label) {
-    font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-    font-weight: var(--rtx-light-font-body-weight) !important;
+  & :is(input, select, textarea, .rtx-order-dialog__control) {
+    line-height: 1.5 !important;
     letter-spacing: 0 !important;
+  }
+
+  & :is(label, .rtx-order-dialog__label, .rtx-cp-label) {
+    line-height: 1.5 !important;
+    letter-spacing: 0 !important;
+  }
+
+  & :is(.rtx-cp-radio-label, .rtx-cp-checkbox-label) {
+    line-height: var(--rtx-light-control-line-height) !important;
   }
 
   & :is(button.text-sm, button.text-base, button.text-\[14px\], button.text-\[13px\],
     .rtx-order-dialog__action, .rtx-confirm-dialog__cancel, .rtx-confirm-dialog__confirm) {
-    font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-    font-weight: var(--rtx-light-font-control-weight) !important;
     letter-spacing: 0 !important;
   }
 
   & :is(h2, h3) {
-    font-weight: var(--rtx-light-font-title-weight) !important;
     letter-spacing: 0 !important;
     text-transform: none !important;
   }
 
   & h2,
   & h2[class] {
-    font-size: calc(var(--rtx-advanced-primary-font-size, 14px) + 1px) !important;
     line-height: 1.4 !important;
   }
 
   & h3,
   & h3[class] {
-    font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
     line-height: 1.4 !important;
   }
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-order-dialog .rtx-order-dialog__title,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-order-dialog .rtx-order-dialog__title,
   .rtx-cp-shell .rtx-cp-title,
   .rtx-modify-dialog > div:first-child > span,
   .rtx-options-dialog > div:first-child > span,
   .rtx-login-dialog > div:first-child > span,
-  .rtx-confirm-dialog__header > span
-) {
-  font-size: calc(var(--rtx-advanced-primary-font-size, 14px) + 1px) !important;
-  font-weight: var(--rtx-light-font-title-weight) !important;
+  .rtx-confirm-dialog__header > span) {
   line-height: 1.4 !important;
   letter-spacing: 0 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-order-dialog__chart-meta,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-order-dialog__chart-meta,
   .rtx-order-dialog__chart-quote,
   .rtx-order-dialog__margin,
   .rtx-order-dialog__message,
   .rtx-order-dialog__spread,
   .rtx-data-window__label,
-  .rtx-data-window__symbol-label
-) {
-  font-size: var(--rtx-advanced-header-font-size, 12px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
+  .rtx-data-window__symbol-label) {
   line-height: 1.5 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-data-window__title,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-data-window__title,
   .last-symbol-brand strong,
   .last-symbol-section-heading,
   .last-symbol-settings__heading,
   .rtx-history-downloader__identity h2,
   .rtx-history-section-heading h3,
-  .rtx-history-tasks__header h3
-) {
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-control-weight) !important;
+  .rtx-history-tasks__header h3) {
   line-height: 1.4 !important;
   letter-spacing: 0 !important;
   text-transform: none !important;
 }
 
 /* Supporting copy in the trading and data panels previously fell to 9–11px. */
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .last-symbol-status,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.last-symbol-status,
   .last-symbol-side,
   .last-symbol-unit,
   .last-symbol-history,
@@ -1250,22 +1274,20 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(
   .rtx-history-downloader__metrics dt,
   .rtx-history-section-heading > span,
   .rtx-history-tasks__header > div > span,
+  .rtx-history-task-count,
+  .rtx-history-duration-badge,
   .rtx-history-symbol-label,
   .rtx-history-symbol-row__meta,
   .rtx-history-symbol-row__topline > span,
   .rtx-history-field-label,
   .rtx-history-task__identity > span,
   .rtx-history-task__progress-label,
-  .rtx-history-empty
-) {
-  font-size: var(--rtx-advanced-header-font-size, 12px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
+  .rtx-history-empty) {
   line-height: 1.5 !important;
   letter-spacing: 0 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-data-window__value,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-data-window__value,
   .last-symbol-stepper input,
   .last-symbol-presets button,
   .last-symbol-account-summary dd,
@@ -1274,53 +1296,221 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(
   .rtx-history-downloader input,
   .rtx-history-downloader select,
   .rtx-history-coverage-date,
-  .rtx-history-coverage-recorded
-) {
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-body-weight) !important;
+  .rtx-history-coverage-recorded) {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .last-symbol-setting-row strong,
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.last-symbol-setting-row strong,
   .last-symbol-close-button__label,
   .rtx-history-symbol-row__topline strong,
   .rtx-history-task__identity strong,
   .rtx-history-symbol-select,
-  .rtx-history-primary-button
-) {
-  font-size: var(--rtx-advanced-dense-font-size, 13px) !important;
-  font-weight: var(--rtx-light-font-control-weight) !important;
+  .rtx-history-primary-button) {
   letter-spacing: 0 !important;
 }
 
-html.rtx-advanced-view.rtx-skin-untitled-light .last-symbol-value:not([data-empty='true']) {
-  font-size: calc(var(--rtx-advanced-primary-font-size, 14px) + 4px) !important;
-  font-weight: var(--rtx-light-font-control-weight) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light .last-symbol-trade-button__price {
-  font-size: var(--rtx-advanced-primary-font-size, 14px) !important;
-  font-weight: var(--rtx-light-font-control-weight) !important;
-}
-
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  .rtx-history-downloader__metrics dd,
-  .rtx-history-coverage-date
-) {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-history-downloader__metrics dd,
+  .rtx-history-coverage-date) {
   color: var(--rtx-light-text) !important;
 }
 
+/* Light surface spacing is independent of the shared font sizes and weights. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-app-shell {
+  line-height: 1.5;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock thead th :is(button, span) {
+  line-height: inherit !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-trade-footer-metric,
+  .rtx-trade-footer-floating) {
+  line-height: 1.5 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-trade-metric-label,
+  .rtx-exposure-account-label,
+  .rtx-trade-footer-currency,
+  .rtx-status-bar,
+  .rtx-status-bar .rtx-status-bar__metric) {
+  line-height: 1.5 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .dock-panel__title [role="tab"] {
+  line-height: 1.5 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-menu :is(.web-drawing-tools-menu__item,
+  .web-drawing-tools-menu__label,
+  .web-drawing-tools-menu__toggle-row) {
+  line-height: 1.5 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .web-drawing-tools-menu .web-drawing-tools-menu__heading {
+  height: auto;
+  min-height: 30px;
+  line-height: 1.5 !important;
+  letter-spacing: 0.02em;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.web-drawing-tools-menu .web-drawing-tools-menu__item kbd,
+  .web-drawing-tools-tooltip) {
+  line-height: 1.5 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-trade-button .rtx-oct-price,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-volume-control input {
+  font-variant-numeric: tabular-nums;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-oct .rtx-oct-trade-button .rtx-oct-side-label {
+  letter-spacing: 0 !important;
+}
+
+/* Financial UI uses the UI face with aligned numerals. Code and user-created
+   chart annotations retain their own font choices. */
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch .rtx-market-watch__price,
+  .rtx-market-watch .price-display,
+  .rtx-bottom-dock .price-display,
+  .rtx-bottom-dock .font-mono,
+  .rtx-data-window .rtx-data-window__value,
+  .rtx-data-window .rtx-data-window__symbol-label,
+  .rtx-status-bar .font-mono,
+  .rtx-order-dialog .rtx-order-dialog__chart-symbol,
+  .rtx-order-dialog .rtx-order-dialog__chart-quotes,
+  .rtx-order-dialog .rtx-order-dialog__volume-input,
+  .rtx-order-dialog .rtx-order-dialog__margin,
+  .rtx-order-dialog .rtx-order-dialog__price,
+  .rtx-dom-dialog .font-mono,
+  .rtx-dom-dialog input,
+  .rtx-cp-shell input,
+  .rtx-cp-shell .rtx-cp-preview-text,
+  .rtx-cp-shell .font-serif,
+  .rtx-history-downloader__metrics dd,
+  .rtx-history-downloader input,
+  .rtx-history-duration-badge,
+  .rtx-history-coverage-date,
+  .rtx-chart-hud,
+  .rtx-chart-price-badge,
+  .rtx-trade-marker__price-tooltip):not(code, pre, pre *) {
+  font-family: var(--font-sans) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Preserve the light row spacing around shared formatted prices and values. */
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch__table tbody td,
+  .rtx-bottom-dock tbody td:not([colspan]),
+  .rtx-market-watch__symbol,
+  .rtx-market-watch__price,
+  .rtx-market-watch__daily) {
+  line-height: var(--rtx-light-control-line-height) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch .price-display,
+  .rtx-market-watch .price-small,
+  .rtx-market-watch .price-big,
+  .rtx-market-watch .price-pip,
+  .rtx-bottom-dock tbody td:not([colspan]) span,
+  .rtx-bottom-dock .price-display,
+  .rtx-bottom-dock .price-small,
+  .rtx-bottom-dock .price-big,
+  .rtx-bottom-dock .price-pip) {
+  line-height: inherit !important;
+}
+
+/* Every small toolbar has the same control role as the main command bar. */
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-journal-toolbar .rtx-journal-control,
+  .rtx-history-toolbar .rtx-history-time-btn,
+  .rtx-history-time-btn,
+  .rtx-cp-shell .rtx-cp-tab,
+  .rtx-cp-shell .rtx-cp-btn,
+  .rtx-cp-shell .rtx-cp-color-text,
+  .rtx-history-downloader .rtx-history-clear-btn,
+  .rtx-history-downloader .rtx-history-seg-btn,
+  .rtx-market-watch .mw-input) {
+  line-height: var(--rtx-light-control-line-height) !important;
+  letter-spacing: 0 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-trade-empty-state,
+  .rtx-bottom-dock td[colspan]:not(:empty),
+  .rtx-journal-toolbar__label,
+  .rtx-order-dialog__price-label) {
+  font-style: normal !important;
+  line-height: 18px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-order-dialog .rtx-order-dialog__price {
+  line-height: 1.4 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-marker__price-tooltip,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-marker__tooltip-details>span {
+  line-height: 18px !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-marker__tooltip-header {
+  letter-spacing: 0 !important;
+}
+
 /* Keyboard focus stays distinct from the softer pointer hover and selection. */
-html.rtx-advanced-view.rtx-skin-untitled-light :is(
-  button, [role="menuitem"], [role="radio"], [role="tab"]
-):focus-visible {
+html.rtx-advanced-view.rtx-skin-untitled-light :is(button, [role="menuitem"], [role="radio"], [role="tab"]):focus-visible {
   outline: 2px solid var(--rtx-light-accent) !important;
   outline-offset: -2px;
 }
 
+/* A solid action needs its focus ring outside the fill to remain visible. */
+html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-login-dialog button[type="submit"],
+  .rtx-cp-btn-primary,
+  .rtx-oad-btn-next,
+  .rtx-confirm-dialog__confirm,
+  .rtx-order-dialog__action,
+  .rtx-options-dialog button.bg-zinc-700,
+  .rtx-chart-template-dialog .bg-blue-600):focus-visible {
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--rtx-light-elevated) !important;
+}
+
+/* Let complete prices determine column width at every reading size. A narrow
+   dock scrolls the table instead of hiding the final digits of a quote. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__table {
+  overflow-x: auto !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__grid {
+  table-layout: auto !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__grid col {
+  width: auto !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__grid :is(th, td) {
+  white-space: nowrap;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch__grid tbody td:first-child {
+  min-width: calc(9ch + 27px);
+  max-width: none !important;
+}
+
+/* Keep the light execution controls' spacing; the component owns their type. */
+html:root.rtx-advanced-view.rtx-skin-untitled-light body .rtx-oct .rtx-oct-trade-button .rtx-oct-price {
+  line-height: 1.3 !important;
+}
+
+html:root.rtx-advanced-view.rtx-skin-untitled-light body .rtx-oct .rtx-oct-trade-button .rtx-oct-side-label {
+  line-height: 1.3 !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch [role="alert"] {
+  line-height: 1.4 !important;
+  color: var(--color-loss) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
+
   html.rtx-advanced-view.rtx-skin-untitled-light *,
   html.rtx-advanced-view.rtx-skin-untitled-light *::before,
   html.rtx-advanced-view.rtx-skin-untitled-light *::after {

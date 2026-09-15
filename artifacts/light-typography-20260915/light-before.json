@@ -1,0 +1,108 @@
+{
+  "roles": [
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18px",
+      "rect": {
+        "height": 32,
+        "width": 110.78125
+      },
+      "s": ".rtx-toolbar-action",
+      "size": "13px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18px",
+      "rect": {
+        "height": 32,
+        "width": 41.234375
+      },
+      "s": ".rtx-timeframe-option",
+      "size": "13px",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18px",
+      "rect": {
+        "height": 18,
+        "width": 127.203125
+      },
+      "s": ".dock-panel__title",
+      "size": "13px",
+      "weight": "500"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18px",
+      "rect": {
+        "height": 18,
+        "width": 68.265625
+      },
+      "s": ".rtx-market-watch__symbol",
+      "size": "13px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18px",
+      "rect": {
+        "height": 20,
+        "width": 52.875
+      },
+      "s": ".rtx-market-watch__price",
+      "size": "13px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18px",
+      "rect": {
+        "height": 24,
+        "width": 95.265625
+      },
+      "s": ".rtx-market-watch__column-heading",
+      "size": "12px",
+      "weight": "500"
+    },
+    {
+      "missing": true,
+      "s": ".rtx-navigator-label"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18px",
+      "rect": {
+        "height": 18,
+        "width": 407.59375
+      },
+      "s": ".rtx-chart-hud",
+      "size": "13px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "18px",
+      "rect": {
+        "height": 24,
+        "width": 929
+      },
+      "s": ".rtx-status-bar",
+      "size": "12px",
+      "weight": "400"
+    },
+    {
+      "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+      "line": "13px",
+      "rect": {
+        "height": 24,
+        "width": 72.5
+      },
+      "s": ".rtx-oct-price",
+      "size": "13px",
+      "weight": "500"
+    }
+  ],
+  "root": "theme-dark rtx-advanced-view rtx-skin-untitled-light rtx-advanced-font-normal rtx-advanced-density-comfortable rtx-advanced-accent-purple rtx-advanced-surface-white"
+}

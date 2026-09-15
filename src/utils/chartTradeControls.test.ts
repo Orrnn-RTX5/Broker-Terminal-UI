@@ -242,8 +242,9 @@ describe('createEntryTradeControlBar', () => {
       leftInset: 10,
     });
 
-    expect(root.querySelector('.rtx-trade-chip--pips')).toHaveStyle({ backgroundColor: '#ffffff', color: '#232c39' });
-    expect(root.querySelector('.rtx-trade-chip--money')).toHaveStyle({ backgroundColor: '#ffffff', color: '#232c39' });
+    expect(root.querySelector('.rtx-trade-chip--pips')).toHaveStyle({ backgroundColor: '#ffffff', color: '#111827' });
+    expect(root.querySelector('.rtx-trade-chip--money')).toHaveStyle({ backgroundColor: '#ffffff', color: '#111827' });
+    expect(root.querySelector('.rtx-trade-chip--volume')).toHaveStyle({ backgroundColor: '#dc2626', color: '#ffffff' });
   });
 
   it('dispatches the position action event when a button is clicked', () => {
@@ -332,6 +333,16 @@ describe('createTradeLevelControlBar', () => {
 });
 
 describe('createDockedLevelChip', () => {
+  it('uses the light field surface and restores its outline after hover', () => {
+    const chip = createDockedLevelChip({ tradeKey: 'trade:987', role: 'SL', label: 'SL', isLightSurface: true, leftInset: 10 });
+    document.body.appendChild(chip);
+    expect(chip).toHaveStyle({ backgroundColor: '#f2f6fc', color: '#4b5563', borderColor: '#7d8796' });
+    chip.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(chip).toHaveStyle({ borderTopColor: '#64748b' });
+    chip.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(chip).toHaveStyle({ borderTopColor: '#7d8796' });
+  });
+
   it('builds a draggable docked handle with the level role dataset', () => {
     const chip = createDockedLevelChip({
       tradeKey: 'trade:987',

@@ -184,6 +184,11 @@ export const TRADE_CONTROL_SIDE_COLORS: Record<ChartTradeSide, string> = {
   SELL: '#ef4444',
 };
 
+const TRADE_CONTROL_LIGHT_SIDE_COLORS: Record<ChartTradeSide, string> = {
+  BUY: '#2563eb',
+  SELL: '#dc2626',
+};
+
 const TRADE_CONTROL_DARK_ENTRY_METRIC_COLORS: Record<ChartTradeSide, string> = {
   BUY: '#2962ff',
   SELL: '#ef4444',
@@ -209,11 +214,11 @@ const getTradeControlSurface = (isLightSurface: boolean): TradeControlSurface =>
   isLightSurface
     ? {
       chipBackground: '#ffffff',
-      chipText: '#232c39',
-      dockBackground: '#ffffff',
-      dockBorder: '#98a2b3',
-      dockText: '#3f4756',
-      shadow: '0 1px 3px rgba(16,24,40,0.16)',
+      chipText: '#111827',
+      dockBackground: '#f2f6fc',
+      dockBorder: '#7d8796',
+      dockText: '#4b5563',
+      shadow: '0 1px 3px rgba(15,23,42,0.12)',
     }
     : {
       chipBackground: '#10151c',
@@ -264,11 +269,11 @@ const createControlButton = (
   button.title = title;
   button.setAttribute('aria-label', title);
   button.innerHTML = iconSvg;
-  button.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;background:${background};border:1px solid rgba(255,255,255,0.32);border-radius:2px;cursor:pointer;pointer-events:auto;box-sizing:border-box;flex:0 0 auto;`;
+  button.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;background-color:${background};border:1px solid rgba(255,255,255,0.32);border-radius:2px;cursor:pointer;pointer-events:auto;box-sizing:border-box;flex:0 0 auto;`;
   button.addEventListener('pointerdown', stopOverlayInteraction);
   button.addEventListener('mousedown', stopOverlayInteraction);
-  button.addEventListener('mouseenter', () => { button.style.background = hoverBackground; });
-  button.addEventListener('mouseleave', () => { button.style.background = background; });
+  button.addEventListener('mouseenter', () => { button.style.backgroundColor = hoverBackground; });
+  button.addEventListener('mouseleave', () => { button.style.backgroundColor = background; });
   button.addEventListener('click', (event) => {
     event.stopPropagation();
     event.preventDefault();
@@ -335,8 +340,9 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     tradeKey, ticket, symbol, side, volume, isLightSurface, leftInset,
     currencyLabel = 'USD', title, onAction, onShare,
   } = options;
-  const sideColor = TRADE_CONTROL_SIDE_COLORS[side];
+  const sideColor = (isLightSurface ? TRADE_CONTROL_LIGHT_SIDE_COLORS : TRADE_CONTROL_SIDE_COLORS)[side];
   const surface = getTradeControlSurface(isLightSurface);
+  const actionHoverColor = isLightSurface ? '#1d4ed8' : TRADE_CONTROL_ACTION_HOVER_COLOR;
 
   const root = document.createElement('div');
   root.className = 'rtx-trade-level-badge rtx-trade-controls rtx-trade-controls--entry';
@@ -353,7 +359,7 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
 
   const volumeChip = document.createElement('span');
   volumeChip.className = 'rtx-trade-chip rtx-trade-chip--volume';
-  volumeChip.style.cssText = `display:inline-flex;align-items:center;gap:4px;padding:2px 7px;background:${sideColor};border:1px solid ${sideColor};color:#fff;${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
+  volumeChip.style.cssText = `display:inline-flex;align-items:center;gap:4px;padding:2px 7px;background-color:${sideColor};border:1px solid ${sideColor};color:#fff;${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
   const volumeText = document.createElement('span');
   bindChartUiTranslation(volumeText, () => {
     volumeText.textContent = tr('{{value0}} lots', { value0: formatVolumeLots(volume) });
@@ -382,11 +388,11 @@ export const createEntryTradeControlBar = (options: EntryTradeControlBarOptions)
     dispatchChartPositionAction({ action, ticket, symbol });
   };
   if (onShare) {
-    buttonGroup.appendChild(createControlButton('share', 'Copy trade share link', shareSvg, TRADE_CONTROL_SHARE_COLOR, TRADE_CONTROL_SHARE_HOVER_COLOR, onShare));
+    buttonGroup.appendChild(createControlButton('share', 'Copy trade share link', shareSvg, isLightSurface ? '#5f6b7a' : TRADE_CONTROL_SHARE_COLOR, isLightSurface ? '#64748b' : TRADE_CONTROL_SHARE_HOVER_COLOR, onShare));
   }
-  buttonGroup.appendChild(createControlButton('reverse', 'Reverse position (open the opposite side)', reverseSvg, TRADE_CONTROL_ACTION_COLOR, TRADE_CONTROL_ACTION_HOVER_COLOR, () => emitAction('reverse')));
-  buttonGroup.appendChild(createControlButton('double', 'Double position (open the same trade again)', doubleSvg, TRADE_CONTROL_ACTION_COLOR, TRADE_CONTROL_ACTION_HOVER_COLOR, () => emitAction('double')));
-  buttonGroup.appendChild(createControlButton('close', 'Close position', closeSvg, TRADE_CONTROL_ACTION_COLOR, TRADE_CONTROL_ACTION_HOVER_COLOR, () => emitAction('close')));
+  buttonGroup.appendChild(createControlButton('reverse', 'Reverse position (open the opposite side)', reverseSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('reverse')));
+  buttonGroup.appendChild(createControlButton('double', 'Double position (open the same trade again)', doubleSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('double')));
+  buttonGroup.appendChild(createControlButton('close', 'Close position', closeSvg, TRADE_CONTROL_ACTION_COLOR, actionHoverColor, () => emitAction('close')));
 
   root.appendChild(chipGroup);
   root.appendChild(buttonGroup);
@@ -445,7 +451,7 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
     tradeKey, role, side, label, pips, money, isLightSurface, leftInset,
     currencyLabel = 'USD', title, onRemove,
   } = options;
-  const sideColor = TRADE_CONTROL_SIDE_COLORS[side];
+  const sideColor = (isLightSurface ? TRADE_CONTROL_LIGHT_SIDE_COLORS : TRADE_CONTROL_SIDE_COLORS)[side];
   const surface = getTradeControlSurface(isLightSurface);
 
   const root = document.createElement('div');
@@ -459,7 +465,7 @@ export const createTradeLevelControlBar = (options: TradeLevelControlBarOptions)
 
   const roleChip = document.createElement('span');
   roleChip.className = 'rtx-trade-chip rtx-trade-chip--role';
-  roleChip.style.cssText = `display:inline-flex;align-items:center;padding:2px 6px;background:${surface.chipBackground};border:1px solid ${sideColor};color:${surface.chipText};${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
+  roleChip.style.cssText = `display:inline-flex;align-items:center;padding:2px 6px;background-color:${surface.chipBackground};border:1px solid ${sideColor};color:${surface.chipText};${CHIP_FONT}white-space:nowrap;box-sizing:border-box;flex:0 0 auto;`;
   const roleText = document.createElement('span');
   bindChartUiTranslation(roleText, () => { roleText.textContent = tr(label); });
   roleChip.appendChild(roleText);
@@ -511,7 +517,11 @@ export const createDockedLevelChip = (options: DockedLevelChipOptions): HTMLDivE
   bindChartUiTranslation(root, () => {
     root.title = title ?? `${tr('Add')} · ${tr(role === 'SL' ? 'Stop loss' : 'Take profit')}`;
   });
-  root.style.cssText = `position:absolute;left:${leftInset}px;display:none;align-items:center;padding:1px 7px;background:${surface.dockBackground};border:1px solid ${surface.dockBorder};color:${surface.dockText};${CHIP_FONT}white-space:nowrap;z-index:21;pointer-events:auto;cursor:grab;transform:translateY(-50%);width:max-content;box-sizing:border-box;user-select:none;touch-action:none;`;
+  root.style.cssText = `position:absolute;left:${leftInset}px;display:none;align-items:center;padding:1px 7px;background-color:${surface.dockBackground};border:1px solid ${surface.dockBorder};color:${surface.dockText};${CHIP_FONT}white-space:nowrap;z-index:21;pointer-events:auto;cursor:grab;transform:translateY(-50%);width:max-content;box-sizing:border-box;user-select:none;touch-action:none;`;
+  if (isLightSurface) {
+    root.addEventListener('mouseenter', () => { root.style.borderColor = '#64748b'; });
+    root.addEventListener('mouseleave', () => { root.style.borderColor = surface.dockBorder; });
+  }
 
   const text = document.createElement('span');
   bindChartUiTranslation(text, () => { text.textContent = label.replace(role, tr(role)); });

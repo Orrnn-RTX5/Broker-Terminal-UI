@@ -19,6 +19,7 @@ const broker = (overrides: Partial<BrokerServerItem>): BrokerServerItem => ({
   broker_id: 'other-broker',
   broker_name: 'Other Broker',
   logo_url: '',
+  server_url: 'https://broker.example',
   ...overrides,
 });
 
@@ -255,6 +256,19 @@ describe('WelcomeTerminal broker runtime selection', () => {
       broker({ broker_id: 'achiever-financials', broker_name: 'Achiever Financials' }),
     ], { isDesktopBrokerSelection: true, savedBrokerId: 'TEST', lastAuthenticatedBrokerId: 'TEST' });
     expect(selected?.broker_id).toBe('TEST');
+  });
+
+  it('skips suspended brokers when falling back to directory order', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      API_HOST: 'https://service.achieverfinancials.com',
+      BROKER_ID: 'missing-broker',
+    };
+    const selected = pickDiscoveryBroker([
+      broker({ broker_id: 'suspended-broker', broker_name: 'Suspended Broker', enabled: false }),
+      broker({ broker_id: 'achiever-financials', broker_name: 'Achiever Financials' }),
+    ], { isDesktopBrokerSelection: true });
+    expect(selected?.broker_id).toBe('achiever-financials');
   });
 
   it('uses a discovered desktop broker instead of an unavailable configured fallback', () => {

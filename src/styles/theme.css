@@ -1227,16 +1227,12 @@ tr:hover {
 .theme-light .rtx-oct .rtx-oct-trade-button .rtx-oct-price {
   flex: 1 1 auto;
   padding: 0 10px;
-  font-size: 13px !important;
-  font-weight: 600 !important;
   background: #3183ff;
 }
 
 .theme-light .rtx-oct .rtx-oct-trade-button .rtx-oct-side-label {
   min-width: 44px;
   padding: 0 10px;
-  font-size: 12px !important;
-  font-weight: 700 !important;
   letter-spacing: 0.2px !important;
   background: #2a6fd9;
 }
@@ -1270,8 +1266,6 @@ tr:hover {
   color: #1c1c1c !important;
   font-family: var(--font-sans) !important;
   height: 22px !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
   text-align: center !important;
 }
 
@@ -1309,19 +1303,6 @@ tr:hover {
 }
 
 /* Advanced mode formatting for prices and symbols removed to retain monospace */
-
-/* Advanced mode: last 2 digit big style */
-html.rtx-advanced-view .price-big {
-    font-weight: 800; /* extrabold */
-}
-
-html.rtx-advanced-view .price-display[data-size="sm"] .price-big {
-    font-size: 13px;
-}
-
-html.rtx-advanced-view .price-display[data-size="lg"] .price-big {
-    font-size: 14px;
-}
 
 /* Electron changes the arrangement; colors follow the shared web theme. */
 

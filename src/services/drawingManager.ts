@@ -63,6 +63,8 @@ import {
 } from '../drawing-tools/gannFibonacciRenderer';
 import { getForecastingMeasurementTool } from '../drawing-tools/forecastingMeasurementToolCatalog';
 import {
+  buildVolumeProfile,
+  selectBarsInTimeRange,
   projectSectorBoundaryPoint,
   renderForecastingMeasurementDrawing,
   type ForecastingBar,
@@ -1572,13 +1574,8 @@ export class DrawingManager {
     if (!getBrushShapeTool(drawing) || !this.chart || !this.series || point.logicalIndex === undefined) return point;
     const x = drawingLogicalToCoordinate(this.chart.timeScale(), point.logicalIndex);
     const y = this.series.priceToCoordinate(point.price);
-    if (drawing.subtype === 'arc' && drawing.points.length === 2 && x !== null && y !== null) {
-      const a = this.px(drawing.points[0]), b = this.px(drawing.points[1]);
-      if (a && b) {
-        const bend = arcGeometry(a, b, { x, y }).bend;
-        return freehandPointAt(this.chart, this.series, bend.x, bend.y) ?? point;
-      }
-    }
+    // Keep the placed coordinate. Arc/ellipse/rotated-rectangle handles are
+    // projected onto their geometry, but axis coordinates belong to the anchor.
     return x !== null && y !== null ? freehandPointAt(this.chart, this.series, x, y) ?? point : point;
   }
 
@@ -2056,12 +2053,30 @@ export class DrawingManager {
       this.renderDrawing(svg, preview, W, H, true);
     }
 
+    // Text and notes expose their chart anchors, not the pixel bounds of the
+    // text bubble/table. Keep committed coordinates when the cursor leaves.
+    if (this.contextOwnsActiveDrawing(context) && this.activeDrawing
+      && getAnnotationTool(this.activeDrawing)?.group === 'Text and notes') {
+      const points = [...this.activeDrawing.points];
+      const cursorIndex = this.previewPoint && this.previewCursorVisible ? points.length : -1;
+      if (cursorIndex >= 0) points.push(this.previewPoint!);
+      const construction = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      construction.setAttribute('data-id', `${this.activeDrawing.id}-annotation-construction`);
+      construction.setAttribute('pointer-events', 'none');
+      this.appendAnnotationScaleHighlights(construction, { ...this.activeDrawing, points },
+        Math.max(0, W - this.chart.priceScale('right').width()),
+        Math.max(0, H - this.chart.timeScale().height()), cursorIndex);
+      svg.appendChild(construction);
+    }
+
     // Coordinates belong to the construction as well as the completed drawing.
     const activeTrendGroup = this.activeDrawing
       && getTrendLineToolFromDrawing(this.activeDrawing.type, this.activeDrawing.subtype)?.group;
     const isPitchfork = activeTrendGroup === 'Pitchforks';
     const isChannel = activeTrendGroup === 'Channels';
     const isFibonacci = Boolean(this.activeDrawing && getGannFibonacciTool(this.activeDrawing.subtype));
+    const activePattern = getChartPatternTool(this.activeDrawing);
+    const isPricePattern = Boolean(activePattern && activePattern.id !== 'time_cycles');
     const isBrushShape = Boolean(getBrushShapeTool(this.activeDrawing) || getChartPatternTool(this.activeDrawing));
     const isForecasting = this.activeDrawing?.type === 'measure'
       && Boolean(getForecastingMeasurementTool(this.activeDrawing.subtype));
@@ -2079,10 +2094,73 @@ export class DrawingManager {
       construction.setAttribute('pointer-events', 'none');
       const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
       const plotH = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
+      if (isForecasting) {
+        const points = [...this.activeDrawing.points];
+        if (this.previewPoint && this.previewCursorVisible) points.push(this.previewPoint);
+        this.appendForecastingScaleHighlights(construction, { ...this.activeDrawing, points }, plotW, plotH, false);
+      }
+      if (getBrushShapeTool(this.activeDrawing)) {
+        const points = [...this.activeDrawing.points];
+        if (this.previewPoint && this.previewCursorVisible) points.push(this.previewPoint);
+        this.appendSelectionScaleBands(construction,
+          points.map(point => this.px(point)).filter((point): point is { x: number; y: number } => point !== null),
+          plotW, plotH);
+      }
+      const committedScreens = this.activeDrawing.points
+        .map(point => this.px(point))
+        .filter(Boolean) as Array<{ x: number; y: number }>;
+      const priceBandScreens = [...committedScreens];
+      // Include the visible candidate anchor in the Gann and pattern price range.
+      if ((getGannFibonacciTool(this.activeDrawing.subtype)?.group === 'Gann' || activePattern)
+        && committedScreens.length > 0 && this.previewPoint && this.previewCursorVisible) {
+        const previewScreen = this.px(this.previewPoint);
+        if (previewScreen) priceBandScreens.push(previewScreen);
+      }
+      if (activePattern?.group === 'Cycles' && priceBandScreens.length >= 2) {
+        const bandXs = priceBandScreens.map(screen => screen.x);
+        this.appendTimeScaleRangeBand(
+          construction, plotW, plotH, Math.min(...bandXs), Math.max(...bandXs),
+          this.activeDrawing.color || '#2962ff',
+        );
+      }
+      const isTimeBasedFibConstruction = this.activeDrawing.subtype === 'fib_time_zone'
+        || this.activeDrawing.subtype === 'trend_based_fib_time';
+      if (isTimeBasedFibConstruction) {
+        const bandXs = committedScreens.map(screen => screen.x);
+        // The second time-zone anchor is still the cursor during construction.
+        // Include it so the highlighted interval follows the preview in either direction.
+        if (this.activeDrawing.subtype === 'fib_time_zone'
+          && committedScreens.length > 0 && this.previewPoint && this.previewCursorVisible) {
+          const previewScreen = this.px(this.previewPoint);
+          if (previewScreen) bandXs.push(previewScreen.x);
+        }
+        if (bandXs.length >= 2) {
+          this.appendTimeScaleRangeBand(
+            construction,
+            plotW,
+            plotH,
+            Math.min(...bandXs),
+            Math.max(...bandXs),
+            this.activeDrawing.color || '#2962ff',
+          );
+        }
+      } else if (priceBandScreens.length >= 2 && (isPitchfork || isFibonacci || isPricePattern)) {
+        const bandYs = priceBandScreens.map(screen => screen.y);
+        this.appendPriceScaleRangeBand(
+          construction,
+          plotW,
+          Math.min(...bandYs),
+          Math.max(...bandYs),
+          this.activeDrawing.color || '#2962ff',
+          bandYs.map(y => Number(this.series?.coordinateToPrice(y) ?? 0)),
+        );
+      }
       const appendCoordinates = (point: DrawingPoint, role: string, accent: string) => {
         const screen = this.px(point);
         if (!screen) return;
-        if (screen.y >= 0 && screen.y <= plotH) {
+        const isProfile = isForecasting && (this.activeDrawing?.subtype === 'fixed_range_volume_profile'
+          || this.activeDrawing?.subtype === 'anchored_volume_profile');
+        if (!isProfile && screen.y >= 0 && screen.y <= plotH) {
           this.appendPriceScaleLabel(construction, plotW, screen.y, point.price, accent, `${role}-price-scale-label`);
         }
         if (screen.x >= 0 && screen.x <= plotW) {
@@ -2111,25 +2189,6 @@ export class DrawingManager {
       }
       if (isChannel) {
         this.appendChannelScaleLabels(construction, this.activeDrawing, plotW, plotH, true);
-      }
-      if (isPitchfork && this.activeDrawing.points.length >= 2) {
-        const forkYs = this.activeDrawing.points.map(point => this.px(point))
-          .filter(Boolean)
-          .map(screen => screen.y);
-        if (this.previewPoint && this.previewCursorVisible) {
-          const cursorScreen = this.px(this.previewPoint);
-          if (cursorScreen) forkYs.push(cursorScreen.y);
-        }
-        if (forkYs.length >= 2) {
-          this.appendPriceScaleRangeBand(
-            construction,
-            plotW,
-            Math.min(...forkYs),
-            Math.max(...forkYs),
-            this.activeDrawing.color || '#2962ff',
-            forkYs.map(y => Number(this.series?.coordinateToPrice(y) ?? 0)),
-          );
-        }
       }
       if (getBrushShapeTool(this.activeDrawing)?.requiredPoints === 0) {
         const hint = this.svgText(16, Math.max(20, plotH - 16), 'Double-click or press Enter to finish', this.activeDrawing.color || '#2962ff', 12);
@@ -2836,6 +2895,12 @@ export class DrawingManager {
               g.appendChild(hitTarget);
             });
           }
+          if (!isPreview && d.selected) {
+            this.appendForecastingScaleHighlights(
+              g, d, Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0)),
+              Math.max(0, H - (this.chart?.timeScale().height() ?? 0)), true,
+            );
+          }
           break;
         }
 
@@ -2976,6 +3041,11 @@ export class DrawingManager {
           hit.style.cursor = d.locked ? 'default' : 'move';
           hit.addEventListener('pointerdown', event => this.beginDrag(event, d.id, null));
           g.appendChild(hit);
+        }
+        if (isPreview || d.selected) {
+          this.appendSelectionScaleBands(g, pts,
+            Math.max(0, W - this.chart.priceScale('right').width()),
+            Math.max(0, H - this.chart.timeScale().height()));
         }
         break;
       }
@@ -3143,6 +3213,7 @@ export class DrawingManager {
           label.setAttribute('font-weight', (d.annotation?.bold ?? isPriceLabel) ? '700' : '400');
           label.setAttribute('font-style', d.annotation?.italic ? 'italic' : 'normal');
           label.setAttribute('font-family', 'Arial, sans-serif');
+          label.setAttribute('data-geometry-role', 'annotation-text');
           label.setAttribute('pointer-events', 'none');
           g.appendChild(label);
           textElements.push(label);
@@ -3308,23 +3379,56 @@ export class DrawingManager {
     if (!isPreview && d.selected && Array.isArray(d.points) && d.type !== 'channel'
       && !(d.type === 'stamp' && isPictographStamp(d.subtype))) {
       const trendTool = getTrendLineToolFromDrawing(d.type, d.subtype) ?? getGannFibonacciTool(d.subtype);
-      if (d.type === 'freehand' && this.chart && this.series) {
+      if (getAnnotationTool(d)?.group === 'Text and notes') {
+        this.appendAnnotationScaleHighlights(g, d,
+          Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0)),
+          Math.max(0, H - (this.chart?.timeScale().height() ?? 0)));
+        d.points.forEach((point, index) => {
+          const screen = this.px(point);
+          if (screen) this.appendTrendSelectionHandle(g, { ...d, color: '#2962ff' }, screen,
+            index, `selection-anchor-${index + 1}`,
+            d.subtype === 'text' || d.subtype === 'signpost' ? 'square' : 'circle');
+        });
+      } else if (d.type === 'freehand' && this.chart && this.series) {
         const indices = d.points.length > 1 ? [0, d.points.length - 1] : [0];
         indices.forEach((index, endpoint) => {
           const screen = projectFreehandPoint(this.chart!, this.series!, d.points[index]);
           if (screen) this.appendTrendSelectionHandle(g, d, screen, null, `brush-endpoint-${endpoint + 1}`);
         });
       } else if (getChartPatternTool(d)) {
+        const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
+        const patternTool = getChartPatternTool(d)!;
+        const screens = d.points.map(point => this.px(point)).filter(Boolean);
+        if (patternTool.group === 'Cycles' && screens.length >= 2) {
+          const bandXs = screens.map(screen => screen.x);
+          this.appendTimeScaleRangeBand(
+            g, plotW, Math.max(0, H - (this.chart?.timeScale().height() ?? 0)),
+            Math.min(...bandXs), Math.max(...bandXs), color,
+          );
+        }
+        // Time cycles share one price baseline; their selected interval is time only.
+        if (patternTool.id !== 'time_cycles') {
+          const bandYs = screens.map(screen => screen.y);
+          if (bandYs.length >= 2) {
+            this.appendPriceScaleRangeBand(
+              g, plotW, Math.min(...bandYs), Math.max(...bandYs), color,
+              d.points.map(point => point.price),
+            );
+          }
+        }
         d.points.forEach((point, index) => {
           const screen = this.px(point);
           if (!screen) return;
           this.appendTrendSelectionHandle(g, d, screen, index, `pattern-anchor-${index + 1}`);
-          this.appendPriceScaleLabel(g, Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0)), screen.y, point.price, color, `pattern-anchor-${index + 1}-price`);
+          this.appendPriceScaleLabel(g, plotW, screen.y, point.price, color, `pattern-anchor-${index + 1}-price`);
           this.appendTimeScaleLabel(g, screen.x, Math.max(0, H - (this.chart?.timeScale().height() ?? 0)), point.time, color, `pattern-anchor-${index + 1}-time`);
         });
       } else if (getBrushShapeTool(d)) {
         const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
         const plotH = Math.max(0, H - (this.chart?.timeScale().height() ?? 0));
+        this.appendSelectionScaleBands(g,
+          d.points.map(point => this.px(point)).filter((point): point is { x: number; y: number } => point !== null),
+          plotW, plotH);
         if (d.subtype === 'rectangle' && d.points.length === 2) {
           const a = this.px(d.points[0]), b = this.px(d.points[1]);
           if (a && b) rectangleHandles(a, b).forEach((handle, index) =>
@@ -3344,9 +3448,14 @@ export class DrawingManager {
           const screen = this.shapeAnchorScreen(d, index);
           if (!screen) return;
           if (d.subtype !== 'rectangle' && !(['rotated_rectangle', 'ellipse'].includes(d.subtype!) && index === 2)) this.appendTrendSelectionHandle(g, d, screen, d.subtype === 'circle' && index === 0 ? null : index, `shape-anchor-${index + 1}`);
-          this.appendPriceScaleLabel(g, plotW, screen.y, Number(this.series?.coordinateToPrice(screen.y) ?? point.price), color, `shape-anchor-${index + 1}-price`);
-          const labelPoint = this.chart && this.series ? freehandPointAt(this.chart, this.series, screen.x, screen.y) ?? point : point;
-          this.appendTimeScaleLabel(g, screen.x, plotH, this.shapeLabelTime(labelPoint, screen.x), color, `shape-anchor-${index + 1}-time`);
+          // Open paths show the interval only; generated curve bends enlarge
+          // that interval but do not add price/time badges of their own.
+          if (['path', 'polyline'].includes(d.subtype!)
+            || (['curve', 'double_curve'].includes(d.subtype!) && index >= 2)) return;
+          const anchor = this.px(point);
+          if (!anchor) return;
+          this.appendPriceScaleLabel(g, plotW, anchor.y, point.price, '#2962ff', `shape-anchor-${index + 1}-price`);
+          this.appendTimeScaleLabel(g, anchor.x, plotH, this.shapeLabelTime(point, anchor.x), '#2962ff', `shape-anchor-${index + 1}-time`);
         });
       } else if (trendTool) {
         const plotW = Math.max(0, W - (this.chart?.priceScale('right').width() ?? 0));
@@ -3354,23 +3463,40 @@ export class DrawingManager {
         const hasAnchorCoordinates = (trendTool.drawingType === 'trendline' && trendTool.requiredPoints === 2)
           || Boolean(getGannFibonacciTool(d.subtype));
 
-        if (
-          trendTool.drawingType === 'trendline'
-          && trendTool.requiredPoints === 2
-          && trendTool.id !== 'horizontal_line'
-          && trendTool.id !== 'vertical_line'
+        const isTimeBasedFib = d.subtype === 'fib_time_zone' || d.subtype === 'trend_based_fib_time';
+        if (isTimeBasedFib && d.points.length >= 2) {
+          // Time-axis tools highlight their anchor span on the bottom scale,
+          // matching TradingView, instead of tinting the price scale.
+          const bandXs = d.points.map(point => this.px(point)).filter(Boolean).map(screen => screen.x);
+          if (bandXs.length >= 2) {
+            this.appendTimeScaleRangeBand(g, plotW, plotH, Math.min(...bandXs), Math.max(...bandXs), color);
+          }
+        } else if (
+          (
+            (trendTool.drawingType === 'trendline'
+              && trendTool.requiredPoints === 2
+              && trendTool.id !== 'horizontal_line'
+              && trendTool.id !== 'vertical_line')
+            || Boolean(getGannFibonacciTool(d.subtype))
+          )
           && d.points.length >= 2
         ) {
-          const first = this.px(d.points[0]);
-          const second = this.px(d.points[1]);
-          if (first && second) {
+          const bandYs: number[] = [];
+          const bandPrices: number[] = [];
+          d.points.forEach(point => {
+            const screen = this.px(point);
+            if (!screen) return;
+            bandYs.push(screen.y);
+            bandPrices.push(point.price);
+          });
+          if (bandYs.length >= 2) {
             this.appendPriceScaleRangeBand(
               g,
               plotW,
-              Math.min(first.y, second.y),
-              Math.max(first.y, second.y),
+              Math.min(...bandYs),
+              Math.max(...bandYs),
               color,
-              [d.points[0].price, d.points[1].price],
+              bandPrices,
             );
           }
         }
@@ -3736,10 +3862,98 @@ export class DrawingManager {
     return value || fallback;
   }
 
-  /**
-   * TradingView-style tinted band on the right price scale spanning the
-   * selected drawing's endpoint prices; endpoint badges paint above it.
-   */
+  /** Annotation axis feedback follows placed anchors, independently of text box size. */
+  private appendAnnotationScaleHighlights(
+    group: SVGGElement, drawing: Drawing, plotW: number, plotH: number, cursorIndex = -1,
+  ): void {
+    const anchors = drawing.points.map((point, index) => ({ point, index, screen: this.px(point) }))
+      .filter((entry): entry is typeof entry & { screen: { x: number; y: number } } => entry.screen !== null);
+    this.appendSelectionScaleBands(group, anchors.map(entry => entry.screen), plotW, plotH);
+    anchors.forEach(({ point, index, screen }) => {
+      const role = index === cursorIndex ? 'annotation-cursor' : `annotation-anchor-${index + 1}`;
+      const accent = index === cursorIndex ? '#131722' : '#2962ff';
+      if (screen.y >= 0 && screen.y <= plotH) {
+        this.appendPriceScaleLabel(group, plotW, screen.y, point.price, accent, `${role}-price`);
+      }
+      if (screen.x >= 0 && screen.x <= plotW) {
+        this.appendTimeScaleLabel(group, screen.x, plotH, point.time, accent, `${role}-time`);
+      }
+    });
+  }
+
+  /** Selection uses the standard blue axis tint, independent of stroke color. */
+  private appendSelectionScaleBands(
+    group: SVGGElement, points: readonly { x: number; y: number }[], plotW: number, plotH: number,
+  ): void {
+    if (points.length < 2) return;
+    const xs = points.map(point => point.x), ys = points.map(point => point.y);
+    this.appendPriceScaleRangeBand(group, plotW, Math.min(...ys), Math.max(...ys), '#2962ff',
+      ys.map(y => Number(this.series?.coordinateToPrice(y) ?? 0)));
+    this.appendTimeScaleRangeBand(group, plotW, plotH, Math.min(...xs), Math.max(...xs), '#2962ff');
+  }
+
+  /** Resolve each forecasting tool's price/time interval from its anchors or study data. */
+  private appendForecastingScaleHighlights(
+    group: SVGGElement, drawing: Drawing, plotW: number, plotH: number, selected: boolean,
+  ): void {
+    const tool = getForecastingMeasurementTool(drawing.subtype);
+    if (!tool || !drawing.points.length || tool.id === 'anchored_vwap') return;
+    const isPosition = tool.id === 'long_position' || tool.id === 'short_position';
+    const isProfile = tool.id === 'fixed_range_volume_profile' || tool.id === 'anchored_volume_profile';
+    const anchors = tool.id === 'ghost_feed' && drawing.points.length > 2
+      ? [drawing.points[0], drawing.points[drawing.points.length - 1]] : drawing.points;
+    let priceValues = tool.id === 'date_range' ? [] : anchors.map(point => point.price);
+    let timePoints = tool.id === 'price_range' ? [] : [...anchors];
+    if (isPosition) {
+      const defaults = this.resolvePositionDefaults(drawing);
+      priceValues = [defaults.positionStopPrice!, drawing.points[0].price, defaults.positionTargetPrice!];
+      timePoints = [drawing.points[0], {
+        time: defaults.positionEndTime!, price: drawing.points[0].price,
+        logicalIndex: defaults.positionEndLogicalIndex,
+      }];
+    } else if (isProfile) {
+      const series = this.getSeriesDataForActiveContext();
+      const start = drawing.points[0];
+      const endTime = tool.id === 'anchored_volume_profile' ? series.at(-1)?.time : drawing.points[1]?.time;
+      if (endTime === undefined) return;
+      const profile = buildVolumeProfile(selectBarsInTimeRange(series, start.time, endTime));
+      if (!profile.length) return;
+      priceValues = [profile[0].low, profile[profile.length - 1].high];
+      timePoints = [start, tool.id === 'fixed_range_volume_profile'
+        ? drawing.points[1] : { time: endTime, price: start.price }];
+    }
+    const priceScreens = priceValues.map(price => {
+      const coordinate = this.series?.priceToCoordinate(price);
+      return { price, y: coordinate == null ? null : Number(coordinate) };
+    })
+      .filter((point): point is { price: number; y: number } => typeof point.y === 'number' && Number.isFinite(point.y));
+    const times = timePoints.map(point => ({ point, screen: this.px(point) })).filter(entry => entry.screen !== null);
+    const axis = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    axis.setAttribute('pointer-events', 'none');
+    const color = drawing.color || '#2962ff';
+    if (priceScreens.length >= 2) {
+      const ys = priceScreens.map(point => point.y);
+      this.appendPriceScaleRangeBand(axis, plotW, Math.min(...ys), Math.max(...ys), color, priceValues);
+    }
+    if (times.length >= 2) {
+      const xs = times.map(entry => entry.screen!.x);
+      this.appendTimeScaleRangeBand(axis, plotW, plotH, Math.min(...xs), Math.max(...xs), color);
+    }
+    if (!isPosition && (selected || isProfile)) {
+      priceScreens.forEach(({ price, y }, index) => this.appendPriceScaleLabel(
+        axis, plotW, y, price, color, `forecast-endpoint-${index + 1}-price-scale-label`,
+      ));
+    }
+    if (selected) {
+      times.forEach(({ point, screen }, index) => this.appendTimeScaleLabel(
+        axis, screen!.x, plotH, point.time, color, `forecast-endpoint-${index + 1}-time-scale-label`,
+      ));
+    }
+    // Keep the existing entry/target/stop badges above the selection band.
+    group.insertBefore(axis, group.querySelector('[data-geometry-role="position-entry-price-scale-label"]'));
+  }
+
+  /** Tinted right-axis interval; endpoint badges paint above it. */
   private appendPriceScaleRangeBand(
     group: SVGGElement,
     plotWidth: number,
@@ -3794,6 +4008,35 @@ export class DrawingManager {
     label.setAttribute('font-family', 'var(--font-mono), monospace');
     label.setAttribute('data-geometry-role', `${role}-text`);
     group.appendChild(label);
+  }
+
+  /**
+   * Bottom-axis counterpart of the price-scale band: time-based tools such as
+   * Fib Time Zone highlight their anchor span on the time scale instead.
+   */
+  private appendTimeScaleRangeBand(
+    group: SVGGElement,
+    plotWidth: number,
+    plotHeight: number,
+    leftX: number,
+    rightX: number,
+    accent: string,
+    role = 'time-scale-range',
+  ): void {
+    const left = Math.max(0, Math.min(leftX, rightX));
+    const right = Math.min(plotWidth, Math.max(leftX, rightX));
+    const width = right - left;
+    if (!(width > 2)) return;
+    const band = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    band.setAttribute('x', String(left));
+    band.setAttribute('y', String(plotHeight));
+    band.setAttribute('width', String(width));
+    band.setAttribute('height', String(this.chart?.timeScale().height() ?? 18));
+    band.setAttribute('fill', accent);
+    band.setAttribute('fill-opacity', '0.35');
+    band.setAttribute('data-geometry-role', role);
+    band.setAttribute('pointer-events', 'none');
+    group.appendChild(band);
   }
 
   private appendTimeScaleLabel(

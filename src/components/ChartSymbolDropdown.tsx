@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { ChevronDown, Search } from 'lucide-react';
 import { useUiTranslation } from '../hooks/useUiTranslation';
+import { useDockLayoutStore } from '../store/useDockLayoutStore';
+import { hasArrangedChartWindows } from '../utils/chartSymbolTabs';
 import './ChartSymbolDropdown.css';
 
 export interface ChartSymbolAnchor { left: number; bottom: number }
 
 export function ChartSymbolTrigger({ symbol, panelId }: { symbol: string; panelId?: string }) {
   const tr = useUiTranslation();
-  if (!window.electron?.window || !panelId) return <>{symbol}</>;
+  const showSymbolDropdown = useDockLayoutStore(state => hasArrangedChartWindows(state.layout));
+  if (!window.electron?.window || !panelId || !showSymbolDropdown) return <>{symbol}</>;
   return <button type="button" className="rtx-chart-symbol-trigger" aria-haspopup="listbox"
     aria-label={tr('Change symbol for {{value0}}', { value0: symbol })}
     onPointerDown={event => event.stopPropagation()}

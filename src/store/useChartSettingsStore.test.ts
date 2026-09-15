@@ -232,10 +232,26 @@ describe('chart settings trade history overlay defaults', () => {
     expect(greenOnBlack.colors.background).toBe('#000000');
     expect(getEffectiveChartColors(greenOnBlack, { isAdvancedUntitledLight: false }).background).toBe('#000000');
     expect(getEffectiveChartColors(greenOnBlack, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#f2f4f5',
-      foreground: '#465461',
-      grid: '#dfe4e8',
+      background: '#f7f8fa',
+      foreground: '#4b5563',
+      grid: 'rgba(46, 46, 46, 0.11)',
     });
+  });
+
+  it('applies enterprise light candles without mutating the saved dark or custom palette', () => {
+    const properties = normalizeChartProperties({ colorScheme: 'Green on Black' });
+    const savedColors = { ...properties.colors };
+    const light = getEffectiveChartColors(properties, { isAdvancedUntitledLight: true });
+    expect(light).toMatchObject({
+      barUp: '#059669', bullCandle: '#059669',
+      barDown: '#dc2626', bearCandle: '#dc2626',
+      lineChart: '#059669', lastPriceLine: '#059669',
+    });
+    expect(properties.colors).toEqual(savedColors);
+    expect(getEffectiveChartColors(properties)).toBe(properties.colors);
+    const custom = { ...properties, colorScheme: 'Custom' as const, colors: { ...savedColors, background: '#fef8ed', bullCandle: '#123456' } };
+    expect(getEffectiveChartColors(custom, { isAdvancedUntitledLight: true })).toBe(custom.colors);
+    expect(getEffectiveChartColors({ ...properties, colors: custom.colors }, { isAdvancedUntitledLight: true }).bullCandle).toBe('#123456');
   });
 
   it('preserves blue bullish and red bearish colors when normalizing the new preset', () => {
@@ -245,7 +261,7 @@ describe('chart settings trade history overlay defaults', () => {
       barDown: '#ff5858', bearCandle: '#ff5858',
     });
     expect(getEffectiveChartColors(properties, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#f2f4f5', bullCandle: '#4597ff', bearCandle: '#ff5858',
+      background: '#f7f8fa', bullCandle: '#4597ff', bearCandle: '#ff5858',
     });
   });
 
@@ -264,7 +280,7 @@ describe('chart settings trade history overlay defaults', () => {
     expect(normalizeChartProperties({ colorScheme: 'Custom', colors }).colors).toEqual(colors);
   });
 
-  it('keeps Yellow on Black black in dark mode but white in advanced light mode', () => {
+  it('keeps Yellow on Black black in dark mode but light gray in advanced light mode', () => {
     const yellowOnBlack = normalizeChartProperties({
       colorScheme: 'Yellow on Black',
       colors: getPresetSchemeColors('Yellow on Black'),
@@ -274,16 +290,16 @@ describe('chart settings trade history overlay defaults', () => {
     expect(yellowOnBlack.colors.lastPriceLine).toBe('#facc15');
     expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: false }).background).toBe('#000000');
     expect(getEffectiveChartColors(yellowOnBlack, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#f2f4f5',
-      foreground: '#465461',
-      grid: '#e0ded7',
+      background: '#f7f8fa',
+      foreground: '#4b5563',
+      grid: 'rgba(46, 46, 46, 0.11)',
       barUp: '#facc15',
       barDown: '#facc15',
       lastPriceLine: '#facc15',
     });
   });
 
-  it('applies the dark-mode Black on White scheme while preserving white light mode', () => {
+  it('applies the dark-mode Black on White scheme while preserving light gray in light mode', () => {
     const blackOnWhite = normalizeChartProperties({
       colorScheme: 'Black on White',
       colors: getPresetSchemeColors('Black on White'),
@@ -301,9 +317,9 @@ describe('chart settings trade history overlay defaults', () => {
       lastPriceLine: '#adadad',
     });
     expect(getEffectiveChartColors(blackOnWhite, { isAdvancedUntitledLight: true })).toMatchObject({
-      background: '#f2f4f5',
-      foreground: '#25313c',
-      grid: '#dfe4e8',
+      background: '#f7f8fa',
+      foreground: '#4b5563',
+      grid: 'rgba(46, 46, 46, 0.11)',
       barUp: '#000000',
       barDown: '#000000',
       bullCandle: '#ffffff',

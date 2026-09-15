@@ -1,0 +1,1240 @@
+{
+  "date": "2026-09-15",
+  "method": "WCAG 2.x standard sRGB relative luminance; alpha composited before calculation; unrounded thresholds",
+  "coreTextPairCount": 56,
+  "coreTextPassed": 56,
+  "coreTextMinima": {
+    "primary": 14.96176436898901,
+    "financial": 15.056915589134606,
+    "secondary": 6.373929798179166,
+    "muted": 4.575805399376771,
+    "accent": 6.665523002358459,
+    "quote_up": 5.6521778441889685,
+    "profit": 4.62516845517181,
+    "loss_quote_down": 5.456867460350269
+  },
+  "surfaceLuminances": {
+    "#FFFFFF": 1,
+    "#FAFAFA": 0.9559733532492862,
+    "#F7F8FA": 0.9381108775882949,
+    "#F7F7F7": 0.9301108583754237,
+    "#F2F4F8": 0.9035592363809157
+  },
+  "pairs": [
+    {
+      "role": "core_text:primary:elevated",
+      "foreground": "#111827",
+      "background": "#FFFFFF",
+      "contrast": 17.73971700407407,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:primary:panel",
+      "foreground": "#111827",
+      "background": "#FAFAFA",
+      "contrast": 16.995888190744548,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:primary:canvas_chart",
+      "foreground": "#111827",
+      "background": "#F7F8FA",
+      "contrast": 16.694102225774884,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:primary:chrome_hover",
+      "foreground": "#111827",
+      "background": "#F2F4F8",
+      "contrast": 16.110353333350872,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:primary:field",
+      "foreground": "#111827",
+      "background": "#F2F6FC",
+      "contrast": 16.357210991399214,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:primary:selected",
+      "foreground": "#111827",
+      "background": "#EEF2FF",
+      "contrast": 15.864612738060616,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:primary:pressed",
+      "foreground": "#111827",
+      "background": "#E8ECF2",
+      "contrast": 14.96176436898901,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:financial:elevated",
+      "foreground": "#0F172A",
+      "background": "#FFFFFF",
+      "contrast": 17.85253496299567,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:financial:panel",
+      "foreground": "#0F172A",
+      "background": "#FAFAFA",
+      "contrast": 17.103975676880832,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:financial:canvas_chart",
+      "foreground": "#0F172A",
+      "background": "#F7F8FA",
+      "contrast": 16.800270466153684,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:financial:chrome_hover",
+      "foreground": "#0F172A",
+      "background": "#F2F4F8",
+      "contrast": 16.212809149312143,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:financial:field",
+      "foreground": "#0F172A",
+      "background": "#F2F6FC",
+      "contrast": 16.461236729649478,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:financial:selected",
+      "foreground": "#0F172A",
+      "background": "#EEF2FF",
+      "contrast": 15.965505735833835,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:financial:pressed",
+      "foreground": "#0F172A",
+      "background": "#E8ECF2",
+      "contrast": 15.056915589134606,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:secondary:elevated",
+      "foreground": "#4B5563",
+      "background": "#FFFFFF",
+      "contrast": 7.557378129674007,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:secondary:panel",
+      "foreground": "#4B5563",
+      "background": "#FAFAFA",
+      "contrast": 7.240496208458075,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:secondary:canvas_chart",
+      "foreground": "#4B5563",
+      "background": "#F7F8FA",
+      "contrast": 7.111930986646446,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:secondary:chrome_hover",
+      "foreground": "#4B5563",
+      "background": "#F2F4F8",
+      "contrast": 6.863245446070265,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:secondary:field",
+      "foreground": "#4B5563",
+      "background": "#F2F6FC",
+      "contrast": 6.968410408152164,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:secondary:selected",
+      "foreground": "#4B5563",
+      "background": "#EEF2FF",
+      "contrast": 6.758556369012658,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:secondary:pressed",
+      "foreground": "#4B5563",
+      "background": "#E8ECF2",
+      "contrast": 6.373929798179166,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:muted:elevated",
+      "foreground": "#5F6B7A",
+      "background": "#FFFFFF",
+      "contrast": 5.425395752048129,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:muted:panel",
+      "foreground": "#5F6B7A",
+      "background": "#FAFAFA",
+      "contrast": 5.197908149897419,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:muted:canvas_chart",
+      "foreground": "#5F6B7A",
+      "background": "#F7F8FA",
+      "contrast": 5.105611959828652,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:muted:chrome_hover",
+      "foreground": "#5F6B7A",
+      "background": "#F2F4F8",
+      "contrast": 4.92708212417836,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:muted:field",
+      "foreground": "#5F6B7A",
+      "background": "#F2F6FC",
+      "contrast": 5.002579410241516,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:muted:selected",
+      "foreground": "#5F6B7A",
+      "background": "#EEF2FF",
+      "contrast": 4.851926473077086,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:muted:pressed",
+      "foreground": "#5F6B7A",
+      "background": "#E8ECF2",
+      "contrast": 4.575805399376771,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:accent:elevated",
+      "foreground": "#4338CA",
+      "background": "#FFFFFF",
+      "contrast": 7.9031114800249425,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:accent:panel",
+      "foreground": "#4338CA",
+      "background": "#FAFAFA",
+      "contrast": 7.571732911108211,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:accent:canvas_chart",
+      "foreground": "#4338CA",
+      "background": "#F7F8FA",
+      "contrast": 7.437286114481499,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:accent:chrome_hover",
+      "foreground": "#4338CA",
+      "background": "#F2F4F8",
+      "contrast": 7.177223759929365,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:accent:field",
+      "foreground": "#4338CA",
+      "background": "#F2F6FC",
+      "contrast": 7.287199786649851,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:accent:selected",
+      "foreground": "#4338CA",
+      "background": "#EEF2FF",
+      "contrast": 7.067745388921498,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:accent:pressed",
+      "foreground": "#4338CA",
+      "background": "#E8ECF2",
+      "contrast": 6.665523002358459,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:quote_up:elevated",
+      "foreground": "#1D4ED8",
+      "background": "#FFFFFF",
+      "contrast": 6.701618401398807,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:quote_up:panel",
+      "foreground": "#1D4ED8",
+      "background": "#FAFAFA",
+      "contrast": 6.420618605192646,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:quote_up:canvas_chart",
+      "foreground": "#1D4ED8",
+      "background": "#F7F8FA",
+      "contrast": 6.306611466540992,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:quote_up:chrome_hover",
+      "foreground": "#1D4ED8",
+      "background": "#F2F4F8",
+      "contrast": 6.086085833670609,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:quote_up:field",
+      "foreground": "#1D4ED8",
+      "background": "#F2F6FC",
+      "contrast": 6.179342441051834,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:quote_up:selected",
+      "foreground": "#1D4ED8",
+      "background": "#EEF2FF",
+      "contrast": 5.993251224471958,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:quote_up:pressed",
+      "foreground": "#1D4ED8",
+      "background": "#E8ECF2",
+      "contrast": 5.6521778441889685,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:profit:elevated",
+      "foreground": "#047857",
+      "background": "#FFFFFF",
+      "contrast": 5.483924052498799,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:profit:panel",
+      "foreground": "#047857",
+      "background": "#FAFAFA",
+      "contrast": 5.2539823505301255,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:profit:canvas_chart",
+      "foreground": "#047857",
+      "background": "#F7F8FA",
+      "contrast": 5.160690483944902,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:profit:chrome_hover",
+      "foreground": "#047857",
+      "background": "#F2F4F8",
+      "contrast": 4.980234697020659,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:profit:field",
+      "foreground": "#047857",
+      "background": "#F2F6FC",
+      "contrast": 5.056546435714344,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:profit:selected",
+      "foreground": "#047857",
+      "background": "#EEF2FF",
+      "contrast": 4.904268278792109,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:profit:pressed",
+      "foreground": "#047857",
+      "background": "#E8ECF2",
+      "contrast": 4.62516845517181,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:loss_quote_down:elevated",
+      "foreground": "#B91C1C",
+      "background": "#FFFFFF",
+      "contrast": 6.4700447145121895,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:loss_quote_down:panel",
+      "foreground": "#B91C1C",
+      "background": "#FAFAFA",
+      "contrast": 6.1987548353625215,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:loss_quote_down:canvas_chart",
+      "foreground": "#B91C1C",
+      "background": "#F7F8FA",
+      "contrast": 6.088687200849665,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:loss_quote_down:chrome_hover",
+      "foreground": "#B91C1C",
+      "background": "#F2F4F8",
+      "contrast": 5.8757818069720225,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:loss_quote_down:field",
+      "foreground": "#B91C1C",
+      "background": "#F2F6FC",
+      "contrast": 5.965815942540573,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:loss_quote_down:selected",
+      "foreground": "#B91C1C",
+      "background": "#EEF2FF",
+      "contrast": 5.786155087485254,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "core_text:loss_quote_down:pressed",
+      "foreground": "#B91C1C",
+      "background": "#E8ECF2",
+      "contrast": 5.456867460350269,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:buy",
+      "foreground": "#FFFFFF",
+      "background": "#2563EB",
+      "contrast": 5.168555560022562,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:buy_hover",
+      "foreground": "#FFFFFF",
+      "background": "#1D4ED8",
+      "contrast": 6.701618401398807,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:buy_pressed",
+      "foreground": "#FFFFFF",
+      "background": "#1E40AF",
+      "contrast": 8.722410784954462,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:sell",
+      "foreground": "#FFFFFF",
+      "background": "#DC2626",
+      "contrast": 4.829404522659002,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:sell_hover",
+      "foreground": "#FFFFFF",
+      "background": "#B91C1C",
+      "contrast": 6.4700447145121895,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:sell_pressed",
+      "foreground": "#FFFFFF",
+      "background": "#991B1B",
+      "contrast": 8.310050481211189,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:accent",
+      "foreground": "#FFFFFF",
+      "background": "#4338CA",
+      "contrast": 7.9031114800249425,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:accent_hover",
+      "foreground": "#FFFFFF",
+      "background": "#3730A3",
+      "contrast": 9.933329874512658,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:accent_pressed",
+      "foreground": "#FFFFFF",
+      "background": "#312E81",
+      "contrast": 11.423054611243986,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:profit_label",
+      "foreground": "#FFFFFF",
+      "background": "#047857",
+      "contrast": 5.483924052498799,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "white_label:loss_label",
+      "foreground": "#FFFFFF",
+      "background": "#B91C1C",
+      "contrast": 6.4700447145121895,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "control_border:elevated",
+      "foreground": "#7D8796",
+      "background": "#FFFFFF",
+      "contrast": 3.6344846270721067,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "control_border:panel",
+      "foreground": "#7D8796",
+      "background": "#FAFAFA",
+      "contrast": 3.4820901786940084,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "control_border:canvas_chart",
+      "foreground": "#7D8796",
+      "background": "#F7F8FA",
+      "contrast": 3.4202607566070347,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "control_border:chrome_hover",
+      "foreground": "#7D8796",
+      "background": "#F2F4F8",
+      "contrast": 3.3006632244086243,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "control_border:field",
+      "foreground": "#7D8796",
+      "background": "#F2F6FC",
+      "contrast": 3.351239023506528,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "control_border:selected",
+      "foreground": "#7D8796",
+      "background": "#EEF2FF",
+      "contrast": 3.2503162873281246,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "control_border:pressed",
+      "foreground": "#7D8796",
+      "background": "#E8ECF2",
+      "contrast": 3.0653421686759343,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "default_bull_candle",
+      "foreground": "#059669",
+      "background": "#F7F8FA",
+      "contrast": 3.5460799682188635,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "default_bear_candle",
+      "foreground": "#DC2626",
+      "background": "#F7F8FA",
+      "contrast": 4.544749658203301,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "live_ohlc_high_text",
+      "foreground": "#16A34A",
+      "background": "#F7F8FA",
+      "contrast": 3.10147640482012,
+      "threshold": 4.5,
+      "result": "FAIL",
+      "note": "Live 13px value retains inline green; both ancestor and value backgrounds transparent"
+    },
+    {
+      "role": "live_ohlc_low_text",
+      "foreground": "#DC2626",
+      "background": "#F7F8FA",
+      "contrast": 4.544749658203301,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": "Passes narrowly on plain chart background"
+    },
+    {
+      "role": "suggested_ohlc_high_text",
+      "foreground": "#047857",
+      "background": "#F7F8FA",
+      "contrast": 5.160690483944902,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "suggested_blue_preset_bull",
+      "foreground": "#2563EB",
+      "background": "#F7F8FA",
+      "contrast": 4.863910447883576,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "suggested_blue_preset_bear",
+      "foreground": "#DC2626",
+      "background": "#F7F8FA",
+      "contrast": 4.544749658203301,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "suggested_yellow_preset_amber",
+      "foreground": "#A16207",
+      "background": "#F7F8FA",
+      "contrast": 4.632977431077479,
+      "threshold": 3,
+      "result": "PASS",
+      "note": "Candidate for light line and wick, not a validated whole-preset design"
+    },
+    {
+      "role": "crosshair",
+      "foreground": "#64748B",
+      "background": "#F7F8FA",
+      "contrast": 4.478346974691082,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "grid",
+      "foreground": "#E1E2E4",
+      "background": "#F7F8FA",
+      "contrast": 1.2223037608174787,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Supplementary grid: no automatic 3:1 requirement"
+    },
+    {
+      "role": "yellow_preset_line_and_wick",
+      "foreground": "#FACC15",
+      "background": "#F7F8FA",
+      "contrast": 1.4411539337471595,
+      "threshold": 3,
+      "result": "FAIL",
+      "note": "Built-in preset retains yellow on forced light canvas"
+    },
+    {
+      "role": "yellow_preset_bear_fill",
+      "foreground": "#F8FAFC",
+      "background": "#F7F8FA",
+      "contrast": 1.015634480747963,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Check with its yellow outline, which also fails"
+    },
+    {
+      "role": "blue_preset_bull",
+      "foreground": "#4597FF",
+      "background": "#F7F8FA",
+      "contrast": 2.774156470952446,
+      "threshold": 3,
+      "result": "FAIL",
+      "note": ""
+    },
+    {
+      "role": "blue_preset_bear",
+      "foreground": "#FF5858",
+      "background": "#F7F8FA",
+      "contrast": 2.9110006800465906,
+      "threshold": 3,
+      "result": "FAIL",
+      "note": ""
+    },
+    {
+      "role": "black_white_preset_hollow_fill",
+      "foreground": "#FFFFFF",
+      "background": "#F7F8FA",
+      "contrast": 1.062633783126403,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Black candle outline carries visibility"
+    },
+    {
+      "role": "black_white_preset_outline",
+      "foreground": "#000000",
+      "background": "#F7F8FA",
+      "contrast": 19.762217551765897,
+      "threshold": 3,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "sell_focus_outline",
+      "foreground": "#4338CA",
+      "background": "#DC2626",
+      "contrast": 1.6364567190311905,
+      "threshold": 3,
+      "result": "FAIL",
+      "note": "Live computed inset outline; no separating shadow"
+    },
+    {
+      "role": "buy_focus_outline",
+      "foreground": "#4338CA",
+      "background": "#2563EB",
+      "contrast": 1.5290754618473026,
+      "threshold": 3,
+      "result": "FAIL",
+      "note": "Source shares same inset focus selector"
+    },
+    {
+      "role": "focus_halo_on_white",
+      "foreground": "#E3E1F7",
+      "background": "#FFFFFF",
+      "contrast": 1.2812933703606635,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Supplementary halo; solid input border carries AA visibility"
+    },
+    {
+      "role": "market_watch_error_text",
+      "foreground": "#F87171",
+      "background": "#FAF2F2",
+      "contrast": 2.5046202345790354,
+      "threshold": 4.5,
+      "result": "FAIL",
+      "note": "Inline 10px text; displayed hex is rounded, calculation retains fractional channels"
+    },
+    {
+      "role": "suggested_market_watch_error_text",
+      "foreground": "#B91C1C",
+      "background": "#FAF2F2",
+      "contrast": 5.858335772083675,
+      "threshold": 4.5,
+      "result": "PASS",
+      "note": ""
+    },
+    {
+      "role": "disabled_text_on_panel",
+      "foreground": "#9CA3AF",
+      "background": "#FAFAFA",
+      "contrast": 2.4323872399658177,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Exempt only when truly inactive/decorative; not for meaningful live information"
+    },
+    {
+      "role": "panel_vs_canvas",
+      "foreground": "#FAFAFA",
+      "background": "#F7F8FA",
+      "contrast": 1.0180774000834691,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Structural hierarchy, not text contrast"
+    },
+    {
+      "role": "white_vs_canvas",
+      "foreground": "#FFFFFF",
+      "background": "#F7F8FA",
+      "contrast": 1.062633783126403,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Structural hierarchy, not text contrast"
+    },
+    {
+      "role": "chrome_vs_panel",
+      "foreground": "#F2F4F8",
+      "background": "#FAFAFA",
+      "contrast": 1.0549668178636704,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": ""
+    },
+    {
+      "role": "selected_vs_panel",
+      "foreground": "#EEF2FF",
+      "background": "#FAFAFA",
+      "contrast": 1.0713081038511516,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Selection needs its separate visible indicator"
+    },
+    {
+      "role": "structural_border_vs_panel",
+      "foreground": "#E3E8F0",
+      "background": "#FAFAFA",
+      "contrast": 1.1788466187589317,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Decorative unless sole functional boundary"
+    },
+    {
+      "role": "structural_border_vs_canvas",
+      "foreground": "#E3E8F0",
+      "background": "#F7F8FA",
+      "contrast": 1.1579145344570871,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": ""
+    },
+    {
+      "role": "strong_border_vs_canvas",
+      "foreground": "#D1D5DB",
+      "background": "#F7F8FA",
+      "contrast": 1.3866610960251287,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": ""
+    },
+    {
+      "role": "default_bull_vs_bear",
+      "foreground": "#059669",
+      "background": "#DC2626",
+      "contrast": 1.2816263871471723,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Passing vs background does not prove color-vision distinguishability"
+    },
+    {
+      "role": "profit_text_vs_loss_text",
+      "foreground": "#047857",
+      "background": "#B91C1C",
+      "contrast": 1.179820262383841,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Signs and labels preserve meaning"
+    },
+    {
+      "role": "blue_vs_indigo",
+      "foreground": "#2563EB",
+      "background": "#4338CA",
+      "contrast": 1.5290754618473026,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Use labels and position, not hue alone"
+    },
+    {
+      "role": "luminance_reference:#FFFFFF",
+      "foreground": "#111827",
+      "background": "#FFFFFF",
+      "contrast": 17.73971700407407,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": ""
+    },
+    {
+      "role": "luminance_reference:#FAFAFA",
+      "foreground": "#111827",
+      "background": "#FAFAFA",
+      "contrast": 16.995888190744548,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": ""
+    },
+    {
+      "role": "luminance_reference:#F7F8FA",
+      "foreground": "#111827",
+      "background": "#F7F8FA",
+      "contrast": 16.694102225774884,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": ""
+    },
+    {
+      "role": "luminance_reference:#F7F7F7",
+      "foreground": "#111827",
+      "background": "#F7F7F7",
+      "contrast": 16.55894215257156,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": ""
+    },
+    {
+      "role": "luminance_reference:#F2F4F8",
+      "foreground": "#111827",
+      "background": "#F2F4F8",
+      "contrast": 16.110353333350872,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": ""
+    },
+    {
+      "role": "historical_reference:old_quote:white",
+      "foreground": "#0B6CF0",
+      "background": "#FFFFFF",
+      "contrast": 4.753810969009113,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:old_quote:selected",
+      "foreground": "#0B6CF0",
+      "background": "#EEF2FF",
+      "contrast": 4.251328814092921,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:old_quote:old_selected",
+      "foreground": "#0B6CF0",
+      "background": "#E3E3E3",
+      "contrast": 3.7041294267548452,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:old_quote:chart",
+      "foreground": "#0B6CF0",
+      "background": "#F7F8FA",
+      "contrast": 4.473611741406149,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_green:white",
+      "foreground": "#059669",
+      "background": "#FFFFFF",
+      "contrast": 3.7681843718971657,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_green:selected",
+      "foreground": "#059669",
+      "background": "#EEF2FF",
+      "contrast": 3.3698838471905486,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_green:old_selected",
+      "foreground": "#059669",
+      "background": "#E3E3E3",
+      "contrast": 2.9361374922931356,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_green:chart",
+      "foreground": "#059669",
+      "background": "#F7F8FA",
+      "contrast": 3.5460799682188635,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_muted:white",
+      "foreground": "#6B7280",
+      "background": "#FFFFFF",
+      "contrast": 4.834490081424352,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_muted:selected",
+      "foreground": "#6B7280",
+      "background": "#EEF2FF",
+      "contrast": 4.323480070746243,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_muted:old_selected",
+      "foreground": "#6B7280",
+      "background": "#E3E3E3",
+      "contrast": 3.7669939109276447,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_muted:chart",
+      "foreground": "#6B7280",
+      "background": "#F7F8FA",
+      "contrast": 4.5495354638553565,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_loss:white",
+      "foreground": "#DC2626",
+      "background": "#FFFFFF",
+      "contrast": 4.829404522659002,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_loss:selected",
+      "foreground": "#DC2626",
+      "background": "#EEF2FF",
+      "contrast": 4.318932060180437,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_loss:old_selected",
+      "foreground": "#DC2626",
+      "background": "#E3E3E3",
+      "contrast": 3.76303128641501,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_loss:chart",
+      "foreground": "#DC2626",
+      "background": "#F7F8FA",
+      "contrast": 4.544749658203301,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_bright:white",
+      "foreground": "#10B981",
+      "background": "#FFFFFF",
+      "contrast": 2.5366569934610426,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_bright:selected",
+      "foreground": "#10B981",
+      "background": "#EEF2FF",
+      "contrast": 2.2685300358123217,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_bright:old_selected",
+      "foreground": "#10B981",
+      "background": "#E3E3E3",
+      "contrast": 1.9765417422605367,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_bright:chart",
+      "foreground": "#10B981",
+      "background": "#F7F8FA",
+      "contrast": 2.3871413028088346,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_crosshair:white",
+      "foreground": "#94A3B8",
+      "background": "#FFFFFF",
+      "contrast": 2.5640413904962034,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_crosshair:selected",
+      "foreground": "#94A3B8",
+      "background": "#EEF2FF",
+      "contrast": 2.293019877106202,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_crosshair:old_selected",
+      "foreground": "#94A3B8",
+      "background": "#E3E3E3",
+      "contrast": 1.9978794335472017,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    },
+    {
+      "role": "historical_reference:mobile_crosshair:chart",
+      "foreground": "#94A3B8",
+      "background": "#F7F8FA",
+      "contrast": 2.4129116081294435,
+      "threshold": null,
+      "result": "CONTEXT",
+      "note": "Historical/reference color; not evidence of current use"
+    }
+  ]
+}

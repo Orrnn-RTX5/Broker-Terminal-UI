@@ -93,7 +93,7 @@ export interface DockState {
   updateFloatingSize: (panelId: string, size: { width: number; height: number }) => void;
   moveToTab: (panelId: string, tabContainerId: string, insertIndex?: number) => void;
   updateContainerSize: (containerId: string, ratio: number) => void;
-  updatePanelProps: (panelId: string, updates: { props?: Record<string, any>; title?: string }) => void;
+  updatePanelProps: (panelId: string, updates: Partial<Pick<DockPanelConfig, 'props' | 'title' | 'chartSymbolTabs'>>) => void;
   setPanelMinimized: (panelId: string, minimized: boolean) => void;
   bringFloatingToFront: (panelId: string) => void;
 

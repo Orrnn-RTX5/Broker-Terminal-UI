@@ -167,12 +167,21 @@ function MiniTickChart({
         monoFont: readCssValue('--font-mono', 'ui-monospace, Consolas, monospace'),
       };
 
+      const lightSize = Number.parseFloat(readCssValue('--rtx-light-ui-font-size', '0'));
+      const lightFont = Number.isFinite(lightSize) && lightSize > 0
+        ? `450 ${lightSize}px ${readCssValue('--font-sans', palette.monoFont)}`
+        : null;
+      ctx.font = lightFont || `10px ${palette.monoFont}`;
+
       const width = cssWidth;
       const height = cssHeight;
       const left = 12;
-      const right = 72;
-      const top = 12;
-      const bottom = 27;
+      const right = lightFont
+        ? Math.max(72, Math.ceil(ctx.measureText(Math.max(Math.abs(bid), Math.abs(ask)).toFixed(digits)).width) + 20)
+        : 72;
+      const tagHeight = lightFont ? Math.ceil(lightSize * 1.5) + 2 : 16;
+      const top = lightFont ? tagHeight / 2 + 4 : 12;
+      const bottom = lightFont ? tagHeight + 7 : 27;
       const plotWidth = width - left - right;
       const plotHeight = height - top - bottom;
       const plotRight = left + plotWidth;
@@ -213,7 +222,7 @@ function MiniTickChart({
       const history = tickHistoryRef.current;
       if (history.length === 0) {
         ctx.fillStyle = palette.axis;
-        ctx.font = `11px ${palette.monoFont}`;
+        ctx.font = lightFont || `11px ${palette.monoFont}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(tr('Waiting for the first live quote from the broker.'), left + plotWidth / 2, top + plotHeight / 2, plotWidth - 20);
@@ -251,7 +260,7 @@ function MiniTickChart({
       const yOf = (price: number) => top + plotHeight - ((price - minPrice) / totalRange) * plotHeight;
 
       ctx.fillStyle = palette.axis;
-      ctx.font = `10px ${palette.monoFont}`;
+      ctx.font = lightFont || `10px ${palette.monoFont}`;
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
       for (let index = 0; index <= 4; index += 1) {
@@ -325,16 +334,17 @@ function MiniTickChart({
 
       let bidTagY = yOf(lastTick.bid);
       let askTagY = yOf(lastTick.ask);
-      const minimumTagGap = 19;
+      const minimumTagGap = tagHeight + 3;
       if (Math.abs(bidTagY - askTagY) < minimumTagGap) {
         const midpoint = (bidTagY + askTagY) / 2;
         bidTagY = midpoint + minimumTagGap / 2;
         askTagY = midpoint - minimumTagGap / 2;
       }
-      bidTagY = Math.max(top + 9, Math.min(plotBottom - 9, bidTagY));
-      askTagY = Math.max(top + 9, Math.min(plotBottom - 9, askTagY));
+      const tagInset = tagHeight / 2 + 1;
+      bidTagY = Math.max(top + tagInset, Math.min(plotBottom - tagInset, bidTagY));
+      askTagY = Math.max(top + tagInset, Math.min(plotBottom - tagInset, askTagY));
 
-      ctx.font = `600 10px ${palette.monoFont}`;
+      ctx.font = lightFont || `600 10px ${palette.monoFont}`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ([
@@ -342,7 +352,7 @@ function MiniTickChart({
         [lastTick.ask, askTagY, palette.ask],
       ] as const).forEach(([price, y, color]) => {
         ctx.fillStyle = color;
-        ctx.fillRect(plotRight, y - 8, right, 16);
+        ctx.fillRect(plotRight, y - tagHeight / 2, right, tagHeight);
         ctx.fillStyle = palette.tagText;
         ctx.fillText(price.toFixed(digits), plotRight + 6, y);
       });

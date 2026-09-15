@@ -3,6 +3,7 @@ import type { DockLayout, DockPanelConfig } from './dockManager';
 import { activateActiveChartSource, getActiveChartSource } from './activeChartSource';
 import { getPanelIdFromChartContextId } from './chartCommandTarget';
 import { normalizeExactBrokerSymbol } from '../utils/exactBrokerSymbol';
+import { getChartSymbolTabs } from '../utils/chartSymbolTabs';
 
 export const getChartPanels = (layout: DockLayout): DockPanelConfig[] => {
   const panels: DockPanelConfig[] = [];
@@ -34,7 +35,7 @@ export const activateChartPanel = (panelId: string): boolean => {
   return true;
 };
 
-/** Replace one panel's opaque broker symbol, retaining its timeframe/type and siblings. */
+/** Remember each symbol's timeframe/style within its pane, leaving siblings intact. */
 export const changeChartPanelSymbol = (
   panelId: string,
   requestedSymbol: unknown,
@@ -46,9 +47,18 @@ export const changeChartPanelSymbol = (
   const store = useDockLayoutStore.getState();
   const panel = findChartPanelById(store.layout, panelId);
   if (!panel) return false;
-  const timeframe = panel.props?.timeframe || fallbackTimeframe;
-  store.updatePanelProps(panelId, { props: { symbol, timeframe }, title: `${symbol},${timeframe}` });
+  const allowed = new Set(authorizedSymbols.map(normalizeExactBrokerSymbol));
+  const chartSymbolTabs = getChartSymbolTabs(panel).filter(tab => allowed.has(normalizeExactBrokerSymbol(tab.symbol)));
+  const savedTab = chartSymbolTabs.find(tab => normalizeExactBrokerSymbol(tab.symbol) === symbol);
+  const timeframe = savedTab?.timeframe || panel.props?.timeframe || fallbackTimeframe;
+  const chartType = savedTab?.chartType || panel.props?.chartType;
+  store.updatePanelProps(panelId, {
+    props: { symbol, timeframe, ...(chartType ? { chartType } : {}) },
+    title: `${symbol},${timeframe}`,
+    chartSymbolTabs,
+  });
   activateChartPanel(panelId);
+  window.dispatchEvent(new CustomEvent('chartSymbolChanged', { detail: { symbol, timeframe } }));
   return true;
 };
 
@@ -72,14 +82,18 @@ export const getChartPanelSymbolUpdates = (
   fallbackSymbol: string,
   fallbackTimeframe: string,
   catalogCurrent = true,
-): Array<{ id: string; props: Record<string, unknown>; title: string }> => !catalogCurrent ? [] : (
+): Array<Pick<DockPanelConfig, 'id' | 'chartSymbolTabs'> & { props: Record<string, unknown>; title: string }> => !catalogCurrent ? [] : (
   getChartPanels(layout).flatMap(panel => {
     const requested = panel.props?.symbol ?? panel.title?.split(',')[0];
     const resolved = resolveSymbol(requested);
-    if (panel.props?.symbol && resolved && resolved === normalizeExactBrokerSymbol(requested)) return [];
+    const chartSymbolTabs = panel.chartSymbolTabs?.filter(tab => resolveSymbol(tab.symbol));
+    const tabsChanged = chartSymbolTabs?.length !== panel.chartSymbolTabs?.length;
+    if (panel.props?.symbol && resolved && resolved === normalizeExactBrokerSymbol(requested) && !tabsChanged) return [];
     const symbol = resolved && normalizeExactBrokerSymbol(requested) !== 'CHART' ? resolved : fallbackSymbol;
     if (!symbol) return [];
     const timeframe = panel.props?.timeframe || fallbackTimeframe;
-    return [{ id: panel.id, props: { ...panel.props, symbol, timeframe }, title: `${symbol},${timeframe}` }];
+    return [{ id: panel.id, props: { ...panel.props, symbol, timeframe }, title: `${symbol},${timeframe}`,
+      ...(chartSymbolTabs ? { chartSymbolTabs } : {}),
+    }];
   })
 );

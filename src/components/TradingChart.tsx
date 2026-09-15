@@ -473,18 +473,26 @@ const getTradeOverlayCardPalette = (
 ): TradeOverlayCardPalette => {
   const isPositiveTone = tone === 'BUY' || tone === 'TP';
   if (isLightSurface) {
+    if (tone === 'BUY') {
+      return {
+        background: '#eff6ff',
+        border: '#2563eb',
+        text: '#1d4ed8',
+        shadow: 'box-shadow:0 1px 3px rgba(15,23,42,0.12);',
+      };
+    }
     return isPositiveTone
       ? {
         background: 'rgba(236, 253, 243, 0.9)',
-        border: '#17b26a',
-        text: '#027a48',
-        shadow: 'box-shadow:0 1px 3px rgba(16,24,40,0.12);',
+        border: '#059669',
+        text: '#047857',
+        shadow: 'box-shadow:0 1px 3px rgba(15,23,42,0.12);',
       }
       : {
         background: 'rgba(254, 243, 242, 0.9)',
-        border: '#f04438',
-        text: '#b42318',
-        shadow: 'box-shadow:0 1px 3px rgba(16,24,40,0.12);',
+        border: '#dc2626',
+        text: '#b91c1c',
+        shadow: 'box-shadow:0 1px 3px rgba(15,23,42,0.12);',
       };
   }
 
@@ -571,7 +579,16 @@ type ChartColorPalette = ChartProperties['colors'];
 const MINUTE_SEPARATOR_PIXEL_DEDUP_DISTANCE = 10;
 
 const CHART_AXIS_FONT_FAMILY = '"Inter", "Segoe UI", Tahoma, Arial, sans-serif';
+const LIGHT_CHART_AXIS_FONT_FAMILY = '"Segoe UI", Tahoma, Arial, sans-serif';
 const CHART_AXIS_FONT_SIZE = 12;
+
+const readChartAxisFontSize = (): number => {
+  if (typeof document === 'undefined') return CHART_AXIS_FONT_SIZE;
+  const root = document.documentElement;
+  if (!root.classList.contains('rtx-skin-untitled-light')) return CHART_AXIS_FONT_SIZE;
+  const size = Number.parseFloat(getComputedStyle(root).getPropertyValue('--rtx-light-ui-font-size'));
+  return Number.isFinite(size) && size > 0 ? size : 14;
+};
 
 const clampAlpha = (alpha: number): number => Math.max(0, Math.min(1, alpha));
 
@@ -630,7 +647,7 @@ const getColorLuminance = (color: string | undefined): number | null => {
   return null;
 };
 
-const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingViewChartTheme => {
+const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean, useReferenceLightSurface = false): TradingViewChartTheme => {
   const candleUp = colors.bullCandle || colors.barUp || '#089981';
   const candleDown = colors.bearCandle || colors.barDown || '#f23645';
   const barUp = colors.barUp || candleUp;
@@ -643,6 +660,7 @@ const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingV
     background: colors.background || '#0e0e12',
     grid: rawGrid,
     showGrid,
+    preserveConfiguredColor: useReferenceLightSurface,
   });
 
   return {
@@ -653,8 +671,8 @@ const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingV
       : (colors.foreground || '#25313c'),
     gridVertical: gridLines.vertical,
     gridHorizontal: gridLines.horizontal,
-    scaleBorder: colorWithAlpha(colors.foreground, 0.24, 'rgba(255, 255, 255, 0.24)'),
-    crosshair: colorWithAlpha(colors.foreground, 0.58, 'rgba(255, 255, 255, 0.58)'),
+    scaleBorder: useReferenceLightSurface ? 'transparent' : colorWithAlpha(colors.foreground, 0.24, 'rgba(255, 255, 255, 0.24)'),
+    crosshair: useReferenceLightSurface ? '#64748b' : colorWithAlpha(colors.foreground, 0.58, 'rgba(255, 255, 255, 0.58)'),
     candleUp,
     candleDown,
     barUp,
@@ -664,8 +682,8 @@ const buildChartTheme = (colors: ChartColorPalette, showGrid: boolean): TradingV
     line,
     areaTop: colorWithAlpha(line, 0.22, 'rgba(41, 98, 255, 0.22)'),
     areaBottom: colorWithAlpha(line, 0, 'rgba(41, 98, 255, 0)'),
-    volumeUp: colorWithAlpha(barUp, 0.28, 'rgba(8, 153, 129, 0.28)'),
-    volumeDown: colorWithAlpha(barDown, 0.28, 'rgba(242, 54, 69, 0.28)'),
+    volumeUp: useReferenceLightSurface ? barUp : colorWithAlpha(barUp, 0.28, 'rgba(8, 153, 129, 0.28)'),
+    volumeDown: useReferenceLightSurface ? barDown : colorWithAlpha(barDown, 0.28, 'rgba(242, 54, 69, 0.28)'),
   };
 };
 
@@ -1320,6 +1338,7 @@ export const TradingChart = React.memo(function TradingChart({
   );
   const livePriceColorPaletteRef = useRef<ChartColorPalette>(defaultChartProperties.colors);
   const lastLivePriceDirectionalColorRef = useRef(defaultChartProperties.colors.bullCandle);
+  const useEnterpriseLightPricePaletteRef = useRef(false);
   const leftVisibleTimeRef = useRef<number | null>(null);
   const lastAcceptedQuoteRef = useRef<number | null>(null);
   const incompatibleQuoteCountRef = useRef(0);
@@ -1566,6 +1585,7 @@ export const TradingChart = React.memo(function TradingChart({
     const overlayColors = getLivePriceOverlayColors(
       livePriceColorPaletteRef.current,
       getLivePriceDirectionalColor(activeCandleTime, directionClose),
+      useEnterpriseLightPricePaletteRef.current,
     );
     livePriceOverlayColorsRef.current = overlayColors;
 
@@ -1713,9 +1733,12 @@ export const TradingChart = React.memo(function TradingChart({
     return root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light');
   });
 
+  const [chartAxisFontSize, setChartAxisFontSize] = useState(readChartAxisFontSize);
+
   useLayoutEffect(() => {
     const root = document.documentElement;
     const syncSkinState = () => {
+      setChartAxisFontSize(readChartAxisFontSize());
       setIsAdvancedUntitledLight(
         root.classList.contains('rtx-advanced-view') && root.classList.contains('rtx-skin-untitled-light')
       );
@@ -1724,6 +1747,7 @@ export const TradingChart = React.memo(function TradingChart({
       const detail = (event as CustomEvent<{ isAdvancedUntitledLight?: boolean }>).detail;
       if (typeof detail?.isAdvancedUntitledLight === 'boolean') {
         setIsAdvancedUntitledLight(detail.isAdvancedUntitledLight);
+        setChartAxisFontSize(readChartAxisFontSize());
         return;
       }
       syncSkinState();
@@ -1742,16 +1766,19 @@ export const TradingChart = React.memo(function TradingChart({
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
     [chartSettings, isAdvancedUntitledLight],
   );
+  const useEnterpriseLightChartPalette = isAdvancedUntitledLight && chartSettings.colorScheme !== 'Custom';
+  useEnterpriseLightPricePaletteRef.current = useEnterpriseLightChartPalette;
   const initialLivePriceOverlayColors = useMemo(
     () => getLivePriceOverlayColors(
       chartColors,
       getLivePriceSeriesColor(chartColors, chartType, 'up'),
+      useEnterpriseLightChartPalette,
     ),
-    [chartColors, chartType],
+    [chartColors, chartType, useEnterpriseLightChartPalette],
   );
   const chartTheme = useMemo(
-    () => buildChartTheme(chartColors, chartSettings.showGrid),
-    [chartColors, chartSettings.showGrid],
+    () => buildChartTheme(chartColors, chartSettings.showGrid, isAdvancedUntitledLight && chartSettings.colorScheme !== 'Custom'),
+    [chartColors, chartSettings.showGrid, chartSettings.colorScheme, isAdvancedUntitledLight],
   );
   const chartThemeRef = useRef(chartTheme);
   const previousAdvancedUntitledLightRef = useRef(isAdvancedUntitledLight);
@@ -1759,7 +1786,7 @@ export const TradingChart = React.memo(function TradingChart({
   useEffect(() => {
     livePriceColorPaletteRef.current = chartColors;
     lastLivePriceDirectionalColorRef.current = getLivePriceSeriesColor(chartColors, chartType, 'up');
-    const overlayColors = getLivePriceOverlayColors(chartColors, getLivePriceDirectionalColor());
+    const overlayColors = getLivePriceOverlayColors(chartColors, getLivePriceDirectionalColor(), useEnterpriseLightChartPalette);
     livePriceOverlayColorsRef.current = overlayColors;
     if (livePriceLineRef.current) {
       livePriceLineRef.current.style.borderTopColor = overlayColors.lineColor;
@@ -1768,7 +1795,7 @@ export const TradingChart = React.memo(function TradingChart({
       livePriceBadgeRef.current.style.background = overlayColors.badgeBackground;
       livePriceBadgeRef.current.style.color = overlayColors.badgeTextColor;
     }
-  }, [chartColors, chartType, getLivePriceDirectionalColor]);
+  }, [chartColors, chartType, getLivePriceDirectionalColor, useEnterpriseLightChartPalette]);
 
   useEffect(() => {
     chartThemeRef.current = chartTheme;
@@ -2492,8 +2519,8 @@ export const TradingChart = React.memo(function TradingChart({
       layout: {
         background: { type: ColorType.Solid, color: chartTheme.background },
         textColor: chartTheme.axisText,
-        fontFamily: CHART_AXIS_FONT_FAMILY,
-        fontSize: CHART_AXIS_FONT_SIZE,
+        fontFamily: isAdvancedUntitledLight ? LIGHT_CHART_AXIS_FONT_FAMILY : CHART_AXIS_FONT_FAMILY,
+        fontSize: chartAxisFontSize,
         attributionLogo: false,
       },
       // A bottom-layer series primitive draws the square grid. Native X/Y tick
@@ -4827,8 +4854,8 @@ export const TradingChart = React.memo(function TradingChart({
       layout: {
         background: { type: ColorType.Solid, color: chartTheme.background },
         textColor: chartTheme.axisText,
-        fontFamily: CHART_AXIS_FONT_FAMILY,
-        fontSize: CHART_AXIS_FONT_SIZE,
+        fontFamily: isAdvancedUntitledLight ? LIGHT_CHART_AXIS_FONT_FAMILY : CHART_AXIS_FONT_FAMILY,
+        fontSize: chartAxisFontSize,
       },
       grid: {
         vertLines: {
@@ -4927,7 +4954,7 @@ export const TradingChart = React.memo(function TradingChart({
     }
 
     window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
-  }, [chartSettings, chartTheme, chartType, requestChartDataRender, schedulePeriodSeparatorRender, symbol, timeframe, updateLegendDOM]);
+  }, [chartAxisFontSize, chartSettings, chartTheme, chartType, requestChartDataRender, schedulePeriodSeparatorRender, symbol, timeframe, updateLegendDOM]);
 
   useLayoutEffect(() => {
     if (previousAdvancedUntitledLightRef.current === isAdvancedUntitledLight) return;
@@ -6191,10 +6218,10 @@ export const TradingChart = React.memo(function TradingChart({
       // Targeted and active-source commands both keep the dock tab's own
       // timeframe in sync without mutating sibling chart panels.
       if (panelId && payload.timeframe) {
-        console.log(`[TradingChart] Timeframe sync: updating tab title to ${symbol},${payload.timeframe}`);
+        // A symbol-tab switch can precede this subscriber's next render.
+        // Keep the store's current symbol; this command only owns timeframe.
         useDockLayoutStore.getState().updatePanelProps(panelId, {
-          props: { symbol, timeframe: payload.timeframe },
-          title: `${symbol},${payload.timeframe}`,
+          props: { timeframe: payload.timeframe },
         });
       }
 
@@ -6551,8 +6578,8 @@ export const TradingChart = React.memo(function TradingChart({
   const TRADE_SELL_COLOR = '#ef4444';
   const TRADE_HISTORY_PROFIT_COLOR = '#00e6a8';
   const TRADE_HISTORY_LOSS_COLOR = '#ff5a67';
-  const TRADE_HISTORY_LIGHT_PROFIT_COLOR = '#007a55';
-  const TRADE_HISTORY_LIGHT_LOSS_COLOR = '#c6283d';
+  const TRADE_HISTORY_LIGHT_PROFIT_COLOR = '#047857';
+  const TRADE_HISTORY_LIGHT_LOSS_COLOR = '#b91c1c';
   const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v7-exact-line-opacity';
   // MT5-style entry lines: dotted blue for BUY, dotted red for SELL.
   const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';
@@ -7534,7 +7561,7 @@ export const TradingChart = React.memo(function TradingChart({
       const tooltipDetails = document.createElement('span');
       tooltipDetails.className = 'rtx-trade-marker__tooltip-details';
       tooltipDetails.style.cssText = 'display:grid;grid-template-columns:auto 1fr;column-gap:10px;row-gap:1px;padding:4px 8px 5px;';
-      const detailLabelColor = lightSurface ? '#667085' : '#98a2b3';
+      const detailLabelColor = lightSurface ? '#5f6b7a' : '#98a2b3';
       const appendTooltipDetail = (labelText: string, valueText: string) => {
         const label = document.createElement('span');
         label.dataset.chartUiLabel = labelText;
@@ -7912,7 +7939,7 @@ export const TradingChart = React.memo(function TradingChart({
       addTradeAxisPriceLine(
         `${trade.key}:${role.toLowerCase()}`,
         levelPrice,
-        lightSurface ? '#3f4756' : '#2a2e39',
+        lightSurface ? '#334155' : '#2a2e39',
         '#ffffff',
       );
     };
@@ -8732,7 +8759,9 @@ export const TradingChart = React.memo(function TradingChart({
 
       if (isEntry) {
         const isBuyLabel = text.toUpperCase().includes('BUY');
-        const labelColor = isBuyLabel ? '#26a69a' : '#ef5350';
+        const labelColor = isChartSurfaceLight()
+          ? (isBuyLabel ? '#1d4ed8' : '#b91c1c')
+          : (isBuyLabel ? '#26a69a' : '#ef5350');
         const dirLabel = isBuyLabel ? 'BUY' : 'SELL';
         const volStr = volume != null ? String(volume) : '';
 
@@ -9694,6 +9723,7 @@ export const TradingChart = React.memo(function TradingChart({
         dragLineOverlay.style.cssText = `position:absolute;left:0;right:${getPriceScaleOffset()}px;top:0;height:0;border-top:1px dashed transparent;z-index:999;pointer-events:none;transform:translate3d(0, ${initialOverlayY}px, 0);will-change:transform;`;
 
         dragBadgeOverlay = document.createElement('div');
+        dragBadgeOverlay.className = 'rtx-trade-drag-price-badge';
         const initialPalette = getTradeOverlayCardPalette(grabbedType === 'TP' ? 'TP' : 'SL', isChartSurfaceLight());
         dragBadgeOverlay.style.cssText = `position:absolute;left:${TRADE_LEVEL_BADGE_LEFT_INSET_PX}px;top:0;padding:1px 5px;background:${initialPalette.background};border:1px solid ${initialPalette.border};color:${initialPalette.text};font-size:10px;font-family:Consolas,monospace;font-weight:700;z-index:1000;pointer-events:none;border-radius:2px;transform:translateY(calc(-50% + ${initialOverlayY}px));will-change:transform;opacity:0;${initialPalette.shadow}`;
 
@@ -10149,7 +10179,7 @@ export const TradingChart = React.memo(function TradingChart({
         }}>
           {chartSettings.showTicker && (
             <span style={{
-              fontWeight: 400, color: '#7f56d9',
+              fontWeight: 500, color: '#7f56d9',
               background: 'rgba(127, 86, 217, 0.10)',
               padding: '2px 8px', borderRadius: '4px',
             }}><ChartSymbolTrigger symbol={symbol} panelId={panelId} />, {timeframe}</span>
@@ -10238,7 +10268,7 @@ export const TradingChart = React.memo(function TradingChart({
       <div ref={vertLineRef} style={{
         position: 'absolute', left: 0, top: 0,
         width: 1, height: '100%',
-        background: 'rgba(148,163,184,0.75)',
+        background: useEnterpriseLightChartPalette ? '#64748b' : 'rgba(148,163,184,0.75)',
         pointerEvents: 'none', zIndex: 14, opacity: 0,
         willChange: 'transform',
       }} />
@@ -10246,7 +10276,7 @@ export const TradingChart = React.memo(function TradingChart({
       <div ref={horizLineRef} style={{
         position: 'absolute', left: 0, top: 0,
         width: '100%', height: 1,
-        background: 'rgba(148,163,184,0.75)',
+        background: useEnterpriseLightChartPalette ? '#64748b' : 'rgba(148,163,184,0.75)',
         pointerEvents: 'none', zIndex: 14, opacity: 0,
         willChange: 'transform',
       }} />
@@ -10257,13 +10287,13 @@ export const TradingChart = React.memo(function TradingChart({
         pointerEvents: 'none', zIndex: 15, opacity: 0,
         willChange: 'transform',
       }}>
-        <div style={{ position: 'absolute', left: 0, top: 5, width: 12, height: 1, background: 'rgba(148,163,184,0.95)' }} />
-        <div style={{ position: 'absolute', left: 5, top: 0, width: 1, height: 12, background: 'rgba(148,163,184,0.95)' }} />
+        <div style={{ position: 'absolute', left: 0, top: 5, width: 12, height: 1, background: useEnterpriseLightChartPalette ? '#64748b' : 'rgba(148,163,184,0.95)' }} />
+        <div style={{ position: 'absolute', left: 5, top: 0, width: 1, height: 12, background: useEnterpriseLightChartPalette ? '#64748b' : 'rgba(148,163,184,0.95)' }} />
       </div>
       {/* Time label: bottom of chart at snappedX */}
-      <div ref={timeLabelRef} style={{
+      <div ref={timeLabelRef} className="rtx-chart-crosshair-label" style={{
         position: 'absolute', left: 0, top: 0,
-        background: '#334155', color: '#e2e8f0',
+        background: '#334155', color: useEnterpriseLightChartPalette ? '#ffffff' : '#e2e8f0',
         fontSize: 10, fontFamily: "Consolas,'Courier New',monospace",
         padding: '1px 5px', borderRadius: 2,
         whiteSpace: 'nowrap',
@@ -10271,10 +10301,10 @@ export const TradingChart = React.memo(function TradingChart({
         willChange: 'transform',
       }} />
       {/* Price label: right edge at cursor Y */}
-      <div ref={priceLabelRef} style={{
+      <div ref={priceLabelRef} className="rtx-chart-crosshair-label" style={{
         position: 'absolute', left: 0, top: 0,
         width: 54, textAlign: 'center',
-        background: '#334155', color: '#e2e8f0',
+        background: '#334155', color: useEnterpriseLightChartPalette ? '#ffffff' : '#e2e8f0',
         fontSize: 10, fontFamily: "Consolas,'Courier New',monospace",
         padding: '1px 4px', borderRadius: 2,
         whiteSpace: 'nowrap',
@@ -10299,6 +10329,7 @@ export const TradingChart = React.memo(function TradingChart({
       />
       <div
         ref={livePriceBadgeRef}
+        className="rtx-chart-price-badge"
         style={{
           position: 'absolute',
           top: -9999,

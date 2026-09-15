@@ -386,21 +386,39 @@ export const getEffectiveChartColors = (
 ): ChartProperties["colors"] => {
   if (!options.isAdvancedUntitledLight) return properties.colors;
 
+  // Apply the shared light palette at render time so switching back to dark
+  // restores the saved template and custom chart colors remain authoritative.
+  const lightSurface = {
+    background: "#f7f8fa",
+    foreground: "#4b5563",
+    grid: "rgba(46, 46, 46, 0.11)",
+  };
+
   if (properties.colorScheme === "Green on Black" || properties.colorScheme === "Blue on Black") {
-    return {
+    const colors = {
       ...properties.colors,
-      background: "#f2f4f5",
-      foreground: "#465461",
-      grid: "#dfe4e8",
+      ...lightSurface,
     };
+    if (properties.colorScheme === "Green on Black") {
+      const referenceColor = (color: string): string => {
+        if (color.toUpperCase() === CHART_PROFIT_COLOR) return "#059669";
+        if (color.toUpperCase() === CHART_LOSS_COLOR) return "#dc2626";
+        return color;
+      };
+      colors.barUp = referenceColor(colors.barUp);
+      colors.barDown = referenceColor(colors.barDown);
+      colors.bullCandle = referenceColor(colors.bullCandle);
+      colors.bearCandle = referenceColor(colors.bearCandle);
+      colors.lineChart = referenceColor(colors.lineChart);
+      colors.lastPriceLine = referenceColor(colors.lastPriceLine);
+    }
+    return colors;
   }
 
   if (properties.colorScheme === "Black on White") {
     return {
       ...properties.colors,
-      background: "#f2f4f5",
-      foreground: "#25313c",
-      grid: "#dfe4e8",
+      ...lightSurface,
       barUp: "#000000",
       barDown: "#000000",
       bullCandle: "#ffffff",
@@ -414,9 +432,7 @@ export const getEffectiveChartColors = (
   if (properties.colorScheme === "Yellow on Black") {
     return {
       ...properties.colors,
-      background: "#f2f4f5",
-      foreground: "#465461",
-      grid: "#e0ded7",
+      ...lightSurface,
       barUp: "#facc15",
       barDown: "#facc15",
       bullCandle: "#000000",

@@ -613,7 +613,7 @@ const DockContainerContent: React.FC<DockContainerProps> = ({
                   setActiveTab(currentContainer.id, panel.id);
                   if (panel.component === 'Chart' && panel.props?.symbol) {
                     window.dispatchEvent(new CustomEvent('chartSymbolChanged', {
-                      detail: { symbol: panel.props.symbol }
+                      detail: { symbol: panel.props.symbol, timeframe: panel.props.timeframe }
                     }));
                   }
                 }}

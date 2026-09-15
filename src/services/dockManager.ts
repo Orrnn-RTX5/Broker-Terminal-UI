@@ -3,6 +3,8 @@
  * Professional docking layout system for trading terminals
  */
 
+import type { ChartSymbolTab } from '../utils/chartSymbolTabs';
+
 export type DockDirection = 'left' | 'right' | 'top' | 'bottom' | 'center' | 'tab';
 export type DockContainerType = 'root' | 'split' | 'tabs' | 'panel';
 export type ChartArrangement = 'grid' | 'horizontal' | 'vertical' | 'cascade';
@@ -34,6 +36,7 @@ export interface DockPanelConfig {
   icon?: string;
   component: string;
   props?: Record<string, any>;
+  chartSymbolTabs?: ChartSymbolTab[];
   minWidth?: number;
   minHeight?: number;
   preferredWidth?: number;
@@ -1105,7 +1108,7 @@ export class DockManager {
   /**
    * Update a panel's props and title in-place
    */
-  updatePanelProps(panelId: string, updates: { props?: Record<string, any>; title?: string }): boolean {
+  updatePanelProps(panelId: string, updates: Partial<Pick<DockPanelConfig, 'props' | 'title' | 'chartSymbolTabs'>>): boolean {
     const layout = this.layout;
     const updated = this.updatePanelInContainer(layout.root, panelId, updates);
     if (updated) {
@@ -1122,7 +1125,7 @@ export class DockManager {
     return false;
   }
 
-  private updatePanelInContainer(container: DockContainer, panelId: string, updates: { props?: Record<string, any>; title?: string }): boolean {
+  private updatePanelInContainer(container: DockContainer, panelId: string, updates: Partial<Pick<DockPanelConfig, 'props' | 'title' | 'chartSymbolTabs'>>): boolean {
     for (let i = 0; i < container.children.length; i++) {
       const child = container.children[i];
       if ('children' in child) {
@@ -1132,6 +1135,10 @@ export class DockManager {
         if (panel.id === panelId) {
           if (updates.props) panel.props = { ...panel.props, ...updates.props };
           if (updates.title !== undefined) panel.title = updates.title;
+          else if (panel.component === 'Chart' && (updates.props?.symbol || updates.props?.timeframe)) {
+            panel.title = `${panel.props?.symbol || 'Chart'},${panel.props?.timeframe || DEFAULT_CHART_TIMEFRAME}`;
+          }
+          if (updates.chartSymbolTabs !== undefined) panel.chartSymbolTabs = updates.chartSymbolTabs;
           return true;
         }
       }

@@ -1,0 +1,11 @@
+{
+  "packagedFilesMatch": true,
+  "files": [
+    "dist/index.html",
+    "preload.cjs",
+    "dist/assets/index-BvZGF8Hv.js"
+  ],
+  "installer": "draft/RTX.Terminal.Setup.1.0.25.exe",
+  "size": 112937711,
+  "sha256": "b95e18ef761a28cbd50f329cc69e0a34a3bce11a7ea860e714dd6cb958532dbc"
+}

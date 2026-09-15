@@ -8,6 +8,23 @@ const readAlpha = (color: string): number => {
 };
 
 describe('getChartGridLineColors', () => {
+  it('matches both reference light axes while keeping the grid visibility toggle authoritative', () => {
+    const options = {
+      background: '#ffffff',
+      grid: 'rgba(46, 46, 46, 0.2)',
+      showGrid: true,
+      preserveConfiguredColor: true,
+    };
+    expect(getChartGridLineColors(options)).toEqual({
+      vertical: options.grid,
+      horizontal: options.grid,
+    });
+    expect(getChartGridLineColors({ ...options, showGrid: false })).toEqual({
+      vertical: 'rgba(0, 0, 0, 0)',
+      horizontal: 'rgba(0, 0, 0, 0)',
+    });
+  });
+
   it('turns the legacy dark grid into a restrained price-first hierarchy', () => {
     const colors = getChartGridLineColors({
       background: '#000000',

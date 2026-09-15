@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
+const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8').replace(/\r\n/g, '\n');
 
 const expectOrdered = (source: string, snippets: readonly string[]) => {
   let cursor = -1;
@@ -91,7 +91,7 @@ describe('interactive login runtime boundary source contract', () => {
       welcome.indexOf('</button>', welcome.indexOf('data-rtx-login-submit')),
     );
 
-    expect(button).toContain('disabled={loading}');
+    expect(button).toContain('disabled={loading || (isDesktopBrokerSelection && !desktopLoginReady)}');
     expect(button).toContain("data-rtx-login-feedback={loading ? 'true' : undefined}");
     expect(button).toContain('Login');
     expect(button).not.toContain('Connecting');

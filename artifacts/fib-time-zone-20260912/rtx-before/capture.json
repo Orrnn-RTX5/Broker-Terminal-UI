@@ -1,0 +1,67 @@
+[
+  {
+    "file": "000-menu.png",
+    "time": 1789206990643,
+    "label": "menu"
+  },
+  {
+    "file": "001-tool-active.png",
+    "time": 1789207010948,
+    "label": "tool-active"
+  },
+  {
+    "file": "002-cursor.png",
+    "time": 1789207011281,
+    "label": "cursor"
+  },
+  {
+    "file": "003-first-anchor.png",
+    "time": 1789207011699,
+    "label": "first-anchor"
+  },
+  {
+    "file": "004-preview.png",
+    "time": 1789207011839,
+    "label": "preview"
+  },
+  {
+    "file": "005-committed.png",
+    "time": 1789207025001,
+    "label": "committed"
+  },
+  {
+    "file": "006-deselected.png",
+    "time": 1789207025416,
+    "label": "deselected"
+  },
+  {
+    "file": "007-settled-deselected.png",
+    "time": 1789207034979,
+    "label": "settled-deselected"
+  },
+  {
+    "file": "008-select-level-two.png",
+    "time": 1789207049628,
+    "label": "select-level-two"
+  },
+  {
+    "file": "009-move-level-two.png",
+    "time": 1789207050231,
+    "label": "move-level-two"
+  },
+  {
+    "file": "010-move-settled.png",
+    "time": 1789207050390,
+    "label": "move-settled"
+  },
+  {
+    "file": "011-reverse-anchor.png",
+    "time": 1789207070899,
+    "label": "reverse-anchor"
+  },
+  {
+    "file": "012-reverse-settled.png",
+    "time": 1789207071074,
+    "label": "reverse-settled"
+  }
+]

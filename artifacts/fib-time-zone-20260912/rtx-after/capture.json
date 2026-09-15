@@ -1,0 +1,52 @@
+[
+  {
+    "file": "000-menu.png",
+    "time": 1789207692149,
+    "label": "menu"
+  },
+  {
+    "file": "001-menu-open.png",
+    "time": 1789207711076,
+    "label": "menu-open"
+  },
+  {
+    "file": "002-tool-active.png",
+    "time": 1789207718856,
+    "label": "tool-active"
+  },
+  {
+    "file": "003-first-anchor.png",
+    "time": 1789207724690,
+    "label": "first-anchor"
+  },
+  {
+    "file": "004-preview.png",
+    "time": 1789207735012,
+    "label": "preview"
+  },
+  {
+    "file": "005-committed.png",
+    "time": 1789207756681,
+    "label": "committed"
+  },
+  {
+    "file": "006-four-pixel-dashed.png",
+    "time": 1789207782236,
+    "label": "four-pixel-dashed"
+  },
+  {
+    "file": "007-drag-projected-line.png",
+    "time": 1789207825343,
+    "label": "drag-projected-line"
+  },
+  {
+    "file": "008-reverse-anchor.png",
+    "time": 1789207855383,
+    "label": "reverse-anchor"
+  },
+  {
+    "file": "009-deselected.png",
+    "time": 1789207882883,
+    "label": "deselected"
+  }
+]

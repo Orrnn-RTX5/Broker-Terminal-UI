@@ -106,7 +106,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
       {/* Status Indicator (Clickable) */}
       <button
         onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center gap-1.5 px-2 py-0.5 rounded text-zinc-200 transition-colors hover:bg-white/5 hover:text-white [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:hover:bg-zinc-300/50"
+        className="rtx-status-bar__connection flex items-center gap-1.5 px-2 py-0.5 rounded text-zinc-200 transition-colors hover:bg-white/5 hover:text-white [.rtx-advanced-view_&]:text-black [.rtx-advanced-view_&]:hover:bg-zinc-300/50"
         title={tr("Click for connection details")}
       >
         <div className={`w-2 h-2 rounded-full ${status.color} shadow-sm`} />

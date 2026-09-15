@@ -1,0 +1,86 @@
+[
+  {
+    "line": "25.2px",
+    "role": "rtx-order-dialog__title",
+    "size": "18px",
+    "weight": "600"
+  },
+  {
+    "line": "19.5px",
+    "role": "rtx-order-dialog__label",
+    "size": "13px",
+    "weight": "500"
+  },
+  {
+    "line": "normal",
+    "role": "rtx-order-dialog__control",
+    "size": "14px",
+    "weight": "400"
+  },
+  {
+    "line": "19.5px",
+    "role": "rtx-order-dialog__label",
+    "size": "13px",
+    "weight": "500"
+  },
+  {
+    "line": "21px",
+    "role": "rtx-order-dialog__control rtx-order-dialog__control--static",
+    "size": "14px",
+    "weight": "400"
+  },
+  {
+    "line": "19.5px",
+    "role": "rtx-order-dialog__label",
+    "size": "13px",
+    "weight": "500"
+  },
+  {
+    "line": "19.5px",
+    "role": "rtx-order-dialog__label",
+    "size": "13px",
+    "weight": "500"
+  },
+  {
+    "line": "normal",
+    "role": "rtx-order-dialog__control",
+    "size": "14px",
+    "weight": "400"
+  },
+  {
+    "line": "19.5px",
+    "role": "rtx-order-dialog__label",
+    "size": "13px",
+    "weight": "500"
+  },
+  {
+    "line": "21px",
+    "role": "rtx-order-dialog__control",
+    "size": "14px",
+    "weight": "400"
+  },
+  {
+    "line": "29.4px",
+    "role": "rtx-order-dialog__price",
+    "size": "21px",
+    "weight": "500"
+  },
+  {
+    "line": "29.4px",
+    "role": "rtx-order-dialog__price",
+    "size": "21px",
+    "weight": "500"
+  },
+  {
+    "line": "21px",
+    "role": "rtx-order-dialog__action rtx-order-dialog__action--sell",
+    "size": "14px",
+    "weight": "500"
+  },
+  {
+    "line": "21px",
+    "role": "rtx-order-dialog__action rtx-order-dialog__action--buy",
+    "size": "14px",
+    "weight": "500"
+  }
+]

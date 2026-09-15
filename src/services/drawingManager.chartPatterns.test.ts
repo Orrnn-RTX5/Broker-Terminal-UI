@@ -73,6 +73,120 @@ const points = [
   { time: 310, price: 110 }, { time: 350, price: 190 }, { time: 390, price: 120 },
 ];
 describe('Chart patterns complete through the real drawing manager', () => {
+  it.each(CHART_PATTERN_TOOLS.filter(tool => tool.group !== 'Cycles'))(
+    '$label highlights all anchor prices during placement, selection, and dragging',
+    async tool => {
+      const { manager, container } = await createRenderHarness();
+      const band = () => container.querySelector('[data-geometry-role="price-scale-range"]');
+      const expectRange = (prices: number[]) => {
+        expect(band()).toHaveAttribute('x', '460');
+        expect(band()).toHaveAttribute('y', String(220 - Math.max(...prices)));
+        expect(band()).toHaveAttribute('height', String(Math.max(...prices) - Math.min(...prices)));
+        expect(band()).toHaveAttribute('pointer-events', 'none');
+      };
+      manager.startDrawing('pattern', '#2962ff', { subtype: tool.id });
+      manager.updatePreviewPoint(150, 70);
+      expect(band()).toBeNull();
+      manager.addPoint(150, 70);
+      // The candidate anchor can extend the interval in either direction.
+      for (const price of [150, 40]) {
+        manager.updatePreviewPoint(190, price);
+        expectRange([70, price]);
+      }
+      manager.hidePreviewCursor('chart-test-m1');
+      expect(band()).toBeNull();
+      const anchors = points.slice(0, tool.requiredPoints);
+      for (let index = 1; index < anchors.length; index++) {
+        const point = anchors[index];
+        manager.updatePreviewPoint(point.time, point.price);
+        expectRange(anchors.slice(0, index + 1).map(anchor => anchor.price));
+        manager.addPoint(point.time, point.price);
+      }
+      const drawing = manager.getDrawings()[0];
+      const prices = anchors.map(point => point.price);
+      expectRange(prices);
+      expect(container.querySelectorAll('[data-geometry-role^="pattern-anchor-"][data-geometry-role$="-price"]')).toHaveLength(tool.requiredPoints);
+      manager.unselectDrawing(drawing.id);
+      expect(band()).toBeNull();
+      manager.selectDrawing(drawing.id);
+      expectRange(prices);
+
+      container.querySelector('[data-geometry-role="pattern-hit"]')!.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }),
+      );
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 120, clientY: 115 }));
+      window.dispatchEvent(new MouseEvent('pointerup'));
+      expectRange(prices.map(price => price - 15));
+      // Moving an interior extreme must resize the band, not just its endpoints.
+      container.querySelector('[data-geometry-role="pattern-anchor-2"]')!.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }),
+      );
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 100, clientY: 20 }));
+      window.dispatchEvent(new MouseEvent('pointerup'));
+      expectRange(prices.map((price, index) => price - 15 + (index === 1 ? 80 : 0)));
+      manager.setChart(null, null, null, 1, container);
+    },
+  );
+
+  it.each(CHART_PATTERN_TOOLS.filter(tool => tool.group === 'Cycles'))(
+    '$label highlights its axis intervals during placement, selection, and dragging',
+    async tool => {
+      const { manager, container } = await createRenderHarness();
+      const timeBand = () => container.querySelector('[data-geometry-role="time-scale-range"]');
+      const priceBand = () => container.querySelector('[data-geometry-role="price-scale-range"]');
+      const expectBands = (first: { time: number; price: number }, second: { time: number; price: number }) => {
+        expect(timeBand()).toHaveAttribute('x', String(Math.min(first.time, second.time) - 100));
+        expect(timeBand()).toHaveAttribute('width', String(Math.abs(first.time - second.time)));
+        expect(timeBand()).toHaveAttribute('y', '280');
+        expect(timeBand()).toHaveAttribute('height', '20');
+        expect(timeBand()).toHaveAttribute('pointer-events', 'none');
+        if (tool.id === 'time_cycles') {
+          expect(priceBand()).toBeNull();
+        } else {
+          expect(priceBand()).toHaveAttribute('x', '460');
+          expect(priceBand()).toHaveAttribute('y', String(220 - Math.max(first.price, second.price)));
+          expect(priceBand()).toHaveAttribute('height', String(Math.abs(first.price - second.price)));
+          expect(priceBand()).toHaveAttribute('pointer-events', 'none');
+        }
+      };
+      manager.startDrawing('pattern', '#2962ff', { subtype: tool.id });
+      manager.updatePreviewPoint(250, 70);
+      expect(timeBand()).toBeNull();
+      expect(priceBand()).toBeNull();
+      manager.addPoint(250, 70);
+      for (const point of [{ time: 190, price: 150 }, { time: 330, price: 40 }]) {
+        manager.updatePreviewPoint(point.time, point.price);
+        expectBands({ time: 250, price: 70 }, point);
+      }
+      manager.hidePreviewCursor('chart-test-m1');
+      expect(timeBand()).toBeNull();
+      expect(priceBand()).toBeNull();
+      manager.updatePreviewPoint(330, 150);
+      manager.addPoint(330, 150);
+      const drawing = manager.getDrawings()[0];
+      const expectSelectedBands = () => expectBands(drawing.points[0], drawing.points[1]);
+      expectSelectedBands();
+      manager.unselectDrawing(drawing.id);
+      expect(timeBand()).toBeNull();
+      expect(priceBand()).toBeNull();
+      manager.selectDrawing(drawing.id);
+      expectSelectedBands();
+      const drag = (role: string, dx: number, dy: number) => {
+        container.querySelector(`[data-geometry-role="${role}"]`)!.dispatchEvent(
+          new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }),
+        );
+        window.dispatchEvent(new MouseEvent('pointermove', { clientX: 100 + dx, clientY: 100 + dy }));
+        window.dispatchEvent(new MouseEvent('pointerup'));
+      };
+      drag('pattern-anchor-2', -120, -25);
+      expectSelectedBands();
+      drag('pattern-hit', 20, 15);
+      expectSelectedBands();
+      if (tool.id === 'time_cycles') expect(drawing.points[0].price).toBe(drawing.points[1].price);
+      manager.setChart(null, null, null, 1, container);
+    },
+  );
+
   it('Cyclic lines reverse when the second anchor crosses the first, and undo restores their direction', async () => {
     const { manager, container } = await createRenderHarness();
     manager.startDrawing('pattern', '#2962ff', { subtype: 'cyclic_lines' });

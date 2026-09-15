@@ -27,7 +27,7 @@ describe('web application menu typography contract', () => {
       /\.rtx-application-menu :is\([\s\S]*?\.rtx-menu-row:not\(\.is-disabled\),[\s\S]*?\.rtx-file-menu button\.text-\\\[14px\\\]:not\(:disabled\)[\s\S]*?color: var\(--rtx-light-text\) !important;/,
     );
     expect(enterpriseLightCss).toMatch(
-      /\.rtx-application-menu :is\([\s\S]*?\.rtx-application-menu__root-item,[\s\S]*?\.rtx-menu-row,[\s\S]*?\.rtx-file-menu button\.text-\\\[14px\\\][\s\S]*?font-size: var\(--rtx-advanced-dense-font-size, 13px\) !important;[\s\S]*?line-height: 19\.5px !important;/,
+      /\.rtx-application-menu :is\([\s\S]*?\.rtx-application-menu__root-item,[\s\S]*?\.rtx-menu-row,[\s\S]*?\.rtx-file-menu button\.text-\\\[14px\\\][\s\S]*?font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;/,
     );
     expect(themeCss).toMatch(/\.rtx-menu-row\.is-disabled \{[\s\S]*?color: var\(--text-quaternary\);/);
     expect(themeCss).toMatch(/\.rtx-file-menu button:disabled \{[\s\S]*?color: var\(--text-quaternary\);/);

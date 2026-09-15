@@ -1,0 +1,702 @@
+[
+  {
+    "class": "rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm capitalize transition-colors text-zinc-400 hover:text-zinc-200",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "today",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm capitalize transition-colors text-zinc-400 hover:text-zinc-200",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "week",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm capitalize transition-colors text-zinc-400 hover:text-zinc-200",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "month",
+    "weight": "400"
+  },
+  {
+    "class": "rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal rounded-sm capitalize transition-colors bg-zinc-700/70 text-white",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "all",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Ticket",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Open Time",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-14",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Type",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-16",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Volume",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Symbol",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Open Price",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "S/L",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "T/P",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-28",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Close Time",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-22",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Close Price",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Commission",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Swap",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Profit",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[3px] text-center border-r border-zinc-700/70 w-20",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "12px",
+    "text": "Status",
+    "weight": "500"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "914",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/12/2026 15:08:21",
+    "weight": "400"
+  },
+  {
+    "class": "text-[#ff2d2d] px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "sell",
+    "weight": "400"
+  },
+  {
+    "class": "",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "sell",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.01",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "BTCUSD",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "77340.95",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/12/2026 15:09:13",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "77357.17",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums text-zinc-100",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums text-zinc-100",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal tabular-nums text-[#ff2d2d]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "-0.16",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] text-center text-zinc-100 capitalize whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "closed",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "915",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/12/2026 15:08:31",
+    "weight": "400"
+  },
+  {
+    "class": "text-[#ff2d2d] px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "sell",
+    "weight": "400"
+  },
+  {
+    "class": "",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "sell",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.01",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "BTCUSD",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "77346.30",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/12/2026 15:09:12",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "77356.84",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums text-zinc-100",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums text-zinc-100",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal tabular-nums text-[#ff2d2d]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "-0.11",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] text-center text-zinc-100 capitalize whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "closed",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "912",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/12/2026 15:06:53",
+    "weight": "400"
+  },
+  {
+    "class": "text-[#45bff7] px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "buy",
+    "weight": "400"
+  },
+  {
+    "class": "",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "buy",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.01",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "BTCUSD",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "77312.57",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/12/2026 15:08:02",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "77348.05",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums text-zinc-100",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums text-zinc-100",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal tabular-nums text-[#22c55e]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.35",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] text-center text-zinc-100 capitalize whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "closed",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "907",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/09/2026 16:32:01",
+    "weight": "400"
+  },
+  {
+    "class": "text-[#45bff7] px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "buy",
+    "weight": "400"
+  },
+  {
+    "class": "",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "buy",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.01",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "BTCUSD",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "78859.92",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/09/2026 17:21:12",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "79357.28",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums text-zinc-100",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums text-zinc-100",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal tabular-nums text-[#22c55e]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "4.97",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] text-center text-zinc-100 capitalize whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "closed",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "898",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/01/2026 10:36:34",
+    "weight": "400"
+  },
+  {
+    "class": "text-[#45bff7] px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-[13px]",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "buy",
+    "weight": "400"
+  },
+  {
+    "class": "",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "buy",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.01",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center font-normal text-zinc-100 whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "XAUUSD",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "4431.94",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "text-zinc-100 font-normal",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums whitespace-nowrap",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "09/01/2026 19:22:59",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center text-zinc-100 tabular-nums",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "4361.39",
+    "weight": "400"
+  },
+  {
+    "class": "px-1.5 py-[2px] border-r border-zinc-800 text-center tabular-nums text-zinc-100",
+    "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+    "size": "13px",
+    "text": "0.00",
+    "weight": "400"
+  }
+]

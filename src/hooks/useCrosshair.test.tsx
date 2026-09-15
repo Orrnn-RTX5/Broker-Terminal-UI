@@ -22,6 +22,7 @@ const createChart = () => {
   };
   const chart = {
     applyOptions: vi.fn(),
+    priceScale: vi.fn(() => ({ width: () => 96 })),
     timeScale: vi.fn(() => timeScale),
     subscribeCrosshairMove: vi.fn((listener: Listener) => crosshairListeners.add(listener)),
     unsubscribeCrosshairMove: vi.fn((listener: Listener) => crosshairListeners.delete(listener)),
@@ -132,6 +133,7 @@ describe('useCrosshair dirty rendering', () => {
   });
 
   afterEach(() => {
+    document.documentElement.classList.remove('rtx-skin-untitled-light');
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     if (originalClientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', originalClientWidth);
@@ -222,6 +224,36 @@ describe('useCrosshair dirty rendering', () => {
     expect(view.getByTestId('vertical').style.opacity).toBe('0');
     expect(view.getByTestId('price-label').style.opacity).toBe('0');
     expect(frames.size).toBe(0);
+  });
+
+  it('fits larger light labels to the axes and remeasures when switching themes', () => {
+    document.documentElement.classList.add('rtx-skin-untitled-light');
+    const fixture = createChart();
+    const chartRef = { current: fixture.chart as unknown as IChartApi };
+    const seriesRef = {
+      current: { coordinateToPrice: vi.fn(() => 101) } as unknown as ISeriesApi<any>,
+    };
+    const view = render(<Harness chartRef={chartRef} seriesRef={seriesRef} enabled />);
+    const timeLabel = view.getByTestId('time-label');
+    const priceLabel = view.getByTestId('price-label');
+    Object.defineProperty(timeLabel, 'offsetHeight', { configurable: true, value: 26 });
+    Object.defineProperty(priceLabel, 'offsetHeight', { configurable: true, value: 26 });
+    fireEvent.pointerMove(view.getByTestId('container'), { clientX: 40, clientY: 60 });
+    flushFrames();
+
+    expect(timeLabel.style.transform).toBe('translate3d(10px,274px,0)');
+    expect(priceLabel.style.transform).toBe('translate3d(404px,27px,0)');
+    expect(priceLabel.style.width).toBe('96px');
+    expect(offsetWidthReads).toBe(1);
+
+    document.documentElement.classList.remove('rtx-skin-untitled-light');
+    fixture.crosshairListeners.forEach((listener) => listener());
+    flushFrames();
+
+    expect(timeLabel.style.transform).toBe('translate3d(10px,278px,0)');
+    expect(priceLabel.style.transform).toBe('translate3d(446px,30px,0)');
+    expect(priceLabel.style.width).toBe('54px');
+    expect(offsetWidthReads).toBe(2);
   });
 
   it('rebinds replaced charts and stops all scheduling while disabled or disposed', () => {

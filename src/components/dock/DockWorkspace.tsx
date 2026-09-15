@@ -2,7 +2,7 @@ import { useUiTranslation } from '../../hooks/useUiTranslation';
 import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { useChartSettingsStore } from '../../store/useChartSettingsStore';
-import { getChartPanels } from '../../services/chartPanelNavigation';
+import { changeChartPanelSymbol, getChartPanels } from '../../services/chartPanelNavigation';
 import { resetWorkspaceLayout } from '../../services/resetLayout';
 import { DockContainer, FloatingPanelsLayer, GlobalEdgeIndicators } from './DockContainer';
 import { StableChartHosts } from './StableChartHosts';
@@ -224,10 +224,7 @@ export const DockWorkspace: React.FC<DockWorkspaceProps> = ({
                         e.currentTarget.style.background = '#0e0e12';
                         const draggedSymbol = resolveChartSymbol(e.dataTransfer.getData('text/plain'));
                         if (draggedSymbol && draggedSymbol !== chartSymbol) {
-                            useDockLayoutStore.getState().updatePanelProps(panel.id, {
-                                props: { ...panel.props, symbol: draggedSymbol },
-                                title: `${draggedSymbol}, ${panel.props?.timeframe || globalTimeframe}`
-                            });
+                            changeChartPanelSymbol(panel.id, draggedSymbol, authorizedChartSymbols, globalTimeframe);
                         }
                     }}
                 >

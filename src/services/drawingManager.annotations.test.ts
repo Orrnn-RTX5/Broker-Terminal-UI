@@ -28,6 +28,77 @@ function create(manager: DrawingManager, subtype: string, properties: Partial<Dr
 beforeEach(() => { document.body.replaceChildren(); localStorage.clear(); vi.clearAllMocks(); });
 
 describe('chart annotations', () => {
+  it.each(ANNOTATION_TOOLS.filter(tool => tool.group === 'Text and notes'))(
+    '$label shows only its anchor coordinates and tracks movement/deselection', async tool => {
+      const { manager, container } = await harness();
+      const priceBand = () => container.querySelector('[data-geometry-role="price-scale-range"]');
+      const timeBand = () => container.querySelector('[data-geometry-role="time-scale-range"]');
+      const expectFeedback = () => {
+        const drawing = manager.getDrawings()[0];
+        expect(container.querySelectorAll('[data-geometry-role^="annotation-anchor-"][data-geometry-role$="-price"]')).toHaveLength(tool.requiredPoints);
+        expect(container.querySelectorAll('[data-geometry-role^="annotation-anchor-"][data-geometry-role$="-time"]')).toHaveLength(tool.requiredPoints);
+        drawing.points.forEach((point, index) => {
+          expect(container.querySelector(`[data-geometry-role="annotation-anchor-${index + 1}-price-text"]`)?.textContent).toBe(point.price.toFixed(3));
+          expect(container.querySelector(`[data-geometry-role="selection-anchor-${index + 1}"]`)).toHaveAttribute('stroke', '#2962ff');
+        });
+        if (tool.requiredPoints === 1) {
+          expect(priceBand()).toBeNull(); expect(timeBand()).toBeNull();
+        } else {
+          const [a, b] = drawing.points;
+          expect(priceBand()).toHaveAttribute('y', String(220 - Math.max(a.price, b.price)));
+          expect(priceBand()).toHaveAttribute('height', String(Math.abs(a.price - b.price)));
+          expect(timeBand()).toHaveAttribute('x', String(Math.min(a.time, b.time) - 100));
+          expect(timeBand()).toHaveAttribute('width', String(Math.abs(a.time - b.time)));
+          for (const band of [priceBand(), timeBand()]) {
+            expect(band).toHaveAttribute('pointer-events', 'none');
+            expect(band).toHaveAttribute('fill', '#2962ff');
+          }
+        }
+      };
+      const id = manager.startDrawing('text', '#ff8800', { subtype: tool.id });
+      manager.updatePreviewPoint(160, 110);
+      expect(container.querySelector('[data-geometry-role="annotation-cursor-price-text"]')?.textContent).toBe('110.000');
+      expect(priceBand()).toBeNull();
+      manager.addPoint(160, 110);
+      if (tool.requiredPoints === 2) {
+        manager.updatePreviewPoint(260, 150);
+        expect(priceBand()).toHaveAttribute('height', '40');
+        manager.hidePreviewCursor('annotation-test');
+        expect(priceBand()).toBeNull();
+        expect(container.querySelector('[data-geometry-role="annotation-anchor-1-price-text"]')?.textContent).toBe('110.000');
+        manager.addPoint(260, 150);
+      }
+      expectFeedback();
+      // Resizing/reformatting a text box must not fabricate another chart anchor.
+      manager.updateDrawingProperties(id, { text: 'QA\nSecond line', annotation: { fontSize: 24, cellWidth: 100, cellHeight: 35 } });
+      expectFeedback();
+      container.querySelector('[data-geometry-role="selection-anchor-1"]')!.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 60, clientY: 110 }));
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 80, clientY: 125 }));
+      window.dispatchEvent(new MouseEvent('pointerup'));
+      expect(manager.getDrawings()[0].points[0]).toMatchObject({ time: 180, price: 95 });
+      expectFeedback();
+      manager.unselectDrawing(id);
+      expect(priceBand()).toBeNull(); expect(timeBand()).toBeNull();
+      expect(container.querySelector('[data-geometry-role="annotation-anchor-1-price"]')).toBeNull();
+      manager.selectDrawing(id); expectFeedback();
+      manager.deleteDrawing(id);
+      expect(container.querySelector('[data-geometry-role="annotation-anchor-1-price"]')).toBeNull();
+      manager.setChart(null, null, null);
+    });
+
+  it('clears cancelled annotation construction and keeps sibling chart axes untouched', async () => {
+    const first = await harness(); const second = await harness();
+    first.manager.startDrawing('text', '#2962ff', { subtype: 'note' });
+    first.manager.addPoint(160, 110); first.manager.updatePreviewPoint(260, 150);
+    expect(first.container.querySelector('[data-geometry-role="price-scale-range"]')).not.toBeNull();
+    expect(second.container.querySelector('[data-geometry-role="price-scale-range"]')).toBeNull();
+    first.manager.cancelDrawing();
+    expect(first.container.querySelector('[data-geometry-role="price-scale-range"]')).toBeNull();
+    expect(first.container.querySelector('[data-geometry-role="annotation-anchor-1-price"]')).toBeNull();
+    first.manager.setChart(null, null, null); second.manager.setChart(null, null, null);
+  });
+
   it.each(ANNOTATION_TOOLS)('$label completes with its required anchor count', async tool => {
     const { manager } = await harness();
     manager.startDrawing('text', '#2962ff', { subtype: tool.id });
@@ -38,10 +109,10 @@ describe('chart annotations', () => {
   it('reads price from the target anchor rather than the label position', async () => {
     const { manager, container } = await harness();
     const id = create(manager, 'price_note');
-    expect(container.textContent).toContain('110.125');
-    expect(container.textContent).not.toContain('150.000');
+    expect(container.querySelector('[data-geometry-role="annotation-text"]')?.textContent).toBe('110.125');
+    expect(container.querySelector('[data-geometry-role="annotation-anchor-2-price-text"]')?.textContent).toBe('150.000');
     manager.updateDrawingProperties(id, { points: [{ time: 160, price: 112.375 }, { time: 260, price: 150 }] });
-    expect(container.textContent).toContain('112.375');
+    expect(container.querySelector('[data-geometry-role="annotation-text"]')?.textContent).toBe('112.375');
   });
   it('keeps preview labels transparent to the second anchor click', async () => {
     const { manager, container } = await harness();
@@ -56,7 +127,7 @@ describe('chart annotations', () => {
     const { manager, container } = await harness();
     const id = create(manager, 'text', { text: 'First\nSecond' });
     manager.updateDrawingProperties(id, { annotation: { fontSize: 24, bold: true, italic: true, textColor: '#ff0000' } });
-    const labels = container.querySelectorAll('text');
+    const labels = container.querySelectorAll('[data-geometry-role="annotation-text"]');
     expect(Array.from(labels).map(x => x.textContent)).toEqual(['First', 'Second']);
     expect(labels[0].getAttribute('font-size')).toBe('24');
     expect(labels[0].getAttribute('font-weight')).toBe('700');
