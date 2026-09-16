@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyBrokerChrome } from '../services/brokerPresentation';
-import { WelcomeTerminal, type BrokerServerItem } from './WelcomeTerminal';
+import { LAST_AUTHENTICATED_BROKER_ID_KEY, WelcomeTerminal, type BrokerServerItem } from './WelcomeTerminal';
 
 const runtime = vi.hoisted(() => ({
   login: vi.fn(), persist: vi.fn(), setAuthenticated: vi.fn(),
@@ -78,6 +78,40 @@ afterEach(() => {
 });
 
 describe('desktop broker directory login', () => {
+  it('paints the remembered broker immediately while fresh directory verification is pending', async () => {
+    const directoryResponse = pending<Response>();
+    let directoryRequestCount = 0;
+    localStorage.setItem('broker_id', nexa.broker_id);
+    localStorage.setItem('rtx_broker_id', nexa.broker_id);
+    localStorage.setItem(LAST_AUTHENTICATED_BROKER_ID_KEY, nexa.broker_id);
+    localStorage.setItem('broker_name', nexa.broker_name);
+    localStorage.setItem('logo_url', nexa.logo_url);
+    localStorage.setItem('rtx_broker_presentation_v1', JSON.stringify({
+      version: 1,
+      brokerId: nexa.broker_id,
+      brokerName: nexa.broker_name,
+      logoUrl: nexa.logo_url,
+    }));
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/broker/servers')) {
+        directoryRequestCount += 1;
+        return directoryRequestCount === 1 ? directoryResponse.promise : json(directory);
+      }
+      return json({ status: 'ok' });
+    });
+
+    render(<WelcomeTerminal onLogin={vi.fn()} />);
+
+    expect(screen.getByRole('combobox')).toHaveValue(nexa.broker_name);
+    expect(document.querySelector('.rtx-login-broker-identity')).toHaveTextContent(nexa.broker_name);
+    expect(screen.getByLabelText('Account ID')).toBeDisabled();
+    expect(loginButton()).toBeDisabled();
+
+    await act(async () => directoryResponse.resolve(json(directory)));
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    expect(screen.getByRole('combobox')).toHaveValue(nexa.broker_name);
+  });
+
   it('shows every directory broker and changes branding and health target on selection', async () => {
     render(<WelcomeTerminal onLogin={vi.fn()} />);
     await waitFor(() => expect(loginButton()).toBeEnabled());

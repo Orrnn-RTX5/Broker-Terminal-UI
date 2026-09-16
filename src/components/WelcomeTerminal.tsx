@@ -164,6 +164,42 @@ const hasFreshBrokerHealth = (brokerId: string): boolean => {
     return typeof verifiedAt === 'number' && Date.now() - verifiedAt <= BROKER_HEALTH_FRESH_MS;
 };
 
+const buildDesktopBrokerPreview = (
+    configuredRuntimeBroker: BrokerServerItem | null,
+): BrokerServerItem | null => {
+    if (typeof window === 'undefined') return configuredRuntimeBroker;
+
+    const savedBrokerId = String(
+        localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || '',
+    ).trim();
+    const lastAuthenticatedBrokerId = String(
+        localStorage.getItem(LAST_AUTHENTICATED_BROKER_ID_KEY) || '',
+    ).trim();
+    if (!savedBrokerId || savedBrokerId !== lastAuthenticatedBrokerId) return configuredRuntimeBroker;
+
+    const cachedPresentation = readBrokerPresentationCache(savedBrokerId);
+    const configuredBroker = configuredRuntimeBroker?.broker_id === savedBrokerId
+        ? configuredRuntimeBroker
+        : null;
+    return {
+        ...(configuredBroker || {}),
+        broker_id: savedBrokerId,
+        broker_name: cachedPresentation?.brokerName
+            || String(localStorage.getItem('broker_name') || '').trim()
+            || configuredBroker?.broker_name
+            || savedBrokerId,
+        server: savedBrokerId,
+        server_url: configuredBroker?.server_url || '',
+        logo_url: cachedPresentation?.logoUrl
+            || String(localStorage.getItem('logo_url') || '').trim()
+            || configuredBroker?.logo_url
+            || buildBrokerDirectoryLogoUrl(savedBrokerId),
+        region: cachedPresentation?.region || configuredBroker?.region,
+        theme_color: normalizeBrokerThemeColor(localStorage.getItem('broker_theme_color'))
+            || configuredBroker?.theme_color,
+    };
+};
+
 type LoginIconName = 'arrow-right' | 'chevron-down' | 'eye' | 'eye-off' | 'lock' | 'maximize' | 'minus' | 'user' | 'x';
 
 const LoginIcon = ({
@@ -474,12 +510,17 @@ export function WelcomeTerminal({
             server_url: resolveBrokerBackendUrl(normalizedBroker),
         };
     });
+    const [startupBroker] = useState<BrokerServerItem | null>(() => (
+        isDesktopBrokerSelection
+            ? buildDesktopBrokerPreview(configuredRuntimeBroker)
+            : configuredRuntimeBroker
+    ));
     const [brokerList, setBrokerList] = useState<BrokerServerItem[]>(() => (
         !isDesktopBrokerSelection && configuredRuntimeBroker ? [configuredRuntimeBroker] : []
     ));
-    const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(isDesktopBrokerSelection ? null : configuredRuntimeBroker);
+    const [selectedBroker, setSelectedBroker] = useState<BrokerServerItem | null>(startupBroker);
     const selectedBrokerRef = useRef(selectedBroker);
-    const [searchQuery, setSearchQuery] = useState(isDesktopBrokerSelection ? '' : configuredRuntimeBroker?.broker_name || '');
+    const [searchQuery, setSearchQuery] = useState(startupBroker?.broker_name || '');
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(() => {
         if (isDesktopBrokerSelection || !configuredRuntimeBroker) return null;
