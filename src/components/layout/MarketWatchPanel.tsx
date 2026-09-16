@@ -83,6 +83,8 @@ const TWO_DECIMAL_MARKET_WATCH_SYMBOLS = new Set([
   'NICKEL',
   'COCOA',
   'MAERSKB.DK',
+  'COFFEE',
+  'SPA35-F',
 ]);
 
 const getMarketWatchPriceDigits = (symbol: string): number | undefined => (

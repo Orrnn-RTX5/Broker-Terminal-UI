@@ -93,6 +93,12 @@ const snapshot = ({
 };
 
 describe('chart selection benchmark readiness', () => {
+  it('mounts public web charts only after catalog readiness without granting account authentication', () => {
+    const guest = { authenticated: false, accountId: '', restoredLayoutAccountId: '', catalogSettled: true, feedPreferenceSettled: false };
+    expect(shouldMountChartRuntime(guest)).toBe(false);
+    expect(shouldMountChartRuntime({ ...guest, guestMarketAccess: true })).toBe(true);
+    expect(shouldMountChartRuntime({ ...guest, guestMarketAccess: true, catalogSettled: false })).toBe(false);
+  });
   it('mounts the authorized chart runtime without waiting for feed-status preference', () => {
     expect(shouldMountChartRuntime({
       authenticated: true,

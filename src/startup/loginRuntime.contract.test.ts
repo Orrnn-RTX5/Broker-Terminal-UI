@@ -145,13 +145,27 @@ describe('interactive login runtime boundary source contract', () => {
     expect(dockWorkspace).toContain('data-rtx-authenticated-viewport="true"');
   });
 
-  it('keeps initially closed tools and trade-overlay helpers out of the shell chunk', () => {
+  it('loads New Order with the authenticated shell so opening it needs no deferred ticket assets', () => {
+    const app = readSource('src/App.tsx');
+    const appShell = readSource('src/AppShell.tsx');
+
+    expect(app).toContain("import { OrderPanelDialog } from './components/OrderPanelDialog'");
+    expect(app).toContain('<OrderPanelDialog');
+    expect(app).toMatch(/\{orderPanelOpen && \(\s*<ErrorBoundary label="New Order">\s*<OrderPanelDialog/);
+    expect(app).not.toContain("import('./components/OrderPanelDialog')");
+    expect(app).not.toContain('LazyOrderPanelDialog');
+    expect(appShell).toContain("import('./App')");
+    expect(appShell).not.toMatch(/from ['"]\.\/App['"]/);
+    for (const path of ['src/bootstrap.tsx', 'src/AppShell.tsx', 'src/components/WelcomeTerminal.tsx']) {
+      expect(readSource(path)).not.toContain('OrderPanelDialog');
+    }
+  });
+
+  it('keeps secondary tools and trade-overlay helpers out of the shell chunk', () => {
     const app = readSource('src/App.tsx');
 
-    expect(app).toContain("const LazyOrderPanelDialog = lazy(() => import('./components/OrderPanelDialog')");
     expect(app).toContain("const LazyDepthOfMarket = lazy(() => import('./components/DepthOfMarket')");
     expect(app).toContain("const LazyChartPropertiesDialog = lazy(() => import('./components/dialogs/ChartPropertiesDialog')");
-    expect(app).not.toContain("import { OrderPanelDialog } from './components/OrderPanelDialog'");
     expect(app).not.toContain("import { DepthOfMarket } from './components/DepthOfMarket'");
     expect(app).toContain("void import('./services/tradeOverlayHistory').then");
   });

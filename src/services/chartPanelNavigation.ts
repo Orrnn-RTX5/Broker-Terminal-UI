@@ -4,6 +4,7 @@ import { activateActiveChartSource, getActiveChartSource } from './activeChartSo
 import { getPanelIdFromChartContextId } from './chartCommandTarget';
 import { normalizeExactBrokerSymbol } from '../utils/exactBrokerSymbol';
 import { getChartSymbolTabs } from '../utils/chartSymbolTabs';
+import { DEFAULT_CHART_TIMEFRAME } from '../constants/chartDefaults';
 
 export const getChartPanels = (layout: DockLayout): DockPanelConfig[] => {
   const panels: DockPanelConfig[] = [];
@@ -40,7 +41,7 @@ export const changeChartPanelSymbol = (
   panelId: string,
   requestedSymbol: unknown,
   authorizedSymbols: readonly string[],
-  fallbackTimeframe = 'M5',
+  fallbackTimeframe: string = DEFAULT_CHART_TIMEFRAME,
 ): boolean => {
   const symbol = normalizeExactBrokerSymbol(requestedSymbol);
   if (!symbol || !authorizedSymbols.some(allowed => normalizeExactBrokerSymbol(allowed) === symbol)) return false;
@@ -59,6 +60,36 @@ export const changeChartPanelSymbol = (
   });
   activateChartPanel(panelId);
   window.dispatchEvent(new CustomEvent('chartSymbolChanged', { detail: { symbol, timeframe } }));
+  return true;
+};
+
+/** Close a symbol within its pane, selecting the next neighbor when needed. */
+export const closeChartPanelSymbolTab = (panelId: string, requestedSymbol: unknown): boolean => {
+  const symbol = normalizeExactBrokerSymbol(requestedSymbol);
+  const store = useDockLayoutStore.getState();
+  const panel = findChartPanelById(store.layout, panelId);
+  if (!symbol || !panel) return false;
+  const tabs = getChartSymbolTabs(panel);
+  const index = tabs.findIndex(tab => normalizeExactBrokerSymbol(tab.symbol) === symbol);
+  if (index < 0) return false;
+  if (tabs.length === 1) return store.closeActiveChart(undefined, panelId);
+
+  const chartSymbolTabs = tabs.filter((_, tabIndex) => tabIndex !== index);
+  if (normalizeExactBrokerSymbol(panel.props?.symbol) !== symbol) {
+    store.updatePanelProps(panelId, { chartSymbolTabs });
+    return true;
+  }
+
+  const next = chartSymbolTabs[Math.min(index, chartSymbolTabs.length - 1)];
+  const nextSymbol = normalizeExactBrokerSymbol(next.symbol);
+  const chartType = next.chartType || panel.props?.chartType;
+  store.updatePanelProps(panelId, {
+    props: { symbol: nextSymbol, timeframe: next.timeframe, ...(chartType ? { chartType } : {}) },
+    title: `${nextSymbol},${next.timeframe}`,
+    chartSymbolTabs,
+  });
+  activateChartPanel(panelId);
+  window.dispatchEvent(new CustomEvent('chartSymbolChanged', { detail: { symbol: nextSymbol, timeframe: next.timeframe } }));
   return true;
 };
 

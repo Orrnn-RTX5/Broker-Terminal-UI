@@ -893,9 +893,12 @@ export function useToolboxTradeData() {
     if (!login || storeLogin !== login) return;
 
     commitAccount(centralAccount);
-    const nextPositions = replaceToolboxPositions(
-      positionsRef.current,
-      Array.isArray(centralPositions) ? centralPositions : [],
+    const nextPositions = mergeRetainedImmediateToolboxPositions(
+      replaceToolboxPositions(
+        positionsRef.current,
+        Array.isArray(centralPositions) ? centralPositions : [],
+      ),
+      Array.from(retainedImmediatePositionsRef.current.values()),
     );
     const previousSig = positionsSignature(positionsRef.current);
     const nextSig = positionsSignature(nextPositions);

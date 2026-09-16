@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef, useSyncExternalStore } from 'react';
 import ReactDOM from 'react-dom';
 import { Icon } from '../ui/Icon';
 import { ChartCommandIcon, type ChartCommandIconName } from './ChartCommandIcon';
@@ -24,6 +24,9 @@ import type { NormalizedMarketStatus } from '../../utils/marketStatus';
 import { RTX5_API_URL, normalizeBrokerServerUrl, normalizeServerUrl } from '../../config/api';
 import { buildBrokerWsFeedUri } from '../../services/brokerSession';
 import { getActiveChartCommandTarget } from '../../services/chartCommandTarget';
+import { getActiveChartSourceId, subscribeActiveChartSource } from '../../services/activeChartSource';
+import { getDockPanelChartType } from '../../services/chartTypeCommand';
+import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import type { DesktopFeedSnapshot, DesktopTransportSecurity } from './desktopToolbarStatus';
 
 interface TopToolbarProps {
@@ -38,6 +41,7 @@ interface TopToolbarProps {
     onRefreshConnection: () => void;
     onLoadTemplate?: (template: any) => void;
     desktopDrawingTools?: React.ReactNode;
+    accountBrokerName?: string;
 }
 
 import { MenuBar } from './MenuBar';
@@ -59,6 +63,16 @@ import {
 } from '../../utils/advancedViewRootClasses';
 import { suppressThemeTransitions } from '../../utils/themeTransitionSuppression';
 
+const subscribeToolbarActiveChartSource = (listener: () => void): (() => void) => {
+    let subscribed = true;
+    // Visibility fallback can publish from a menu render. Notify this toolbar
+    // after that render completes rather than setting React state inside it.
+    const unsubscribe = subscribeActiveChartSource(() => {
+        queueMicrotask(() => { if (subscribed) listener(); });
+    });
+    return () => { subscribed = false; unsubscribe(); };
+};
+
 const getLogoutBase = (): string => {
     const fallback = normalizeServerUrl(RTX5_API_URL || import.meta.env.VITE_API_URL || '');
     if (typeof window === 'undefined') return fallback;
@@ -79,10 +93,18 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     feedStatus,
     onRefreshConnection,
     onLoadTemplate,
-    desktopDrawingTools
+    desktopDrawingTools,
+    accountBrokerName
 }) => {
     const { state: toolbarState, dispatch: dispatchToolbar, syncState: syncToolbarState } = useToolbarState();
     const { dispatch: dispatchCommand } = useCommandBus();
+    const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
+    const desktopDockLayout = useDockLayoutStore(state => isDesktopShell ? state.layout : null);
+    const activeChartSourceId = useSyncExternalStore(
+        subscribeToolbarActiveChartSource,
+        isDesktopShell ? getActiveChartSourceId : () => null,
+        () => null,
+    );
 
     const magnetMode = useDrawingToolPreferencesStore((state) => state.magnetMode);
     const snapToIndicators = useDrawingToolPreferencesStore((state) => state.snapToIndicators);
@@ -136,11 +158,14 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         }
     ]);
 
-    // Sync an actual App-level chart type change. Keep toolbar-only commands
-    // from being immediately overwritten by an unchanged global prop.
+    // Desktop selection follows the active pane's saved style after tab DOM
+    // visibility updates. This only updates the toolbar, never another chart.
     useEffect(() => {
-        syncToolbarState({ type: 'SET_CHART_TYPE', chartType: chartType as any });
-    }, [chartType, syncToolbarState]);
+        const displayedChartType = desktopDockLayout
+            ? getDockPanelChartType(desktopDockLayout, getActiveChartCommandTarget().targetContextId, chartType)
+            : chartType;
+        syncToolbarState({ type: 'SET_CHART_TYPE', chartType: displayedChartType });
+    }, [chartType, desktopDockLayout, activeChartSourceId, syncToolbarState]);
 
     useEffect(() => {
         if (timeframe !== toolbarState.timeframe) {
@@ -165,6 +190,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 onRefreshConnection={onRefreshConnection}
                 onLoadTemplate={onLoadTemplate}
                 desktopDrawingTools={desktopDrawingTools}
+                accountBrokerName={accountBrokerName}
             />
 
         </div>
@@ -321,7 +347,8 @@ const MainToolbar = ({
     feedStatus,
     onRefreshConnection,
     onLoadTemplate,
-    desktopDrawingTools
+    desktopDrawingTools,
+    accountBrokerName
 }: MainToolbarProps) => {
 
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
@@ -355,7 +382,6 @@ const MainToolbar = ({
 
     const dispatchTargetedChartType = (nextChartType: ChartType) => {
         const { targetContextId } = getActiveChartCommandTarget(symbol, timeframe);
-        dispatchToolbar({ type: 'SET_CHART_TYPE', chartType: nextChartType });
         dispatchCommand({
             type: 'SET_CHART_TYPE',
             payload: { chartType: nextChartType, targetContextId },
@@ -722,6 +748,7 @@ const MainToolbar = ({
                         accountId={accountId}
                         accountName={activeSavedAccount?.name}
                         accountServer={activeSavedAccount?.server}
+                        accountBrokerName={accountBrokerName}
                         savedAccountCount={savedAccountCount}
                         onLogout={handleLogout}
                     />

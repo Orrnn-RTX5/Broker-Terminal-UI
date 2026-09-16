@@ -14,13 +14,14 @@ export function ChartCommandIcon({ name }: { name: ChartCommandIconName }) {
       fill="currentColor" stroke="none" aria-hidden="true" data-chart-command-icon={name}>
       {/* Pixel-aligned candle outlines and a clear divider stay legible at toolbar size. */}
       <path fillRule="evenodd" d="M6 4h1v4h2v9H7v4H6v-4H4V8h2V4ZM5 9v7h3V9H5ZM21 7h1v4h2v8h-2v4h-1v-4h-2v-8h2V7Zm-1 5v6h3v-6h-3Z" />
+      <path className="rtx-chart-command-icon__active-fill" fill="none" d="M4 8h5v9H4zM19 11h5v8h-5z" />
       <path d="M13 3h2v3h-2zM13 8h2v3h-2zM13 13h2v3h-2zM13 18h2v3h-2zM13 23h2v2h-2z" />
     </svg>;
   }
   const glyphs: Record<Exclude<ChartCommandIconName, 'period-separator'>, ReactNode> = {
     'add-chart': <><path fillRule="evenodd" d="M3 4h22v13h-1.5V5.5h-19v17H16V24H3V4Z" /><path d="M20 17h1.5v3H25v1.5h-3.5V25H20v-3.5h-3V20h3Z" />{trendLine}</>,
     'bar-chart': <path d="M8 4h1.5v6H13v1.5H9.5V23H8v-6H4v-1.5h4V4Zm11 3h1.5v6H24v1.5h-3.5V24H19v-6h-4v-1.5h4V7Z" />,
-    candlestick: <path fillRule="evenodd" d="M8 3h1.5v5H13v12H9.5v5H8v-5H5V8h3V3ZM6.5 9.5v9h5v-9h-5ZM19 5h1.5v5H24v9h-3.5v4H19v-4h-3v-9h3V5Zm-1.5 6.5v6h5v-6h-5Z" />,
+    candlestick: <><path fillRule="evenodd" d="M8 3h1.5v5H13v12H9.5v5H8v-5H5V8h3V3ZM6.5 9.5v9h5v-9h-5ZM19 5h1.5v5H24v9h-3.5v4H19v-4h-3v-9h3V5Zm-1.5 6.5v6h5v-6h-5Z" /><path className="rtx-chart-command-icon__active-fill" fill="none" d="M5 8h8v12H5zM16 10h8v9h-8z" /></>,
     'line-chart': trendLine,
     'area-chart': <><path opacity=".12" d="m4 21 6-7.7 5 3.1L24 5v19H4Z" />{trendLine}<path d="M4 23h20v1.5H4z" /></>,
     'zoom-in': <>{zoomOutline}<path d="M11.25 7.5h1.5v3.75h3.75v1.5h-3.75v3.75h-1.5v-3.75H7.5v-1.5h3.75Z" /></>,

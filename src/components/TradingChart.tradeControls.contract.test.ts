@@ -22,6 +22,8 @@ describe('cTrader-style position controls contract', () => {
     // controls render for retained trades too, so the UI never blinks while
     // the store refreshes. Retained bars are inert for dragging.
     expect(chartSource).toContain('const showTradeControls = isLiveActiveTrade || isVisuallyRetainedTrade;');
+    expect(chartSource).toContain('activeTradeSnapshotsRef.current = renderActiveSnapshots;');
+    expect(chartSource).toContain("window.addEventListener('rtx:new-trade-placed', handleNewTradePlaced);");
     expect(chartSource).toContain('if (showTradeControls) {');
     const retainedGuard = chartSource.indexOf('it is not draggable right now');
     expect(retainedGuard).toBeGreaterThan(-1);

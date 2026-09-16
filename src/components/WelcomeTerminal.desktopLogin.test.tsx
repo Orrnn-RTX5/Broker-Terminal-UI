@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { applyBrokerChrome } from '../services/brokerPresentation';
 import { WelcomeTerminal, type BrokerServerItem } from './WelcomeTerminal';
 
 const runtime = vi.hoisted(() => ({
@@ -30,7 +31,11 @@ const myprop: BrokerServerItem = {
   broker_id: 'myprop-trade', broker_name: 'MyProp', logo_url: '',
   server_url: 'https://services.myprop.test', active: true, enabled: true,
 };
-const directory = [achiever, gta, myprop];
+const nexa: BrokerServerItem = {
+  broker_id: 'Nexa', broker_name: 'Nexa', logo_url: 'https://directory.example.test/nexa.ico',
+  server_url: 'https://nexa.orrnn.com', active: true, enabled: true,
+};
+const directory = [achiever, gta, myprop, nexa];
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 const pending = <T,>() => {
   let resolve!: (value: T) => void;
@@ -53,7 +58,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   runtimeWindow.__RTX_RUNTIME_CONFIG__ = { BACKEND_TARGET: 'desktop', BROKER_ID: achiever.broker_id, API_HOST: achiever.server_url };
-  fetchMock.mockReset().mockImplementation(async (url: string) => json(url.endsWith('/broker/servers') ? directory : { status: 'ok' }));
+  fetchMock.mockReset().mockImplementation(async (url: string) => {
+    if (url.endsWith('/broker/servers')) return json(directory);
+    if (url === `${nexa.server_url}/api/v2/broker/config?broker_id=${nexa.broker_id}`) {
+      return json({ theme_color: '#6D4AFF' });
+    }
+    return json({ status: 'ok' });
+  });
   vi.stubGlobal('fetch', fetchMock);
   runtime.login.mockReset().mockResolvedValue({ access_token: 'test-token', account_login: 12345 });
 });
@@ -62,6 +73,8 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   delete runtimeWindow.__RTX_RUNTIME_CONFIG__;
+  applyBrokerChrome({});
+  document.title = '';
 });
 
 describe('desktop broker directory login', () => {
@@ -69,7 +82,7 @@ describe('desktop broker directory login', () => {
     render(<WelcomeTerminal onLogin={vi.fn()} />);
     await waitFor(() => expect(loginButton()).toBeEnabled());
     fireEvent.click(screen.getByRole('combobox'));
-    expect(screen.getAllByRole('option')).toHaveLength(3);
+    expect(screen.getAllByRole('option')).toHaveLength(4);
     fillCredentials();
     selectBroker(gta.broker_name);
     expect(screen.getByLabelText('Password', { selector: 'input' })).toHaveValue('');
@@ -79,6 +92,27 @@ describe('desktop broker directory login', () => {
     selectBroker(myprop.broker_name);
     await waitFor(() => expect(loginButton()).toBeEnabled());
     expect(document.querySelector('.rtx-login-visual img')).toHaveAttribute('src', expect.stringContaining('myprop-hero'));
+    selectBroker(nexa.broker_name);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    await waitFor(() => expect(document.querySelector('.rtx-login-overlay')).toHaveStyle('--rtx-broker-accent: #6D4AFF'));
+    expect(document.querySelector('.rtx-login-overlay')).toHaveAttribute('data-broker-id', nexa.broker_id);
+    expect(document.documentElement).toHaveAttribute('data-broker-id', nexa.broker_id);
+    expect(document.documentElement).toHaveStyle('--rtx-broker-accent: #6D4AFF');
+    expect(document.title).toBe(`RTX Terminal - ${nexa.broker_name}`);
+    expect(document.querySelector('.rtx-login-broker-identity')).toHaveTextContent(nexa.broker_name);
+    expect(document.querySelector('.rtx-login-broker-identity-logo img')).toHaveAttribute('src', nexa.logo_url);
+    expect(document.querySelector('.rtx-login-visual img')).toHaveAttribute('src', expect.stringContaining('trading-desk-hero'));
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${nexa.server_url}/api/v2/broker/config?broker_id=${nexa.broker_id}`,
+      expect.objectContaining({ cache: 'no-store' }),
+    );
+    selectBroker(gta.broker_name);
+    await waitFor(() => expect(loginButton()).toBeEnabled());
+    expect(document.title).toBe(`RTX Terminal - ${gta.broker_name}`);
+    expect(document.documentElement).toHaveAttribute('data-broker-id', gta.broker_id);
+    expect(document.documentElement.style.getPropertyValue('--rtx-broker-accent')).toBe('');
+    expect(document.querySelector('.rtx-login-broker-identity')).toHaveTextContent(gta.broker_name);
+    expect(document.querySelector('.rtx-login-visual img')).toHaveAttribute('src', expect.stringContaining('gta-hero'));
   });
 
   it('requires fresh health even with a recent cached Online badge and blocks direct form submission', async () => {

@@ -1,5 +1,6 @@
 import { useUiTranslation } from './hooks/useUiTranslation';
 import { useCallback, useEffect, useState } from 'react';
+import { isDesktopBackendTarget } from './config/backendTarget.js';
 import { WelcomeTerminal } from './components/WelcomeTerminal';
 import {
   parseSessionExpiryMs,
@@ -157,6 +158,7 @@ export default function AppShell({
   loadStoredSessionTerminal = preloadAuthenticatedTerminal,
 }: AppShellProps = {}) {
   const [shouldMountTerminal, setShouldMountTerminal] = useState(hasStoredSessionCandidate);
+  const guestEnabled = !isDesktopBackendTarget();
   const [initialSessionHandoff, setInitialSessionHandoff] = useState<AuthenticatedSessionHandoff | null>(null);
   const prepareTerminal = useCallback(() => {
     return preloadAuthenticatedTerminal();
@@ -174,7 +176,7 @@ export default function AppShell({
     setShouldMountTerminal(false);
   }, []);
 
-  if (!shouldMountTerminal) {
+  if (!shouldMountTerminal && !guestEnabled) {
     return (
       <WelcomeTerminal
         onLogin={handleLogin}

@@ -3,13 +3,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useDockLayoutStore } from '../store/useDockLayoutStore';
 import { registerActiveChartSource } from './activeChartSource';
 import type { DockLayout, DockPanelConfig } from './dockManager';
-import { activateChartPanel, changeChartPanelSymbol, findChartPanelById, getActiveDockChartPanel, getChartPanels, getChartPanelSymbolUpdates, requestActiveChartSymbolChange } from './chartPanelNavigation';
+import { activateChartPanel, changeChartPanelSymbol, closeChartPanelSymbolTab, findChartPanelById, getActiveDockChartPanel, getChartPanels, getChartPanelSymbolUpdates, requestActiveChartSymbolChange } from './chartPanelNavigation';
 import { getChartSymbolTabs } from '../utils/chartSymbolTabs';
 import { applyChartTimeframeCommand, CHART_TIMEFRAMES } from './chartTimeframeCommand';
 
 const symbols = ['XAUUSD.RAW', 'EURUSD.R', 'BTCUSD-PRO', 'ADAUSD', 'USDJPY.R', 'GBPUSD'];
 const frames = ['M1', 'M5', 'M15', 'M30', 'H1', 'MN'];
 const originalLayout = useDockLayoutStore.getState().layout;
+const originalRecentlyClosedCharts = useDockLayoutStore.getState().recentlyClosedCharts;
 let unregister: Array<() => void> = [];
 const panels = (): DockPanelConfig[] => symbols.map((symbol, index) => ({
   id: `chart-${index}`, title: `${symbol},${frames[index]}`, component: 'Chart',
@@ -33,10 +34,78 @@ beforeEach(() => {
     return () => { off(); container.remove(); };
   });
 });
-afterEach(() => { unregister.forEach(off => off()); useDockLayoutStore.getState().setLayout(originalLayout); });
+afterEach(() => {
+  unregister.forEach(off => off());
+  useDockLayoutStore.getState().setLayout(originalLayout);
+  useDockLayoutStore.setState({ recentlyClosedCharts: originalRecentlyClosedCharts });
+});
 
 describe('independent chart symbol navigation', () => {
   const navigationSymbols = [...symbols, 'XAUUSD', 'BTCUSD', 'EURUSD', 'NAS100-F', 'JPN225', 'COFFEE', 'SPA35-F', 'AAPL.US', 'USDJPY', 'TEST-CONTRACT.RAW'];
+  it('closes an inactive symbol without switching the current chart or affecting siblings', () => {
+    changeChartPanelSymbol('chart-0', 'BTCUSD-PRO', symbols);
+    const before = findChartPanelById(useDockLayoutStore.getState().layout, 'chart-0')!;
+    const siblings = getChartPanels(useDockLayoutStore.getState().layout).filter(panel => panel.id !== 'chart-0');
+    const changes: unknown[] = [];
+    const onChanged = (event: Event) => { changes.push((event as CustomEvent).detail); };
+    window.addEventListener('chartSymbolChanged', onChanged);
+    try {
+      expect(closeChartPanelSymbolTab('chart-0', ' xauusd.raw ')).toBe(true);
+      const after = findChartPanelById(useDockLayoutStore.getState().layout, 'chart-0')!;
+      expect(after.props).toEqual(before.props);
+      expect(getChartSymbolTabs(after).map(tab => tab.symbol)).toEqual(['BTCUSD-PRO']);
+      expect(getChartPanels(useDockLayoutStore.getState().layout).filter(panel => panel.id !== 'chart-0')).toEqual(siblings);
+      expect(changes).toEqual([]);
+    } finally { window.removeEventListener('chartSymbolChanged', onChanged); }
+  });
+
+  it('closes an active symbol onto its right neighbor, then its left, restoring saved timeframe and style', () => {
+    const store = useDockLayoutStore.getState();
+    store.updatePanelProps('chart-0', { chartSymbolTabs: [
+      { symbol: 'EURUSD.R', timeframe: 'H1', chartType: 'line' },
+      { symbol: 'XAUUSD.RAW', timeframe: 'M1', chartType: 'candlestick' },
+      { symbol: 'BTCUSD-PRO', timeframe: 'M30', chartType: 'area' },
+    ] });
+    const siblings = getChartPanels(useDockLayoutStore.getState().layout).filter(panel => panel.id !== 'chart-0');
+    const changes: unknown[] = [];
+    const onChanged = (event: Event) => { changes.push((event as CustomEvent).detail); };
+    window.addEventListener('chartSymbolChanged', onChanged);
+    try {
+      expect(closeChartPanelSymbolTab('chart-0', 'XAUUSD.RAW')).toBe(true);
+      const next = findChartPanelById(useDockLayoutStore.getState().layout, 'chart-0')!;
+      expect(next).toMatchObject({ title: 'BTCUSD-PRO,M30', props: { symbol: 'BTCUSD-PRO', timeframe: 'M30', chartType: 'area', custom: 'kept-0' } });
+      expect(getChartSymbolTabs(next).map(tab => tab.symbol)).toEqual(['EURUSD.R', 'BTCUSD-PRO']);
+      expect(closeChartPanelSymbolTab('chart-0', 'BTCUSD-PRO')).toBe(true);
+      const previous = findChartPanelById(useDockLayoutStore.getState().layout, 'chart-0')!;
+      expect(previous).toMatchObject({ title: 'EURUSD.R,H1', props: { symbol: 'EURUSD.R', timeframe: 'H1', chartType: 'line' } });
+      expect(getChartSymbolTabs(previous).map(tab => tab.symbol)).toEqual(['EURUSD.R']);
+      expect(getActiveDockChartPanel()?.id).toBe('chart-0');
+      expect(getChartPanels(useDockLayoutStore.getState().layout).filter(panel => panel.id !== 'chart-0')).toEqual(siblings);
+      expect(changes).toEqual([{ symbol: 'BTCUSD-PRO', timeframe: 'M30' }, { symbol: 'EURUSD.R', timeframe: 'H1' }]);
+    } finally { window.removeEventListener('chartSymbolChanged', onChanged); }
+  });
+
+  it('closes the pane when its final symbol is closed and retains the existing restore history', () => {
+    const before = findChartPanelById(useDockLayoutStore.getState().layout, 'chart-0')!;
+    const siblings = getChartPanels(useDockLayoutStore.getState().layout).filter(panel => panel.id !== 'chart-0');
+    expect(closeChartPanelSymbolTab('chart-0', 'XAUUSD.RAW')).toBe(true);
+    expect(findChartPanelById(useDockLayoutStore.getState().layout, 'chart-0')).toBeUndefined();
+    expect(getChartPanels(useDockLayoutStore.getState().layout)).toEqual(siblings);
+    expect(useDockLayoutStore.getState().recentlyClosedCharts[0]).toEqual(before);
+  });
+
+  it('rejects missing symbols and panels and preserves a nonclosable pane with one symbol', () => {
+    const layout = fixture();
+    getChartPanels(layout)[0].closable = false;
+    useDockLayoutStore.getState().setLayout(layout);
+    const before = useDockLayoutStore.getState().layout;
+    expect(closeChartPanelSymbolTab('chart-0', 'XAUUSD')).toBe(false);
+    expect(closeChartPanelSymbolTab('chart-0', '')).toBe(false);
+    expect(closeChartPanelSymbolTab('missing', 'XAUUSD.RAW')).toBe(false);
+    expect(closeChartPanelSymbolTab('chart-0', 'XAUUSD.RAW')).toBe(false);
+    expect(useDockLayoutStore.getState().layout).toBe(before);
+  });
+
   it.each(CHART_TIMEFRAMES)('opens every authorized symbol and restores its saved %s chart after navigation', timeframe => {
     const store = useDockLayoutStore.getState();
     const siblings = getChartPanels(store.layout).filter(panel => panel.id !== 'chart-0');

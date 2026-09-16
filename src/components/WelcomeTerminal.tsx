@@ -6,7 +6,7 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
 
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import './WelcomeTerminal.css';
-import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL, toLocalDevProxyUrl } from '../config/api';
+import { normalizeBrokerServerUrl, updateDynamicUrls, toLocalDevProxyUrl } from '../config/api';
 import {
     getBackendTarget,
     getRuntimeConfiguredBrokerId,
@@ -15,7 +15,14 @@ import {
     resolveBrokerBackendUrl,
     resolveBrokerExtApiUrl,
 } from '../config/backendTarget.js';
-import { extractBrokerDiscoveryList, filterBrokerDirectory, firstSelectableBroker, getDirectoryBrokerServerUrl, isDirectoryBrokerSelectable, isBrokerSuspended } from '../services/brokerDiscovery';
+import { filterBrokerDirectory, firstSelectableBroker, getDirectoryBrokerServerUrl, isDirectoryBrokerSelectable, isBrokerSuspended } from '../services/brokerDiscovery';
+import { loadAppBrokerDirectory } from '../services/brokerDirectory';
+import {
+    applyBrokerChrome,
+    loadBrokerPresentation,
+    mergeBrokerPresentation,
+    normalizeBrokerThemeColor,
+} from '../services/brokerPresentation';
 import { resolveLoginHeroAsset, toPublicAssetPath, type LoginHeroAsset } from './welcomeHeroAssets';
 import { BrokerLogoImage, buildBrokerDirectoryLogoUrl } from './BrokerLogoImage';
 import {
@@ -77,6 +84,7 @@ export interface BrokerServerItem {
     manager_domain?: string;
     manager_url?: string;
     logo_url: string;
+    theme_color?: string;
     region?: string;
     [key: string]: unknown;
 }
@@ -88,26 +96,6 @@ interface WelcomeTerminalProps {
 }
 
 const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
-const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
-let brokerDirectoryPromise: Promise<BrokerServerItem[]> | null = null;
-
-const loadBrokerDirectory = (): Promise<BrokerServerItem[]> => {
-    if (!brokerDirectoryPromise) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10_000);
-        brokerDirectoryPromise = fetch(brokerServersDiscoveryUrl, { signal: controller.signal, cache: 'no-store' })
-            .then((response) => {
-                if (!response.ok) throw new Error(`Broker discovery failed (${response.status})`);
-                return response.json();
-            })
-            .then((payload: unknown) => extractBrokerDiscoveryList(payload) as BrokerServerItem[])
-            .finally(() => {
-                clearTimeout(timeoutId);
-                brokerDirectoryPromise = null;
-            });
-    }
-    return brokerDirectoryPromise;
-};
 const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
 const RTX5_GREEN = '#80c33f';
 const LOGIN_FIELD_BORDER = '#24424a';
@@ -224,6 +212,9 @@ type LoginHeroImageStyle = React.CSSProperties & {
     '--rtx-login-hero-position': string;
     '--rtx-login-hero-mobile-fit': LoginHeroFit;
     '--rtx-login-hero-mobile-position': string;
+};
+type LoginOverlayStyle = React.CSSProperties & {
+    '--rtx-broker-accent': string;
 };
 const RUNTIME_BROKER_URL_FIELDS = [
     'API_HOST',
@@ -352,6 +343,23 @@ const brokerMatchesLookup = (broker: BrokerServerItem, value: string | number | 
         .includes(lookup);
 };
 
+const isLoopbackDirectoryBroker = (broker: BrokerServerItem): boolean => {
+    const serverUrl = getDirectoryBrokerServerUrl(broker);
+    if (!serverUrl) return false;
+
+    try {
+        const hostname = new URL(serverUrl).hostname.toLowerCase();
+        return hostname === 'localhost'
+            || hostname.endsWith('.localhost')
+            || hostname === '::1'
+            || hostname.startsWith('127.')
+            || hostname.endsWith('.local')
+            || hostname.endsWith('.local.test');
+    } catch {
+        return false;
+    }
+};
+
 export const buildConfiguredRuntimeBroker = (): BrokerServerItem | undefined => {
     const brokerId = String(getRuntimeConfiguredBrokerId() || import.meta.env.VITE_BROKER_ID || '').trim();
     const backendUrl = String(getBackendTarget() || '').trim();
@@ -407,8 +415,13 @@ export const pickDiscoveryBroker = (
     const activeConfiguredBroker = isBrokerSuspended(configuredBroker) ? undefined : configuredBroker;
     const activeRuntimeBroker = isBrokerSuspended(runtimeBroker) ? undefined : runtimeBroker;
     const selectableBroker = firstSelectableBroker(brokers);
+    // Shared directories can include local development fixtures. Keep them in
+    // the desktop menu, but do not make a loopback endpoint the first launch
+    // target when a real broker is available. A deliberately saved/configured
+    // local broker remains respected above.
+    const desktopDefaultBroker = brokers.find(broker => !isLoopbackDirectoryBroker(broker)) || selectableBroker;
     return isDesktop
-        ? activeAuthenticatedSavedBroker || activeConfiguredBroker || selectableBroker
+        ? activeAuthenticatedSavedBroker || activeConfiguredBroker || desktopDefaultBroker
         : activeConfiguredBroker || configuredRuntimeBroker || activeRuntimeBroker || activeAuthenticatedSavedBroker || selectableBroker;
 };
 
@@ -477,6 +490,7 @@ export function WelcomeTerminal({
     ));
     const [directoryAttempt, setDirectoryAttempt] = useState(0);
     const healthAbortRef = useRef<AbortController | null>(null);
+    const presentationAbortRef = useRef<AbortController | null>(null);
     const verifiedBrokerTargetRef = useRef('');
     const submittingRef = useRef(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -536,6 +550,7 @@ export function WelcomeTerminal({
 
     useEffect(() => () => {
         healthAbortRef.current?.abort();
+        presentationAbortRef.current?.abort();
     }, []);
 
     const warmLoginTransport = useCallback(() => {
@@ -587,6 +602,41 @@ export function WelcomeTerminal({
         }
     }, [isDesktopBrokerSelection]);
 
+    const hydrateBrokerPresentation = useCallback(async (broker: BrokerServerItem, serverUrl: string) => {
+        presentationAbortRef.current?.abort();
+        const controller = new AbortController();
+        presentationAbortRef.current = controller;
+        const timeoutId = setTimeout(() => controller.abort(), 5_000);
+
+        try {
+            const presentation = await loadBrokerPresentation({
+                broker_id: broker.broker_id,
+                server_url: serverUrl,
+            }, controller.signal);
+            if (!presentation || controller.signal.aborted || presentationAbortRef.current !== controller) return;
+
+            const currentBroker = selectedBrokerRef.current;
+            if (!currentBroker || currentBroker.broker_id !== broker.broker_id || currentBroker.server_url !== serverUrl) return;
+
+            const presentationBroker = mergeBrokerPresentation(currentBroker, presentation) as BrokerServerItem;
+            if (presentationBroker === currentBroker) return;
+
+            selectedBrokerRef.current = presentationBroker;
+            setSelectedBroker(presentationBroker);
+            setSearchQuery(current => (
+                current === currentBroker.broker_name || current === presentationBroker.broker_name
+                    ? presentationBroker.broker_name
+                    : current
+            ));
+            writeBrokerPresentationCache(presentationBroker);
+        } catch {
+            // The directory logo/name remain usable when an older broker does
+            // not expose the optional branding endpoint.
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }, []);
+
     const applySelectedBroker = useCallback((broker: BrokerServerItem) => {
         const normalizedBroker = normalizeBrokerInfoForTarget(broker) as BrokerServerItem;
         const serverUrl = isDesktopBrokerSelection ? getDirectoryBrokerServerUrl(broker) : resolveBrokerBackendUrl(normalizedBroker);
@@ -604,7 +654,10 @@ export function WelcomeTerminal({
         setSearchQuery(broker.broker_name);
         writeBrokerPresentationCache(broker);
         void runHealthCheck(isDesktopBrokerSelection ? serverUrl : resolveBrokerExtApiUrl(normalizedBroker), nextBroker);
-    }, [isDesktopBrokerSelection, runHealthCheck]);
+        if (isDesktopBrokerSelection) {
+            void hydrateBrokerPresentation(nextBroker, serverUrl);
+        }
+    }, [hydrateBrokerPresentation, isDesktopBrokerSelection, runHealthCheck]);
 
     const handleSelectBroker = (broker: BrokerServerItem) => {
         if (!isDesktopBrokerSelection || submittingRef.current || !isDirectoryBrokerSelectable(broker)) return;
@@ -617,7 +670,10 @@ export function WelcomeTerminal({
         let isMounted = true;
         if (isDesktopBrokerSelection || !configuredRuntimeBroker) setBrokerListStatus('loading');
 
-        loadBrokerDirectory()
+        // Sign-in always verifies the current directory; account tools can then
+        // reuse this successful response instead of repeating the network wait.
+        loadAppBrokerDirectory({ forceRefresh: true, desktop: isDesktopBrokerSelection })
+            .then(rows => rows as BrokerServerItem[])
             .then((data) => {
                 if (!isMounted) return;
                 setBrokerList(data);
@@ -651,6 +707,19 @@ export function WelcomeTerminal({
             isMounted = false;
         };
     }, [applySelectedBroker, configuredRuntimeBroker, isDesktopBrokerSelection, directoryAttempt]);
+
+    useEffect(() => {
+        if (!isDesktopBrokerSelection) return;
+        const heroTheme = resolveLoginHeroAsset(selectedBroker).theme;
+        applyBrokerChrome({
+            brokerId: selectedBroker?.broker_id,
+            brokerName: selectedBroker?.broker_name,
+            logoUrl: selectedBroker?.logo_url,
+            themeColor: normalizeBrokerThemeColor(selectedBroker?.theme_color)
+                || (heroTheme === 'achiever' ? ACHIEVER_LOGIN_FIELD_FOCUS : ''),
+            updateLoginTitle: true,
+        });
+    }, [isDesktopBrokerSelection, selectedBroker]);
 
     useEffect(() => {
         if (!dropdownOpen) return;
@@ -740,6 +809,7 @@ export function WelcomeTerminal({
                 feed_ws_url: data.feed_ws_url || submitBroker.feed_ws_url,
                 feed_status_url: data.feed_status_url || submitBroker.feed_status_url,
                 logo_url: submitBroker.logo_url,
+                theme_color: submitBroker.theme_color,
             });
             localStorage.setItem(
                 LAST_AUTHENTICATED_BROKER_ID_KEY,
@@ -831,9 +901,12 @@ export function WelcomeTerminal({
     const filteredBrokers = filterBrokerDirectory(brokerList, searchQuery, selectedBroker);
     const loginHeroAsset = resolveLoginHeroAsset(selectedBroker);
     const isAchieverLoginTheme = loginHeroAsset.theme === 'achiever';
-    const loginOverlayClassName = isAchieverLoginTheme
-        ? 'rtx-login-overlay rtx-login-overlay--achiever'
-        : 'rtx-login-overlay';
+    const selectedBrokerThemeColor = normalizeBrokerThemeColor(selectedBroker?.theme_color);
+    const loginOverlayClassName = [
+        'rtx-login-overlay',
+        isAchieverLoginTheme ? 'rtx-login-overlay--achiever' : '',
+        isDesktopBrokerSelection && selectedBroker ? 'rtx-login-overlay--broker-selected' : '',
+    ].filter(Boolean).join(' ');
     const loginFieldBlurBorder = isAchieverLoginTheme ? ACHIEVER_LOGIN_FIELD_BORDER : LOGIN_FIELD_BORDER;
     const loginFieldFocus = isAchieverLoginTheme ? ACHIEVER_LOGIN_FIELD_FOCUS : LOGIN_FIELD_FOCUS;
     const loginFieldFocusShadow = isAchieverLoginTheme
@@ -845,6 +918,9 @@ export function WelcomeTerminal({
     const activeLabelStyle = isAchieverLoginTheme ? achieverLabelStyle : labelStyle;
     const loginHeroVisualStyle: React.CSSProperties = {
         backgroundColor: '#020507',
+    };
+    const loginOverlayStyle: LoginOverlayStyle = {
+        '--rtx-broker-accent': selectedBrokerThemeColor || (isAchieverLoginTheme ? ACHIEVER_LOGIN_FIELD_FOCUS : LOGIN_FIELD_FOCUS),
     };
     const desktopHeroFit = loginHeroAsset.fit ?? 'cover';
     const desktopHeroPosition = loginHeroAsset.position ?? 'center center';
@@ -874,6 +950,9 @@ export function WelcomeTerminal({
                 }
             }}
             className={loginOverlayClassName}
+            style={loginOverlayStyle}
+            data-broker-id={selectedBroker?.broker_id || undefined}
+            data-broker-presentation={isDesktopBrokerSelection && selectedBroker ? 'selected' : 'default'}
         >
             {hasElectronWindowControls && (
                 <div className="rtx-login-window-controls" data-window-controls role="toolbar" aria-label={tr("Window controls")}>
@@ -910,7 +989,7 @@ export function WelcomeTerminal({
                 </div>
             )}
             <div className="rtx-login-stage">
-                <aside className="rtx-login-visual" aria-hidden="true" style={loginHeroVisualStyle}>
+                <aside className="rtx-login-visual" aria-hidden="true" style={loginHeroVisualStyle} data-broker-id={selectedBroker?.broker_id || undefined}>
                     <picture>
                         <source media="(max-width: 760px)" srcSet={loginHeroAsset.mobileSrc ?? loginHeroAsset.src} />
                         <img
@@ -925,6 +1004,20 @@ export function WelcomeTerminal({
                         />
                     </picture>
                     <div className="rtx-login-visual-shade" />
+                    {isDesktopBrokerSelection && selectedBroker && (
+                        <div key={selectedBroker.broker_id} className="rtx-login-broker-identity">
+                            <div className="rtx-login-broker-identity-logo">
+                                <BrokerLogoImage
+                                    broker={selectedBroker}
+                                    fallback={<span>{selectedBrokerName.slice(0, 1).toUpperCase()}</span>}
+                                />
+                            </div>
+                            <div className="rtx-login-broker-identity-copy">
+                                <span>{tr("Desktop terminal")}</span>
+                                <strong>{selectedBrokerName}</strong>
+                            </div>
+                        </div>
+                    )}
                 </aside>
 
                 <main className="rtx-login-panel-wrap">

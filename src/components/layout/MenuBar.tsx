@@ -8,6 +8,7 @@ import { OptionsDialog } from '../settings/OptionsDialog';
 import { FileMenu } from './FileMenu';
 import { useTranslation } from 'react-i18next';
 import { SymbolsDialog } from '../SymbolsDialog';
+import { LoginDialog } from '../LoginDialog';
 import { commandBus } from '../../services/commandBus';
 import { useChartSettingsStore, type ChartProperties, type ColorScheme } from '../../store/useChartSettingsStore';
 import { drawingManager } from '../../services/drawingManager';
@@ -98,6 +99,13 @@ export const MenuBar = ({
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
     const [isOptionsOpen, setIsOptionsOpen] = useState(false);
     const [isSymbolsOpen, setIsSymbolsOpen] = useState(false);
+    const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
+    const [tradeLoginRequested, setTradeLoginRequested] = useState(false);
+    useEffect(() => {
+        const openLogin = () => { setTradeLoginRequested(true); setIsLoginDialogOpen(true); };
+        window.addEventListener('rtx:requestTradeLogin', openLogin);
+        return () => window.removeEventListener('rtx:requestTradeLogin', openLogin);
+    }, []);
     const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -405,9 +413,6 @@ export const MenuBar = ({
                         checkRole: 'radio',
                         action: () => onSetAdvancedViewEnabled?.(true),
                     },
-                    { divider: true, label: '' },
-                    fontSizeMenuItem,
-                    focusChartMenuItem,
                 ],
             },
             { divider: true, label: '' },
@@ -688,13 +693,10 @@ export const MenuBar = ({
     const desktopMenuItems: Record<(typeof DESKTOP_MENU_KEYS)[number], MenuItem[]> = {
         File: menuItems.File,
         View: [
-            {
-                label: drawingToolsVisibilityLabel,
-                icon: <Icon name="paintbrush" size="sm" />,
-                action: toggleDrawingTools,
-            },
-            { divider: true, label: '' },
-            ...menuItems.View.slice(0, -2).filter(item => item.label !== t('menu.view.statusBar')),
+            menuItems.View[0],
+            fontSizeMenuItem,
+            focusChartMenuItem,
+            ...menuItems.View.slice(1, -2).filter(item => item.label !== t('menu.view.statusBar')),
             {
                 label: 'Economic Calendar',
                 icon: <Icon name="calendar" size="sm" />,
@@ -802,7 +804,8 @@ export const MenuBar = ({
                 console.log('Print setup');
             }}
             onLoginTrade={() => {
-                window.dispatchEvent(new CustomEvent('rtx:openLoginDialog'));
+                setTradeLoginRequested(false);
+                setIsLoginDialogOpen(true);
                 closeMenu();
             }}
             onLoginWebTrader={async () => {
@@ -1186,6 +1189,13 @@ export const MenuBar = ({
 
             {/* Options Dialog Modal */}
             <OptionsDialog isOpen={isOptionsOpen} onClose={() => setIsOptionsOpen(false)} />
+
+            {/* Keep account login available when the desktop status bar is absent. */}
+            <LoginDialog
+                reason={tradeLoginRequested ? 'trade' : undefined}
+                isOpen={isLoginDialogOpen}
+                onClose={() => setIsLoginDialogOpen(false)}
+            />
 
             {/* Symbols Dialog */}
             <SymbolsDialog

@@ -71,6 +71,29 @@ export interface Position {
   chartEntryTime?: string;
 }
 
+export const RECENT_OPEN_POSITION_RETENTION_MS = 30_000;
+
+export const isRecentlyAdmittedOpenPosition = (position: Position, now = Date.now()): boolean => {
+  const admittedAt = Date.parse(String(position.chartEntryTime ?? ''));
+  if (!Number.isFinite(admittedAt)) return false;
+  const ageMs = now - admittedAt;
+  return ageMs >= 0 && ageMs <= RECENT_OPEN_POSITION_RETENTION_MS;
+};
+
+export const shouldReplaceOpenPositionSnapshot = (
+  incoming: readonly Position[],
+  current: readonly Position[],
+  now = Date.now(),
+): boolean => (
+  incoming.length > 0
+  || !current.some((position) => isRecentlyAdmittedOpenPosition(position, now))
+);
+
+const isRenderableOpenPosition = (position: Pick<Position, 'symbol' | 'volume' | 'quantity'>): boolean => (
+  Boolean(String(position.symbol ?? '').trim())
+  && Number(position.volume ?? position.quantity ?? 0) > 0
+);
+
 export interface Order {
   id: string;
   symbol: string;
@@ -690,6 +713,18 @@ export const useAppStore = create<AppState>()(
             });
 
             rememberTradeHistoryPositionLevels(nextPositions, state.accountId);
+
+            // A lagged REST/WS snapshot can omit a fill that the click path
+            // already admitted. Keep that ticket on the chart and in Trade
+            // until the broker snapshot catches up or the short retention ends.
+            const now = Date.now();
+            const nextIds = new Set(nextPositions.map((position) => position.id));
+            for (const existing of state.positions) {
+              if (nextIds.has(existing.id)) continue;
+              if (!isRenderableOpenPosition(existing) || !isRecentlyAdmittedOpenPosition(existing, now)) continue;
+              nextPositions.push(existing);
+              nextIds.add(existing.id);
+            }
 
             return { positions: nextPositions };
           }),

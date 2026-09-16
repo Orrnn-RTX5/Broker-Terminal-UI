@@ -1,0 +1,14 @@
+/* Keep the desktop account action outlined through shared menu hover states. */
+html:root.rtx-desktop-shell-active .rtx-file-menu button.rtx-file-menu__logout[data-desktop-logout='true'][role='menuitem'] {
+  min-width: 64px;
+  justify-content: center;
+  gap: 0;
+  padding-inline: 10px;
+  border: 1px solid currentColor !important;
+  border-radius: 0;
+  background: transparent !important;
+}
+
+html:root.rtx-desktop-shell-active .rtx-file-menu button.rtx-file-menu__logout[data-desktop-logout='true'][role='menuitem']:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, currentColor 8%, transparent) !important;
+}

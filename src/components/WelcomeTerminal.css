@@ -141,6 +141,77 @@
     pointer-events: none;
 }
 
+.rtx-login-overlay--broker-selected .rtx-login-visual-shade {
+    background:
+        linear-gradient(90deg, color-mix(in srgb, var(--rtx-broker-accent) 20%, transparent) 0%, transparent 48%, rgba(0, 0, 0, 0.82) 100%),
+        linear-gradient(180deg, rgba(2, 5, 9, 0.18) 0%, rgba(2, 5, 9, 0.02) 44%, rgba(0, 0, 0, 0.38) 100%);
+}
+
+.rtx-login-broker-identity {
+    position: absolute;
+    z-index: 1;
+    left: clamp(28px, 4vw, 80px);
+    bottom: clamp(28px, 7vh, 76px);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    max-width: min(390px, calc(100% - 56px));
+    padding: 13px 16px 13px 13px;
+    border: 1px solid color-mix(in srgb, var(--rtx-broker-accent) 56%, rgba(255, 255, 255, 0.2));
+    border-radius: 10px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--rtx-broker-accent) 18%, rgba(2, 8, 12, 0.92)), rgba(2, 6, 10, 0.84));
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+.rtx-login-broker-identity-logo {
+    width: 50px;
+    height: 50px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--rtx-broker-accent) 55%, rgba(255, 255, 255, 0.22));
+    border-radius: 9px;
+    background: rgba(2, 8, 12, 0.72);
+    color: #f5f7fb;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.rtx-login-broker-identity-logo img {
+    width: 38px;
+    height: 38px;
+    object-fit: contain;
+}
+
+.rtx-login-broker-identity-copy {
+    min-width: 0;
+}
+
+.rtx-login-broker-identity-copy span,
+.rtx-login-broker-identity-copy strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rtx-login-broker-identity-copy span {
+    color: rgba(231, 239, 243, 0.72);
+    font-size: 13px;
+    line-height: 18px;
+}
+
+.rtx-login-broker-identity-copy strong {
+    margin-top: 2px;
+    color: #f8fafc;
+    font-size: clamp(18px, 1.7vw, 24px);
+    font-weight: 600;
+    line-height: 28px;
+}
+
 .rtx-login-panel-wrap {
     position: relative;
     z-index: 1;
@@ -958,6 +1029,24 @@
     pointer-events: none;
 }
 
+.rtx-login-overlay--broker-selected .rtx-form-header::after {
+    background: linear-gradient(90deg, var(--rtx-broker-accent), color-mix(in srgb, var(--rtx-broker-accent) 38%, transparent) 44%, transparent 100%);
+}
+
+.rtx-login-overlay--broker-selected .rtx-broker-strip {
+    border-color: color-mix(in srgb, var(--rtx-broker-accent) 52%, #29423e);
+}
+
+.rtx-login-overlay--broker-selected .rtx-broker-strip::before {
+    background:
+        linear-gradient(90deg, color-mix(in srgb, var(--rtx-broker-accent) 24%, transparent), transparent 46%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 48%);
+}
+
+.rtx-login-overlay--broker-selected .rtx-route-logo {
+    border-color: color-mix(in srgb, var(--rtx-broker-accent) 58%, #345b53);
+}
+
 .rtx-broker-strip > * {
     position: relative;
     z-index: 1;
@@ -1403,6 +1492,14 @@
     transform: translateY(-1px);
 }
 
+.rtx-login-overlay--broker-selected .rtx-login-button {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--rtx-broker-accent) 78%, #ffffff), var(--rtx-broker-accent));
+}
+
+.rtx-login-overlay--broker-selected .rtx-login-button:hover:not(:disabled) {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--rtx-broker-accent) 66%, #ffffff), color-mix(in srgb, var(--rtx-broker-accent) 88%, #06130f));
+}
+
 .rtx-login-button:disabled {
     opacity: 0.65;
     cursor: not-allowed;
@@ -1601,6 +1698,10 @@
         background:
             linear-gradient(180deg, rgba(5, 8, 12, 0.44) 0%, rgba(5, 8, 12, 0.7) 42%, rgba(5, 8, 12, 0.88) 100%),
             linear-gradient(90deg, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.5) 100%);
+    }
+
+    .rtx-login-broker-identity {
+        display: none;
     }
 
     .rtx-login-panel-wrap {

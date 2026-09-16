@@ -1,4 +1,5 @@
 import { useUiTranslation } from '../../hooks/useUiTranslation';
+import './file-menu-desktop.css';
 import { Icon } from '../ui/Icon';
 import { NewChartSymbolMenu, type NewChartMenuItem } from './NewChartSymbolMenu';
 import React, { useState, useEffect, useRef } from 'react';
@@ -207,6 +208,7 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const [newChartOpen, setNewChartOpen] = useState(false);
     const [workspaceProfiles, setWorkspaceProfiles] = useState<WorkspaceProfileSummary[]>([]);
     const recentlyClosedCharts = useDockLayoutStore(state => state.recentlyClosedCharts);
+    const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const showDesktopDownload = typeof window !== 'undefined' && !window.electron;
     const desktopReleaseState = useDesktopRelease({ enabled: showDesktopDownload });
     const desktopReleaseVersionLabel = getDesktopReleaseVersionLabel(desktopReleaseState.release);
@@ -494,9 +496,10 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                                     aria-label={tr("Log Out")}
                                     title={tr("Log out of the current account")}
                                     onClick={onLogout}
-                                    className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-sm border border-rose-500/20 px-2 text-[12px] font-medium text-rose-400 hover:border-rose-500/35 hover:bg-rose-500/10 hover:text-rose-300 [.rtx-advanced-view_&]:border-[#fecdca] [.rtx-advanced-view_&]:text-[#b42318] [.rtx-advanced-view_&]:hover:bg-[#fef3f2] [.rtx-advanced-view_&]:hover:text-[#912018]"
+                                    data-desktop-logout={isDesktopShell ? 'true' : undefined}
+                                    className="rtx-file-menu__logout ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-sm border border-rose-500/20 px-2 text-[12px] font-medium text-rose-400 hover:border-rose-500/35 hover:bg-rose-500/10 hover:text-rose-300 [.rtx-advanced-view_&]:border-[#fecdca] [.rtx-advanced-view_&]:text-[#b42318] [.rtx-advanced-view_&]:hover:bg-[#fef3f2] [.rtx-advanced-view_&]:hover:text-[#912018]"
                                 >
-                                    <Icon name="log-out" size="xs" />
+                                    {!isDesktopShell && <Icon name="log-out" size="xs" />}
                                     <span>{tr("Log Out")}</span>
                                 </button>
                             )}

@@ -7,9 +7,55 @@ import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { applyChartTimeframeCommand } from '../../services/chartTimeframeCommand';
 
 const initialLayout = useDockLayoutStore.getState().layout;
-afterEach(() => { cleanup(); useDockLayoutStore.getState().setLayout(initialLayout); });
+const initialClosedCharts = useDockLayoutStore.getState().recentlyClosedCharts;
+afterEach(() => {
+  cleanup();
+  useDockLayoutStore.getState().setLayout(initialLayout);
+  useDockLayoutStore.setState({ recentlyClosedCharts: initialClosedCharts });
+});
 
 describe('chart header symbol tabs', () => {
+  it('closes individual symbol tabs without activating the header or reopening the closed symbol', () => {
+    useDockLayoutStore.getState().setLayout({ version: '1.0', floatingPanels: [], root: {
+      id: 'root', type: 'root', ratio: 1, children: [{
+        id: 'chart', title: 'XAUUSD,M1', component: 'Chart',
+        props: { symbol: 'XAUUSD', timeframe: 'M1' },
+        chartSymbolTabs: [
+          { symbol: 'BTCUSD', timeframe: 'M5' },
+          { symbol: 'EURUSD', timeframe: 'H1' },
+          { symbol: 'XAUUSD', timeframe: 'M1' },
+        ],
+      }],
+    } });
+    const Header = () => {
+      const layout = useDockLayoutStore(state => state.layout);
+      const panel = findChartPanelById(layout, 'chart');
+      return panel ? <ChartSymbolTabs panel={panel} /> : null;
+    };
+    const activateHeader = vi.fn();
+    const openChart = vi.fn();
+    window.addEventListener('openChart', openChart);
+    try {
+      render(<div onMouseDown={activateHeader} onClick={activateHeader}><Header /></div>);
+      expect(screen.getAllByRole('button', { name: /^Close .* tab$/ })).toHaveLength(3);
+      const closeInactive = screen.getByRole('button', { name: 'Close EURUSD tab' });
+      fireEvent.mouseDown(closeInactive);
+      fireEvent.click(closeInactive);
+      expect(screen.queryByRole('tab', { name: 'EURUSD, H1' })).toBeNull();
+      expect(screen.getByRole('tab', { name: 'XAUUSD, M1' })).toHaveAttribute('aria-selected', 'true');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close XAUUSD tab' }));
+      expect(screen.queryByRole('tab', { name: 'XAUUSD, M1' })).toBeNull();
+      expect(screen.getByRole('tab', { name: 'BTCUSD, M5' })).toHaveAttribute('aria-selected', 'true');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close BTCUSD tab' }));
+      expect(screen.queryByRole('tablist', { name: 'Symbol charts' })).toBeNull();
+      expect(findChartPanelById(useDockLayoutStore.getState().layout, 'chart')).toBeUndefined();
+      expect(activateHeader).not.toHaveBeenCalled();
+      expect(openChart).not.toHaveBeenCalled();
+    } finally { window.removeEventListener('openChart', openChart); }
+  });
+
   it('opens each clicked symbol with its own timeframe and keeps the current tab selected', () => {
     const store = useDockLayoutStore.getState();
     store.setLayout({ version: '1.0', floatingPanels: [], root: { id: 'root', type: 'root', ratio: 1, children: [

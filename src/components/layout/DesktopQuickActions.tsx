@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Icon } from '../ui/Icon';
 import { formatDesktopAccountBadge } from './desktopToolbarStatus';
+import { brokerDisplayName } from '../../services/brokerDisplayName';
 
 type QuickMenu = 'account' | null;
 
@@ -10,6 +11,7 @@ interface DesktopQuickActionsProps {
     accountId: string;
     accountName?: string;
     accountServer?: string;
+    accountBrokerName?: string;
     savedAccountCount: number;
     onLogout: () => void;
 }
@@ -17,11 +19,14 @@ interface DesktopQuickActionsProps {
 const menuPosition = (anchor: React.RefObject<HTMLElement | null>, width: number): React.CSSProperties => {
     const rect = anchor.current?.getBoundingClientRect();
     const viewportWidth = typeof window === 'undefined' ? width + 16 : window.innerWidth;
+    const menuWidth = Math.min(width, Math.max(0, viewportWidth - 16));
     const right = rect?.right ?? viewportWidth - 8;
+    const top = (rect?.bottom ?? 54) + 4;
     return {
-        top: (rect?.bottom ?? 54) + 4,
-        left: Math.max(8, Math.min(right - width, viewportWidth - width - 8)),
-        width,
+        top,
+        left: Math.max(8, Math.min(right - menuWidth, viewportWidth - menuWidth - 8)),
+        width: menuWidth,
+        maxHeight: typeof window === 'undefined' ? undefined : Math.max(0, window.innerHeight - top - 8),
     };
 };
 
@@ -44,6 +49,7 @@ export const DesktopQuickActions: React.FC<DesktopQuickActionsProps> = ({
     accountId,
     accountName,
     accountServer,
+    accountBrokerName,
     savedAccountCount,
     onLogout,
 }) => {
@@ -53,6 +59,9 @@ export const DesktopQuickActions: React.FC<DesktopQuickActionsProps> = ({
     const menuRef = useRef<HTMLDivElement>(null);
     const accountAnchorRef = useRef<HTMLButtonElement>(null);
     const accountBadge = formatDesktopAccountBadge(savedAccountCount);
+    const brokerName = accountServer || accountBrokerName
+        ? brokerDisplayName(accountServer || '', accountBrokerName)
+        : '';
 
 
     useEffect(() => {
@@ -130,18 +139,14 @@ export const DesktopQuickActions: React.FC<DesktopQuickActionsProps> = ({
                 )}
             </button>
 
-            {renderPortalMenu('account', accountAnchorRef, 230, 'Account', (
+            {renderPortalMenu('account', accountAnchorRef, 280, 'Account', (
                 <>
                     <div className="rtx-desktop-quick-menu__account">
                         <Icon name="user" size="md" />
-                        <div className="min-w-0">
-                            <div className="rtx-desktop-quick-menu__heading">{tr("Current account")}</div>
-                            <div className="truncate font-mono text-[13px]">{accountId || 'No active account'}</div>
-                            {(accountName || accountServer) && (
-                                <div className="truncate text-[11px] text-zinc-500">
-                                    {[accountName, accountServer].filter(Boolean).join(' · ')}
-                                </div>
-                            )}
+                        <div className="rtx-desktop-quick-menu__identity">
+                            <div className="rtx-desktop-quick-menu__account-id">{accountId || tr('No active account')}</div>
+                            {accountName && <div className="rtx-desktop-quick-menu__meta">{accountName}</div>}
+                            {brokerName && <div className="rtx-desktop-quick-menu__meta">{brokerName}</div>}
                         </div>
                     </div>
                     <div className="rtx-desktop-quick-menu__separator" role="separator" />

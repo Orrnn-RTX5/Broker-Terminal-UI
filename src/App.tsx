@@ -1,5 +1,8 @@
-import { useTerminalBrokerInfo } from './hooks/useTerminalTitle';
+import { isDesktopBackendTarget } from './config/backendTarget.js';
+import { useGuestMarketData } from './hooks/useGuestMarketData';
+import { getLogoUrl, useTerminalBrokerInfo } from './hooks/useTerminalTitle';
 import { brokerDisplayName } from './services/brokerDisplayName';
+import { applyBrokerChrome } from './services/brokerPresentation';
 import { ChartSymbolDropdown, type ChartSymbolAnchor } from './components/ChartSymbolDropdown';
 import { translateUi, useUiTranslation } from './hooks/useUiTranslation';
 import { feedbackLabel, feedbackValue, feedbackSymbol, formatUiMessage, type UiMessage, type UiMessagePart } from './utils/uiFeedback';
@@ -10,9 +13,11 @@ import { DockWorkspace } from './components/dock/DockWorkspace';
 import { useDockLayoutStore } from './store/useDockLayoutStore';
 import { useDrawingSidebarStore } from './store/useDrawingSidebarStore';
 import type { ChartType, Timeframe } from './components/TradingChart';
+import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME } from './constants/chartDefaults';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { OrderPanelDialog } from './components/OrderPanelDialog';
 import { AlertsContainer } from './components/AlertsContainer';
-import { resolveTickFromLookup, useAppStore } from './store/useAppStore';
+import { resolveTickFromLookup, shouldReplaceOpenPositionSnapshot, useAppStore } from './store/useAppStore';
 import { useMarketDataStore } from './store/useMarketDataStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
 import { enqueueLiveTick } from './services/liveTickDispatcher';
@@ -118,7 +123,6 @@ import { useAlertStore } from './store/useAlertStore';
 
 const LazyLastSymbolPanel = lazy(() => import('./components/LastSymbolPanel').then((module) => ({ default: module.LastSymbolPanel })));
 const LazyIndicatorNavigator = lazy(() => import('./components/IndicatorNavigator').then((module) => ({ default: module.IndicatorNavigator })));
-const LazyOrderPanelDialog = lazy(() => import('./components/OrderPanelDialog').then((module) => ({ default: module.OrderPanelDialog })));
 const LazyDepthOfMarket = lazy(() => import('./components/DepthOfMarket').then((module) => ({ default: module.DepthOfMarket })));
 const LazyDataWindow = lazy(() => import('./components/DataWindow'));
 const LazyAccountPanel = lazy(() => import('./components/AccountPanel').then((module) => ({ default: module.AccountPanel })));
@@ -235,7 +239,7 @@ interface Tick {
 interface Position {
   id: number;
   symbol: string;
-  side: string;
+  side: 'BUY' | 'SELL';
   volume: number;
   openPrice: number;
   currentPrice: number;
@@ -567,6 +571,14 @@ const upsertImmediatePosition = (position: Position) => {
   store.setPositions(nextPositions as any);
 };
 
+const applyOpenPositionSnapshot = (incoming: Position[]) => {
+  const store = useAppStore.getState();
+  if (!shouldReplaceOpenPositionSnapshot(incoming, store.positions as unknown as Position[])) {
+    return;
+  }
+  store.setPositions(incoming as any);
+};
+
 const getLivePositionPnL = (position: Position, tick?: Tick): number => {
   const openPrice = Number(position.openPrice ?? 0);
   const volume = Number(position.volume ?? 0);
@@ -782,9 +794,8 @@ interface AppProps {
 
 function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const tr = useUiTranslation();
+  const guestMarketAccess = !isDesktopBackendTarget();
   const drawingSidebarVisible = useDrawingSidebarStore((state) => state.visible);
-  const DEFAULT_CHART_TIMEFRAME: Timeframe = 'M5';
-  const TIMEFRAME_MIGRATION_KEY = 'rtx5_timeframe_default_v2';
 
   // A fresh handoff exists only in memory and only after WelcomeTerminal has
   // validated the response and committed the token. It is never restored from
@@ -820,9 +831,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     return Boolean(targetLogin && (token || refreshToken));
   });
   const [autoAuthError, setAutoAuthError] = useState<string | null>(null);
+  useGuestMarketData(guestMarketAccess && !isAuthenticated && !isAutoAuthenticating);
   const [tokenSessionVersion, setTokenSessionVersion] = useState(0);
   const storeTokenExpiresAt = useAppStore(state => state.tokenExpiresAt);
-  const [selectedSymbol, setSelectedSymbol] = useState<string>('');
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(DEFAULT_CHART_SYMBOL);
   const [positions, setPositions] = useState<Position[]>([]);
   const [account, setAccount] = useState<Account | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
@@ -1060,20 +1072,6 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     if (options.allowWsCommit) return false;
     return lastTradeWsMessageAtRef.current > request.startedAt
       || tradeDataVersionRef.current > request.startedVersion;
-  }, []);
-
-  useEffect(() => {
-    const hasMigrated = localStorage.getItem(TIMEFRAME_MIGRATION_KEY) === '1';
-    const savedTimeframe = localStorage.getItem('rtx5_timeframe');
-
-    if (!hasMigrated && (!savedTimeframe || savedTimeframe === 'M1')) {
-      localStorage.setItem('rtx5_timeframe', DEFAULT_CHART_TIMEFRAME);
-      setTimeframe(DEFAULT_CHART_TIMEFRAME);
-    }
-
-    if (!hasMigrated) {
-      localStorage.setItem(TIMEFRAME_MIGRATION_KEY, '1');
-    }
   }, []);
 
   // Sync chart type to localStorage so it applies instantly on next chart open
@@ -1497,8 +1495,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     ...marketInstrumentsSnapshot.disabledSymbols,
   ])), [marketInstrumentsSnapshot.authorizedSymbols, marketInstrumentsSnapshot.disabledSymbols]);
   const allSymbols = useMemo(() => marketInstrumentsSnapshot.symbols.filter((instrument) => (
-    authenticatedCatalogSymbolSet.has(normalizeSymbolName(instrument.symbol))
-  )), [authenticatedCatalogSymbolSet, marketInstrumentsSnapshot.symbols]);
+    (!isAuthenticated && guestMarketAccess) || authenticatedCatalogSymbolSet.has(normalizeSymbolName(instrument.symbol))
+  )), [authenticatedCatalogSymbolSet, marketInstrumentsSnapshot.symbols, isAuthenticated, guestMarketAccess]);
   const hasLoadedSymbols = marketInstrumentsSnapshot.authorizationSettled;
   const isLoadingSymbols = isAuthenticated && !marketInstrumentsSnapshot.authorizationSettled;
   const publicMarketSymbolNames = useMemo(
@@ -1707,7 +1705,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     // Load initial layout for user
     setRestoredLayoutAccountId('');
-    useDockLayoutStore.getState().loadLayout(accountId);
+    const restoredSavedLayout = useDockLayoutStore.getState().loadLayout(accountId);
+    if (!restoredSavedLayout) {
+      setSelectedSymbol(DEFAULT_CHART_SYMBOL);
+      setTimeframe(DEFAULT_CHART_TIMEFRAME);
+    }
     setRestoredLayoutAccountId(accountId);
 
     // Auto save on layout change (debounced implicitly by React renders or user actions)
@@ -1755,7 +1757,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       // Write ONLY to the central store — NOT to local App state.
       // This prevents App.tsx from re-rendering (which caused the blank-display crash
       // after every Buy/Sell). BottomDock reads positions from useAppStore directly.
-      useAppStore.getState().setPositions(normalized as any);
+      applyOpenPositionSnapshot(normalized);
     } catch (err: any) {
       console.warn('[App] refreshPositions failed:', err.message);
     } finally {
@@ -2289,7 +2291,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         }
 
         if (posPayload !== null) {
-          useAppStore.getState().setPositions(reconcileOptimisticClosedPositions(normalizePositions(posPayload), { clearConfirmedAbsent: true }) as any);
+          applyOpenPositionSnapshot(
+            reconcileOptimisticClosedPositions(normalizePositions(posPayload), { clearConfirmedAbsent: true }),
+          );
         }
         activeAccountDataRef.current = loginId;
 
@@ -2460,11 +2464,11 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             } else if (data.data?.positions && Array.isArray(data.data.positions)) {
               const normalized = reconcileOptimisticClosedPositions(normalizePositions(data.data.positions));
               if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
-              useAppStore.getState().setPositions(normalized as any);
+              applyOpenPositionSnapshot(normalized);
             } else if (data.data && Array.isArray(data.data)) {
               const normalized = reconcileOptimisticClosedPositions(normalizePositions(data.data));
               if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
-              useAppStore.getState().setPositions(normalized as any);
+              applyOpenPositionSnapshot(normalized);
             } else if (data.position || data.data?.position || data.data) {
               const payload = data.position || data.data?.position || data.data;
               const normalized = normalizePositions([payload])[0];
@@ -2679,6 +2683,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     try {
       const loginId = getLiveTradingLogin();
       if (!loginId) {
+        window.dispatchEvent(new Event('rtx:requestTradeLogin'));
         publishOrderFeedback('No trading account is selected. Please sign in again.');
         return;
       }
@@ -2739,6 +2744,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     try {
       const loginId = getLiveTradingLogin();
       if (!loginId) {
+        window.dispatchEvent(new Event('rtx:requestTradeLogin'));
         publishOrderFeedback('No trading account is selected. Please sign in again.');
         return;
       }
@@ -2800,6 +2806,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       }
       const loginId = getLiveTradingLogin();
       if (!loginId) {
+        window.dispatchEvent(new Event('rtx:requestTradeLogin'));
         publishOrderFeedback('No trading account is selected. Please sign in again.');
         return;
       }
@@ -2871,7 +2878,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     setSelectedSymbol((previous) => {
       const current = normalizeSymbolName(previous);
       const saved = normalizeSymbolName(localStorage.getItem(SELECTED_SYMBOL_STORAGE_KEY));
-      return current || saved || allowedSymbolNames[0] || '';
+      return current || saved || resolveAuthorizedChartSymbol(DEFAULT_CHART_SYMBOL, allowedSymbolNames) || allowedSymbolNames[0] || '';
     });
   }, [
     accountId,
@@ -2896,9 +2903,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       chartEligibleSymbolNames,
       liveSymbols,
       selectedSymbol,
-      // Feed refreshes must not fight the active dock chart's selection after
-      // the initial live-symbol preference has already been applied.
-      applyLivePreference,
+      // Keep the startup or restored chart even when another symbol's feed
+      // arrives first. Opening this chart creates its own feed demand.
+      false,
     ) || getChartEligibleSymbol(selectedSymbol) || chartEligibleSymbolNames[0] || '';
 
     if (applyLivePreference) {
@@ -2998,6 +3005,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     : getCachedSymbolMarketStatus(desktopToolbarSymbol);
   const chartSelectionDiagnosticAttributes = getChartSelectionDiagnosticAttributes(chartSelectionReadiness);
   const chartRuntimeReady = shouldMountChartRuntime({
+    guestMarketAccess,
     authenticated: isAuthenticated,
     accountId,
     restoredLayoutAccountId,
@@ -3021,17 +3029,25 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       '1m': 'M1', '5m': 'M5', '15m': 'M15', '30m': 'M30',
       '1h': 'H1', '4h': 'H4', '1d': 'D1',
     };
-    const server = brokerDisplayName(terminalBrokerInfo.brokerName, terminalBrokerInfo.serverName);
+    const server = brokerDisplayName(terminalBrokerInfo.serverName, terminalBrokerInfo.brokerName);
+    const accountName = window.electron?.window ? terminalBrokerInfo.accountName : '';
+    const accountLabel = accountName ? `${accountId} - ${accountName}` : accountId;
     const marginMode = terminalBrokerInfo.marginMode;
     const broker = 'RTX Terminal';
     const tf         = tfLabel[timeframe] ?? timeframe.toUpperCase();
     // FIX: Browser/Electron chrome follows the rendered active dock tab, not a
     // stale Market Watch or pre-restore selection.
-    const title      = `${accountId} - ${server} - ${marginMode} - ${broker} - ${desktopToolbarSymbol},${tf}`;
+    const title      = `${accountLabel} - ${server} - ${marginMode} - ${broker} - ${desktopToolbarSymbol},${tf}`;
 
     document.title = title;
     window.electron?.window?.setTitle(title);
-  }, [isAuthenticated, accountId, desktopToolbarSymbol, timeframe, terminalBrokerInfo.brokerName, terminalBrokerInfo.marginMode]);
+    applyBrokerChrome({
+      brokerId: typeof window === 'undefined' ? '' : String(window.localStorage.getItem('broker_id') || window.localStorage.getItem('rtx_broker_id') || ''),
+      brokerName: server,
+      logoUrl: getLogoUrl(terminalBrokerInfo.logoUrl, terminalBrokerInfo.logoBaseCandidates),
+      themeColor: typeof window === 'undefined' ? '' : String(window.localStorage.getItem('broker_theme_color') || ''),
+    });
+  }, [isAuthenticated, accountId, desktopToolbarSymbol, timeframe, terminalBrokerInfo.accountName, terminalBrokerInfo.serverName, terminalBrokerInfo.brokerName, terminalBrokerInfo.logoUrl, terminalBrokerInfo.logoBaseCandidates, terminalBrokerInfo.marginMode]);
 
   // TODO: Replace with API call to /api/notifications
   // Fetch real notifications from backend
@@ -3101,6 +3117,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     requestedSymbol?: unknown,
     requestedPrice?: { bid: number; ask: number },
   ): boolean => {
+    if (!isAuthenticatedRef.current) {
+      window.dispatchEvent(new Event('rtx:requestTradeLogin'));
+      return false;
+    }
     const explicitSymbol = normalizeSymbolName(requestedSymbol);
     const activeChartSymbol = normalizeSymbolName(
       getActiveChartCommandTarget(selectedSymbol, timeframe).symbol,
@@ -3502,13 +3522,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   ]);
 
 
-  // Consolidated to the main view; authentication is handled before the
-  // terminal workspace is allowed to mount.
-
-  // Never mount the authenticated workspace behind the login screen. This
-  // stops chart/data/WebSocket work immediately on logout and keeps failed
-  // session restoration lightweight.
-  if (!isAuthenticated) {
+  // Web guests use the same workspace with public market data only.
+  // Desktop retains the login-first flow; account restoration stays gated.
+  if (!isAuthenticated && (!guestMarketAccess || isAutoAuthenticating)) {
     if (isAutoAuthenticating) {
       return <TerminalLoadFallback sessionRestorePending />;
     }
@@ -3537,7 +3553,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         />
         <div
           className="rtx-app-shell flex flex-col h-screen w-full bg-[#131316] text-zinc-300 overflow-hidden font-sans"
-          data-rtx-authenticated-shell="true"
+          data-rtx-authenticated-shell={isAuthenticated ? 'true' : 'false'}
           {...chartSelectionDiagnosticAttributes}
         >
           {/* 1. Global Menu & Toolbar */}
@@ -3548,6 +3564,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
             onTimeframeChange={setTimeframe}
             symbol={desktopToolbarSymbol}
             marketStatus={desktopToolbarMarketStatus}
+            accountBrokerName={terminalBrokerInfo.brokerName}
             feedStatus={activeMarketSnapshot}
             onRefreshConnection={refreshDesktopConnection}
             desktopDrawingTools={drawingSidebarVisible && Boolean(window.electron?.window) ? (
@@ -3745,8 +3762,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
           {/* Order Panel Dialog (F9) */}
           {orderPanelOpen && (
-            <Suspense fallback={null}>
-              <LazyOrderPanelDialog
+            <ErrorBoundary label="New Order">
+              <OrderPanelDialog
                 isOpen
                 onClose={() => setOrderPanelOpen(false)}
                 symbol={orderPanelSymbol || selectedSymbol}
@@ -3754,7 +3771,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
                 onSubmitOrder={handleOrderPanelSubmit}
                 marketStatus={selectedMarketStatus}
               />
-            </Suspense>
+            </ErrorBoundary>
           )}
 
           {/* Save Workspace Dialog (Ctrl+S) */}

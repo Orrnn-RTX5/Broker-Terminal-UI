@@ -201,12 +201,6 @@
   inset: 2px 3px;
 }
 
-.web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__glyph {
-  width: 24px;
-  height: 24px;
-  flex-basis: 24px;
-}
-
 .web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__separator {
   width: 1px;
   height: 20px;
@@ -268,21 +262,22 @@
   }
 }
 
-/* Match the compact desktop command icons; the web sidebar keeps its 28px glyphs. */
+/* Use the desktop command row's icon scale while preserving the clean outlines.
+   The web sidebar retains its native 28px drawing artwork. */
 .rtx-desktop-inline-drawings .web-drawing-tools-rail[data-orientation='horizontal'] .web-drawing-tools-rail__button > svg:not(.web-drawing-tools-rail__flyout-mark) {
   width: var(--rtx-toolbar-icon-size, 20px);
   height: var(--rtx-toolbar-icon-size, 20px);
   flex-basis: var(--rtx-toolbar-icon-size, 20px);
 }
 
-/* Reference icons encode thin outlines as filled paths. Compensate for their
-   28-to-20px reduction so their visible lines match the other toolbar icons. */
+/* Reinforce the filled outlines to match the command icons at 20px. */
 .rtx-desktop-inline-drawings .web-drawing-tools-rail__glyph[fill='currentColor'] {
   stroke: currentColor;
   stroke-width: 0.5;
   stroke-linejoin: round;
 }
 
+/* Keep stroke-based drawing icons at the same command weight. */
 .rtx-desktop-inline-drawings .web-drawing-tools-rail__button > svg[fill='none']:not(.web-drawing-tools-rail__flyout-mark) {
   stroke-width: 1.5;
 }

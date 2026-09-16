@@ -4,6 +4,7 @@
  */
 
 import type { ChartSymbolTab } from '../utils/chartSymbolTabs';
+import { DEFAULT_CHART_SYMBOL, DEFAULT_CHART_TIMEFRAME } from '../constants/chartDefaults';
 
 export type DockDirection = 'left' | 'right' | 'top' | 'bottom' | 'center' | 'tab';
 export type DockContainerType = 'root' | 'split' | 'tabs' | 'panel';
@@ -135,8 +136,6 @@ const createChartPanel = (symbol: string, timeframe: string, chartType: NonNulla
 
 const MIN_PANEL_SIZE = 100;
 const DEFAULT_RATIO = 0.5;
-const DEFAULT_CHART_TIMEFRAME = 'M5';
-const DOCK_LAYOUT_M5_MIGRATION_PREFIX = 'dock-layout-m5-timeframe-v1:';
 const DOCK_LAYOUT_PREVIOUS_DESKTOP_DEFAULT_MIGRATION_PREFIX = 'dock-layout-desktop-mt5-v2:';
 const DOCK_LAYOUT_DESKTOP_WEB_PARITY_MIGRATION_PREFIX = 'dock-layout-desktop-web-parity-v3:';
 const DOCK_LAYOUT_SIX_CHART_BACKUP_PREFIX = 'dock-layout-six-chart-backup-v1:';
@@ -289,9 +288,9 @@ export class DockManager {
               {
                 id: 'chart-default-container',
                 type: 'panel',
-                title: `Chart,${DEFAULT_CHART_TIMEFRAME}`,
+                title: `${DEFAULT_CHART_SYMBOL},${DEFAULT_CHART_TIMEFRAME}`,
                 component: 'Chart',
-                props: { timeframe: DEFAULT_CHART_TIMEFRAME },
+                props: { symbol: DEFAULT_CHART_SYMBOL, timeframe: DEFAULT_CHART_TIMEFRAME },
                 ratio: 0.75,
                 closable: true,
                 floatable: true,
@@ -332,7 +331,7 @@ export class DockManager {
     const count = this.getChartCount();
     if (count >= MAX_CHART_PANELS) return { status: 'limit-reached', count, limit: MAX_CHART_PANELS };
     const source = findFirstChartPanel(this.layout);
-    const symbol = options.symbol?.trim() || String(source?.props?.symbol || '').trim();
+    const symbol = options.symbol?.trim() || String(source?.props?.symbol || DEFAULT_CHART_SYMBOL).trim();
     const timeframe = options.timeframe?.trim() || String(source?.props?.timeframe || DEFAULT_CHART_TIMEFRAME);
     const chartType = options.chartType || source?.props?.chartType || 'candlestick';
     const panel = createChartPanel(symbol, timeframe, chartType);
@@ -1196,45 +1195,6 @@ export class DockManager {
         sanitizeContainer(this.layout.root);
         if (this.layout.floatingPanels) {
           this.layout.floatingPanels.forEach(sanitizeContainer);
-        }
-
-        const migrationKey = `${DOCK_LAYOUT_M5_MIGRATION_PREFIX}${key}`;
-        if (localStorage.getItem(migrationKey) !== '1') {
-          const migrateChartPanels = (container: any) => {
-            if (!container?.children) return;
-
-            for (const child of container.children) {
-              if (child?.children) {
-                migrateChartPanels(child);
-                continue;
-              }
-
-              if (child?.component !== 'Chart') continue;
-
-              const symbol = child.props?.symbol || child.title?.split(',')[0] || '';
-              const currentTimeframe = child.props?.timeframe;
-
-              if (!currentTimeframe || currentTimeframe === 'M1') {
-                child.props = {
-                  ...child.props,
-                  timeframe: DEFAULT_CHART_TIMEFRAME,
-                };
-
-                if (!child.title || /,M1$/i.test(child.title)) {
-                  child.title = symbol
-                    ? `${symbol},${DEFAULT_CHART_TIMEFRAME}`
-                    : `Chart,${DEFAULT_CHART_TIMEFRAME}`;
-                }
-              }
-            }
-          };
-
-          migrateChartPanels(this.layout.root);
-          if (this.layout.floatingPanels) {
-            this.layout.floatingPanels.forEach(migrateChartPanels);
-          }
-
-          localStorage.setItem(migrationKey, '1');
         }
 
         const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);

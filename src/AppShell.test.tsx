@@ -12,8 +12,13 @@ const runtimeWindow = window as Window & {
 
 const shellMocks = vi.hoisted(() => ({
   terminalRender: vi.fn(),
+  desktop: true,
 }));
 
+vi.mock('./config/backendTarget.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./config/backendTarget.js')>(),
+  isDesktopBackendTarget: () => shellMocks.desktop,
+}));
 vi.mock('./App', () => ({
   default: ({
     initialSessionHandoff,
@@ -67,6 +72,7 @@ vi.mock('./components/WelcomeTerminal', () => ({
 
 describe('AppShell startup boundary', () => {
   beforeEach(() => {
+    shellMocks.desktop = true;
     localStorage.clear();
     sessionStorage.clear();
     shellMocks.terminalRender.mockClear();
@@ -138,7 +144,8 @@ describe('AppShell startup boundary', () => {
     );
   });
 
-  it('opens the configured broker login without loading a previous broker session', async () => {
+  it('opens configured web markets after discarding a previous broker session', async () => {
+    shellMocks.desktop = false;
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web', BROKER_ID: 'achiever-financials',
       API_HOST: 'https://service.achieverfinancials.com',
@@ -152,9 +159,9 @@ describe('AppShell startup boundary', () => {
 
     const view = render(<AppShell loadStoredSessionTerminal={loadStoredSessionTerminal} />);
 
-    expect(view.getByTestId('login-input')).toBeTruthy();
+    await view.findByTestId('authenticated-terminal');
     expect(loadStoredSessionTerminal).not.toHaveBeenCalled();
-    expect(shellMocks.terminalRender).not.toHaveBeenCalled();
+    expect(shellMocks.terminalRender).toHaveBeenCalledWith(null);
     expect(localStorage.getItem('auth_token')).toBeNull();
     expect(localStorage.getItem('broker_id')).toBe('achiever-financials');
   });
@@ -213,4 +220,14 @@ describe('AppShell startup boundary', () => {
     expect(view.queryByTestId('authenticated-terminal')).toBeNull();
     expect(document.querySelector('[data-login-module-loading="true"]')).toBeNull();
   });
+  it('opens the existing web workspace without creating an authenticated session', async () => {
+    shellMocks.desktop = false;
+    const view = render(<AppShell />);
+    await view.findByTestId('authenticated-terminal');
+    expect(view.queryByTestId('login-input')).toBeNull();
+    expect(localStorage.getItem('auth_token')).toBeNull();
+    fireEvent.click(view.getByTestId('terminal-logout'));
+    expect(view.getByTestId('authenticated-terminal')).toBeTruthy();
+  });
+
 });

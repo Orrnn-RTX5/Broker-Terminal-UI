@@ -99,6 +99,7 @@ const fetchBrokerDetails = (serverName: string): Promise<BrokerDetails> => {
 
 export interface TerminalBrokerInfo {
     accountId: string;
+    accountName?: string;
     serverName: string;
     brokerName: string;
     marginMode: string;
@@ -110,6 +111,7 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
     const accountId = useAppStore((s) => s.accountId) || '---';
     const savedAccounts = useAppStore((s) => s.savedAccounts) || [];
     const activeAccount = savedAccounts.find(a => String(a.login) === String(accountId));
+    const accountName = normalizeHeaderText(activeAccount?.name);
     const storedServer = typeof window !== 'undefined' ? localStorage.getItem('rtx_broker_server') : '';
     const serverName = activeAccount?.server || storedServer || DEFAULT_BROKER_SERVER;
 
@@ -190,7 +192,7 @@ export function useTerminalBrokerInfo(): TerminalBrokerInfo {
         };
     }, [accountId, serverName]);
 
-    return { accountId, serverName, brokerName, marginMode, logoUrl, logoBaseCandidates };
+    return { accountId, accountName, serverName, brokerName, marginMode, logoUrl, logoBaseCandidates };
 }
 
 export function formatTerminalTitle(

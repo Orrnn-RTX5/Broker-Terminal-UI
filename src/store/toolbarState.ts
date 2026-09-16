@@ -1,4 +1,5 @@
 import type { PayloadFor } from '../types/commands';
+import { DEFAULT_CHART_TIMEFRAME } from '../constants/chartDefaults';
 
 export interface ToolbarState {
   activeTool: PayloadFor<'SELECT_TOOL'>['tool'] | null;
@@ -34,7 +35,7 @@ export type ToolbarAction =
 export const initialToolbarState: ToolbarState = {
   activeTool: null,
   chartType: (typeof window !== 'undefined' ? localStorage.getItem('rtx5_chart_type') as ToolbarState['chartType'] : null) || 'candlestick',
-  timeframe: (typeof window !== 'undefined' ? localStorage.getItem('rtx5_timeframe') : null) || 'M5',
+  timeframe: (typeof window !== 'undefined' ? localStorage.getItem('rtx5_timeframe') : null) || DEFAULT_CHART_TIMEFRAME,
   crosshairEnabled: false,
   autoScrollEnabled: false,
   chartShiftEnabled: false,

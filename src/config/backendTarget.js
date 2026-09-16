@@ -117,9 +117,12 @@ const isAllowedPublicBrokerHostname = (hostname = '') => {
   const normalized = String(hostname || '').trim().toLowerCase();
   return normalized.startsWith('services.')
     || normalized === 'service.achieverfinancials.com'
+    || normalized === 'nexa.orrnn.com'
     || normalized === 'backend.orrnn.com'
     || normalized === 'testbrokerbackend.orrnn.com'
-    || normalized === 'fxtrustbrokerbackend.orrnn.com';
+    || normalized === 'fxtrustbrokerbackend.orrnn.com'
+    || normalized === 'services.growtradingacademy.com'
+    || normalized === 'services.myprop.trade';
 };
 
 const isPublicBrokerUrl = (value, normalize) => {

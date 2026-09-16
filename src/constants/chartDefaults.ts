@@ -1,0 +1,2 @@
+export const DEFAULT_CHART_SYMBOL = 'XAUUSD';
+export const DEFAULT_CHART_TIMEFRAME = 'M1';

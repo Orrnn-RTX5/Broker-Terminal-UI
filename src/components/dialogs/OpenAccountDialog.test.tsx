@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
     createAccount: vi.fn(),
@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
     updateDynamicUrls: vi.fn(),
     setAuthTokens: vi.fn(),
     setAuthenticated: vi.fn(),
+    loadBrokerDirectory: vi.fn(),
+    loadAppBrokerDirectory: vi.fn(),
+    getCachedBrokerDirectory: vi.fn(),
 }));
 
 vi.mock('../../api/trade', () => ({
@@ -29,6 +32,7 @@ vi.mock('../../config/api', () => ({
 }));
 
 vi.mock('../../config/backendTarget.js', () => ({
+    isDesktopBackendTarget: () => true,
     normalizeBrokerInfoForTarget: (broker: Record<string, unknown>) => broker,
     resolveBrokerBackendUrl: (broker: Record<string, unknown>) =>
         String(broker.backend_url || broker.server_url || broker.server || ''),
@@ -38,6 +42,12 @@ vi.mock('../../config/backendTarget.js', () => ({
 
 vi.mock('../../services/brokerSession', () => ({
     persistBrokerSessionDiscovery: mocks.persistBrokerSessionDiscovery,
+}));
+
+vi.mock('../../services/brokerDirectory', () => ({
+    loadBrokerDirectory: mocks.loadAppBrokerDirectory,
+    loadAppBrokerDirectory: mocks.loadAppBrokerDirectory,
+    getCachedBrokerDirectory: mocks.getCachedBrokerDirectory,
 }));
 
 vi.mock('../../store/useAppStore', () => ({
@@ -84,6 +94,12 @@ const renderDialog = async (onClose = vi.fn()) => {
     return onClose;
 };
 
+const pending = <T,>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(done => { resolve = done; });
+    return { promise, resolve };
+};
+
 const selectSecondBrokerAndContinue = async () => {
     fireEvent.click(screen.getByText('Broker Two'));
     fireEvent.click(screen.getByRole('button', { name: /Next/ }));
@@ -94,6 +110,8 @@ describe('OpenAccountDialog account flows', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         localStorage.clear();
+        mocks.loadAppBrokerDirectory.mockReset().mockResolvedValue(brokers);
+        mocks.getCachedBrokerDirectory.mockReset().mockReturnValue(null);
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             status: 200,
@@ -104,6 +122,133 @@ describe('OpenAccountDialog account flows', () => {
     afterEach(() => {
         cleanup();
         vi.unstubAllGlobals();
+    });
+
+    it('opens a warm directory with broker selection and Next available immediately', () => {
+        vi.stubGlobal('electron', { window: {} });
+        mocks.getCachedBrokerDirectory.mockReturnValue(brokers);
+        mocks.loadAppBrokerDirectory.mockReturnValue(new Promise(() => {}));
+        render(<OpenAccountDialog isOpen onClose={vi.fn()} />);
+
+        expect(screen.getByText('Broker One')).toBeInTheDocument();
+        expect(screen.getByText('Broker Two')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+        expect(screen.queryByText(/Loading brokers/i)).not.toBeInTheDocument();
+        expect(mocks.persistBrokerSessionDiscovery).not.toHaveBeenCalled();
+        expect(mocks.updateDynamicUrls).not.toHaveBeenCalled();
+    });
+
+    it('preloads while closed and completes an opened picker without changing the active session', async () => {
+        vi.stubGlobal('electron', { window: {} });
+        const directory = pending<typeof brokers>();
+        mocks.loadAppBrokerDirectory.mockReturnValue(directory.promise);
+        const onClose = vi.fn();
+        const dialog = render(<OpenAccountDialog isOpen={false} onClose={onClose} />);
+        expect(mocks.loadAppBrokerDirectory).toHaveBeenCalled();
+        expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
+
+        dialog.rerender(<OpenAccountDialog isOpen onClose={onClose} />);
+        expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+        await act(async () => directory.resolve(brokers));
+        expect(screen.getByText('Broker One')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+        expect(mocks.persistBrokerSessionDiscovery).not.toHaveBeenCalled();
+        expect(mocks.updateDynamicUrls).not.toHaveBeenCalled();
+    });
+
+    it('ignores an earlier opening request that finishes after the reopened picker has newer brokers', async () => {
+        vi.stubGlobal('electron', { window: {} });
+        const earlier = pending<typeof brokers>();
+        const latest = pending<typeof brokers>();
+        let activeRequest = earlier.promise;
+        mocks.loadAppBrokerDirectory.mockImplementation(() => activeRequest);
+        const onClose = vi.fn();
+        const dialog = render(<OpenAccountDialog isOpen onClose={onClose} />);
+        dialog.rerender(<OpenAccountDialog isOpen={false} onClose={onClose} />);
+        activeRequest = latest.promise;
+        dialog.rerender(<OpenAccountDialog isOpen onClose={onClose} />);
+
+        await act(async () => latest.resolve([brokers[1]]));
+        expect(screen.getByText('Broker Two')).toBeInTheDocument();
+        await act(async () => earlier.resolve([brokers[0]]));
+        expect(screen.getByText('Broker Two')).toBeInTheDocument();
+        expect(screen.queryByText('Broker One')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+    });
+
+    it('keeps Next disabled after a directory failure and lets Retry recover the picker', async () => {
+        vi.stubGlobal('electron', { window: {} });
+        mocks.loadAppBrokerDirectory.mockRejectedValue(new Error('Directory unavailable'));
+        render(<OpenAccountDialog isOpen onClose={vi.fn()} />);
+        expect(await screen.findByRole('alert')).toHaveTextContent('Broker servers are unavailable');
+        expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+
+        mocks.loadAppBrokerDirectory.mockResolvedValue(brokers);
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        await screen.findByText('Broker One');
+        expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('omits disabled, inactive, and suspended brokers from the cached picker', () => {
+        vi.stubGlobal('electron', { window: {} });
+        const unavailable = [
+            { ...brokers[0], id: 3, broker_id: 'disabled', broker_name: 'Disabled Broker', enabled: false },
+            { ...brokers[0], id: 4, broker_id: 'inactive', broker_name: 'Inactive Broker', active: false },
+            { ...brokers[0], id: 5, broker_id: 'suspended', broker_name: 'Suspended Broker', status: 'suspended' },
+        ];
+        mocks.getCachedBrokerDirectory.mockReturnValue([...unavailable, brokers[1]]);
+        mocks.loadAppBrokerDirectory.mockReturnValue(new Promise(() => {}));
+        render(<OpenAccountDialog isOpen onClose={vi.fn()} />);
+
+        expect(screen.getByText('Broker Two')).toBeInTheDocument();
+        for (const broker of unavailable) expect(screen.queryByText(broker.broker_name)).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        expect(screen.getByRole('radio', { name: 'Demo account' })).toBeInTheDocument();
+    });
+
+    it('keeps a typed desktop country through Back and sends its code to the broker', async () => {
+        vi.stubGlobal('electron', { window: {} });
+        mocks.createAccount.mockResolvedValue({ login: 400001, currency: 'USD', leverage: 100 });
+        await renderDialog();
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Alex' } });
+        fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Taylor' } });
+        fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'alex@example.test' } });
+        fireEvent.change(screen.getByRole('combobox', { name: 'Country' }), { target: { value: 'Canada' } });
+        fireEvent.blur(screen.getByRole('combobox', { name: 'Country' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        expect(screen.getByRole('heading', { name: 'Demo Account Settings' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+        expect(screen.getByLabelText('First name')).toHaveValue('Alex');
+        expect(screen.getByRole('combobox', { name: 'Country' })).toHaveValue('Canada');
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        fireEvent.click(screen.getByLabelText('Accept account terms'));
+        fireEvent.click(screen.getByRole('button', { name: 'Create Demo Account' }));
+        await waitFor(() => expect(mocks.createAccount).toHaveBeenCalledWith(
+            expect.objectContaining({ country: 'CA', name: 'Alex Taylor', email: 'alex@example.test' }),
+            expect.objectContaining({ baseUrl: 'https://one-market.example/api/v2', skipDynamicUrl: true }),
+        ));
+    });
+
+    it('keeps desktop details open until a typed country is resolved', async () => {
+        vi.stubGlobal('electron', { window: {} });
+        await renderDialog();
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Alex' } });
+        fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Taylor' } });
+        fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'alex@example.test' } });
+        fireEvent.change(screen.getByRole('combobox', { name: 'Country' }), { target: { value: 'Unknown country' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        expect(screen.getByRole('combobox', { name: 'Country' })).toHaveAttribute('aria-invalid', 'true');
+        expect(screen.getByRole('heading', { name: 'Demo Account Details' })).toBeInTheDocument();
+        expect(mocks.createAccount).not.toHaveBeenCalled();
+        fireEvent.change(screen.getByRole('combobox', { name: 'Country' }), { target: { value: 'NZ' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        expect(screen.getByRole('heading', { name: 'Demo Account Settings' })).toBeInTheDocument();
     });
 
     it('starts demo registration with empty personal data and no prefilled credentials', async () => {

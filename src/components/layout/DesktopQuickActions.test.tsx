@@ -30,6 +30,7 @@ const renderQuickActions = (overrides: Partial<React.ComponentProps<typeof Deskt
 };
 
 beforeEach(() => {
+    localStorage.clear();
     clearActiveChartSources();
 });
 
@@ -84,7 +85,8 @@ describe('DesktopQuickActions', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Account' }));
         const accountMenu = screen.getByRole('menu', { name: 'Account' });
         expect(within(accountMenu).getByText('200002')).toBeInTheDocument();
-        expect(within(accountMenu).getByText('Primary account · Broker-Live')).toBeInTheDocument();
+        expect(within(accountMenu).getByText('Primary account')).toBeInTheDocument();
+        expect(within(accountMenu).getByText('Broker-Live')).toBeInTheDocument();
         fireEvent.click(within(accountMenu).getByRole('menuitem', { name: 'Trading accounts' }));
         expect(tradingAccountsSpy).toHaveBeenCalledTimes(1);
 
@@ -93,6 +95,40 @@ describe('DesktopQuickActions', () => {
 
         expect(onLogout).toHaveBeenCalledTimes(1);
         expect(screen.queryByRole('menu', { name: 'Account' })).not.toBeInTheDocument();
+    });
+
+    it('shows the account ID, owner, and broker name without exposing the broker service URL', () => {
+        const accountServer = 'https://service.achieverfinancials.com';
+        renderQuickActions({ accountId: '200032', accountName: 'Raj Halder', accountServer });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Account' }));
+        const accountMenu = screen.getByRole('menu', { name: 'Account' });
+        expect(within(accountMenu).getByText('200032')).toBeInTheDocument();
+        expect(within(accountMenu).getByText('Raj Halder')).toBeInTheDocument();
+        expect(within(accountMenu).getByText('Achiever Financials')).toBeInTheDocument();
+        expect(accountMenu).not.toHaveTextContent(accountServer);
+    });
+
+    it('uses the resolved broker presentation name for another service URL', () => {
+        const accountServer = 'https://trading.example.com';
+        renderQuickActions({ accountServer, accountBrokerName: 'Example Markets' });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Account' }));
+        const accountMenu = screen.getByRole('menu', { name: 'Account' });
+        expect(within(accountMenu).getByText('Example Markets')).toBeInTheDocument();
+        expect(accountMenu).not.toHaveTextContent(accountServer);
+    });
+
+    it('keeps unknown URLs out of the account menu even when name metadata contains the URL', () => {
+        const accountServer = 'https://unknown-broker.example.com';
+        renderQuickActions({ accountServer, accountBrokerName: accountServer });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Account' }));
+        const accountMenu = screen.getByRole('menu', { name: 'Account' });
+        expect(within(accountMenu).getByText('200002')).toBeInTheDocument();
+        expect(within(accountMenu).getByText('Primary account')).toBeInTheDocument();
+        expect(accountMenu).not.toHaveTextContent(accountServer);
+        expect(accountMenu).not.toHaveTextContent('unknown-broker.example.com');
     });
 
 });

@@ -263,6 +263,10 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
 
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
         const intentAtMs = captureTradeOrderIntent();
+        if (!isAuthenticated) {
+            window.dispatchEvent(new Event('rtx:requestTradeLogin'));
+            return;
+        }
         if (!tradeAllowed) {
             setBlockedMessage(orderBlockedReason || staleQuoteMessage);
             return;

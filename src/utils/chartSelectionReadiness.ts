@@ -112,6 +112,7 @@ export interface ChartSelectionReadinessSnapshot {
 }
 
 export interface ChartRuntimeMountInput {
+  guestMarketAccess?: boolean;
   authenticated: boolean;
   accountId: string;
   restoredLayoutAccountId: string;
@@ -126,7 +127,8 @@ export interface ChartRuntimeMountInput {
  * network timeout.
  */
 export const shouldMountChartRuntime = (input: ChartRuntimeMountInput): boolean => Boolean(
-  input.authenticated
+  (!input.authenticated && input.guestMarketAccess && input.catalogSettled)
+  || input.authenticated
   && input.accountId
   && input.restoredLayoutAccountId === input.accountId
   && input.catalogSettled

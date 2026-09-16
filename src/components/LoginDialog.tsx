@@ -5,19 +5,25 @@ import { useUiTranslation } from '../hooks/useUiTranslation';
  * Matches the Flexy Market MT5 Login dialog styling
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import ReactDOM from 'react-dom';
 import { useAppStore } from '../store/useAppStore';
 import { authV2Api } from '../api/trade';
-import { normalizeBrokerServerUrl, updateDynamicUrls, BROKER_DISCOVERY_URL, toLocalDevProxyUrl } from '../config/api';
+import { normalizeBrokerServerUrl, updateDynamicUrls, toLocalDevProxyUrl } from '../config/api';
 import {
     isDesktopBackendTarget,
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
     resolveBrokerExtApiUrl,
 } from '../config/backendTarget.js';
-import { extractBrokerDiscoveryList } from '../services/brokerDiscovery';
+import { getDirectoryBrokerServerUrl, isDirectoryBrokerSelectable } from '../services/brokerDiscovery';
+import { loadAppBrokerDirectory } from '../services/brokerDirectory';
 import { persistBrokerSessionDiscovery } from '../services/brokerSession';
+import {
+    applyBrokerChrome,
+    loadBrokerPresentation,
+    mergeBrokerPresentation,
+} from '../services/brokerPresentation';
 import { pickDiscoveryBroker, type BrokerServerItem } from './WelcomeTerminal';
 import { User, X, HelpCircle, ChevronDown } from 'lucide-react';
 
@@ -27,10 +33,10 @@ interface LoginDialogProps {
     onLoginSuccess?: (accountId: string) => void;
     initialLogin?: string;
     initialServer?: string;
+    reason?: 'trade';
 }
 
 const buildBrokerApiV2BaseUrl = (value: string): string => `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
-const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
 const DEFAULT_BROKER_ID = String(import.meta.env.VITE_BROKER_ID || 'testorrnn').trim();
 
 const isAbortError = (err: unknown): boolean =>
@@ -41,8 +47,13 @@ const isAbortError = (err: unknown): boolean =>
 const getErrorMessage = (err: unknown, fallback: string): string =>
     err instanceof Error ? err.message : fallback;
 
-export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = '', initialServer }: LoginDialogProps) {
+export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = '', initialServer, reason }: LoginDialogProps) {
     const tr = useUiTranslation();
+    const dialogId = useId();
+    const tradeLogin = reason === 'trade';
+    const isDesktop = isDesktopBackendTarget();
+    const [directoryLoading, setDirectoryLoading] = useState(false);
+    const submittingRef = useRef(false);
     const [login, setLogin] = useState('');
     const [password, setPassword] = useState('');
     const [brokerList, setBrokerList] = useState<BrokerServerItem[]>([]);
@@ -51,10 +62,18 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'checking' | 'online' | 'offline' | null>(null);
     const healthAbortRef = useRef<AbortController | null>(null);
+    const presentationAbortRef = useRef<AbortController | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const loginInputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const previousFocus = document.activeElement as HTMLElement | null;
+        return () => { previousFocus?.focus(); };
+    }, [isOpen]);
 
     // Pre-fill with current account or provided initial login
     useEffect(() => {
@@ -83,8 +102,9 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
         try {
             const cleanUrl = normalizeBrokerServerUrl(serverUrl).replace(/\/$/, '');
-            const response = await fetch(toLocalDevProxyUrl(`${cleanUrl}/api/v2/time`), { signal: controller.signal });
+            const response = await fetch(toLocalDevProxyUrl(`${cleanUrl}${isDesktop ? '/health' : '/api/v2/time'}`), { signal: controller.signal });
             clearTimeout(timeoutId);
+            if (healthAbortRef.current !== controller || controller.signal.aborted) return;
             if (response.ok) {
                 setHealthStatus('online');
             } else {
@@ -92,33 +112,69 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             }
         } catch (err: unknown) {
             clearTimeout(timeoutId);
-            if (!isAbortError(err)) {
+            if (healthAbortRef.current === controller && (!isAbortError(err) || controller.signal.aborted)) {
                 setHealthStatus('offline');
             }
         }
     };
 
     const handleSelectBroker = (item: BrokerServerItem) => {
+        if (submittingRef.current || (isDesktop && !isDirectoryBrokerSelectable(item))) return;
+        if (isDesktop) setPassword('');
+        setError(null);
         const normalizedBroker = normalizeBrokerInfoForTarget(item) as BrokerServerItem;
-        const normalizedServerUrl = resolveBrokerBackendUrl(normalizedBroker);
-        setSelectedBroker({
+        const normalizedServerUrl = isDesktop ? getDirectoryBrokerServerUrl(item) : resolveBrokerBackendUrl(normalizedBroker);
+        const nextBroker = {
             ...normalizedBroker,
             server_url: normalizedServerUrl,
-        });
+            ...(isDesktop ? { backend_url: normalizedServerUrl, market_api_url: normalizedServerUrl } : {}),
+        };
+        setSelectedBroker(nextBroker);
         setSearchQuery(item.broker_name);
         setDropdownOpen(false);
         runHealthCheck(normalizedServerUrl);
+        if (!isDesktop) return;
+
+        applyBrokerChrome({
+            brokerId: nextBroker.broker_id,
+            brokerName: nextBroker.broker_name,
+            logoUrl: nextBroker.logo_url,
+            themeColor: nextBroker.theme_color,
+        });
+        presentationAbortRef.current?.abort();
+        const controller = new AbortController();
+        presentationAbortRef.current = controller;
+        void loadBrokerPresentation({
+            broker_id: nextBroker.broker_id,
+            server_url: normalizedServerUrl,
+        }, controller.signal).then((presentation) => {
+            if (!presentation || controller.signal.aborted) return;
+            const presentationBroker = mergeBrokerPresentation(nextBroker, presentation) as BrokerServerItem;
+            setSelectedBroker(current => {
+                if (!current || current.broker_id !== presentationBroker.broker_id) return current;
+                return presentationBroker;
+            });
+            applyBrokerChrome({
+                brokerId: presentationBroker.broker_id,
+                brokerName: presentationBroker.broker_name,
+                logoUrl: presentationBroker.logo_url,
+                themeColor: presentationBroker.theme_color,
+            });
+        }).catch(() => undefined);
     };
 
     // Fetch broker servers from API
     useEffect(() => {
         if (!isOpen) return;
         let isMounted = true;
-        fetch(brokerServersDiscoveryUrl)
-            .then(res => res.json())
-            .then((payload: unknown) => {
+        setSelectedBroker(null);
+        setBrokerList([]);
+        setHealthStatus(null);
+        setDirectoryLoading(true);
+        loadAppBrokerDirectory({ forceRefresh: true, desktop: isDesktop })
+            .then((rows) => {
                 if (!isMounted) return;
-                const data = extractBrokerDiscoveryList(payload) as BrokerServerItem[];
+                const data = rows as BrokerServerItem[];
                 setBrokerList(data);
 
                 const savedBrokerId = initialServer || localStorage.getItem('broker_id') || localStorage.getItem('rtx_broker_id') || DEFAULT_BROKER_ID;
@@ -127,16 +183,14 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                     savedBrokerId,
                 });
                 if (selectedDiscoveryBroker) {
-                    setSelectedBroker({
-                        ...(normalizeBrokerInfoForTarget(selectedDiscoveryBroker) as BrokerServerItem),
-                        server_url: resolveBrokerBackendUrl(selectedDiscoveryBroker),
-                    });
-                    setSearchQuery(selectedDiscoveryBroker.broker_name);
-                    runHealthCheck(resolveBrokerExtApiUrl(selectedDiscoveryBroker));
+                    handleSelectBroker(selectedDiscoveryBroker);
                 }
             })
-            .catch((err) => console.warn('[LoginDialog] Could not load broker servers:', err));
-        return () => { isMounted = false; };
+            .catch(() => {
+                if (isMounted) setError('Broker servers are unavailable. Please reopen this dialog to retry.');
+            })
+            .finally(() => { if (isMounted) setDirectoryLoading(false); });
+        return () => { isMounted = false; healthAbortRef.current?.abort(); presentationAbortRef.current?.abort(); };
     }, [isOpen, initialServer]);
 
     // Close dropdown on outside click
@@ -189,6 +243,11 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
+        if (submittingRef.current) return;
+        if (isDesktop && (directoryLoading || !isDirectoryBrokerSelectable(selectedBroker) || healthStatus !== 'online')) {
+            setError('Select an available broker server and wait for the server check.');
+            return;
+        }
         if (!login.trim() || !password.trim()) {
             setError('Login and password are required');
             return;
@@ -198,14 +257,15 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             return;
         }
 
+        submittingRef.current = true;
         setLoading(true);
         setError(null);
 
         try {
             // Save selected broker details before login so the request targets the broker backend.
             const submitBroker = normalizeBrokerInfoForTarget(selectedBroker) as BrokerServerItem;
-            const brokerServerUrl = resolveBrokerBackendUrl(submitBroker);
-            const brokerExtApiUrl = resolveBrokerExtApiUrl(submitBroker);
+            const brokerServerUrl = isDesktop ? getDirectoryBrokerServerUrl(selectedBroker) : resolveBrokerBackendUrl(submitBroker);
+            const brokerExtApiUrl = isDesktop ? brokerServerUrl : resolveBrokerExtApiUrl(submitBroker);
             persistBrokerSessionDiscovery({
                 ...submitBroker,
                 broker_id: submitBroker.broker_id,
@@ -239,6 +299,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                 feed_ws_url: data.feed_ws_url || submitBroker.feed_ws_url,
                 feed_status_url: data.feed_status_url || submitBroker.feed_status_url,
                 logo_url: submitBroker.logo_url,
+                theme_color: submitBroker.theme_color,
             });
             updateDynamicUrls();
 
@@ -288,6 +349,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
             console.error('[LoginDialog] Auth error:', err);
             setError(getErrorMessage(err, 'Authentication failed'));
         } finally {
+            submittingRef.current = false;
             setLoading(false);
         }
     };
@@ -301,14 +363,27 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
 
             {/* Dialog */}
             <div
-                className="rtx-login-dialog relative w-[420px] bg-[#2b2e3b] border border-[#555] rounded-lg shadow-2xl overflow-visible"
+                role="dialog"
+                ref={dialogRef}
+                aria-modal="true"
+                aria-labelledby={`${dialogId}-title`}
+                aria-describedby={`${dialogId}-description`}
+                className="rtx-login-dialog relative w-[420px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] overflow-y-auto bg-[#2b2e3b] border border-[#555] rounded-lg shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={event => {
+                    if (event.key !== 'Tab') return;
+                    const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]') || []);
+                    const first = controls[0];
+                    const last = controls[controls.length - 1];
+                    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+                }}
             >
                 {/* Title Bar */}
                 <div className="flex items-center justify-between bg-[#353847] px-3 py-2 border-b border-[#555]">
                     <div className="flex items-center gap-2">
                         <User size={16} className="text-blue-400" />
-                        <span className="rtx-dialog-title text-[20px] leading-7 font-semibold text-zinc-200">{tr("Login")}</span>
+                        <span id={`${dialogId}-title`} className="rtx-dialog-title text-[20px] leading-7 font-semibold text-zinc-200">{tr(tradeLogin ? "Log in to trade" : "Login")}</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <button className="p-1 hover:bg-white/10 rounded transition-colors" title={tr("Help")}>
@@ -327,14 +402,43 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                         <div className="w-10 h-10 rounded-full bg-zinc-700/30 flex items-center justify-center flex-shrink-0">
                             <User size={22} className="text-blue-400" />
                         </div>
-                        <p className="text-[14px] font-normal leading-5 text-zinc-400">
-                            {tr("Authorization allows to get access to the trade account")}</p>
+                        <p id={`${dialogId}-description`} className="text-[14px] font-normal leading-5 text-zinc-400">
+                            {tr(tradeLogin
+                                ? "Log in to your trading account to place an order. You can continue viewing charts and prices without logging in. No order has been placed."
+                                : "Authorization allows to get access to the trade account")}</p>
                     </div>
+
+                    {isDesktop && (
+                        <div className="flex items-center gap-3 mb-3">
+                            <label htmlFor="desktopLoginServer" className="w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Server:")}</label>
+                            <div className="flex-1 min-w-0">
+                                <select
+                                    id="desktopLoginServer"
+                                    value={selectedBroker?.broker_id || ''}
+                                    disabled={loading || directoryLoading}
+                                    onChange={event => {
+                                        const broker = brokerList.find(item => item.broker_id === event.target.value);
+                                        if (broker) handleSelectBroker(broker);
+                                    }}
+                                    className="h-[32px] w-full rounded border border-[#555] bg-[#1a1c26] px-2 text-[14px] text-zinc-100"
+                                >
+                                    <option value="" disabled>{tr(directoryLoading ? "Loading broker servers..." : "Select broker server")}</option>
+                                    {brokerList.map(broker => (
+                                        <option key={broker.broker_id} value={broker.broker_id} disabled={!isDirectoryBrokerSelectable(broker)}>
+                                            {broker.broker_name}{!isDirectoryBrokerSelectable(broker) ? ` (${tr("Unavailable")})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {healthStatus && <div role="status" className="mt-1 text-[12px] text-zinc-400">{tr(healthStatus === 'checking' ? 'Checking server...' : healthStatus === 'online' ? 'Server online' : 'Server unavailable')}</div>}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Login Field */}
                     <div className="flex items-center gap-3 mb-3">
                         <label className="w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Login:")}</label>
                         <input
+                            disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
                             ref={loginInputRef}
                             type="text"
                             value={login}
@@ -349,17 +453,17 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                     <div className="flex items-center gap-3 mb-3">
                         <label className="w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Password:")}</label>
                         <input
+                            disabled={loading || (isDesktop && (directoryLoading || healthStatus !== 'online'))}
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             className="h-[32px] flex-1 rounded border border-[#555] bg-[#1a1c26] px-2 font-mono text-[14px] font-normal text-zinc-100 outline-none transition-colors focus:border-zinc-600"
                             placeholder={tr("Password")}
-                            onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
                         />
                     </div>
 
                     {/* Server / Broker Dropdown */}
-                    <div className="flex items-start gap-3 mb-4">
+                    {!isDesktop && <div className="flex items-start gap-3 mb-4">
                         <label className="mt-1.5 w-20 flex-shrink-0 text-right text-[14px] leading-5 font-medium text-zinc-400">{tr("Server:")}</label>
                         <div className="flex-1 relative" ref={dropdownRef}>
                             <div className="relative flex h-[32px] w-full items-center rounded border border-[#555] bg-[#1a1c26] text-[14px] font-normal text-zinc-100 transition-colors focus-within:border-zinc-600">
@@ -448,7 +552,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </div>}
 
                     {/* Error */}
                     {error && (
@@ -461,10 +565,10 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                     <div className="flex justify-end gap-2 pt-1">
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || (isDesktop && (directoryLoading || !selectedBroker || healthStatus !== 'online'))}
                             className="h-[32px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] leading-5 font-medium text-zinc-200 transition-colors hover:bg-[#4a4e5f] disabled:opacity-50"
                         >
-                            {loading ? tr("Connecting...") : tr("OK")}
+                            {loading ? tr("Connecting...") : tr(tradeLogin ? "Log in" : "OK")}
                         </button>
                         <button
                             type="button"
@@ -472,7 +576,7 @@ export function LoginDialog({ isOpen, onClose, onLoginSuccess, initialLogin = ''
                             disabled={loading}
                             className="h-[32px] rounded border border-[#555] bg-[#3a3e4f] px-6 text-[14px] leading-5 font-medium text-zinc-200 transition-colors hover:bg-[#4a4e5f]"
                         >
-                            {tr("Cancel")}</button>
+                            {tr(tradeLogin ? "Continue viewing" : "Cancel")}</button>
                     </div>
                 </form>
             </div>

@@ -1,0 +1,5294 @@
+{
+  "fixture": true,
+  "description": "Actual TimeframePicker and ChartCommandIcon with CommandIconButton definition extracted from TopToolbar. Before variants disable only the new active-fill CSS rule. Local state supplies selection events; no full application, installed package, authentication or network.",
+  "passed": true,
+  "cases": [
+    {
+      "id": "desktop-before-light",
+      "initial": {
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "line": {
+          "rect": {
+            "x": 80,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "bar": {
+          "rect": {
+            "x": 0,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "area": {
+          "rect": {
+            "x": 120,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "period": {
+          "rect": {
+            "x": 160,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "other": {
+          "rect": {
+            "x": 200,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "timeframe": {
+          "rect": {
+            "x": 240,
+            "y": 55.5,
+            "width": 34.578125,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "500"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": null,
+          "svgSize": null,
+          "activeFill": []
+        }
+      },
+      "hover": {
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "period": {
+          "rect": {
+            "x": 160,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "bar": {
+          "rect": {
+            "x": 0,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        }
+      },
+      "alternate": {
+        "line": {
+          "rect": {
+            "x": 80,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        }
+      },
+      "chartStates": {
+        "bar": {
+          "selected": {
+            "rect": {
+              "x": 0,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "line": {
+          "selected": {
+            "rect": {
+              "x": 80,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "area": {
+          "selected": {
+            "rect": {
+              "x": 120,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "candle": {
+          "selected": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        }
+      },
+      "periodOff": {
+        "rect": {
+          "x": 160,
+          "y": 55.5,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "13px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(17, 24, 39)",
+        "outline": "rgb(17, 24, 39) none 0px",
+        "checked": null,
+        "pressed": "false",
+        "svgColor": "rgb(17, 24, 39)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "periodOn": {
+        "rect": {
+          "x": 160,
+          "y": 55.5,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "13px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(67, 56, 202)",
+        "outline": "rgb(67, 56, 202) none 0px",
+        "checked": null,
+        "pressed": "true",
+        "svgColor": "rgb(67, 56, 202)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "timeframeAfter": {
+        "rect": {
+          "x": 284.125,
+          "y": 55.5,
+          "width": 36.71875,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "500"
+        },
+        "background": "rgb(238, 242, 255)",
+        "border": "rgb(67, 56, 202)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(55, 48, 163)",
+        "outline": "rgb(55, 48, 163) none 0px",
+        "checked": "true",
+        "pressed": null,
+        "svgColor": null,
+        "svgSize": null,
+        "activeFill": []
+      }
+    },
+    {
+      "id": "desktop-after-light",
+      "initial": {
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "rgb(67, 56, 202)"
+          ]
+        },
+        "line": {
+          "rect": {
+            "x": 80,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "bar": {
+          "rect": {
+            "x": 0,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "area": {
+          "rect": {
+            "x": 120,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "period": {
+          "rect": {
+            "x": 160,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "rgb(67, 56, 202)"
+          ]
+        },
+        "other": {
+          "rect": {
+            "x": 200,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "timeframe": {
+          "rect": {
+            "x": 240,
+            "y": 55.5,
+            "width": 34.578125,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "500"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": null,
+          "svgSize": null,
+          "activeFill": []
+        }
+      },
+      "hover": {
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "rgb(67, 56, 202)"
+          ]
+        },
+        "period": {
+          "rect": {
+            "x": 160,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "rgb(67, 56, 202)"
+          ]
+        },
+        "bar": {
+          "rect": {
+            "x": 0,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        }
+      },
+      "alternate": {
+        "line": {
+          "rect": {
+            "x": 80,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(67, 56, 202)",
+          "outline": "rgb(67, 56, 202) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(67, 56, 202)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        }
+      },
+      "chartStates": {
+        "bar": {
+          "selected": {
+            "rect": {
+              "x": 0,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "line": {
+          "selected": {
+            "rect": {
+              "x": 80,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "area": {
+          "selected": {
+            "rect": {
+              "x": 120,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "candle": {
+          "selected": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "rgb(67, 56, 202)"
+            ]
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(67, 56, 202)",
+            "outline": "rgb(67, 56, 202) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(67, 56, 202)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "rgb(67, 56, 202)"
+            ]
+          }
+        }
+      },
+      "periodOff": {
+        "rect": {
+          "x": 160,
+          "y": 55.5,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "13px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(17, 24, 39)",
+        "outline": "rgb(17, 24, 39) none 0px",
+        "checked": null,
+        "pressed": "false",
+        "svgColor": "rgb(17, 24, 39)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "periodOn": {
+        "rect": {
+          "x": 160,
+          "y": 55.5,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "13px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(67, 56, 202)",
+        "outline": "rgb(67, 56, 202) none 0px",
+        "checked": null,
+        "pressed": "true",
+        "svgColor": "rgb(67, 56, 202)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "rgb(67, 56, 202)"
+        ]
+      },
+      "timeframeAfter": {
+        "rect": {
+          "x": 284.125,
+          "y": 55.5,
+          "width": 36.71875,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "500"
+        },
+        "background": "rgb(238, 242, 255)",
+        "border": "rgb(67, 56, 202)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(55, 48, 163)",
+        "outline": "rgb(55, 48, 163) none 0px",
+        "checked": "true",
+        "pressed": null,
+        "svgColor": null,
+        "svgSize": null,
+        "activeFill": []
+      },
+      "activeAccent": "rgb(67, 56, 202)"
+    },
+    {
+      "id": "web-before-light",
+      "initial": {
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "line": {
+          "rect": {
+            "x": 90,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "bar": {
+          "rect": {
+            "x": 10,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "area": {
+          "rect": {
+            "x": 130,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "period": {
+          "rect": {
+            "x": 162,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "other": {
+          "rect": {
+            "x": 202,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "timeframe": {
+          "rect": {
+            "x": 234,
+            "y": 56,
+            "width": 42.71875,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "500"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": null,
+          "svgSize": null,
+          "activeFill": []
+        }
+      },
+      "hover": {
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "period": {
+          "rect": {
+            "x": 162,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "bar": {
+          "rect": {
+            "x": 10,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(242, 244, 248)",
+          "border": "rgb(209, 213, 219)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        }
+      },
+      "alternate": {
+        "line": {
+          "rect": {
+            "x": 90,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        }
+      },
+      "chartStates": {
+        "bar": {
+          "selected": {
+            "rect": {
+              "x": 10,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "line": {
+          "selected": {
+            "rect": {
+              "x": 90,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "area": {
+          "selected": {
+            "rect": {
+              "x": 130,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "candle": {
+          "selected": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        }
+      },
+      "periodOff": {
+        "rect": {
+          "x": 162,
+          "y": 56,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(17, 24, 39)",
+        "outline": "rgb(17, 24, 39) none 0px",
+        "checked": null,
+        "pressed": "false",
+        "svgColor": "rgb(17, 24, 39)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "periodOn": {
+        "rect": {
+          "x": 162,
+          "y": 56,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "400"
+        },
+        "background": "rgb(238, 242, 255)",
+        "border": "rgb(67, 56, 202)",
+        "borderWidth": "1px",
+        "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+        "color": "rgb(55, 48, 163)",
+        "outline": "rgb(55, 48, 163) none 0px",
+        "checked": null,
+        "pressed": "true",
+        "svgColor": "rgb(55, 48, 163)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "timeframeAfter": {
+        "rect": {
+          "x": 284.125,
+          "y": 56,
+          "width": 42.71875,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "500"
+        },
+        "background": "rgb(238, 242, 255)",
+        "border": "rgb(67, 56, 202)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(55, 48, 163)",
+        "outline": "rgb(55, 48, 163) none 0px",
+        "checked": "true",
+        "pressed": null,
+        "svgColor": null,
+        "svgSize": null,
+        "activeFill": []
+      }
+    },
+    {
+      "id": "web-after-light",
+      "initial": {
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "line": {
+          "rect": {
+            "x": 90,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "bar": {
+          "rect": {
+            "x": 10,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "area": {
+          "rect": {
+            "x": 130,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "period": {
+          "rect": {
+            "x": 162,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "other": {
+          "rect": {
+            "x": 202,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "timeframe": {
+          "rect": {
+            "x": 234,
+            "y": 56,
+            "width": 42.71875,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "500"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": null,
+          "svgSize": null,
+          "activeFill": []
+        }
+      },
+      "hover": {
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "period": {
+          "rect": {
+            "x": 162,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "bar": {
+          "rect": {
+            "x": 10,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(242, 244, 248)",
+          "border": "rgb(209, 213, 219)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        }
+      },
+      "alternate": {
+        "line": {
+          "rect": {
+            "x": 90,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(238, 242, 255)",
+          "border": "rgb(67, 56, 202)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(55, 48, 163)",
+          "outline": "rgb(55, 48, 163) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(55, 48, 163)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(17, 24, 39)",
+          "outline": "rgb(17, 24, 39) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(17, 24, 39)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        }
+      },
+      "chartStates": {
+        "bar": {
+          "selected": {
+            "rect": {
+              "x": 10,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "line": {
+          "selected": {
+            "rect": {
+              "x": 90,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "area": {
+          "selected": {
+            "rect": {
+              "x": 130,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(17, 24, 39)",
+            "outline": "rgb(17, 24, 39) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(17, 24, 39)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "candle": {
+          "selected": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgb(238, 242, 255)",
+            "border": "rgb(67, 56, 202)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(55, 48, 163)",
+            "outline": "rgb(55, 48, 163) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(55, 48, 163)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        }
+      },
+      "periodOff": {
+        "rect": {
+          "x": 162,
+          "y": 56,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(17, 24, 39)",
+        "outline": "rgb(17, 24, 39) none 0px",
+        "checked": null,
+        "pressed": "false",
+        "svgColor": "rgb(17, 24, 39)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "periodOn": {
+        "rect": {
+          "x": 162,
+          "y": 56,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "400"
+        },
+        "background": "rgb(238, 242, 255)",
+        "border": "rgb(67, 56, 202)",
+        "borderWidth": "1px",
+        "shadow": "rgb(67, 56, 202) 0px -2px 0px 0px inset",
+        "color": "rgb(55, 48, 163)",
+        "outline": "rgb(55, 48, 163) none 0px",
+        "checked": null,
+        "pressed": "true",
+        "svgColor": "rgb(55, 48, 163)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "timeframeAfter": {
+        "rect": {
+          "x": 284.125,
+          "y": 56,
+          "width": 42.71875,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "500"
+        },
+        "background": "rgb(238, 242, 255)",
+        "border": "rgb(67, 56, 202)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(55, 48, 163)",
+        "outline": "rgb(55, 48, 163) none 0px",
+        "checked": "true",
+        "pressed": null,
+        "svgColor": null,
+        "svgSize": null,
+        "activeFill": []
+      }
+    },
+    {
+      "id": "desktop-before-dark",
+      "initial": {
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "line": {
+          "rect": {
+            "x": 80,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "bar": {
+          "rect": {
+            "x": 0,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "area": {
+          "rect": {
+            "x": 120,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "period": {
+          "rect": {
+            "x": 160,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "other": {
+          "rect": {
+            "x": 200,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(122, 172, 202, 0.19)",
+          "border": "rgb(64, 64, 72)",
+          "borderWidth": "1px",
+          "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "timeframe": {
+          "rect": {
+            "x": 240,
+            "y": 55.5,
+            "width": 34.578125,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "500"
+          },
+          "background": "rgb(243, 229, 245)",
+          "border": "rgb(126, 87, 194)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(105, 65, 198)",
+          "outline": "rgb(105, 65, 198) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": null,
+          "svgSize": null,
+          "activeFill": []
+        }
+      },
+      "hover": {
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "period": {
+          "rect": {
+            "x": 160,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "bar": {
+          "rect": {
+            "x": 0,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.967 0.001 286.375)",
+          "outline": "oklch(0.967 0.001 286.375) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "oklch(0.967 0.001 286.375)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        }
+      },
+      "alternate": {
+        "line": {
+          "rect": {
+            "x": 80,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        }
+      },
+      "chartStates": {
+        "bar": {
+          "selected": {
+            "rect": {
+              "x": 0,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "line": {
+          "selected": {
+            "rect": {
+              "x": 80,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "area": {
+          "selected": {
+            "rect": {
+              "x": 120,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "candle": {
+          "selected": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        }
+      },
+      "periodOff": {
+        "rect": {
+          "x": 160,
+          "y": 55.5,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "13px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(226, 226, 232)",
+        "outline": "rgb(226, 226, 232) none 0px",
+        "checked": null,
+        "pressed": "false",
+        "svgColor": "rgb(226, 226, 232)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "periodOn": {
+        "rect": {
+          "x": 160,
+          "y": 55.5,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "13px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(167, 139, 250)",
+        "outline": "rgb(167, 139, 250) none 0px",
+        "checked": null,
+        "pressed": "true",
+        "svgColor": "rgb(167, 139, 250)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "timeframeAfter": {
+        "rect": {
+          "x": 284.125,
+          "y": 55.5,
+          "width": 36.71875,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "500"
+        },
+        "background": "rgb(243, 229, 245)",
+        "border": "rgb(126, 87, 194)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(105, 65, 198)",
+        "outline": "rgb(105, 65, 198) none 0px",
+        "checked": "true",
+        "pressed": null,
+        "svgColor": null,
+        "svgSize": null,
+        "activeFill": []
+      }
+    },
+    {
+      "id": "desktop-after-dark",
+      "initial": {
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "rgb(167, 139, 250)"
+          ]
+        },
+        "line": {
+          "rect": {
+            "x": 80,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "bar": {
+          "rect": {
+            "x": 0,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "area": {
+          "rect": {
+            "x": 120,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "period": {
+          "rect": {
+            "x": 160,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "rgb(167, 139, 250)"
+          ]
+        },
+        "other": {
+          "rect": {
+            "x": 200,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(122, 172, 202, 0.19)",
+          "border": "rgb(64, 64, 72)",
+          "borderWidth": "1px",
+          "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "timeframe": {
+          "rect": {
+            "x": 240,
+            "y": 55.5,
+            "width": 34.578125,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "500"
+          },
+          "background": "rgb(243, 229, 245)",
+          "border": "rgb(126, 87, 194)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(105, 65, 198)",
+          "outline": "rgb(105, 65, 198) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": null,
+          "svgSize": null,
+          "activeFill": []
+        }
+      },
+      "hover": {
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "rgb(167, 139, 250)"
+          ]
+        },
+        "period": {
+          "rect": {
+            "x": 160,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "rgb(167, 139, 250)"
+          ]
+        },
+        "bar": {
+          "rect": {
+            "x": 0,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.967 0.001 286.375)",
+          "outline": "oklch(0.967 0.001 286.375) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "oklch(0.967 0.001 286.375)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        }
+      },
+      "alternate": {
+        "line": {
+          "rect": {
+            "x": 80,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(167, 139, 250)",
+          "outline": "rgb(167, 139, 250) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "rgb(167, 139, 250)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "candle": {
+          "rect": {
+            "x": 40,
+            "y": 55.5,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "13px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        }
+      },
+      "chartStates": {
+        "bar": {
+          "selected": {
+            "rect": {
+              "x": 0,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "line": {
+          "selected": {
+            "rect": {
+              "x": 80,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "area": {
+          "selected": {
+            "rect": {
+              "x": 120,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "candle": {
+          "selected": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "rgb(167, 139, 250)"
+            ]
+          },
+          "candle": {
+            "rect": {
+              "x": 40,
+              "y": 55.5,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "13px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(167, 139, 250)",
+            "outline": "rgb(167, 139, 250) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "rgb(167, 139, 250)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "rgb(167, 139, 250)"
+            ]
+          }
+        }
+      },
+      "periodOff": {
+        "rect": {
+          "x": 160,
+          "y": 55.5,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "13px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(226, 226, 232)",
+        "outline": "rgb(226, 226, 232) none 0px",
+        "checked": null,
+        "pressed": "false",
+        "svgColor": "rgb(226, 226, 232)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "periodOn": {
+        "rect": {
+          "x": 160,
+          "y": 55.5,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "13px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(167, 139, 250)",
+        "outline": "rgb(167, 139, 250) none 0px",
+        "checked": null,
+        "pressed": "true",
+        "svgColor": "rgb(167, 139, 250)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "rgb(167, 139, 250)"
+        ]
+      },
+      "timeframeAfter": {
+        "rect": {
+          "x": 284.125,
+          "y": 55.5,
+          "width": 36.71875,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "500"
+        },
+        "background": "rgb(243, 229, 245)",
+        "border": "rgb(126, 87, 194)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(105, 65, 198)",
+        "outline": "rgb(105, 65, 198) none 0px",
+        "checked": "true",
+        "pressed": null,
+        "svgColor": null,
+        "svgSize": null,
+        "activeFill": []
+      },
+      "activeAccent": "rgb(167, 139, 250)"
+    },
+    {
+      "id": "web-before-dark",
+      "initial": {
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(59, 130, 246, 0.15)",
+          "border": "rgba(59, 130, 246, 0.5)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "line": {
+          "rect": {
+            "x": 90,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "bar": {
+          "rect": {
+            "x": 10,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "area": {
+          "rect": {
+            "x": 130,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "period": {
+          "rect": {
+            "x": 162,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(122, 172, 202, 0.19)",
+          "border": "rgb(64, 64, 72)",
+          "borderWidth": "1px",
+          "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "other": {
+          "rect": {
+            "x": 202,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(122, 172, 202, 0.19)",
+          "border": "rgb(64, 64, 72)",
+          "borderWidth": "1px",
+          "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "timeframe": {
+          "rect": {
+            "x": 234,
+            "y": 56,
+            "width": 42.71875,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "500"
+          },
+          "background": "rgb(243, 229, 245)",
+          "border": "rgb(126, 87, 194)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(105, 65, 198)",
+          "outline": "rgb(105, 65, 198) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": null,
+          "svgSize": null,
+          "activeFill": []
+        }
+      },
+      "hover": {
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(59, 130, 246, 0.15)",
+          "border": "rgba(59, 130, 246, 0.5)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "period": {
+          "rect": {
+            "x": 162,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(122, 172, 202, 0.19)",
+          "border": "rgb(64, 64, 72)",
+          "borderWidth": "1px",
+          "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "bar": {
+          "rect": {
+            "x": 10,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(34, 34, 38)",
+          "border": "rgb(51, 51, 56)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.967 0.001 286.375)",
+          "outline": "oklch(0.967 0.001 286.375) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "oklch(0.967 0.001 286.375)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        }
+      },
+      "alternate": {
+        "line": {
+          "rect": {
+            "x": 90,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(59, 130, 246, 0.15)",
+          "border": "rgba(59, 130, 246, 0.5)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        }
+      },
+      "chartStates": {
+        "bar": {
+          "selected": {
+            "rect": {
+              "x": 10,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "line": {
+          "selected": {
+            "rect": {
+              "x": 90,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "area": {
+          "selected": {
+            "rect": {
+              "x": 130,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "candle": {
+          "selected": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        }
+      },
+      "periodOff": {
+        "rect": {
+          "x": 162,
+          "y": 56,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(226, 226, 232)",
+        "outline": "rgb(226, 226, 232) none 0px",
+        "checked": null,
+        "pressed": "false",
+        "svgColor": "rgb(226, 226, 232)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "periodOn": {
+        "rect": {
+          "x": 162,
+          "y": 56,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "400"
+        },
+        "background": "rgba(122, 172, 202, 0.19)",
+        "border": "rgb(64, 64, 72)",
+        "borderWidth": "1px",
+        "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+        "color": "oklch(0.809 0.105 251.813)",
+        "outline": "oklch(0.809 0.105 251.813) none 0px",
+        "checked": null,
+        "pressed": "true",
+        "svgColor": "oklch(0.809 0.105 251.813)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "timeframeAfter": {
+        "rect": {
+          "x": 284.125,
+          "y": 56,
+          "width": 42.71875,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "500"
+        },
+        "background": "rgb(243, 229, 245)",
+        "border": "rgb(126, 87, 194)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(105, 65, 198)",
+        "outline": "rgb(105, 65, 198) none 0px",
+        "checked": "true",
+        "pressed": null,
+        "svgColor": null,
+        "svgSize": null,
+        "activeFill": []
+      }
+    },
+    {
+      "id": "web-after-dark",
+      "initial": {
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(59, 130, 246, 0.15)",
+          "border": "rgba(59, 130, 246, 0.5)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "line": {
+          "rect": {
+            "x": 90,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "bar": {
+          "rect": {
+            "x": 10,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "area": {
+          "rect": {
+            "x": 130,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "period": {
+          "rect": {
+            "x": 162,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(122, 172, 202, 0.19)",
+          "border": "rgb(64, 64, 72)",
+          "borderWidth": "1px",
+          "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "other": {
+          "rect": {
+            "x": 202,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(122, 172, 202, 0.19)",
+          "border": "rgb(64, 64, 72)",
+          "borderWidth": "1px",
+          "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "timeframe": {
+          "rect": {
+            "x": 234,
+            "y": 56,
+            "width": 42.71875,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "500"
+          },
+          "background": "rgb(243, 229, 245)",
+          "border": "rgb(126, 87, 194)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(105, 65, 198)",
+          "outline": "rgb(105, 65, 198) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": null,
+          "svgSize": null,
+          "activeFill": []
+        }
+      },
+      "hover": {
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(59, 130, 246, 0.15)",
+          "border": "rgba(59, 130, 246, 0.5)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "period": {
+          "rect": {
+            "x": 162,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(122, 172, 202, 0.19)",
+          "border": "rgb(64, 64, 72)",
+          "borderWidth": "1px",
+          "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": null,
+          "pressed": "true",
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        },
+        "bar": {
+          "rect": {
+            "x": 10,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgb(34, 34, 38)",
+          "border": "rgb(51, 51, 56)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.967 0.001 286.375)",
+          "outline": "oklch(0.967 0.001 286.375) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "oklch(0.967 0.001 286.375)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        }
+      },
+      "alternate": {
+        "line": {
+          "rect": {
+            "x": 90,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(59, 130, 246, 0.15)",
+          "border": "rgba(59, 130, 246, 0.5)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "oklch(0.809 0.105 251.813)",
+          "outline": "oklch(0.809 0.105 251.813) none 0px",
+          "checked": "true",
+          "pressed": null,
+          "svgColor": "oklch(0.809 0.105 251.813)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": []
+        },
+        "candle": {
+          "rect": {
+            "x": 50,
+            "y": 56,
+            "width": 32,
+            "height": 32
+          },
+          "font": {
+            "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+            "size": "14px",
+            "weight": "400"
+          },
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgba(0, 0, 0, 0)",
+          "borderWidth": "1px",
+          "shadow": "none",
+          "color": "rgb(226, 226, 232)",
+          "outline": "rgb(226, 226, 232) none 0px",
+          "checked": "false",
+          "pressed": null,
+          "svgColor": "rgb(226, 226, 232)",
+          "svgSize": {
+            "width": 20,
+            "height": 20
+          },
+          "activeFill": [
+            "none"
+          ]
+        }
+      },
+      "chartStates": {
+        "bar": {
+          "selected": {
+            "rect": {
+              "x": 10,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "line": {
+          "selected": {
+            "rect": {
+              "x": 90,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "area": {
+          "selected": {
+            "rect": {
+              "x": 130,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": []
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "rgb(226, 226, 232)",
+            "outline": "rgb(226, 226, 232) none 0px",
+            "checked": "false",
+            "pressed": null,
+            "svgColor": "rgb(226, 226, 232)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        },
+        "candle": {
+          "selected": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          },
+          "candle": {
+            "rect": {
+              "x": 50,
+              "y": 56,
+              "width": 32,
+              "height": 32
+            },
+            "font": {
+              "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+              "size": "14px",
+              "weight": "400"
+            },
+            "background": "rgba(59, 130, 246, 0.15)",
+            "border": "rgba(59, 130, 246, 0.5)",
+            "borderWidth": "1px",
+            "shadow": "none",
+            "color": "oklch(0.809 0.105 251.813)",
+            "outline": "oklch(0.809 0.105 251.813) none 0px",
+            "checked": "true",
+            "pressed": null,
+            "svgColor": "oklch(0.809 0.105 251.813)",
+            "svgSize": {
+              "width": 20,
+              "height": 20
+            },
+            "activeFill": [
+              "none"
+            ]
+          }
+        }
+      },
+      "periodOff": {
+        "rect": {
+          "x": 162,
+          "y": 56,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "400"
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "border": "rgba(0, 0, 0, 0)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(226, 226, 232)",
+        "outline": "rgb(226, 226, 232) none 0px",
+        "checked": null,
+        "pressed": "false",
+        "svgColor": "rgb(226, 226, 232)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "periodOn": {
+        "rect": {
+          "x": 162,
+          "y": 56,
+          "width": 32,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "400"
+        },
+        "background": "rgba(122, 172, 202, 0.19)",
+        "border": "rgb(64, 64, 72)",
+        "borderWidth": "1px",
+        "shadow": "rgb(122, 172, 202) 0px -2px 0px 0px inset",
+        "color": "oklch(0.809 0.105 251.813)",
+        "outline": "oklch(0.809 0.105 251.813) none 0px",
+        "checked": null,
+        "pressed": "true",
+        "svgColor": "oklch(0.809 0.105 251.813)",
+        "svgSize": {
+          "width": 20,
+          "height": 20
+        },
+        "activeFill": [
+          "none"
+        ]
+      },
+      "timeframeAfter": {
+        "rect": {
+          "x": 284.125,
+          "y": 56,
+          "width": 42.71875,
+          "height": 32
+        },
+        "font": {
+          "family": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "size": "14px",
+          "weight": "500"
+        },
+        "background": "rgb(243, 229, 245)",
+        "border": "rgb(126, 87, 194)",
+        "borderWidth": "1px",
+        "shadow": "none",
+        "color": "rgb(105, 65, 198)",
+        "outline": "rgb(105, 65, 198) none 0px",
+        "checked": "true",
+        "pressed": null,
+        "svgColor": null,
+        "svgSize": null,
+        "activeFill": []
+      }
+    }
+  ],
+  "scopeComparisons": 34,
+  "geometryComparisons": 28,
+  "fillChecks": 88,
+  "css": [
+    {
+      "name": "index-C4L7Ch80.css",
+      "sha256": "387cf1894d8cbd41c4897e372cd65e925bdc9fbb497f1916a7813477e591ad7b"
+    },
+    {
+      "name": "authenticatedStyles-C2tcxRgn.css",
+      "sha256": "7e21fe7922ace88416a3dc90784bc73dc41764caf19c81ae3de7aa59da9ecfe3"
+    },
+    {
+      "name": "App-zX39yRBK.css",
+      "sha256": "a6e7193594a09dc052f1858992b7d5bc7a2e35baaccd015fd83822843de02086"
+    }
+  ],
+  "styleSource": "Current built application CSS",
+  "electron": "40.9.3",
+  "chromium": "144.0.7559.236",
+  "completedAt": "2026-09-15T11:50:09.240Z"
+}

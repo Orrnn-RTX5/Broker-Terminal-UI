@@ -1,0 +1,2112 @@
+{
+  "fixture": true,
+  "description": "Native Electron computed-style comparison of representative source markup under web and desktop shell classes; no authenticated application or live account",
+  "passed": true,
+  "sizes": {
+    "small": {
+      "web": {
+        "menu.root": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(255, 255, 255, 0.94)"
+        },
+        "menu.option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.shortcut": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.portal-option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "market.search": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "market.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(242, 244, 248, 0.88)"
+        },
+        "market.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.up": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.down": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "navigator.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.selected": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "19px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.control": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "order.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(220, 38, 38)"
+        },
+        "order.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(37, 99, 235)"
+        },
+        "trade.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "trade.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "trade.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "tabs.active": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "tabs.inactive": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.filter": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(102, 112, 133)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "history.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.order": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.timeframe": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "chart.hud": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgb(239, 239, 239)"
+        },
+        "status.metric": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.action": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        }
+      },
+      "desktop": {
+        "menu.root": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(255, 255, 255, 0.94)"
+        },
+        "menu.option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.shortcut": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.portal-option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "market.search": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "market.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(242, 244, 248, 0.88)"
+        },
+        "market.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.up": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.down": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "navigator.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.selected": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "19px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.control": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "order.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(220, 38, 38)"
+        },
+        "order.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(37, 99, 235)"
+        },
+        "trade.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "trade.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "trade.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "tabs.active": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "tabs.inactive": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.filter": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(102, 112, 133)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "history.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.order": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.timeframe": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "chart.hud": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgb(239, 239, 239)"
+        },
+        "status.metric": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.action": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        }
+      }
+    },
+    "normal": {
+      "web": {
+        "menu.root": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(255, 255, 255, 0.94)"
+        },
+        "menu.option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.shortcut": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.portal-option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "market.search": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "market.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(242, 244, 248, 0.88)"
+        },
+        "market.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.up": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.down": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "navigator.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.selected": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "20px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.control": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "order.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(220, 38, 38)"
+        },
+        "order.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(37, 99, 235)"
+        },
+        "trade.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "trade.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "trade.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "tabs.active": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "tabs.inactive": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.filter": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(102, 112, 133)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "history.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.order": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.timeframe": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "chart.hud": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgb(239, 239, 239)"
+        },
+        "status.metric": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.action": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        }
+      },
+      "desktop": {
+        "menu.root": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(255, 255, 255, 0.94)"
+        },
+        "menu.option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.shortcut": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.portal-option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "market.search": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "market.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(242, 244, 248, 0.88)"
+        },
+        "market.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.up": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.down": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "navigator.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.selected": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "20px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.control": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "order.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(220, 38, 38)"
+        },
+        "order.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(37, 99, 235)"
+        },
+        "trade.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "trade.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "trade.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "tabs.active": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "tabs.inactive": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.filter": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(102, 112, 133)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "history.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.order": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.timeframe": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "chart.hud": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgb(239, 239, 239)"
+        },
+        "status.metric": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.action": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "14px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        }
+      }
+    },
+    "large": {
+      "web": {
+        "menu.root": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(255, 255, 255, 0.94)"
+        },
+        "menu.option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.shortcut": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.portal-option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "market.search": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "market.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(242, 244, 248, 0.88)"
+        },
+        "market.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.up": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.down": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "navigator.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.selected": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "21px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.control": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "order.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(220, 38, 38)"
+        },
+        "order.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(37, 99, 235)"
+        },
+        "trade.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "trade.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "trade.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "tabs.active": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "tabs.inactive": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.filter": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(102, 112, 133)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "history.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.order": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.timeframe": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "chart.hud": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgb(239, 239, 239)"
+        },
+        "status.metric": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.action": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        }
+      },
+      "desktop": {
+        "menu.root": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(255, 255, 255, 0.94)"
+        },
+        "menu.option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.shortcut": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "menu.portal-option": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "market.search": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "market.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(242, 244, 248, 0.88)"
+        },
+        "market.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.up": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "market.down": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(250, 250, 250)"
+        },
+        "navigator.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "navigator.selected": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.title": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "21px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "order.control": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(242, 246, 252)"
+        },
+        "order.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(220, 38, 38)"
+        },
+        "order.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(255, 255, 255)",
+          "backgroundColor": "rgb(37, 99, 235)"
+        },
+        "trade.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "trade.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "trade.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "trade.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "tabs.active": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgb(255, 255, 255)"
+        },
+        "tabs.inactive": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.filter": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(102, 112, 133)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgb(242, 244, 248)"
+        },
+        "history.sort-heading": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.symbol": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.buy": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(29, 78, 216)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.profit": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(4, 120, 87)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.sell": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.loss": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(185, 28, 28)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-label": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(75, 85, 99)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "history.metric-value": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.order": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "toolbar.timeframe": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "500",
+          "color": "rgb(71, 84, 103)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "chart.hud": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(17, 24, 39)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.surface": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(95, 107, 122)",
+          "backgroundColor": "rgb(239, 239, 239)"
+        },
+        "status.metric": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        },
+        "status.action": {
+          "fontFamily": "\"Segoe UI\", Tahoma, Arial, sans-serif",
+          "fontSize": "15px",
+          "fontWeight": "400",
+          "color": "rgb(16, 24, 40)",
+          "backgroundColor": "rgba(0, 0, 0, 0)"
+        }
+      }
+    }
+  },
+  "mismatches": [],
+  "roleFailures": [],
+  "css": [
+    {
+      "file": "index-C4L7Ch80.css",
+      "sha256": "387cf1894d8cbd41c4897e372cd65e925bdc9fbb497f1916a7813477e591ad7b"
+    },
+    {
+      "file": "authenticatedStyles-DEYn07oY.css",
+      "sha256": "4aa11b64a6fd3b5dd5d86ea2897fccc07c7b3c222e7100f2105987ddf7277fba"
+    },
+    {
+      "file": "App-BSoGdOhc.css",
+      "sha256": "2a203c9133bf2eabef1c511c75729d54bbcbcf122c714ac87434bd7c71198f8b"
+    },
+    {
+      "file": "OrderPanelDialog-B20-q6et.css",
+      "sha256": "4d0f65e3f4b76d8989b32fa47a60f68a1bad691fb7c18302d24d9d0fb2a3b8b1"
+    },
+    {
+      "file": "TradingChart-BLcGZlDK.css",
+      "sha256": "f158b8806ca6b7b542af18d87b5807881c3e027f208b2cf0481cad901c1fbeef"
+    }
+  ],
+  "probeCount": 49,
+  "comparisonCount": 735,
+  "electron": "40.9.3",
+  "chromium": "144.0.7559.236",
+  "completedAt": "2026-09-15T10:27:21.869Z"
+}

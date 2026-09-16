@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { type Position, useAppStore } from './useAppStore';
+import { shouldReplaceOpenPositionSnapshot, type Position, useAppStore } from './useAppStore';
 
 const position = (id: number, overrides: Partial<Position> = {}): Position => ({
   id,
@@ -110,6 +110,46 @@ describe('useAppStore setPositions burst merge', () => {
 
     expect(useAppStore.getState().positions).toEqual([
       expect.objectContaining({ id: 24_185, symbol: 'BTCUSD', volume: 0.01 }),
+    ]);
+  });
+
+  it('keeps a just-filled ticket when a lagged snapshot omits it', () => {
+    useAppStore.getState().setPositions([
+      position(101),
+      position(102, {
+        chartEntryPrice: 80_110,
+        chartEntryTime: new Date().toISOString(),
+      }),
+    ]);
+
+    useAppStore.getState().setPositions([position(101, { currentPrice: 80_050 })]);
+
+    expect(useAppStore.getState().positions.map(({ id }) => id).sort((a, b) => a - b)).toEqual([101, 102]);
+    expect(useAppStore.getState().positions.find(({ id }) => id === 102)).toMatchObject({
+      id: 102,
+      symbol: 'BTCUSD',
+      volume: 0.01,
+      chartEntryTime: expect.any(String),
+    });
+  });
+
+  it('does not apply an empty snapshot over a just-filled ticket', () => {
+    const recent = position(102, { chartEntryTime: new Date().toISOString() });
+    expect(shouldReplaceOpenPositionSnapshot([], [recent])).toBe(false);
+    expect(shouldReplaceOpenPositionSnapshot([], [position(101)])).toBe(true);
+    expect(shouldReplaceOpenPositionSnapshot([position(101)], [recent])).toBe(true);
+  });
+
+  it('still drops an older ticket that a full snapshot no longer reports', () => {
+    useAppStore.getState().setPositions([
+      position(101, { chartEntryTime: '2026-08-25T12:00:01.000Z' }),
+      position(102),
+    ]);
+
+    useAppStore.getState().setPositions([position(102)]);
+
+    expect(useAppStore.getState().positions).toEqual([
+      expect.objectContaining({ id: 102 }),
     ]);
   });
 

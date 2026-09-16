@@ -4,6 +4,7 @@
  */
 
 import type { TickData } from '../types/history';
+import { getPublicBackendTarget, isDesktopBackendTarget } from '../config/backendTarget.js';
 import {
   API_V2_BASE_URL,
   RTX5_API_URL,
@@ -591,6 +592,9 @@ export class ChartDataService {
     }> = [];
 
     let authenticatedAttemptAdded = false;
+    if (!token && !isDesktopBackendTarget()) {
+      attempts.push({ url: toLocalDevProxyUrl(`${getPublicBackendTarget()}/api/v2/candles/${encodeURIComponent(symbol)}${buildQuery(queryParams)}`) });
+    }
     if (token && apiV2BaseUrl) {
       try {
         assertCandleAuthMatchesActiveBroker(token);
@@ -628,6 +632,7 @@ export class ChartDataService {
           signal,
           headers: attempt.headers,
           cache: 'no-store',
+          ...(!token ? { credentials: 'omit' as const } : {}),
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -658,6 +663,25 @@ export class ChartDataService {
   }
 
   subscribeCandles(options: CandleStreamOptions): CandleStreamSubscription {
+    if (!getAuthToken() && !isDesktopBackendTarget()) {
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout>;
+      const refresh = async () => {
+        try {
+          if (document.visibilityState === 'hidden') return;
+          const candles = await this.fetchCandles({ symbol: options.symbol, timeframe: options.timeframe, count: 3, signal: controller.signal });
+          if (controller.signal.aborted) return;
+          options.onConnected?.();
+          candles.forEach(candle => options.onCandle?.(candle));
+        } catch (error) {
+          if (!controller.signal.aborted) options.onError?.(error instanceof Error ? error : new Error('Public candle refresh failed'));
+        } finally {
+          if (!controller.signal.aborted) timer = setTimeout(refresh, 3000);
+        }
+      };
+      void refresh();
+      return { close: () => { controller.abort(); clearTimeout(timer); } };
+    }
     const apiTf = this.normalizeTimeframe(options.timeframe);
     const symbol = normalizeSymbol(options.symbol);
     const channel = `candles.${symbol}.${apiTf}`;

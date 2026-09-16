@@ -18,7 +18,7 @@
   min-width: 0;
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid var(--border-primary, #28282e);
+  border-bottom: 1px solid var(--rtx-broker-accent, var(--border-primary, #28282e));
   background: var(--rtx-light-panel-header, var(--bg-secondary, #131316));
   background-image: var(--rtx-chrome-sheen);
   box-shadow: inset 0 1px 0 var(--rtx-chrome-edge);

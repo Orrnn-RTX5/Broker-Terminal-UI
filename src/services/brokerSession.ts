@@ -19,6 +19,7 @@
 import { getBackendTarget, isDesktopBackendTarget, normalizeBrokerInfoForTarget } from '../config/backendTarget.js';
 import { isCleartextDowngradeAllowedHost } from '../config/urlSecurity';
 import { brokerDisplayName } from './brokerDisplayName';
+import { normalizeBrokerThemeColor } from './brokerThemeColor';
 
 export type SessionChangeReason =
   | 'token_rotation'
@@ -256,6 +257,7 @@ export interface BrokerSessionDiscoveryInput {
   feed_ws_url?: string | null;
   feed_status_url?: string | null;
   logo_url?: string | null;
+  theme_color?: string | null;
 }
 
 export function onSessionChange(cb: SessionChangeCallback): () => void {
@@ -727,6 +729,7 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
   );
   const feedStatusUrl = normalizeOptionalHttpUrl(normalizedInput.feed_status_url);
   const logoUrl = String(normalizedInput.logo_url || '').trim();
+  const themeColor = normalizeBrokerThemeColor(normalizedInput.theme_color);
   const brokerChangedWithoutToken = !token && brokerChanged;
 
   if (token) {
@@ -779,6 +782,7 @@ export function persistBrokerSessionDiscovery(input: BrokerSessionDiscoveryInput
     });
   }
   if (logoUrl) setLocalStorageItem('logo_url', logoUrl);
+  setOrRemove('broker_theme_color', themeColor);
 
   const rawBrokerName = String(
     normalizedInput.broker_name

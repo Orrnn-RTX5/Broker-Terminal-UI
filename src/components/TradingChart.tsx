@@ -1,5 +1,6 @@
 import { createChartDataSnapshot, type ChartDataSnapshot } from '../services/chartDataSnapshot';
 import { ChartSymbolTrigger } from './ChartSymbolDropdown';
+import { DEFAULT_CHART_TIMEFRAME } from '../constants/chartDefaults';
 import { useUiTranslation } from '../hooks/useUiTranslation';
 import i18n from '../i18n';
 /**
@@ -781,7 +782,7 @@ interface TradingChartProps {
 
 export const TradingChart = React.memo(function TradingChart({
   symbol,
-  timeframe = 'M5',
+  timeframe = DEFAULT_CHART_TIMEFRAME,
   chartType = 'candlestick',
   panelId,
   tradeAllowed = false,
@@ -6579,7 +6580,7 @@ export const TradingChart = React.memo(function TradingChart({
   const TRADE_HISTORY_LOSS_COLOR = '#ff5a67';
   const TRADE_HISTORY_LIGHT_PROFIT_COLOR = '#047857';
   const TRADE_HISTORY_LIGHT_LOSS_COLOR = '#b91c1c';
-  const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v7-exact-line-opacity';
+  const TRADE_HISTORY_PRESENTATION_VERSION = 'visibility-v8-clean-arrows';
   // MT5-style entry lines: dotted blue for BUY, dotted red for SELL.
   const TRADE_ENTRY_LINE_BUY_COLOR = '#2962ff';
   const TRADE_ENTRY_LINE_SELL_COLOR = '#ef4444';
@@ -7486,20 +7487,16 @@ export const TradingChart = React.memo(function TradingChart({
     };
 
     const createArrowSvg = (side: TradeSide, color: string, emphasized: boolean) => {
-      const width = emphasized ? 12 : 20;
-      const height = emphasized ? 15 : 26;
-      const viewBoxWidth = 20;
-      const viewBoxHeight = emphasized ? 24 : 26;
-      const path = emphasized
-        ? side === 'BUY'
-          ? 'M10 1.5L18.5 10H14V22.5H6V10H1.5L10 1.5Z'
-          : 'M10 22.5L1.5 14H6V1.5H14V14H18.5L10 22.5Z'
-        : side === 'BUY'
-          ? 'M10 1.5L18.5 10H14V24.5H6V10H1.5L10 1.5Z'
-          : 'M10 24.5L1.5 16H6V1.5H14V16H18.5L10 24.5Z';
+      const width = emphasized ? 11 : 16;
+      const height = emphasized ? 14 : 20;
+      const viewBoxWidth = 22;
+      const viewBoxHeight = 28;
+      const path = side === 'BUY'
+        ? 'M11 3L18.5 14.5H13.6V25H8.4V14.5H3.5Z'
+        : 'M11 25L18.5 13.5H13.6V3H8.4V13.5H3.5Z';
       const outline = isChartSurfaceLight() ? '#0f172a' : '#f8fafc';
-      const strokeWidth = emphasized ? 1.75 : 1.15;
-      return `<svg width="${width}" height="${height}" viewBox="0 0 ${viewBoxWidth} ${viewBoxHeight}" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="${path}" fill="${color}" stroke="${outline}" stroke-width="${strokeWidth}" stroke-linejoin="round"/></svg>`;
+      const strokeWidth = emphasized ? 1.8 : 1.5;
+      return `<svg width="${width}" height="${height}" viewBox="0 0 ${viewBoxWidth} ${viewBoxHeight}" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="${path}" fill="${color}" stroke="${outline}" stroke-width="${strokeWidth}" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/></svg>`;
     };
 
     const createTradeMarker = (side: TradeSide, price: number, time: number, title: string, color: string, layer: TradeOverlayLayer, opacity = 1, resolveTime?: () => number | null, lifecycle: 'open' | 'close' = 'open', historyPositionSide: TradeSide = side, executionTime = time) => {
@@ -7508,10 +7505,10 @@ export const TradingChart = React.memo(function TradingChart({
       marker.dataset.tradeLifecycle = lifecycle;
       if (layer === 'active') marker.title = title;
       const isHistoryMarker = layer === 'history';
-      const markerWidth = isHistoryMarker ? 12 : 20;
-      const markerHeight = isHistoryMarker ? 15 : 26;
+      const markerWidth = isHistoryMarker ? 11 : 16;
+      const markerHeight = isHistoryMarker ? 14 : 20;
       marker.innerHTML = createArrowSvg(side, color, isHistoryMarker);
-      marker.style.cssText = `position:absolute;display:none;width:${markerWidth}px;height:${markerHeight}px;z-index:${isHistoryMarker ? 20 : 16};pointer-events:none;opacity:${opacity};filter:drop-shadow(0 1px 1px rgba(0,0,0,0.72));`;
+      marker.style.cssText = `position:absolute;display:none;width:${markerWidth}px;height:${markerHeight}px;z-index:${isHistoryMarker ? 20 : 16};pointer-events:none;opacity:${opacity};filter:drop-shadow(0 1px 0 rgba(15,23,42,0.28));`;
       appendOverlayNode(marker, { kind: 'marker', price, time, markerSide: side, resolveTime }, layer);
 
       if (layer !== 'history') return;
@@ -8228,7 +8225,9 @@ export const TradingChart = React.memo(function TradingChart({
 
       if (didClearCrossClosedTradeLevels) persistTradeLevelOverrides();
 
-      activeTradeSnapshotsRef.current = nextActiveSnapshots;
+      // Keep retained fills in the live snapshot map so a lagged empty store
+      // cannot drop on-chart open trades on the next overlay pass.
+      activeTradeSnapshotsRef.current = renderActiveSnapshots;
 
       if (nextMissingGraceDelayMs != null) {
         if (tradeMissingGraceTimerRef.current !== null) {
@@ -8534,11 +8533,14 @@ export const TradingChart = React.memo(function TradingChart({
       }
 
       // Rebuilt nodes are created hidden; place them in this same frame when
-      // the chart is idle so a rebuild never paints an empty overlay.
+      // the chart is idle so a rebuild never paints an empty overlay. Always
+      // queue a follow-up layout too: the first pass can run before the series
+      // has coordinates after a fill, which would otherwise leave open trades hidden.
       if (isChartInteractionActiveRef.current) {
         queueTradeOverlayRelayout();
       } else {
         updateLabelPositions();
+        queueTradeOverlayRelayout();
       }
     };
 
@@ -8666,9 +8668,11 @@ export const TradingChart = React.memo(function TradingChart({
       clearTradeOverlayLayer('active');
       renderTradeOverlay({ forceActive: true, forceHistory: status !== 'failed' });
     };
+    const handleNewTradePlaced = () => renderTradeOverlay({ forceActive: true });
     window.addEventListener('rtx:force-refresh-positions', handleForceRefresh);
     window.addEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
     window.addEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
+    window.addEventListener('rtx:new-trade-placed', handleNewTradePlaced);
     window.addEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
 
     return () => {
@@ -8678,6 +8682,7 @@ export const TradingChart = React.memo(function TradingChart({
       window.removeEventListener('rtx:force-refresh-positions', handleForceRefresh);
       window.removeEventListener('rtx:refresh-trade-overlay', handleRefreshTradeOverlay);
       window.removeEventListener('rtx:flush-trade-overlay', handleFlushTradeOverlay);
+      window.removeEventListener('rtx:new-trade-placed', handleNewTradePlaced);
       window.removeEventListener(TRADE_OVERLAY_CLOSE_STATE_EVENT, handleTradeOverlayCloseState);
       try { chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(timeScaleHandler); } catch { }
       clearTradeOverlayVisualRuntime();
@@ -8849,9 +8854,9 @@ export const TradingChart = React.memo(function TradingChart({
       entryArrow.className = 'rtx-history-arrow-entry';
       entryArrow.title = `Trade IN: ${isBuy ? 'BUY' : 'SELL'} ${volume} @ ${entryPrice}`;
       entryArrow.innerHTML = isBuy
-        ? `<svg width="14" height="14" viewBox="0 0 12 12"><polygon points="6,2 10,10 2,10" fill="#2962FF" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`
-        : `<svg width="14" height="14" viewBox="0 0 12 12"><polygon points="2,2 10,2 6,10" fill="#ef5350" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
-      entryArrow.style.cssText = `position: absolute; z-index: 12; pointer-events: none; filter: drop-shadow(0 0 3px ${color}99);`;
+        ? `<svg width="11" height="14" viewBox="0 0 22 28" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="M11 3L18.5 14.5H13.6V25H8.4V14.5H3.5Z" fill="#2962FF" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/></svg>`
+        : `<svg width="11" height="14" viewBox="0 0 22 28" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="M11 25L18.5 13.5H13.6V3H8.4V13.5H3.5Z" fill="#ef5350" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/></svg>`;
+      entryArrow.style.cssText = `position: absolute; z-index: 12; pointer-events: none; filter: drop-shadow(0 1px 0 rgba(15,23,42,0.28));`;
       overlayEl.appendChild(entryArrow);
       positionLabelsRef.current.push(entryArrow);
       positionLabelDataRef.current.push({ price: entryPrice, time: entryTime, text: '', color, isPin: true, isBuyDeal: isBuy });
@@ -8861,9 +8866,9 @@ export const TradingChart = React.memo(function TradingChart({
       exitArrow.className = 'rtx-history-arrow-exit';
       exitArrow.title = `Trade OUT: ${isBuy ? 'SELL' : 'BUY'} ${volume} @ ${exitPrice}`;
       exitArrow.innerHTML = isBuy
-        ? `<svg width="14" height="14" viewBox="0 0 12 12"><polygon points="2,2 10,2 6,10" fill="#ef5350" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`
-        : `<svg width="14" height="14" viewBox="0 0 12 12"><polygon points="6,2 10,10 2,10" fill="#2962FF" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
-      exitArrow.style.cssText = `position: absolute; z-index: 12; pointer-events: none; filter: drop-shadow(0 0 3px ${isBuy ? '#ef5350' : '#2962FF'}99);`;
+        ? `<svg width="11" height="14" viewBox="0 0 22 28" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="M11 25L18.5 13.5H13.6V3H8.4V13.5H3.5Z" fill="#ef5350" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/></svg>`
+        : `<svg width="11" height="14" viewBox="0 0 22 28" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="M11 3L18.5 14.5H13.6V25H8.4V14.5H3.5Z" fill="#2962FF" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/></svg>`;
+      exitArrow.style.cssText = `position: absolute; z-index: 12; pointer-events: none; filter: drop-shadow(0 1px 0 rgba(15,23,42,0.28));`;
       overlayEl.appendChild(exitArrow);
       positionLabelsRef.current.push(exitArrow);
       positionLabelDataRef.current.push({ price: exitPrice, time: exitTime, text: '', color: isBuy ? '#ef5350' : '#2962FF', isPin: true, isBuyDeal: !isBuy });
@@ -8878,16 +8883,16 @@ export const TradingChart = React.memo(function TradingChart({
       pin.title = text;
 
       pin.innerHTML = _isBuy
-        ? `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="6,2 10,10 2,10" fill="#2962FF" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`
-        : `<svg width="12" height="12" viewBox="0 0 12 12"><polygon points="2,2 10,2 6,10" fill="#ef5350" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+        ? `<svg width="11" height="14" viewBox="0 0 22 28" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="M11 3L18.5 14.5H13.6V25H8.4V14.5H3.5Z" fill="#2962FF" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/></svg>`
+        : `<svg width="11" height="14" viewBox="0 0 22 28" fill="none" aria-hidden="true" style="display:block;overflow:visible"><path d="M11 25L18.5 13.5H13.6V3H8.4V13.5H3.5Z" fill="#ef5350" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/></svg>`;
 
       pin.style.cssText = `
         position: absolute;
-        width: 12px;
-        height: 12px;
+        width: 11px;
+        height: 14px;
         z-index: 20;
         pointer-events: none;
-        filter: drop-shadow(0 0 2px ${_isBuy ? '#2962FF' : '#ef5350'}88);
+        filter: drop-shadow(0 1px 0 rgba(15,23,42,0.28));
       `;
 
       overlayEl.appendChild(pin);

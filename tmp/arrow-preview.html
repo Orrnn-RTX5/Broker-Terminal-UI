@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Trade arrow preview</title>
+  <style>
+    html, body { margin: 0; background: #f7f8fa; font: 13px/1.4 "Segoe UI", sans-serif; color: #1f2937; }
+    .page { padding: 24px 28px 32px; }
+    h1 { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+    p { margin: 0 0 18px; color: #5b6573; }
+    .row { display: flex; gap: 28px; align-items: flex-start; margin-bottom: 28px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 18px 18px; }
+    .label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #6b7280; margin-bottom: 12px; }
+    .chart {
+      position: relative;
+      width: 420px;
+      height: 180px;
+      background:
+        linear-gradient(#eef1f5 1px, transparent 1px) 0 0 / 100% 20px,
+        linear-gradient(90deg, #eef1f5 1px, transparent 1px) 0 0 / 28px 100%,
+        #fbfcfe;
+      border: 1px solid #e5e7eb;
+      overflow: hidden;
+    }
+    .candle { position: absolute; width: 7px; background: #ef4444; }
+    .wick { position: absolute; width: 1px; background: #9aa3af; }
+    .marker { position: absolute; filter: drop-shadow(0 1px 0 rgba(15,23,42,0.28)); }
+    .zoom { display: flex; gap: 22px; align-items: flex-end; }
+    .zoom-item { text-align: center; }
+    .zoom-item span { display: block; margin-top: 8px; color: #6b7280; font-size: 11px; }
+    .zoom svg { image-rendering: auto; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Trade history arrows</h1>
+    <p>Chart size 11×14 (2× of 22×28) and magnified 8×. Light theme colors from the terminal.</p>
+    <div class="row">
+      <div class="card">
+        <div class="label">On chart (actual size)</div>
+        <div class="chart" id="chart"></div>
+      </div>
+      <div class="card">
+        <div class="label">Magnified 8×</div>
+        <div class="zoom">
+          <div class="zoom-item">
+            <svg width="88" height="112" viewBox="0 0 22 28" fill="none">
+              <path d="M11 3L18.5 14.5H13.6V25H8.4V14.5H3.5Z" fill="#047857" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/>
+            </svg>
+            <span>Buy / open</span>
+          </div>
+          <div class="zoom-item">
+            <svg width="88" height="112" viewBox="0 0 22 28" fill="none">
+              <path d="M11 25L18.5 13.5H13.6V3H8.4V13.5H3.5Z" fill="#b91c1c" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/>
+            </svg>
+            <span>Sell / close</span>
+          </div>
+          <div class="zoom-item">
+            <svg width="88" height="112" viewBox="0 0 22 28" fill="none">
+              <path d="M11 3L18.5 14.5H13.6V25H8.4V14.5H3.5Z" fill="#00e6a8" stroke="#f8fafc" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/>
+            </svg>
+            <span>Dark-theme profit</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const buy = `<svg width="11" height="14" viewBox="0 0 22 28" fill="none"><path d="M11 3L18.5 14.5H13.6V25H8.4V14.5H3.5Z" fill="#047857" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/></svg>`;
+    const sell = `<svg width="11" height="14" viewBox="0 0 22 28" fill="none"><path d="M11 25L18.5 13.5H13.6V3H8.4V13.5H3.5Z" fill="#b91c1c" stroke="#0f172a" stroke-width="1.8" stroke-linejoin="miter" stroke-miterlimit="4" paint-order="stroke fill"/></svg>`;
+    const chart = document.getElementById('chart');
+    const candles = [
+      [24, 70, 50, 90], [52, 40, 30, 80], [80, 55, 35, 95], [108, 30, 20, 70],
+      [136, 48, 28, 88], [164, 62, 40, 100], [192, 38, 22, 75], [220, 44, 26, 82],
+      [248, 58, 36, 96], [276, 28, 16, 64], [304, 50, 32, 86], [332, 34, 18, 72],
+      [360, 60, 42, 98], [388, 42, 24, 78],
+    ];
+    candles.forEach(([x, top, wickTop, wickBot], i) => {
+      const wick = document.createElement('div');
+      wick.className = 'wick';
+      wick.style.left = (x + 3) + 'px';
+      wick.style.top = wickTop + 'px';
+      wick.style.height = (wickBot - wickTop) + 'px';
+      chart.appendChild(wick);
+      const body = document.createElement('div');
+      body.className = 'candle';
+      body.style.left = x + 'px';
+      body.style.top = top + 'px';
+      body.style.height = '38px';
+      body.style.background = i % 3 === 0 ? '#22c55e' : '#ef4444';
+      chart.appendChild(body);
+    });
+    const marks = [
+      [27, 92, buy], [55, 18, sell], [83, 98, buy], [111, 16, sell],
+      [167, 104, buy], [195, 18, sell], [251, 100, buy], [279, 12, sell],
+      [335, 76, buy], [363, 100, buy], [391, 20, sell],
+    ];
+    marks.forEach(([x, y, html]) => {
+      const el = document.createElement('div');
+      el.className = 'marker';
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      el.innerHTML = html;
+      chart.appendChild(el);
+    });
+  </script>
+</body>
+</html>

@@ -60,54 +60,30 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-status-bar .rtx-status-
   padding-bottom: 0 !important;
 }
 
-/* The docked Toolbox uses the reference's narrow side title rail. Reuse the
-   actual header and its controls; minimized and floating windows keep their
-   horizontal title bar for restoring and dragging. */
+/* Docked sections use the full panel width with compact controls at the top
+   right. Minimized and floating windows keep their title for restoring/dragging. */
 html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child {
-  display: grid;
-  grid-template-columns: 17px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
   border: 0 !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child > .dock-panel__header {
-  flex-direction: column;
-  width: 17px;
-  min-width: 17px;
-  height: 100% !important;
-  min-height: 0 !important;
-  padding: 2px 0 5px !important;
+  justify-content: flex-end;
+  height: 20px !important;
+  min-height: 20px !important;
+  padding: 2px 6px !important;
   gap: 2px;
   border: 0 !important;
-  border-right: 1px solid #d6dfe5 !important;
-  background: #c1cdd9 !important;
   box-shadow: none !important;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child > .dock-panel__header .dock-panel__title {
-  --rtx-light-ui-font-size: var(--rtx-light-status-action-size);
-  --rtx-light-ui-font-weight: 400;
-  order: 2;
-  flex: 0 1 auto;
-  min-height: 0;
-  margin-top: auto;
-  width: 16px;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  line-height: 16px !important;
-  color: #111111 !important;
+  display: none;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child > .dock-panel__header .dock-panel__action {
-  order: 1;
   width: 16px;
   height: 16px;
   margin: 0;
-  border-radius: 0;
-}
-
-html:root.rtx-advanced-view.rtx-skin-untitled-light [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true']) > div:first-child > .dock-panel__header .dock-panel__action--close {
-  order: 0;
 }
 
 html:root.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock {

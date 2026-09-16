@@ -10,7 +10,8 @@ const source = readFileSync(
 describe('App market connection startup contract', () => {
   it('mounts chart data from the public catalog without weakening authenticated selection diagnostics', () => {
     const readinessStart = source.indexOf('const chartSelectionReadiness = useMemo');
-    const runtimeEnd = source.indexOf('useEffect(() => {', readinessStart);
+    const runtimeStart = source.indexOf('const chartRuntimeReady = shouldMountChartRuntime', readinessStart);
+    const runtimeEnd = source.indexOf('useEffect(() => {', runtimeStart);
     const startupReadiness = source.slice(readinessStart, runtimeEnd);
 
     expect(startupReadiness).toContain('catalogSettled: hasLoadedSymbols && !isLoadingSymbols');

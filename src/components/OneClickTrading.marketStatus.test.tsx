@@ -27,6 +27,7 @@ const getTradeButton = (label: 'BUY' | 'SELL'): HTMLButtonElement => {
 describe('OneClickTrading market status', () => {
   beforeEach(() => {
     useAppStore.getState().reset();
+    useAppStore.setState({ isAuthenticated: true, accountId: '200002' });
     orderMocks.placeMarketOrder.mockReset();
     useAppStore.getState().setTicks({
       EURUSD: {
@@ -108,6 +109,19 @@ describe('OneClickTrading market status', () => {
     expect(volumeInput).toHaveValue('0.01');
     fireEvent.click(decreaseButton);
     expect(volumeInput).toHaveValue('0.01');
+  });
+
+  it('opens login for a guest BUY or SELL without sending any order', () => {
+    useAppStore.setState({ isAuthenticated: false, accountId: null });
+    const requestLogin = vi.fn();
+    window.addEventListener('rtx:requestTradeLogin', requestLogin);
+    render(<OneClickTrading symbol="EURUSD" timeframe="M5" visible tradeAllowed={false}
+      marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })} />);
+    fireEvent.click(getTradeButton('BUY'));
+    fireEvent.click(getTradeButton('SELL'));
+    expect(requestLogin).toHaveBeenCalledTimes(2);
+    expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
+    window.removeEventListener('rtx:requestTradeLogin', requestLogin);
   });
 
   it('allows replacing the default lot with 1 or more without retaining the leading zero', async () => {

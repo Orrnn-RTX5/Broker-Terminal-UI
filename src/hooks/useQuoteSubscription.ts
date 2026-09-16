@@ -13,6 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getQuoteSocketManager } from '../services/quoteSocketManager';
 import { onSessionChange } from '../services/brokerSession';
 import { debugLog } from '../utils/debugLogging';
+import { useAppStore } from '../store/useAppStore';
+import { isDesktopBackendTarget } from '../config/backendTarget.js';
 
 const normalizeSymbol = (v: unknown): string =>
   typeof v === 'string' ? v.trim().toUpperCase() : '';
@@ -30,7 +32,8 @@ export function useQuoteSubscription(
   sourceId: string,
   options: UseQuoteSubscriptionOptions = {},
 ): UseQuoteSubscriptionReturn {
-  const enabled = options.enabled !== false;
+  const authenticated = useAppStore(state => state.isAuthenticated);
+  const enabled = options.enabled !== false && (authenticated || isDesktopBackendTarget());
   const [sessionRevision, setSessionRevision] = useState(0);
 
   useEffect(() => {

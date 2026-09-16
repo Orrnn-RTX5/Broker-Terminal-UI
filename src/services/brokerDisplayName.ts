@@ -116,13 +116,16 @@ export function brokerDisplayName(server: string, ...names: unknown[]): string {
     return configuredName;
   }
 
-  // 5. In desktop / Electron runtime, never display "Broker" or a raw URL.
-  // Prefer the configured broker name or known desktop default.
+  // 5. A desktop deployment can name only the broker it was configured for.
+  // Do not apply that fallback label to a different broker selected from the
+  // shared directory when its session metadata is unavailable.
   if (isDesktopRuntime()) {
-    if (isBrokerName(configuredName)) return configuredName;
-    const knownFromConfigId = resolveKnownBroker(configuredBrokerId);
-    if (knownFromConfigId) return knownFromConfigId;
-    return 'Achiever Financials';
+    if (matchesConfig) {
+      if (isBrokerName(configuredName)) return configuredName;
+      const knownFromConfigId = resolveKnownBroker(configuredBrokerId);
+      if (knownFromConfigId) return knownFromConfigId;
+    }
+    return 'Broker';
   }
 
   // 6. Named servers (e.g. 'MetaQuotes-Demo', 'ICMarkets-Live') keep their name.

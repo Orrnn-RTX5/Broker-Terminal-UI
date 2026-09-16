@@ -23,6 +23,13 @@ describe('broker display labels', () => {
     expect(brokerDisplayName('https://second.example')).toBe('Broker');
     expect(brokerDisplayName('https://second.example', 'Second Broker')).toBe('Second Broker');
   });
+  it('does not relabel a selected desktop broker as the configured default broker', () => {
+    vi.stubEnv('VITE_BACKEND_TARGET', 'electron');
+    vi.stubEnv('VITE_BACKEND_URL', 'https://service.achieverfinancials.com');
+    vi.stubEnv('VITE_BROKER_ID', 'achiever-financials');
+    vi.stubEnv('VITE_DEFAULT_MT5_SERVER', 'Achiever Financials');
+    expect(brokerDisplayName('https://nexa.orrnn.com')).toBe('Broker');
+  });
   it('does not display URL-shaped name metadata and preserves existing named servers', () => {
     expect(brokerDisplayName('https://broker.example', 'https://broker.example')).toBe('Broker');
     expect(brokerDisplayName('Named Broker')).toBe('Named Broker');

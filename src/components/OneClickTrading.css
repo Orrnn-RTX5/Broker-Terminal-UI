@@ -79,6 +79,19 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light body .rtx-oct .rtx-oct-volum
   outline-color: var(--rtx-light-accent) !important;
 }
 
+/* Give the horizontal row more vertical room across light and dark themes. */
+html:root body .rtx-oct[data-compact='false'] :is(.rtx-oct-trade-button, .rtx-oct-volume-control) {
+  height: 36px !important;
+  min-height: 36px !important;
+  max-height: 36px !important;
+}
+
+html:root body .rtx-oct[data-compact='false'] .rtx-oct-volume-control :is(input, button) {
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+}
+
 /* Keep all three controls available when several chart columns share a screen. */
 html:root body .rtx-oct[data-compact='true'] > [data-testid='one-click-trading-row'] {
   display: grid !important;

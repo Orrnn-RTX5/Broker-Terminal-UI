@@ -6,14 +6,17 @@ import { tradeApi } from '../../api/trade';
 import { parseTokenExpiresAt } from '../../api/client';
 import { BROKER_DISCOVERY_URL, normalizeBrokerServerUrl, updateDynamicUrls } from '../../config/api';
 import {
+    isDesktopBackendTarget,
     normalizeBrokerInfoForTarget,
     resolveBrokerBackendUrl,
     resolveBrokerExtApiUrl,
 } from '../../config/backendTarget.js';
-import { extractBrokerDiscoveryList } from '../../services/brokerDiscovery';
+import { isBrokerSuspended, type BrokerDiscoveryItem } from '../../services/brokerDiscovery';
+import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
 import { persistBrokerSessionDiscovery } from '../../services/brokerSession';
 import { useAppStore } from '../../store/useAppStore';
 import type { BrokerServer } from '../../types/api';
+import { CountryCombobox } from './CountryCombobox';
 import './open-account-dialog.css';
 
 // Palette cycling for broker avatar gradients
@@ -51,7 +54,7 @@ const BrokerAvatar: React.FC<{ broker: BrokerServer; index: number; isSelected: 
     if (broker.logo_url && !hasError) {
         return (
             <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden bg-white flex-shrink-0"
+                className="rtx-open-account-dialog__logo w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden bg-white flex-shrink-0"
                 style={{
                     border: isSelected ? '2px solid #6366f1' : '1px solid rgba(255,255,255,0.08)',
                     boxShadow: isSelected ? '0 0 12px rgba(99,102,241,0.35)' : '0 4px 12px rgba(0,0,0,0.2)',
@@ -156,7 +159,6 @@ type CreatedAccountSummaryRow = {
     small?: boolean;
 };
 
-const brokerServersDiscoveryUrl = `${BROKER_DISCOVERY_URL}/api/v2/broker/servers`;
 const buildBrokerApiV2BaseUrl = (value: string): string =>
     `${normalizeBrokerServerUrl(value).replace(/\/$/, '')}/api/v2`;
 
@@ -166,15 +168,10 @@ const getErrorMessage = (err: unknown, fallback: string): string =>
 const isSummaryRow = (row: CreatedAccountSummaryRow | false | null | undefined): row is CreatedAccountSummaryRow =>
     Boolean(row);
 
-const isAbortError = (error: unknown): boolean =>
-    error instanceof DOMException
-        ? error.name === 'AbortError'
-        : Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
-
 const isValidEmail = (value: string): boolean =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
-const mapDiscoveryBroker = (broker: ReturnType<typeof extractBrokerDiscoveryList>[number], index: number): BrokerServer => ({
+const mapDiscoveryBroker = (broker: BrokerDiscoveryItem, index: number): BrokerServer => ({
     ...broker,
     id: broker.id ?? broker.broker_id ?? index,
     broker_id: String(broker.broker_id || broker.id || '').trim(),
@@ -194,12 +191,20 @@ const mapDiscoveryBroker = (broker: ReturnType<typeof extractBrokerDiscoveryList
     enabled: broker.enabled !== false,
 });
 
+const availableDirectoryBrokers = (rows: BrokerDiscoveryItem[]): BrokerServer[] => rows
+    .filter(broker => !isBrokerSuspended(broker))
+    .map(mapDiscoveryBroker)
+    .filter(broker => Boolean(broker.broker_id && broker.broker_name));
+
 export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const tr = useUiTranslation();
+    const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
     const [step, setStep] = useState(0);
-    const [brokers, setBrokers] = useState<BrokerServer[]>([]);
-    const [loadingBrokers, setLoadingBrokers] = useState(false);
-    const [selected, setSelected] = useState<string>('');
+    const [brokers, setBrokers] = useState<BrokerServer[]>(() => availableDirectoryBrokers(getCachedBrokerDirectory() || []));
+    const [loadingBrokers, setLoadingBrokers] = useState(() => getCachedBrokerDirectory() === null);
+    const [selected, setSelected] = useState<string>(() => brokers[0] ? String(brokers[0].id) : '');
+    const [directoryError, setDirectoryError] = useState('');
+    const [directoryAttempt, setDirectoryAttempt] = useState(0);
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [accountType, setAccountType] = useState<AccountType>('demo');
@@ -217,14 +222,17 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     const [createError, setCreateError] = useState('');
     const [validationError, setValidationError] = useState('');
 
-    // Fetch brokers on open — use discovery endpoint (same as LoginDialog) so logos resolve properly
+    // FileMenu mounts this dialog closed. Warm the shared directory before the
+    // user opens the wizard; a recent sign-in response needs no new request.
+    useEffect(() => {
+        void loadAppBrokerDirectory({ desktop: isDesktopBackendTarget() }).catch(() => undefined);
+    }, []);
+
     useEffect(() => {
         if (!isOpen) return;
 
-        const controller = new AbortController();
         let active = true;
         setStep(0);
-        setSelected('');
         setSearchQuery('');
         setHoveredId(null);
         setAccountType('demo');
@@ -238,35 +246,27 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
         setCreatedAccount(null);
         setCreateError('');
         setValidationError('');
-        setLoadingBrokers(true);
-        fetch(brokerServersDiscoveryUrl, { signal: controller.signal })
-            .then(res => {
-                if (!res.ok) throw new Error(`Broker directory returned ${res.status}`);
-                return res.json();
-            })
-            .then((payload: unknown) => {
-                const list = extractBrokerDiscoveryList(payload);
-                const mapped = list
-                    .map(mapDiscoveryBroker)
-                    .filter((broker) => Boolean(broker.broker_id && broker.broker_name && broker.enabled !== false));
-                if (!active) return;
-                setBrokers(mapped);
-                setSelected(mapped.length > 0 ? String(mapped[0].id) : '');
-            })
+        setDirectoryError('');
+        const cached = getCachedBrokerDirectory();
+        const applyDirectory = (rows: BrokerDiscoveryItem[]) => {
+            const mapped = availableDirectoryBrokers(rows);
+            setBrokers(mapped);
+            setSelected(mapped[0] ? String(mapped[0].id) : '');
+        };
+        applyDirectory(cached || []);
+        setLoadingBrokers(cached === null);
+        loadAppBrokerDirectory({ desktop: isDesktopBackendTarget() })
+            .then(rows => { if (active) applyDirectory(rows); })
             .catch(err => {
-                if (isAbortError(err)) return;
                 console.warn('[OpenAccountDialog] Could not load brokers:', err);
-                if (active) setValidationError('Broker servers are unavailable. Please try again.');
+                if (active) setDirectoryError('Broker servers are unavailable. Please try again.');
             })
-            .finally(() => {
-                if (active) setLoadingBrokers(false);
-            });
+            .finally(() => { if (active) setLoadingBrokers(false); });
 
         return () => {
             active = false;
-            controller.abort();
         };
-    }, [isOpen]);
+    }, [isOpen, directoryAttempt]);
 
     if (!isOpen) return null;
 
@@ -440,6 +440,10 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 setValidationError('Enter a valid email address.');
                 return;
             }
+            if (isDesktopShell && !formData.country) {
+                setValidationError('Select a country from the list.');
+                return;
+            }
             setStep(3);
             return;
         }
@@ -471,13 +475,14 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
 
     // ─── Step 0: Broker Selection ───────────────────────────────────────────────
     const renderStep0 = () => (
-        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 p-5">
+        <div className="rtx-open-account-dialog__broker-step flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 p-5">
             {/* Search bar */}
             <div className="flex gap-2">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
                     <input
                         type="text"
+                        aria-label={tr("Search brokers")}
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder={tr("Search broker name or server address…")}
@@ -493,7 +498,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
 
             {/* Section header */}
-            <div className="flex items-center gap-2">
+            <div className="rtx-open-account-dialog__list-heading flex items-center gap-2">
                 <span className="text-[14px] font-normal uppercase tracking-widest text-zinc-500">
                     {tr("Available Brokers")}</span>
                 <div className="flex-1 h-px opacity-30" style={{ background: 'linear-gradient(90deg, rgba(180,180,190,0.3), transparent)' }} />
@@ -512,6 +517,17 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         <Loader2 className="w-6 h-6 animate-spin opacity-50" />
                         <p>{tr("Loading brokers…")}</p>
                     </div>
+                ) : directoryError ? (
+                    <div className="py-6 text-center text-[14px] font-normal text-zinc-500">
+                        <p role="alert">{tr(directoryError)}</p>
+                        <button
+                            type="button"
+                            className="mt-3 rounded-md border border-[var(--border-primary)] px-4 py-2 text-[var(--text-primary)] hover:bg-[var(--bg-quaternary)]"
+                            onClick={() => setDirectoryAttempt(attempt => attempt + 1)}
+                        >
+                            {tr('Retry')}
+                        </button>
+                    </div>
                 ) : filteredBrokers.length === 0 ? (
                     <div className="py-10 text-center text-[14px] font-normal text-zinc-600">
                         <Globe className="w-8 h-8 mx-auto mb-2 opacity-30" />
@@ -522,14 +538,16 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         const isSelected = selected === String(broker.id);
                         const isHovered = hoveredId === String(broker.id);
                         return (
-                            <div
+                            <button
+                                type="button"
                                 key={broker.id}
+                                aria-pressed={isSelected}
                                 onClick={() => setSelected(String(broker.id))}
                                 onDoubleClick={handleNext}
                                 onMouseEnter={() => setHoveredId(String(broker.id))}
                                 onMouseLeave={() => setHoveredId(null)}
                                 data-selected={isSelected}
-                                className={`rtx-open-account-dialog__broker flex items-center gap-4 px-4 py-3 rounded-xl cursor-pointer transition-all duration-150 select-none`}
+                                className={`rtx-open-account-dialog__broker flex items-center gap-4 px-4 py-3 rounded-xl cursor-pointer transition-all duration-150 select-none text-left`}
                                 style={{
                                     background: isSelected
                                         ? 'linear-gradient(135deg, rgba(180,180,190,0.2) 0%, rgba(79,70,229,0.15) 100%)'
@@ -558,19 +576,21 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                                             </span>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="rtx-open-account-dialog__broker-id flex items-center gap-2 mt-0.5">
                                         <span className="truncate font-mono text-[14px] font-normal text-zinc-400">{broker.broker_id}</span>
                                     </div>
                                 </div>
 
-                                <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${isSelected ? 'text-zinc-400' : 'text-zinc-700'}`} />
-                            </div>
+                                {isDesktopShell && isSelected
+                                    ? <CheckCircle2 className="rtx-open-account-dialog__selected-icon" aria-hidden="true" />
+                                    : <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-colors ${isSelected ? 'text-zinc-400' : 'text-zinc-700'}`} />}
+                            </button>
                         );
                     })
                 )}
             </div>
 
-            {selectedBroker && (
+            {selectedBroker && !isDesktopShell && (
                 <div
                     className="rtx-open-account-dialog__surface flex items-center gap-2 px-3 py-2 rounded-lg"
                     style={{ background: 'rgba(180,180,190,0.06)', border: '1px solid rgba(180,180,190,0.12)' }}
@@ -709,6 +729,79 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     );
 
     // ─── Step 2: Personal Details ───────────────────────────────────────────────
+    const renderDesktopDetails = () => (
+        <div className="rtx-account-body">
+            <div className="rtx-account-fields">
+                {([
+                    ['firstName', 'First name', 'given-name', 'text'],
+                    ['lastName', 'Last name', 'family-name', 'text'],
+                    ['email', 'Email', 'email', 'email'],
+                    ['phone', 'Mobile phone', 'tel', 'tel'],
+                ] as const).map(([field, label, autoComplete, type]) => (
+                    <label className="rtx-account-field" key={field}>
+                        <span>{tr(label)}{field === 'phone' && <small>{tr("Optional")}</small>}</span>
+                        <input
+                            aria-label={tr(label)}
+                            autoComplete={autoComplete}
+                            type={type}
+                            required={field !== 'phone'}
+                            value={formData[field]}
+                            onChange={event => {
+                                setFormData(current => ({ ...current, [field]: event.target.value }));
+                                setValidationError('');
+                            }}
+                        />
+                    </label>
+                ))}
+                <CountryCombobox
+                    className="rtx-account-field--wide"
+                    value={formData.country}
+                    onChange={country => {
+                        setFormData(current => ({ ...current, country }));
+                        setValidationError('');
+                    }}
+                    error={validationError === 'Select a country from the list.' ? tr(validationError) : undefined}
+                />
+            </div>
+            <p className="rtx-account-note">{tr("These details are used to open your demo account.")}</p>
+        </div>
+    );
+
+    const renderDesktopSettings = () => (
+        <div className="rtx-account-body">
+            <div className="rtx-account-fields">
+                <label className="rtx-account-field">
+                    <span>{tr("Currency")}</span>
+                    <select aria-label={tr("Currency")} value={formData.currency} onChange={event => setFormData(current => ({ ...current, currency: event.target.value }))}>
+                        <option value="USD">USD — US Dollar</option>
+                        <option value="EUR">EUR — Euro</option>
+                    </select>
+                </label>
+                <label className="rtx-account-field">
+                    <span>{tr("Leverage")}</span>
+                    <select aria-label={tr("Leverage")} value={formData.leverage} onChange={event => setFormData(current => ({ ...current, leverage: event.target.value }))}>
+                        <option value="100">1:100</option>
+                        <option value="200">1:200</option>
+                        <option value="500">1:500</option>
+                    </select>
+                </label>
+            </div>
+            <div className="rtx-account-consent">
+                <label>
+                    <input
+                        aria-label={tr("Accept account terms")}
+                        type="checkbox"
+                        checked={termsAccepted}
+                        onChange={event => { setTermsAccepted(event.target.checked); setValidationError(''); }}
+                    />
+                    <span>{tr("I agree with the terms and conditions for opening an account and the data protection policy")}</span>
+                </label>
+                <a href="https://rtx5.orrnn.com/terms-conditions" target="_blank" rel="noopener noreferrer">{tr("Terms and data protection policy")}</a>
+            </div>
+            {createError && <div role="alert" className="rtx-account-error">{tr(createError)}</div>}
+        </div>
+    );
+
     const renderStep2 = () => accountType === 'real' ? (
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-6">
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-5">
@@ -721,7 +814,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                     {tr("This terminal will not create or fund a real account automatically. Contact the broker through its verified customer-support or onboarding channel.")}</p>
             </div>
         </div>
-    ) : (
+    ) : isDesktopShell ? renderDesktopDetails() : (
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-5">
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
@@ -759,7 +852,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     );
 
     // ─── Step 3: Account Settings ───────────────────────────────────────────────
-    const renderStep3 = () => (
+    const renderStep3 = () => isDesktopShell ? renderDesktopSettings() : (
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col p-5">
             <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-4">
@@ -848,6 +941,10 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
     };
 
     const header = getHeader();
+    const desktopSteps = accountType === 'existing'
+        ? ['Broker', 'Account type']
+        : accountType === 'real' ? ['Broker', 'Account type', 'Verification']
+            : ['Broker', 'Account type', 'Details', 'Settings'];
     const isStepValid = step === 0 ? Boolean(selectedBroker) && !loadingBrokers : true;
     const actionLabel = isCreating
         ? accountType === 'existing' ? 'Connecting...' : 'Creating...'
@@ -870,7 +967,8 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="rtx-open-account-title"
-                className="rtx-open-account-dialog relative w-[580px] max-w-[calc(100vw-24px)] flex flex-col overflow-hidden transition-all duration-300"
+                data-step={step}
+                className={`rtx-open-account-dialog ${isDesktopShell ? 'rtx-open-account-dialog--desktop' : ''} relative w-[580px] max-w-[calc(100vw-24px)] flex flex-col overflow-hidden transition-all duration-300`}
                 style={{
                     background: 'linear-gradient(145deg, rgba(22, 24, 31, 0.65) 0%, rgba(28, 30, 40, 0.6) 40%, rgba(20, 22, 32, 0.65) 100%)',
                     border: '1px solid rgba(255,255,255,0.12)',
@@ -893,18 +991,29 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         )}
                         <div className="min-w-0">
                             <h2 id="rtx-open-account-title" className="rtx-dialog-title break-words text-[20px] leading-7 font-semibold text-white tracking-tight">
-                                {step > 0 ? tr("Open an Account: {{value0}}", { value0: selectedBroker?.broker_name || tr('Broker') }) : tr(header.title)}
+                                {isDesktopShell ? tr(header.title) : step > 0 ? tr("Open an Account: {{value0}}", { value0: selectedBroker?.broker_name || tr('Broker') }) : tr(header.title)}
                             </h2>
-                            <p className="mt-0.5 text-[14px] font-normal text-zinc-500">{tr(step > 0 ? header.title : header.sub)}</p>
+                            <p className="mt-0.5 text-[14px] font-normal text-zinc-500">{isDesktopShell && step > 0 ? selectedBroker?.broker_name : tr(step > 0 ? header.title : header.sub)}</p>
                         </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                        <button className="flex h-7 w-7 items-center justify-center rounded-md text-[14px] font-normal text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300" title={tr("Help")}>?</button>
+                        {!isDesktopShell && <button className="flex h-7 w-7 items-center justify-center rounded-md text-[14px] font-normal text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300" title={tr("Help")}>?</button>}
                         <button onClick={closeDialog} className="w-7 h-7 rounded-md flex items-center justify-center text-zinc-500 hover:text-white hover:bg-red-500/20 transition-all" title={tr("Close")}>
                             <X className="w-3.5 h-3.5" />
                         </button>
                     </div>
                 </div>
+
+                {isDesktopShell && step < 4 && (
+                    <ol className="rtx-account-progress" aria-label={tr("Account setup progress")}>
+                        {desktopSteps.map((label, index) => (
+                            <li key={label} aria-current={index === step ? 'step' : undefined} data-complete={index < step}>
+                                <span className="rtx-account-progress__number" aria-hidden="true">{index < step ? <CheckCircle2 /> : index + 1}</span>
+                                <span>{tr(label)}</span>
+                            </li>
+                        ))}
+                    </ol>
+                )}
 
                 {step === 0 && renderStep0()}
                 {step === 1 && renderStep1()}
@@ -913,7 +1022,23 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                 {step === 4 && renderStep4()}
 
                 {/* Footer */}
-                <div className="rtx-open-account-dialog__footer flex shrink-0 flex-wrap items-center justify-between gap-3 px-5 py-4 mt-auto" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                {isDesktopShell ? (
+                    <div className="rtx-account-footer">
+                        {validationError && validationError !== 'Select a country from the list.' && <p role="alert" className="rtx-account-error">{tr(validationError)}</p>}
+                        <div className="rtx-account-footer__actions">
+                            {step > 0 && step < 4
+                                ? <button type="button" disabled={isCreating} onClick={handleBack}>{tr("Back")}</button>
+                                : <span />}
+                            <div>
+                                <button type="button" disabled={isCreating} onClick={closeDialog}>{tr("Cancel")}</button>
+                                <button type="button" onClick={handleNext} disabled={!isStepValid || isCreating} className="rtx-account-primary">
+                                    {isCreating && <Loader2 className="animate-spin" aria-hidden="true" />}
+                                    {tr(actionLabel === 'Next >' ? 'Next' : actionLabel)}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : <div className="rtx-open-account-dialog__footer flex shrink-0 flex-wrap items-center justify-between gap-3 px-5 py-4 mt-auto" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     <div className="max-w-[280px] text-[14px] font-normal">
                         {validationError ? <span role="alert" className="text-red-400">{tr(validationError)}</span> : (
                             <span className="text-zinc-600">{step === 0 ? tr("Double-click to proceed immediately") : ''}</span>
@@ -943,7 +1068,7 @@ export const OpenAccountDialog: React.FC<Props> = ({ isOpen, onClose }) => {
                         >
                             {tr("Cancel")}</button>
                     </div>
-                </div>
+                </div>}
             </div>
         </div>,
         document.body

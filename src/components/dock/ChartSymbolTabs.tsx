@@ -5,6 +5,7 @@ import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { normalizeExactBrokerSymbol } from '../../utils/exactBrokerSymbol';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
+import { closeChartPanelSymbolTab } from '../../services/chartPanelNavigation';
 
 export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
   const tr = useUiTranslation();
@@ -43,6 +44,17 @@ export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
                 event.stopPropagation();
                 window.dispatchEvent(new CustomEvent('request-chart-symbol-change', { detail: { panelId: panel.id } }));
               }}><Icon name="chevron-down" size="xs" /></button>}
+            {panel.closable !== false && <button
+              type="button"
+              className="inline-flex shrink-0 items-center justify-center w-5 h-5 mr-1 rounded-sm text-[var(--text-secondary)] hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400"
+              aria-label={tr('Close {{symbol}} tab', { symbol: tab.symbol })}
+              title={tr('Close {{symbol}} tab', { symbol: tab.symbol })}
+              onMouseDown={event => event.stopPropagation()}
+              onClick={event => {
+                event.stopPropagation();
+                closeChartPanelSymbolTab(panel.id, tab.symbol);
+              }}
+            ><Icon name="x-close" size="xs" /></button>}
           </span>
         );
       })}

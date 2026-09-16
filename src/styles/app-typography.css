@@ -203,11 +203,3 @@ html:root .rtx-order-dialog__control,
 html:root .rtx-order-dialog__volume-control { min-height: 32px; }
 
 html:root .rtx-oct { top: calc(14px + var(--rtx-ui-line-height)); }
-
-/* The narrow classic Toolbox rail keeps its established geometry. */
-html:root.rtx-advanced-view.rtx-skin-untitled-light
-  [data-dock-panel-component='terminal'][data-dock-minimized='false']:not([data-dock-floating-panel='true'])
-  > div:first-child > .dock-panel__header .dock-panel__title {
-  --rtx-type-weight: var(--rtx-font-weight-body);
-  line-height: 16px !important;
-}

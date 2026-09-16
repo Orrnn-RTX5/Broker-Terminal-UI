@@ -2,6 +2,7 @@
 
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { applyBrokerChrome } from '../../services/brokerPresentation';
 import { DesktopWindowShell } from './DesktopWindowShell';
 
 type ElectronWindowApi = NonNullable<Window['electron']>['window'];
@@ -42,6 +43,7 @@ describe('DesktopWindowShell', () => {
 
   afterEach(() => {
     cleanup();
+    applyBrokerChrome({});
     delete window.electron;
     document.documentElement.classList.remove('rtx-desktop-shell-active');
   });
@@ -120,6 +122,32 @@ describe('DesktopWindowShell', () => {
 
     await waitFor(() => {
       expect(view.getByText('100043 - RTX-Server - Hedge - RTX - EURUSD,M15')).toBeTruthy();
+    });
+  });
+
+  it('replaces the titlebar icon when the selected broker chrome changes', async () => {
+    installElectronBridge();
+    const view = render(
+      <DesktopWindowShell>
+        <div>Desktop content</div>
+      </DesktopWindowShell>,
+    );
+
+    act(() => {
+      applyBrokerChrome({
+        brokerId: 'Nexa',
+        brokerName: 'Nexa',
+        logoUrl: 'https://directory.example.test/nexa.ico',
+        updateLoginTitle: true,
+      });
+    });
+
+    await waitFor(() => {
+      expect(view.getByText('RTX Terminal - Nexa')).toBeTruthy();
+      expect(view.container.querySelector('.rtx-desktop-titlebar__icon')).toHaveAttribute(
+        'src',
+        'https://directory.example.test/nexa.ico',
+      );
     });
   });
 });

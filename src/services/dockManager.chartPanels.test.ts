@@ -22,6 +22,44 @@ const makeLayout = (count: number): DockLayout => {
 };
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
 
+describe('default chart selection', () => {
+  it('opens one XAUUSD M1 chart in a fresh workspace and preserves it after reload', () => {
+    const manager = new DockManager();
+    expect(chartPanels(manager.getLayout())).toEqual([
+      expect.objectContaining({
+        title: 'XAUUSD,M1', props: { symbol: 'XAUUSD', timeframe: 'M1' },
+      }),
+    ]);
+    manager.saveToStorage('fresh-chart');
+    const restored = new DockManager();
+    expect(restored.loadFromStorage('fresh-chart')).toBe(true);
+    expect(restored.getLayout()).toEqual(manager.getLayout());
+  });
+
+  it.each(['M1', 'M5', 'H4'])('preserves a saved custom symbol and %s timeframe', timeframe => {
+    const manager = new DockManager();
+    const panel = chartPanels(manager.getLayout())[0];
+    manager.updatePanelProps(panel.id, {
+      title: `EURUSD,${timeframe}`, props: { symbol: 'EURUSD', timeframe },
+    });
+    manager.saveToStorage('custom-chart');
+    const restored = new DockManager();
+    expect(restored.loadFromStorage('custom-chart')).toBe(true);
+    expect(chartPanels(restored.getLayout())).toEqual(chartPanels(manager.getLayout()));
+  });
+
+  it('defaults a newly opened chart to XAUUSD M1 when no charts remain', () => {
+    const manager = new DockManager(makeLayout(1));
+    manager.removePanel('seed-0');
+    expect(manager.addChartPanel().status).toBe('added');
+    expect(chartPanels(manager.getLayout())).toEqual([
+      expect.objectContaining({
+        title: 'XAUUSD,M1', props: { symbol: 'XAUUSD', timeframe: 'M1', chartType: 'candlestick' },
+      }),
+    ]);
+  });
+});
+
 describe('bounded chart creation', () => {
   it('adds exactly one independent chart and one notification per request up to six', () => {
     const manager = new DockManager(makeLayout(1));

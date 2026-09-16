@@ -195,8 +195,9 @@ describe('chart window arrangements', () => {
     const manager = new DockManager({ version: 'empty', root: { id: 'root', type: 'split', ratio: 1, children: [] }, floatingPanels: [] });
     manager.resetWindows();
     expect(charts(manager.getLayout())).toHaveLength(1);
-    expect(charts(manager.getLayout())[0]).toMatchObject({ component: 'Chart', props: { timeframe: 'M5' } });
-    expect(charts(manager.getLayout())[0].props?.symbol).toBeUndefined();
+    expect(charts(manager.getLayout())[0]).toMatchObject({
+      component: 'Chart', title: 'XAUUSD,M1', props: { symbol: 'XAUUSD', timeframe: 'M1' },
+    });
     expect(panels(manager.getLayout().root).some(panel => panel.component === 'EmptyChartArea')).toBe(false);
   });
 

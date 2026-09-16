@@ -400,6 +400,16 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-application-menu__root-i
   color: var(--rtx-light-accent-strong) !important;
 }
 
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-file-menu button.rtx-file-menu__logout[role="menuitem"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-file-menu button.rtx-file-menu__logout[role="menuitem"]:is(:hover, :focus-visible) {
+  color: var(--color-loss) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-desktop-quick-menu .rtx-desktop-quick-menu__item--danger[role="menuitem"],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-desktop-quick-menu .rtx-desktop-quick-menu__item--danger[role="menuitem"]:is(:hover, :focus-visible) {
+  color: var(--color-loss) !important;
+}
+
 html.rtx-advanced-view.rtx-skin-untitled-light :is([role="menu"], [role="listbox"]) [aria-selected="true"] {
   background: var(--rtx-light-accent-soft) !important;
   border-color: transparent !important;
@@ -432,6 +442,10 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-market-watch__header,
   border-color: var(--rtx-light-border) !important;
   color: var(--rtx-light-text-secondary) !important;
   box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .navigator-panel {
+  --navigator-tree-line: var(--rtx-light-control-border) !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light .navigator-tree-item__row {

@@ -261,9 +261,32 @@ describe('FileMenu Component', () => {
             expect(within(accountHeader).getByText('200002')).toBeInTheDocument();
             expect(accountHeader.compareDocumentPosition(newChartButton!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
             expect(screen.getAllByRole('menuitem', { name: 'Log Out' })).toHaveLength(1);
+            expect(logoutButton.querySelector('svg')).not.toBeNull();
+            expect(logoutButton).not.toHaveAttribute('data-desktop-logout');
 
             fireEvent.click(logoutButton);
             expect(onLogout).toHaveBeenCalledTimes(1);
+        });
+
+        it('shows desktop Log Out as text only and preserves its account action', () => {
+            const originalElectron = Object.getOwnPropertyDescriptor(window, 'electron');
+            Object.defineProperty(window, 'electron', { configurable: true, value: { window: {} } });
+            try {
+                const onLogout = vi.fn();
+                render(<FileMenu {...mockHandlers} accountId="200002" onLogout={onLogout} />);
+                const accountHeader = screen.getByTestId('file-menu-account-header');
+                const logoutButton = within(accountHeader).getByRole('menuitem', { name: 'Log Out' });
+
+                expect(logoutButton).toHaveTextContent(/^Log Out$/);
+                expect(logoutButton.querySelector('svg')).toBeNull();
+                expect(logoutButton).toHaveAttribute('data-desktop-logout', 'true');
+                expect(logoutButton).toHaveAttribute('title', 'Log out of the current account');
+                fireEvent.click(logoutButton);
+                expect(onLogout).toHaveBeenCalledTimes(1);
+            } finally {
+                if (originalElectron) Object.defineProperty(window, 'electron', originalElectron);
+                else delete window.electron;
+            }
         });
 
         it('saves the named workspace through the canonical dialog', () => {

@@ -258,6 +258,28 @@ describe('WelcomeTerminal broker runtime selection', () => {
     expect(selected?.broker_id).toBe('TEST');
   });
 
+  it('prefers a public broker over loopback development rows on a fresh desktop launch', () => {
+    const selected = pickDiscoveryBroker([
+      broker({
+        broker_id: 'localdemo',
+        broker_name: 'Local Demo Broker',
+        server_url: 'https://127.0.0.1:8090',
+      }),
+      broker({
+        broker_id: 'local-demo-01',
+        broker_name: 'Local Demo Broker 01',
+        server_url: 'https://demo01.local.test',
+      }),
+      broker({
+        broker_id: 'Nexa',
+        broker_name: 'Nexa',
+        server_url: 'https://nexa.orrnn.com',
+      }),
+    ], { isDesktopBrokerSelection: true });
+
+    expect(selected?.broker_id).toBe('Nexa');
+  });
+
   it('skips suspended brokers when falling back to directory order', () => {
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web',

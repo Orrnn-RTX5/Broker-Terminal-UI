@@ -1,0 +1,58 @@
+<!doctype html><html class="rtx-advanced-view rtx-skin-untitled-light rtx-advanced-font-small rtx-desktop-shell-active"><head><meta charset="UTF-8"><title>Fixture: desktop light typography comparison</title>
+  <link rel="stylesheet" href="../../dist/assets/index-C4L7Ch80.css">
+<link rel="stylesheet" href="../../dist/assets/authenticatedStyles-DEYn07oY.css">
+<link rel="stylesheet" href="../../dist/assets/App-BSoGdOhc.css">
+<link rel="stylesheet" href="../../dist/assets/OrderPanelDialog-B20-q6et.css">
+<link rel="stylesheet" href="../../dist/assets/TradingChart-BLcGZlDK.css">
+  <style>
+    /* Fixture geometry only; measured typography and colors come from dist. */
+    html,body,#root { min-height:100%; height:auto; overflow:auto; }
+    [data-fixture-banner] { padding:12px 18px; border-bottom:1px solid; }
+    [data-fixture-grid] { display:grid; grid-template-columns:390px 1fr; gap:18px; padding:18px; }
+    [data-fixture-section] { margin-bottom:20px; min-width:0; }
+    [data-fixture-menu] { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; padding:16px; }
+    [data-fixture-menu] .rtx-application-menu { position:static; width:auto; }
+    [data-fixture-section] .dock-panel__header { display:flex; justify-content:space-between; padding:5px 8px; }
+    [data-fixture-section] .rtx-market-watch__search { padding:8px; }
+    [data-fixture-section] .navigator-tree-item__row { padding:5px 12px; }
+    [data-fixture-section] table { width:100%; }
+    [data-fixture-section] td,[data-fixture-section] th { padding:8px; }
+    [data-fixture-section] .rtx-trade-footer { padding:8px; }
+    [data-fixture-section] .rtx-order-dialog { position:static; width:100% !important; min-width:0 !important; max-width:none; transform:none; }
+    [data-fixture-section] .rtx-order-dialog__form { padding:16px; }
+    [data-fixture-section] .rtx-order-dialog__field { margin-bottom:12px; }
+    [data-fixture-section] .rtx-order-dialog__actions { display:flex; gap:10px; }
+    [data-fixture-section] .rtx-order-dialog__action { flex:1; }
+    [data-fixture-section] .rtx-chart-hud { position:static !important; }
+    [data-fixture-menu] .rtx-application-menu-trigger { padding-inline:10px; }
+  </style></head><body><div id="root"><div class="rtx-desktop-shell"><div class="rtx-app-shell">
+  <div data-fixture-banner><strong>RENDERER FIXTURE — DESKTOP SHELL — SMALL</strong><p>Representative component markup with current built CSS. Sample values only; no account, network, or trading.</p></div>
+  <div data-fixture-menu><div class="rtx-desktop-main-toolbar"><div class="rtx-desktop-menu-row"><div class="rtx-desktop-menu-bar flex items-center text-[13px] font-normal"><div class="rtx-desktop-menu-items flex items-center"><div><button data-probe="menu.root" class="rtx-application-menu-trigger flex items-center border border-transparent px-2.5 leading-none" role="menuitem">File</button></div><button class="rtx-application-menu-trigger" role="menuitem">View</button><button class="rtx-application-menu-trigger" role="menuitem">Charts</button></div></div></div></div>
+  <div class="rtx-desktop-menu-bar"><div data-probe="menu.surface" class="rtx-menu-surface" role="menu"><button data-probe="menu.option" class="rtx-menu-row" role="menuitem"><span>New Order</span><span data-probe="menu.shortcut" class="rtx-menu-row__shortcut">F9</span></button></div></div>
+  <div data-rtx-desktop-submenu="true"><div class="rtx-menu-surface" role="menu"><button data-probe="menu.portal-option" class="rtx-menu-row" role="menuitem">Language</button></div></div></div>
+  <div data-fixture-grid><div>
+    <section data-fixture-section><div class="dock-panel"><div class="dock-panel__header"><span data-probe="market.title" class="dock-panel__title">Market Watch</span><span>− ×</span></div><div data-probe="market.surface" class="rtx-market-watch"><div class="rtx-market-watch__search"><input data-probe="market.search" class="mw-input" placeholder="Search symbol" style="font-size:14px;font-weight:400;color:var(--text-primary)"></div><table class="rtx-market-watch__table"><thead><tr><th data-probe="market.heading" class="rtx-market-watch__column-heading" style="font-size:12px;font-weight:500">Symbol</th><th>Bid</th><th>Ask</th></tr></thead><tbody><tr class="mw-row"><td><span data-probe="market.symbol" class="rtx-market-watch__symbol" style="font-size:13px;font-weight:500;color:var(--text-primary)">EURUSD</span></td><td><span data-probe="market.up" class="rtx-market-watch__price rtx-market-watch__price--bid rtx-market-watch__price--up" style="font-size:13px;font-weight:500">1.17235</span></td><td><span data-probe="market.down" class="rtx-market-watch__price rtx-market-watch__price--ask rtx-market-watch__price--down" style="font-size:13px;font-weight:500">1.17242</span></td></tr></tbody></table></div></div></section>
+    <section data-fixture-section><div data-probe="navigator.surface" class="navigator-panel bg-[#131316] text-zinc-100"><div class="dock-panel__header"><span data-probe="navigator.title" class="dock-panel__title">Navigator</span><span>− ×</span></div><div class="navigator-tree-item"><div class="navigator-tree-item__row"><span data-probe="navigator.label" class="navigator-tree-item__label text-[14px] font-normal text-zinc-100">Accounts</span></div></div><div class="navigator-tree-item navigator-tree-item--selected" aria-selected="true"><div class="navigator-tree-item__row"><span data-probe="navigator.selected" class="navigator-tree-item__label text-[14px] font-normal text-zinc-100">Demo account</span></div></div></div></section>
+    <section data-fixture-section><div class="rtx-order-dialog" role="dialog"><div class="rtx-order-dialog__header"><span data-probe="order.title" class="rtx-order-dialog__title">New Order · EURUSD</span></div><div class="rtx-order-dialog__form"><div class="rtx-order-dialog__field"><label data-probe="order.label" class="rtx-order-dialog__label">Symbol</label><input data-probe="order.control" class="rtx-order-dialog__control" value="EURUSD" readonly></div><div class="rtx-order-dialog__field"><label class="rtx-order-dialog__label">Volume</label><input class="rtx-order-dialog__control" value="0.10" readonly></div><div class="rtx-order-dialog__actions"><button data-probe="order.sell" class="rtx-order-dialog__action rtx-order-dialog__action--sell">Sell by Market</button><button data-probe="order.buy" class="rtx-order-dialog__action rtx-order-dialog__action--buy">Buy by Market</button></div></div></div></section>
+  </div><div>
+    <section data-fixture-section><div data-probe="trade.surface" class="rtx-bottom-dock bg-[#131316] font-sans text-[12px]"><div class="dock-panel__header"><span></span><span>− ×</span></div><div class="rtx-bottom-dock__content"><div class="rtx-trade-tab bg-[#131316]">
+  
+  <table class="rtx-trade-table w-full text-center border-collapse"><thead class="rtx-trade-table__head bg-[#17181c] text-[#c9cfdb] font-normal text-[12px] leading-[18px]"><tr>
+    <th data-probe="trade.heading">Symbol</th><th><button data-probe="trade.sort-heading" class="relative flex w-full items-center justify-center">Ticket</button></th><th>Type</th><th>Volume</th><th>Price Open</th><th>Profit</th>
+  </tr></thead><tbody class="text-[#d8dde8] text-[13px] font-normal"><tr class="rtx-trade-row">
+    <td data-probe="trade.symbol" class="text-zinc-100 font-normal">EURUSD</td><td>900001</td><td data-probe="trade.buy" class="rtx-trade-side-cell rtx-trade-side-cell--buy text-[#45bff7]">buy</td><td>0.10</td><td>1.17235</td><td data-probe="trade.profit" class="rtx-trade-profit-value--positive text-[#22c55e]">12.50</td>
+  </tr><tr class="rtx-trade-row"><td>GBPUSD</td><td>900002</td><td data-probe="trade.sell" class="rtx-trade-side-cell rtx-trade-side-cell--sell text-[#ff2d2d]">sell</td><td>0.20</td><td>1.35325</td><td data-probe="trade.loss" class="rtx-trade-profit-value--negative text-[#ff2d2d]">-4.20</td></tr></tbody></table>
+  <div class="rtx-trade-footer text-[13px] font-normal text-zinc-300"><span class="rtx-trade-footer-metric"><span data-probe="trade.metric-label" class="rtx-trade-metric-label">Balance </span><span data-probe="trade.metric-value" class="rtx-trade-metric-value">4 859.23</span></span></div>
+</div></div><div class="rtx-bottom-dock__tabs relative flex"><div class="rtx-dock-tab-scroller flex"><button data-probe="tabs.active" class="rtx-dock-tab active-tab text-[12px] font-normal">Trade</button><button data-probe="tabs.inactive" class="rtx-dock-tab text-[12px] font-normal">History</button><button class="rtx-dock-tab text-[12px] font-normal">Exposure</button><button class="rtx-dock-tab text-[12px] font-normal">Journal</button></div></div></div></section>
+    <section data-fixture-section><div class="rtx-bottom-dock bg-[#131316] font-sans text-[12px]"><div class="rtx-history-tab bg-[#131316]">
+  <div class="rtx-history-toolbar flex items-center gap-2 px-1.5 py-1 bg-[#191a1e] text-[12px] font-normal text-zinc-300"><button data-probe="history.filter" class="rtx-history-time-btn px-2 py-0.5 text-[12px] font-normal text-zinc-400">Today</button><span>Fixture closed trades</span></div>
+  <table class="rtx-trade-table w-full text-center border-collapse"><thead class="rtx-trade-table__head bg-[#17181c] text-[#c9cfdb] font-normal text-[12px] leading-[18px]"><tr>
+    <th data-probe="history.heading">Symbol</th><th><button data-probe="history.sort-heading" class="relative flex w-full items-center justify-center">Ticket</button></th><th>Type</th><th>Volume</th><th>Price Open</th><th>Profit</th>
+  </tr></thead><tbody class="text-[#d8dde8] text-[13px] font-normal"><tr class="rtx-trade-row">
+    <td data-probe="history.symbol" class="text-zinc-100 font-normal">EURUSD</td><td>900001</td><td data-probe="history.buy" class="rtx-trade-side-cell rtx-trade-side-cell--buy text-[#45bff7]">buy</td><td>0.10</td><td>1.17235</td><td data-probe="history.profit" class="rtx-trade-profit-value--positive text-[#22c55e]">12.50</td>
+  </tr><tr class="rtx-trade-row"><td>GBPUSD</td><td>900002</td><td data-probe="history.sell" class="rtx-trade-side-cell rtx-trade-side-cell--sell text-[#ff2d2d]">sell</td><td>0.20</td><td>1.35325</td><td data-probe="history.loss" class="rtx-trade-profit-value--negative text-[#ff2d2d]">-4.20</td></tr></tbody></table>
+  <div class="rtx-trade-footer text-[13px] font-normal text-zinc-300"><span class="rtx-trade-footer-metric"><span data-probe="history.metric-label" class="rtx-trade-metric-label">Balance </span><span data-probe="history.metric-value" class="rtx-trade-metric-value">4 859.23</span></span></div>
+</div></div></section>
+    <section data-fixture-section><div class="rtx-toolbar-command-cluster flex"><button data-probe="toolbar.order" class="rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-normal font-segoe">New Order</button><button data-probe="toolbar.timeframe" class="rtx-timeframe-option text-[13px] font-normal font-segoe" aria-checked="true">M1</button></div><div data-probe="chart.hud" class="rtx-chart-hud">EURUSD,M1 1.17235 1.17242</div></section>
+  </div></div><div data-probe="status.surface" class="rtx-status-bar h-6 flex items-center justify-between text-[13px] font-normal text-zinc-200"><span data-probe="status.metric" class="rtx-status-bar__metric text-zinc-100 font-normal">Demo • EURUSD,M1</span><button data-probe="status.action" class="rtx-status-bar__action text-[12px] font-normal text-zinc-300">Desktop App v1.0.25</button><span class="rtx-status-bar__metric">Fixture only</span></div>
+  </div></div></div></body></html>

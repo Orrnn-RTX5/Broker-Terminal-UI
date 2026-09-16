@@ -1,0 +1,48 @@
+{
+  "fixture": true,
+  "passed": true,
+  "cases": [
+    {
+      "size": "normal",
+      "count": "1",
+      "badgeFont": "10px",
+      "badgeFits": true,
+      "menuFits": true,
+      "textFits": true,
+      "aligned": true,
+      "nameLines": 2,
+      "dangerColor": "rgb(185, 28, 28)",
+      "expectedDanger": "#b91c1c",
+      "textSize": "14px",
+      "headingWeight": "500"
+    },
+    {
+      "size": "large",
+      "count": "99+",
+      "badgeFont": "10px",
+      "badgeFits": true,
+      "menuFits": true,
+      "textFits": true,
+      "aligned": true,
+      "nameLines": 2,
+      "dangerColor": "rgb(185, 28, 28)",
+      "expectedDanger": "#b91c1c",
+      "textSize": "15px",
+      "headingWeight": "500"
+    },
+    {
+      "size": "small",
+      "count": "1",
+      "badgeFont": "10px",
+      "badgeFits": true,
+      "menuFits": true,
+      "textFits": true,
+      "aligned": true,
+      "nameLines": 2,
+      "dangerColor": "rgb(185, 28, 28)",
+      "expectedDanger": "#b91c1c",
+      "textSize": "13px",
+      "headingWeight": "500"
+    }
+  ]
+}

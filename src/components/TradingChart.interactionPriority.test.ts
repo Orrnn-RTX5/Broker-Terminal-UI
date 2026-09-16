@@ -282,6 +282,7 @@ describe('TradingChart interaction-priority contract', () => {
     expect(overlayEffect).toContain('useAppStore.subscribe(');
     expect(overlayEffect).toContain('useChartSettingsStore.subscribe(');
     expect(overlayEffect).toContain("window.addEventListener('rtx:force-refresh-positions'");
+    expect(overlayEffect).toContain("window.addEventListener('rtx:new-trade-placed'");
     expect(overlayEffect).toContain('clearTradeOverlayVisualRuntime();');
   });
 

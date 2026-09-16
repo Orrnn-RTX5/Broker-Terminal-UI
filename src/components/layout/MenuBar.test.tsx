@@ -116,6 +116,16 @@ vi.mock('../SymbolsDialog', () => ({
     ),
 }));
 
+vi.mock('../LoginDialog', () => ({
+    LoginDialog: ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => (
+        isOpen ? (
+            <div role="dialog" aria-label="Trade account login">
+                <button type="button" onClick={onClose}>Close login</button>
+            </div>
+        ) : null
+    ),
+}));
+
 import { MenuBar } from './MenuBar';
 import { commandBus } from '../../services/commandBus';
 import { drawingManager } from '../../services/drawingManager';
@@ -377,7 +387,17 @@ describe('MenuBar hamburger launcher', () => {
 
         openFileMenu();
         fireEvent.click(screen.getByRole('button', { name: 'Login trade account' }));
-        expect(dispatchSpy.mock.calls.some(([event]) => event.type === 'rtx:openLoginDialog')).toBe(true);
+        expect(screen.getByRole('dialog', { name: 'Trade account login' })).toBeVisible();
+        expect(screen.queryByTestId('file-menu')).not.toBeInTheDocument();
+        expect(launcher).toHaveAttribute('aria-expanded', 'false');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Close login' }));
+        expect(screen.queryByRole('dialog', { name: 'Trade account login' })).not.toBeInTheDocument();
+
+        openFileMenu();
+        fireEvent.click(screen.getByRole('button', { name: 'Login trade account' }));
+        expect(screen.getAllByRole('dialog', { name: 'Trade account login' })).toHaveLength(1);
+        expect(screen.queryByTestId('file-menu')).not.toBeInTheDocument();
     });
 
     it('opens the configured broker Web Trader and reports the result', async () => {
@@ -565,6 +585,29 @@ describe('MenuBar hamburger launcher', () => {
 });
 
 describe('MenuBar Electron desktop menubar', () => {
+    it('opens, closes, and reopens trade account login without a status bar', () => {
+        installElectronBridge();
+        render(<MenuBar />);
+
+        const fileButton = screen.getByRole('menuitem', { name: 'File' });
+        const openTradeLogin = () => {
+            fireEvent.click(fileButton);
+            fireEvent.click(screen.getByRole('button', { name: 'Login trade account' }));
+        };
+
+        openTradeLogin();
+        expect(screen.getByRole('dialog', { name: 'Trade account login' })).toBeVisible();
+        expect(screen.queryByRole('menu', { name: 'File menu' })).not.toBeInTheDocument();
+        expect(fileButton).toHaveAttribute('aria-expanded', 'false');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Close login' }));
+        expect(screen.queryByRole('dialog', { name: 'Trade account login' })).not.toBeInTheDocument();
+
+        openTradeLogin();
+        expect(screen.getAllByRole('dialog', { name: 'Trade account login' })).toHaveLength(1);
+        expect(screen.queryByRole('menu', { name: 'File menu' })).not.toBeInTheDocument();
+    });
+
     it('exposes the installed version and working updater in View without the removed status bar entry', async () => {
         installElectronBridge();
         let notify: (data: import('../../types/trading').UpdateStatusPayload) => void = () => {};
@@ -694,17 +737,70 @@ describe('MenuBar Electron desktop menubar', () => {
         expect(screen.queryByRole('menu', { name: 'Help menu' })).not.toBeInTheDocument();
     });
 
-    it('toggles the shared drawing toolbar and applies active-chart color templates from desktop menus', () => {
+    it.each([true, false])('keeps desktop View appearance controls separate with drawing tools visible: %s', (visible) => {
+        installElectronBridge();
+        useDrawingSidebarStore.setState({ visible });
+        render(<MenuBar advancedViewEnabled />);
+
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+        const viewMenu = screen.getByRole('menu', { name: 'View menu' });
+        expect(within(viewMenu).queryByRole('menuitem', { name: 'Hide drawing tools' })).not.toBeInTheDocument();
+        expect(within(viewMenu).queryByRole('menuitem', { name: 'Show drawing tools' })).not.toBeInTheDocument();
+        expect(within(viewMenu).getByRole('menuitem', { name: 'Font Size' })).toBeVisible();
+        expect(within(viewMenu).getByRole('menuitemcheckbox', { name: 'Focus Chart' })).toBeVisible();
+
+        fireEvent.click(within(viewMenu).getByRole('menuitem', { name: 'Theme' }));
+        const themeMenu = screen.getByRole('menu', { name: 'Theme menu' });
+        expect(within(themeMenu).getAllByRole('menuitemradio').map(item => item.textContent)).toEqual([
+            'Dark Theme',
+            'Light Theme',
+        ]);
+        expect(within(themeMenu).getByRole('menuitemradio', { name: 'Light Theme' })).toHaveAttribute('aria-checked', 'true');
+        expect(within(themeMenu).queryByRole('menuitem', { name: 'Font Size' })).not.toBeInTheDocument();
+        expect(within(themeMenu).queryByRole('menuitemcheckbox', { name: 'Focus Chart' })).not.toBeInTheDocument();
+        expect(useDrawingSidebarStore.getState().visible).toBe(visible);
+    });
+
+    it('changes font size directly from the desktop View submenu', () => {
+        installElectronBridge();
+        const onSetAdvancedFontSize = vi.fn();
+        render(<MenuBar advancedFontSize="normal" onSetAdvancedFontSize={onSetAdvancedFontSize} />);
+
+        for (const label of ['Small', 'Normal', 'Large']) {
+            fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+            fireEvent.click(screen.getByRole('menuitem', { name: 'Font Size' }));
+            const fontSizeMenu = screen.getByRole('menu', { name: 'Font Size menu' });
+            expect(within(fontSizeMenu).getAllByRole('menuitemradio').map(item => item.textContent)).toEqual([
+                'Small',
+                'Normal',
+                'Large',
+            ]);
+            expect(within(fontSizeMenu).getByRole('menuitemradio', { name: 'Normal' })).toHaveAttribute('aria-checked', 'true');
+            fireEvent.click(within(fontSizeMenu).getByRole('menuitemradio', { name: label }));
+            expect(onSetAdvancedFontSize).toHaveBeenLastCalledWith(label.toLowerCase());
+            expect(screen.queryByRole('menu', { name: 'View menu' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('menu', { name: 'Font Size menu' })).not.toBeInTheDocument();
+        }
+    });
+
+    it.each([false, true])('toggles Focus Chart directly from desktop View when currently %s', (focusChart) => {
+        installElectronBridge();
+        const onSetFocusChart = vi.fn();
+        render(<MenuBar advancedViewEnabled focusChart={focusChart} onSetFocusChart={onSetFocusChart} />);
+
+        fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+        const focusChartItem = within(screen.getByRole('menu', { name: 'View menu' }))
+            .getByRole('menuitemcheckbox', { name: 'Focus Chart' });
+        expect(focusChartItem).toHaveAttribute('aria-checked', String(focusChart));
+        fireEvent.click(focusChartItem);
+        expect(onSetFocusChart).toHaveBeenCalledWith(!focusChart);
+        expect(screen.queryByRole('menu', { name: 'View menu' })).not.toBeInTheDocument();
+    });
+
+    it('applies active-chart color templates from desktop menus', () => {
         installElectronBridge();
         const originalGlobal = useChartSettingsStore.getState().globalProperties;
         render(<MenuBar chartSymbol="XAUUSD" />);
-        fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Hide drawing tools' }));
-        expect(useDrawingSidebarStore.getState().visible).toBe(false);
-        expect(screen.queryByRole('menu', { name: 'View menu' })).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Show drawing tools' }));
-        expect(useDrawingSidebarStore.getState().visible).toBe(true);
 
         fireEvent.click(screen.getByRole('menuitem', { name: 'Charts' }));
         fireEvent.click(screen.getByRole('menuitem', { name: 'Color Templates' }));

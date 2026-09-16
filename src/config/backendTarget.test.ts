@@ -92,6 +92,24 @@ describe('backend target resolver', () => {
     })).toBe('https://service.achieverfinancials.com');
   });
 
+  it('routes Nexa web API and websockets to Nexa while keeping superadmin discovery separate', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web',
+      BROKER_ID: 'Nexa',
+      API_HOST: 'https://nexa.orrnn.com',
+      API_HOST_EXT: 'https://nexa.orrnn.com',
+      WS_HOST: 'wss://nexa.orrnn.com',
+      DISCOVERY_BASE_URL: 'https://fxtrustsuperbackned.orrnn.com',
+      BROKER_DISCOVERY_URL: 'https://fxtrustsuperbackned.orrnn.com',
+    };
+    expect(getBackendTarget()).toBe('https://nexa.orrnn.com');
+    expect(resolveBrokerBackendUrl({})).toBe('https://nexa.orrnn.com');
+    expect(resolveBrokerExtApiUrl({})).toBe('https://nexa.orrnn.com');
+    expect(resolveBrokerWsUrl({}, '/ws/v2')).toBe('wss://nexa.orrnn.com/ws/v2');
+    expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://nexa.orrnn.com/ws/feed');
+    expect(getRuntimeDiscoveryBaseUrl()).toBe('https://fxtrustsuperbackned.orrnn.com');
+  });
+
   it('uses the Electron mode API host when no selected broker has been persisted yet', () => {
     runtimeWindow.electron = { window: {} };
     vi.stubEnv('VITE_API_URL', 'https://fxtrustbrokerbackend.orrnn.com');
