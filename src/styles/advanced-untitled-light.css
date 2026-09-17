@@ -1902,9 +1902,12 @@ html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row:not(.rtx-trade-r
   background-color: #F3E5F5 !important;
 }
 
-/* Match the reference terminal's normal-weight trade data. */
-html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td {
+/* Match the reference terminal's normal-weight trade data with visible dividing lines. */
+html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row td,
+html.rtx-desktop-shell-active tr.rtx-trade-row td {
   line-height: 19.5px !important;
+  border-bottom: 1px solid var(--rtx-light-border-strong, #d1d5db) !important;
+  border-right: none !important;
 }
 
 /* Deepen faint gray texts to near-black (#101828) */
@@ -1920,20 +1923,30 @@ html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .price-display {
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .rtx-trade-sl-value,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-red-300,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-red-300.bg-red-900\/20,
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-\[\#ff7676\] {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-\[\#ff7676\],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-sl-cell .rtx-trade-sl-value,
+html.rtx-desktop-shell-active.rtx-advanced-view .rtx-trade-sl-value {
   color: #b42318 !important;
-  background-color: #fef3f2 !important;
-  border: 1px solid #fecdca !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
   text-shadow: none !important;
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light tr.rtx-trade-row .rtx-trade-tp-value,
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-emerald-300,
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-emerald-300.bg-emerald-900\/20,
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-\[\#34dca0\] {
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-bottom-dock span.text-\[\#34dca0\],
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-tp-cell .rtx-trade-tp-value,
+html.rtx-desktop-shell-active.rtx-advanced-view .rtx-trade-tp-value {
   color: #027a48 !important;
-  background-color: #ecfdf3 !important;
-  border: 1px solid #abefc6 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
   text-shadow: none !important;
 }
 

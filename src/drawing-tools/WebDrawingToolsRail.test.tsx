@@ -179,7 +179,6 @@ describe('WebDrawingToolsRail', () => {
     expect(rail).toHaveAttribute('aria-orientation', 'vertical');
 
     expect(within(rail).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
-      'Cursor',
       'Trendline — Trend Line Tools',
       'Fib retracement - Gann and Fibonacci Tools',
       'Chart patterns',
@@ -196,7 +195,7 @@ describe('WebDrawingToolsRail', () => {
       'Hide objects',
       'Remove Drawings',
     ]);
-    expect(screen.getByRole('button', { name: 'Cursor' })).toHaveAttribute('data-active', 'true');
+    expect(screen.queryByRole('button', { name: 'Cursor' })).not.toBeInTheDocument();
     expect(within(rail).getAllByRole('separator')).toHaveLength(3);
   });
 
@@ -385,7 +384,6 @@ describe('WebDrawingToolsRail', () => {
       expect(screen.getByRole('button', {
         name: 'Forecasting and measurement tools',
       })).toHaveAttribute('data-active', 'true');
-      expect(screen.getByRole('button', { name: 'Cursor' })).toHaveAttribute('data-active', 'false');
     },
   );
 
@@ -521,15 +519,11 @@ describe('WebDrawingToolsRail', () => {
     });
   });
 
-  it('routes cursor and zoom utilities through the active chart command path', () => {
+  it('routes zoom utilities through the active chart command path', () => {
     render(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
-    const shapes = openRailMenu('Brush tools', 'Brushes, arrows, and shapes');
-    fireEvent.click(within(shapes).getByRole('menuitemradio', { name: 'Brush' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cursor' }));
     fireEvent.click(screen.getByRole('button', { name: 'Zoom In' }));
 
-    expect(commandBus.getHistory().slice(-2)).toEqual([
-      { type: 'SELECT_TOOL', payload: { tool: 'cursor', targetContextId: 'chart-xauusd-m1' } },
+    expect(commandBus.getHistory().slice(-1)).toEqual([
       { type: 'ZOOM_IN', payload: { targetContextId: 'chart-xauusd-m1' } },
     ]);
   });
@@ -542,7 +536,7 @@ describe('WebDrawingToolsRail', () => {
     const rail = screen.getByRole('toolbar', { name: 'Drawing tools for XAUUSD' });
     expect(rail).toHaveAttribute('aria-orientation', 'horizontal');
     expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label')))
-      .toEqual(verticalLabels.filter(label => !['Cursor', 'Keep drawing', 'Zoom In', 'Zoom Out'].includes(label)));
+      .toEqual(verticalLabels.filter(label => !['Keep drawing', 'Zoom In', 'Zoom Out'].includes(label)));
     const lines = openTrendMenu();
     expect(within(lines).getAllByRole('menuitemradio')).toHaveLength(TREND_LINE_TOOLS.length);
     const horizontalLine = within(lines).getAllByRole('menuitemradio').find(item =>
@@ -797,7 +791,6 @@ describe('WebDrawingToolsRail', () => {
     activeChartSource.id = 'chart-other';
     rerender(<WebDrawingToolsRail selectedSymbol="XAUUSD" />);
     expect(screen.getByRole('button', { name: 'Brush tools' })).toHaveAttribute('data-active', 'false');
-    expect(screen.getByRole('button', { name: 'Cursor' })).toHaveAttribute('data-active', 'true');
 
     act(() => {
       commandBus.dispatch({

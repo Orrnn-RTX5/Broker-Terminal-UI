@@ -663,3 +663,170 @@ export const restoreWorkspaceProfile = (
 export const deleteWorkspaceProfile = (
   lookup: WorkspaceProfileLookup,
 ): boolean => localWorkspaceProfiles.deleteWorkspaceProfile(lookup);
+
+export const BUILTIN_WORKSPACE_PROFILE_NAMES = ['Default', 'Euro', 'Market Overview'] as const;
+
+export const createBuiltinWorkspaceProfile = (
+  accountIdValue: string,
+  profileNameValue: string,
+): LocalWorkspaceProfile => {
+  const accountId = normalizeAccountId(accountIdValue);
+  const profileName = normalizeProfileName(profileNameValue);
+  const now = new Date().toISOString();
+
+  let dockLayout: DockLayout;
+  let primarySymbol = 'EURUSD';
+  let primaryTimeframe: WorkspaceTimeframe = 'M15';
+
+  const lowerName = profileName.toLowerCase();
+  if (lowerName === 'euro') {
+    primarySymbol = 'EURUSD';
+    primaryTimeframe = 'M15';
+    dockLayout = {
+      root: {
+        id: 'root',
+        type: 'split',
+        direction: 'vertical',
+        ratio: 1,
+        children: [
+          {
+            id: 'row-1',
+            type: 'split',
+            direction: 'horizontal',
+            ratio: 0.5,
+            children: [
+              { id: 'chart-eurusd', title: 'EURUSD, M15', component: 'Chart', props: { symbol: 'EURUSD', timeframe: 'M15' }, ratio: 0.5 },
+              { id: 'chart-eurgbp', title: 'EURGBP, M15', component: 'Chart', props: { symbol: 'EURGBP', timeframe: 'M15' }, ratio: 0.5 },
+            ],
+          },
+          {
+            id: 'row-2',
+            type: 'split',
+            direction: 'horizontal',
+            ratio: 0.5,
+            children: [
+              { id: 'chart-eurjpy', title: 'EURJPY, M15', component: 'Chart', props: { symbol: 'EURJPY', timeframe: 'M15' }, ratio: 0.5 },
+              { id: 'chart-eurchf', title: 'EURCHF, M15', component: 'Chart', props: { symbol: 'EURCHF', timeframe: 'M15' }, ratio: 0.5 },
+            ],
+          },
+        ],
+      },
+      floatingPanels: [],
+      version: '2.6',
+    };
+  } else if (lowerName === 'market overview' || lowerName === 'market') {
+    primarySymbol = 'EURUSD';
+    primaryTimeframe = 'H1';
+    dockLayout = {
+      root: {
+        id: 'root',
+        type: 'split',
+        direction: 'vertical',
+        ratio: 1,
+        children: [
+          {
+            id: 'row-1',
+            type: 'split',
+            direction: 'horizontal',
+            ratio: 0.5,
+            children: [
+              { id: 'chart-eurusd', title: 'EURUSD, H1', component: 'Chart', props: { symbol: 'EURUSD', timeframe: 'H1' }, ratio: 0.5 },
+              { id: 'chart-gbpusd', title: 'GBPUSD, H1', component: 'Chart', props: { symbol: 'GBPUSD', timeframe: 'H1' }, ratio: 0.5 },
+            ],
+          },
+          {
+            id: 'row-2',
+            type: 'split',
+            direction: 'horizontal',
+            ratio: 0.5,
+            children: [
+              { id: 'chart-usdjpy', title: 'USDJPY, H1', component: 'Chart', props: { symbol: 'USDJPY', timeframe: 'H1' }, ratio: 0.5 },
+              { id: 'chart-xauusd', title: 'XAUUSD, H1', component: 'Chart', props: { symbol: 'XAUUSD', timeframe: 'H1' }, ratio: 0.5 },
+            ],
+          },
+        ],
+      },
+      floatingPanels: [],
+      version: '2.6',
+    };
+  } else {
+    // Default profile
+    const currentSymbol = useAppStore.getState().selectedSymbol || 'EURUSD';
+    primarySymbol = currentSymbol;
+    primaryTimeframe = 'M15';
+    dockLayout = cloneJson(useDockLayoutStore.getState().layout);
+  }
+
+  const chartSettings = useChartSettingsStore.getState();
+  const watchlistState = useWatchlistStore.getState();
+
+  return {
+    schemaVersion: LOCAL_WORKSPACE_SCHEMA_VERSION,
+    id: `local-builtin-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    accountId,
+    name: profileName,
+    createdAt: now,
+    updatedAt: now,
+    state: {
+      dockLayout,
+      chartView: {
+        selectedSymbol: primarySymbol,
+        timeframe: primaryTimeframe,
+        chartType: 'candlestick',
+        orderVolume: 0.01,
+        dockHeight: null,
+      },
+      chartSettings: {
+        globalProperties: cloneJson(chartSettings.globalProperties),
+        symbolProperties: cloneJson(chartSettings.symbolProperties),
+        volumeBarsDefaultMigrationVersion: chartSettings.volumeBarsDefaultMigrationVersion,
+        periodSeparatorsDefaultMigrationVersion: chartSettings.periodSeparatorsDefaultMigrationVersion,
+        chartShiftDefaultMigrationVersion: chartSettings.chartShiftDefaultMigrationVersion,
+      },
+      marketWatch: {
+        watchlists: cloneJson(watchlistState.watchlists),
+        activeWatchlistId: watchlistState.activeWatchlistId,
+        hiddenSymbols: [],
+        columns: ['symbol', 'bid', 'ask', 'dailyChange'],
+        options: {
+          useSystemColors: false,
+          showMilliseconds: false,
+          autoRemoveExpired: false,
+          autoArrange: true,
+          showGrid: true,
+        },
+        symbolSets: {},
+      },
+    },
+  };
+};
+
+export const restoreBuiltinWorkspaceProfile = (
+  accountOrName: string,
+  maybeProfileName?: string,
+): RestoreWorkspaceProfileResult => {
+  const effectiveAccountId = maybeProfileName ? (accountOrName || 'default') : 'default';
+  const effectiveProfileName = maybeProfileName || accountOrName;
+
+  const existing = localWorkspaceProfiles.getWorkspaceProfile({
+    accountId: effectiveAccountId,
+    profileName: effectiveProfileName,
+  });
+  if (existing) {
+    return localWorkspaceProfiles.restoreWorkspaceProfile({
+      accountId: effectiveAccountId,
+      profileName: effectiveProfileName,
+    });
+  }
+
+  const builtin = createBuiltinWorkspaceProfile(effectiveAccountId, effectiveProfileName);
+  const registry = (localWorkspaceProfiles as any).readRegistry();
+  registry.profiles.push(builtin);
+  (localWorkspaceProfiles as any).writeRegistry(registry);
+
+  return localWorkspaceProfiles.restoreWorkspaceProfile({
+    accountId: effectiveAccountId,
+    profileName: effectiveProfileName,
+  });
+};
+

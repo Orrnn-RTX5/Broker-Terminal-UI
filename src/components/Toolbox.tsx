@@ -527,12 +527,12 @@ function HistoryTab({ history }: { history: HistoryTrade[] }) {
                                     {formatPrice(order.price_current, order.symbol)}
                                 </td>
                                 <td className="p-1 border-r border-zinc-800 text-right">
-                                    <span className={order.price_sl > 0 ? 'text-red-300 bg-red-900/20 px-1 rounded-sm' : 'text-zinc-600'}>
+                                    <span className={order.price_sl > 0 ? 'text-red-300' : 'text-zinc-600'}>
                                         {order.price_sl > 0 ? formatPrice(order.price_sl, order.symbol) : ''}
                                     </span>
                                 </td>
                                 <td className="p-1 border-r border-zinc-800 text-right">
-                                    <span className={order.price_tp > 0 ? 'text-emerald-300 bg-emerald-900/20 px-1 rounded-sm' : 'text-zinc-600'}>
+                                    <span className={order.price_tp > 0 ? 'text-emerald-300' : 'text-zinc-600'}>
                                         {order.price_tp > 0 ? formatPrice(order.price_tp, order.symbol) : ''}
                                     </span>
                                 </td>

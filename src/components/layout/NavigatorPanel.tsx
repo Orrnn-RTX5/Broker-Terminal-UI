@@ -1,7 +1,7 @@
 import { brokerDisplayName } from '../../services/brokerDisplayName';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppStore, type SavedAccount } from '../../store/useAppStore';
 import { FileCode } from 'lucide-react';
 import { ContextMenu } from '../ui/ContextMenu';
@@ -11,13 +11,22 @@ import { api } from '../../services/api';
 import { getStoredBrokerServer } from '../../services/brokerServers';
 import { brokerV2Api } from '../../api/trade';
 import { RTX5_API_URL, normalizeServerUrl } from '../../config/api';
+import { getRuntimeDiscoveryBaseUrl, isDesktopBackendTarget } from '../../config/backendTarget.js';
+import { buildBrokerDirectoryLogoUrl } from '../BrokerLogoImage';
+import { getCachedBrokerDirectory, loadAppBrokerDirectory } from '../../services/brokerDirectory';
 import type { Broker, BrokerServer } from '../../types/api';
+import type { BrokerDiscoveryItem } from '../../services/brokerDiscovery';
 
 type BrokerLogoInfo = {
     logoUrl: string;
     baseCandidates: string[];
     brokerName: string;
+    brokerId?: string;
 };
+
+const NEXA_BROKER_ID = 'Nexa';
+const NEXA_DISCOVERY_HOST = 'https://fxtrustsuperbackned.orrnn.com';
+const NEXA_DEFAULT_LOGO_URL = `${NEXA_DISCOVERY_HOST}/api/v1/brokers/${NEXA_BROKER_ID}/logo`;
 
 const normalizeNavigatorText = (value: unknown): string => String(value || '').trim();
 
@@ -31,11 +40,36 @@ const normalizeLogoBaseUrl = (value: unknown): string => {
     return normalized.replace(/\/api\/v\d+\/?$/i, '').replace(/\/$/, '');
 };
 
+const extractHost = (value: unknown): string => {
+    const raw = normalizeNavigatorText(value);
+    if (!raw) return '';
+    try {
+        const withProto = raw.includes('://') ? raw : `https://${raw}`;
+        return new URL(withProto).hostname.toLowerCase();
+    } catch {
+        return raw.toLowerCase();
+    }
+};
+
+const isNexaNameOrHost = (value: unknown): boolean => {
+    const text = normalizeNavigatorText(value).toLowerCase();
+    if (!text) return false;
+    return text === 'nexa' || extractHost(text).includes('nexa');
+};
+
 const resolveNavigatorLogoUrl = (url: string, baseCandidates: string[]): string => {
     const rawUrl = normalizeNavigatorText(url);
     if (!rawUrl) return '';
     if (/^(?:https?:|data:|blob:)/i.test(rawUrl) || rawUrl.startsWith('./')) {
         return rawUrl;
+    }
+
+    if (rawUrl.startsWith('/api/v1/brokers/')) {
+        if (/nexa/i.test(rawUrl)) {
+            return NEXA_DEFAULT_LOGO_URL;
+        }
+        const discoveryBase = normalizeLogoBaseUrl(getRuntimeDiscoveryBaseUrl());
+        if (discoveryBase) return `${discoveryBase}${rawUrl}`;
     }
 
     const base = [
@@ -50,25 +84,46 @@ const resolveNavigatorLogoUrl = (url: string, baseCandidates: string[]): string 
     return `${base}${path}`;
 };
 
-const matchesBrokerServer = (server: BrokerServer, serverName: string): boolean => {
+const matchesBrokerServer = (
+    server: BrokerServer | BrokerDiscoveryItem,
+    serverName: string,
+): boolean => {
     const target = normalizeNavigatorText(serverName).toLowerCase();
     if (!target) return false;
+    const targetTrimmed = target.replace(/\/+$/, '');
+    const targetHost = extractHost(target);
 
-    return [
+    const candidates = [
         server.server,
         server.server_url,
         server.backend_url,
         server.market_api_url,
         server.broker_id,
         server.broker_name,
-    ].some((value) => normalizeNavigatorText(value).toLowerCase() === target);
+        (server as any).name,
+        (server as any).domain_name,
+        (server as any).server_domain,
+    ].map(normalizeNavigatorText).filter(Boolean);
+
+    for (const candidate of candidates) {
+        const candLower = candidate.toLowerCase();
+        const candTrimmed = candLower.replace(/\/+$/, '');
+        if (target === candLower || targetTrimmed === candTrimmed) return true;
+
+        const candHost = extractHost(candidate);
+        if (targetHost && candHost && targetHost === candHost) return true;
+    }
+
+    return false;
 };
 
 const matchesCurrentStoredBroker = (serverName: string): boolean => {
     const target = normalizeNavigatorText(serverName).toLowerCase();
     if (!target) return false;
+    const targetTrimmed = target.replace(/\/+$/, '');
+    const targetHost = extractHost(target);
 
-    return [
+    const keys = [
         'rtx_broker_server',
         'server_url',
         'backend_url',
@@ -76,16 +131,40 @@ const matchesCurrentStoredBroker = (serverName: string): boolean => {
         'broker_id',
         'rtx_broker_id',
         'broker_name',
-    ].some((key) => getStoredNavigatorValue(key).toLowerCase() === target);
+    ];
+
+    for (const key of keys) {
+        const val = getStoredNavigatorValue(key).toLowerCase();
+        if (!val) continue;
+        const valTrimmed = val.replace(/\/+$/, '');
+        if (target === val || targetTrimmed === valTrimmed) return true;
+        const valHost = extractHost(val);
+        if (targetHost && valHost && targetHost === valHost) return true;
+    }
+
+    return false;
 };
 
 const getStoredBrokerLogoInfo = (serverName: string): BrokerLogoInfo | null => {
-    const logoUrl = getStoredNavigatorValue('logo_url');
-    if (!matchesCurrentStoredBroker(serverName)) return null;
+    const isNexa = isNexaNameOrHost(serverName);
+    if (!matchesCurrentStoredBroker(serverName) && !isNexa) return null;
+
+    const storedLogoUrl = getStoredNavigatorValue('logo_url');
+    const brokerId = getStoredNavigatorValue('broker_id')
+        || getStoredNavigatorValue('rtx_broker_id')
+        || (isNexa ? NEXA_BROKER_ID : '');
+
+    let logoUrl = storedLogoUrl;
+    if (!logoUrl && isNexa) {
+        logoUrl = NEXA_DEFAULT_LOGO_URL;
+    } else if (!logoUrl && brokerId) {
+        logoUrl = buildBrokerDirectoryLogoUrl(brokerId);
+    }
 
     return {
         logoUrl,
         brokerName: brokerDisplayName(serverName),
+        brokerId,
         baseCandidates: [
             getStoredNavigatorValue('server_url'),
             getStoredNavigatorValue('backend_url'),
@@ -96,25 +175,66 @@ const getStoredBrokerLogoInfo = (serverName: string): BrokerLogoInfo | null => {
 
 const buildBrokerLogoInfo = (
     serverName: string,
+    directoryBrokers: BrokerDiscoveryItem[],
     servers: BrokerServer[],
     brokers: Broker[],
 ): BrokerLogoInfo | null => {
+    const matchedDirectory = directoryBrokers.find((broker) => matchesBrokerServer(broker, serverName));
     const matchedServer = servers.find((server) => matchesBrokerServer(server, serverName));
-    if (!matchedServer) return getStoredBrokerLogoInfo(serverName);
-
-    const matchedBroker = matchedServer.broker_id
-        ? brokers.find((broker) => broker.broker_id === matchedServer.broker_id)
+    const matchedBroker = (matchedServer?.broker_id || matchedDirectory?.broker_id)
+        ? brokers.find((broker) => broker.broker_id === (matchedServer?.broker_id || matchedDirectory?.broker_id))
         : undefined;
-    const logoUrl = normalizeNavigatorText(matchedServer.logo_url) || normalizeNavigatorText(matchedBroker?.logo_url);
+
+    const isNexa = isNexaNameOrHost(serverName)
+        || isNexaNameOrHost(matchedDirectory?.broker_id)
+        || isNexaNameOrHost(matchedDirectory?.broker_name)
+        || isNexaNameOrHost(matchedServer?.broker_id)
+        || isNexaNameOrHost(matchedServer?.broker_name);
+
+    const brokerId = normalizeNavigatorText(
+        matchedDirectory?.broker_id
+        || matchedServer?.broker_id
+        || matchedBroker?.broker_id
+        || (isNexa ? NEXA_BROKER_ID : '')
+    );
+
+    const brokerName = brokerDisplayName(
+        serverName,
+        matchedDirectory?.broker_name,
+        matchedDirectory?.name,
+        matchedServer?.broker_name,
+        matchedBroker?.name,
+        brokerId,
+    );
+
+    let logoUrl = normalizeNavigatorText(matchedDirectory?.logo_url)
+        || normalizeNavigatorText(matchedServer?.logo_url)
+        || normalizeNavigatorText(matchedBroker?.logo_url);
+
+    if (!logoUrl && isNexa) {
+        logoUrl = NEXA_DEFAULT_LOGO_URL;
+    } else if (!logoUrl && brokerId) {
+        logoUrl = buildBrokerDirectoryLogoUrl(brokerId);
+    }
+
+    if (!logoUrl && !brokerName && !matchedServer && !matchedDirectory) {
+        return getStoredBrokerLogoInfo(serverName);
+    }
+
+    const baseCandidates = [
+        matchedDirectory?.server_url || '',
+        matchedDirectory?.backend_url || '',
+        matchedDirectory?.market_api_url || '',
+        matchedServer?.server_url || '',
+        matchedServer?.backend_url || '',
+        matchedServer?.market_api_url || '',
+    ];
 
     return {
-        logoUrl,
-        brokerName: brokerDisplayName(serverName, matchedServer.broker_name, matchedBroker?.name),
-        baseCandidates: [
-            matchedServer.server_url || '',
-            matchedServer.backend_url || '',
-            matchedServer.market_api_url || '',
-        ],
+        logoUrl: logoUrl || getStoredNavigatorValue('logo_url'),
+        brokerName,
+        brokerId,
+        baseCandidates,
     };
 };
 
@@ -152,18 +272,20 @@ export const NavigatorPanel: React.FC = () => {
 
         setBrokerLogos((current) => {
             const next = { ...current };
+            const cachedDirectory = getCachedBrokerDirectory() || [];
             serverNames.forEach((serverName) => {
-                const storedLogo = getStoredBrokerLogoInfo(serverName);
-                if (storedLogo) next[serverName] = storedLogo;
+                const logoInfo = buildBrokerLogoInfo(serverName, cachedDirectory, [], []);
+                if (logoInfo) next[serverName] = logoInfo;
             });
             return next;
         });
 
         const loadBrokerLogos = async () => {
             try {
+                const cachedDirectory = getCachedBrokerDirectory() || [];
                 const [brokerServers, brokersData] = await Promise.all([
-                    brokerV2Api.getServers().catch(() => []),
-                    brokerV2Api.getBrokers().catch(() => ({ brokers: [], count: 0 })),
+                    brokerV2Api.getServers().catch(() => [] as BrokerServer[]),
+                    brokerV2Api.getBrokers().catch(() => ({ brokers: [] as Broker[], count: 0 })),
                 ]);
                 if (!active) return;
 
@@ -171,11 +293,27 @@ export const NavigatorPanel: React.FC = () => {
                 setBrokerLogos((current) => {
                     const next = { ...current };
                     serverNames.forEach((serverName) => {
-                        const logoInfo = buildBrokerLogoInfo(serverName, brokerServers, brokers);
+                        const logoInfo = buildBrokerLogoInfo(serverName, cachedDirectory, brokerServers, brokers);
                         if (logoInfo) next[serverName] = logoInfo;
                     });
                     return next;
                 });
+
+                if (cachedDirectory.length === 0) {
+                    loadAppBrokerDirectory({ desktop: isDesktopBackendTarget() })
+                        .then((directoryBrokers) => {
+                            if (!active || !directoryBrokers?.length) return;
+                            setBrokerLogos((current) => {
+                                const next = { ...current };
+                                serverNames.forEach((serverName) => {
+                                    const logoInfo = buildBrokerLogoInfo(serverName, directoryBrokers, brokerServers, brokers);
+                                    if (logoInfo) next[serverName] = logoInfo;
+                                });
+                                return next;
+                            });
+                        })
+                        .catch(() => undefined);
+                }
             } catch (error) {
                 console.error('[NavigatorPanel] Failed to load broker logos:', error);
             }
@@ -398,25 +536,54 @@ function BrokerServerIcon({
     logoInfo?: BrokerLogoInfo;
     muted?: boolean;
 }) {
-    const [hasError, setHasError] = useState(false);
-    const logoUrl = logoInfo?.logoUrl || '';
+    const [candidateIndex, setCandidateIndex] = useState(0);
+
+    const candidates = useMemo(() => {
+        const list: string[] = [];
+        const add = (url: unknown) => {
+            const raw = normalizeNavigatorText(url);
+            if (raw && !list.includes(raw)) list.push(raw);
+        };
+
+        if (logoInfo?.logoUrl) {
+            const resolved = resolveNavigatorLogoUrl(logoInfo.logoUrl, logoInfo.baseCandidates);
+            add(resolved);
+        }
+
+        const isNexa = isNexaNameOrHost(serverName) || isNexaNameOrHost(logoInfo?.brokerName) || isNexaNameOrHost(logoInfo?.brokerId);
+        if (isNexa) {
+            add(NEXA_DEFAULT_LOGO_URL);
+        }
+
+        const brokerId = logoInfo?.brokerId
+            || (isNexa ? NEXA_BROKER_ID : '');
+        if (brokerId) {
+            add(buildBrokerDirectoryLogoUrl(brokerId));
+        }
+
+        if (matchesCurrentStoredBroker(serverName) || isNexa) {
+            add(getStoredNavigatorValue('logo_url'));
+        }
+
+        return list;
+    }, [serverName, logoInfo]);
 
     useEffect(() => {
-        setHasError(false);
-    }, [serverName, logoUrl]);
+        setCandidateIndex(0);
+    }, [serverName, candidates.join('\n')]);
 
-    if (logoInfo && logoUrl && !hasError) {
-        const logoSrc = resolveNavigatorLogoUrl(logoUrl, logoInfo.baseCandidates);
-        if (logoSrc) {
-            return (
-                <img
-                    src={logoSrc}
-                    alt={`${logoInfo.brokerName || serverName} Logo`}
-                    className={`inline-block h-[14px] w-[14px] flex-shrink-0 rounded-sm object-contain ${muted ? 'opacity-70' : ''}`}
-                    onError={() => setHasError(true)}
-                />
-            );
-        }
+    const currentSrc = candidates[candidateIndex];
+
+    if (currentSrc) {
+        return (
+            <img
+                key={currentSrc}
+                src={currentSrc}
+                alt={`${logoInfo?.brokerName || serverName} Logo`}
+                className={`inline-block h-[14px] w-[14px] flex-shrink-0 rounded-sm object-contain ${muted ? 'opacity-70' : ''}`}
+                onError={() => setCandidateIndex(prev => prev + 1)}
+            />
+        );
     }
 
     return <Icon name="server" size="sm" className={muted ? 'text-zinc-400' : 'text-amber-400'} />;

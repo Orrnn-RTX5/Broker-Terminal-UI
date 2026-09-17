@@ -1032,20 +1032,6 @@ export function WebDrawingToolsRail({ selectedSymbol, orientation = 'vertical' }
       aria-orientation={orientation}
     >
       <div className="web-drawing-tools-rail__tools">
-        {orientation !== 'horizontal' && (
-        <button
-          className="web-drawing-tools-rail__button"
-          data-active={visibleActiveTool === null ? 'true' : 'false'}
-          type="button"
-          aria-label={tr("Cursor")}
-          aria-pressed={visibleActiveTool === null}
-          onClick={selectCursor}
-          {...tooltipProps('cursor', 'Cursor')}
-        >
-          <Icon name="cursor" size={20} />
-        </button>
-        )}
-
         <button
           className="web-drawing-tools-rail__button web-drawing-tools-rail__flyout-button"
           data-active={activeTrendToolId !== null ? 'true' : 'false'}

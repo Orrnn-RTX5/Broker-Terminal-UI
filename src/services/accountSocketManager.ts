@@ -107,8 +107,8 @@ function normalizePosition(raw: any) {
 
   const id = toFinite(raw.position_id ?? raw.ticket ?? raw.id, 0);
   const volume = toFinite(raw.volume_lots ?? raw.volume ?? raw.quantity, 0);
-  const openPrice = toFinite(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.price, 0);
-  const currentPrice = toFinite(raw.price_current ?? raw.current_price ?? raw.currentPrice, 0);
+  const openPrice = toFinite(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.entryPrice ?? raw.chartEntryPrice ?? raw.price, 0);
+  const currentPrice = toFinite(raw.price_current ?? raw.current_price ?? raw.currentPrice ?? raw.livePrice, openPrice);
   const unrealizedPnL = toFinite(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0);
 
   return {
@@ -128,12 +128,15 @@ function normalizePosition(raw: any) {
     // FIX: Keep wire aliases synchronized with the canonical fields. Several
     // trade-table consumers still read these defensive aliases first.
     open_price: openPrice,
+    price_open: openPrice,
     current_price: currentPrice,
     price_current: currentPrice,
     quantity: volume,
     unrealized_pl: unrealizedPnL,
     profit: unrealizedPnL,
     time_create: openTime,
+    open_time: openTime,
+    time: openTime,
   };
 }
 

@@ -10212,12 +10212,6 @@ export const TradingChart = React.memo(function TradingChart({
                   background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
                 }}>0.00000</span>
               </span>
-              <span style={{ fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#475467' }}>
-                V: <span ref={ohlcVolumeRef} style={{
-                  fontWeight: 'var(--rtx-font-weight-body, 400)', color: '#1d2939',
-                  background: 'rgba(29, 41, 57, 0.06)', padding: '1px 6px', borderRadius: '3px'
-                }}>0</span>
-              </span>
             </>
           )}
         </div>
@@ -10236,7 +10230,6 @@ export const TradingChart = React.memo(function TradingChart({
               <span>H: <span ref={ohlcHighRef} style={{ color: chartTheme.candleUp }}>0.00000</span></span>
               <span>L: <span ref={ohlcLowRef} style={{ color: chartTheme.candleDown }}>0.00000</span></span>
               <span>C: <span ref={ohlcCloseRef} style={{ color: chartTheme.text }}>0.00000</span></span>
-              <span>V: <span ref={ohlcVolumeRef} style={{ color: chartTheme.text }}>0</span></span>
             </>
           )}
         </div>

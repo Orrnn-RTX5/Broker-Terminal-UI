@@ -6,9 +6,9 @@ const hookSource = readFileSync(resolve(process.cwd(), 'src/hooks/useToolboxTrad
 const dockSource = readFileSync(resolve(process.cwd(), 'src/components/BottomDock.tsx'), 'utf8');
 
 const lifecycleStart = hookSource.indexOf('const handleMarketOrderPlacement = (event: Event) => {');
-const lifecycleEnd = hookSource.indexOf('useEffect(() => {\n    const handleCloseState', lifecycleStart);
+const lifecycleEnd = hookSource.indexOf('const handleCloseState', lifecycleStart);
 const lifecycleHandler = hookSource.slice(lifecycleStart, lifecycleEnd);
-const pendingStart = lifecycleHandler.indexOf("if (detail.status === 'pending')");
+const pendingStart = lifecycleHandler.indexOf("if (['pending', 'accepted', 'processing', 'rejected', 'expired'].includes(detail.status))");
 const pendingEnd = lifecycleHandler.indexOf('pendingMarketOrdersRef.current.delete(detail.clientOrderId)', pendingStart);
 const pendingBranch = lifecycleHandler.slice(pendingStart, pendingEnd);
 
@@ -24,9 +24,9 @@ describe('Toolbox provisional market-order source contract', () => {
   });
 
   it('passes pending rows separately and disables every trade action on them', () => {
-    expect(dockSource).toContain('pendingPositions={toolboxTrade.pendingPositions ?? []}');
+    expect(dockSource).toContain('toolboxTrade.pendingPositions');
     expect(dockSource).toContain('() => [...pendingPositions, ...sortedLivePositions]');
-    expect(dockSource).toContain("const isPendingPlacement = pos.placementState === 'pending';");
+    expect(dockSource).toContain('const isPendingPlacement = Boolean(');
     expect(dockSource).toContain('disabled={isPendingPlacement}');
     expect(dockSource).toContain('if (!isPendingPlacement) startEditing(pos);');
     expect(dockSource).toContain('if (isPendingPlacement) return;');

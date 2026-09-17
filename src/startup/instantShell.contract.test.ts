@@ -14,6 +14,8 @@ describe('instant startup shell source contract', () => {
     expect(html).toContain("first-contentful-paint");
     expect(html).toContain('background: #050608');
     expect(html).toContain('html[data-rtx-initial-view="terminal"]');
+    expect(html).toContain('html.rtx-skin-untitled-light');
+    expect(html).toContain('isLightTheme');
     expect(html).not.toContain('class="rtx-instant-login"');
     expect(html).not.toContain('rtx-instant-login-button');
     expect(html).not.toContain('Enter Account ID');
@@ -37,7 +39,7 @@ describe('instant startup shell source contract', () => {
     expect(terminalFallback).toContain('data-terminal-module-loading="true"');
     expect(terminalFallback).not.toContain('Restoring session');
     expect(app).not.toContain('Restoring session');
-    expect(app).toContain('data-rtx-authenticated-shell="true"');
+    expect(app).toContain("data-rtx-authenticated-shell={isAuthenticated ? 'true' : 'false'}");
   });
 
   it('makes the real login/bootstrap path statically discoverable from the entry module', () => {

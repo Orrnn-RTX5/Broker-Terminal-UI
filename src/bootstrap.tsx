@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client';
 import AppShell from './AppShell';
 import { DesktopWindowShell } from './components/layout/DesktopWindowShell';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { initRootTheme } from './utils/advancedViewRootClasses';
 
 export const mountApp = () => {
+  initRootTheme();
   const rootElement = document.getElementById('root');
   if (!rootElement) {
     throw new Error("Root element 'root' not found in document");

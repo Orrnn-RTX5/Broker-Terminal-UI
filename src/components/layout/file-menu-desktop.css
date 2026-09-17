@@ -12,3 +12,11 @@ html:root.rtx-desktop-shell-active .rtx-file-menu button.rtx-file-menu__logout[d
 html:root.rtx-desktop-shell-active .rtx-file-menu button.rtx-file-menu__logout[data-desktop-logout='true'][role='menuitem']:is(:hover, :focus-visible) {
   background: color-mix(in srgb, currentColor 8%, transparent) !important;
 }
+
+/* Ensure desktop File menu and all submenus (Profiles, New Chart, etc.) pop out without clipping */
+html:root.rtx-desktop-shell-active .rtx-desktop-file-menu-container,
+html:root.rtx-desktop-shell-active .rtx-desktop-menu-items > div > [role='menu']:has(.rtx-file-menu),
+html:root.rtx-desktop-shell-active .rtx-file-menu {
+  overflow: visible !important;
+  max-height: none !important;
+}

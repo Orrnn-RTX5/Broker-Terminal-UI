@@ -92,3 +92,41 @@ export const clearAdvancedViewRootClasses = (root: HTMLElement) => {
     ...ADVANCED_VIEW_ONLY_CLASSES,
   );
 };
+
+export const isSavedThemeLight = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem('rtx5-advanced-view-enabled') === 'true' ||
+           localStorage.getItem('rtx5-theme') === 'light';
+  } catch {
+    return false;
+  }
+};
+
+export const initRootTheme = (root: HTMLElement = document.documentElement) => {
+  if (typeof document === 'undefined') return;
+  const isLight = isSavedThemeLight();
+
+  root.classList.toggle('rtx-advanced-view', isLight);
+  root.classList.toggle('rtx-skin-untitled-light', isLight);
+  root.classList.toggle('theme-light', isLight);
+  root.classList.toggle('theme-dark', !isLight);
+  root.setAttribute('data-theme', isLight ? 'light' : 'dark');
+
+  try {
+    const rawOptions = localStorage.getItem('rtx5-advanced-view-options');
+    if (rawOptions) {
+      const opts = JSON.parse(rawOptions);
+      if (opts.fontSize) setExclusiveClass(root, ADVANCED_VIEW_FONT_CLASSES, `rtx-advanced-font-${opts.fontSize}`);
+      if (isLight) {
+        if (opts.density) setExclusiveClass(root, ADVANCED_VIEW_ONLY_CLASSES.filter((c) => c.startsWith('rtx-advanced-density-')), `rtx-advanced-density-${opts.density}`);
+        if (opts.accent) setExclusiveClass(root, ADVANCED_VIEW_ONLY_CLASSES.filter((c) => c.startsWith('rtx-advanced-accent-')), `rtx-advanced-accent-${opts.accent}`);
+        if (opts.chartSurface) setExclusiveClass(root, ADVANCED_VIEW_ONLY_CLASSES.filter((c) => c.startsWith('rtx-advanced-surface-')), `rtx-advanced-surface-${opts.chartSurface}`);
+        if (opts.focusChart) root.classList.add('rtx-advanced-focus-chart');
+      }
+    }
+  } catch {
+    // Storage read errors shouldn't crash app startup
+  }
+};
+

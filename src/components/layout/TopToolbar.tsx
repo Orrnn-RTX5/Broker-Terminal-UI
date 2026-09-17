@@ -45,6 +45,7 @@ interface TopToolbarProps {
 }
 
 import { MenuBar } from './MenuBar';
+import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { TimeframePicker } from './TimeframePicker';
 import { DesktopQuickActions, DesktopSymbolSearchButton } from './DesktopQuickActions';
 import { ChartTemplateManager } from '../ChartTemplateManager';
@@ -352,6 +353,7 @@ const MainToolbar = ({
 }: MainToolbarProps) => {
 
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
+    const tr = useUiTranslation();
 
     const [showHistoryOverlayMenu, setShowHistoryOverlayMenu] = useState(false);
     const [advancedViewEnabled, setAdvancedViewEnabled] = useState(() => {
@@ -410,6 +412,9 @@ const MainToolbar = ({
             themeSuppressionCleanupRef.current = suppressThemeTransitions(document.documentElement);
         }
         syncAdvancedViewRootClasses(document.documentElement, advancedViewEnabled, advancedOptions);
+        document.documentElement.classList.toggle('theme-light', advancedViewEnabled);
+        document.documentElement.classList.toggle('theme-dark', !advancedViewEnabled);
+        document.documentElement.setAttribute('data-theme', advancedViewEnabled ? 'light' : 'dark');
         window.dispatchEvent(new CustomEvent(RTX_ADVANCED_VIEW_CHANGE_EVENT, {
             detail: { isAdvancedUntitledLight: advancedViewEnabled },
         }));
@@ -429,6 +434,7 @@ const MainToolbar = ({
 
         try {
             localStorage.setItem('rtx5-advanced-view-enabled', String(advancedViewEnabled));
+            localStorage.setItem('rtx5-theme', advancedViewEnabled ? 'light' : 'dark');
             localStorage.setItem(ADVANCED_OPTIONS_STORAGE_KEY, JSON.stringify(advancedOptions));
         } catch {
             // Ignore storage failures; the visual toggle should still work for this session.
@@ -555,7 +561,7 @@ const MainToolbar = ({
                                 type="button"
                                 className="rtx-toolbar-action rtx-toolbar-action--primary text-[13px] font-normal font-segoe"
                                 title="New Order (F9)"
-                                aria-label="New Order (F9)"
+                                aria-label={tr("New Order (F9)")}
                                 onClick={() => {
                                     window.dispatchEvent(new CustomEvent('openNewOrder', {
                                         detail: { symbol },
@@ -594,15 +600,16 @@ const MainToolbar = ({
                         <MT5Divider />
 
                         {/* Group 3: Chart Types */}
-                        <MT5Group label="Chart type" role="radiogroup">
+                        <MT5Group label={tr("Chart type")} role="radiogroup">
                             <CommandIconButton icon="bar-chart" title="Bar Chart" active={toolbarState.chartType === 'bar'} selectionRole="radio" onClick={() => dispatchTargetedChartType('bar')} />
                             <CommandIconButton icon="candlestick" title="Candlesticks" active={toolbarState.chartType === 'candlestick'} selectionRole="radio" onClick={() => dispatchTargetedChartType('candlestick')} />
-                            <CommandIconButton icon="line-chart" title="Line Chart" active={toolbarState.chartType === 'line'} selectionRole="radio" onClick={() => dispatchTargetedChartType('line')} />
-                            <CommandIconButton icon="area-chart" title="Area Chart" active={toolbarState.chartType === 'area'} selectionRole="radio" onClick={() => dispatchTargetedChartType('area')} />
+                            <CommandIconButton icon="line-chart" title={tr("Line Chart")} active={toolbarState.chartType === 'line'} selectionRole="radio" onClick={() => dispatchTargetedChartType('line')} />
+                            <CommandIconButton icon="area-chart" title={tr("Area Chart")} active={toolbarState.chartType === 'area'} selectionRole="radio" onClick={() => dispatchTargetedChartType('area')} />
                         </MT5Group>
 
                         <MT5Divider />
 
+                        {/* Group 4: Zoom */}
                         {/* Chart tools: zoom, layout, latest candle, indicators */}
                         <MT5Group label="Chart tools">
                             <CommandIconButton icon="zoom-in" title="Zoom In" onClick={() => dispatchTargetedZoom('ZOOM_IN')} />
@@ -624,7 +631,7 @@ const MainToolbar = ({
                         <MT5Divider />
 
                         {/* Screenshot, period separators, and trade-history overlays — three equal command buttons */}
-                        <MT5Group label="Chart capture and overlays">
+                        <MT5Group label={tr("Chart capture and overlays")}>
                             <CommandIconButton
                                 icon="camera"
                                 title="Screenshot (Export Chart)"

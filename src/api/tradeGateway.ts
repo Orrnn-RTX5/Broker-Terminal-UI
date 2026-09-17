@@ -388,18 +388,19 @@ export const normalizeAccount = (raw: GatewayAccount, previous?: Account | null)
 
 export const normalizePosition = (raw: GatewayPosition): Position => {
   const side = String(raw.side ?? raw.action ?? '').toLowerCase();
-  const volume = Number(raw.volume_lots ?? raw.volume ?? 0);
-  const openPrice = Number(raw.price_open ?? raw.open_price ?? 0);
-  const currentPrice = Number(raw.price_current ?? raw.current_price ?? raw.price_open ?? 0);
-  const profit = Number(raw.profit ?? 0);
+  const volume = Number(raw.volume_lots ?? raw.volume ?? (raw as any).quantity ?? 0);
+  const openPrice = Number(raw.price_open ?? raw.open_price ?? (raw as any).openPrice ?? (raw as any).entryPrice ?? (raw as any).chartEntryPrice ?? (raw as any).price ?? 0);
+  const currentPrice = Number(raw.price_current ?? raw.current_price ?? (raw as any).currentPrice ?? (raw as any).livePrice ?? openPrice ?? 0);
+  const profit = Number(raw.profit ?? (raw as any).unrealized_pl ?? (raw as any).unrealizedPnL ?? 0);
+  const openTime = resolvePositionOpenTime(raw);
   return {
-    id: Number(raw.ticket ?? raw.position_id ?? 0),
+    id: Number(raw.ticket ?? raw.position_id ?? (raw as any).id ?? 0),
     symbol: (raw.symbol ?? '').toUpperCase(),
     side: side.includes('sell') || side === '1' ? 'SELL' : 'BUY',
     volume,
     openPrice,
     currentPrice,
-    openTime: resolvePositionOpenTime(raw),
+    openTime,
     sl: Number(raw.price_sl ?? raw.sl ?? 0),
     tp: Number(raw.price_tp ?? raw.tp ?? 0),
     swap: Number(raw.swap ?? raw.storage ?? 0),
@@ -407,7 +408,12 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
     unrealizedPnL: profit,
     comment: raw.comment ?? '',
     open_price: openPrice,
+    price_open: openPrice,
     current_price: currentPrice,
+    price_current: currentPrice,
+    time_create: openTime,
+    open_time: openTime,
+    time: openTime,
     profit,
     quantity: volume,
   };

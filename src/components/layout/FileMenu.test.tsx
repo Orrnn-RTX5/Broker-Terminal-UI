@@ -23,6 +23,9 @@ const workspaceProfilesMock = vi.hoisted(() => ({
     listWorkspaceProfiles: vi.fn(() => [] as Array<Record<string, string>>),
     restoreWorkspaceProfile: vi.fn(),
     saveCurrentWorkspaceProfile: vi.fn(),
+    deleteWorkspaceProfile: vi.fn(),
+    restoreBuiltinWorkspaceProfile: vi.fn(),
+    BUILTIN_WORKSPACE_PROFILE_NAMES: ['Default', 'Euro', 'Market Overview'],
 }));
 
 // 1. Mock i18n translations
@@ -406,6 +409,69 @@ describe('FileMenu Component', () => {
                 profileName: 'Market',
             });
             expect(onProfileRestored).toHaveBeenCalledWith('Market');
+        });
+
+        it('restores builtin profiles like Euro via restoreBuiltinWorkspaceProfile when not saved yet', async () => {
+            workspaceProfilesMock.listWorkspaceProfiles.mockReturnValue([]);
+            workspaceProfilesMock.restoreWorkspaceProfile.mockReturnValue({ status: 'missing', profile: null });
+            workspaceProfilesMock.restoreBuiltinWorkspaceProfile.mockReturnValue({
+                status: 'restored',
+                profile: { name: 'Euro' },
+            });
+            const onProfileRestored = vi.fn();
+            render(<FileMenu {...mockHandlers} accountId="200002" onProfileRestored={onProfileRestored} />);
+
+            const euroBtn = await screen.findByRole('button', { name: 'Euro' });
+            fireEvent.click(euroBtn);
+
+            expect(workspaceProfilesMock.restoreBuiltinWorkspaceProfile).toHaveBeenCalledWith('200002', 'Euro');
+            expect(onProfileRestored).toHaveBeenCalledWith('Euro');
+        });
+
+        it('supports Next and Previous profile actions from the Profiles submenu', async () => {
+            workspaceProfilesMock.listWorkspaceProfiles.mockReturnValue([]);
+            workspaceProfilesMock.restoreWorkspaceProfile.mockReturnValue({ status: 'missing', profile: null });
+            workspaceProfilesMock.restoreBuiltinWorkspaceProfile.mockReturnValue({
+                status: 'restored',
+                profile: { name: 'Euro' },
+            });
+            const onProfileRestored = vi.fn();
+            render(<FileMenu {...mockHandlers} accountId="200002" onProfileRestored={onProfileRestored} />);
+
+            const nextBtn = screen.getByText('Next').closest('button')!;
+            fireEvent.click(nextBtn);
+
+            expect(workspaceProfilesMock.restoreBuiltinWorkspaceProfile).toHaveBeenCalled();
+            expect(onProfileRestored).toHaveBeenCalled();
+        });
+
+        it('opens Save Workspace dialog from Save As... in Profiles submenu', () => {
+            render(<FileMenu {...mockHandlers} accountId="200002" />);
+
+            const saveAsBtn = screen.getByText('Save As...').closest('button')!;
+            fireEvent.click(saveAsBtn);
+
+            expect(screen.getByTestId('save-workspace-dialog')).toBeInTheDocument();
+        });
+
+        it('deletes custom profile when selected in Delete submenu', () => {
+            workspaceProfilesMock.listWorkspaceProfiles.mockReturnValue([{
+                id: 'profile-custom-1',
+                accountId: '200002',
+                name: 'CustomStrategy',
+                createdAt: '2026-09-02T10:00:00.000Z',
+                updatedAt: '2026-09-02T10:00:00.000Z',
+            }]);
+            workspaceProfilesMock.deleteWorkspaceProfile.mockReturnValue(true);
+            render(<FileMenu {...mockHandlers} accountId="200002" />);
+
+            const deleteBtn = screen.getByLabelText('Delete profile CustomStrategy');
+            fireEvent.click(deleteBtn);
+
+            expect(workspaceProfilesMock.deleteWorkspaceProfile).toHaveBeenCalledWith({
+                accountId: '200002',
+                profileName: 'CustomStrategy',
+            });
         });
 
         it('opens the established trade-account login flow', () => {

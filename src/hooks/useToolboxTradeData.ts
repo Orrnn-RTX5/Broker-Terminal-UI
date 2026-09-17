@@ -15,6 +15,7 @@ import {
   type MarketOrderPlacementState,
   type MarketOrderPlacementStateDetail,
 } from '../services/marketOrderPlacementEvents';
+import { resolvePositionOpenTime } from '../services/tradePositionTime';
 
 type TradeWsState = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
 
@@ -35,6 +36,12 @@ export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'>
   placementState?: MarketOrderPlacementState;
   placementErrorCode?: string;
   placementErrorMessage?: string;
+  entryPrice?: number;
+  price?: number;
+  livePrice?: number;
+  time_open?: number | string;
+  open_time?: string;
+  time?: string | number;
 };
 
 export type ToolboxTradeDebugEvent = {
@@ -171,10 +178,21 @@ const getPositionTicket = (position: any): number => (
 export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
   const normalized = normalizePosition(raw) as ToolboxTradePosition;
   const ticket = getPositionTicket(raw) || normalized.id;
-  const priceCurrent = toNumber(raw?.price_current ?? raw?.current_price ?? normalized.currentPrice, normalized.currentPrice);
+  const openPrice = toNumber(
+    raw?.price_open ?? raw?.open_price ?? raw?.openPrice ?? raw?.entryPrice ?? raw?.chartEntryPrice ?? raw?.price ?? normalized.openPrice,
+    normalized.openPrice || 0,
+  );
+  let priceCurrent = toNumber(
+    raw?.price_current ?? raw?.current_price ?? raw?.currentPrice ?? raw?.livePrice ?? normalized.currentPrice,
+    normalized.currentPrice || 0,
+  );
+  if (!priceCurrent || priceCurrent <= 0) {
+    priceCurrent = openPrice;
+  }
   const rawProfit = raw?.profit ?? raw?.unrealized_pl ?? raw?.unrealizedPnL;
   const hasBackendProfit = rawProfit !== undefined && rawProfit !== null && rawProfit !== '' && Number.isFinite(Number(rawProfit));
   const profit = hasBackendProfit ? toNumber(rawProfit, 0) : normalized.unrealizedPnL;
+  const openTime = resolvePositionOpenTime(raw, normalized.openTime || (typeof normalized.time_create === 'string' ? normalized.time_create : undefined));
 
   return {
     ...normalized,
@@ -183,17 +201,23 @@ export const normalizeToolboxPosition = (raw: any): ToolboxTradePosition => {
     account_login: raw?.account_login ?? raw?.login ?? normalized.account_login,
     contractSize: toNumber(raw?.contractSize ?? raw?.contract_size ?? normalized.contractSize, 0) || undefined,
     contract_size: toNumber(raw?.contract_size ?? raw?.contractSize ?? normalized.contract_size, 0) || undefined,
-    price_open: toNumber(raw?.price_open ?? raw?.open_price ?? normalized.openPrice, normalized.openPrice),
+    openPrice,
+    price_open: openPrice,
+    open_price: openPrice,
+    currentPrice: priceCurrent,
     price_current: priceCurrent,
+    current_price: priceCurrent,
+    openTime,
+    time_create: raw?.time_create ?? normalized.time_create ?? openTime,
+    open_time: raw?.open_time ?? openTime,
+    time: raw?.time ?? openTime,
     price_sl: toNumber(raw?.price_sl ?? raw?.sl ?? normalized.sl, normalized.sl),
     price_tp: toNumber(raw?.price_tp ?? raw?.tp ?? normalized.tp, normalized.tp),
-    currentPrice: priceCurrent,
     profit,
     unrealizedPnL: profit,
     hasBackendProfit,
     swap: toNumber(raw?.swap ?? raw?.storage ?? normalized.swap, normalized.swap),
     commission: toNumber(raw?.commission ?? normalized.commission, normalized.commission),
-    time_create: raw?.time_create ?? normalized.time_create,
     time_update: raw?.time_update ?? normalized.time_update,
     clientOrderId: raw?.clientOrderId ?? raw?.client_order_id,
     placementState: raw?.placementState ?? raw?.placement_state,

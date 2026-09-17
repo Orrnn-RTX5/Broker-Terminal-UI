@@ -5,6 +5,7 @@ import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { normalizeExactBrokerSymbol } from '../../utils/exactBrokerSymbol';
 import { useUiTranslation } from '../../hooks/useUiTranslation';
 import { Icon } from '../ui/Icon';
+import { X } from 'lucide-react';
 import { closeChartPanelSymbolTab } from '../../services/chartPanelNavigation';
 
 export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
@@ -23,7 +24,7 @@ export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
       {tabs.map(tab => {
         const active = normalizeExactBrokerSymbol(tab.symbol) === symbol;
         return (
-          <span key={tab.symbol} className={`flex shrink-0 items-center border-r border-[var(--border-primary)] ${active ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] shadow-[inset_0_-2px_0_var(--color-primary)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'}`}>
+          <span key={tab.symbol} className={`flex shrink-0 items-center border-r border-[var(--border-primary)] ${active ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'}`}>
             <button
               ref={active ? activeRef : undefined}
               type="button" role="tab" aria-selected={active}
@@ -46,7 +47,7 @@ export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
               }}><Icon name="chevron-down" size="xs" /></button>}
             {panel.closable !== false && <button
               type="button"
-              className="inline-flex shrink-0 items-center justify-center w-5 h-5 mr-1 rounded-sm text-[var(--text-secondary)] hover:bg-[var(--bg-quaternary)] hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400"
+              className="inline-flex shrink-0 items-center justify-center w-5 h-5 mr-1 rounded-sm text-zinc-400 hover:bg-red-500/80 hover:text-white transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-blue-400"
               aria-label={tr('Close {{symbol}} tab', { symbol: tab.symbol })}
               title={tr('Close {{symbol}} tab', { symbol: tab.symbol })}
               onMouseDown={event => event.stopPropagation()}
@@ -54,7 +55,7 @@ export function ChartSymbolTabs({ panel }: { panel: DockPanelConfig }) {
                 event.stopPropagation();
                 closeChartPanelSymbolTab(panel.id, tab.symbol);
               }}
-            ><Icon name="x-close" size="xs" /></button>}
+            ><X className="w-3 h-3" /></button>}
           </span>
         );
       })}

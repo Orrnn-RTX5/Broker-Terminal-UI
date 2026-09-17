@@ -308,9 +308,8 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action,
 }
 
 html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action[aria-pressed="true"],
-  .rtx-toolbar-icon-button[aria-pressed="true"],
+  .rtx-toolbar-icon-button[aria-pressed="true"]:not(.rtx-period-separator-toggle),
   .rtx-toolbar-icon-button[aria-checked="true"],
-  .rtx-period-separator-toggle[aria-pressed="true"],
   .rtx-trade-history-overlay-button[aria-expanded="true"],
   .rtx-advanced-grid-button[aria-expanded="true"]) {
   background: var(--rtx-light-accent-soft) !important;
@@ -321,6 +320,13 @@ html.rtx-advanced-view.rtx-skin-untitled-light :is(.rtx-toolbar-action[aria-pres
 
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-toolbar-icon-button[role="radio"][aria-checked="true"] {
   border-radius: 3px;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-period-separator-toggle[aria-pressed="true"],
+html.rtx-desktop-shell-active .rtx-period-separator-toggle[aria-pressed="true"],
+.rtx-period-separator-toggle[aria-pressed="true"] {
+  border-radius: 3px !important;
   box-shadow: none !important;
 }
 
@@ -493,11 +499,14 @@ html.rtx-advanced-view.rtx-skin-untitled-light :where(td, tr):not(.tv-lightweigh
   color: var(--rtx-light-text) !important;
 }
 
-/* History uses clear horizontal separators without vertical cell edges. */
-html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-trade-table :is(thead th, tbody td) {
+/* Trade and History tables use clear horizontal separators without vertical cell edges. */
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-history-tab .rtx-trade-table :is(thead th, tbody td),
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-table :is(thead th, tbody td),
+html.rtx-skin-untitled-light .rtx-trade-table :is(thead th, tbody td),
+html.rtx-desktop-shell-active .rtx-trade-table :is(thead th, tbody td) {
   border-left: none !important;
   border-right: none !important;
-  border-bottom: 1px solid var(--rtx-light-border-strong) !important;
+  border-bottom: 1px solid var(--rtx-light-border-strong, #d1d5db) !important;
   box-shadow: none !important;
 }
 
@@ -1521,6 +1530,24 @@ html:root.rtx-advanced-view.rtx-skin-untitled-light body .rtx-oct .rtx-oct-trade
 html.rtx-advanced-view.rtx-skin-untitled-light .rtx-market-watch [role="alert"] {
   line-height: 1.4 !important;
   color: var(--color-loss) !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-sl-value {
+  color: #b42318 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+html.rtx-advanced-view.rtx-skin-untitled-light .rtx-trade-tp-value {
+  color: #027a48 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

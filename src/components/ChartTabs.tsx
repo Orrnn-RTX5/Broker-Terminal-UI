@@ -1,4 +1,5 @@
 import { Icon } from './ui/Icon';
+import { X } from 'lucide-react';
 import React from 'react';
 import { type Timeframe } from './TradingChart';
 
@@ -42,9 +43,9 @@ export const ChartTabs: React.FC<ChartTabsProps> = ({ tabs, activeTabId, onTabCl
                                 e.stopPropagation();
                                 onTabClose(tab.id);
                             }}
-                            className={`p-0.5 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity ${isActive ? 'hover:bg-[var(--bg-quaternary)] text-[var(--text-primary)]' : 'hover:bg-zinc-600 hover:text-white'}`}
+                            className="p-0.5 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity text-zinc-400 hover:bg-red-500/80 hover:text-white"
                         >
-                            <Icon name="x-close" size="xs" />
+                            <X className="w-3 h-3" />
                         </button>
                     </div>
                 );

@@ -16,16 +16,15 @@ const ACCENT_STORAGE_KEY = 'rtx5-accent-color';
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [theme, setThemeState] = useState<ThemeMode>(() => {
-        // Enforce dark mode as the base default for the professional terminal layout
-        let saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode;
-        if (saved === 'light') {
-            saved = 'dark';
-        }
+        if (typeof window === 'undefined') return 'dark';
+        const isAdvancedLight = localStorage.getItem('rtx5-advanced-view-enabled') === 'true';
+        if (isAdvancedLight) return 'light';
+        const saved = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode;
         return saved || 'dark';
     });
 
     const [accentColor, setAccentColorState] = useState(() => {
-        return localStorage.getItem(ACCENT_STORAGE_KEY) || '#2196F3';
+        return (typeof window !== 'undefined' ? localStorage.getItem(ACCENT_STORAGE_KEY) : null) || '#2196F3';
     });
 
     // Apply theme class to document root
@@ -37,6 +36,15 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
         // Add current theme class
         root.classList.add(`theme-${theme}`);
+        root.setAttribute('data-theme', theme);
+
+        if (theme === 'light') {
+            root.classList.add('rtx-advanced-view', 'rtx-skin-untitled-light');
+            localStorage.setItem('rtx5-advanced-view-enabled', 'true');
+        } else if (theme === 'dark') {
+            root.classList.remove('rtx-advanced-view', 'rtx-skin-untitled-light');
+            localStorage.setItem('rtx5-advanced-view-enabled', 'false');
+        }
 
         // If custom theme, set the accent color CSS variable
         if (theme === 'custom') {

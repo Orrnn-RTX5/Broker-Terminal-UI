@@ -20,7 +20,10 @@ import { useDesktopRelease } from '../../hooks/useDesktopRelease';
 import { useDockLayoutStore } from '../../store/useDockLayoutStore';
 import { getTerminalShortcutHint } from '../../services/shortcutCatalog';
 import {
+    BUILTIN_WORKSPACE_PROFILE_NAMES,
+    deleteWorkspaceProfile,
     listWorkspaceProfiles,
+    restoreBuiltinWorkspaceProfile,
     restoreWorkspaceProfile,
     saveCurrentWorkspaceProfile,
     type WorkspaceProfileSummary,
@@ -206,6 +209,15 @@ export const FileMenu: React.FC<FileMenuProps> = ({
     const [showExitDialog, setShowExitDialog] = useState(false);
     const [showOpenAccountDialog, setShowOpenAccountDialog] = useState(false);
     const [newChartOpen, setNewChartOpen] = useState(false);
+    const [profilesOpen, setProfilesOpen] = useState(false);
+    const [deleteSubmenuOpen, setDeleteSubmenuOpen] = useState(false);
+    const [activeProfileName, setActiveProfileName] = useState(() => {
+        try {
+            return localStorage.getItem('rtx5_active_profile') || 'Default';
+        } catch {
+            return 'Default';
+        }
+    });
     const [workspaceProfiles, setWorkspaceProfiles] = useState<WorkspaceProfileSummary[]>([]);
     const recentlyClosedCharts = useDockLayoutStore(state => state.recentlyClosedCharts);
     const isDesktopShell = typeof window !== 'undefined' && Boolean(window.electron?.window);
@@ -216,21 +228,29 @@ export const FileMenu: React.FC<FileMenuProps> = ({
 
     useEffect(() => {
         const refreshProfiles = () => {
-            if (!accountId?.trim()) {
-                setWorkspaceProfiles([]);
-                return;
-            }
+            const effectiveAccount = accountId?.trim() || 'default';
             try {
-                setWorkspaceProfiles(listWorkspaceProfiles(accountId));
+                setWorkspaceProfiles(listWorkspaceProfiles(effectiveAccount));
             } catch (error) {
                 console.warn('[FileMenu] Could not load workspace profiles:', error);
                 setWorkspaceProfiles([]);
             }
         };
 
+        const handleProfileRestored = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.name) {
+                setActiveProfileName(detail.name);
+            }
+        };
+
         refreshProfiles();
         window.addEventListener('workspace:profile-saved', refreshProfiles);
-        return () => window.removeEventListener('workspace:profile-saved', refreshProfiles);
+        window.addEventListener('workspace:profile-restored', handleProfileRestored);
+        return () => {
+            window.removeEventListener('workspace:profile-saved', refreshProfiles);
+            window.removeEventListener('workspace:profile-restored', handleProfileRestored);
+        };
     }, [accountId]);
 
     useEffect(() => {
@@ -397,18 +417,86 @@ export const FileMenu: React.FC<FileMenuProps> = ({
         }
     };
 
+    const allProfileNames = Array.from(
+        new Set([
+            ...BUILTIN_WORKSPACE_PROFILE_NAMES,
+            ...workspaceProfiles.map(p => p.name),
+        ])
+    );
+
+    const customProfiles = workspaceProfiles.filter(
+        p => !BUILTIN_WORKSPACE_PROFILE_NAMES.some(b => b.toLowerCase() === p.name.toLowerCase())
+    );
+
     const handleRestoreProfile = (profileName: string) => {
-        if (!accountId?.trim()) return;
+        const effectiveAccount = accountId?.trim() || 'default';
         try {
-            const result = restoreWorkspaceProfile({ accountId, profileName });
+            let result = restoreWorkspaceProfile({ accountId: effectiveAccount, profileName });
+            if (result.status !== 'restored') {
+                result = restoreBuiltinWorkspaceProfile(effectiveAccount, profileName);
+            }
             if (result.status === 'restored') {
+                setActiveProfileName(result.profile.name);
+                try {
+                    localStorage.setItem('rtx5_active_profile', result.profile.name);
+                } catch {}
                 onProfileRestored?.(result.profile.name);
+                setProfilesOpen(false);
             }
         } catch (error) {
             console.error('[FileMenu] Failed to restore workspace profile:', error);
             window.alert(tr(error instanceof Error ? error.message : 'The workspace profile could not be restored.'));
         }
     };
+
+    const handleNextProfile = () => {
+        if (allProfileNames.length === 0) return;
+        const currentIndex = allProfileNames.findIndex(
+            name => name.toLowerCase() === activeProfileName.toLowerCase()
+        );
+        const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % allProfileNames.length : 0;
+        handleRestoreProfile(allProfileNames[nextIndex]);
+    };
+
+    const handlePreviousProfile = () => {
+        if (allProfileNames.length === 0) return;
+        const currentIndex = allProfileNames.findIndex(
+            name => name.toLowerCase() === activeProfileName.toLowerCase()
+        );
+        const prevIndex = currentIndex >= 0
+            ? (currentIndex - 1 + allProfileNames.length) % allProfileNames.length
+            : allProfileNames.length - 1;
+        handleRestoreProfile(allProfileNames[prevIndex]);
+    };
+
+    const handleDeleteProfile = (profileNameToDelete: string) => {
+        const effectiveAccount = accountId?.trim() || 'default';
+        const deleted = deleteWorkspaceProfile({ accountId: effectiveAccount, profileName: profileNameToDelete });
+        if (deleted) {
+            setWorkspaceProfiles(listWorkspaceProfiles(effectiveAccount));
+            if (activeProfileName.toLowerCase() === profileNameToDelete.toLowerCase()) {
+                setActiveProfileName('Default');
+                try { localStorage.setItem('rtx5_active_profile', 'Default'); } catch {}
+            }
+        }
+        setDeleteSubmenuOpen(false);
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'F5' && !e.altKey && !e.metaKey) {
+                if (e.shiftKey && !e.ctrlKey) {
+                    e.preventDefault();
+                    handleNextProfile();
+                } else if (e.ctrlKey && !e.shiftKey) {
+                    e.preventDefault();
+                    handlePreviousProfile();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [allProfileNames, activeProfileName, accountId]);
 
     const handlePrintPreview = async () => {
         const request = ++printRequest.current;
@@ -586,9 +674,22 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 </div>
 
                 {/* Profiles submenu */}
-                <div className="relative group/profiles px-1 [&:hover>div.submenu]:block">
+                <div
+                    className="relative group/profiles px-1"
+                    onMouseEnter={() => setProfilesOpen(true)}
+                    onMouseLeave={() => {
+                        setProfilesOpen(false);
+                        setDeleteSubmenuOpen(false);
+                    }}
+                >
                     <button
-                        className="w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default"
+                        type="button"
+                        onClick={() => setProfilesOpen(o => !o)}
+                        className={`w-full flex min-h-[30px] items-center gap-3 px-2 py-1.5 text-[14px] font-normal rounded-sm text-left cursor-default ${
+                            profilesOpen
+                                ? 'bg-[#2a2e39] [.rtx-advanced-view_&]:bg-[#f3f4f6] text-white [.rtx-advanced-view_&]:text-[#111827]'
+                                : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
+                        }`}
                         title={tr("Load profile configurations")}
                     >
                         <div className="rtx-menu-icon--neutral w-4 flex items-center justify-center">
@@ -597,23 +698,129 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                         <span className="flex-1">{t('menu.file.profiles')}</span>
                         <Icon name="chevron-right" size="xs" className="rtx-menu-icon--neutral" />
                     </button>
-                    <div className="rtx-menu-surface submenu absolute left-full top-0 -ml-1 hidden min-w-[180px] py-1 z-[101]">
-                        {workspaceProfiles.map(profile => (
+                    <div
+                        className={`rtx-menu-surface submenu absolute left-full top-0 -ml-1 min-w-[200px] py-1 z-[101] ${
+                            profilesOpen ? 'block' : 'hidden group-hover/profiles:block'
+                        }`}
+                    >
+                        {/* Next */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                handleNextProfile();
+                                setProfilesOpen(false);
+                            }}
+                            className="w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default"
+                            title={tr("Switch to next profile")}
+                        >
+                            <span className="w-3.5" />
+                            <span className="flex-1">{tr("Next")}</span>
+                            <span className="text-[11px] font-normal text-zinc-500 font-mono tracking-tight">{tr("Shift+F5")}</span>
+                        </button>
+
+                        {/* Previous */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                handlePreviousProfile();
+                                setProfilesOpen(false);
+                            }}
+                            className="w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default"
+                            title={tr("Switch to previous profile")}
+                        >
+                            <span className="w-3.5" />
+                            <span className="flex-1">{tr("Previous")}</span>
+                            <span className="text-[11px] font-normal text-zinc-500 font-mono tracking-tight">{tr("Ctrl+F5")}</span>
+                        </button>
+
+                        {/* Save As... */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setProfilesOpen(false);
+                                setShowSaveDialog(true);
+                            }}
+                            className="w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default"
+                            title={tr("Save current workspace as a new profile")}
+                        >
+                            <span className="w-3.5" />
+                            <span className="flex-1">{tr("Save As...")}</span>
+                        </button>
+
+                        {/* Delete submenu */}
+                        <div
+                            className="relative group/delete px-0"
+                            onMouseEnter={() => customProfiles.length > 0 && setDeleteSubmenuOpen(true)}
+                            onMouseLeave={() => setDeleteSubmenuOpen(false)}
+                        >
                             <button
-                                key={profile.id}
                                 type="button"
-                                onClick={() => handleRestoreProfile(profile.name)}
-                                className="w-full flex min-h-[30px] items-center gap-3 px-3 py-1.5 text-[14px] font-normal rounded-sm text-left text-zinc-300 hover:bg-[#2a2e39] hover:text-white cursor-default"
-                                title={tr("Restore workspace {{value0}}", { value0: profile.name })}
+                                disabled={customProfiles.length === 0}
+                                onClick={() => customProfiles.length > 0 && setDeleteSubmenuOpen(o => !o)}
+                                className={`w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left ${
+                                    customProfiles.length > 0
+                                        ? 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827] cursor-default'
+                                        : 'text-zinc-600 [.rtx-advanced-view_&]:text-gray-400 cursor-not-allowed'
+                                }`}
+                                title={customProfiles.length > 0 ? tr("Delete a custom profile") : tr("No custom profiles to delete")}
                             >
-                                <Icon name="layout" size="sm" className="rtx-menu-icon--neutral shrink-0" />
-                                <span className="truncate">{profile.name}</span>
+                                <span className="w-3.5" />
+                                <span className="flex-1">{tr("Delete")}</span>
+                                {customProfiles.length > 0 && <Icon name="chevron-right" size="xs" className="rtx-menu-icon--neutral" />}
                             </button>
-                        ))}
-                        {workspaceProfiles.length === 0 && (
-                            <div className="px-3 py-2 text-[12px] text-zinc-500 [.rtx-advanced-view_&]:text-gray-500">
-                                {tr("Save a workspace to create a profile.")}</div>
-                        )}
+
+                            {customProfiles.length > 0 && (
+                                <div
+                                    className={`rtx-menu-surface submenu absolute left-full top-0 -ml-1 min-w-[160px] py-1 z-[102] ${
+                                        deleteSubmenuOpen ? 'block' : 'hidden group-hover/delete:block'
+                                    }`}
+                                >
+                                    {customProfiles.map(p => (
+                                        <button
+                                            key={`delete-${p.id}`}
+                                            type="button"
+                                            onClick={() => handleDeleteProfile(p.name)}
+                                            className="w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 [.rtx-advanced-view_&]:text-[#b42318] [.rtx-advanced-view_&]:hover:bg-[#fef3f2] cursor-default"
+                                            title={tr("Delete profile {{value0}}", { value0: p.name })}
+                                            aria-label={tr("Delete profile {{value0}}", { value0: p.name })}
+                                        >
+                                            <Icon name="x-close" size="xs" className="shrink-0" />
+                                            <span className="truncate flex-1">{p.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="rtx-menu-divider" role="separator" />
+
+                        {/* List of profiles (Built-in + Custom) */}
+                        {allProfileNames.map(profileName => {
+                            const isActive = profileName.toLowerCase() === activeProfileName.toLowerCase();
+                            return (
+                                <button
+                                    key={profileName}
+                                    type="button"
+                                    onClick={() => handleRestoreProfile(profileName)}
+                                    className={`w-full flex min-h-[28px] items-center gap-2 px-3 py-1 text-[13px] font-normal rounded-sm text-left cursor-default transition-colors duration-75 ${
+                                        isActive
+                                            ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600 bg-emerald-500/10 [.rtx-advanced-view_&]:bg-emerald-50 font-medium'
+                                            : 'text-zinc-300 [.rtx-advanced-view_&]:text-[#374151] hover:bg-[#2a2e39] [.rtx-advanced-view_&]:hover:bg-[#f3f4f6] hover:text-white [.rtx-advanced-view_&]:hover:text-[#111827]'
+                                    }`}
+                                    title={tr("Restore workspace {{value0}}", { value0: profileName })}
+                                >
+                                    <span
+                                        aria-hidden="true"
+                                        className={`w-3.5 text-center font-bold text-[11px] flex-none ${
+                                            isActive ? 'text-emerald-400 [.rtx-advanced-view_&]:text-emerald-600' : 'text-transparent'
+                                        }`}
+                                    >
+                                        ✓
+                                    </span>
+                                    <span className="truncate flex-1">{profileName}</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -806,16 +1013,19 @@ export const FileMenu: React.FC<FileMenuProps> = ({
                 </button>
             </div>}
 
-            {printError && !showPrintPreviewDialog && <div role="alert" className="fixed bottom-10 right-4 z-[10000] max-w-sm rounded border border-red-500/40 bg-[#252528] p-3 text-sm text-red-300">{tr(printError)}</div>}
             {/* Dialogs */}
             {showSaveDialog && (
                 <SaveWorkspaceDialog
                     onConfirm={(workspaceName) => {
                         setShowSaveDialog(false);
+                        if (workspaceName) {
+                            setActiveProfileName(workspaceName);
+                            try { localStorage.setItem('rtx5_active_profile', workspaceName); } catch {}
+                        }
                         onSave?.(workspaceName);
                     }}
                     onCancel={() => setShowSaveDialog(false)}
-                    accountId={accountId}
+                    accountId={accountId || 'default'}
                 />
             )}
 

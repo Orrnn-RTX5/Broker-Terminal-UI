@@ -4,6 +4,8 @@ import {
   syncAdvancedViewRootClasses,
   runOutsideChartFocus,
   RTX_EXIT_CHART_FOCUS_EVENT,
+  initRootTheme,
+  isSavedThemeLight,
   type AdvancedViewRootOptions,
 } from './advancedViewRootClasses';
 
@@ -105,5 +107,25 @@ describe('advanced view root classes', () => {
     clearAdvancedViewRootClasses(root);
 
     expect(root.className).toBe('theme-dark sentinel');
+  });
+
+  it('initializes root theme based on saved preferences', () => {
+    const root = document.documentElement;
+    localStorage.setItem('rtx5-advanced-view-enabled', 'true');
+    initRootTheme(root);
+
+    expect(isSavedThemeLight()).toBe(true);
+    expect(root).toHaveClass('rtx-advanced-view', 'rtx-skin-untitled-light', 'theme-light');
+    expect(root).not.toHaveClass('theme-dark');
+    expect(root.getAttribute('data-theme')).toBe('light');
+
+    localStorage.setItem('rtx5-advanced-view-enabled', 'false');
+    localStorage.removeItem('rtx5-theme');
+    initRootTheme(root);
+
+    expect(isSavedThemeLight()).toBe(false);
+    expect(root).toHaveClass('theme-dark');
+    expect(root).not.toHaveClass('rtx-advanced-view', 'rtx-skin-untitled-light', 'theme-light');
+    expect(root.getAttribute('data-theme')).toBe('dark');
   });
 });

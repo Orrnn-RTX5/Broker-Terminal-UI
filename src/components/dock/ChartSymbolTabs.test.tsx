@@ -86,4 +86,31 @@ describe('chart header symbol tabs', () => {
       expect(openChart).toHaveBeenCalledTimes(2);
     } finally { window.removeEventListener('openChart', openChart); }
   });
+
+  it('renders a crisp Lucide X icon matching the right-side close control', () => {
+    const layout = {
+      version: '1.0' as const,
+      floatingPanels: [],
+      root: {
+        id: 'root',
+        type: 'root' as const,
+        ratio: 1,
+        children: [{
+          id: 'chart',
+          title: 'XAUUSD,M1',
+          component: 'Chart',
+          props: { symbol: 'XAUUSD', timeframe: 'M1' },
+          chartSymbolTabs: [{ symbol: 'XAUUSD', timeframe: 'M1' }],
+        }],
+      },
+    };
+    render(<ChartSymbolTabs panel={layout.root.children[0]} />);
+    const closeBtn = screen.getByRole('button', { name: 'Close XAUUSD tab' });
+    const icon = closeBtn.querySelector('svg');
+    expect(icon).not.toBeNull();
+    expect(icon?.classList.contains('lucide-x')).toBe(true);
+    expect(icon?.classList.contains('w-3')).toBe(true);
+    expect(icon?.classList.contains('h-3')).toBe(true);
+    expect(closeBtn.className).toContain('text-zinc-400');
+  });
 });

@@ -24,6 +24,7 @@ import { lockedTerminalTool } from '../../config/terminalToolAvailability';
 import { supportedLanguages } from '../../config/supportedLanguages';
 import { changeInterfaceLanguage } from '../../i18n';
 import { getTerminalShortcutHint, runTerminalShortcutAction } from '../../services/shortcutCatalog';
+import { BUILTIN_WORKSPACE_PROFILE_NAMES, restoreBuiltinWorkspaceProfile } from '../../services/localWorkspaceProfiles';
 
 // Local interface definition to avoid export issues
 interface MenuItem {
@@ -377,7 +378,58 @@ export const MenuBar = ({
                         ]
             },
             { label: t('menu.file.openDeleted'), disabled: true },
-            { label: t('menu.file.profiles'), children: [{ label: 'Default' }, { label: 'Euro' }, { label: 'Market' }] },
+            {
+                label: t('menu.file.profiles'),
+                children: [
+                    {
+                        label: 'Next',
+                        shortcut: 'Shift+F5',
+                        action: () => {
+                            const active = localStorage.getItem('rtx5_active_profile') || 'Default';
+                            const names = BUILTIN_WORKSPACE_PROFILE_NAMES;
+                            const idx = names.findIndex(n => n.toLowerCase() === active.toLowerCase());
+                            const next = names[(idx + 1) % names.length];
+                            const res = restoreBuiltinWorkspaceProfile(next);
+                            if (res.status === 'restored') {
+                                localStorage.setItem('rtx5_active_profile', next);
+                                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                                    detail: { message: `Workspace "${next}" restored.`, type: 'success' },
+                                }));
+                            }
+                        },
+                    },
+                    {
+                        label: 'Previous',
+                        shortcut: 'Ctrl+F5',
+                        action: () => {
+                            const active = localStorage.getItem('rtx5_active_profile') || 'Default';
+                            const names = BUILTIN_WORKSPACE_PROFILE_NAMES;
+                            const idx = names.findIndex(n => n.toLowerCase() === active.toLowerCase());
+                            const prev = names[(idx - 1 + names.length) % names.length];
+                            const res = restoreBuiltinWorkspaceProfile(prev);
+                            if (res.status === 'restored') {
+                                localStorage.setItem('rtx5_active_profile', prev);
+                                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                                    detail: { message: `Workspace "${prev}" restored.`, type: 'success' },
+                                }));
+                            }
+                        },
+                    },
+                    { divider: true, label: '' },
+                    ...BUILTIN_WORKSPACE_PROFILE_NAMES.map(name => ({
+                        label: name,
+                        action: () => {
+                            const res = restoreBuiltinWorkspaceProfile(name);
+                            if (res.status === 'restored') {
+                                localStorage.setItem('rtx5_active_profile', name);
+                                window.dispatchEvent(new CustomEvent('rtx:order-feedback', {
+                                    detail: { message: `Workspace "${name}" restored.`, type: 'success' },
+                                }));
+                            }
+                        },
+                    })),
+                ],
+            },
             { label: t('menu.file.close'), ...terminalShortcut('file.close-chart') },
             { divider: true, label: '' },
             { label: t('menu.file.save'), icon: <Icon name="save" size="sm" />, shortcut: 'Ctrl+S' },
@@ -1028,7 +1080,7 @@ export const MenuBar = ({
 
                                     {isActive && (
                                         <div
-                                            className="absolute left-0 top-full z-[10000] mt-px"
+                                            className={`absolute left-0 top-full z-[10000] mt-px ${menuKey === 'File' ? 'rtx-desktop-file-menu-container' : ''}`}
                                             role="menu"
                                             aria-label={tr("{{value0}} menu", { value0: tr(menuKey) })}
                                         >

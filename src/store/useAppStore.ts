@@ -61,11 +61,15 @@ export interface Position {
   comment?: string;
   // Backend wire-format aliases (snake_case). Optional — preserves existing defensive fallback logic.
   open_price?: number;
+  price_open?: number;
   current_price?: number;
+  price_current?: number;
   unrealized_pl?: number;
   profit?: number;
   quantity?: number;
   time_create?: string;
+  open_time?: string;
+  time?: string | number;
   time_update?: string;
   chartEntryPrice?: number;
   chartEntryTime?: string;

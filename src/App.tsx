@@ -251,6 +251,15 @@ interface Position {
   unrealizedPnL: number;
   chartEntryPrice?: number;
   chartEntryTime?: string;
+  open_price?: number;
+  price_open?: number;
+  current_price?: number;
+  price_current?: number;
+  time_create?: string;
+  open_time?: string;
+  time?: string | number;
+  profit?: number;
+  quantity?: number;
 }
 
 interface TradeRestRead {
@@ -529,26 +538,38 @@ const normalizePositions = (payload: unknown): Position[] => {
     ), 10);
     if (!Number.isFinite(parsedId) || parsedId <= 0) return [];
 
-    const openPrice = toNumber(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.price, 0);
-    const currentPrice = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice, openPrice);
+    const openPrice = toNumber(raw.price_open ?? raw.open_price ?? raw.openPrice ?? raw.entryPrice ?? raw.chartEntryPrice ?? raw.price, 0);
+    const currentPrice = toNumber(raw.price_current ?? raw.current_price ?? raw.currentPrice ?? raw.livePrice, openPrice);
     const rawSide = String(raw.side ?? '').toLowerCase();
     const chartEntryTime = resolveOptionalPositionTime(raw.chartEntryTime ?? raw.chart_entry_time);
+    const openTime = resolvePositionOpenTime(raw, chartEntryTime);
+    const volume = toNumber(raw.volume_lots ?? raw.quantity ?? raw.volume, 0);
+    const profit = toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0);
 
     return [{
       id: parsedId,
       symbol: String(raw.symbol ?? ''),
       side: rawSide === 'sell' || rawSide === 'short' ? 'SELL' : 'BUY',
-      volume: toNumber(raw.volume_lots ?? raw.quantity ?? raw.volume, 0),
+      volume,
       openPrice,
       currentPrice,
-      openTime: resolvePositionOpenTime(raw, chartEntryTime),
+      openTime,
       sl: toNumber(raw.price_sl ?? raw.sl, 0),
       tp: toNumber(raw.price_tp ?? raw.tp, 0),
       swap: toNumber(raw.swap, 0),
       commission: toNumber(raw.commission, 0),
-      unrealizedPnL: toNumber(raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL, 0),
+      unrealizedPnL: profit,
       chartEntryPrice: toNumber(raw.chartEntryPrice, 0) || undefined,
       chartEntryTime,
+      open_price: openPrice,
+      price_open: openPrice,
+      current_price: currentPrice,
+      price_current: currentPrice,
+      time_create: openTime,
+      open_time: openTime,
+      time: openTime,
+      profit,
+      quantity: volume,
     }];
   });
 };

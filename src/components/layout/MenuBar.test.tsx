@@ -896,4 +896,32 @@ describe('MenuBar Electron desktop menubar', () => {
         expect(dockStoreFixture.resetWindows).toHaveBeenCalledOnce();
         expect(dockStoreFixture.resetToDefaultLayout).not.toHaveBeenCalled();
     });
+
+    it('allows opening Profiles and switching workspace profiles from the desktop File menu', () => {
+        installElectronBridge();
+        render(<MenuBar />);
+
+        const fileButton = screen.getByRole('menuitem', { name: 'File' });
+        fireEvent.click(fileButton);
+
+        const restoreProfileButton = screen.getByRole('button', { name: 'Restore profile' });
+        expect(restoreProfileButton).toBeInTheDocument();
+
+        const feedbackSpy = vi.fn();
+        window.addEventListener('rtx:order-feedback', feedbackSpy);
+
+        fireEvent.click(restoreProfileButton);
+        expect(feedbackSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                detail: expect.objectContaining({
+                    message: 'Workspace "Market" restored.',
+                    type: 'success',
+                }),
+            }),
+        );
+        expect(screen.queryByRole('menu', { name: 'File menu' })).not.toBeInTheDocument();
+        window.removeEventListener('rtx:order-feedback', feedbackSpy);
+    });
 });
+
+

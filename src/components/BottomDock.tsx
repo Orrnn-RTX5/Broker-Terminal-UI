@@ -7,7 +7,7 @@ import { lazy, memo, Suspense, useState, useEffect, useMemo, useRef, useCallback
 import { CalendarTab } from './layout/CalendarTab';
 import { CodeBaseTab, ArticlesTab, ExpertsTab } from './layout/ResearchTabs';
 import { JournalTab } from './layout/JournalTab';
-import { useAppStore, type Trade } from '../store/useAppStore';
+import { useAppStore, resolveTickFromLookup, type Trade } from '../store/useAppStore';
 import { useToolboxTradeData, type ToolboxTradePosition } from '../hooks/useToolboxTradeData';
 import { getStoredAccountLogin, tradeGatewayApi } from '../api/tradeGateway';
 import { useChartSettingsStore } from '../store/useChartSettingsStore';
@@ -943,13 +943,42 @@ const TradeTab = memo(function TradeTab({
 
     // Calculate live positions with realtime prices, PnL, and SL/TP from local overrides
     const livePositions = useMemo(() => {
+        const appState = useAppStore.getState();
         return positions.map((pos: any) => {
             const symbol = pos?.symbol ?? '';
-            const livePrice = Number(pos?.currentPrice ?? 0);
-            const profitResolution = resolveTradeProfit(pos, { accountCurrency: account?.currency });
+            const openPrice = Number(
+                pos?.price_open ?? pos?.open_price ?? pos?.openPrice ?? pos?.entryPrice ?? pos?.chartEntryPrice ?? pos?.price ?? 0
+            );
+            let livePrice = Number(
+                pos?.price_current ?? pos?.current_price ?? pos?.currentPrice ?? pos?.livePrice ?? 0
+            );
+            if (!Number.isFinite(livePrice) || livePrice <= 0) {
+                const tick = resolveTickFromLookup(appState.ticks, appState.tickLookup, symbol);
+                if (tick) {
+                    const isBuy = String(pos?.side ?? '').toUpperCase() === 'BUY';
+                    const bid = Number(tick.bid);
+                    const ask = Number(tick.ask);
+                    const last = Number(tick.last);
+                    const tickPrice = isBuy
+                        ? (Number.isFinite(bid) && bid > 0 ? bid : Number.isFinite(last) && last > 0 ? last : ask)
+                        : (Number.isFinite(ask) && ask > 0 ? ask : Number.isFinite(last) && last > 0 ? last : bid);
+                    if (Number.isFinite(tickPrice) && tickPrice > 0) {
+                        livePrice = tickPrice;
+                    }
+                }
+            }
+            if (!Number.isFinite(livePrice) || livePrice <= 0) {
+                livePrice = openPrice;
+            }
+
+            const openTime = pos?.time_create ?? pos?.openTime ?? pos?.open_time ?? pos?.time ?? pos?.chartEntryTime;
+            const volume = Number(pos?.volume_lots ?? pos?.volume ?? pos?.quantity ?? 0);
+
+            const profitResolution = resolveTradeProfit(
+                { ...pos, currentPrice: livePrice, price_current: livePrice, openPrice, price_open: openPrice },
+                { accountCurrency: account?.currency }
+            );
             const livePnL = profitResolution.value;
-            const openPrice = Number(pos?.openPrice ?? 0);
-            const volume = Number(pos?.volume ?? 0);
 
             // Apply local overrides while the Gateway API catches up.
             const override = tradeOverrides[pos?.id];
@@ -962,6 +991,14 @@ const TradeTab = memo(function TradeTab({
                 symbol,
                 volume,
                 openPrice,
+                price_open: openPrice,
+                open_price: openPrice,
+                currentPrice: livePrice,
+                price_current: livePrice,
+                current_price: livePrice,
+                openTime,
+                time_create: openTime,
+                open_time: openTime,
                 sl: Number(sl ?? 0),
                 tp: Number(tp ?? 0),
                 price_sl: Number(sl ?? 0),
@@ -1064,7 +1101,7 @@ const TradeTab = memo(function TradeTab({
             case 'ticket':
                 return Number(pos.ticket ?? pos.id ?? 0);
             case 'time_create':
-                return getTradeTimeValue(pos.time_create);
+                return getTradeTimeValue(pos.time_create ?? pos.openTime ?? pos.open_time ?? pos.time);
             case 'profit':
                 return Number(pos.profit ?? pos.unrealizedPnL ?? 0);
             default:
@@ -1279,8 +1316,8 @@ const TradeTab = memo(function TradeTab({
     }, [getPositionKey, livePositions, selectedPositionKey]);
 
     const getTradePointsValue = useCallback((pos: ToolboxTradePosition) => {
-        const openPrice = Number(pos.price_open ?? pos.openPrice);
-        const currentPrice = Number(pos.price_current ?? pos.currentPrice);
+        const openPrice = Number(pos.price_open ?? pos.open_price ?? pos.openPrice ?? pos.entryPrice ?? pos.price);
+        const currentPrice = Number(pos.price_current ?? pos.current_price ?? pos.currentPrice ?? pos.livePrice);
         if (!Number.isFinite(openPrice) || !Number.isFinite(currentPrice) || openPrice <= 0 || currentPrice <= 0) return 0;
         const pointSize = Math.pow(10, -getSymbolDigits(pos.symbol ?? ''));
         const direction = String(pos.side).toUpperCase() === 'BUY' ? 1 : -1;
@@ -1318,13 +1355,13 @@ const TradeTab = memo(function TradeTab({
             { label: 'Symbol', value: pos => pos.symbol ?? '-' },
         ];
         if (isColumnVisible('ticket')) columns.push({ label: 'Ticket', value: pos => pos.ticket ?? pos.id ?? '-' });
-        if (isColumnVisible('time')) columns.push({ label: 'Time', value: pos => formatTradeTime(pos.time_create) });
+        if (isColumnVisible('time')) columns.push({ label: 'Time', value: pos => formatTradeTime(pos.time_create ?? pos.openTime ?? pos.open_time ?? pos.time) });
         if (isColumnVisible('side')) columns.push({ label: 'Type', value: pos => String(pos.side ?? '').toLowerCase() || '-' });
         if (isColumnVisible('volume')) columns.push({ label: 'Volume', value: pos => formatTradeVolume(pos) });
-        if (isColumnVisible('priceOpen')) columns.push({ label: 'Price Open', value: pos => formatTradePrice(pos.price_open ?? pos.openPrice, pos.symbol ?? '') });
+        if (isColumnVisible('priceOpen')) columns.push({ label: 'Price Open', value: pos => formatTradePrice(pos.price_open ?? pos.open_price ?? pos.openPrice, pos.symbol ?? '') });
         if (isColumnVisible('sl')) columns.push({ label: 'S / L', value: pos => formatTradeLevel(pos.price_sl ?? pos.sl, pos.symbol ?? '') });
         if (isColumnVisible('tp')) columns.push({ label: 'T / P', value: pos => formatTradeLevel(pos.price_tp ?? pos.tp, pos.symbol ?? '') });
-        if (isColumnVisible('priceCurrent')) columns.push({ label: 'Price Current', value: pos => formatTradePrice(pos.price_current ?? pos.currentPrice, pos.symbol ?? '') });
+        if (isColumnVisible('priceCurrent')) columns.push({ label: 'Price Current', value: pos => formatTradePrice(pos.price_current ?? pos.current_price ?? pos.currentPrice ?? pos.livePrice, pos.symbol ?? '') });
         if (isColumnVisible('swap')) columns.push({ label: 'Swap', value: pos => formatMoney(pos.swap) });
         if (isColumnVisible('accountLogin')) columns.push({ label: 'Account Login', value: pos => pos.account_login ?? '-' });
         if (isColumnVisible('timeUpdate')) columns.push({ label: 'Time Update', value: pos => formatTradeTime(pos.time_update) });
@@ -1696,17 +1733,35 @@ ${rows}
                             const positionKey = getPositionKey(pos);
                             const isSelected = selectedPositionKey === positionKey;
                             const symbolLabel = pos.symbol ?? '-';
-                            const ticketLabel = isPendingPlacement ? tr(placementState) : String(pos.ticket ?? pos.id ?? '-');
-                            const timeLabel = formatTradeTime(pos.time_create);
+                            const ticketLabel = isPendingPlacement ? '-' : String(pos.ticket ?? pos.id ?? '-');
+                            const openTime = pos.time_create ?? pos.openTime ?? pos.open_time ?? pos.time_open ?? pos.time ?? pos.chartEntryTime;
+                            const timeLabel = formatTradeTime(openTime);
                             const sideLabel = String(pos.side ?? '').toLowerCase() || '-';
                             const volumeLabel = String(formatTradeVolume(pos));
-                            const rawOpenPrice = Number(pos.price_open ?? pos.openPrice);
+                            const rawOpenPrice = Number(pos.price_open ?? pos.open_price ?? pos.openPrice ?? pos.entryPrice ?? pos.chartEntryPrice ?? pos.price);
                             const openPriceLabel = isPendingPlacement
                                 ? '…'
                                 : formatTradePrice(rawOpenPrice, symbolLabel);
                             const slLabel = formatTradeLevel(pos.price_sl ?? pos.sl, symbolLabel);
                             const tpLabel = formatTradeLevel(pos.price_tp ?? pos.tp, symbolLabel);
-                            const rawCurrentPrice = Number(pos.price_current ?? pos.currentPrice);
+                            let rawCurrentPrice = Number(pos.price_current ?? pos.current_price ?? pos.currentPrice ?? pos.livePrice);
+                            if (!Number.isFinite(rawCurrentPrice) || rawCurrentPrice <= 0) {
+                                const tick = resolveTickFromLookup(useAppStore.getState().ticks, useAppStore.getState().tickLookup, symbolLabel);
+                                if (tick) {
+                                    const bid = Number(tick.bid);
+                                    const ask = Number(tick.ask);
+                                    const last = Number(tick.last);
+                                    const tickPrice = isBuy
+                                        ? (Number.isFinite(bid) && bid > 0 ? bid : Number.isFinite(last) && last > 0 ? last : ask)
+                                        : (Number.isFinite(ask) && ask > 0 ? ask : Number.isFinite(last) && last > 0 ? last : bid);
+                                    if (Number.isFinite(tickPrice) && tickPrice > 0) {
+                                        rawCurrentPrice = tickPrice;
+                                    }
+                                }
+                            }
+                            if (!Number.isFinite(rawCurrentPrice) || rawCurrentPrice <= 0) {
+                                rawCurrentPrice = rawOpenPrice;
+                            }
                             const currentPriceLabel = isPendingPlacement
                                 ? '…'
                                 : formatTradePrice(rawCurrentPrice, symbolLabel);
@@ -1724,7 +1779,7 @@ ${rows}
                                 tr('{{value0}} lots', { value0: volumeLabel }),
                             ].join(' · ');
                             const rowComment = isPendingPlacement
-                                ? `${rowSummary}\n${tr('Order is {{value0}}', { value0: tr(placementState) })}${isTerminalPlacementFailure ? `: ${placementError || tr('Order failed')}` : ''}`
+                                ? `${rowSummary}${isTerminalPlacementFailure ? `: ${placementError || tr('Order failed')}` : ''}`
                                 : `${rowSummary}\n${tr('Ticket: {{value0}}', { value0: ticketLabel })}\n${tr('Modify Position')} · ${tr('Context menu')}`;
                             return (
                                 <tr
@@ -1869,7 +1924,7 @@ ${rows}
                                     <td className="px-0.5 py-[2px] text-center">
                                         <button
                                             type="button"
-                                            aria-label={isPendingPlacement ? tr("Order is {{value0}}", { value0: tr(placementState) }) : tr("Close position {{value0}}", { value0: pos.ticket ?? pos.id })}
+                                            aria-label={isPendingPlacement ? tr("Order in progress") : tr("Close position {{value0}}", { value0: pos.ticket ?? pos.id })}
                                             title={isPendingPlacement ? rowComment : tr("Close position {{value0}}", { value0: ticketLabel })}
                                             disabled={isPendingPlacement}
                                             onClick={(event) => {

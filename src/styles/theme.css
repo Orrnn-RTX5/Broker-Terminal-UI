@@ -364,7 +364,7 @@ body {
 }
 
 .rtx-toolbar-action[aria-pressed='true'],
-.rtx-toolbar-icon-button[aria-pressed='true'],
+.rtx-toolbar-icon-button[aria-pressed='true']:not(.rtx-period-separator-toggle),
 .rtx-toolbar-icon-button[aria-checked='true'] {
   background: var(--color-info-dim);
   border-color: var(--border-tertiary);
@@ -378,6 +378,15 @@ body {
   border-color: rgb(59 130 246 / 0.5);
   border-radius: 3px;
   box-shadow: none;
+  color: var(--color-blue-300, #93c5fd);
+}
+
+.rtx-period-separator-toggle[aria-pressed='true'],
+html.rtx-desktop-shell-active .rtx-period-separator-toggle[aria-pressed='true'] {
+  background: rgb(59 130 246 / 0.15);
+  border-color: rgb(59 130 246 / 0.5);
+  border-radius: 3px !important;
+  box-shadow: none !important;
   color: var(--color-blue-300, #93c5fd);
 }
 
@@ -1351,6 +1360,13 @@ html.rtx-desktop-shell-active .rtx-desktop-menu-items > div > [role='menu'] {
   overscroll-behavior: contain;
 }
 
+html.rtx-desktop-shell-active .rtx-desktop-file-menu-container,
+html.rtx-desktop-shell-active .rtx-desktop-menu-items > div > [role='menu']:has(.rtx-file-menu),
+html.rtx-desktop-shell-active .rtx-file-menu {
+  overflow: visible !important;
+  max-height: none !important;
+}
+
 html.rtx-desktop-shell-active :is(.rtx-desktop-command-row, .rtx-desktop-study-row) {
   background: var(--rtx-light-panel-header, var(--bg-secondary));
   color: var(--text-primary);
@@ -1827,3 +1843,22 @@ html.rtx-desktop-shell-active .navigator-tree-item__lock svg {
   height: 14px;
   stroke-width: 1.75;
 }
+
+.rtx-trade-sl-value,
+.rtx-trade-tp-value,
+html.rtx-desktop-shell-active .rtx-trade-sl-value,
+html.rtx-desktop-shell-active .rtx-trade-tp-value {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+html.rtx-skin-untitled-light .rtx-trade-table :is(thead th, tbody td),
+html.rtx-desktop-shell-active.rtx-skin-untitled-light .rtx-trade-table :is(thead th, tbody td) {
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 1px solid var(--rtx-light-border-strong, #d1d5db) !important;
+}
+
