@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { normalizeAccountMetrics } from '../services/accountMetrics';
 import type { Account, Position } from '../store/useAppStore';
+import type { TradeProfitSource } from '../components/BottomDock.trade';
 import { getStoredAccountLogin, normalizePosition } from '../api/tradeGateway';
 import {
   getAccessToken,
@@ -9,6 +11,10 @@ import {
 } from '../services/brokerSession';
 import { useAppStore } from '../store/useAppStore';
 import { TRADE_OVERLAY_CLOSE_STATE_EVENT } from '../services/tradeOverlayHistory';
+import {
+  requestPositionSnapshotRevalidation,
+  shouldDeferEmptyPositionSnapshot,
+} from '../services/positionSnapshotSafety';
 import { getSessionTradeSnapshotRequests } from '../services/tradeStartupSnapshot';
 import {
   MARKET_ORDER_PLACEMENT_STATE_EVENT,
@@ -25,6 +31,7 @@ export type ToolboxTradePosition = Omit<Position, 'time_create' | 'time_update'>
   contractSize?: number;
   contract_size?: number;
   hasBackendProfit?: boolean;
+  profitSource?: TradeProfitSource;
   price_open?: number;
   price_current?: number;
   price_sl?: number;
@@ -98,77 +105,8 @@ const toNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(next) ? next : fallback;
 };
 
-const hasFiniteValue = (value: unknown): boolean => {
-  if (value === undefined || value === null || value === '') return false;
-  if (typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    if (record.amount !== undefined && record.amount !== null) {
-      return hasFiniteValue(record.amount);
-    }
-  }
-  const cleanStr = String(value).replace(/,/g, '');
-  return Number.isFinite(Number(cleanStr));
-};
-
-const unwrapData = (value: any): any => {
-  if (!value || typeof value !== 'object') return value;
-  if (value.account) return value.account;
-  if (value.data?.account) return value.data.account;
-  if (value.data?.data && typeof value.data.data === 'object' && !Array.isArray(value.data.data)) {
-    return value.data.data;
-  }
-  if (value.data && typeof value.data === 'object' && !Array.isArray(value.data)) return value.data;
-  return value;
-};
-
 export const normalizeToolboxAccount = (raw: any, previous?: Account | null): Account => {
-  const data = unwrapData(raw) ?? {};
-  const freeMarginRaw =
-    data.free_margin_amount ?? data.free_margin ?? data.margin_free ?? data.freeMargin ?? data.margin_available;
-  const marginLevelRaw = data.margin_level ?? data.marginLevel;
-  const creditRaw = data.credit ?? data.credit_bonus ?? data.bonus;
-  const balanceRaw = data.balance_amount ?? data.balance ?? data.Balance;
-  const equityRaw = data.equity_amount ?? data.equity ?? data.Equity;
-  // Prefer scalars; unwrap Money.amount. Never replace a known funded balance with packet 0.
-  const incomingBalance = balanceRaw !== undefined && balanceRaw !== null ? toNumber(balanceRaw, 0) : undefined;
-  const rejectZeroBalance = Boolean(previous && previous.balance > 0 && incomingBalance === 0);
-
-  // A packet claiming balance 0 for a known-funded account is bogus (partial/mid-flight metrics).
-  // We keep the last known-good balance, but every other figure carried by that SAME packet —
-  // equity, free margin, margin level — is equally untrustworthy. They are therefore marked as
-  // NOT backend-supplied so the resolver reports them as `unavailable` and the UI renders a dash.
-  // We never reconstruct equity locally (balance + floating P/L): a fabricated number presented
-  // as backend truth is exactly the misleading value this account panel must not show.
-  // Unknown must look unknown.
-  const hasBackendEquity = !rejectZeroBalance && hasFiniteValue(equityRaw);
-  const hasBackendFreeMargin = !rejectZeroBalance && hasFiniteValue(freeMarginRaw);
-  const hasBackendMarginLevel = !rejectZeroBalance && hasFiniteValue(marginLevelRaw);
-
-  const balance = rejectZeroBalance
-    ? previous!.balance
-    : (incomingBalance !== undefined ? incomingBalance : (previous?.balance ?? 0));
-  const floatingPnL = toNumber(
-    data.floating_pnl ?? data.floating ?? data.profit ?? data.unrealized_pl ?? data.unrealizedPL,
-    previous?.unrealizedPL ?? 0,
-  );
-  const equity = hasBackendEquity
-    ? toNumber(equityRaw, previous?.equity ?? previous?.balance ?? balance)
-    : toNumber(previous?.equity ?? balance, balance);
-
-  return {
-    balance,
-    equity,
-    margin: toNumber(data.used_margin ?? data.margin_used ?? data.margin ?? data.marginUsed, previous?.margin ?? 0),
-    freeMargin: hasBackendFreeMargin ? toNumber(freeMarginRaw, previous?.freeMargin ?? 0) : toNumber(previous?.freeMargin, 0),
-    unrealizedPL: floatingPnL,
-    marginLevel: hasBackendMarginLevel ? toNumber(marginLevelRaw, previous?.marginLevel ?? 0) : toNumber(previous?.marginLevel, 0),
-    credit: toNumber(creditRaw, previous?.credit ?? 0),
-    hasBackendEquity,
-    hasBackendFreeMargin,
-    hasBackendMarginLevel,
-    currency: String(data.currency ?? previous?.currency ?? 'USD'),
-    leverage: toNumber(data.leverage, previous?.leverage ?? 100),
-  };
+  return normalizeAccountMetrics(raw, previous);
 };
 
 const getPositionTicket = (position: any): number => (
@@ -258,6 +196,7 @@ const positionsSignature = (positions: ToolboxTradePosition[]): string => (
 const accountSignature = (account: Account | null): string => (
   account
     ? [
+      JSON.stringify(account),
       account.balance,
       account.equity,
       account.margin,
@@ -744,6 +683,7 @@ export function useToolboxTradeData() {
     const seq = ++refreshSeqRef.current;
     activeRefreshControllerRef.current?.abort();
     const controller = new AbortController();
+    const metricsScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
     activeRefreshControllerRef.current = controller;
 
     setState((prev) => ({
@@ -837,15 +777,19 @@ export function useToolboxTradeData() {
       }
 
       const accountBody = accountResult.value;
-      commitAccount(normalizeToolboxAccount(unwrapData(accountBody), accountRef.current));
+      const applyMetrics = (body: unknown) => {
+        if (metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
+        const current = useAppStore.getState().account ?? accountRef.current;
+        const next = normalizeAccountMetrics(body, current, { scope: metricsScope, login });
+        commitAccount(next);
+        if (next !== current) useAppStore.getState().setAccount(next);
+      };
+      applyMetrics(accountBody);
 
       const metricsBody = await metricsPromise;
       if (seq !== refreshSeqRef.current || controller.signal.aborted) return;
       if (metricsBody) {
-        commitAccount(normalizeToolboxAccount(
-          { ...(unwrapData(accountBody) ?? {}), ...(unwrapData(metricsBody) ?? {}) },
-          accountRef.current,
-        ));
+        applyMetrics(metricsBody);
       }
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -872,7 +816,11 @@ export function useToolboxTradeData() {
       return;
     }
     const retained = current.filter((position) => {
-      const pnl = toNumber(position.profit ?? position.unrealizedPnL, 0);
+      if (position.hasBackendProfit === false) return true;
+      const raw: unknown = position.profit ?? position.unrealizedPnL;
+      if (raw === undefined || raw === null || raw === '') return true;
+      const pnl = toNumber(raw, Number.NaN);
+      if (!Number.isFinite(pnl)) return true;
       return mode === 'WINNERS' ? pnl <= 0 : pnl >= 0;
     });
     const retainedTickets = new Set(retained.map((position) => position.id));
@@ -924,6 +872,13 @@ export function useToolboxTradeData() {
       ),
       Array.from(retainedImmediatePositionsRef.current.values()),
     );
+    if (shouldDeferEmptyPositionSnapshot(positionsRef.current, nextPositions)) {
+      // Preserve the last REST-confirmed rows while a stale shared-store/WS
+      // update is reconciled. The hook's own REST refresh can still clear the
+      // list once the account is genuinely flat.
+      requestPositionSnapshotRevalidation();
+      return;
+    }
     const previousSig = positionsSignature(positionsRef.current);
     const nextSig = positionsSignature(nextPositions);
     positionsRef.current = nextPositions;

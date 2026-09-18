@@ -281,7 +281,7 @@ describe('useToolboxTradeData helpers', () => {
 
     expect(account).toMatchObject({
       balance: 10000,
-      equity: 10000,
+      equity: 0,
       freeMargin: 0,
       marginLevel: 0,
       hasBackendEquity: false,
@@ -290,7 +290,7 @@ describe('useToolboxTradeData helpers', () => {
     });
   });
 
-  it('protects a funded balance from a zero-balance packet without fabricating equity', () => {
+  it('accepts an authoritative zero balance without fabricating equity', () => {
     const previous = normalizeToolboxAccount({
       balance: 10000,
       equity: 10005.5,
@@ -305,30 +305,28 @@ describe('useToolboxTradeData helpers', () => {
       previous,
     );
 
-    // Known-funded balance is preserved: the packet's 0 is rejected.
-    expect(account.balance).toBe(10000);
-    // Everything else from that same packet is untrustworthy -> reported as unavailable.
-    expect(account.hasBackendEquity).toBe(false);
-    expect(account.hasBackendFreeMargin).toBe(false);
-    expect(account.hasBackendMarginLevel).toBe(false);
+    expect(account.balance).toBe(0);
+    expect(account.hasBackendEquity).toBe(true);
+    expect(account.hasBackendFreeMargin).toBe(true);
+    expect(account.hasBackendMarginLevel).toBe(true);
     // No locally reconstructed equity (balance + floating P/L would have been 9998).
     expect(account.equity).not.toBe(10000 + -2);
     expect(resolveTradeAccountMetrics(account)).toMatchObject({
-      balance: 10000,
-      equity: null,
-      freeMargin: null,
-      marginLevel: null,
-      equitySource: 'unavailable',
-      freeMarginSource: 'unavailable',
-      marginLevelSource: 'unavailable',
+      balance: 0,
+      equity: 9800.25,
+      freeMargin: 0,
+      marginLevel: 0,
+      equitySource: 'backend',
+      freeMarginSource: 'backend',
+      marginLevelSource: 'backend',
     });
   });
 
-  it('rejects a zero-balance packet even when it carries no equity at all', () => {
+  it('accepts a zero balance while keeping absent equity unavailable', () => {
     const previous = normalizeToolboxAccount({ balance: 5000, equity: 5000, free_margin: 5000, margin_level: 0 });
     const account = normalizeToolboxAccount({ balance: 0 }, previous);
 
-    expect(account.balance).toBe(5000);
+    expect(account.balance).toBe(0);
     expect(account.hasBackendEquity).toBe(false);
     expect(resolveTradeAccountMetrics(account).equitySource).toBe('unavailable');
   });

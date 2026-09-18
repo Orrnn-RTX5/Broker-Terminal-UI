@@ -164,7 +164,9 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
     if (_activeTradeFacingInstanceId !== instanceId.current) return;
 
     refreshRef.current();
-    if (!login || pollMs <= 0) return;
+    // Live account/position/deal streams already update the store. REST polling
+    // on a connected socket only contends with order execution for the DB pool.
+    if (!login || pollMs <= 0 || storeWsConnected) return;
 
     const interval = window.setInterval(() => {
       refreshRef.current();
@@ -175,7 +177,7 @@ export function useTradeFacingData(accountId?: string | number, pollMs = 10000, 
       window.clearInterval(interval);
       window.removeEventListener('rtx:force-refresh-positions', forceRefresh);
     };
-  }, [enabled, login, pollMs]);
+  }, [enabled, login, pollMs, storeWsConnected]);
 
   // Reconnect state refs for Exponential Backoff
   const reconnectAttemptsRef = useRef(0);

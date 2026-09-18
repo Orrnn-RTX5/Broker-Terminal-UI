@@ -58,6 +58,7 @@ export interface Position {
   swap: number;
   commission: number;
   unrealizedPnL: number;
+  hasBackendProfit?: boolean;
   comment?: string;
   // Backend wire-format aliases (snake_case). Optional — preserves existing defensive fallback logic.
   open_price?: number;
@@ -120,9 +121,21 @@ export interface Account {
   unrealizedPL: number;
   marginLevel: number;
   credit?: number;
+  hasBackendBalance?: boolean;
+  hasBackendMargin?: boolean;
+  hasBackendCredit?: boolean;
+  hasBackendFloatingPnL?: boolean;
   hasBackendEquity?: boolean;
   hasBackendFreeMargin?: boolean;
   hasBackendMarginLevel?: boolean;
+  publicationToken?: string;
+  metricsScope?: string;
+  calculationVersion?: string;
+  marginCalculationVersion?: string;
+  configurationVersion?: string;
+  metricsStatus?: string;
+  marketClosed?: boolean;
+  metricUpdatedAt?: Partial<Record<'balance' | 'equity' | 'margin' | 'freeMargin' | 'unrealizedPL' | 'marginLevel' | 'credit', number>>;
   currency: string;
   leverage: number;
 }
@@ -737,7 +750,18 @@ export const useAppStore = create<AppState>()(
 
         setTrades: (trades) => set({ trades }),
 
-        setAccount: (account) => set({ account }),
+        setAccount: (account) => set((state) => {
+          const previous = state.account;
+          if (account && previous?.publicationToken && account.publicationToken === previous.publicationToken
+            && account.metricsScope === previous.metricsScope) {
+            if (account.currency === previous.currency && account.leverage === previous.leverage) return state;
+            return { account: { ...previous, currency: account.currency, leverage: account.leverage } };
+          }
+          if (account && previous?.publicationToken
+            && (!account.metricsScope || account.metricsScope === previous.metricsScope)
+            && (!account.publicationToken || account.publicationToken <= previous.publicationToken)) return state;
+          return { account };
+        }),
 
         addSavedAccount: (account) =>
           set((state) => ({ savedAccounts: upsertSavedAccount(state.savedAccounts, account) })),

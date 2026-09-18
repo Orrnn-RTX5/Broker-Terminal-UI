@@ -189,6 +189,21 @@ describe('broker websocket URL builder', () => {
     expect(buildBrokerWsFeedUri()).toBe('wss://fxtrustbrokerbackend.orrnn.com/ws/feed');
   });
 
+  it('derives local same-origin websocket paths from runtime WS_HOST', () => {
+    (window as RuntimeWindow).__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'desktop',
+      API_HOST: 'http://127.0.0.1:5175',
+      WS_HOST: 'ws://127.0.0.1:5175',
+      BROKER_ID: 'TEST',
+      FEED_BROKER_ID: 'TEST',
+    };
+
+    expect(buildBrokerWsV2Uri('access-token')).toBe(
+      'ws://127.0.0.1:5175/ws/v2?token=access-token'
+    );
+    expect(buildBrokerWsFeedUri()).toBe('ws://127.0.0.1:5175/ws/feed');
+  });
+
   it('prefers runtime feed/backend broker id over localStorage deploy alias for feed WS auth', () => {
     localStorage.setItem('broker_id', 'grow-trading-academy');
     localStorage.setItem('rtx_broker_id', 'grow-trading-academy');

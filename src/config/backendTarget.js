@@ -6,7 +6,7 @@ export const SHARED_DISCOVERY_FALLBACK = 'https://superbackend.orrnn.com';
 // always receive its real backend via runtime/env config; this loopback default
 // only exists so the app does not crash when nothing is configured, and cleartext
 // to loopback is already permitted by the cleartext-downgrade allow-list.
-export const DESKTOP_BACKEND_FALLBACK = 'http://127.0.0.1:8091';
+export const DESKTOP_BACKEND_FALLBACK = 'http://127.0.0.1:8090';
 
 const URL_SCHEME_RE = /^[a-z][a-z\d+.-]*:\/\//i;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
@@ -60,15 +60,20 @@ const isWebTargetValue = (value) => {
   return normalized === 'web' || normalized === 'browser' || normalized === 'public';
 };
 
-const isDesktopRuntime = () => {
+// UI selection is independent of backend transport: a browser may use a local backend.
+export const isElectronRuntime = () => {
   if (typeof window === 'undefined') return false;
-  const physicalDesktop = Boolean(
+  return Boolean(
     window.electron?.window
     || window.electronAPI
     || window.location?.protocol === 'file:'
     || (typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron'))
   );
-  if (physicalDesktop) return true;
+};
+
+const isDesktopRuntime = () => {
+  if (typeof window === 'undefined') return false;
+  if (isElectronRuntime()) return true;
 
   const config = runtimeConfig();
   const target = String(first(
@@ -117,6 +122,7 @@ const isAllowedPublicBrokerHostname = (hostname = '') => {
   const normalized = String(hostname || '').trim().toLowerCase();
   return normalized.startsWith('services.')
     || normalized === 'service.achieverfinancials.com'
+    || normalized === 'fxtrusts-broker.orrnn.com'
     || normalized === 'nexa.orrnn.com'
     || normalized === 'backend.orrnn.com'
     || normalized === 'testbrokerbackend.orrnn.com'

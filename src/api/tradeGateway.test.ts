@@ -49,9 +49,10 @@ describe('trade gateway normalization', () => {
       marginLevel: '4000',
       currency: 'USD',
       leverage: '500',
-    })).toEqual({
+    })).toMatchObject({
       balance: 10000.5,
-      equity: 10000.5,
+      equity: 0,
+      hasBackendEquity: false,
       margin: 250,
       freeMargin: 9750.5,
       unrealizedPL: -12.75,
@@ -88,6 +89,22 @@ describe('trade gateway normalization', () => {
       swap: -0.25,
       commission: -1.5,
       unrealizedPnL: 42.75,
+      hasBackendProfit: true,
+      profit: 42.75,
+    });
+  });
+
+  it('does not treat omitted position profit as a backend zero', () => {
+    expect(normalizePosition({
+      ticket: 993,
+      symbol: 'EURUSD',
+      action: 0,
+      volume: 0.01,
+      price_open: 1.1,
+      price_current: 1.1,
+    })).toMatchObject({
+      hasBackendProfit: false,
+      profit: undefined,
     });
   });
 

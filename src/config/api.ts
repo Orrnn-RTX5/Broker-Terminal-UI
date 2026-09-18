@@ -38,6 +38,11 @@ export const DEV_BROKER_DISCOVERY_PROXY_PREFIX = '/__broker_discovery';
 
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
+const isLocalDevHostname = (hostname: string): boolean => {
+  const normalized = String(hostname || '').trim().toLowerCase();
+  return LOCAL_DEV_HOSTS.has(normalized) || normalized.endsWith('.localhost');
+};
+
 const getLocalStorageItem = (key: string): string | null => {
   if (typeof window === 'undefined') return null;
 
@@ -61,7 +66,7 @@ export const isLocalViteDevServer = (): boolean => {
   if (!import.meta.env.DEV || import.meta.env.MODE === 'test' || typeof window === 'undefined' || isElectronRuntime()) return false;
   const protocol = window.location?.protocol || '';
   const hostname = window.location?.hostname || '';
-  return protocol.startsWith('http') && LOCAL_DEV_HOSTS.has(hostname);
+  return protocol.startsWith('http') && isLocalDevHostname(hostname);
 };
 
 export const toLocalDevProxyUrl = (

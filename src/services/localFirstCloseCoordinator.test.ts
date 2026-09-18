@@ -22,8 +22,9 @@ const createDeferred = <T>(): Deferred<T> => {
 };
 
 const flushPromises = async () => {
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let index = 0; index < 5; index += 1) {
+    await Promise.resolve();
+  }
 };
 
 describe('local-first close coordinator', () => {
@@ -60,12 +61,23 @@ describe('local-first close coordinator', () => {
       'close:102',
       'pending:101,102',
       'load-snapshot',
-      'close:103',
-      'close:104',
-      'pending:103,104',
     ]);
 
-    closeByTicket.forEach(({ resolve }) => resolve(undefined));
+    closeByTicket.get(101)!.resolve(undefined);
+    closeByTicket.get(102)!.resolve(undefined);
+    await flushPromises();
+    expect(events).toEqual([
+      'close:101',
+      'close:102',
+      'pending:101,102',
+      'load-snapshot',
+      'pending:103,104',
+      'close:103',
+      'close:104',
+    ]);
+
+    closeByTicket.get(103)!.resolve(undefined);
+    closeByTicket.get(104)!.resolve(undefined);
 
     await expect(resultPromise).resolves.toMatchObject({
       attemptedTicketIds: [101, 102, 103, 104],
@@ -92,10 +104,11 @@ describe('local-first close coordinator', () => {
     });
 
     await flushPromises();
+    closeByTicket.get(201)!.resolve(undefined);
+    closeByTicket.get(202)!.reject(firstFailure);
+    await flushPromises();
     closeByTicket.get(204)!.reject(secondFailure);
     closeByTicket.get(203)!.resolve(undefined);
-    closeByTicket.get(202)!.reject(firstFailure);
-    closeByTicket.get(201)!.resolve(undefined);
 
     await expect(resultPromise).resolves.toEqual({
       attemptedTicketIds: [201, 202, 203, 204],

@@ -120,6 +120,7 @@ export class FixMarketDataSocket {
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private readonly pingIntervalMs = 5000;
   private lastPingTime = 0;
+  private lastPingStartedAt = 0;
   private latencyMeasurements: number[] = [];
   private readonly maxLatencyMeasurements = 5;
 
@@ -158,6 +159,7 @@ export class FixMarketDataSocket {
         this.reconnectAttempts = 0;
         useWebSocketStore.getState().resetReconnectAttempts('fix_socket');
         this.updateState('connected');
+        useWebSocketStore.getState().updateMetrics({ lastLatency: 0, averageLatency: 0, latencyMeasuredAt: null }, 'fix_socket');
         this.startPingInterval();
         this.resubscribeSymbols();
 
@@ -170,11 +172,13 @@ export class FixMarketDataSocket {
       this.ws.onmessage = (event) => {
         // Any message proves the connection is alive — reset watchdog
         this.resetActivityWatchdog();
-        // Record latency if we recently sent a ping (treat any message as a pong if real pong is missing)
-        this.recordPongActivity();
         
         try {
           const data = JSON.parse(event.data) as FixSocketMessage;
+          if (String((data as any).type ?? (data as any).action).toLowerCase() === 'pong') {
+            this.recordPongActivity(data);
+            return;
+          }
           this.handleMessage(data);
         } catch (error) {
           console.error('[FixSocket] Failed to parse message:', error);
@@ -381,29 +385,27 @@ export class FixMarketDataSocket {
     this.pingInterval = setInterval(() => {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.lastPingTime = Date.now();
-        this.ws.send(JSON.stringify({ type: 'ping' }));
+        this.lastPingStartedAt = performance.now();
+        this.ws.send(JSON.stringify({ type: 'ping', action: 'ping', timestamp: this.lastPingTime }));
       }
     }, this.pingIntervalMs);
   }
 
   private stopPingInterval(): void {
+    this.lastPingTime = 0;
+    this.lastPingStartedAt = 0;
+    this.latencyMeasurements = [];
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
   }
 
-  private recordPongActivity(): void {
-    const now = Date.now();
-    // Only calculate if we recently sent a ping (within last 4 seconds)
-    if (this.lastPingTime > 0 && now - this.lastPingTime < 4000) {
-      // Very simple EMA for smoothing
-      let diff = now - this.lastPingTime;
-      
-      // Clamp to realistic ping bounds
-      if (diff < 5) diff = 5 + Math.floor(Math.random() * 10);
-      if (diff > 500) diff = 80 + Math.floor(Math.random() * 40);
-
+  private recordPongActivity(data: any): void {
+    const echo = data?.ping_timestamp ?? data?.request_timestamp ?? data?.timestamp ?? data?.data?.timestamp;
+    if (this.lastPingTime > 0 && echo === this.lastPingTime) {
+      const diff = performance.now() - this.lastPingStartedAt;
+      if (!Number.isFinite(diff) || diff < 0) return;
       this.latencyMeasurements.push(diff);
       if (this.latencyMeasurements.length > this.maxLatencyMeasurements) {
         this.latencyMeasurements.shift();
@@ -413,9 +415,7 @@ export class FixMarketDataSocket {
         this.latencyMeasurements.reduce((sum, l) => sum + l, 0) / this.latencyMeasurements.length
       );
 
-      console.log(`[FixSocket] 🏓 Latency Check: diff=${diff} avg=${averageLatency} state=${useWebSocketStore.getState().fixConnectionState}`);
-
-      useWebSocketStore.getState().updateMetrics({ lastLatency: averageLatency }, 'fix_socket');
+      useWebSocketStore.getState().updateMetrics({ lastLatency: diff, averageLatency, latencyMeasuredAt: Date.now() }, 'fix_socket');
       
       // Reset ping time so we don't double-count the same ping
       this.lastPingTime = 0;

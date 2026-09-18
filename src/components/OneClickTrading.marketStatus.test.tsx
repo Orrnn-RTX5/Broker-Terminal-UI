@@ -29,6 +29,12 @@ describe('OneClickTrading market status', () => {
     useAppStore.getState().reset();
     useAppStore.setState({ isAuthenticated: true, accountId: '200002' });
     orderMocks.placeMarketOrder.mockReset();
+    useAppStore.setState({
+      isAuthenticated: true,
+      accountId: '10001',
+      authToken: 'market-status-test-token',
+      tokenExpiresAt: Date.now() + 60_000,
+    });
     useAppStore.getState().setTicks({
       EURUSD: {
         symbol: 'EURUSD',
@@ -114,14 +120,14 @@ describe('OneClickTrading market status', () => {
   it('opens login for a guest BUY or SELL without sending any order', () => {
     useAppStore.setState({ isAuthenticated: false, accountId: null });
     const requestLogin = vi.fn();
-    window.addEventListener('rtx:requestTradeLogin', requestLogin);
+    window.addEventListener('rtx:request-trading-auth', requestLogin);
     render(<OneClickTrading symbol="EURUSD" timeframe="M5" visible tradeAllowed={false}
       marketStatus={normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' })} />);
     fireEvent.click(getTradeButton('BUY'));
     fireEvent.click(getTradeButton('SELL'));
     expect(requestLogin).toHaveBeenCalledTimes(2);
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
-    window.removeEventListener('rtx:requestTradeLogin', requestLogin);
+    window.removeEventListener('rtx:request-trading-auth', requestLogin);
   });
 
   it('allows replacing the default lot with 1 or more without retaining the leading zero', async () => {
@@ -142,8 +148,8 @@ describe('OneClickTrading market status', () => {
     // trader can replace 0.01 character-by-character instead of being stuck at 0.x.
     await user.clear(volumeInput);
     expect(volumeInput.value).toBe('');
-    expect(getTradeButton('BUY').disabled).toBe(false);
-    expect(getTradeButton('SELL').disabled).toBe(false);
+    expect(getTradeButton('BUY').disabled).toBe(true);
+    expect(getTradeButton('SELL').disabled).toBe(true);
 
     await user.type(volumeInput, '1');
     expect(volumeInput.value).toBe('1');
@@ -243,7 +249,7 @@ describe('OneClickTrading market status', () => {
     expect(rowChildren[2]).toHaveStyle({ width: 'auto', minWidth: '110px', height: '34px' });
   });
 
-  it('keeps stale prices and buttons visible, explains both blocked clicks in a popup, and sends no order', () => {
+  it('keeps stale prices visible with disabled trade controls and sends no order', () => {
     useAppStore.getState().setTicks({
       BTCUSD: {
         symbol: 'BTCUSD',
@@ -269,15 +275,14 @@ describe('OneClickTrading market status', () => {
     const sellButton = getTradeButton('SELL');
     expect(buyButton).toHaveTextContent('79905.57');
     expect(sellButton).toHaveTextContent('79890.57');
-    expect(buyButton.disabled).toBe(false);
-    expect(sellButton.disabled).toBe(false);
+    expect(buyButton.disabled).toBe(true);
+    expect(sellButton.disabled).toBe(true);
     expect(buyButton).toHaveStyle({ opacity: '1' });
     expect(sellButton).toHaveStyle({ opacity: '1' });
     expect(screen.queryByRole('alertdialog')).toBeNull();
     for (const button of [buyButton, sellButton]) {
       fireEvent.click(button);
-      expect(screen.getByRole('alertdialog')).toHaveTextContent('Cannot place this trade because the quote for BTCUSD is stale. Please wait for a fresh quote and try again.');
-      fireEvent.click(screen.getByRole('button', { name: 'OK' }));
+      expect(button).toHaveAttribute('title', 'Cannot place this trade because the quote for BTCUSD is stale. Please wait for a fresh quote and try again.');
       expect(screen.queryByRole('alertdialog')).toBeNull();
     }
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
@@ -313,26 +318,27 @@ describe('OneClickTrading market status', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('can dismiss a stale quote popup and submit after live trading recovers', () => {
+  it('reenables trading after live quotes recover', () => {
     useAppStore.setState({ isAuthenticated: true, accountId: '200002' });
     orderMocks.placeMarketOrder.mockReturnValue(new Promise(() => {}));
     const props = { symbol: 'EURUSD', timeframe: 'M5', visible: true, marketStatus: normalizeMarketStatus({ symbol: 'EURUSD', status: 'open' }) };
     const view = render(<OneClickTrading {...props} tradeAllowed={false} />);
     fireEvent.click(getTradeButton('BUY'));
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('quote for EURUSD is stale');
+    expect(getTradeButton('BUY').disabled).toBe(true);
+    expect(getTradeButton('BUY').title).toContain('quote for EURUSD is stale');
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
-    fireEvent.keyDown(screen.getByRole('button', { name: 'OK' }), { key: 'Escape' });
     expect(screen.queryByRole('alertdialog')).toBeNull();
     view.rerender(<OneClickTrading {...props} tradeAllowed />);
     fireEvent.click(getTradeButton('BUY'));
     expect(orderMocks.placeMarketOrder).toHaveBeenCalledOnce();
   });
 
-  it('shows missing quotes in a popup without sending an order or claiming the quote is stale', () => {
+  it('disables missing quotes without sending an order or claiming the quote is stale', () => {
     useAppStore.getState().setTicks({});
     render(<OneClickTrading symbol="EURUSD" timeframe="M1" visible tradeAllowed={false} />);
     fireEvent.click(getTradeButton('SELL'));
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('No live quote is available for EURUSD');
+    expect(getTradeButton('SELL').disabled).toBe(true);
+    expect(getTradeButton('SELL').title).toContain('No live quote is available for EURUSD');
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });
 
@@ -426,13 +432,14 @@ describe('OneClickTrading market status', () => {
       />,
     );
 
-    expect(getTradeButton('BUY').disabled).toBe(false);
-    expect(getTradeButton('SELL').disabled).toBe(false);
+    expect(getTradeButton('BUY').disabled).toBe(true);
+    expect(getTradeButton('SELL').disabled).toBe(true);
     expect(screen.getByText('Market Closed')).not.toBeNull();
     expect(screen.getByText('BUY')).not.toBeNull();
     expect(screen.getByText('SELL')).not.toBeNull();
     fireEvent.click(getTradeButton('BUY'));
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('the market for EURUSD is closed');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(getTradeButton('BUY').title).toBe('Market Closed');
     expect(orderMocks.placeMarketOrder).not.toHaveBeenCalled();
   });
 
@@ -474,8 +481,8 @@ describe('OneClickTrading market status', () => {
       />,
     );
 
-    expect(getTradeButton('BUY').disabled).toBe(false);
-    expect(getTradeButton('SELL').disabled).toBe(false);
+    expect(getTradeButton('BUY').disabled).toBe(true);
+    expect(getTradeButton('SELL').disabled).toBe(true);
     expect(screen.getByText('Market Closed')).not.toBeNull();
     expect(screen.queryByText(/Market status unavailable/i)).toBeNull();
   });

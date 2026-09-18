@@ -12,6 +12,8 @@ import {
 import { formatPriceParts } from './ui/PriceDisplay';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
 import { RTX_ADVANCED_VIEW_CHANGE_EVENT } from '../utils/advancedViewRootClasses';
+import { tradeApi } from '../api/trade';
+import { getStoredAccountLogin } from '../api/tradeGateway';
 import '../styles/order-panel-dialog.css';
 
 // Symbol display names
@@ -74,6 +76,11 @@ export function getInstrumentConfig(sym: string, liveDigits?: number) {
 function formatMargin(val: number): string {
   const rounded = Math.round(val);
   return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+function formatRequiredMargin(val: number | null, currency: string): string {
+  if (val === null || !Number.isFinite(val)) return '—';
+  return `${formatMargin(val)} ${currency}`.trim();
 }
 
 type TickChartColors = {
@@ -434,6 +441,8 @@ export function OrderPanelDialog({
   const [comment, setComment] = useState('');
   const [isPlacing, setIsPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requiredMargin, setRequiredMargin] = useState<number | null>(null);
+  const [marginCurrency, setMarginCurrency] = useState('');
   const liveMarketStatus = useSymbolMarketStatus(symbol, {
     enabled: isOpen && Boolean(symbol),
   });
@@ -481,7 +490,7 @@ export function OrderPanelDialog({
   const availableSymbols = Object.keys(ticks).length > 0 ? Object.keys(ticks) : [initialSymbol];
 
   const config = getInstrumentConfig(symbol, tick?.digits);
-  const { digits, contractSize: instContractSize } = config;
+  const { digits } = config;
   const chartColors = useMemo(
     () => getEffectiveChartColors(chartSettings, { isAdvancedUntitledLight }),
     [chartSettings, isAdvancedUntitledLight],
@@ -532,10 +541,41 @@ export function OrderPanelDialog({
     return formatPriceParts(price, symbol, digits);
   };
 
-  const leverage = (account as any)?.leverage || 100;
-  const volumeNum = parseFloat(volumeStr) || 0;
-  const marginRequired = (volumeNum * instContractSize * (ask || 1)) / leverage;
-  const baseCurrency = config.currency;
+  const baseCurrency = marginCurrency || account?.currency || config.currency;
+
+  useEffect(() => {
+    if (!isOpen) {
+      setRequiredMargin(null);
+      return;
+    }
+    const login = getStoredAccountLogin();
+    const volume = parseFloat(volumeStr);
+    if (!login || !symbol || !Number.isFinite(volume) || volume <= 0) {
+      setRequiredMargin(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      tradeApi.market.calculateMargin({
+        account_login: login,
+        symbol,
+        side: 'buy',
+        volume,
+      }).then((data) => {
+        if (cancelled) return;
+        const required = Number(data?.required_margin);
+        setRequiredMargin(Number.isFinite(required) ? required : null);
+        const currency = typeof data?.currency === 'string' && data.currency.trim() ? data.currency : '';
+        setMarginCurrency(currency);
+      }).catch(() => {
+        if (!cancelled) setRequiredMargin(null);
+      });
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isOpen, symbol, volumeStr]);
 
   const adjustVolume = (delta: number) => {
     const current = parseFloat(volumeStr) || 0;
@@ -695,7 +735,7 @@ export function OrderPanelDialog({
                     >▼</button>
                   </div>
                 </div>
-                <span className="rtx-order-dialog__margin">{formatMargin(marginRequired)} {baseCurrency}</span>
+                <span className="rtx-order-dialog__margin" data-testid="order-required-margin">{formatRequiredMargin(requiredMargin, baseCurrency)}</span>
               </div>
             </div>
 

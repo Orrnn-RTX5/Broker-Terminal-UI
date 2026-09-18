@@ -5,6 +5,11 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AppShell from './AppShell';
 
+vi.mock('./config/backendTarget.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./config/backendTarget.js')>(),
+  isElectronRuntime: () => true,
+}));
+
 const shellMocks = vi.hoisted(() => {
   let releaseTerminalImport: (() => void) | null = null;
   const terminalImportGate = new Promise<void>((resolve) => {
@@ -34,6 +39,7 @@ vi.mock('./App', async () => {
 });
 
 vi.mock('./i18n', () => ({
+  default: { t: (key: string) => key },
   i18nReady: Promise.resolve(),
 }));
 vi.mock('./authenticatedStyles', () => ({}));

@@ -3,8 +3,8 @@ import { normalizeBrokerAuthLoginPayload } from './authLoginPayload';
 import { API_V2_BASE_URL, isLocalViteDevServer, normalizeBrokerServerUrl } from '../config/api';
 import { debugDebug, debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
 import { normalizeCandleApiQueryParams } from '../utils/candleApi';
-import { requirePositionCloseTicket } from './positionClose';
 import { createTradeOrderUuid, isTradeOrderUuidV4 } from './tradeSocket';
+import { tradingV2Api, type ClosePositionRequestOptions } from './trade';
 
 const resolveV2BaseUrl = (baseUrl?: string): string => {
   if (!baseUrl) return API_V2_BASE_URL;
@@ -522,11 +522,11 @@ export const tradingApi = {
   placeOrder: (order: CreateOrderRequest): Promise<Position | OrderCommandResponse> =>
     apiClient.post<Position | OrderCommandResponse>('/orders', normalizeOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
 
-  getOrderCommand: (clientOrderId: string): Promise<OrderCommandResponse> =>
-    apiClient.get<OrderCommandResponse>(
-      `/order-commands/${encodeURIComponent(clientOrderId)}`,
-      { baseUrl: API_V2_BASE_URL },
-    ),
+  getOrderCommand: (
+    clientOrderId: string,
+    options?: { account_login?: number | string; accountLogin?: number | string },
+  ): Promise<OrderCommandResponse> =>
+    tradingV2Api.getOrderCommand(clientOrderId, { baseUrl: API_V2_BASE_URL, ...options }),
 
   placePendingOrder: (order: PendingOrderRequest): Promise<Order> =>
     apiClient.post<Order>('/orders/pending', normalizePendingOrderPayload(order), { baseUrl: API_V2_BASE_URL }),
@@ -541,12 +541,16 @@ export const tradingApi = {
       { baseUrl: API_V2_BASE_URL }
     ),
 
-  closePosition: (positionId: string | number): Promise<void> =>
-    apiClient.post<void>(
-      `/positions/${requirePositionCloseTicket(positionId, '/api/v2/positions/{id}/close')}/close`,
-      { mode: 'full' },
-      { baseUrl: API_V2_BASE_URL }
-    ),
+  closePosition: (
+    positionId: string | number,
+    options?: ClosePositionRequestOptions | number,
+  ): Promise<void> =>
+    tradingV2Api.closePosition(
+      positionId,
+      typeof options === 'number'
+        ? { baseUrl: API_V2_BASE_URL, volume: options }
+        : { baseUrl: API_V2_BASE_URL, ...options },
+    ).then(() => undefined),
 
   modifyPosition: (positionId: string | number, data: ModifyPositionRequest): Promise<Position> =>
     apiClient.put<Position>(`/positions/${requireTicket(positionId, '/api/v2/positions/{id}')}`, data, { baseUrl: API_V2_BASE_URL }),

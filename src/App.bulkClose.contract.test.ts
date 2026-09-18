@@ -9,7 +9,7 @@ const bulkStart = appSource.indexOf("const handleCloseBulk = async (type: 'ALL' 
 const bulkEnd = appSource.indexOf('// Connect to WebSocket using centralized hook', bulkStart);
 const bulkHandler = appSource.slice(bulkStart, bulkEnd);
 
-const dockStart = bottomDockSource.indexOf("const handleTradeCloseBulk = (type: 'ALL' | 'WINNERS' | 'LOSERS'");
+const dockStart = bottomDockSource.indexOf("const handleTradeCloseBulk = useCallback((type: 'ALL' | 'WINNERS' | 'LOSERS'");
 const dockEnd = bottomDockSource.indexOf('// Helpers', dockStart);
 const dockHandler = bottomDockSource.slice(dockStart, dockEnd);
 

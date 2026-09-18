@@ -262,7 +262,7 @@ const MarketWatchRow: React.FC<{
       >
         {/* Symbol */}
         <td style={{ padding: '3px 8px', whiteSpace: 'nowrap', maxWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 4, minWidth: 0 }}>
             {/* Direction arrow */}
             {hasData && bidDirection === 'up' && (
               <svg className="rtx-market-watch__direction rtx-market-watch__direction--up" width="7" height="7" viewBox="0 0 7 7" fill="none" style={{ flexShrink: 0, color: '#4ade80', opacity: quoteDataOpacity }}>
@@ -278,8 +278,8 @@ const MarketWatchRow: React.FC<{
               <span style={{ width: 7, flexShrink: 0, display: 'inline-block' }} />
             )}
             <span aria-label={displaySymbol} className="rtx-market-watch__symbol" style={{
-              flex: 1,
-              minWidth: 0,
+              flexShrink: 0,
+              maxWidth: 'calc(100% - 11px)',
               fontSize: 13,
               fontWeight: 500,
               color: 'var(--text-primary)',
@@ -297,10 +297,12 @@ const MarketWatchRow: React.FC<{
                 title={`${displaySymbol} ${statusLabel.toLowerCase()}${quoteAge ? `, last quote ${quoteAge} ago` : ''}`}
                 style={{
                   flexShrink: 0,
-                  width: 5,
-                  height: 5,
-                  borderRadius: '50%',
-                  background: '#6b6b73',
+                  flexBasis: '100%',
+                  marginLeft: 11,
+                  fontSize: 10,
+                  fontWeight: 400,
+                  color: '#6b6b73',
+                  letterSpacing: '0.04em',
                 }}
               />
             )}

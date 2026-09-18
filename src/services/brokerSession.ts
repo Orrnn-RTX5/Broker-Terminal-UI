@@ -146,6 +146,11 @@ const hasUrlScheme = (value: string): boolean => /^[a-z][a-z\d+.-]*:\/\//i.test(
 const DEV_BROKER_FEED_WS_PROXY_PREFIX = '/__broker_feed_ws';
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
+const isLocalDevHostname = (hostname: string): boolean => {
+  const normalized = String(hostname || '').trim().toLowerCase();
+  return LOCAL_DEV_HOSTS.has(normalized) || normalized.endsWith('.localhost');
+};
+
 const getRuntimePageProtocol = (): string => {
   if (typeof window === 'undefined' || !window.location?.protocol) return 'https:';
   return window.location.protocol === 'https:' ? 'https:' : 'http:';
@@ -219,7 +224,7 @@ const isLocalViteDevServer = (): boolean => {
   if (!import.meta.env.DEV || import.meta.env.MODE === 'test' || typeof window === 'undefined' || isElectronRuntime()) return false;
   const protocol = window.location?.protocol || '';
   const hostname = window.location?.hostname || '';
-  return protocol.startsWith('http') && LOCAL_DEV_HOSTS.has(hostname);
+  return protocol.startsWith('http') && isLocalDevHostname(hostname);
 };
 
 const toLocalDevProxyWsUrl = (value: string): string => {
@@ -1027,7 +1032,8 @@ export function buildBrokerWsV2Uri(token?: string | null): string {
     : '';
   const storedWsUrl = pickStoredWsUrl([storedWsCandidate, storedFeedCandidate], server);
   const fallback = normalizeWsUrlToV2(
-    import.meta.env.VITE_RTX5_WS_URL as string
+    getRuntimeConfigValue(['WS_HOST', 'VITE_WS_HOST', 'VITE_RTX5_WS_URL', 'VITE_WS_URL', 'VITE_MARKET_WS_URL'])
+    || import.meta.env.VITE_RTX5_WS_URL as string
     || import.meta.env.VITE_WS_URL as string
     || import.meta.env.VITE_MARKET_WS_URL as string
     || ''
@@ -1059,8 +1065,9 @@ export function buildBrokerWsFeedUri(): string {
     return toLocalDevProxyWsUrl(appendFeedAuthToWsUrl(forceWssForHttpsFrontend(providedWsUrl)));
   }
 
-  const fallback = normalizeWsUrl(
-    import.meta.env.VITE_MARKET_WS_URL as string
+  const fallback = normalizeWsUrlToFeed(
+    getRuntimeConfigValue(['WS_HOST', 'VITE_WS_HOST', 'VITE_MARKET_WS_URL', 'VITE_RTX5_WS_URL', 'VITE_WS_URL'])
+    || import.meta.env.VITE_MARKET_WS_URL as string
     || import.meta.env.VITE_RTX5_WS_URL as string
     || ''
   );

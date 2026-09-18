@@ -7,7 +7,17 @@ import { ChartSymbolDropdown, type ChartSymbolAnchor } from './components/ChartS
 import { translateUi, useUiTranslation } from './hooks/useUiTranslation';
 import { feedbackLabel, feedbackValue, feedbackSymbol, formatUiMessage, type UiMessage, type UiMessagePart } from './utils/uiFeedback';
 import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { extractAccountMetrics, normalizeAccountMetrics } from './services/accountMetrics';
 import { WelcomeTerminal } from './components/WelcomeTerminal';
+import { TradeAuthDialog } from './components/TradeAuthDialog';
+import { isElectronRuntime } from './config/backendTarget.js';
+import {
+  completeTradingAuthentication,
+  requireTradingAuth,
+  requireNewOrderAuth,
+  TRADING_AUTH_REQUEST_EVENT,
+  type TradingAuthIntent,
+} from './services/tradingAuthGate';
 
 import { DockWorkspace } from './components/dock/DockWorkspace';
 import { useDockLayoutStore } from './store/useDockLayoutStore';
@@ -22,6 +32,8 @@ import { useMarketDataStore } from './store/useMarketDataStore';
 import { terminateWorker } from './services/aggregationWorkerManager';
 import { enqueueLiveTick } from './services/liveTickDispatcher';
 import { isEnhancedStoreHandledTickFrame } from './services/websocket-enhanced';
+import { requestPositionSnapshotRevalidation } from './services/positionSnapshotSafety';
+import { POSITION_CLOSED_EVENTS, readPositionStreamEvent, readPositionStreamBatch, reconcilePositionStreamBatch } from './services/positionStream';
 import { getTradeEntryPriceFromQuote } from './services/chartPriceGuards';
 import { getQuoteSocketManager } from './services/quoteSocketManager';
 import { captureTradeOrderIntent } from './services/orderLatencyTelemetry';
@@ -57,6 +69,7 @@ import { useAutoCloseMonitor } from './hooks/useAutoCloseMonitor';
 import { api } from './services/api';
 import { tradingV2Api } from './api/trade';
 import { collapseDealHistory, tradeGatewayApi } from './api/tradeGateway';
+import { readBackendPositionProfit } from './components/BottomDock.trade';
 import type { TradeOverlayCloseSnapshotPayload } from './services/tradeOverlayHistory';
 import { brokerApi } from './api/brokerApi';
 import { formatOrderError } from './utils/orderError';
@@ -401,7 +414,7 @@ const getSymbolDigits = (symbol: string): number => {
   return 5; // Default: standard forex pairs
 };
 
-const normalizeRealtimeTick = (raw: any, previous?: Tick): Tick | null => {
+export const normalizeRealtimeTick = (raw: any, previous?: Tick): Tick | null => {
   const rawSymbol = typeof raw?.symbol === 'string' ? raw.symbol : '';
   const symbol = rawSymbol.trim().toUpperCase();
   if (!symbol) {
@@ -491,7 +504,7 @@ const normalizeRealtimeTick = (raw: any, previous?: Tick): Tick | null => {
   return result;
 };
 
-const parseTickPayloads = (input: any): any[] => {
+export const parseTickPayloads = (input: any): any[] => {
   if (!input) return [];
   if (typeof input === 'string') {
     try {
@@ -600,29 +613,7 @@ const applyOpenPositionSnapshot = (incoming: Position[]) => {
   store.setPositions(incoming as any);
 };
 
-const getLivePositionPnL = (position: Position, tick?: Tick): number => {
-  const openPrice = Number(position.openPrice ?? 0);
-  const volume = Number(position.volume ?? 0);
-
-  if (!tick || openPrice <= 0) {
-    return Number(position.unrealizedPnL ?? 0);
-  }
-
-  const symbol = position.symbol ?? '';
-  const livePrice = position.side === 'BUY' ? Number(tick.bid) : Number(tick.ask);
-  if (!Number.isFinite(livePrice) || livePrice <= 0) {
-    return Number(position.unrealizedPnL ?? 0);
-  }
-
-  let multiplier = 100000;
-  if (symbol.includes('JPY')) multiplier = 1000;
-  else if (symbol.startsWith('BTC') || symbol.startsWith('ETH')) multiplier = 1;
-  else if (symbol.startsWith('XAU')) multiplier = 100;
-  else if (symbol.startsWith('XAG')) multiplier = 5000;
-
-  const priceDiff = position.side === 'BUY' ? (livePrice - openPrice) : (openPrice - livePrice);
-  return priceDiff * volume * multiplier;
-};
+const backendCloseProfit = (position: Position): number | null => readBackendPositionProfit(position);
 
 const normalizeCloseSnapshotSide = (side: string): 'BUY' | 'SELL' =>
   String(side ?? '').trim().toUpperCase().includes('SELL') ? 'SELL' : 'BUY';
@@ -677,103 +668,12 @@ const buildTradeOverlayCloseSnapshots = (positions: readonly Position[]): TradeO
       exitTime: closeTime,
       currentPrice: exitPrice,
       closeTime,
-      profit: getLivePositionPnL(position, tick),
+      profit: backendCloseProfit(position),
     }];
   });
 };
 
-const normalizeAccountSummary = (payload: unknown, prev?: Account | null): Account => {
-  const raw = (payload || {}) as RawRecord;
-
-  // Extract with explicit undefined checks so that literal 0s from the server are respected
-  // but missing keys properly fall back to previous state.
-  // Prefer explicit scalar aliases when present, then nested Money / raw fields.
-  const balanceRaw = raw.balance_amount ?? raw.balance ?? raw.Balance;
-  const equityRaw = raw.equity_amount ?? raw.equity ?? raw.Equity;
-
-  // Guard: never wipe a known funded account with a live packet that reports
-  // balance=0 (bad/partial metrics). Old guard required BOTH balance and equity
-  // to be 0; packets with balance=0 but floating equity (~-2) still zeroed cash.
-  const incomingBalance = balanceRaw !== undefined ? toNumber(balanceRaw, 0) : undefined;
-  const incomingEquity = equityRaw !== undefined ? toNumber(equityRaw, 0) : undefined;
-  const rejectZeroBalance = Boolean(prev && prev.balance > 0 && incomingBalance === 0);
-
-  const balance = rejectZeroBalance
-    ? prev!.balance
-    : (incomingBalance !== undefined ? incomingBalance : (prev?.balance ?? 0));
-  const floatingFromPacket = toNumber(
-    raw.profit ?? raw.unrealizedPL ?? raw.unrealized_pl ?? raw.unrealizedPnL,
-    prev?.unrealizedPL ?? 0,
-  );
-  const equity = rejectZeroBalance
-    ? balance + floatingFromPacket
-    : (incomingEquity !== undefined ? incomingEquity : (prev?.equity ?? balance));
-
-  const marginRaw = raw.margin ?? raw.margin_used;
-  const margin = marginRaw !== undefined ? toNumber(marginRaw, 0) : (prev?.margin ?? 0);
-
-  const freeMarginRaw = raw.free_margin_amount ?? raw.freeMargin ?? raw.free_margin ?? raw.margin_available;
-  const freeMarginFallback = prev?.freeMargin ?? Math.max(0, equity - margin);
-  const freeMargin = freeMarginRaw !== undefined ? toNumber(freeMarginRaw, freeMarginFallback) : freeMarginFallback;
-
-  const profitRaw = raw.floating_pnl ?? raw.profit ?? raw.unrealizedPL ?? raw.unrealized_pl ?? raw.unrealizedPnL;
-  const unrealizedPL = profitRaw !== undefined ? toNumber(profitRaw, 0) : (prev?.unrealizedPL ?? 0);
-
-  const levelRaw = raw.marginLevel ?? raw.margin_level;
-  const marginLevelFallback = prev?.marginLevel ?? (margin > 0 ? (equity / margin) * 100 : 0);
-  const marginLevel = levelRaw !== undefined ? toNumber(levelRaw, marginLevelFallback) : marginLevelFallback;
-
-  const leverageRaw = raw.leverage;
-  const leverage = leverageRaw !== undefined ? toNumber(leverageRaw, 100) : (prev?.leverage ?? 100);
-
-  return {
-    balance,
-    equity,
-    margin,
-    freeMargin,
-    unrealizedPL,
-    marginLevel,
-    currency: String(raw.currency ?? prev?.currency ?? 'USD'),
-    leverage,
-  };
-};
-
-const extractAccountPayload = (message: any): RawRecord => {
-  const candidate = message?.data;
-
-  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
-    if (Object.keys(candidate).length > 0) return candidate as RawRecord;
-  }
-
-  if (typeof candidate === 'string') {
-    try {
-      const parsed = JSON.parse(candidate);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed as RawRecord;
-      }
-    } catch {
-      // Ignore invalid JSON strings.
-    }
-  }
-
-  if (message && typeof message === 'object' && !Array.isArray(message)) {
-    const rootCandidate = message as RawRecord;
-    if (
-      rootCandidate.balance !== undefined ||
-      rootCandidate.equity !== undefined ||
-      rootCandidate.margin !== undefined ||
-      rootCandidate.freeMargin !== undefined ||
-      rootCandidate.marginLevel !== undefined ||
-      rootCandidate.profit !== undefined
-    ) {
-      return rootCandidate;
-    }
-  }
-
-  return {};
-};
-
-const POSITION_CLOSED_EVENTS = new Set(['close', 'closed', 'sl_hit', 'tp_hit']);
+const normalizeAccountSummary = normalizeAccountMetrics;
 
 const toV2Timeframe = (value: string | undefined): string => {
   const normalized = String(value || 'M1').trim().toUpperCase();
@@ -790,13 +690,10 @@ const toV2Timeframe = (value: string | undefined): string => {
   return map[normalized] || normalized;
 };
 
-const getPositionEventName = (message: any): string => {
-  const raw = message?.event ?? message?.type ?? message?.action ?? message?.data?.event ?? message?.data?.type ?? message?.data?.action ?? message?.data?.reason;
-  return String(raw ?? '').trim().toLowerCase();
-};
+const getPositionEventName = (message: any): string => readPositionStreamEvent(message).event;
 
 const getPositionEventTicket = (message: any): number | null => {
-  const payload = message?.position ?? message?.data?.position ?? message?.data ?? message;
+  const payload = readPositionStreamEvent(message).position;
   const ticket = Number.parseInt(String(
     payload?.ticket
       ?? payload?.position_id
@@ -841,6 +738,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       !hasTokenExpiryElapsed(expiryMs)
     );
   });
+  const guestMode = !isAuthenticated && !isElectronRuntime();
   const [isAutoAuthenticating, setIsAutoAuthenticating] = useState(() => {
     if (isAuthenticated) return false;
     const state = useAppStore.getState();
@@ -882,6 +780,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const refreshPositionsInFlightRef = useRef<Promise<void> | null>(null);
   const refreshPositionsPendingRef = useRef<PendingPositionsRefresh | null>(null);
   const refreshHistoryInFlightRef = useRef<Promise<void> | null>(null);
+  const historyRefreshTimerRef = useRef<number | null>(null);
   const refreshHistoryPendingLoginRef = useRef<number | null>(null);
   const accountPollInFlightRef = useRef<Promise<void> | null>(null);
   const accountPollInFlightLoginRef = useRef<number | null>(null);
@@ -903,7 +802,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [hasAppliedLiveChartPreference, setHasAppliedLiveChartPreference] = useState(false);
   const [committedChartSelectionKey, setCommittedChartSelectionKey] = useState('');
   const selectedMarketStatus = useSymbolMarketStatus(selectedSymbol, {
-    enabled: isAuthenticated && Boolean(selectedSymbol),
+    enabled: (isAuthenticated || guestMode) && Boolean(selectedSymbol),
   });
 
   const [enableHistoricalData] = useState(true);
@@ -1224,6 +1123,17 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       }
       const lastAccountId = storeState.accountId;
       const restoredExpiryMs = storeState.tokenExpiresAt || getStoredTokenExpiryMs();
+      const restoreScope = getCommittedBrokerAccountSessionScope();
+      // Guests can complete another login while the stored account is being
+      // validated. Only this original account scope may accept the response
+      // or clear authentication on failure. Token refresh within the same
+      // restore is allowed; a committed login/logout changes the scope.
+      const isCurrentRestore = () => {
+        const currentState = useAppStore.getState();
+        return getCommittedBrokerAccountSessionScope() === restoreScope
+          && currentState.isAuthenticated === storeState.isAuthenticated
+          && currentState.accountId === lastAccountId;
+      };
 
       if (hasTokenExpiryElapsed(restoredExpiryMs)) {
         performSessionExpiredLogout('token_expired');
@@ -1263,6 +1173,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         // Strategy 2: Fallback — try old token 
         if (token || refreshToken) {
           const accData = await api.account.getAccountSummary(loginId);
+          if (!isCurrentRestore()) return;
           const restoredAccountId = accData.id || String(loginId);
           const expiresAtStr = localStorage.getItem('token_expires_at');
           const expiresAt = expiresAtStr ? new Date(expiresAtStr).getTime() : undefined;
@@ -1280,6 +1191,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           return;
         }
       } catch (err: any) {
+        if (!isCurrentRestore()) return;
         console.log('[Session] Restore failed:', err.message);
         performSessionExpiredLogout('restore_failed');
         setAutoAuthError(err.message || 'Session restore failed');
@@ -1516,10 +1428,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     ...marketInstrumentsSnapshot.disabledSymbols,
   ])), [marketInstrumentsSnapshot.authorizedSymbols, marketInstrumentsSnapshot.disabledSymbols]);
   const allSymbols = useMemo(() => marketInstrumentsSnapshot.symbols.filter((instrument) => (
-    (!isAuthenticated && guestMarketAccess) || authenticatedCatalogSymbolSet.has(normalizeSymbolName(instrument.symbol))
-  )), [authenticatedCatalogSymbolSet, marketInstrumentsSnapshot.symbols, isAuthenticated, guestMarketAccess]);
-  const hasLoadedSymbols = marketInstrumentsSnapshot.authorizationSettled;
-  const isLoadingSymbols = isAuthenticated && !marketInstrumentsSnapshot.authorizationSettled;
+    guestMode || authenticatedCatalogSymbolSet.has(normalizeSymbolName(instrument.symbol))
+  )), [guestMode, authenticatedCatalogSymbolSet, marketInstrumentsSnapshot.symbols]);
+  const hasLoadedSymbols = guestMode
+    ? !marketInstrumentsSnapshot.loading && marketInstrumentsSnapshot.symbols.length > 0
+    : marketInstrumentsSnapshot.authorizationSettled;
+  const isLoadingSymbols = guestMode ? marketInstrumentsSnapshot.loading : isAuthenticated && !marketInstrumentsSnapshot.authorizationSettled;
   const publicMarketSymbolNames = useMemo(
     () => getAllowedSymbolNames(marketInstrumentsSnapshot.symbols),
     [marketInstrumentsSnapshot.symbols],
@@ -1650,6 +1564,38 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   const [orderPanelOpen, setOrderPanelOpen] = useState(false);
   const [orderPanelSymbol, setOrderPanelSymbol] = useState('');
   const [orderPanelPrice, setOrderPanelPrice] = useState({ bid: 0, ask: 0 });
+  const [tradeAuthOpen, setTradeAuthOpen] = useState(false);
+  const [pendingTradeIntent, setPendingTradeIntent] = useState<TradingAuthIntent | null>(null);
+
+  useEffect(() => {
+    const handleTradingAuthRequest = (event: Event) => {
+      const intent = (event as CustomEvent<TradingAuthIntent>).detail;
+      if (!intent) return;
+      setPendingTradeIntent(intent);
+      setTradeAuthOpen(true);
+    };
+    window.addEventListener(TRADING_AUTH_REQUEST_EVENT, handleTradingAuthRequest);
+    return () => window.removeEventListener(TRADING_AUTH_REQUEST_EVENT, handleTradingAuthRequest);
+  }, []);
+
+  const handleTradeAuthClose = useCallback(() => {
+    setTradeAuthOpen(false);
+    setPendingTradeIntent(null);
+  }, []);
+
+  const handleTradeAuthenticated = useCallback((nextAccountId: string) => {
+    completeTradingAuthentication(nextAccountId, pendingTradeIntent, {
+      login: handleLoginSuccess,
+      closeDialog: () => setTradeAuthOpen(false),
+      clearIntent: () => setPendingTradeIntent(null),
+      openOrderDraft: (intent) => {
+        localStorage.setItem('lastLotSize', String(intent.volume));
+        setOrderPanelSymbol(intent.symbol);
+        setOrderPanelPrice({ bid: intent.bid || 0, ask: intent.ask || 0 });
+        setOrderPanelOpen(true);
+      },
+    });
+  }, [handleLoginSuccess, pendingTradeIntent]);
 
   // Layout Management
   const [, setLayoutMode] = useState<LayoutMode>('single');
@@ -2105,13 +2051,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const closeSessionScope = getCommittedBrokerAccountSessionScopeKey(
         getCommittedBrokerAccountSessionScope(),
       );
-      const { ticks, tickLookup } = useAppStore.getState();
-
       const selectMatchingCandidates = (openPositions: readonly Position[]) => openPositions.filter((position) => {
         if (!(position.id > 0)) return false;
         if (symbol && position.symbol !== symbol) return false;
         if (type === 'ALL') return true;
-        const profit = getLivePositionPnL(position, resolveTickFromLookup(ticks, tickLookup, position.symbol));
+        const profit = backendCloseProfit(position);
+        if (profit === null) return false;
         return type === 'WINNERS' ? profit > 0 : profit < 0;
       });
 
@@ -2244,6 +2189,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       const request = (async () => {
         try {
         const restRead = beginTradeRestRead();
+        const metricsScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
         const isAccountSwitch = activeAccountDataRef.current !== loginId;
         if (isInitial) {
           console.log('[App] Fetching account data for login:', loginId);
@@ -2264,7 +2210,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         } = await loadSessionTradeSnapshot(loginId);
 
         const activeLogin = parsePositiveInt(useAppStore.getState().accountId || accountIdRef.current || undefined);
-        if (!isAuthenticatedRef.current || activeLogin !== loginId) {
+        if (!isAuthenticatedRef.current || activeLogin !== loginId || metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) {
           return;
         }
 
@@ -2281,7 +2227,10 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         // Write account data to the Zustand store directly — NOT to App local state.
         // This prevents App.tsx from re-rendering on every poll (root cause of blank-display crash).
         if (accPayload) {
-          const normalizedAccount = normalizeAccountSummary(accPayload);
+          const normalizedAccount = normalizeAccountSummary(accPayload, useAppStore.getState().account, {
+            login: loginId,
+            scope: metricsScope,
+          });
           useAppStore.getState().setAccount(normalizedAccount as any);
         }
 
@@ -2425,6 +2374,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
 
     const channels = [
       `account.${loginId}`,
+      `metrics.${loginId}`,
       `positions.${loginId}`,
       `orders.${loginId}`,
       `deals.${loginId}`,
@@ -2454,17 +2404,21 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           Number.isFinite(Number(data?.lastPrice))
         );
         const isLiveQuote = data.channel?.startsWith('quotes.');
-        if (data.channel?.startsWith('account.')) {
+        if (data.channel?.startsWith('account.') || data.channel?.startsWith('metrics.')) {
           const acceptedLogin = getAcceptedChannelLogin(data.channel);
           if (!acceptedLogin) return;
           markTradeWsMessage();
 
           // Live backend account summary stream
           if (WS_DEBUG) console.log('[DEBUG WS ACCOUNT RAW]', data);
-          const accData = extractAccountPayload(data);
+          const accData = extractAccountMetrics(data);
           if (WS_DEBUG) console.log('[DEBUG WS ACCOUNT PAYLOAD]', accData);
           const previousAccount = useAppStore.getState().account as Account | null | undefined;
-          const next = normalizeAccountSummary(accData, previousAccount);
+          const next = normalizeAccountSummary(accData, previousAccount, {
+            partial: !accData.publication_token,
+            login: acceptedLogin,
+            scope: getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope()),
+          });
           if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
           useAppStore.getState().setAccount(next as any);
         } else if (data.channel?.startsWith('positions.')) {
@@ -2473,6 +2427,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
           markTradeWsMessage();
           if (WS_DEBUG) console.log('[DEBUG WS POSITIONS RAW]', data);
           try {
+            const batch = readPositionStreamBatch(data);
             const eventName = getPositionEventName(data);
             const ticket = getPositionEventTicket(data);
             if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
@@ -2482,60 +2437,35 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
               dispatchTradeOverlayCloseState([ticket], 'confirmed');
               useAppStore.getState().setPositions(useAppStore.getState().positions.filter(position => position.id !== ticket));
               refreshOrdersAndHistory(acceptedLogin).catch(err => console.error('[WS POSITIONS HISTORY REFRESH ERROR]', err));
-            } else if (data.data?.positions && Array.isArray(data.data.positions)) {
-              const normalized = reconcileOptimisticClosedPositions(normalizePositions(data.data.positions));
+            } else if (batch) {
+              const result = reconcilePositionStreamBatch(useAppStore.getState().positions, batch);
+              const normalized = reconcileOptimisticClosedPositions(result.positions as Position[]);
               if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
-              applyOpenPositionSnapshot(normalized);
-            } else if (data.data && Array.isArray(data.data)) {
-              const normalized = reconcileOptimisticClosedPositions(normalizePositions(data.data));
-              if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
-              applyOpenPositionSnapshot(normalized);
-            } else if (data.position || data.data?.position || data.data) {
-              const payload = data.position || data.data?.position || data.data;
-              const normalized = normalizePositions([payload])[0];
-              if (normalized) {
-                if (!isAuthenticatedRef.current || getLiveTradingLogin() !== acceptedLogin) return;
-                if (optimisticClosedTicketsRef.current.has(normalized.id)) return;
-                const storePositions = useAppStore.getState().positions;
-                const storeIndex = storePositions.findIndex(position => position.id === normalized.id);
-                const hasOwnValue = (record: unknown, keys: string[]) => (
-                  !!record
-                  && typeof record === 'object'
-                  && keys.some((key) => Object.prototype.hasOwnProperty.call(record, key))
-                );
-                const hasExplicitOpenPrice = hasOwnValue(payload, ['price_open', 'open_price', 'openPrice']);
-                const hasExplicitOpenTime = hasOwnValue(payload, ['time_create', 'time_ms', 'time', 'time_open', 'opened_at', 'chartEntryTime', 'chart_entry_time']);
-                const hasExplicitSl = hasOwnValue(payload, ['price_sl', 'sl', 'stopLoss', 'stop_loss']);
-                const hasExplicitTp = hasOwnValue(payload, ['price_tp', 'tp', 'takeProfit', 'take_profit']);
-                const nextStorePositions = storeIndex < 0
-                  ? [...storePositions, normalized]
-                  : storePositions.map((position, index) => index === storeIndex
-                    ? {
-                      ...position,
-                      ...normalized,
-                      openPrice: hasExplicitOpenPrice ? normalized.openPrice : position.openPrice,
-                      open_price: hasExplicitOpenPrice ? normalized.openPrice : position.open_price,
-                      openTime: hasExplicitOpenTime ? normalized.openTime : position.openTime,
-                      sl: hasExplicitSl ? normalized.sl : position.sl,
-                      tp: hasExplicitTp ? normalized.tp : position.tp,
-                    }
-                    : position);
-                useAppStore.getState().setPositions(nextStorePositions as any);
-              }
+              useAppStore.getState().setPositions(normalized as any);
+              if (result.needsRevalidation) requestPositionSnapshotRevalidation();
+            } else {
+              const { position } = readPositionStreamEvent(data);
+              if (!position) return;
+              const result = reconcilePositionStreamBatch(useAppStore.getState().positions, {
+                mode: 'delta', positions: [position],
+              });
+              useAppStore.getState().setPositions(reconcileOptimisticClosedPositions(result.positions as Position[]) as any);
+              if (result.needsRevalidation || eventName === 'position_partial_close') requestPositionSnapshotRevalidation();
             }
           } catch (err) {
             console.error('[WS POSITIONS ERROR]', err);
           }
-        } else if (data.channel?.startsWith('orders.')) {
+        } else if (data.channel?.startsWith('orders.') || data.channel?.startsWith('deals.')) {
           const loginId = getAcceptedChannelLogin(data.channel);
           if (!loginId) return;
           markTradeWsMessage();
-          refreshOrdersAndHistory(loginId).catch(err => console.error('[WS ORDERS REFRESH ERROR]', err));
-        } else if (data.channel?.startsWith('deals.')) {
-          const loginId = getAcceptedChannelLogin(data.channel);
-          if (!loginId) return;
-          markTradeWsMessage();
-          refreshOrdersAndHistory(loginId).catch(err => console.error('[WS DEALS REFRESH ERROR]', err));
+          // Coalesce fill/order bursts. Immediate REST history on every WS
+          // frame contended with market-order execution for the DB pool.
+          if (historyRefreshTimerRef.current !== null) window.clearTimeout(historyRefreshTimerRef.current);
+          historyRefreshTimerRef.current = window.setTimeout(() => {
+            historyRefreshTimerRef.current = null;
+            refreshOrdersAndHistory(loginId).catch(err => console.error('[WS HISTORY REFRESH ERROR]', err));
+          }, 2000);
         } else if (data.type === 'tick' || isTickLikeUpdate || isLiveQuote || data.channel?.startsWith('ticks.') || data.channel === 'prices') {
           const alreadyEnqueuedBySocketService = isEnhancedStoreHandledTickFrame(data);
           // Wrap live quote data if it comes in raw formats
@@ -2679,7 +2609,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     return () => {
       unsubscribe();
     };
-  }, [isAuthenticated, subscribe, getAcceptedChannelLogin, getLiveTradingLogin, markServerClosedTickets, markTradeWsMessage, reconcileOptimisticClosedPositions, refreshOrdersAndHistory]);
+  }, [isAuthenticated, subscribe, getAcceptedChannelLogin, getLiveTradingLogin, markServerClosedTickets, markTradeWsMessage, reconcileOptimisticClosedPositions, refreshOrdersAndHistory, refreshPositions]);
 
   const ensureMarketOpenForOrder = useCallback((symbol: string): boolean => {
     const normalizedSymbol = normalizeSymbolName(symbol);
@@ -2700,6 +2630,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     requestedVolume?: number,
     protection?: { priceSl?: number; priceTp?: number },
   ) => {
+    const authSymbol = normalizeSymbolName(requestedSymbol || selectedSymbol);
+    const authTick = useAppStore.getState().ticks[authSymbol];
+    if (!requireTradingAuth({
+      source: 'quick-trade', side, symbol: authSymbol, volume: requestedVolume ?? volume,
+      bid: authTick?.bid, ask: authTick?.ask,
+    })) return;
     const intentAtMs = captureTradeOrderIntent();
     try {
       const loginId = getLiveTradingLogin();
@@ -2749,6 +2685,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   }, [ensureMarketOpenForOrder, getAllowedSymbol, getLiveTradingLogin, selectedSymbol, volume, refreshPositions, refreshOrdersAndHistory]);
 
   const handleDepthOrder = useCallback(async (request: DepthOrderRequest) => {
+    if (!requireTradingAuth({
+      source: 'order-panel', side: request.side, symbol: domSymbol, volume: request.volume,
+    })) return;
     setVolume(request.volume);
     console.log(
       `[DOM] ${request.execution === 'limit' ? 'Pending' : 'Market'} order: ${request.side} ${request.volume} @ ${request.price}`,
@@ -2814,6 +2753,12 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     volume: number;
     symbol: string;
   }) => {
+    const authSymbol = normalizeSymbolName(order.symbol || orderPanelSymbol);
+    const authTick = useAppStore.getState().ticks[authSymbol];
+    if (!requireTradingAuth({
+      source: 'order-panel', side: order.type.toUpperCase() as 'BUY' | 'SELL', symbol: authSymbol,
+      volume: order.volume, bid: authTick?.bid, ask: authTick?.ask,
+    })) return;
     const intentAtMs = captureTradeOrderIntent();
     try {
       const side = order.type.toUpperCase() as 'BUY' | 'SELL';
@@ -3025,8 +2970,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
     ? selectedMarketStatus
     : getCachedSymbolMarketStatus(desktopToolbarSymbol);
   const chartSelectionDiagnosticAttributes = getChartSelectionDiagnosticAttributes(chartSelectionReadiness);
-  const chartRuntimeReady = shouldMountChartRuntime({
-    guestMarketAccess,
+  const chartRuntimeReady = guestMode ? hasLoadedChartSymbols : shouldMountChartRuntime({
     authenticated: isAuthenticated,
     accountId,
     restoredLayoutAccountId,
@@ -3147,6 +3091,7 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
       getActiveChartCommandTarget(selectedSymbol, timeframe).symbol,
     );
     const targetSymbol = explicitSymbol || activeChartSymbol || normalizeSymbolName(selectedSymbol);
+    if (!requireNewOrderAuth(targetSymbol)) return false;
     const dialogSymbol = getChartEligibleSymbol(targetSymbol) || getAllowedSymbol(targetSymbol);
 
     if (!dialogSymbol) {
@@ -3543,9 +3488,9 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
   ]);
 
 
-  // Web guests use the same workspace with public market data only.
-  // Desktop retains the login-first flow; account restoration stays gated.
-  if (!isAuthenticated && (!guestMarketAccess || isAutoAuthenticating)) {
+  // Web guests keep public charts and quotes. Private account subscriptions
+  // above and every trade mutation remain authenticated independently.
+  if (!isAuthenticated && !guestMode) {
     if (isAutoAuthenticating) {
       return <TerminalLoadFallback sessionRestorePending />;
     }
@@ -3574,7 +3519,8 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
         />
         <div
           className="rtx-app-shell flex flex-col h-screen w-full bg-[#131316] text-zinc-300 overflow-hidden font-sans"
-          data-rtx-authenticated-shell={isAuthenticated ? 'true' : 'false'}
+          data-rtx-authenticated-shell={isAuthenticated ? 'true' : undefined}
+          data-rtx-guest-shell={guestMode ? 'true' : undefined}
           {...chartSelectionDiagnosticAttributes}
         >
           {/* 1. Global Menu & Toolbar */}
@@ -3794,6 +3740,13 @@ function App({ initialSessionHandoff = null, onSessionEnded }: AppProps = {}) {
               />
             </ErrorBoundary>
           )}
+
+          <TradeAuthDialog
+            isOpen={tradeAuthOpen}
+            intent={pendingTradeIntent}
+            onClose={handleTradeAuthClose}
+            onAuthenticated={handleTradeAuthenticated}
+          />
 
           {/* Save Workspace Dialog (Ctrl+S) */}
           {showSaveWorkspaceDialog && (

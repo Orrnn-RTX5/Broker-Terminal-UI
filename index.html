@@ -199,8 +199,10 @@
         root.setAttribute('data-theme', 'dark');
       }
 
-      root.setAttribute('data-rtx-initial-view', sessionCandidate ? 'terminal' : 'login');
-      if (!sessionCandidate) {
+      var runtime = window.__RTX_RUNTIME_CONFIG__ || window.RUNTIME_CONFIG || {};
+      var desktopLogin = Boolean((window.electron && window.electron.window) || window.electronAPI || location.protocol === 'file:' || navigator.userAgent.includes('Electron'));
+      root.setAttribute('data-rtx-initial-view', !desktopLogin || sessionCandidate ? 'terminal' : 'login');
+      if (desktopLogin && !sessionCandidate) {
         var wordmarkPreload = document.createElement('link');
         wordmarkPreload.rel = 'preload';
         wordmarkPreload.as = 'image';

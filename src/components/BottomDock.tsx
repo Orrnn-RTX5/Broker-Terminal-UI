@@ -331,10 +331,10 @@ export function BottomDock({
     const cachedAccountSig = useRef<string>('');
     const cachedPositionsSig = useRef<string>('');
 
-    const accountSig = (a: any) => !a ? '' : `${a.balance}|${a.equity}|${a.margin}|${a.freeMargin}|${a.marginLevel}|${a.unrealizedPL}|${a.currency}|${a.credit ?? a.bonus ?? ''}`;
+    const accountSig = (a: any) => a ? JSON.stringify(a) : '';
     const positionsSig = (ps: any[]) => ps.map(p => `${p.id}-${p.volume}-${p.sl}-${p.tp}-${p.currentPrice}-${p.unrealizedPnL}`).join('|');
 
-    // Subscribe to store — throttle to 500ms so WebSocket bursts don't flicker the UI.
+    // Coalesce bursts while leaving room in the quote-to-screen latency budget.
     // Only calls setState when the displayed field values actually changed.
     useEffect(() => {
         let lastFired = 0;
@@ -357,7 +357,7 @@ export function BottomDock({
         const unsub = useAppStore.subscribe((state, prev) => {
             if (state.account === prev.account && state.positions === prev.positions) return;
             const now = Date.now();
-            const remaining = 500 - (now - lastFired);
+            const remaining = 50 - (now - lastFired);
             if (remaining <= 0) {
                 lastFired = now;
                 flush();
@@ -474,17 +474,8 @@ export function BottomDock({
     // Auto-switch to Journal if the account equity hits 0 (margin call / account blown)
     const prevEquityRef = useRef<number | null>(null);
     useEffect(() => {
-        // Expose a global testing function for the user to simulate blowing up their account manually
-        (window as any).testBlowup = () => {
-            const currentAccount = useAppStore.getState().account;
-            if (currentAccount) {
-                useAppStore.getState().setAccount({ ...currentAccount, equity: 0, balance: 0, freeMargin: 0, marginLevel: 0 });
-                console.log("0000 Simulated Account Blow Up! Equity is now 0. You should be navigated to the Journal tab.");
-            }
-        };
-
-        if (!account) return;
-        const eq = account.equity;
+        const eq = resolveTradeAccountMetrics(account).equity;
+        if (eq === null) return;
 
         // If equity drops to 0 or below from a previously positive state, switch instantly
         if (eq <= 0 && prevEquityRef.current !== null && prevEquityRef.current > 0) {
@@ -978,7 +969,7 @@ const TradeTab = memo(function TradeTab({
                 { ...pos, currentPrice: livePrice, price_current: livePrice, openPrice, price_open: openPrice },
                 { accountCurrency: account?.currency }
             );
-            const livePnL = profitResolution.value;
+            const livePnL = profitResolution.source === 'backend' ? profitResolution.value : null;
 
             // Apply local overrides while the Gateway API catches up.
             const override = tradeOverrides[pos?.id];
@@ -1005,9 +996,10 @@ const TradeTab = memo(function TradeTab({
                 price_tp: Number(tp ?? 0),
                 comment,
                 profit: livePnL,
-                unrealizedPnL: livePnL,
+                unrealizedPnL: livePnL ?? pos?.unrealizedPnL,
                 livePrice,
                 livePnL,
+                hasBackendProfit: profitResolution.source === 'backend',
                 profitSource: profitResolution.source,
                 profitWarnings: profitResolution.warnings,
             };
@@ -1035,23 +1027,30 @@ const TradeTab = memo(function TradeTab({
 
     // Row-level totals. These drive the per-tile Floating P/L, Swap and Commission displays
     // only \u2014 they must never feed the account metrics, which are backend-authoritative.
-    const totalLivePnL = useMemo(() => livePositions.reduce((acc, pos) => acc + (pos.livePnL || 0), 0), [livePositions]);
     const totalSwap = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.swap) || 0), 0), [livePositions]);
     const totalCommission = useMemo(() => livePositions.reduce((acc, pos) => acc + (Number(pos.commission) || 0), 0), [livePositions]);
     // Equity / free margin / margin level are shown exactly as the backend reports them. When
     // the backend omits one it resolves to null and the footer renders a dash, not a zero.
-    const accountMetricResolution = useMemo(() => resolveTradeAccountMetrics({
-        balance: account?.balance,
-        equity: account?.equity,
-        margin: account?.margin,
-        freeMargin: account?.freeMargin,
-        marginLevel: account?.marginLevel,
-        hasBackendEquity: account?.hasBackendEquity,
-        hasBackendFreeMargin: account?.hasBackendFreeMargin,
-        hasBackendMarginLevel: account?.hasBackendMarginLevel,
-        credit: account?.credit,
-        bonus: account?.bonus,
-    }), [account]);
+    const [metricsNow, setMetricsNow] = useState(Date.now);
+    useEffect(() => {
+        const timer = window.setInterval(() => setMetricsNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, []);
+    const accountMetricResolution = useMemo(() => resolveTradeAccountMetrics(account, metricsNow), [account, metricsNow]);
+    useEffect(() => {
+        if (!account?.publicationToken) return;
+        let nextFrame = 0;
+        const frame = window.requestAnimationFrame(() => {
+            nextFrame = window.requestAnimationFrame(() => {
+                window.dispatchEvent(new CustomEvent('rtx:account-metrics-rendered', {
+                    detail: { publication_token: account.publicationToken, rendered_at: performance.now() },
+                }));
+            });
+        });
+        return () => { window.cancelAnimationFrame(frame); window.cancelAnimationFrame(nextFrame); };
+    }, [account?.publicationToken, account?.metricsScope]);
+    const floatingPnL = accountMetricResolution.floatingPnL;
+    const totalLivePnL = floatingPnL ?? 0;
     const accountBalance = accountMetricResolution.balance;
     const liveEquity = accountMetricResolution.equity;
     const margin = accountMetricResolution.margin;
@@ -1060,7 +1059,7 @@ const TradeTab = memo(function TradeTab({
 
     const formatMarginLevel = (value: number | null) => {
         if (value === null) return METRIC_UNAVAILABLE;
-        if (value <= 0 && livePositions.length === 0) return '\u221e';
+        if (value === 0 && margin === 0) return '\u221e';
         return `${value.toFixed(2)}%`;
     };
 
@@ -1171,13 +1170,13 @@ const TradeTab = memo(function TradeTab({
             case 'positions':
                 return <BlinkingText value={livePositions.length} />;
             case 'balance':
-                return <BlinkingText value={accountBalance} formatFn={formatMoney} />;
+                return accountBalance === null ? <UnavailableMetric /> : <BlinkingText value={accountBalance} formatFn={formatMoney} />;
             case 'equity':
                 return liveEquity === null
                     ? <UnavailableMetric />
                     : <BlinkingText value={liveEquity} formatFn={formatMoney} />;
             case 'margin':
-                return <BlinkingText value={margin} formatFn={formatMoney} />;
+                return margin === null ? <UnavailableMetric /> : <BlinkingText value={margin} formatFn={formatMoney} />;
             case 'freeMargin':
                 return liveFreeMargin === null
                     ? <UnavailableMetric />
@@ -1202,13 +1201,13 @@ const TradeTab = memo(function TradeTab({
                 value = String(livePositions.length);
                 break;
             case 'balance':
-                value = `${formatMoney(accountBalance)} ${account?.currency || 'USD'}`;
+                value = accountBalance === null ? METRIC_UNAVAILABLE : `${formatMoney(accountBalance)} ${account?.currency || 'USD'}`;
                 break;
             case 'equity':
                 value = liveEquity === null ? METRIC_UNAVAILABLE : formatMoney(liveEquity);
                 break;
             case 'margin':
-                value = formatMoney(margin);
+                value = margin === null ? METRIC_UNAVAILABLE : formatMoney(margin);
                 break;
             case 'freeMargin':
                 value = liveFreeMargin === null ? METRIC_UNAVAILABLE : formatMoney(liveFreeMargin);
@@ -1371,7 +1370,7 @@ const TradeTab = memo(function TradeTab({
                 label: profitMode === 'points' ? 'Profit Points' : 'Profit',
                 value: pos => profitMode === 'points'
                     ? formatTradePoints(pos)
-                    : formatMoney(pos.profit ?? pos.unrealizedPnL),
+                    : (pos.profitSource === 'backend' ? formatMoney(pos.profit) : METRIC_UNAVAILABLE),
             });
         }
         return columns;
@@ -1726,10 +1725,13 @@ ${rows}
                             );
                             const isTerminalPlacementFailure = placementState === 'rejected' || placementState === 'expired';
                             const isBuy = String(pos.side).toUpperCase() === 'BUY';
-                            const pnl = pos.profit ?? pos.unrealizedPnL;
-                            const pnlValue = Number(pnl ?? 0);
+                            const hasBackendProfit = pos.profitSource === 'backend';
+                            const pnl = hasBackendProfit ? pos.profit ?? pos.unrealizedPnL : null;
+                            const pnlValue = pnl === null || pnl === undefined ? null : Number(pnl);
                             const pointsValue = getTradePointsValue(pos);
-                            const profitIsPositive = profitMode === 'points' ? pointsValue >= 0 : pnlValue >= 0;
+                            const profitIsPositive = profitMode === 'points'
+                                ? pointsValue >= 0
+                                : pnlValue !== null && pnlValue >= 0;
                             const positionKey = getPositionKey(pos);
                             const isSelected = selectedPositionKey === positionKey;
                             const symbolLabel = pos.symbol ?? '-';
@@ -1772,7 +1774,11 @@ ${rows}
                             const commentLabel = String(placementError || pos.comment || '-');
                             const profitLabel = isPendingPlacement
                                 ? '…'
-                                : profitMode === 'points' ? formatTradePoints(pos) : formatMoney(pnlValue);
+                                : profitMode === 'points'
+                                    ? formatTradePoints(pos)
+                                    : pnlValue === null || Number.isNaN(pnlValue)
+                                        ? METRIC_UNAVAILABLE
+                                        : formatMoney(pnlValue);
                             const rowSummary = [
                                 symbolLabel,
                                 tr(sideLabel),
@@ -1915,7 +1921,7 @@ ${rows}
 
                                     {/* profit */}
                                     {isColumnVisible('profit') && (
-                                        <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${tr(profitMode === 'points' ? 'Profit Points' : 'Profit')}: ${profitLabel}`}>
+                                        <td className={`px-1.5 py-[2px] text-center font-normal tabular-nums ${pnlValue === null ? 'text-zinc-500' : profitIsPositive ? 'rtx-trade-profit-value--positive text-[#22c55e]' : 'rtx-trade-profit-value--negative text-[#ff2d2d]'}`} title={`${tr(profitMode === 'points' ? 'Profit Points' : 'Profit')}: ${profitLabel}`}>
                                             {profitLabel}
                                         </td>
                                     )}
@@ -1946,6 +1952,11 @@ ${rows}
                 {/* Account summary follows the last trade and scrolls with the list. */}
                 <div
                     className="rtx-trade-footer bg-[#191a1e] border-t border-zinc-700 w-full text-[13px] font-normal text-zinc-300 tabular-nums"
+                    data-metrics-publication-token={account?.publicationToken}
+                    data-metrics-calculation-version={account?.calculationVersion}
+                    data-metrics-margin-calculation-version={account?.marginCalculationVersion}
+                    data-metrics-configuration-version={account?.configurationVersion}
+                    data-metrics-status={account?.metricsStatus ?? (liveEquity === null ? 'unavailable' : 'valid')}
                 >
                     <div className="rtx-trade-footer-inner flex w-max min-w-full items-center py-1" style={{ minWidth: `max(100%, ${visibleTradeTableWidth}px)` }}>
                         <div className="rtx-trade-footer-metrics flex min-w-0 items-center gap-3 px-1.5">
@@ -1972,29 +1983,41 @@ ${rows}
                             ))}
                         </div>
                         <div className="min-w-2 flex-1" />
+                        <span
+                            className="rtx-trade-footer-calc shrink-0 text-zinc-500"
+                            title={`Calculation ${account?.calculationVersion || 'unknown'} · margin ${account?.marginCalculationVersion || 'unknown'} · ${account?.metricsStatus || (liveEquity === null ? 'unavailable' : 'valid')}`}
+                            data-testid="trade-footer-calculation-badge"
+                        >
+                            {account?.calculationVersion || '—'}
+                            {' · margin '}
+                            {account?.marginCalculationVersion || '—'}
+                            {' · '}
+                            {account?.metricsStatus || (liveEquity === null ? 'unavailable' : 'valid')}
+                        </span>
+                        {account?.marketClosed && <span className="shrink-0 text-zinc-500">Market closed</span>}
                         {isColumnVisible('profit') ? (
                             <span
                                 className={`rtx-trade-footer-floating rtx-trade-footer-floating--profit inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap text-center font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
                                 style={{ width: footerProfitColumnWidth, flex: `0 0 ${footerProfitColumnWidth}` }}
-                                title={tr("Floating P/L: {{value0}} {{value1}}", { value0: formatMoney(totalLivePnL), value1: account?.currency || 'USD' })}
+                                title={tr("Floating P/L: {{value0}} {{value1}}", { value0: floatingPnL === null ? METRIC_UNAVAILABLE : formatMoney(floatingPnL), value1: account?.currency || 'USD' })}
                             >
-                                <BlinkingText
+                                {floatingPnL === null ? <UnavailableMetric /> : <BlinkingText
                                     value={totalLivePnL}
                                     formatFn={formatMoney}
                                     defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-zinc-100"}
-                                />
+                                />}
                                 <span className="rtx-trade-footer-currency">{account?.currency || 'USD'}</span>
                             </span>
                         ) : (
                             <span
                                 className={`rtx-trade-footer-floating inline-flex shrink-0 items-center justify-end gap-1 whitespace-nowrap text-right font-normal leading-none ${totalLivePnL > 0 ? 'text-[#22c55e]' : totalLivePnL < 0 ? 'text-[#ff2d2d]' : 'text-zinc-100'}`}
-                                title={tr("Floating P/L: {{value0}} {{value1}}", { value0: formatMoney(totalLivePnL), value1: account?.currency || 'USD' })}
+                                title={tr("Floating P/L: {{value0}} {{value1}}", { value0: floatingPnL === null ? METRIC_UNAVAILABLE : formatMoney(floatingPnL), value1: account?.currency || 'USD' })}
                             >
-                                <BlinkingText
+                                {floatingPnL === null ? <UnavailableMetric /> : <BlinkingText
                                     value={totalLivePnL}
                                     formatFn={formatMoney}
                                     defaultColor={totalLivePnL > 0 ? "text-[#22c55e]" : totalLivePnL < 0 ? "text-[#ff2d2d]" : "text-zinc-100"}
-                                />
+                                />}
                                 <span className="rtx-trade-footer-currency">{account?.currency || 'USD'}</span>
                             </span>
                         )}
@@ -2070,11 +2093,14 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
         return buildExposureSummary(positions ?? [], account);
     }, [positions, account]);
 
-    const accountBalance = Number(account?.balance ?? 0);
-    const accountEquity = Number(account?.equity ?? accountBalance);
-    const accountMargin = Number(account?.margin ?? 0);
-    const accountFreeMargin = Number(account?.freeMargin ?? account?.free_margin ?? 0);
-    const accountMarginLevel = Number(account?.marginLevel ?? account?.margin_level ?? 0);
+    const [metricsNow, setMetricsNow] = useState(Date.now);
+    useEffect(() => {
+        const timer = window.setInterval(() => setMetricsNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, []);
+    const { balance: accountBalance, equity: accountEquity, margin: accountMargin,
+        freeMargin: accountFreeMargin, marginLevel: accountMarginLevel } = resolveTradeAccountMetrics(account, metricsNow);
+    const formatAccountMetric = (value: number | null) => value === null ? METRIC_UNAVAILABLE : formatMoney(value);
 
     return (
         <div className="rtx-exposure-tab flex h-full bg-[#0a0b0e] text-[13px] font-normal">
@@ -2145,24 +2171,24 @@ function ExposureTab({ positions, formatMoney, account }: ExposureTabProps) {
                 <div className="rtx-exposure-account-bar">
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Balance:")}</span>
-                        <span className="rtx-exposure-account-value">{formatMoney(accountBalance)}</span>
+                        <span className="rtx-exposure-account-value">{formatAccountMetric(accountBalance)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Equity:")}</span>
-                        <span className="rtx-exposure-account-value">{formatMoney(accountEquity)}</span>
+                        <span className="rtx-exposure-account-value">{formatAccountMetric(accountEquity)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Margin:")}</span>
-                        <span className="rtx-exposure-account-value">{formatMoney(accountMargin)}</span>
+                        <span className="rtx-exposure-account-value">{formatAccountMetric(accountMargin)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Free margin:")}</span>
-                        <span className="rtx-exposure-account-value">{formatMoney(accountFreeMargin)}</span>
+                        <span className="rtx-exposure-account-value">{formatAccountMetric(accountFreeMargin)}</span>
                     </span>
                     <span className="rtx-exposure-account-metric">
                         <span className="rtx-exposure-account-label">{tr("Level:")}</span>
                         <span className="rtx-exposure-account-value">
-                            {Number.isFinite(accountMarginLevel) ? `${accountMarginLevel.toFixed(2)}%` : '0.00%'}
+                            {accountMarginLevel !== null ? `${accountMarginLevel.toFixed(2)}%` : METRIC_UNAVAILABLE}
                         </span>
                     </span>
                 </div>

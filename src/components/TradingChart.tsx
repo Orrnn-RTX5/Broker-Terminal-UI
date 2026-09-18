@@ -161,6 +161,7 @@ import {
 } from '../utils/synchronizedMarketClock';
 import {
   applyTradeLevelDragUpdate,
+  tradeLevelModifyPatch,
   createTradeLevelOverrideFingerprint,
   getTradeLevelDragMinDistance,
   selectNearestTradeLevel,
@@ -7739,6 +7740,7 @@ export const TradingChart = React.memo(function TradingChart({
       tradeObj: ActiveTradeSnapshot,
       nextLevels: TradeLevelOverride,
       previousLevels: TradeLevelOverride,
+      role: 'SL' | 'TP',
     ) => {
       const ticket = getTradeTicket(tradeObj.key);
       if (!ticket) return;
@@ -7779,7 +7781,7 @@ export const TradingChart = React.memo(function TradingChart({
       window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay'));
       window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: nextLevels.sl || 0, tp: nextLevels.tp || 0 } }));
 
-      api.positions.modifyPosition(ticket, { price_sl: nextLevels.sl || 0, price_tp: nextLevels.tp || 0 })
+      api.positions.modifyPosition(ticket, tradeLevelModifyPatch(role, role === 'SL' ? nextLevels.sl || 0 : nextLevels.tp || 0))
         .then(() => {
           if (!isCurrentRequest()) return;
           clearCurrentRequest();
@@ -7928,6 +7930,7 @@ export const TradingChart = React.memo(function TradingChart({
           trade,
           role === 'SL' ? { sl: 0, tp: levels.tp || 0 } : { sl: levels.sl || 0, tp: 0 },
           { sl: levels.sl || 0, tp: levels.tp || 0 },
+          role,
         ),
       });
       bindChartUiTranslation(levelBar, () => { levelBar.title = getLocalizedTradeTitle(trade, role, levelPrice); });
@@ -9941,7 +9944,7 @@ export const TradingChart = React.memo(function TradingChart({
                 window.dispatchEvent(new CustomEvent('rtx:flush-trade-overlay')); // flush instantly
                 window.dispatchEvent(new CustomEvent('rtx:trade-modified', { detail: { id: ticket, sl: sl || 0, tp: tp || 0 } }));
 
-                api.positions.modifyPosition(ticket, { price_sl: sl || 0, price_tp: tp || 0 })
+                api.positions.modifyPosition(ticket, tradeLevelModifyPatch(update.role, update.price))
                   .then(() => {
                     if (!isCurrentRequest()) return;
                     clearCurrentRequest();

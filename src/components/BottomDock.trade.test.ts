@@ -64,7 +64,7 @@ describe('BottomDock trade helpers', () => {
     });
   });
 
-  it('calculates live profit only when backend profit is missing', () => {
+  it('does not invent live profit when backend profit is missing', () => {
     expect(resolveTradeProfit({
       symbol: 'BTCUSD',
       side: 'BUY',
@@ -74,8 +74,22 @@ describe('BottomDock trade helpers', () => {
       contract_size: 1,
       hasBackendProfit: false,
     })).toMatchObject({
-      value: expect.closeTo(0.0554, 5),
-      source: 'calculated',
+      value: 0,
+      source: 'missing',
+      estimate: null,
+    });
+  });
+
+  it('treats omitted profit as missing rather than a calculated display value', () => {
+    expect(resolveTradeProfit({
+      symbol: 'EURUSD',
+      side: 'BUY',
+      volume: 1,
+      openPrice: 1.1,
+      currentPrice: 1.2,
+    })).toMatchObject({
+      source: 'missing',
+      estimate: null,
     });
   });
 
@@ -211,9 +225,9 @@ describe('BottomDock trade helpers', () => {
 
   it('reports every metric as unavailable for a missing account', () => {
     expect(resolveTradeAccountMetrics(null)).toMatchObject({
-      balance: 0,
-      credit: 0,
-      margin: 0,
+      balance: null,
+      credit: null,
+      margin: null,
       equity: null,
       freeMargin: null,
       marginLevel: null,
@@ -274,8 +288,8 @@ describe('BottomDock trade helpers', () => {
     expect(resolved).toMatchObject({
       balance: 1000,
       credit: 50,
-      // margin is clamped at zero, everything else is untouched
-      margin: 0,
+      // Invalid used margin is unavailable, never a manufactured zero.
+      margin: null,
       equity: 1060,
       equitySource: 'backend',
     });

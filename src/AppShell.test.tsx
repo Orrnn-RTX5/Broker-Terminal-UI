@@ -12,13 +12,14 @@ const runtimeWindow = window as Window & {
 
 const shellMocks = vi.hoisted(() => ({
   terminalRender: vi.fn(),
-  desktop: true,
+  electron: true,
 }));
 
 vi.mock('./config/backendTarget.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('./config/backendTarget.js')>(),
-  isDesktopBackendTarget: () => shellMocks.desktop,
+  isElectronRuntime: () => shellMocks.electron,
 }));
+
 vi.mock('./App', () => ({
   default: ({
     initialSessionHandoff,
@@ -72,7 +73,7 @@ vi.mock('./components/WelcomeTerminal', () => ({
 
 describe('AppShell startup boundary', () => {
   beforeEach(() => {
-    shellMocks.desktop = true;
+    shellMocks.electron = true;
     localStorage.clear();
     sessionStorage.clear();
     shellMocks.terminalRender.mockClear();
@@ -145,7 +146,7 @@ describe('AppShell startup boundary', () => {
   });
 
   it('opens configured web markets after discarding a previous broker session', async () => {
-    shellMocks.desktop = false;
+    shellMocks.electron = false;
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
       BACKEND_TARGET: 'web', BROKER_ID: 'achiever-financials',
       API_HOST: 'https://service.achieverfinancials.com',
@@ -220,14 +221,33 @@ describe('AppShell startup boundary', () => {
     expect(view.queryByTestId('authenticated-terminal')).toBeNull();
     expect(document.querySelector('[data-login-module-loading="true"]')).toBeNull();
   });
-  it('opens the existing web workspace without creating an authenticated session', async () => {
-    shellMocks.desktop = false;
+
+  it('opens the real terminal for a web guest without an authenticated handoff', async () => {
+    shellMocks.electron = false;
     const view = render(<AppShell />);
-    await view.findByTestId('authenticated-terminal');
+    await waitFor(() => expect(view.getByTestId('authenticated-terminal')).toBeTruthy());
     expect(view.queryByTestId('login-input')).toBeNull();
+    expect(shellMocks.terminalRender).toHaveBeenCalledWith(null);
     expect(localStorage.getItem('auth_token')).toBeNull();
-    fireEvent.click(view.getByTestId('terminal-logout'));
-    expect(view.getByTestId('authenticated-terminal')).toBeTruthy();
   });
 
+  it('keeps web guests in the terminal after their session ends', async () => {
+    shellMocks.electron = false;
+    const view = render(<AppShell />);
+    await waitFor(() => expect(view.getByTestId('terminal-logout')).toBeTruthy());
+    fireEvent.click(view.getByTestId('terminal-logout'));
+    expect(view.getByTestId('authenticated-terminal')).toBeTruthy();
+    expect(view.queryByTestId('login-input')).toBeNull();
+  });
+
+  it('opens public charts for an expired web session without fabricating authentication', async () => {
+    shellMocks.electron = false;
+    localStorage.setItem('rtx_last_login', '200001');
+    localStorage.setItem('auth_token', 'expired-token');
+    localStorage.setItem('token_expires_at', String(Date.now() - 60000));
+    const view = render(<AppShell />);
+    await waitFor(() => expect(view.getByTestId('authenticated-terminal')).toBeTruthy());
+    expect(shellMocks.terminalRender).toHaveBeenCalledWith(null);
+    expect(view.queryByTestId('login-input')).toBeNull();
+  });
 });

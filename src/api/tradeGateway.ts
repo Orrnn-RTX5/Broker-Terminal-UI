@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { normalizeAccountMetrics } from '../services/accountMetrics';
 import type { Account, Position, Trade } from '../store/useAppStore';
 import { API_V2_BASE_URL, RTX5_WS_URL } from '../config/api';
 import { debugLog, redactUrlForDebugLog } from '../utils/debugLogging';
@@ -50,6 +51,8 @@ export type GatewayPosition = {
   price_tp?: number | null;
   tp?: number | null;
   profit?: number;
+  unrealized_pl?: number;
+  unrealizedPnL?: number;
   swap?: number;
   storage?: number;
   commission?: number;
@@ -375,23 +378,16 @@ export const collapseDealHistory = (deals: Trade[]): Trade[] => {
   return closedHistory;
 };
 
-export const normalizeAccount = (raw: GatewayAccount, previous?: Account | null): Account => ({
-  balance: numberOr(raw?.balance, previous?.balance ?? 0),
-  equity: numberOr(raw?.equity ?? raw?.balance, previous?.equity ?? previous?.balance ?? 0),
-  margin: numberOr(raw?.used_margin ?? raw?.margin_used ?? raw?.margin, previous?.margin ?? 0),
-  freeMargin: numberOr(raw?.margin_free ?? raw?.free_margin ?? raw?.margin_available, previous?.freeMargin ?? 0),
-  unrealizedPL: numberOr(raw?.floating_pnl ?? raw?.floating ?? raw?.profit ?? raw?.unrealized_pl, previous?.unrealizedPL ?? 0),
-  marginLevel: numberOr(raw?.margin_level ?? raw?.marginLevel, previous?.marginLevel ?? 0),
-  currency: raw?.currency ?? previous?.currency ?? 'USD',
-  leverage: numberOr(raw?.leverage, previous?.leverage ?? 100),
-});
+export const normalizeAccount = (raw: GatewayAccount, previous?: Account | null): Account => normalizeAccountMetrics(raw, previous);
 
 export const normalizePosition = (raw: GatewayPosition): Position => {
   const side = String(raw.side ?? raw.action ?? '').toLowerCase();
   const volume = Number(raw.volume_lots ?? raw.volume ?? (raw as any).quantity ?? 0);
   const openPrice = Number(raw.price_open ?? raw.open_price ?? (raw as any).openPrice ?? (raw as any).entryPrice ?? (raw as any).chartEntryPrice ?? (raw as any).price ?? 0);
   const currentPrice = Number(raw.price_current ?? raw.current_price ?? (raw as any).currentPrice ?? (raw as any).livePrice ?? openPrice ?? 0);
-  const profit = Number(raw.profit ?? (raw as any).unrealized_pl ?? (raw as any).unrealizedPnL ?? 0);
+  const rawProfit: unknown = raw.profit ?? raw.unrealized_pl ?? raw.unrealizedPnL;
+  const hasBackendProfit = rawProfit !== undefined && rawProfit !== null && rawProfit !== '' && Number.isFinite(Number(rawProfit));
+  const profit = hasBackendProfit ? Number(rawProfit) : 0;
   const openTime = resolvePositionOpenTime(raw);
   return {
     id: Number(raw.ticket ?? raw.position_id ?? (raw as any).id ?? 0),
@@ -406,6 +402,7 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
     swap: Number(raw.swap ?? raw.storage ?? 0),
     commission: Number(raw.commission ?? 0),
     unrealizedPnL: profit,
+    hasBackendProfit,
     comment: raw.comment ?? '',
     open_price: openPrice,
     price_open: openPrice,
@@ -414,7 +411,7 @@ export const normalizePosition = (raw: GatewayPosition): Position => {
     time_create: openTime,
     open_time: openTime,
     time: openTime,
-    profit,
+    profit: hasBackendProfit ? profit : undefined,
     quantity: volume,
   };
 };

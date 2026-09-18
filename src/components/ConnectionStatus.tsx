@@ -23,7 +23,12 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
   const tradeApiStatus = useAppStore((state) => state.tradeApiStatus);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [now, setNow] = useState(Date.now);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -93,7 +98,8 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
     setShowDropdown(false);
   };
 
-  const latencyMs = metrics.lastLatency > 0 ? metrics.lastLatency : null;
+  const latencyMs = metrics.latencyMeasuredAt && now - metrics.latencyMeasuredAt <= 60_000 && state === 'connected'
+    ? metrics.lastLatency : null;
   const tradeApiLabel = tradeApiStatus.error ? 'REST error' : tradeApiStatus.loading ? 'syncing' : 'ready';
   const tradeApiColor = tradeApiStatus.error
     ? 'text-red-400'
@@ -111,7 +117,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
       >
         <div className={`w-2 h-2 rounded-full ${status.color} shadow-sm`} />
         <span className="rtx-status-bar__metric font-normal text-[13px] leading-[19.5px]">
-          {state === 'connected' ? (metrics.lastLatency > 0 ? `${tr('Connected')} ${metrics.lastLatency}ms` : tr('Connected')) : tr(status.text)}
+          {state === 'connected' ? (latencyMs !== null ? `${tr('Connected')} ${latencyMs.toFixed(0)}ms` : tr('Connected')) : tr(status.text)}
         </span>
         {isStale && (
           <span className="text-orange-400 text-[12px] font-normal ml-1 [.rtx-advanced-view_&]:text-orange-600">{tr("(Stale)")}</span>
@@ -149,9 +155,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
                 <Zap size={14} className="text-yellow-400" />
                 <span>{tr("VPS Hosting Speed Up")}</span>
               </div>
-              {latencyMs && (
-                <span className="text-zinc-400 text-[10px]">{(latencyMs * 0.01).toFixed(2)} {tr(" ms")}</span>
-              )}
+              <span className="text-zinc-400 text-[10px]">Unavailable</span>
             </div>
           </div>
 
@@ -184,7 +188,7 @@ export function ConnectionStatus({ wsRef, reconnectCallback }: ConnectionStatusP
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161921]">
             <Server size={12} className="text-zinc-500" />
             <span className={`font-mono text-[10px] ${latencyMs && latencyMs < 200 ? 'text-green-400' : 'text-yellow-400'}`}>
-              {latencyMs ? tr("{{value0}} ms", { value0: latencyMs.toFixed(2) }) : '---'}
+              {latencyMs !== null ? `RTT ${latencyMs.toFixed(2)} ms` : 'RTT unavailable'}
             </span>
           </div>
         </div>

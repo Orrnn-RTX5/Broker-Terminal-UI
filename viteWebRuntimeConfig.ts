@@ -81,6 +81,24 @@ export const renderWebRuntimeConfig = (config: WebRuntimeConfig): string => {
   if (isElectron) return;
 
   var config = ${serialized};
+  // Preserve the local nginx preview while production follows the selected env.
+  var hostname = String(window.location.hostname || '');
+  var isLocalWeb = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+    && (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+      || hostname === '[::1]' || hostname.endsWith('.localhost'));
+  if (isLocalWeb) {
+    var localOrigin = window.location.origin;
+    config = Object.assign({}, config, {
+      BACKEND_TARGET: 'desktop', BACKEND_MODE: 'desktop',
+      API_HOST: localOrigin, API_HOST_EXT: localOrigin,
+      WS_HOST: localOrigin.replace(/^http/i, 'ws'),
+      DEFAULT_MT5_SERVER: 'TEST', BROKER_ID: 'TEST', VITE_BROKER_ID: 'TEST',
+      FEED_BROKER_ID: 'TEST', FEED_BROKER_TOKEN: '',
+      DISCOVERY_BASE_URL: 'https://fxtrustsuperbackned.orrnn.com',
+      BROKER_DISCOVERY_URL: 'https://fxtrustsuperbackned.orrnn.com',
+      USE_MOCK_DISCOVERY: false
+    });
+  }
   window.__RTX_RUNTIME_CONFIG__ = config;
   window.RUNTIME_CONFIG = config;
   window.__RUNTIME_CONFIG__ = config;

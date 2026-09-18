@@ -16,12 +16,12 @@ describe('same-document logout transition source contract', () => {
     expect(logoutHandler).not.toContain('Logging out...');
   });
 
-  it('lets AppShell fully unmount the authenticated graph', () => {
+  it('returns web sessions to guest charts and desktop sessions to login', () => {
     const appShell = readSource('src/AppShell.tsx');
     const app = readSource('src/App.tsx');
 
     expect(appShell).toContain('const handleSessionEnded');
-    expect(appShell).toContain('setShouldMountTerminal(false)');
+    expect(appShell).toContain('setShouldMountTerminal(!isElectronRuntime())');
     expect(appShell).toContain('onSessionEnded={handleSessionEnded}');
     expect(app).toContain('onSessionEnded?.();');
   });

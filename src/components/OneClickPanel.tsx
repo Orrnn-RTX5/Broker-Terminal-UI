@@ -12,6 +12,7 @@ import { useTradeSettings } from '../store/useSettingsStore';
 import { useLastSymbolStore } from '../store/useLastSymbolStore';
 import { formatSpreadDisplayWithUnit } from '../utils/spread';
 import { formatOrderError } from '../utils/orderError';
+import { requireTradingAuth } from '../services/tradingAuthGate';
 
 interface OneClickPanelProps {
   symbol: string;
@@ -75,6 +76,14 @@ export function OneClickPanel({
   const placeOrder = useCallback(
     async (side: 'BUY' | 'SELL') => {
       if (volume <= 0) return;
+      if (!requireTradingAuth({
+        source: 'one-click-trading',
+        side,
+        symbol,
+        volume,
+        bid: currentBid,
+        ask: currentAsk,
+      })) return;
       const intentAtMs = captureTradeOrderIntent();
       if (!symbol.trim()) {
         setError('Missing symbol');

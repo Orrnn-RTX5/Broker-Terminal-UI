@@ -401,7 +401,7 @@ describe('EnhancedWebSocketService connection startup', () => {
 
     (service as unknown as TestableService).sendPing();
     vi.advanceTimersByTime(37);
-    (service as unknown as TestableService).handleMessage({ action: 'pong' });
+    (service as unknown as TestableService).handleMessage({ action: 'pong', data: { timestamp: 1_788_509_500_000 } });
     expect(service.getMetrics()).toMatchObject({ lastLatency: 37, averageLatency: 37 });
     service.destroy();
   });

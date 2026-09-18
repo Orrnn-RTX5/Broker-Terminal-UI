@@ -7,6 +7,7 @@ import {
 } from '../api/client';
 import { watchlistV2Api } from '../api/trade';
 import { API_V2_BASE_URL, MARKET_WS_URL, toLocalDevProxyUrl } from '../config/api';
+import { isDesktopBackendTarget } from '../config/backendTarget.js';
 import { getEnhancedWebSocketService } from '../services/websocket-enhanced';
 import { enqueueLiveTick } from '../services/liveTickDispatcher';
 import { getAccessToken, getServerUrl, onSessionChange } from '../services/brokerSession';
@@ -1097,6 +1098,7 @@ export function useLiveQuotes(symbols: string[]) {
     tickTimestampsAtFailure: Record<string, number>;
   } | null>(null);
   const isAuthenticated = useAppStore((state) => state.isAuthenticated);
+  const marketDataEnabled = isAuthenticated || !isDesktopBackendTarget();
   const accountId = useAppStore((state) => state.accountId);
   const storeAuthToken = useAppStore((state) => state.authToken);
   const storeRefreshToken = useAppStore((state) => state.refreshToken);
@@ -1114,18 +1116,21 @@ export function useLiveQuotes(symbols: string[]) {
   const quoteApiBaseUrl = quoteSessionDescriptor?.v2BaseUrl ?? API_V2_BASE_URL;
 
   // Section 2: Public /ws/v2 quote demand is owned by QuoteSocketManager.
-  useQuoteSubscription(normalizedSymbols, `live-quotes:${quoteDemandId}`);
+  useQuoteSubscription(marketDataEnabled ? normalizedSymbols : [], `live-quotes:${quoteDemandId}`);
 
-  // REST supplies the initial quote snapshot. Live updates are websocket-owned;
-  // repeating this request would duplicate that stream and scale with each hook.
+  // Authenticated REST supplies the initial account-scoped quote snapshot.
+  // Guests are seeded by the public instrument catalog and updated by the feed;
+  // some deployed brokers do not support anonymous v2 quote requests.
   useEffect(() => {
     if (!isAuthenticated) {
       failureRef.current = null;
       setError(null);
+      setLoading(false);
       return;
     }
 
     if (normalizedSymbols.length === 0) {
+      setLoading(false);
       if (!failureRef.current?.isStale) {
         failureRef.current = null;
         setError(null);
@@ -1248,7 +1253,7 @@ export function useLiveQuotes(symbols: string[]) {
 
   // Subscribe in MarketDataStore for aggregation tracking
   useEffect(() => {
-    if (normalizedSymbols.length === 0 || !isAuthenticated) return;
+    if (normalizedSymbols.length === 0 || !marketDataEnabled) return;
 
     normalizedSymbols.forEach((symbol) => {
       useMarketDataStore.getState().subscribeSymbol(symbol);
@@ -1259,12 +1264,12 @@ export function useLiveQuotes(symbols: string[]) {
         useMarketDataStore.getState().unsubscribeSymbol(symbol);
       });
     };
-  }, [normalizedSymbols.join('|'), isAuthenticated, sessionRevision]);
+  }, [normalizedSymbols.join('|'), marketDataEnabled, sessionRevision]);
 
   // Clear a stale failure only after every failed symbol receives a fresh
   // websocket tick. Healthy ticks for other symbols must not hide the failure.
   useEffect(() => {
-    if (normalizedSymbols.length === 0 || !isAuthenticated) return;
+    if (normalizedSymbols.length === 0 || !marketDataEnabled) return;
 
     const unsub = useMarketDataStore.subscribe((state) => {
       const failure = failureRef.current;
@@ -1294,7 +1299,7 @@ export function useLiveQuotes(symbols: string[]) {
     });
 
     return unsub;
-  }, [normalizedSymbols.join('|'), isAuthenticated]);
+  }, [normalizedSymbols.join('|'), marketDataEnabled]);
 
   return { loading, error };
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { closePositionsConcurrently } from './closePositionsConcurrently';
+import {
+  closePositionsConcurrently,
+  MAX_PARALLEL_POSITION_CLOSES,
+} from './closePositionsConcurrently';
 
 type Deferred = {
   promise: Promise<void>;
@@ -18,18 +21,25 @@ const createDeferred = (): Deferred => {
   return { promise, resolve, reject };
 };
 
+const flushPromises = async () => {
+  for (let index = 0; index < 5; index += 1) {
+    await Promise.resolve();
+  }
+};
+
 describe('closePositionsConcurrently', () => {
-  it('starts every close before any request settles', async () => {
+  it('never exceeds the safe per-account close concurrency', async () => {
     const deferredByTicket = new Map([
       [101, createDeferred()],
       [102, createDeferred()],
       [103, createDeferred()],
+      [104, createDeferred()],
     ]);
     const startedTicketIds: number[] = [];
     const settledTicketIds: number[] = [];
 
     const closePromise = closePositionsConcurrently(
-      [{ id: 101 }, { id: 102 }, { id: 103 }],
+      [{ id: 101 }, { id: 102 }, { id: 103 }, { id: 104 }],
       (ticketId) => {
         startedTicketIds.push(ticketId);
         return deferredByTicket.get(ticketId)!.promise.finally(() => {
@@ -39,12 +49,19 @@ describe('closePositionsConcurrently', () => {
     );
 
     expect(startedTicketIds).toEqual([101, 102, 103]);
+    expect(startedTicketIds).toHaveLength(MAX_PARALLEL_POSITION_CLOSES);
     expect(settledTicketIds).toEqual([]);
 
-    deferredByTicket.forEach(({ resolve }) => resolve());
+    deferredByTicket.get(101)!.resolve();
+    await flushPromises();
+    expect(startedTicketIds).toEqual([101, 102, 103, 104]);
+
+    deferredByTicket.get(102)!.resolve();
+    deferredByTicket.get(103)!.resolve();
+    deferredByTicket.get(104)!.resolve();
 
     await expect(closePromise).resolves.toEqual({
-      confirmedTicketIds: [101, 102, 103],
+      confirmedTicketIds: [101, 102, 103, 104],
       failedTicketIds: [],
       failedReasons: [],
     });

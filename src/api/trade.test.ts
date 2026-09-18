@@ -124,6 +124,33 @@ describe('trade v2 API contract calls', () => {
     expect(localStorage.getItem('refresh_token')).toBe('refresh-token');
   });
 
+  it('returns a deferred login response without persisting tokens when the dialog owns session completion', async () => {
+    const response = createDeferred<Response>();
+    vi.mocked(fetch).mockReturnValueOnce(response.promise);
+
+    const login = authV2Api.login({
+      username: 123456,
+      broker_id: 'test_broker',
+      password: 'FixturePassword123',
+    }, { persistSession: false });
+
+    response.resolve(jsonResponse({
+      token: 'late-login-token',
+      refresh_token: 'late-refresh-token',
+      expires_at: 1770000000,
+      account_login: 123456,
+    }));
+
+    await expect(login).resolves.toMatchObject({
+      access_token: 'late-login-token',
+      token: 'late-login-token',
+      account_login: 123456,
+    });
+    expect(localStorage.getItem('auth_token')).toBeNull();
+    expect(localStorage.getItem('refresh_token')).toBeNull();
+    expect(localStorage.getItem('token_expires_at')).toBeNull();
+  });
+
   it('does not retry direct broker login with legacy user/server credentials', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       code: 'MT_RET_ERR_PARAMS',
@@ -913,15 +940,20 @@ describe('trade v2 API contract calls', () => {
   it('posts the exact full-position close contract to the configured broker', async () => {
     setToken('close-access-token');
 
+    vi.mocked(fetch).mockImplementationOnce(async (_url, init) => {
+      const sent = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      return jsonResponse({ ticket: 998877, status: 'closed', client_order_id: sent.client_order_id });
+    });
     await tradingV2Api.closePosition(998877);
 
     const request = lastFetchCall();
-    expect(request).toMatchObject({
-      url: `${RTX5_API_URL}/api/v2/positions/998877/close`,
-      body: { mode: 'full' },
-    });
+    expect(request.url).toBe(`${RTX5_API_URL}/api/v2/positions/998877/close`);
     expect(request.init.method).toBe('POST');
     expect(new Headers(request.init.headers).get('Authorization')).toBe('Bearer close-access-token');
+    expect(request.body.volume).toBe(0);
+    expect(request.body.client_order_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
   });
 
   it('normalizes pending order create payloads to backend-readable field names', async () => {

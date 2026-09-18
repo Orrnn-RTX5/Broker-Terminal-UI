@@ -2,6 +2,8 @@ import {
   getExposureContractSize,
   parseExposureSymbol,
 } from './BottomDock.exposure';
+import { accountMetricAvailable, accountMetricNumber, type AccountMetric } from '../services/accountMetrics';
+import type { Account } from '../store/useAppStore';
 
 export interface TradeProfitInput {
   symbol?: string;
@@ -34,6 +36,13 @@ export interface TradeProfitResolution {
 }
 
 export interface TradeAccountMetricInput {
+  hasBackendBalance?: boolean;
+  hasBackendMargin?: boolean;
+  hasBackendCredit?: boolean;
+  hasBackendFloatingPnL?: boolean;
+  metricsStatus?: string;
+  metricUpdatedAt?: Account['metricUpdatedAt'];
+  unrealizedPL?: unknown;
   balance?: unknown;
   equity?: unknown;
   margin?: unknown;
@@ -58,11 +67,12 @@ export interface TradeAccountMetricInput {
 export type TradeAccountMetricSource = 'backend' | 'unavailable';
 
 export interface TradeAccountMetricResolution {
-  balance: number;
-  credit: number;
+  balance: number | null;
+  credit: number | null;
   /** Backend equity, or null when the backend did not supply it. */
   equity: number | null;
-  margin: number;
+  margin: number | null;
+  floatingPnL: number | null;
   /** Backend free margin, or null when the backend did not supply it. */
   freeMargin: number | null;
   /** Backend margin level, or null when the backend did not supply it. */
@@ -88,7 +98,7 @@ const getExplicitContractSize = (position: TradeProfitInput): number | null => (
   toOptionalFiniteNumber(position.contractSize ?? position.contract_size)
 );
 
-const getBackendProfit = (position: TradeProfitInput): number | null => {
+export const readBackendPositionProfit = (position: TradeProfitInput): number | null => {
   if (position.hasBackendProfit === false) return null;
   return toOptionalFiniteNumber(position.profit ?? position.unrealizedPnL ?? position.unrealized_pl);
 };
@@ -110,35 +120,38 @@ const getProfitCurrency = (position: TradeProfitInput, symbolQuote?: string): st
  * When the backend omits a metric it is reported as `null` / `'unavailable'` so the UI can
  * render an explicit placeholder instead of a misleading zero.
  *
- * `balance`, `credit` and `margin` keep their plain passthrough behaviour.
+ * Availability and freshness apply to balance, credit and used margin as well.
  */
 export const resolveTradeAccountMetrics = (
   account: TradeAccountMetricInput | null | undefined,
+  now = Date.now(),
 ): TradeAccountMetricResolution => {
-  const balance = toFiniteNumber(account?.balance, 0);
-  const credit = toFiniteNumber(account?.credit ?? account?.bonus, 0);
-  const margin = Math.max(0, toFiniteNumber(account?.margin, 0));
+  const metric = (key: AccountMetric) => accountMetricAvailable(account as Partial<Account>, key, now)
+    ? accountMetricNumber(account?.[key]) : null;
+  const balance = metric('balance');
+  const normalizedCredit = account?.credit ?? account?.bonus;
+  const credit = accountMetricAvailable({ ...account, credit: normalizedCredit } as Partial<Account>, 'credit', now)
+    ? accountMetricNumber(normalizedCredit) : null;
+  const rawMargin = metric('margin');
+  const margin = rawMargin !== null && rawMargin >= 0 ? rawMargin : null;
+  const floatingPnL = metric('unrealizedPL');
   const warnings: string[] = [];
 
-  const equity = account?.hasBackendEquity === false
-    ? null
-    : toOptionalFiniteNumber(account?.equity);
+  const equity = metric('equity');
   if (equity === null) {
     warnings.push('missing_backend_equity');
   }
 
-  const freeMargin = account?.hasBackendFreeMargin === false
-    ? null
-    : toOptionalFiniteNumber(
-      account?.freeMargin ?? account?.free_margin ?? account?.margin_free ?? account?.margin_available,
-    );
+  const normalizedFreeMargin = account?.freeMargin ?? account?.free_margin ?? account?.margin_free ?? account?.margin_available;
+  const freeMargin = accountMetricAvailable({ ...account, freeMargin: normalizedFreeMargin } as Partial<Account>, 'freeMargin', now)
+    ? accountMetricNumber(normalizedFreeMargin) : null;
   if (freeMargin === null) {
     warnings.push('missing_backend_free_margin');
   }
 
-  const marginLevel = account?.hasBackendMarginLevel === false
-    ? null
-    : toOptionalFiniteNumber(account?.marginLevel ?? account?.margin_level);
+  const normalizedMarginLevel = account?.marginLevel ?? account?.margin_level;
+  const marginLevel = accountMetricAvailable({ ...account, marginLevel: normalizedMarginLevel } as Partial<Account>, 'marginLevel', now)
+    ? accountMetricNumber(normalizedMarginLevel) : null;
   if (marginLevel === null) {
     warnings.push('missing_backend_margin_level');
   }
@@ -148,6 +161,7 @@ export const resolveTradeAccountMetrics = (
     credit,
     equity,
     margin,
+    floatingPnL,
     freeMargin,
     marginLevel,
     equitySource: equity === null ? 'unavailable' : 'backend',
@@ -157,6 +171,10 @@ export const resolveTradeAccountMetrics = (
   };
 };
 
+/**
+ * Local contract-size reconstruction. Not a display or trading substitute.
+ * Live profit in the terminal comes only from readBackendPositionProfit.
+ */
 export const calculateLivePositionProfit = (
   position: TradeProfitInput,
   options: { requireExplicitContractSize?: boolean } = {}
@@ -196,9 +214,7 @@ export const resolveTradeProfit = (
   const symbol = String(position.symbol ?? '').toUpperCase();
   const parsed = parseExposureSymbol(symbol);
   const explicitContractSize = getExplicitContractSize(position);
-  const backendProfit = getBackendProfit(position);
-  const strictEstimate = calculateLivePositionProfit(position, { requireExplicitContractSize: true });
-  const fallbackEstimate = strictEstimate ?? calculateLivePositionProfit(position);
+  const backendProfit = readBackendPositionProfit(position);
   const accountCurrency = String(options.accountCurrency ?? '').trim().toUpperCase();
   const profitCurrency = getProfitCurrency(position, parsed?.quote);
   const requiresConversion = Boolean(accountCurrency && profitCurrency && profitCurrency !== accountCurrency);
@@ -213,36 +229,12 @@ export const resolveTradeProfit = (
   if (requiresConversion) {
     warnings.push('requires_profit_currency_conversion');
   }
-  if (backendProfit !== null && strictEstimate !== null) {
-    const tolerance = Math.max(0.01, Math.abs(strictEstimate) * 0.05);
-    if (Math.abs(backendProfit - strictEstimate) > tolerance) {
-      warnings.push('backend_profit_differs_from_contract_calculation');
-    }
-  }
 
   if (backendProfit !== null) {
     return {
       value: backendProfit,
       source: 'backend',
-      estimate: fallbackEstimate,
-      warnings,
-    };
-  }
-
-  if (strictEstimate !== null && !requiresConversion) {
-    return {
-      value: strictEstimate,
-      source: 'calculated',
-      estimate: strictEstimate,
-      warnings,
-    };
-  }
-
-  if (fallbackEstimate !== null && !requiresConversion) {
-    return {
-      value: fallbackEstimate,
-      source: 'estimated',
-      estimate: fallbackEstimate,
+      estimate: null,
       warnings,
     };
   }

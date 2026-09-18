@@ -26,6 +26,16 @@ const runtimeWindow = window as RuntimeWindow;
 const backendTargetSourcePath = resolve(process.cwd(), 'src/config/backendTarget.js');
 
 describe('backend target resolver', () => {
+  it('uses the dedicated Nexa HTTPS origin without falling back to the shared broker', () => {
+    runtimeWindow.__RTX_RUNTIME_CONFIG__ = {
+      BACKEND_TARGET: 'web', BROKER_ID: 'Nexa',
+      API_HOST: 'https://nexa.orrnn.com',
+      WS_HOST: 'wss://nexa.orrnn.com',
+    };
+    expect(getBackendTarget()).toBe('https://nexa.orrnn.com');
+    expect(getRuntimeConfiguredBrokerId()).toBe('Nexa');
+    expect(resolveBrokerWsUrl({}, '/ws/feed')).toBe('wss://nexa.orrnn.com/ws/feed');
+  });
   beforeEach(() => {
     delete runtimeWindow.electron;
     delete runtimeWindow.electronAPI;
@@ -243,11 +253,11 @@ describe('backend target resolver', () => {
   it('does not hardcode a public broker IP in the desktop fallback (N3-02)', () => {
     // The last-resort desktop default must not leak a public infra IP or send the
     // Bearer token in cleartext to a public host; loopback is the only safe default.
-    expect(DESKTOP_BACKEND_FALLBACK).toBe('http://127.0.0.1:8091');
+    expect(DESKTOP_BACKEND_FALLBACK).toBe('http://127.0.0.1:8090');
     expect(DESKTOP_BACKEND_FALLBACK).not.toContain('103.91.186.142');
 
     runtimeWindow.__RTX_RUNTIME_CONFIG__ = { backendTarget: 'desktop' };
-    expect(getBackendTarget()).toBe('http://127.0.0.1:8091');
+    expect(getBackendTarget()).toBe('http://127.0.0.1:8090');
   });
 
   it('uses selected broker direct IP and port for desktop sessions', () => {

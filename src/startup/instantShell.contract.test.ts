@@ -39,7 +39,8 @@ describe('instant startup shell source contract', () => {
     expect(terminalFallback).toContain('data-terminal-module-loading="true"');
     expect(terminalFallback).not.toContain('Restoring session');
     expect(app).not.toContain('Restoring session');
-    expect(app).toContain("data-rtx-authenticated-shell={isAuthenticated ? 'true' : 'false'}");
+    expect(app).toContain("data-rtx-authenticated-shell={isAuthenticated ? 'true' : undefined}");
+    expect(app).toContain("data-rtx-guest-shell={guestMode ? 'true' : undefined}");
   });
 
   it('makes the real login/bootstrap path statically discoverable from the entry module', () => {

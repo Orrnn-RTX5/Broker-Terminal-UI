@@ -33,6 +33,7 @@ import { formatPriceParts } from './ui/PriceDisplay';
 import { resolveExactBrokerSymbolValue } from '../utils/exactBrokerSymbol';
 import { getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from '../services/brokerSession';
 import './OneClickTrading.css';
+import { hasAuthenticatedTradingSession, requireTradingAuth } from '../services/tradingAuthGate';
 
 interface OneClickTradingProps {
     symbol: string;
@@ -147,6 +148,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         observer.observe(parent);
         return () => observer.disconnect();
     }, [visible, symbol]);
+    const authIdentity = useAppStore((state) => `${state.isAuthenticated}:${state.accountId}:${state.authToken}`);
+    const hasTradingSession = Boolean(authIdentity) && hasAuthenticatedTradingSession();
 
     // FIX: Broker symbols are opaque execution identities. Exact lookup avoids
     // trading EURUSD.r/XAUUSD.raw with a similarly named instrument's quote.
@@ -251,6 +254,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
     const marketBlockedMessage = 'Market Closed';
     const marketOpenForTrading = !shouldBlockSymbolTrading(effectiveMarketStatus, symbol);
     const staleQuoteMessage = tr('Cannot place this trade because the quote for {{symbol}} is stale. Please wait for a fresh quote and try again.', { symbol });
+    const canSubmitOrder = tradeAllowed && marketOpenForTrading && isVolumeValid && hasExecutablePrice;
+    const tradeControlDisabled = hasTradingSession && !canSubmitOrder;
     const orderBlockedReason = !tradeAllowed
         ? hasExecutablePrice ? staleQuoteMessage : tr('No live quote is available for {{symbol}}. Please wait for a fresh quote and try again.', { symbol })
         : !marketOpenForTrading
@@ -262,6 +267,14 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                     : undefined;
 
     const placeOrder = useCallback(async (side: 'buy' | 'sell') => {
+        if (!requireTradingAuth({
+            source: 'one-click-trading',
+            side: side.toUpperCase() as 'BUY' | 'SELL',
+            symbol,
+            volume,
+            bid,
+            ask,
+        })) return;
         const intentAtMs = captureTradeOrderIntent();
         if (!isAuthenticated) {
             window.dispatchEvent(new Event('rtx:requestTradeLogin'));
@@ -350,7 +363,7 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         } finally {
             setTimeout(() => setFlashSide(null), 500);
         }
-    }, [isAuthenticated, tradeAllowed, marketOpenForTrading, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick, tr, orderBlockedReason, staleQuoteMessage]);
+    }, [isAuthenticated, tradeAllowed, marketOpenForTrading, isVolumeValid, hasExecutablePrice, volume, symbol, getAccountLogin, tick, bid, ask, tr, orderBlockedReason, staleQuoteMessage]);
 
     if (!visible || !symbol) return null;
 
@@ -395,10 +408,10 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
         minHeight: btnHeight,
         maxHeight: btnHeight,
         border: '1px solid rgba(255,255,255,0.1)',
-        cursor: 'pointer',
+        cursor: tradeControlDisabled ? 'not-allowed' : 'pointer',
         position: 'relative',
         opacity: 1,
-        filter: 'none',
+        filter: tradeControlDisabled ? 'brightness(0.78) saturate(0.75)' : 'none',
         transition: 'background 150ms ease, filter 150ms ease',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
         boxSizing: 'border-box',
@@ -431,7 +444,8 @@ export const OneClickTrading: React.FC<OneClickTradingProps> = ({
                 data-dir={isBuy ? askDir : bidDir}
                 data-active={flashSide === side}
                 onClick={() => placeOrder(side)}
-                title={tr(orderBlockedReason)}
+                disabled={tradeControlDisabled}
+                title={hasTradingSession ? tr(orderBlockedReason) : tr('Login required to trade')}
                 aria-label={tr("{{value0}} {{value1}} at {{value2}}", { value0: tr(label), value1: symbol, value2: priceText })}
                 style={{
                     ...sharedButtonStyle,

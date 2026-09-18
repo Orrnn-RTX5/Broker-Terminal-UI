@@ -10,7 +10,8 @@
 
 import { useWebSocketStore } from '../store/useWebSocketStore';
 import { enqueueLiveTick } from './liveTickDispatcher';
-import { buildBrokerWsV2Uri, getAccessToken, onSessionChange } from './brokerSession';
+import { buildBrokerWsV2Uri, getAccessToken, onSessionChange, getCommittedBrokerAccountSessionScope, getCommittedBrokerAccountSessionScopeKey } from './brokerSession';
+import { extractAccountMetrics, normalizeAccountMetrics } from './accountMetrics';
 import { normalizeWsUrl as normalizeRuntimeWsUrl } from '../config/api';
 import { readDailyChangePercent, resolveDailyChangePercent } from '../utils/dailyChange';
 import {
@@ -19,6 +20,10 @@ import {
   readBrokerTimestampMs,
   readCandleFinality,
 } from '../utils/brokerStreamSemantics';
+import {
+  requestPositionSnapshotRevalidation,
+} from './positionSnapshotSafety';
+import { readPositionStreamBatch, reconcilePositionStreamBatch } from './positionStream';
 
 const WS_DEBUG = import.meta.env.VITE_WS_DEBUG === 'true';
 
@@ -116,6 +121,7 @@ export interface ConnectionMetrics {
   messagesReceived: number;
   reconnectAttempts: number;
   lastLatency: number;
+  latencyMeasuredAt?: number | null;
   averageLatency: number;
   uptime: number;
   lastConnectedAt: number | null;
@@ -160,6 +166,7 @@ export class EnhancedWebSocketService {
   private pongTimeoutMs = 15000; // 15 seconds
   private lastPongTime = 0;
   private lastPingSentAt = 0;
+  private lastPingStartedAt = 0;
   // A browser WebSocket cannot use protocol-level ping frames. Only enforce
   // the application heartbeat after this endpoint has proved it understands
   // our JSON ping/pong contract; otherwise a server that simply ignores the
@@ -378,6 +385,11 @@ export class EnhancedWebSocketService {
         // FIX: Pong freshness belongs to this socket instance, not its predecessor.
         this.lastPongTime = 0;
         this.lastPingSentAt = 0;
+        this.lastPingStartedAt = 0;
+        this.latencyMeasurements = [];
+        this.metrics.lastLatency = 0;
+        this.metrics.averageLatency = 0;
+        this.metrics.latencyMeasuredAt = null;
         this.metrics.lastConnectedAt = Date.now();
         this.updateState('connected');
         this.startPingInterval();
@@ -702,7 +714,7 @@ export class EnhancedWebSocketService {
       typeof value === 'string' && value.trim().toLowerCase() === 'pong'
     ));
     if (isPong) {
-      this.handlePong();
+      this.handlePong(data);
       return;
     }
 
@@ -734,7 +746,8 @@ export class EnhancedWebSocketService {
     if (type === 'channel_message') {
       try {
         const payload = data.data as any;
-        if (data.channel?.startsWith('positions.') && payload?.positions) {
+        const batch = readPositionStreamBatch(data);
+        if (data.channel?.startsWith('positions.') && batch) {
           import('../store/useAppStore').then(({ useAppStore }) => {
             const store = useAppStore.getState();
             // FIX: A positions snapshot is authoritative only for the login in
@@ -742,61 +755,30 @@ export class EnhancedWebSocketService {
             // never replace the active account's positions.
             if (!isExactAccountStreamChannel(data.channel, 'positions', store.accountId)) return;
 
-            const standardized = payload.positions.map((p: any) => {
-              // Resolve open time from all possible fields — NEVER fall back to now()
-              // because that causes execution pins to always snap to the live candle
-              // FIX: Normalize position seconds/ms/us/ns/ISO aliases and never
-              // fall back to now(), which would pin old executions to the live bar.
-              const openTimestamp = readBrokerTimestampMs([p], [
-                'time_create', 'time_create_ms', 'time_create_msc',
-                'time_open', 'time_open_ms', 'time_open_msc',
-                'opened_at', 'open_time', 'openTime',
-                'time_ms', 'time_msc', 'timestamp_ms', 'timestamp', 'time',
-              ]);
-              const openTime = openTimestamp === undefined
-                ? ''
-                : new Date(openTimestamp).toISOString();
-              return {
-                id: p.position_id ?? p.ticket ?? 0,
-                symbol: p.symbol || '',
-                side: p.action === 1 ? 'SELL' : 'BUY',
-                volume: p.volume_lots ?? p.volume ?? 0,
-                openPrice: p.price_open ?? 0,
-                currentPrice: p.price_current ?? 0,
-                openTime,   // empty string = no time data = skip pin
-                sl: p.price_sl ?? 0,
-                tp: p.price_tp ?? 0,
-                swap: p.storage ?? p.swap ?? 0,
-                commission: p.commission ?? 0,
-                unrealizedPnL: p.profit ?? 0
-              };
-            });
-            store.setPositions(standardized);
+            const result = reconcilePositionStreamBatch(store.positions, batch);
+            store.setPositions(result.positions);
+            if (result.needsRevalidation) requestPositionSnapshotRevalidation();
           });
 
           // Also update MT5 store
           const mt5Data = { ...data, type: 'mt5_positions', positions: payload.positions };
           this.handleMT5Update(mt5Data);
         } else if (data.channel?.startsWith('account.')) {
-          const accRecord = payload?.account || payload;
-          if (accRecord && accRecord.balance !== undefined) {
+          const accRecord = extractAccountMetrics(data);
+          const metricsScope = getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope());
+          if (accRecord) {
             import('../store/useAppStore').then(({ useAppStore }) => {
               const store = useAppStore.getState();
               // Filter: only accept data for the current account
               if (!isExactAccountStreamChannel(data.channel, 'account', store.accountId)) return;
+              if (metricsScope !== getCommittedBrokerAccountSessionScopeKey(getCommittedBrokerAccountSessionScope())) return;
 
               const curAccount = store.account;
-              store.setAccount({
-                ...curAccount,
-                balance: accRecord.balance ?? curAccount?.balance ?? 0,
-                equity: accRecord.equity ?? curAccount?.equity ?? 0,
-                margin: accRecord.margin ?? curAccount?.margin ?? 0,
-                freeMargin: accRecord.margin_free ?? accRecord.freeMargin ?? curAccount?.freeMargin ?? 0,
-                unrealizedPL: accRecord.profit ?? accRecord.unrealizedPL ?? curAccount?.unrealizedPL ?? 0,
-                marginLevel: accRecord.margin_level ?? accRecord.marginLevel ?? curAccount?.marginLevel ?? 0,
-                currency: accRecord.currency ?? curAccount?.currency ?? 'USD',
-                leverage: accRecord.leverage ?? curAccount?.leverage ?? 100
-              } as any);
+              store.setAccount(normalizeAccountMetrics(data, curAccount, {
+                partial: !accRecord.publication_token,
+                login: Number(store.accountId),
+                scope: metricsScope,
+              }));
             });
 
             // Also update MT5 store
@@ -1097,6 +1079,7 @@ export class EnhancedWebSocketService {
 
     const pingTime = Date.now();
     this.lastPingSentAt = pingTime;
+    this.lastPingStartedAt = performance.now();
     // Keep `type` for older gateways, but lead with the action-based /ws/v2
     // command shape used by subscribe/unsubscribe on this same connection.
     this.sendMessage({ action: 'ping', type: 'ping', timestamp: pingTime });
@@ -1132,7 +1115,7 @@ export class EnhancedWebSocketService {
    * Handle pong response
 
    */
-  private handlePong(): void {
+  private handlePong(data: WebSocketMessage): void {
     if (this.pongTimeout) {
       clearTimeout(this.pongTimeout);
       this.pongTimeout = null;
@@ -1140,9 +1123,11 @@ export class EnhancedWebSocketService {
 
     const now = Date.now();
     this.pongSupportedUrl = this.url;
-    if (this.lastPingSentAt > 0) {
-      const latency = now - this.lastPingSentAt;
+    const echo = data.ping_timestamp ?? data.request_timestamp ?? data.timestamp ?? (data.data as any)?.timestamp;
+    if (this.lastPingSentAt > 0 && echo === this.lastPingSentAt) {
+      const latency = performance.now() - this.lastPingStartedAt;
       this.recordLatency(latency);
+      this.lastPingSentAt = 0;
     }
     this.lastPongTime = now;
   }
@@ -1161,6 +1146,7 @@ export class EnhancedWebSocketService {
     }
 
     this.metrics.lastLatency = measuredLatency;
+    this.metrics.latencyMeasuredAt = Date.now();
     this.metrics.averageLatency =
       this.latencyMeasurements.reduce((sum, l) => sum + l, 0) /
       this.latencyMeasurements.length;

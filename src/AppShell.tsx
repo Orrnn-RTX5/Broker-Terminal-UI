@@ -1,7 +1,7 @@
 import { useUiTranslation } from './hooks/useUiTranslation';
 import { useCallback, useEffect, useState } from 'react';
-import { isDesktopBackendTarget } from './config/backendTarget.js';
 import { WelcomeTerminal } from './components/WelcomeTerminal';
+import { isElectronRuntime } from './config/backendTarget.js';
 import {
   parseSessionExpiryMs,
   type AuthenticatedSessionHandoff,
@@ -146,9 +146,9 @@ export const hasStoredSessionCandidate = (): boolean => {
 };
 
 /**
- * Anonymous sessions own only the login UI. The chart/data/WebSocket graph is
- * fetched through the dynamic boundary only after authentication succeeds or
- * a restorable stored session exists.
+ * Web visitors open the terminal with public market data. App independently
+ * gates private account state and trading. Only Electron retains its login boundary;
+ * local/direct backend settings must never select the old browser login screen.
  */
 interface AppShellProps {
   loadStoredSessionTerminal?: () => Promise<AppModule>;
@@ -157,8 +157,10 @@ interface AppShellProps {
 export default function AppShell({
   loadStoredSessionTerminal = preloadAuthenticatedTerminal,
 }: AppShellProps = {}) {
-  const [shouldMountTerminal, setShouldMountTerminal] = useState(hasStoredSessionCandidate);
-  const guestEnabled = !isDesktopBackendTarget();
+  const [shouldMountTerminal, setShouldMountTerminal] = useState(() => {
+    const storedSessionCandidate = hasStoredSessionCandidate();
+    return !isElectronRuntime() || storedSessionCandidate;
+  });
   const [initialSessionHandoff, setInitialSessionHandoff] = useState<AuthenticatedSessionHandoff | null>(null);
   const prepareTerminal = useCallback(() => {
     return preloadAuthenticatedTerminal();
@@ -173,10 +175,10 @@ export default function AppShell({
   }, []);
   const handleSessionEnded = useCallback(() => {
     setInitialSessionHandoff(null);
-    setShouldMountTerminal(false);
+    setShouldMountTerminal(!isElectronRuntime());
   }, []);
 
-  if (!shouldMountTerminal && !guestEnabled) {
+  if (!shouldMountTerminal) {
     return (
       <WelcomeTerminal
         onLogin={handleLogin}
